@@ -1,8 +1,9 @@
 //! Saving `/gp` games to Postgres, and picking them up after a restart.
 //!
 //! A game lives in [`Data::gp_games`], in memory, and that stays the source of
-//! truth while it runs. It is written down at two moments -- when a song is
-//! submitted and when a song ends -- as a snapshot of the game into the `gp_*`
+//! truth while it runs. It is written down at the four moments its shape
+//! changes -- a song is submitted, the window closes on a round, a song's
+//! message is posted, a song ends -- as a snapshot of the game into the `gp_*`
 //! tables (see [`crate::db::gp`], which writes only the rounds that can have
 //! changed since the last one). Guesses, likes and votes on the song that is
 //! playing are not written until it ends: after a resume that song plays again
@@ -21,9 +22,10 @@
 //! game from the map, `/gp end` included -- it is not a checkpoint, but without
 //! it a game ended on purpose would still look live after a redeploy and come
 //! back. There is no heartbeat: a graceful shutdown stamps `last_seen_at` on
-//! every live game as it drains, so for a redeploy -- the case that prompted
-//! this -- the gap the resume measures is the outage itself. A hard crash
-//! leaves `last_seen_at` at the last checkpoint, which errs toward not resuming.
+//! the games this process is actually running as it drains, so for a redeploy
+//! -- the case that prompted this -- the gap the resume measures is the outage
+//! itself. A hard crash leaves `last_seen_at` at the last checkpoint, which
+//! errs toward not resuming.
 //!
 //! On the way back up, [`gp_resume_guild`] runs from the guild-create handler for
 //! each guild as it arrives. A live game is brought back only if it can still be
@@ -83,8 +85,8 @@ pub enum GpPersist {
         started_at: i64,
         outcome: GpOutcome,
     },
-    /// The process is going down: every live game was alive until now.
-    Stopping,
+    /// The process is going down: the games listed were alive until now.
+    Stopping { guild_ids: Vec<i64> },
     /// Reply once everything sent before this has been written.
     Flush(oneshot::Sender<()>),
 }
@@ -118,7 +120,7 @@ pub async fn run_gp_writer(mut rx: mpsc::UnboundedReceiver<GpPersist>, pool: PgP
                 Ok(false) => {},
                 Err(e) => tracing::warn!("gp: marking the game in {guild_id} over: {e}"),
             },
-            GpPersist::Stopping => match gp_touch_live(&pool).await {
+            GpPersist::Stopping { guild_ids } => match gp_touch_live(&pool, &guild_ids).await {
                 Ok(n) if n > 0 => tracing::info!("gp: {n} live game(s) stamped for the restart"),
                 Ok(_) => {},
                 Err(e) => tracing::warn!("gp: stamping live games at shutdown: {e}"),
@@ -159,14 +161,17 @@ impl Data {
         });
     }
 
-    /// The process is shutting down: stamp the live games as seen now, then wait
-    /// until everything sent so far has been written, or `timeout` passes. For
-    /// the shutdown handler, which has a budget.
+    /// The process is shutting down: stamp this process's live games as seen
+    /// now, then wait until everything sent so far has been written, or
+    /// `timeout` passes. For the shutdown handler, which has a budget.
     pub async fn gp_shutdown(&self, timeout: Duration) {
         let Some(tx) = &self.gp_persist else {
             return;
         };
-        if tx.send(GpPersist::Stopping).is_err() {
+        // Only the games in the map: a live row without one is a leftover, and
+        // vouching for it would keep a game nobody is playing resumable forever.
+        let guild_ids: Vec<i64> = self.gp_games.iter().map(|g| game_id(*g.key())).collect();
+        if tx.send(GpPersist::Stopping { guild_ids }).is_err() {
             return;
         }
         let (ack, done) = oneshot::channel();
@@ -360,15 +365,14 @@ impl GpGame {
                 GpLoadError(format!("track in round {} which has no round", t.round_idx))
             })?;
             let submitter = user(t.submitter_id);
-            let resolved = ResolvedTrack::from_saved(
-                &SavedTrack::from_secs(
-                    t.url.clone(),
-                    t.title.clone(),
-                    t.artist.clone(),
-                    t.duration_secs,
-                ),
-                submitter,
-            );
+            // The submitter is the game's, kept on the `GpTrack` and as the
+            // submissions key; it is deliberately never put on the track itself.
+            let resolved = ResolvedTrack::from_saved(&SavedTrack::from_secs(
+                t.url.clone(),
+                t.title.clone(),
+                t.artist.clone(),
+                t.duration_secs,
+            ));
             match t.position {
                 None => {
                     round.submissions.insert(submitter, resolved);
@@ -455,11 +459,19 @@ fn sorted_users(set: &HashSet<UserId>) -> Vec<i64> {
 }
 
 /// The non-bot members of `vc`, from the guild as the gateway just described it.
-fn vc_members(guild: &Guild, vc: ChannelId) -> usize {
+///
+/// `me` is checked by id rather than left to the member lookup: `guild.members`
+/// arrives truncated for a large guild, and an absent member is read as human so
+/// that a player the payload left out still counts. The bot's own voice state
+/// from the session that just died is usually still in the payload, and counting
+/// it would let the "nobody is left in the channel" check pass on the bot's own
+/// ghost -- resuming the game to an empty room.
+fn vc_members(guild: &Guild, vc: ChannelId, me: UserId) -> usize {
     guild
         .voice_states
         .iter()
         .filter(|vs| vs.channel_id == Some(vc))
+        .filter(|vs| vs.user_id != me)
         .filter(|vs| guild.members.get(&vs.user_id).is_none_or(|m| !m.user.bot()))
         .count()
 }
@@ -509,7 +521,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     };
     let down_for = now() - alive_until;
     let too_late = down_for > GP_RESUME_WINDOW_SECS;
-    let nobody = vc_members(guild, game.voice_channel) == 0;
+    let nobody = vc_members(guild, game.voice_channel, ctx.cache.current_user().id) == 0;
     if too_late || nobody || game.phase == GpPhase::Finished {
         let why = if too_late {
             format!("gone for {down_for}s")
@@ -519,11 +531,19 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
             "it had already finished".to_string()
         };
         tracing::info!("gp: not resuming the game in {guild_id}: {why}");
-        if let Err(e) = gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await
-        {
-            tracing::warn!("gp: marking the game in {guild_id} lost: {e}");
-        }
-        if game.phase != GpPhase::Finished {
+        // Say so only once. `on_guild_create` runs again on every reconnect, and
+        // while the tombstone is not written the row is still live and still
+        // hopeless -- so posting regardless would put a fresh scoreboard in the
+        // channel each time the gateway blinked.
+        let marked =
+            match gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await {
+                Ok(_) => true,
+                Err(e) => {
+                    tracing::warn!("gp: marking the game in {guild_id} lost: {e}");
+                    false
+                },
+            };
+        if marked && game.phase != GpPhase::Finished {
             let scores = game.sorted_scores();
             let msg = CreateMessage::new()
                 .content(GP_LOST)
@@ -761,7 +781,7 @@ mod test {
     }
 
     #[test]
-    fn closing_guessing_and_liking_write_nothing_but_a_song_ending_does() {
+    fn closing_and_the_song_message_are_written_but_guesses_wait_for_the_song() {
         let (data, mut rx) = recording();
         start(&data, &["p0"]);
         data.gp_submit(G, A, "alice".into(), track("a"), &[])
@@ -769,12 +789,39 @@ mod test {
         data.gp_submit(G, B, "bob".into(), track("b"), &[]).unwrap();
         drain(&mut rx);
 
+        // Closing writes the play order and the phase, so a resume during the
+        // round's first song does not read the passed `closes_at` as an outage.
         let closed = data
             .gp_close_window(G, A, &mut StdRng::seed_from_u64(0), NOW)
             .unwrap();
         assert_eq!(closed.count, 2);
+        let msgs = drain(&mut rx);
+        assert_eq!(msgs.len(), 1);
+        let s = snapshot(&msgs[0]);
+        assert_eq!(s.game.phase, PHASE_PLAYING);
+        assert_eq!(s.rounds[0].closes_at, None, "the window is not open");
+        assert_eq!(
+            s.tracks.iter().filter(|t| t.position.is_some()).count(),
+            2,
+            "both songs have their place in the round"
+        );
+
+        // And the song's message, which is what a resume takes the pre-restart
+        // dropdown down by.
         data.gp_set_track_message(G, 0, 0, TC, MessageId::new(555))
             .unwrap();
+        let msgs = drain(&mut rx);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(
+            snapshot(&msgs[0])
+                .tracks
+                .iter()
+                .find(|t| t.position == Some(0))
+                .unwrap()
+                .message_id,
+            Some(555)
+        );
+
         let first = data.gp_games.get(&G).unwrap().rounds[0].tracks[0].submitter;
         let guesser = if first == A { B } else { A };
         data.gp_record_guess(G, 0, 0, guesser, "x".into(), first)
@@ -782,7 +829,7 @@ mod test {
         data.gp_toggle_like(G, 0, 0, guesser, "x".into()).unwrap();
         assert!(
             drain(&mut rx).is_empty(),
-            "closing, guessing and liking are not checkpoints"
+            "guessing and liking are not checkpoints"
         );
 
         data.gp_reveal_and_advance(G, 0, 0, NOW + 200).unwrap();
@@ -873,16 +920,30 @@ mod test {
     }
 
     #[tokio::test]
-    async fn shutdown_stamps_the_live_games_and_waits_for_the_writer() {
+    async fn shutdown_stamps_this_process_games_and_waits_for_the_writer() {
         let (data, mut rx) = recording();
         // Nobody is draining: the flush times out rather than hanging shutdown.
         let started = std::time::Instant::now();
         data.gp_shutdown(Duration::from_millis(50)).await;
         assert!(started.elapsed() >= Duration::from_millis(50));
         match &drain(&mut rx)[..] {
-            [GpPersist::Stopping, GpPersist::Flush(_)] => {},
+            [GpPersist::Stopping { guild_ids }, GpPersist::Flush(_)] => {
+                assert!(guild_ids.is_empty(), "no games, nothing to vouch for");
+            },
             other => panic!("{other:?}"),
         }
+
+        // With a game running, that guild -- and only that guild -- is stamped.
+        start(&data, &["p0"]);
+        data.gp_shutdown(Duration::from_millis(10)).await;
+        match &drain(&mut rx)[..] {
+            [GpPersist::Stopping { guild_ids }, GpPersist::Flush(_)] => {
+                assert_eq!(guild_ids, &[1]);
+            },
+            other => panic!("{other:?}"),
+        }
+        data.gp_remove(G);
+        drain(&mut rx);
         // With the writer's end gone the flush returns at once.
         drop(rx);
         let started = std::time::Instant::now();
@@ -967,6 +1028,31 @@ mod test {
         assert_eq!(start.players.len(), 3);
     }
 
+    /// The reveal is the whole game, and a song that names its submitter gives
+    /// it away. The live path deliberately leaves the requester off a game's
+    /// tracks -- the now-playing embed renders the sentinel as "(auto)" -- and a
+    /// song rebuilt after a restart must not put it back, or `/np` would out
+    /// every submitter for the rest of the game.
+    #[test]
+    fn a_song_rebuilt_from_its_rows_does_not_name_its_submitter() {
+        let (data, _rx) = recording();
+        start(&data, &["p0"]);
+        data.gp_submit(G, B, "bob".into(), track("b0"), &[])
+            .unwrap();
+        data.gp_close_window(G, A, &mut StdRng::seed_from_u64(3), NOW)
+            .unwrap();
+        let saved = data.gp_games.get(&G).unwrap().to_saved();
+
+        let back = GpGame::from_saved(&saved).unwrap();
+        let t = &back.rounds[0].tracks[0];
+        assert_eq!(t.submitter, B, "the game still knows whose song it is");
+        assert_eq!(
+            t.track.get_requesting_user(),
+            UserId::new(1),
+            "the song itself does not"
+        );
+    }
+
     #[test]
     fn a_submitting_game_round_trips_with_its_open_window() {
         let (data, _rx) = recording();
@@ -978,6 +1064,11 @@ mod test {
         let back = GpGame::from_saved(&saved).unwrap();
         assert_eq!(back.to_saved(), saved);
         assert_eq!(back.phase, GpPhase::Submitting);
+        assert_eq!(
+            back.rounds[0].submissions[&B].get_requesting_user(),
+            UserId::new(1),
+            "a submission does not name its submitter either"
+        );
         assert_eq!(back.rounds[0].closes_at, Some(NOW + 120));
         assert_eq!(back.rounds[0].submissions.len(), 1);
         assert!(back.rounds[0].tracks.is_empty());

@@ -59,13 +59,18 @@ impl ResolvedTrack<'_> {
         self
     }
 
-    /// Rebuild a track from what was saved of it. Carries only metadata, which is
-    /// all `build_track` reads: the URL to play and the fields the embeds show.
-    /// Nothing is resolved again, so this cannot fail and touches no network.
-    pub fn from_saved(saved: &SavedTrack, user_id: UserId) -> ResolvedTrack<'static> {
+    /// Rebuild a track from what was saved of it: the URL to play and the fields
+    /// the embeds show. Nothing is resolved again, so this cannot fail and
+    /// touches no network.
+    ///
+    /// Deliberately takes no requester, so the track keeps [`Self::new`]'s
+    /// sentinel. `build_track` copies `user_id` into the songbird track's data,
+    /// where the now-playing and queue embeds read it, and a guessing-game song
+    /// rebuilt with its submitter would name them in `/nowplaying` before the
+    /// reveal -- which is the whole secret of the game.
+    pub fn from_saved(saved: &SavedTrack) -> ResolvedTrack<'static> {
         ResolvedTrack::new(QueryType::VideoLink(saved.url.clone()))
             .with_metadata(saved.to_metadata())
-            .with_user_id(user_id)
     }
 
     /// Set the queued status of the track.

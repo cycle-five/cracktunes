@@ -605,13 +605,27 @@ pub async fn gp_mark_finished(
     Ok(done)
 }
 
-/// Every live game was alive until now. For the shutdown handler: one bot runs
+/// The named games were alive until now. For the shutdown handler: one bot runs
 /// every game, so on its way down it can vouch for all of them at once, and the
 /// resume then measures the outage rather than the time since the last song.
-pub async fn gp_touch_live(pool: &PgPool) -> sqlx::Result<u64> {
-    let done = sqlx::query!("UPDATE gp_game SET last_seen_at = now() WHERE finished_at IS NULL")
-        .execute(pool)
-        .await?;
+///
+/// Scoped to the guilds whose games are actually in memory, never to every live
+/// row. A row can outlive its game -- the load that would have resumed it hit a
+/// database error, or the write that would have marked it over did -- and
+/// stamping one of those would keep a game nobody is playing permanently
+/// resumable: every later shutdown would refresh it, and a restart days on would
+/// find it seconds old, join voice and play it back at whoever is in the channel.
+pub async fn gp_touch_live(pool: &PgPool, guild_ids: &[i64]) -> sqlx::Result<u64> {
+    if guild_ids.is_empty() {
+        return Ok(0);
+    }
+    let done = sqlx::query!(
+        r#"UPDATE gp_game SET last_seen_at = now()
+           WHERE finished_at IS NULL AND guild_id = ANY($1)"#,
+        guild_ids,
+    )
+    .execute(pool)
+    .await?;
     Ok(done.rows_affected())
 }
 
@@ -638,6 +652,16 @@ mod tests {
             skip_votes: Vec::new(),
             full_votes: Vec::new(),
         }
+    }
+
+    async fn seen_secs_ago(pool: &PgPool, guild_id: i64) -> sqlx::Result<i64> {
+        sqlx::query_scalar!(
+            r#"SELECT EXTRACT(EPOCH FROM now() - last_seen_at)::bigint AS "ago!"
+               FROM gp_game WHERE guild_id = $1"#,
+            guild_id,
+        )
+        .fetch_one(pool)
+        .await
     }
 
     fn saved(guild_id: i64, started_at: i64) -> GpSaved {
@@ -866,23 +890,31 @@ mod tests {
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
-    async fn shutdown_stamps_live_games_and_leaves_finished_ones(pool: PgPool) -> sqlx::Result<()> {
+    async fn shutdown_stamps_this_process_games_and_leaves_the_rest(
+        pool: PgPool,
+    ) -> sqlx::Result<()> {
         saved(5, 1_700_000_000).save(&pool).await?;
         saved(6, 1_700_000_000).save(&pool).await?;
+        // 7 is live in the table but not in the bot's memory: a leftover from a
+        // game whose tombstone never landed.
+        saved(7, 1_700_000_000).save(&pool).await?;
         gp_mark_finished(&pool, 6, 1_700_000_000, GpOutcome::Ended).await?;
         sqlx::query!("UPDATE gp_game SET last_seen_at = now() - interval '10 minutes'")
             .execute(&pool)
             .await?;
-        assert_eq!(gp_touch_live(&pool).await?, 1);
+        assert_eq!(gp_touch_live(&pool, &[5, 6]).await?, 1);
         let five = GpSaved::load_live(&pool, 5).await?.expect("live");
         assert!(five.last_seen_secs_ago < 5);
-        let six: i64 = sqlx::query_scalar!(
-            r#"SELECT EXTRACT(EPOCH FROM now() - last_seen_at)::bigint AS "ago!"
-               FROM gp_game WHERE guild_id = 6"#
-        )
-        .fetch_one(&pool)
-        .await?;
-        assert!(six > 500, "a finished game is not touched");
+        assert!(
+            seen_secs_ago(&pool, 6).await? > 500,
+            "a finished game is not touched"
+        );
+        assert!(
+            seen_secs_ago(&pool, 7).await? > 500,
+            "nor is a live row this process was not running"
+        );
+        // And with nothing running, nothing is stamped at all.
+        assert_eq!(gp_touch_live(&pool, &[]).await?, 0);
         Ok(())
     }
 }

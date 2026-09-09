@@ -781,7 +781,15 @@ impl Data {
         if game.phase != GpPhase::Submitting {
             return Err(CrackedError::WindowClosed);
         }
-        Ok(game.close_window(rng, now))
+        let closed = game.close_window(rng, now);
+        // Closing is a checkpoint: it is the moment a round stops being a set of
+        // submissions and becomes a play order, and the only writer of `phase =
+        // playing` and of `closes_at = None`. Until it lands the rows still say
+        // the window is open until a `closes_at` that has passed, so a resume
+        // during the round's first song would measure the outage from there and
+        // write off a game that was only away for seconds.
+        self.gp_snapshot(&game);
+        Ok(closed)
     }
 
     /// Close the window the timer (or "everyone submitted") was started for.
@@ -798,7 +806,10 @@ impl Data {
         if game.phase != GpPhase::Submitting || game.generation != generation {
             return None;
         }
-        Some(game.close_window(rng, now))
+        let closed = game.close_window(rng, now);
+        // A checkpoint for the same reason as `gp_close_window`.
+        self.gp_snapshot(&game);
+        Some(closed)
     }
 
     /// The 30-second heads-up, if the window it was spawned for is still open.
@@ -839,6 +850,14 @@ impl Data {
     }
 
     /// Remember where a song's message went so the reveal can edit it.
+    ///
+    /// Also a checkpoint, and the only one taken while a song plays. The id is
+    /// what a resume takes the pre-restart dropdown down by, and the checkpoint
+    /// before this one was the end of the *previous* song, when this track had no
+    /// message yet -- so without a write here the restarted game would never
+    /// learn which message to close, and the old one would sit there with a live
+    /// dropdown for the rest of the game, answering every click with a stale
+    /// round.
     pub fn gp_set_track_message(
         &self,
         guild_id: GuildId,
@@ -857,6 +876,7 @@ impl Data {
             .and_then(|r| r.tracks.get_mut(track_idx))
             .ok_or(CrackedError::StaleRound)?;
         t.message = Some((channel, message_id));
+        self.gp_snapshot(&game);
         Ok(())
     }
 
@@ -2340,8 +2360,12 @@ async fn author_display_name(ctx: Context<'_>) -> String {
 }
 
 /// Non-bot members of `vc`, from the cache. Empty if the guild isn't cached
-/// (then the window simply waits for the timer or the host).
+/// (then the window simply waits for the timer or the host). The bot is always
+/// in this channel and is excluded by id, not just by the member lookup, which
+/// answers "human" for anyone the cache is missing.
 fn gp_vc_members(ctx: Context<'_>, vc: ChannelId) -> Vec<UserId> {
+    // Read before the guild: no cache lock is held across the other lookup.
+    let me = ctx.serenity_context().cache.current_user().id;
     let Some(guild) = ctx.guild() else {
         return Vec::new();
     };
@@ -2349,6 +2373,7 @@ fn gp_vc_members(ctx: Context<'_>, vc: ChannelId) -> Vec<UserId> {
         .voice_states
         .iter()
         .filter(|vs| vs.channel_id == Some(vc))
+        .filter(|vs| vs.user_id != me)
         .filter(|vs| guild.members.get(&vs.user_id).is_none_or(|m| !m.user.bot()))
         .map(|vs| vs.user_id)
         .collect()
