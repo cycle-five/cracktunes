@@ -13,6 +13,8 @@
   scattered up the channel behind the next prompt. The five-second breather
   that already sat between songs now sits between the results and the next
   prompt too. A round nobody submitted to has nothing to sum up and posts none.
+  `/gp start ... results:false` turns the embed off and has the game as it was,
+  except with `reveal:round`, where the results are the reveal and stay on.
   (#433)
 - **`/gp start ... reveal:round`** holds every submitter's name until the
   round's last song has played, and the round-results embed is the reveal. With

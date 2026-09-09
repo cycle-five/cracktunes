@@ -311,6 +311,7 @@ impl GpGame {
                 clip_start_secs: self.clip.map(|c| c.start.as_secs() as i64),
                 clip_length_secs: self.clip.map(|c| c.length.as_secs() as i64),
                 reveal: self.reveal.slug().to_string(),
+                round_results: self.round_results,
                 generation: self.generation as i64,
             },
             players,
@@ -447,6 +448,7 @@ impl GpGame {
             timer_secs: g.timer_secs.max(0) as u64,
             clip,
             reveal,
+            round_results: g.round_results,
             generation: g.generation.max(0) as u64,
             parked_for_end: false,
             players,
@@ -738,6 +740,7 @@ mod test {
                 length: Duration::from_secs(45),
             }),
             GpReveal::Song,
+            true,
             NOW,
         )
         .unwrap();
@@ -1079,6 +1082,7 @@ mod test {
             120,
             None,
             GpReveal::Round,
+            false,
             NOW,
         )
         .unwrap();
@@ -1091,6 +1095,7 @@ mod test {
 
         let saved = data.gp_games.get(&G).unwrap().to_saved();
         assert_eq!(saved.game.reveal, "round");
+        assert!(!saved.game.round_results);
         let t0 = saved.tracks.iter().find(|t| t.position == Some(0)).unwrap();
         assert!(t0.failed);
         assert!(
@@ -1105,6 +1110,7 @@ mod test {
         let back = GpGame::from_saved(&saved).unwrap();
         assert_eq!(back.to_saved(), saved);
         assert_eq!(back.reveal, GpReveal::Round);
+        assert!(!back.round_results);
         assert!(back.rounds[0].tracks[0].failed);
         assert!(!back.rounds[0].tracks[1].failed);
         // Held: the board the resumed game shows is still the empty one.

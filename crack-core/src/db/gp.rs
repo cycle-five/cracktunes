@@ -61,6 +61,8 @@ pub struct GpGameRow {
     pub clip_length_secs: Option<i64>,
     /// `song` | `round`: when submitters are named.
     pub reveal: String,
+    /// Post a results embed when a round ends.
+    pub round_results: bool,
     pub generation: i64,
 }
 
@@ -166,9 +168,10 @@ impl GpSaved {
             r#"INSERT INTO gp_game (
                    guild_id, started_at, host_id, voice_channel_id, text_channel_id,
                    category, phase, current_round, current_track, timer_secs,
-                   clip_start_secs, clip_length_secs, reveal, generation, last_seen_at
+                   clip_start_secs, clip_length_secs, reveal, round_results, generation,
+                   last_seen_at
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now())
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now())
                ON CONFLICT (guild_id, started_at) DO UPDATE SET
                    phase = EXCLUDED.phase,
                    current_round = EXCLUDED.current_round,
@@ -190,6 +193,7 @@ impl GpSaved {
             g.clip_start_secs,
             g.clip_length_secs,
             g.reveal,
+            g.round_results,
             g.generation,
         )
         .fetch_one(&mut *tx)
@@ -429,7 +433,7 @@ impl GpSaved {
         let Some(g) = sqlx::query!(
             r#"SELECT id, guild_id, started_at, host_id, voice_channel_id, text_channel_id,
                       category, phase, current_round, current_track, timer_secs,
-                      clip_start_secs, clip_length_secs, reveal, generation,
+                      clip_start_secs, clip_length_secs, reveal, round_results, generation,
                       EXTRACT(EPOCH FROM now() - last_seen_at)::bigint AS "last_seen_secs_ago!"
                FROM gp_game
                WHERE guild_id = $1 AND finished_at IS NULL
@@ -570,6 +574,7 @@ impl GpSaved {
                     clip_start_secs: g.clip_start_secs,
                     clip_length_secs: g.clip_length_secs,
                     reveal: g.reveal,
+                    round_results: g.round_results,
                     generation: g.generation,
                 },
                 players,
@@ -691,6 +696,7 @@ mod tests {
                 clip_start_secs: Some(30),
                 clip_length_secs: Some(45),
                 reveal: "round".into(),
+                round_results: false,
                 generation: 1,
             },
             players: vec![GpPlayerRow {

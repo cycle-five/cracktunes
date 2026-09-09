@@ -473,6 +473,11 @@ pub struct GpGame {
     /// When submitters are named: as each song ends, or only in the round's
     /// results.
     pub reveal: GpReveal,
+    /// Post the round-results embed when a round ends. Off, the game is as it
+    /// was before there was one: each song's reveal and nothing summing them
+    /// up. Ignored -- always on -- when `reveal` is held to the round's end,
+    /// since then the results embed is the reveal.
+    pub round_results: bool,
     /// Bumped on every phase transition. Timers capture the generation they
     /// were spawned for and do nothing once it has moved on, so a window that
     /// closed early (host, or everyone submitted) leaves no stale fire behind.
@@ -501,6 +506,7 @@ impl GpGame {
         timer_secs: u64,
         clip: Option<GpClip>,
         reveal: GpReveal,
+        round_results: bool,
         started_at: i64,
     ) -> Self {
         Self {
@@ -517,6 +523,7 @@ impl GpGame {
             timer_secs,
             clip,
             reveal,
+            round_results,
             generation: 0,
             parked_for_end: false,
             players: HashMap::new(),
@@ -876,8 +883,8 @@ pub struct GpTrackResult {
     /// names nobody and shows no scores, and `round` does the revealing when it
     /// comes.
     pub held: bool,
-    /// This was the round's last song: the round's results, to post after the
-    /// reveal and before whatever comes next.
+    /// This was the round's last song and the game posts results: the round's
+    /// results, to post after the reveal and before whatever comes next.
     pub round: Option<GpRoundResult>,
 }
 
@@ -955,6 +962,7 @@ impl Data {
         timer_secs: u64,
         clip: Option<GpClip>,
         reveal: GpReveal,
+        round_results: bool,
         now: i64,
     ) -> CrackedResult<GpWindowOpened> {
         // `contains_key` then `insert` would let two `/gp start` race through and
@@ -975,6 +983,7 @@ impl Data {
             timer_secs,
             clip,
             reveal,
+            round_results,
             now,
         );
         game.players.insert(host, host_name);
@@ -1465,7 +1474,11 @@ impl Data {
         } else {
             GpNext::Track(Box::new(game.track_start()))
         };
-        let round = last_of_round.then(|| game.round_result(round_idx));
+        // The round's results, if the game posts them: a host may have turned
+        // them off, unless the reveal is held to the round's end, in which case
+        // they are the reveal and there is no game without them.
+        let posts_results = game.round_results || game.reveal == GpReveal::Round;
+        let round = (last_of_round && posts_results).then(|| game.round_result(round_idx));
         // A song ending is the other moment the game is written down: the scores
         // it just paid out, and the position the game moves to.
         self.gp_snapshot(&game);
@@ -2622,7 +2635,10 @@ pub async fn gp_advance_track(
             );
         }
     }
-    gp_follow(pb, res.next, res.text_channel, true).await
+    // A beat before the next song always; before the next prompt only if the
+    // results were posted, so a game without them moves on as it used to.
+    let pause = matches!(res.next, GpNext::Track(_)) || res.round.is_some();
+    gp_follow(pb, res.next, res.text_channel, pause).await
 }
 
 /// Handle a dropdown pick or a 👍. Called from `SerenityHandler::dispatch` for
@@ -2869,6 +2885,8 @@ pub async fn gp_start(
     clip_length: Option<u32>,
     #[description = "Name submitters after each song (default), or only at the end of the round."]
     reveal: Option<GpReveal>,
+    #[description = "Sum each round up in a results embed when it ends (default yes; always on with reveal:round)."]
+    results: Option<bool>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
@@ -2913,6 +2931,7 @@ pub async fn gp_start(
         ),
     });
     let reveal = reveal.unwrap_or_default();
+    let round_results = results.unwrap_or(true) || reveal == GpReveal::Round;
     let prompts = draw_prompts(category, rounds, &mut rand::rng());
 
     // Create the game first so the global TrackEndHandler ignores the End
@@ -2928,6 +2947,7 @@ pub async fn gp_start(
         timer_secs,
         clip,
         reveal,
+        round_results,
         now(),
     )?;
     let cleared_queue = {
@@ -2946,6 +2966,7 @@ pub async fn gp_start(
             timer_secs,
             clip,
             reveal,
+            round_results,
             cleared_queue,
         },
         true,
@@ -3419,6 +3440,17 @@ mod test {
         clip: Option<GpClip>,
         reveal: GpReveal,
     ) -> GpWindowOpened {
+        game_with_settings(data, prompt_list, clip, reveal, true)
+    }
+
+    /// Every setting spelled out.
+    fn game_with_settings(
+        data: &Data,
+        prompt_list: &[&str],
+        clip: Option<GpClip>,
+        reveal: GpReveal,
+        round_results: bool,
+    ) -> GpWindowOpened {
         data.gp_start(
             G,
             A,
@@ -3430,6 +3462,7 @@ mod test {
             TIMER,
             clip,
             reveal,
+            round_results,
             NOW,
         )
         .unwrap()
@@ -3477,6 +3510,7 @@ mod test {
                 TIMER,
                 None,
                 GpReveal::Song,
+                true,
                 NOW
             )
             .unwrap_err(),
@@ -3494,6 +3528,7 @@ mod test {
                 TIMER,
                 None,
                 GpReveal::Song,
+                true,
                 NOW
             )
             .unwrap_err(),
@@ -4931,6 +4966,24 @@ mod test {
         assert!(scores.iter().any(|(_, p)| *p > 0));
     }
 
+    /// A host may turn the round's results off and have the game as it was:
+    /// each song's reveal and nothing summing them up. Not with the reveal held
+    /// to the round's end, though -- then the results are the reveal.
+    #[test]
+    fn round_results_can_be_turned_off_unless_they_are_the_reveal() {
+        for (reveal, expect_results) in [(GpReveal::Song, false), (GpReveal::Round, true)] {
+            let data = data();
+            game_with_settings(&data, &["p1"], None, reveal, false);
+            submit(&data, A, "alice", "a");
+            submit(&data, B, "bob", "b");
+            data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+            data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+            let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+            assert!(matches!(res.next, GpNext::Finished(_)));
+            assert_eq!(res.round.is_some(), expect_results, "{reveal:?}");
+        }
+    }
+
     /// In the default game the visible board is the board; nothing is held.
     #[test]
     fn a_song_reveal_shows_the_running_total() {
@@ -5441,11 +5494,12 @@ mod test {
                         "clips",
                         "clip_start",
                         "clip_length",
-                        "reveal"
+                        "reveal",
+                        "results"
                     ]
                 );
                 assert!(sub.parameters[0].required);
-                let reveal = sub.parameters.last().unwrap();
+                let reveal = sub.parameters.iter().find(|p| p.name == "reveal").unwrap();
                 assert_eq!(reveal.choices.len(), 2, "after each song, or at the end");
                 assert_eq!(
                     sub.parameters[0].choices.len(),
