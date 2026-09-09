@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT round_idx, submitter_id, guesser_id, guessed_id FROM gp_guess\n               WHERE game_id = $1 ORDER BY round_idx, submitter_id, guesser_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "round_idx",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "submitter_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "guesser_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "guessed_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d3c72ba6c52573b9943269fb354f74962e66382de6718977691a10a655b58e30"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE gp_game\n               SET finished_at = now(), outcome = 'lost'\n               WHERE guild_id = $1 AND finished_at IS NULL AND started_at <> $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "16d73d93557553ca31282cab1c53c27172b7d7056e1e2da5338182230a18b919"
+}

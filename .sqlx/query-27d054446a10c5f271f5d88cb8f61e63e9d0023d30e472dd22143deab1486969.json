@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE gp_game SET last_seen_at = now() - interval '10 minutes'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "27d054446a10c5f271f5d88cb8f61e63e9d0023d30e472dd22143deab1486969"
+}

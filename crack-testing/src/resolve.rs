@@ -1,5 +1,5 @@
 use crate::{UNKNOWN_DURATION, UNKNOWN_TITLE, UNKNOWN_URL};
-use crack_types::{get_human_readable_timestamp, AuxMetadata, QueryType};
+use crack_types::{get_human_readable_timestamp, AuxMetadata, QueryType, SavedTrack};
 use rusty_ytdl::{search, VideoDetails};
 use serenity::all::{AutocompleteChoice, AutocompleteValue, UserId};
 use std::{
@@ -57,6 +57,20 @@ impl ResolvedTrack<'_> {
     pub fn with_user_id(mut self, user_id: UserId) -> Self {
         self.user_id = user_id;
         self
+    }
+
+    /// Rebuild a track from what was saved of it: the URL to play and the fields
+    /// the embeds show. Nothing is resolved again, so this cannot fail and
+    /// touches no network.
+    ///
+    /// Deliberately takes no requester, so the track keeps [`Self::new`]'s
+    /// sentinel. `build_track` copies `user_id` into the songbird track's data,
+    /// where the now-playing and queue embeds read it, and a guessing-game song
+    /// rebuilt with its submitter would name them in `/nowplaying` before the
+    /// reveal -- which is the whole secret of the game.
+    pub fn from_saved(saved: &SavedTrack) -> ResolvedTrack<'static> {
+        ResolvedTrack::new(QueryType::VideoLink(saved.url.clone()))
+            .with_metadata(saved.to_metadata())
     }
 
     /// Set the queued status of the track.
@@ -320,3 +334,16 @@ impl Display for ResolvedTrack<'_> {
 //         Ok(metadata)
 //     }
 // }
+
+/// What a track saves of itself: the URL it plays from and what the embeds show.
+impl From<&ResolvedTrack<'_>> for SavedTrack {
+    fn from(track: &ResolvedTrack<'_>) -> Self {
+        let metadata = track.get_metadata();
+        SavedTrack {
+            url: track.get_url(),
+            title: Some(track.get_title()).filter(|t| !t.is_empty()),
+            artist: metadata.as_ref().and_then(|m| m.artist.clone()),
+            duration: metadata.and_then(|m| m.duration),
+        }
+    }
+}

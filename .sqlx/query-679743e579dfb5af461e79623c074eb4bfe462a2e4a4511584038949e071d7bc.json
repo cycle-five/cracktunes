@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM gp_like WHERE game_id = $1 AND round_idx BETWEEN $2 AND $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "679743e579dfb5af461e79623c074eb4bfe462a2e4a4511584038949e071d7bc"
+}

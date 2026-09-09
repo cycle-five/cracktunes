@@ -4,13 +4,16 @@
 //! window for everyone in the voice channel to secretly submit a song. The
 //! round's songs then play back-to-back: guess the submitter from a dropdown,
 //! 👍 the ones you like, and the submitter is revealed when the song ends.
-//! Scores live in memory for the duration of the game.
+//! Scores live in memory for the duration of the game, and are written to
+//! Postgres at each submission and each song's end so a restart does not end
+//! the game -- see [`gp_persist`](super::gp_persist).
 
 use crate::{
     commands::cmd_check_music,
     commands::get_call_or_join_author,
     commands::music::gp_prompts::{draw_prompts, GpCategory},
     commands::music::skip::force_skip_top_track,
+    db::GpOutcome,
     errors::CrackedError,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
@@ -95,6 +98,13 @@ pub const GP_MAX_CLIP_LENGTH_SECS: u64 = 300;
 /// parked game itself. Only a backstop: the global track-end handler normally
 /// collects it within milliseconds.
 pub const GP_PARK_GRACE_SECS: u64 = 10;
+/// How long a game may be down before it is not brought back. Past this the
+/// room has moved on, and a prompt reappearing twenty minutes later is worse
+/// than nothing. Measured against the last moment the game is known to have
+/// been alive: for an open submission window that is `closes_at`, which needs
+/// no write at all; otherwise it is `last_seen_at`, which a graceful shutdown
+/// stamps on the way down and which a hard crash leaves at the last song's end.
+pub const GP_RESUME_WINDOW_SECS: i64 = 300;
 /// How much of a song has to have played before a failure counts as a song the
 /// room actually heard, and so as something to score. Below this an `Errored`
 /// track is treated as a dead link: nobody could have guessed it, so nobody is
@@ -282,6 +292,12 @@ impl GpRound {
 
 #[derive(Clone, Debug)]
 pub struct GpGame {
+    /// The guild the game is in -- also the map key, carried here so a game
+    /// removed from the map still knows where it was.
+    pub guild_id: GuildId,
+    /// Unix seconds of `/gp start`. With the guild, this names the game in the
+    /// database across restarts.
+    pub started_at: i64,
     pub host: UserId,
     pub voice_channel: ChannelId,
     pub text_channel: GenericChannelId,
@@ -311,7 +327,9 @@ pub struct GpGame {
 }
 
 impl GpGame {
+    #[allow(clippy::too_many_arguments)]
     fn new(
+        guild_id: GuildId,
         host: UserId,
         voice_channel: ChannelId,
         text_channel: GenericChannelId,
@@ -319,8 +337,11 @@ impl GpGame {
         prompts: Vec<String>,
         timer_secs: u64,
         clip: Option<GpClip>,
+        started_at: i64,
     ) -> Self {
         Self {
+            guild_id,
+            started_at,
             host,
             voice_channel,
             text_channel,
@@ -369,7 +390,7 @@ impl GpGame {
 
     /// Every player with their points, best first; ties broken by name so the
     /// order is stable between edits.
-    fn sorted_scores(&self) -> Vec<(UserId, u32)> {
+    pub(crate) fn sorted_scores(&self) -> Vec<(UserId, u32)> {
         let mut v: Vec<(UserId, u32)> = self
             .players
             .keys()
@@ -463,7 +484,7 @@ impl GpGame {
         }
     }
 
-    fn track_start(&self) -> GpTrackStart {
+    pub(crate) fn track_start(&self) -> GpTrackStart {
         let round = &self.rounds[self.current_round];
         let t = &round.tracks[self.current_track];
         GpTrackStart {
@@ -676,6 +697,7 @@ impl Data {
             return Err(CrackedError::Other("That category has no prompts."));
         }
         let mut game = GpGame::new(
+            guild_id,
             host,
             voice_channel,
             text_channel,
@@ -683,6 +705,7 @@ impl Data {
             prompts,
             timer_secs,
             clip,
+            now,
         );
         game.players.insert(host, host_name);
         let opened = game.open_window(now);
@@ -731,6 +754,8 @@ impl Data {
         let submitted = round.submissions.len();
         let everyone_in =
             !vc_members.is_empty() && vc_members.iter().all(|u| round.submissions.contains_key(u));
+        // A submission is one of the two moments the game is written down.
+        self.gp_snapshot(game);
         Ok(GpSubmitOutcome {
             replaced,
             submitted,
@@ -756,7 +781,15 @@ impl Data {
         if game.phase != GpPhase::Submitting {
             return Err(CrackedError::WindowClosed);
         }
-        Ok(game.close_window(rng, now))
+        let closed = game.close_window(rng, now);
+        // Closing is a checkpoint: it is the moment a round stops being a set of
+        // submissions and becomes a play order, and the only writer of `phase =
+        // playing` and of `closes_at = None`. Until it lands the rows still say
+        // the window is open until a `closes_at` that has passed, so a resume
+        // during the round's first song would measure the outage from there and
+        // write off a game that was only away for seconds.
+        self.gp_snapshot(&game);
+        Ok(closed)
     }
 
     /// Close the window the timer (or "everyone submitted") was started for.
@@ -773,7 +806,10 @@ impl Data {
         if game.phase != GpPhase::Submitting || game.generation != generation {
             return None;
         }
-        Some(game.close_window(rng, now))
+        let closed = game.close_window(rng, now);
+        // A checkpoint for the same reason as `gp_close_window`.
+        self.gp_snapshot(&game);
+        Some(closed)
     }
 
     /// The 30-second heads-up, if the window it was spawned for is still open.
@@ -814,6 +850,14 @@ impl Data {
     }
 
     /// Remember where a song's message went so the reveal can edit it.
+    ///
+    /// Also a checkpoint, and the only one taken while a song plays. The id is
+    /// what a resume takes the pre-restart dropdown down by, and the checkpoint
+    /// before this one was the end of the *previous* song, when this track had no
+    /// message yet -- so without a write here the restarted game would never
+    /// learn which message to close, and the old one would sit there with a live
+    /// dropdown for the rest of the game, answering every click with a stale
+    /// round.
     pub fn gp_set_track_message(
         &self,
         guild_id: GuildId,
@@ -832,6 +876,7 @@ impl Data {
             .and_then(|r| r.tracks.get_mut(track_idx))
             .ok_or(CrackedError::StaleRound)?;
         t.message = Some((channel, message_id));
+        self.gp_snapshot(&game);
         Ok(())
     }
 
@@ -1163,6 +1208,9 @@ impl Data {
         } else {
             game.advance_round(now)
         };
+        // A song ending is the other moment the game is written down: the scores
+        // it just paid out, and the position the game moves to.
+        self.gp_snapshot(&game);
         Some(GpTrackResult {
             round_idx,
             total_rounds: game.rounds.len(),
@@ -1229,14 +1277,65 @@ impl Data {
             .get(&guild_id)
             .is_some_and(|g| g.parked_for_end);
         if parked {
-            self.gp_games.remove(&guild_id);
+            if let Some((_, game)) = self.gp_games.remove(&guild_id) {
+                self.gp_mark_finished(&game, GpOutcome::Ended);
+            }
         }
         parked
     }
 
     /// Remove the game unconditionally (game over, bot kicked from voice).
+    ///
+    /// The database is told the game is over, with why: a game that played out
+    /// finished, one parked by `/gp end` was ended, and anything else was
+    /// abandoned. Without this a game ended on purpose would still look live
+    /// after a redeploy and come back.
     pub fn gp_remove(&self, guild_id: GuildId) -> Option<GpGame> {
-        self.gp_games.remove(&guild_id).map(|(_, g)| g)
+        let (_, game) = self.gp_games.remove(&guild_id)?;
+        let outcome = if game.parked_for_end {
+            GpOutcome::Ended
+        } else if game.phase == GpPhase::Finished {
+            GpOutcome::Finished
+        } else {
+            GpOutcome::Abandoned
+        };
+        self.gp_mark_finished(&game, outcome);
+        Some(game)
+    }
+
+    /// Put a game loaded from the database back into the map. `false` if the
+    /// guild already has one, which means `/gp start` got there first.
+    pub fn gp_restore(&self, guild_id: GuildId, game: GpGame) -> bool {
+        match self.gp_games.entry(guild_id) {
+            dashmap::mapref::entry::Entry::Vacant(slot) => {
+                slot.insert(game);
+                true
+            },
+            dashmap::mapref::entry::Entry::Occupied(_) => false,
+        }
+    }
+
+    /// Start the current song over after a resume: the [`GpTrackStart`] to play
+    /// and the message the song had before the restart, whose dropdown is still
+    /// live and should be taken down before a new one is posted. Bumps the
+    /// generation so nothing from before the restart could match, though nothing
+    /// survived to try.
+    pub fn gp_resume_playing(
+        &self,
+        guild_id: GuildId,
+    ) -> Option<(GpTrackStart, Option<(GenericChannelId, MessageId)>)> {
+        let mut game = self.gp_games.get_mut(&guild_id)?;
+        if game.phase != GpPhase::Playing {
+            return None;
+        }
+        game.generation += 1;
+        let old = game
+            .rounds
+            .get(game.current_round)?
+            .tracks
+            .get(game.current_track)?
+            .message;
+        Some((game.track_start(), old))
     }
 
     /// Who may act in a running game: anyone who has submitted, plus the host, so
@@ -1768,8 +1867,22 @@ pub async fn gp_open_round(pb: &GpPlayback, opened: GpWindowOpened) -> Result<()
 /// The window timer: a heads-up 30 s before the end, then close. Both steps
 /// are no-ops if the window it was spawned for has already closed.
 pub fn gp_spawn_window_timer(pb: GpPlayback, opened: &GpWindowOpened) {
-    let (generation, timer, text_channel) =
-        (opened.generation, opened.timer_secs, opened.text_channel);
+    gp_spawn_window_timer_secs(
+        pb,
+        opened.generation,
+        opened.text_channel,
+        opened.timer_secs,
+    );
+}
+
+/// The same, for a window with `timer` seconds left on it -- the full timer
+/// when a round opens, whatever remains when a game is resumed.
+pub fn gp_spawn_window_timer_secs(
+    pb: GpPlayback,
+    generation: u64,
+    text_channel: GenericChannelId,
+    timer: u64,
+) {
     tokio::spawn(async move {
         let guild_id = pb.guild_id;
         if timer > GP_WARNING_SECS {
@@ -2247,8 +2360,12 @@ async fn author_display_name(ctx: Context<'_>) -> String {
 }
 
 /// Non-bot members of `vc`, from the cache. Empty if the guild isn't cached
-/// (then the window simply waits for the timer or the host).
+/// (then the window simply waits for the timer or the host). The bot is always
+/// in this channel and is excluded by id, not just by the member lookup, which
+/// answers "human" for anyone the cache is missing.
 fn gp_vc_members(ctx: Context<'_>, vc: ChannelId) -> Vec<UserId> {
+    // Read before the guild: no cache lock is held across the other lookup.
+    let me = ctx.serenity_context().cache.current_user().id;
     let Some(guild) = ctx.guild() else {
         return Vec::new();
     };
@@ -2256,6 +2373,7 @@ fn gp_vc_members(ctx: Context<'_>, vc: ChannelId) -> Vec<UserId> {
         .voice_states
         .iter()
         .filter(|vs| vs.channel_id == Some(vc))
+        .filter(|vs| vs.user_id != me)
         .filter(|vs| guild.members.get(&vs.user_id).is_none_or(|m| !m.user.bot()))
         .map(|vs| vs.user_id)
         .collect()

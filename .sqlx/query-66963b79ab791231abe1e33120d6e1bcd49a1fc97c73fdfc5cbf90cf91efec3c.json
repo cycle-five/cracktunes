@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO gp_player (game_id, user_id, display_name, score)\n               SELECT $1, * FROM UNNEST($2::bigint[], $3::text[], $4::int[])\n               ON CONFLICT (game_id, user_id) DO UPDATE SET\n                   display_name = EXCLUDED.display_name,\n                   score = EXCLUDED.score",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8Array",
+        "TextArray",
+        "Int4Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "66963b79ab791231abe1e33120d6e1bcd49a1fc97c73fdfc5cbf90cf91efec3c"
+}

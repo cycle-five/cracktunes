@@ -302,6 +302,13 @@ pub const GP_GUESSED_RIGHT: &str = "Guessed right";
 pub const GP_NOBODY_GUESSED: &str = "nobody!";
 pub const GP_FOOLED_EVERYONE: &str = "🃏 Fooled everyone";
 pub const GP_SCOREBOARD: &str = "🏆 Scoreboard";
+pub const GP_RESUMED: &str =
+    "🔁 **We're back.** The bot restarted mid-game, and the game picks up where it was:";
+pub const GP_RESUMED_WINDOW: &str = "submissions are still open for round";
+pub const GP_RESUMED_WINDOW_CLOSED: &str =
+    "the submission window for round {round} closed while I was away, so it closes now.";
+pub const GP_RESUMED_SONG: &str = "the song that was playing starts again. Guess and 👍 it again — nothing cast before the restart counts.";
+pub const GP_LOST: &str = "💤 A game was running when the bot went down and could not be picked up again. Here is the scoreboard as it stood.";
 pub const GP_GAME_OVER: &str = "🏆 Game over — final scores";
 pub const GP_ROUND_SKIPPED: &str = "⏭️ Song skipped.";
 pub const GP_TRACK_FAILED: &str = "⚠️ Couldn't play this one";

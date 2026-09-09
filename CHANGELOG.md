@@ -4,6 +4,19 @@
 
 ### Added
 
+- **`/gp` games survive a restart.** A game is written to Postgres each time a
+  song is submitted and each time a song ends, and a bot that comes back within
+  five minutes picks it up where it was: a submission window with whatever time
+  was left on it, or the song that was playing from the top, with the scoreboard
+  intact. Nothing on the interaction or playback path waits on the database; a
+  single writer task drains the writes in order, and shutdown drains it before
+  the pool closes. A game down longer than five minutes, or whose voice channel
+  has emptied, is not brought back -- its scoreboard as it stood is posted with a
+  line saying it was lost to an outage. Guesses and 👍 on the song that was
+  playing are not saved: that song plays again and the room casts them again.
+  Every game ever played stays in the `gp_*` tables as history. Without
+  `DATABASE_URL` the game runs in memory exactly as before. (#431)
+
 - **Spotify links play.** Pasting a Spotify track, album or playlist link into
   `/play` or `/gp submit` now resolves it instead of failing. Resolution goes
   through [sleevenote](https://github.com/cycle-five/sleevenote), which needs no

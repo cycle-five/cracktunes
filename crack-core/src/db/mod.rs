@@ -1,3 +1,4 @@
+pub mod gp;
 pub mod guild;
 pub mod metadata;
 pub mod play_log;
@@ -6,6 +7,7 @@ pub mod track_reaction;
 pub mod user;
 pub mod worker_pool;
 
+pub use gp::*;
 pub use guild::*;
 pub use metadata::*;
 pub use play_log::*;

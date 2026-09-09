@@ -344,7 +344,7 @@ impl SerenityHandler {
     ///
     /// Per-guild work belongs on the per-guild event, where it is also correct for
     /// guilds that recover from an outage or are joined while running.
-    async fn on_guild_create(&self, _ctx: SerenityContext, guild: serenity::Guild) {
+    async fn on_guild_create(&self, ctx: SerenityContext, guild: serenity::Guild) {
         let prefix = self.data.bot_settings.get_prefix();
         let name = guild.name.clone();
         let settings = match self.data.database_pool.as_ref() {
@@ -374,6 +374,10 @@ impl SerenityHandler {
             .await
             .insert(guild.id, settings);
         tracing::info!("Loaded settings for guild {} ({})", guild.id, guild.name);
+
+        // A `/gp` game that was running when the bot went down comes back here,
+        // per guild, for the same reason the settings do.
+        crate::commands::music::gp_persist::gp_resume_guild(&self.data, &ctx, &guild).await;
     }
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
