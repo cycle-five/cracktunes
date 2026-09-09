@@ -15,7 +15,10 @@
   prompt too. A round nobody submitted to has nothing to sum up and posts none.
   `/gp start ... results:false` turns the embed off and has the game as it was,
   except with `reveal:round`, where the results are the reveal and stay on.
-  (#433)
+  The results survive a restart: the game is written down again once they are
+  posted, and a bot that comes back to a round that never got them -- or to a
+  game that finished without its last results and scoreboard going up -- posts
+  them first. (#433)
 - **Submitters are now revealed at the end of the round, not after each song.**
   Every name is held until the round's last song has played, and the
   round-results embed is the reveal. With the reveal after each song, the last
@@ -68,7 +71,11 @@
   message in the game's channel that names nobody: "someone voted to skip this
   song -- *n* more and it's gone". A vote that carries, or a submitter pulling
   their own song, is still announced to the room, but as a channel message
-  rather than a reply, so the last voter is not named on that either. (#433)
+  rather than a reply, so the last voter is not named on that either. The
+  prefix form of either command answers the voter by DM, since a prefix
+  invocation has no ephemeral reply -- though the `!gp voteskip` message itself
+  is in the channel, so the slash form is the one that keeps a vote to
+  yourself. (#433)
 
 - `/gp submit` refuses an album or playlist link rather than silently submitting
   its first track. Which song a player submits is the whole game, so choosing one

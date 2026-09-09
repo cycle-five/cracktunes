@@ -80,6 +80,10 @@ pub struct GpRoundRow {
     pub closes_at: Option<i64>,
     pub prompt_channel_id: Option<i64>,
     pub prompt_message_id: Option<i64>,
+    /// The round's results embed has reached the channel. Written back once it
+    /// is posted, so a resume knows whether the round still owes the room its
+    /// results (the reveal, when it is held to the round's end).
+    pub results_posted: bool,
 }
 
 /// A song in a round, with everything the room did to it. `position` is `None`
@@ -203,10 +207,6 @@ impl GpSaved {
         self.save_rounds(&mut tx, id).await?;
         self.save_tracks(&mut tx, id).await?;
         self.save_reactions(&mut tx, id).await?;
-
-        if g.phase == "finished" {
-            mark_finished_in(&mut tx, g.guild_id, g.started_at, GpOutcome::Finished).await?;
-        }
         tx.commit().await?;
         Ok(id)
     }
@@ -247,19 +247,27 @@ impl GpSaved {
         let closes: Vec<Option<i64>> = self.rounds.iter().map(|r| r.closes_at).collect();
         let chans: Vec<Option<i64>> = self.rounds.iter().map(|r| r.prompt_channel_id).collect();
         let msgs: Vec<Option<i64>> = self.rounds.iter().map(|r| r.prompt_message_id).collect();
+        let posted: Vec<bool> = self.rounds.iter().map(|r| r.results_posted).collect();
         sqlx::query!(
-            r#"INSERT INTO gp_round (game_id, round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id)
-               SELECT $1, * FROM UNNEST($2::int[], $3::text[], $4::bigint[], $5::bigint[], $6::bigint[])
+            r#"INSERT INTO gp_round (
+                   game_id, round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id,
+                   results_posted
+               )
+               SELECT $1, * FROM UNNEST(
+                   $2::int[], $3::text[], $4::bigint[], $5::bigint[], $6::bigint[], $7::bool[]
+               )
                ON CONFLICT (game_id, round_idx) DO UPDATE SET
                    closes_at = EXCLUDED.closes_at,
                    prompt_channel_id = EXCLUDED.prompt_channel_id,
-                   prompt_message_id = EXCLUDED.prompt_message_id"#,
+                   prompt_message_id = EXCLUDED.prompt_message_id,
+                   results_posted = EXCLUDED.results_posted"#,
             id,
             &idxs,
             &prompts,
             &closes as &[Option<i64>],
             &chans as &[Option<i64>],
             &msgs as &[Option<i64>],
+            &posted,
         )
         .execute(&mut **tx)
         .await?;
@@ -463,7 +471,8 @@ impl GpSaved {
         .collect();
 
         let rounds = sqlx::query!(
-            r#"SELECT round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id
+            r#"SELECT round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id,
+                      results_posted
                FROM gp_round WHERE game_id = $1 ORDER BY round_idx"#,
             id
         )
@@ -476,6 +485,7 @@ impl GpSaved {
             closes_at: r.closes_at,
             prompt_channel_id: r.prompt_channel_id,
             prompt_message_id: r.prompt_message_id,
+            results_posted: r.results_posted,
         })
         .collect();
 
@@ -711,6 +721,7 @@ mod tests {
                     closes_at: Some(started_at + 120),
                     prompt_channel_id: Some(20),
                     prompt_message_id: Some(1),
+                    results_posted: false,
                 },
                 GpRoundRow {
                     round_idx: 1,
@@ -718,6 +729,7 @@ mod tests {
                     closes_at: None,
                     prompt_channel_id: None,
                     prompt_message_id: None,
+                    results_posted: false,
                 },
             ],
             tracks: vec![track(0, 100, None)],
@@ -748,6 +760,7 @@ mod tests {
         s.tracks[0].full_votes = vec![100];
         s.tracks[0].play_full = true;
         s.tracks[1].failed = true;
+        s.rounds[0].results_posted = true;
         s.players.push(GpPlayerRow {
             user_id: 200,
             display_name: "bob".into(),
@@ -815,10 +828,19 @@ mod tests {
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
-    async fn a_finished_phase_is_written_as_finished(pool: PgPool) -> sqlx::Result<()> {
+    async fn a_finished_phase_stays_live_until_its_ending_is_posted(
+        pool: PgPool,
+    ) -> sqlx::Result<()> {
+        // The snapshot that moves a game to `finished` is written before the
+        // last round's results and the final scoreboard go up. The row stays
+        // live so a restart in that gap can post them; the tombstone is the
+        // remove's, once they are.
         let mut s = saved(4, 1_700_000_000);
         s.game.phase = "finished".into();
         s.save(&pool).await?;
+        let live = GpSaved::load_live(&pool, 4).await?.expect("still live");
+        assert_eq!(live.saved.game.phase, "finished");
+        assert!(gp_mark_finished(&pool, 4, 1_700_000_000, GpOutcome::Finished).await?);
         assert!(GpSaved::load_live(&pool, 4).await?.is_none());
         let outcome: Option<String> =
             sqlx::query_scalar!("SELECT outcome FROM gp_game WHERE guild_id = 4")
@@ -853,6 +875,7 @@ mod tests {
             closes_at: None,
             prompt_channel_id: None,
             prompt_message_id: None,
+            results_posted: false,
         });
         s.game.phase = "submitting".into();
         s.game.current_round = 1;

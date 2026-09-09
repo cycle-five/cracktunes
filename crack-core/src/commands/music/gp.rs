@@ -405,6 +405,13 @@ pub struct GpRound {
     pub prompt_message: Option<(GenericChannelId, MessageId)>,
     /// Unix seconds; `Some` while the window is open.
     pub closes_at: Option<i64>,
+    /// The round's results embed has reached the channel. The snapshot that
+    /// moves the game past a round is written *before* its results are posted,
+    /// so a restart in between would otherwise lose them -- and with the reveal
+    /// held to the round's end, that embed is the only place the round's
+    /// submitters are ever named. A resume posts the results of any round the
+    /// game has moved past that does not have this set.
+    pub results_posted: bool,
 }
 
 impl GpRound {
@@ -415,6 +422,7 @@ impl GpRound {
             tracks: Vec::new(),
             prompt_message: None,
             closes_at: None,
+            results_posted: false,
         }
     }
 
@@ -610,10 +618,34 @@ impl GpGame {
         v
     }
 
+    /// Whether this game posts a round's results: a host may turn them off,
+    /// unless the reveal is held to the round's end, in which case they are the
+    /// reveal and there is no game without them.
+    pub(crate) fn posts_results(&self) -> bool {
+        self.round_results || self.reveal == GpReveal::Round
+    }
+
+    /// The rounds the game has moved past whose results never reached the
+    /// channel: the bot went down between the snapshot that ended the round and
+    /// the post. Whatever else becomes of the game, the room is owed these. A
+    /// round nobody submitted to has no results and is not.
+    pub(crate) fn unposted_results(&self) -> Vec<usize> {
+        if !self.posts_results() {
+            return Vec::new();
+        }
+        self.rounds
+            .iter()
+            .take(self.current_round)
+            .enumerate()
+            .filter(|(_, r)| !r.tracks.is_empty() && !r.results_posted)
+            .map(|(idx, _)| idx)
+            .collect()
+    }
+
     /// The round as it ended, for the results embed: every song with who
     /// submitted it and who got it, what the round paid each player, and the
     /// scoreboard after it.
-    fn round_result(&self, round_idx: usize) -> GpRoundResult {
+    pub(crate) fn round_result(&self, round_idx: usize) -> GpRoundResult {
         let round = &self.rounds[round_idx];
         let guessable = round.guessable();
         let songs = round
@@ -1475,11 +1507,7 @@ impl Data {
         } else {
             GpNext::Track(Box::new(game.track_start()))
         };
-        // The round's results, if the game posts them: a host may have turned
-        // them off, unless the reveal is held to the round's end, in which case
-        // they are the reveal and there is no game without them.
-        let posts_results = game.round_results || game.reveal == GpReveal::Round;
-        let round = (last_of_round && posts_results).then(|| game.round_result(round_idx));
+        let round = (last_of_round && game.posts_results()).then(|| game.round_result(round_idx));
         // A song ending is the other moment the game is written down: the scores
         // it just paid out, and the position the game moves to.
         self.gp_snapshot(&game);
@@ -1610,6 +1638,20 @@ impl Data {
             .get(game.current_track)?
             .message;
         Some((game.track_start(), old))
+    }
+
+    /// The round's results embed is in the channel. Written down at once: it is
+    /// what a resume reads to know the round is not still owed them, and
+    /// the snapshot that ended the round went out before the post.
+    pub fn gp_mark_results_posted(&self, guild_id: GuildId, round_idx: usize) {
+        let Some(mut game) = self.gp_games.get_mut(&guild_id) else {
+            return;
+        };
+        let Some(round) = game.rounds.get_mut(round_idx) else {
+            return;
+        };
+        round.results_posted = true;
+        self.gp_snapshot(&game);
     }
 
     /// Who may act in a running game: anyone who has submitted, plus the host, so
@@ -2618,11 +2660,13 @@ pub async fn gp_advance_track(
         }
     }
     // The round's last song: sum the round up at the bottom of the channel
-    // before the next prompt (or the final scoreboard) goes up. Not fatal if it
-    // cannot be posted -- the reveals above still carry it -- and never reached
-    // for a round nobody submitted to, which ends at the close, not here.
+    // before the next prompt (or the final scoreboard) goes up. Never reached
+    // for a round nobody submitted to, which ends at the close, not here. Once
+    // it is up the round is marked as having had its results, and the game
+    // written down again: the snapshot that ended the round went out before
+    // this post, and a round left unmarked is posted by the next resume.
     if let Some(round) = &res.round {
-        if let Err(e) = res
+        match res
             .text_channel
             .send_message(
                 &pb.http,
@@ -2630,10 +2674,11 @@ pub async fn gp_advance_track(
             )
             .await
         {
-            tracing::warn!(
+            Ok(_) => pb.data.gp_mark_results_posted(guild_id, round.round_idx),
+            Err(e) => tracing::warn!(
                 "gp: posting round {} results in {guild_id}: {e}",
                 round.round_idx + 1
-            );
+            ),
         }
     }
     // A beat before the next song always; before the next prompt only if the
@@ -3169,8 +3214,38 @@ type GpVoteAnswer = (CrackedMessage, Option<CrackedMessage>);
 /// the game's channel as a plain message, so the last voter is not named on
 /// that either.
 async fn gp_answer_vote(ctx: Context<'_>, (mine, room): GpVoteAnswer) -> Result<(), Error> {
-    ctx.send_message(SendMessageParams::new(mine).with_ephemeral(true))
-        .await?;
+    if ctx.is_prefix() {
+        // `ephemeral` is an interaction flag: a prefix invocation gets a public
+        // reply, and "you already voted to skip this" names the voter as surely
+        // as the vote would have. Answer by DM instead, and if that cannot be
+        // delivered say nothing in the channel -- the room's line below still
+        // says the vote counted. (The `!gp voteskip` message itself is public;
+        // the slash form is the one that keeps a vote to yourself.)
+        let dm = ctx
+            .author()
+            .create_dm_channel(&ctx)
+            .await
+            .map(|c| c.id.widen());
+        let sent = match dm {
+            Ok(dm) => dm
+                .send_message(
+                    &ctx.serenity_context().http,
+                    CreateMessage::new().content(mine.to_string()),
+                )
+                .await
+                .map(|_| ()),
+            Err(e) => Err(e),
+        };
+        if let Err(e) = sent {
+            tracing::warn!(
+                "gp: answering a prefix vote by DM in {:?}: {e}",
+                ctx.guild_id()
+            );
+        }
+    } else {
+        ctx.send_message(SendMessageParams::new(mine).with_ephemeral(true))
+            .await?;
+    }
     let Some(room) = room else {
         return Ok(());
     };
@@ -3429,9 +3504,12 @@ mod test {
         game_with_clip(data, prompt_list, None)
     }
 
-    /// As [`game_with`], with an explicit clip setting.
+    /// As [`game_with`], with an explicit clip setting. The reveal is the
+    /// game's default -- held to the round's end -- so the tests below exercise
+    /// the game as it is played; one about per-song reveals opts into
+    /// [`GpReveal::Song`] through [`game_with_reveal`].
     fn game_with_clip(data: &Data, prompt_list: &[&str], clip: Option<GpClip>) -> GpWindowOpened {
-        game_with_reveal(data, prompt_list, clip, GpReveal::Song)
+        game_with_reveal(data, prompt_list, clip, GpReveal::default())
     }
 
     /// As [`game_with_clip`], with an explicit reveal setting.
@@ -4418,7 +4496,7 @@ mod test {
     #[test]
     fn failed_reveal_embed_json() {
         let data = data();
-        game_with(&data, &["p1"]);
+        game_with_reveal(&data, &["p1"], None, GpReveal::Song);
         submit(&data, A, "alice", "a");
         submit(&data, B, "bob", "b");
         data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
@@ -4827,10 +4905,12 @@ mod test {
 
     /// The round's last reveal carries the round summed up: every song, what
     /// the round paid, and the board after it. Earlier reveals carry nothing.
+    /// Per-song reveals here, so each song's reveal can be checked as it goes;
+    /// the held reveal's results are covered by `a_held_reveal_*` below.
     #[test]
     fn the_last_song_of_a_round_carries_the_rounds_results() {
         let data = data();
-        game_with(&data, &["p1", "p2"]);
+        game_with_reveal(&data, &["p1", "p2"], None, GpReveal::Song);
         submit(&data, A, "alice", "a");
         submit(&data, B, "bob", "b");
         submit(&data, C, "carol", "c");
@@ -4987,9 +5067,65 @@ mod test {
 
     /// In the default game the visible board is the board; nothing is held.
     #[test]
-    fn a_song_reveal_shows_the_running_total() {
+    fn the_default_reveal_is_held_to_the_round() {
+        // `/gp start` without `reveal:` is `unwrap_or_default()`; the tests'
+        // `game_with` starts the same game.
+        assert_eq!(GpReveal::default(), GpReveal::Round);
         let data = data();
         game_with(&data, &["p1"]);
+        assert_eq!(game(&data).reveal, GpReveal::Round);
+    }
+
+    #[test]
+    fn a_round_owes_its_results_until_they_are_marked_posted() {
+        let data = data();
+        game_with(&data, &["p1", "p2"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        // Mid-round nothing is owed: the round has not ended.
+        assert!(game(&data).unposted_results().is_empty());
+        let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+        assert!(res.round.is_some(), "the round's results go out now");
+        // The snapshot has moved the game on; until the post is marked, a
+        // resume would owe round 0 its results.
+        assert_eq!(game(&data).current_round, 1);
+        assert_eq!(game(&data).unposted_results(), vec![0]);
+        data.gp_mark_results_posted(G, 0);
+        assert!(game(&data).rounds[0].results_posted);
+        assert!(game(&data).unposted_results().is_empty());
+        // Out of range is ignored, not a panic.
+        data.gp_mark_results_posted(G, 9);
+        data.gp_mark_results_posted(GuildId::new(2), 0);
+    }
+
+    #[test]
+    fn a_game_without_results_and_a_skipped_round_owe_nothing() {
+        // Results off and a per-song reveal: there is no embed to owe.
+        let data = data();
+        game_with_settings(&data, &["p1", "p2"], None, GpReveal::Song, false);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+        assert!(res.round.is_none());
+        assert!(game(&data).unposted_results().is_empty());
+
+        // A round nobody submitted to ends at the close with nothing to sum up.
+        let empty = self::data();
+        game_with(&empty, &["p1", "p2"]);
+        let closed = empty.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        assert!(matches!(closed.next, GpNext::Window(_)));
+        assert_eq!(game(&empty).current_round, 1);
+        assert!(game(&empty).unposted_results().is_empty());
+    }
+
+    #[test]
+    fn a_song_reveal_shows_the_running_total() {
+        let data = data();
+        game_with_reveal(&data, &["p1"], None, GpReveal::Song);
         submit(&data, A, "alice", "a");
         submit(&data, B, "bob", "b");
         data.gp_close_window(G, A, &mut rng(), NOW).unwrap();

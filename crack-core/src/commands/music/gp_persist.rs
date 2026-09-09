@@ -1,14 +1,15 @@
 //! Saving `/gp` games to Postgres, and picking them up after a restart.
 //!
 //! A game lives in [`Data::gp_games`], in memory, and that stays the source of
-//! truth while it runs. It is written down at the four moments its shape
+//! truth while it runs. It is written down at the five moments its shape
 //! changes -- a song is submitted, the window closes on a round, a song's
-//! message is posted, a song ends -- as a snapshot of the game into the `gp_*`
-//! tables (see [`crate::db::gp`], which writes only the rounds that can have
-//! changed since the last one). Guesses, likes and votes on the song that is
-//! playing are not written until it ends: after a resume that song plays again
-//! from the top and the room casts them again, so the worst a crash costs is one
-//! song's worth of guesses that people can re-cast, never a scoreboard.
+//! message is posted, a song ends, a round's results are posted -- as a
+//! snapshot of the game into the `gp_*` tables (see [`crate::db::gp`], which
+//! writes only the rounds that can have changed since the last one). Guesses,
+//! likes and votes on the song that is playing are not written until it ends:
+//! after a resume that song plays again from the top and the room casts them
+//! again, so the worst a crash costs is one song's worth of guesses that people
+//! can re-cast, never a scoreboard.
 //!
 //! Nothing on the interaction or songbird path waits on the database. The
 //! `gp_*` mutations on [`Data`] clone the game and send it down a channel; one
@@ -36,11 +37,17 @@
 //! rejoins voice, and the game re-enters its phase: a submission window with
 //! whatever time `closes_at` says is left (or closes at once if that passed), a
 //! song from the top, with the pre-restart song message's dropdown taken down
-//! so there are not two live ones for the same song.
+//! so there are not two live ones for the same song. Before any of that, a
+//! round the game moved past without its results reaching the channel gets
+//! them: that post comes after the snapshot that ends the round, and with the
+//! reveal held to the round's end it is the only place the round's submitters
+//! are named. The same goes for a game that finished but whose ending never
+//! went up -- it gets its last results and scoreboard, and its tombstone.
 
 use super::gp::{
-    gp_after_close, gp_play_track, gp_scoreboard_embed, gp_spawn_window_timer_secs, now, GpClip,
-    GpGame, GpPhase, GpPlayback, GpReveal, GpRound, GpTrack, GP_RESUME_WINDOW_SECS,
+    gp_after_close, gp_play_track, gp_round_results_embed, gp_scoreboard_embed,
+    gp_spawn_window_timer_secs, now, GpClip, GpGame, GpPhase, GpPlayback, GpReveal, GpRound,
+    GpTrack, GP_RESUME_WINDOW_SECS,
 };
 use super::gp_prompts::GpCategory;
 use crate::commands::music_utils::set_global_handlers_with;
@@ -49,13 +56,14 @@ use crate::db::{
     GpTrackRow,
 };
 use crate::messaging::messages::{
-    GP_LOST, GP_RESUMED, GP_RESUMED_SONG, GP_RESUMED_WINDOW, GP_RESUMED_WINDOW_CLOSED,
-    GP_SCOREBOARD,
+    GP_GAME_OVER, GP_LOST, GP_RESUMED, GP_RESUMED_SONG, GP_RESUMED_WINDOW,
+    GP_RESUMED_WINDOW_CLOSED, GP_SCOREBOARD,
 };
 use crate::Data;
 use ::serenity::{
     all::{ChannelId, GenericChannelId, Guild, GuildId, MessageId, UserId},
     builder::{CreateComponent, CreateMessage, EditMessage},
+    http::Http,
 };
 use crack_testing::ResolvedTrack;
 use crack_types::SavedTrack;
@@ -241,6 +249,7 @@ impl GpGame {
                 closes_at: r.closes_at,
                 prompt_channel_id: r.prompt_message.map(|(c, _)| c.get() as i64),
                 prompt_message_id: r.prompt_message.map(|(_, m)| m.get() as i64),
+                results_posted: r.results_posted,
             })
             .collect();
 
@@ -359,6 +368,7 @@ impl GpGame {
                 tracks: Vec::new(),
                 prompt_message: message(r.prompt_channel_id, r.prompt_message_id),
                 closes_at: r.closes_at,
+                results_posted: r.results_posted,
             });
         }
 
@@ -521,6 +531,34 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     };
     let text_channel = game.text_channel;
 
+    // Whatever becomes of the game, a round it moved past without its results
+    // reaching the channel is owed them, and they go up first -- before anything
+    // is said about the restart -- so they read as results arriving late.
+    let owed = post_owed_results(&ctx.http, &game).await;
+
+    if game.phase == GpPhase::Finished {
+        // The game played out, and the snapshot that finished it was written
+        // before its ending went up. The row is live because the remove that
+        // tombstones it never ran (or its write was lost), so the results and
+        // the scoreboard may or may not be in the channel. If the results were
+        // owed, so is the scoreboard -- it is posted after them. If they were
+        // not, the scoreboard may well be up, and a second one is worse than none.
+        tracing::info!("gp: the game in {guild_id} had finished; posting what it still owed");
+        if !owed.is_empty() {
+            let scores = game.sorted_scores();
+            let msg = CreateMessage::new().embed(gp_scoreboard_embed(&scores, GP_GAME_OVER));
+            if let Err(e) = text_channel.send_message(&ctx.http, msg).await {
+                tracing::warn!("gp: posting the finished game's scoreboard in {guild_id}: {e}");
+            }
+        }
+        if let Err(e) =
+            gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Finished).await
+        {
+            tracing::warn!("gp: marking the game in {guild_id} finished: {e}");
+        }
+        return;
+    }
+
     // Alive until when? An open window says so itself: it was open until
     // `closes_at` whatever happened to the bot. A song has no such clock, so the
     // last time the bot wrote or stamped the game stands in.
@@ -531,13 +569,11 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     let down_for = now() - alive_until;
     let too_late = down_for > GP_RESUME_WINDOW_SECS;
     let nobody = vc_members(guild, game.voice_channel, ctx.cache.current_user().id) == 0;
-    if too_late || nobody || game.phase == GpPhase::Finished {
+    if too_late || nobody {
         let why = if too_late {
             format!("gone for {down_for}s")
-        } else if nobody {
-            "the voice channel is empty".to_string()
         } else {
-            "it had already finished".to_string()
+            "the voice channel is empty".to_string()
         };
         tracing::info!("gp: not resuming the game in {guild_id}: {why}");
         // Say so only once. `on_guild_create` runs again on every reconnect, and
@@ -552,7 +588,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
                     false
                 },
             };
-        if marked && game.phase != GpPhase::Finished {
+        if marked {
             let scores = game.sorted_scores();
             let msg = CreateMessage::new()
                 .content(GP_LOST)
@@ -570,6 +606,11 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     if !data.gp_restore(guild_id, game) {
         // `/gp start` beat us to it; that game's first snapshot closes this row.
         return;
+    }
+    // Now that the game is the guild's again, write down that those results are
+    // up, or the next restart would post them a second time.
+    for idx in owed {
+        data.gp_mark_results_posted(guild_id, idx);
     }
     let call = match data.songbird.join(guild_id, voice_channel).await {
         Ok(call) => call,
@@ -669,6 +710,30 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
         },
         GpPhase::Finished => unreachable!("finished games are not restored"),
     }
+}
+
+/// Post the results of every round the game moved past without them reaching
+/// the channel (see [`GpGame::unposted_results`]). Returns the rounds posted;
+/// marking them is the caller's, since only a game back in the map can be
+/// written down.
+async fn post_owed_results(http: &Http, game: &GpGame) -> Vec<usize> {
+    let mut posted = Vec::new();
+    for idx in game.unposted_results() {
+        let embed = gp_round_results_embed(&game.round_result(idx));
+        match game
+            .text_channel
+            .send_message(http, CreateMessage::new().embed(embed))
+            .await
+        {
+            Ok(_) => posted.push(idx),
+            Err(e) => tracing::warn!(
+                "gp: posting round {} results in {} after a restart: {e}",
+                idx + 1,
+                game.guild_id
+            ),
+        }
+    }
+    posted
 }
 
 async fn announce(pb: &GpPlayback, text_channel: GenericChannelId, what: &str) {
@@ -1115,6 +1180,49 @@ mod test {
         assert!(!back.rounds[0].tracks[1].failed);
         // Held: the board the resumed game shows is still the empty one.
         assert!(back.visible_scores().iter().all(|(_, p)| *p == 0));
+    }
+
+    /// The snapshot that ends a round goes out before its results are posted.
+    /// A game loaded from that snapshot owes the round its results; the one
+    /// loaded after the post is marked -- the fifth checkpoint -- does not.
+    #[test]
+    fn a_round_owes_its_results_until_the_post_is_written_down() {
+        let (data, mut rx) = recording();
+        start(&data, &["p0", "p1"]);
+        data.gp_submit(G, B, "bob".into(), track("b0"), &[])
+            .unwrap();
+        data.gp_submit(G, C, "carol".into(), track("c0"), &[])
+            .unwrap();
+        data.gp_close_window(G, A, &mut StdRng::seed_from_u64(0), NOW)
+            .unwrap();
+        data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        drain(&mut rx);
+        let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+        assert!(res.round.is_some());
+        let msgs = drain(&mut rx);
+        assert_eq!(msgs.len(), 1, "the song's end is written once");
+        let ended = snapshot(&msgs[0]);
+        assert_eq!(ended.game.phase, PHASE_SUBMITTING);
+        assert_eq!(ended.game.current_round, 1);
+        assert!(!ended.rounds[0].results_posted);
+        let back = GpGame::from_saved(ended).unwrap();
+        assert_eq!(
+            back.unposted_results(),
+            vec![0],
+            "a restart here owes round 0"
+        );
+        assert_eq!(back.round_result(0).songs.len(), 2);
+
+        data.gp_mark_results_posted(G, 0);
+        let msgs = drain(&mut rx);
+        assert_eq!(msgs.len(), 1, "marking the post is a checkpoint of its own");
+        let posted = snapshot(&msgs[0]);
+        assert!(posted.rounds[0].results_posted);
+        assert!(!posted.rounds[1].results_posted);
+        let back = GpGame::from_saved(posted).unwrap();
+        assert!(back.rounds[0].results_posted);
+        assert!(back.unposted_results().is_empty());
+        assert_eq!(back.to_saved(), *posted);
     }
 
     #[test]

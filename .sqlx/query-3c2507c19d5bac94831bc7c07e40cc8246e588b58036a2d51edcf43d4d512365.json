@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO gp_round (\n                   game_id, round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id,\n                   results_posted\n               )\n               SELECT $1, * FROM UNNEST(\n                   $2::int[], $3::text[], $4::bigint[], $5::bigint[], $6::bigint[], $7::bool[]\n               )\n               ON CONFLICT (game_id, round_idx) DO UPDATE SET\n                   closes_at = EXCLUDED.closes_at,\n                   prompt_channel_id = EXCLUDED.prompt_channel_id,\n                   prompt_message_id = EXCLUDED.prompt_message_id,\n                   results_posted = EXCLUDED.results_posted",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int4Array",
+        "TextArray",
+        "Int8Array",
+        "Int8Array",
+        "Int8Array",
+        "BoolArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3c2507c19d5bac94831bc7c07e40cc8246e588b58036a2d51edcf43d4d512365"
+}
