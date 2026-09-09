@@ -40,7 +40,7 @@
 
 use super::gp::{
     gp_after_close, gp_play_track, gp_scoreboard_embed, gp_spawn_window_timer_secs, now, GpClip,
-    GpGame, GpPhase, GpPlayback, GpRound, GpTrack, GP_RESUME_WINDOW_SECS,
+    GpGame, GpPhase, GpPlayback, GpReveal, GpRound, GpTrack, GP_RESUME_WINDOW_SECS,
 };
 use super::gp_prompts::GpCategory;
 use crate::commands::music_utils::set_global_handlers_with;
@@ -259,6 +259,7 @@ impl GpGame {
                     artist: saved.artist.clone(),
                     duration_secs: saved.duration_secs(),
                     play_full: false,
+                    failed: false,
                     message_channel_id: None,
                     message_id: None,
                     guesses: Vec::new(),
@@ -284,6 +285,7 @@ impl GpGame {
                     artist: saved.artist.clone(),
                     duration_secs: saved.duration_secs(),
                     play_full: t.play_full,
+                    failed: t.failed,
                     message_channel_id: t.message.map(|(c, _)| c.get() as i64),
                     message_id: t.message.map(|(_, m)| m.get() as i64),
                     guesses,
@@ -308,6 +310,7 @@ impl GpGame {
                 timer_secs: self.timer_secs as i64,
                 clip_start_secs: self.clip.map(|c| c.start.as_secs() as i64),
                 clip_length_secs: self.clip.map(|c| c.length.as_secs() as i64),
+                reveal: self.reveal.slug().to_string(),
                 generation: self.generation as i64,
             },
             players,
@@ -329,6 +332,8 @@ impl GpGame {
             PHASE_FINISHED => GpPhase::Finished,
             other => return Err(GpLoadError(format!("unknown phase {other:?}"))),
         };
+        let reveal = GpReveal::from_slug(&g.reveal)
+            .ok_or_else(|| GpLoadError(format!("unknown reveal {:?}", g.reveal)))?;
         let clip = match (g.clip_start_secs, g.clip_length_secs) {
             (Some(start), Some(length)) => Some(GpClip {
                 start: Duration::from_secs(start.max(0) as u64),
@@ -397,6 +402,7 @@ impl GpGame {
                         skip_votes: t.skip_votes.iter().map(|u| user(*u)).collect(),
                         full_votes: t.full_votes.iter().map(|u| user(*u)).collect(),
                         play_full: t.play_full,
+                        failed: t.failed,
                         message: message(t.message_channel_id, t.message_id),
                     });
                 },
@@ -440,6 +446,7 @@ impl GpGame {
             current_track,
             timer_secs: g.timer_secs.max(0) as u64,
             clip,
+            reveal,
             generation: g.generation.max(0) as u64,
             parked_for_end: false,
             players,
@@ -730,6 +737,7 @@ mod test {
                 start: Duration::from_secs(30),
                 length: Duration::from_secs(45),
             }),
+            GpReveal::Song,
             NOW,
         )
         .unwrap();
@@ -1014,6 +1022,7 @@ mod test {
         assert_eq!(back.scores, game.scores);
         assert_eq!(back.players, game.players);
         assert_eq!(back.clip, game.clip);
+        assert_eq!(back.reveal, GpReveal::Song);
         assert!(!back.parked_for_end);
         let t = &back.rounds[0].tracks[0].track;
         assert_eq!(t.get_title(), game.rounds[0].tracks[0].track.get_title());
@@ -1051,6 +1060,55 @@ mod test {
             UserId::new(1),
             "the song itself does not"
         );
+    }
+
+    /// A song that never played paid nothing, and must still pay nothing when
+    /// the round's results are derived after a resume; and a game that holds
+    /// its reveal to the end of the round has to come back still holding it.
+    #[test]
+    fn what_a_resume_needs_to_keep_the_round_honest_round_trips() {
+        let (data, _rx) = recording();
+        data.gp_start(
+            G,
+            A,
+            "alice".into(),
+            VC,
+            TC,
+            GpCategory::Nostalgia,
+            vec!["p0".into()],
+            120,
+            None,
+            GpReveal::Round,
+            NOW,
+        )
+        .unwrap();
+        data.gp_submit(G, A, "alice".into(), track("a"), &[])
+            .unwrap();
+        data.gp_submit(G, B, "bob".into(), track("b"), &[]).unwrap();
+        data.gp_close_window(G, A, &mut StdRng::seed_from_u64(0), NOW)
+            .unwrap();
+        data.gp_fail_and_advance(G, 0, 0, NOW).unwrap();
+
+        let saved = data.gp_games.get(&G).unwrap().to_saved();
+        assert_eq!(saved.game.reveal, "round");
+        let t0 = saved.tracks.iter().find(|t| t.position == Some(0)).unwrap();
+        assert!(t0.failed);
+        assert!(
+            !saved
+                .tracks
+                .iter()
+                .find(|t| t.position == Some(1))
+                .unwrap()
+                .failed
+        );
+
+        let back = GpGame::from_saved(&saved).unwrap();
+        assert_eq!(back.to_saved(), saved);
+        assert_eq!(back.reveal, GpReveal::Round);
+        assert!(back.rounds[0].tracks[0].failed);
+        assert!(!back.rounds[0].tracks[1].failed);
+        // Held: the board the resumed game shows is still the empty one.
+        assert!(back.visible_scores().iter().all(|(_, p)| *p == 0));
     }
 
     #[test]
@@ -1092,6 +1150,10 @@ mod test {
 
         let mut s = good.clone();
         s.game.phase = "paused".into();
+        assert!(GpGame::from_saved(&s).is_err());
+
+        let mut s = good.clone();
+        s.game.reveal = "never".into();
         assert!(GpGame::from_saved(&s).is_err());
 
         let mut s = good.clone();

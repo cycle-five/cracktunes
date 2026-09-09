@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO gp_track (\n                   game_id, round_idx, submitter_id, position, url, title, artist,\n                   duration_secs, play_full, failed, message_channel_id, message_id\n               )\n               SELECT $1, * FROM UNNEST(\n                   $2::int[], $3::bigint[], $4::int[], $5::text[], $6::text[], $7::text[],\n                   $8::bigint[], $9::bool[], $10::bool[], $11::bigint[], $12::bigint[]\n               )\n               ON CONFLICT (game_id, round_idx, submitter_id) DO UPDATE SET\n                   position = EXCLUDED.position,\n                   url = EXCLUDED.url,\n                   title = EXCLUDED.title,\n                   artist = EXCLUDED.artist,\n                   duration_secs = EXCLUDED.duration_secs,\n                   play_full = EXCLUDED.play_full,\n                   failed = EXCLUDED.failed,\n                   message_channel_id = EXCLUDED.message_channel_id,\n                   message_id = EXCLUDED.message_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int4Array",
+        "Int8Array",
+        "Int4Array",
+        "TextArray",
+        "TextArray",
+        "TextArray",
+        "Int8Array",
+        "BoolArray",
+        "BoolArray",
+        "Int8Array",
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d6b1713f92785899dd95bb2e2a09d7c4e85f98408bd35e0bde7fae20625183a3"
+}

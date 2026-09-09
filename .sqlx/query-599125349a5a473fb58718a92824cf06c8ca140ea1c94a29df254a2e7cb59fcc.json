@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT round_idx, submitter_id, position, url, title, artist, duration_secs,\n                      play_full, message_channel_id, message_id\n               FROM gp_track WHERE game_id = $1\n               ORDER BY round_idx, position NULLS LAST, submitter_id",
+  "query": "SELECT round_idx, submitter_id, position, url, title, artist, duration_secs,\n                      play_full, failed, message_channel_id, message_id\n               FROM gp_track WHERE game_id = $1\n               ORDER BY round_idx, position NULLS LAST, submitter_id",
   "describe": {
     "columns": [
       {
@@ -45,11 +45,16 @@
       },
       {
         "ordinal": 8,
+        "name": "failed",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
         "name": "message_channel_id",
         "type_info": "Int8"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "message_id",
         "type_info": "Int8"
       }
@@ -68,9 +73,10 @@
       true,
       true,
       false,
+      false,
       true,
       true
     ]
   },
-  "hash": "402f74f67438643c297ef696f831a7efd5847c9797299f9cd156e63b2b1fc70d"
+  "hash": "599125349a5a473fb58718a92824cf06c8ca140ea1c94a29df254a2e7cb59fcc"
 }
