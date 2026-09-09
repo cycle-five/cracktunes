@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO gp_vote (game_id, round_idx, submitter_id, user_id, kind)\n                   SELECT $1, * FROM UNNEST($2::int[], $3::bigint[], $4::bigint[], $5::text[])",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int4Array",
+        "Int8Array",
+        "Int8Array",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "621364f69f5e214856e69eb41098f4c660812ba41adca32f68bc46a4ea1df70b"
+}

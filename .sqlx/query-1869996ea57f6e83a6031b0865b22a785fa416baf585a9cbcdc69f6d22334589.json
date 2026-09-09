@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE gp_game SET last_seen_at = now()\n           WHERE finished_at IS NULL AND guild_id = ANY($1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1869996ea57f6e83a6031b0865b22a785fa416baf585a9cbcdc69f6d22334589"
+}

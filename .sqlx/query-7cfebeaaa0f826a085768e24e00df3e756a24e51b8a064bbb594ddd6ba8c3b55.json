@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id\n               FROM gp_round WHERE game_id = $1 ORDER BY round_idx",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "round_idx",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "prompt",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "closes_at",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "prompt_channel_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "prompt_message_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "7cfebeaaa0f826a085768e24e00df3e756a24e51b8a064bbb594ddd6ba8c3b55"
+}

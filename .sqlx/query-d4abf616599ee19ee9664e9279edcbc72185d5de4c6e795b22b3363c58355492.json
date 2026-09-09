@@ -1,0 +1,34 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT round_idx, submitter_id, user_id FROM gp_like\n               WHERE game_id = $1 ORDER BY round_idx, submitter_id, user_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "round_idx",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 1,
+        "name": "submitter_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d4abf616599ee19ee9664e9279edcbc72185d5de4c6e795b22b3363c58355492"
+}
