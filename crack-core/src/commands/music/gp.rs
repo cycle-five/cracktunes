@@ -98,14 +98,13 @@ pub const GP_MAX_CLIP_LENGTH_SECS: u64 = 300;
 /// parked game itself. Only a backstop: the global track-end handler normally
 /// collects it within milliseconds.
 pub const GP_PARK_GRACE_SECS: u64 = 10;
-/// How long a game may be down before it is not brought back. Measured from the
-/// last time the *bot* saw the game -- a write or a heartbeat -- not from the
-/// game's own clock, so a quiet submission window still counts as seen. Past
-/// this the room has moved on, and a prompt reappearing twenty minutes later is
-/// worse than nothing.
+/// How long a game may be down before it is not brought back. Past this the
+/// room has moved on, and a prompt reappearing twenty minutes later is worse
+/// than nothing. Measured against the last moment the game is known to have
+/// been alive: for an open submission window that is `closes_at`, which needs
+/// no write at all; otherwise it is `last_seen_at`, which a graceful shutdown
+/// stamps on the way down and which a hard crash leaves at the last song's end.
 pub const GP_RESUME_WINDOW_SECS: i64 = 300;
-/// How often a live game says "still here" to the database.
-pub const GP_HEARTBEAT_SECS: u64 = 30;
 /// How much of a song has to have played before a failure counts as a song the
 /// room actually heard, and so as something to score. Below this an `Errored`
 /// track is treated as a dead link: nobody could have guessed it, so nobody is
@@ -1317,16 +1316,6 @@ impl Data {
             .get(game.current_track)?
             .message;
         Some((game.track_start(), old))
-    }
-
-    /// Every game still being played, as (guild, started_at), for the heartbeat.
-    /// A finished or parked game is on its way out and is not kept alive.
-    pub fn gp_live_games(&self) -> Vec<(GuildId, i64)> {
-        self.gp_games
-            .iter()
-            .filter(|g| g.phase != GpPhase::Finished && !g.parked_for_end)
-            .map(|g| (*g.key(), g.started_at))
-            .collect()
     }
 
     /// Who may act in a running game: anyone who has submitted, plus the host, so

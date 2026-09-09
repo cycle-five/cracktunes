@@ -24,8 +24,9 @@ CREATE TABLE IF NOT EXISTS gp_game (
     clip_start_secs BIGINT,
     clip_length_secs BIGINT,
     generation BIGINT NOT NULL,
-    -- Bumped on every write and on a heartbeat while the game is live; on
-    -- startup a game not seen for GP_RESUME_WINDOW_SECS is lost, not resumed.
+    -- Bumped on every write, and on every live game when the bot shuts down
+    -- cleanly. A song whose game was not seen for GP_RESUME_WINDOW_SECS is not
+    -- resumed; an open submission window is judged by closes_at instead.
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     finished_at TIMESTAMPTZ,
     -- finished | ended | abandoned | lost

@@ -281,7 +281,6 @@ pub async fn poise_framework(
         gp_persist,
         ..Default::default()
     }));
-    crate::commands::music::gp_persist::spawn_gp_heartbeat(data.clone());
 
     // No MESSAGE_CONTENT. The bot is Discord-verified without it, and it is not
     // coming back for an application in 100+ guilds without a review. Message
@@ -378,7 +377,7 @@ pub async fn poise_framework(
         // Whatever a `/gp` game has queued for the database goes first: the pool
         // is closed below, and a game written down is one a redeploy does not
         // end. Bounded, because Docker's stop grace is ten seconds in total.
-        data2.gp_flush(Duration::from_secs(5)).await;
+        data2.gp_shutdown(Duration::from_secs(5)).await;
         let guilds = data2.guild_settings_map.read().await.clone();
         let pool = data2.clone().database_pool.clone();
         let mut saved_guilds = Vec::with_capacity(guilds.len());

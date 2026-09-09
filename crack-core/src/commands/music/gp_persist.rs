@@ -20,14 +20,17 @@
 //! `finished_at` and an outcome. That write happens on every path that removes a
 //! game from the map, `/gp end` included -- it is not a checkpoint, but without
 //! it a game ended on purpose would still look live after a redeploy and come
-//! back. While a game is live the heartbeat bumps its `last_seen_at` every
-//! [`GP_HEARTBEAT_SECS`], so the gap the resume measures is the outage itself and
-//! not how long since somebody last submitted.
+//! back. There is no heartbeat: a graceful shutdown stamps `last_seen_at` on
+//! every live game as it drains, so for a redeploy -- the case that prompted
+//! this -- the gap the resume measures is the outage itself. A hard crash
+//! leaves `last_seen_at` at the last checkpoint, which errs toward not resuming.
 //!
 //! On the way back up, [`gp_resume_guild`] runs from the guild-create handler for
-//! each guild as it arrives. A live game not seen for [`GP_RESUME_WINDOW_SECS`],
-//! or whose voice channel is empty, is marked lost and its scoreboard posted
-//! with a line saying why. Anything else is put back into the map, the bot
+//! each guild as it arrives. A live game is brought back only if it can still be
+//! going: a submission window that is still open, or closed less than
+//! [`GP_RESUME_WINDOW_SECS`] ago by its own `closes_at`; a song whose game was
+//! seen within that long. Anything older, or whose voice channel is empty, is
+//! marked lost and its scoreboard posted with a line saying why. Anything else is put back into the map, the bot
 //! rejoins voice, and the game re-enters its phase: a submission window with
 //! whatever time `closes_at` says is left (or closes at once if that passed), a
 //! song from the top, with the pre-restart song message's dropdown taken down
@@ -35,12 +38,12 @@
 
 use super::gp::{
     gp_after_close, gp_play_track, gp_scoreboard_embed, gp_spawn_window_timer_secs, now, GpClip,
-    GpGame, GpPhase, GpPlayback, GpRound, GpTrack, GP_HEARTBEAT_SECS, GP_RESUME_WINDOW_SECS,
+    GpGame, GpPhase, GpPlayback, GpRound, GpTrack, GP_RESUME_WINDOW_SECS,
 };
 use super::gp_prompts::GpCategory;
 use crate::commands::music_utils::set_global_handlers_with;
 use crate::db::{
-    gp_heartbeat, gp_mark_finished, GpGameRow, GpOutcome, GpPlayerRow, GpRoundRow, GpSaved,
+    gp_mark_finished, gp_touch_live, GpGameRow, GpOutcome, GpPlayerRow, GpRoundRow, GpSaved,
     GpTrackRow,
 };
 use crate::messaging::messages::{
@@ -80,8 +83,8 @@ pub enum GpPersist {
         started_at: i64,
         outcome: GpOutcome,
     },
-    /// These games are still being played.
-    Heartbeat(Vec<(i64, i64)>),
+    /// The process is going down: every live game was alive until now.
+    Stopping,
     /// Reply once everything sent before this has been written.
     Flush(oneshot::Sender<()>),
 }
@@ -115,31 +118,16 @@ pub async fn run_gp_writer(mut rx: mpsc::UnboundedReceiver<GpPersist>, pool: PgP
                 Ok(false) => {},
                 Err(e) => tracing::warn!("gp: marking the game in {guild_id} over: {e}"),
             },
-            GpPersist::Heartbeat(games) => {
-                if let Err(e) = gp_heartbeat(&pool, &games).await {
-                    tracing::warn!("gp: heartbeat: {e}");
-                }
+            GpPersist::Stopping => match gp_touch_live(&pool).await {
+                Ok(n) if n > 0 => tracing::info!("gp: {n} live game(s) stamped for the restart"),
+                Ok(_) => {},
+                Err(e) => tracing::warn!("gp: stamping live games at shutdown: {e}"),
             },
             GpPersist::Flush(ack) => {
                 let _ = ack.send(());
             },
         }
     }
-}
-
-/// Keep the live games' `last_seen_at` fresh for as long as the process runs.
-pub fn spawn_gp_heartbeat(data: Data) {
-    if data.gp_persist.is_none() {
-        return;
-    }
-    tokio::spawn(async move {
-        let mut tick = tokio::time::interval(Duration::from_secs(GP_HEARTBEAT_SECS));
-        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            tick.tick().await;
-            data.gp_heartbeat_tick();
-        }
-    });
 }
 
 impl Data {
@@ -171,24 +159,16 @@ impl Data {
         });
     }
 
-    /// One heartbeat: every game still being played is still here.
-    pub fn gp_heartbeat_tick(&self) {
-        let live: Vec<(i64, i64)> = self
-            .gp_live_games()
-            .into_iter()
-            .map(|(g, s)| (game_id(g), s))
-            .collect();
-        if !live.is_empty() {
-            self.gp_persist_send(GpPersist::Heartbeat(live));
-        }
-    }
-
-    /// Wait until everything sent so far has been written, or `timeout` passes.
-    /// For the shutdown handler, which has a budget.
-    pub async fn gp_flush(&self, timeout: Duration) {
+    /// The process is shutting down: stamp the live games as seen now, then wait
+    /// until everything sent so far has been written, or `timeout` passes. For
+    /// the shutdown handler, which has a budget.
+    pub async fn gp_shutdown(&self, timeout: Duration) {
         let Some(tx) = &self.gp_persist else {
             return;
         };
+        if tx.send(GpPersist::Stopping).is_err() {
+            return;
+        }
         let (ack, done) = oneshot::channel();
         if tx.send(GpPersist::Flush(ack)).is_err() {
             return;
@@ -520,11 +500,19 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     };
     let text_channel = game.text_channel;
 
-    let too_late = loaded.last_seen_secs_ago > GP_RESUME_WINDOW_SECS;
+    // Alive until when? An open window says so itself: it was open until
+    // `closes_at` whatever happened to the bot. A song has no such clock, so the
+    // last time the bot wrote or stamped the game stands in.
+    let alive_until = match game.phase {
+        GpPhase::Submitting => game.rounds[game.current_round].closes_at.unwrap_or(0),
+        _ => now() - loaded.last_seen_secs_ago,
+    };
+    let down_for = now() - alive_until;
+    let too_late = down_for > GP_RESUME_WINDOW_SECS;
     let nobody = vc_members(guild, game.voice_channel) == 0;
     if too_late || nobody || game.phase == GpPhase::Finished {
         let why = if too_late {
-            format!("not seen for {}s", loaded.last_seen_secs_ago)
+            format!("gone for {down_for}s")
         } else if nobody {
             "the voice channel is empty".to_string()
         } else {
@@ -874,31 +862,32 @@ mod test {
         }
     }
 
-    #[test]
-    fn without_a_database_nothing_is_sent_and_nothing_panics() {
+    #[tokio::test]
+    async fn without_a_database_nothing_is_sent_and_nothing_panics() {
         let data = Data::default();
         start(&data, &["p0"]);
         data.gp_submit(G, A, "alice".into(), track("a"), &[])
             .unwrap();
-        data.gp_heartbeat_tick();
+        data.gp_shutdown(Duration::from_millis(10)).await;
         data.gp_remove(G);
     }
 
-    #[test]
-    fn the_heartbeat_names_games_still_being_played() {
+    #[tokio::test]
+    async fn shutdown_stamps_the_live_games_and_waits_for_the_writer() {
         let (data, mut rx) = recording();
-        data.gp_heartbeat_tick();
-        assert!(drain(&mut rx).is_empty(), "no games, no heartbeat");
-        start(&data, &["p0"]);
-        data.gp_heartbeat_tick();
+        // Nobody is draining: the flush times out rather than hanging shutdown.
+        let started = std::time::Instant::now();
+        data.gp_shutdown(Duration::from_millis(50)).await;
+        assert!(started.elapsed() >= Duration::from_millis(50));
         match &drain(&mut rx)[..] {
-            [GpPersist::Heartbeat(games)] => assert_eq!(games, &vec![(1, NOW)]),
+            [GpPersist::Stopping, GpPersist::Flush(_)] => {},
             other => panic!("{other:?}"),
         }
-        // Parked by `/gp end`: on its way out, not kept alive.
-        data.gp_park_for_end(G, A, false).unwrap();
-        data.gp_heartbeat_tick();
-        assert!(drain(&mut rx).is_empty());
+        // With the writer's end gone the flush returns at once.
+        drop(rx);
+        let started = std::time::Instant::now();
+        data.gp_shutdown(Duration::from_secs(5)).await;
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     /// Build a game through the real API into a mid-game state, then check the

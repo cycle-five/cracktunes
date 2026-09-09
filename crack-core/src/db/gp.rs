@@ -605,22 +605,13 @@ pub async fn gp_mark_finished(
     Ok(done)
 }
 
-/// "Still here": bump `last_seen_at` on the live rows for these games.
-pub async fn gp_heartbeat(pool: &PgPool, games: &[(i64, i64)]) -> sqlx::Result<u64> {
-    if games.is_empty() {
-        return Ok(0);
-    }
-    let guilds: Vec<i64> = games.iter().map(|(g, _)| *g).collect();
-    let starts: Vec<i64> = games.iter().map(|(_, s)| *s).collect();
-    let done = sqlx::query!(
-        r#"UPDATE gp_game SET last_seen_at = now()
-           WHERE finished_at IS NULL
-             AND (guild_id, started_at) IN (SELECT * FROM UNNEST($1::bigint[], $2::bigint[]))"#,
-        &guilds,
-        &starts,
-    )
-    .execute(pool)
-    .await?;
+/// Every live game was alive until now. For the shutdown handler: one bot runs
+/// every game, so on its way down it can vouch for all of them at once, and the
+/// resume then measures the outage rather than the time since the last song.
+pub async fn gp_touch_live(pool: &PgPool) -> sqlx::Result<u64> {
+    let done = sqlx::query!("UPDATE gp_game SET last_seen_at = now() WHERE finished_at IS NULL")
+        .execute(pool)
+        .await?;
     Ok(done.rows_affected())
 }
 
@@ -875,18 +866,23 @@ mod tests {
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
-    async fn heartbeat_touches_only_the_named_live_games(pool: PgPool) -> sqlx::Result<()> {
+    async fn shutdown_stamps_live_games_and_leaves_finished_ones(pool: PgPool) -> sqlx::Result<()> {
         saved(5, 1_700_000_000).save(&pool).await?;
         saved(6, 1_700_000_000).save(&pool).await?;
+        gp_mark_finished(&pool, 6, 1_700_000_000, GpOutcome::Ended).await?;
         sqlx::query!("UPDATE gp_game SET last_seen_at = now() - interval '10 minutes'")
             .execute(&pool)
             .await?;
-        assert_eq!(gp_heartbeat(&pool, &[(5, 1_700_000_000), (7, 1)]).await?, 1);
+        assert_eq!(gp_touch_live(&pool).await?, 1);
         let five = GpSaved::load_live(&pool, 5).await?.expect("live");
-        let six = GpSaved::load_live(&pool, 6).await?.expect("live");
         assert!(five.last_seen_secs_ago < 5);
-        assert!(six.last_seen_secs_ago > 500);
-        assert_eq!(gp_heartbeat(&pool, &[]).await?, 0);
+        let six: i64 = sqlx::query_scalar!(
+            r#"SELECT EXTRACT(EPOCH FROM now() - last_seen_at)::bigint AS "ago!"
+               FROM gp_game WHERE guild_id = 6"#
+        )
+        .fetch_one(&pool)
+        .await?;
+        assert!(six > 500, "a finished game is not touched");
         Ok(())
     }
 }
