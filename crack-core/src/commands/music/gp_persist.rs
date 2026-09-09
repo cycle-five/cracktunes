@@ -2,8 +2,9 @@
 //!
 //! A game lives in [`Data::gp_games`], in memory, and that stays the source of
 //! truth while it runs. It is written down at two moments -- when a song is
-//! submitted and when a song ends -- as a whole-game snapshot into the `gp_*`
-//! tables (see [`crate::db::gp`]). Guesses, likes and votes on the song that is
+//! submitted and when a song ends -- as a snapshot of the game into the `gp_*`
+//! tables (see [`crate::db::gp`], which writes only the rounds that can have
+//! changed since the last one). Guesses, likes and votes on the song that is
 //! playing are not written until it ends: after a resume that song plays again
 //! from the top and the room casts them again, so the worst a crash costs is one
 //! song's worth of guesses that people can re-cast, never a scoreboard.

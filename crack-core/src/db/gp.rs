@@ -1,12 +1,15 @@
 //! Rows for a `/gp` game -- see `migrations/20260908120000_gp_game.sql`.
 //!
 //! [`GpSaved`] is a whole game as rows: the game, its players, its rounds and
-//! every song with its guesses, likes and votes. [`GpSaved::save`] writes all
-//! of it in one transaction and is idempotent, so the caller can hand it the
-//! game as it stands at any moment and the tables end up describing exactly
-//! that. It is written a handful of statements at a time whatever the size of
-//! the game, because every table is loaded through `UNNEST` in one statement
-//! rather than a row at a time.
+//! every song with its guesses, likes and votes. [`GpSaved::save`] takes the
+//! game as it stands at any moment and, in one transaction, brings the tables
+//! to exactly that. It is a handful of statements whatever the size of the
+//! game, because every table is loaded through `UNNEST` in one statement rather
+//! than a row at a time, and it does not grow with the game either: a round is
+//! immutable once the game has moved past it, so only the songs and reactions
+//! of the rounds that can have changed since the last save are rewritten (see
+//! [`GpSaved::changed_rounds`]). Late in a 25-player, 20-round game that is a
+//! few hundred rows per save instead of the twelve thousand the whole game is.
 //!
 //! Nothing here knows about the in-memory game; `commands::music::gp_persist`
 //! converts in both directions. Keeping the persisted shape its own set of
@@ -116,6 +119,26 @@ const VOTE_SKIP: &str = "skip";
 const VOTE_FULL: &str = "full";
 
 impl GpSaved {
+    /// The rounds whose songs and reactions can differ from the last save: the
+    /// current one, and the one before it.
+    ///
+    /// A guess, like or vote is refused for anything but the song playing, and a
+    /// submission for anything but the open window, so a round is frozen once the
+    /// game moves past it. The one before the current round is included because
+    /// the save that happens when a round's last song ends runs *after* the game
+    /// has advanced: that finished song's payout and guesses belong to the round
+    /// just left. Players and rounds are always written whole -- they are one
+    /// row each and the scores live on the players.
+    ///
+    /// Every save since a game's first submission has covered its then-current
+    /// round, so rows for earlier rounds are already exactly right. A save from
+    /// anywhere else -- something that has not written every earlier round as
+    /// it went -- would need to write the whole game; nothing does that today.
+    pub fn changed_rounds(&self) -> std::ops::RangeInclusive<i32> {
+        let cur = self.game.current_round;
+        (cur - 1).max(0)..=cur
+    }
+
     /// Write the game as it stands. Returns the `gp_game.id`.
     ///
     /// Any *other* live row for the guild is closed as lost first: two games
@@ -234,11 +257,19 @@ impl GpSaved {
         Ok(())
     }
 
+    fn changed_tracks(&self) -> Vec<&GpTrackRow> {
+        let rounds = self.changed_rounds();
+        self.tracks
+            .iter()
+            .filter(|t| rounds.contains(&t.round_idx))
+            .collect()
+    }
+
     async fn save_tracks(&self, tx: &mut Transaction<'_, Postgres>, id: i64) -> sqlx::Result<()> {
-        if self.tracks.is_empty() {
+        let t = self.changed_tracks();
+        if t.is_empty() {
             return Ok(());
         }
-        let t = &self.tracks;
         let round_idxs: Vec<i32> = t.iter().map(|x| x.round_idx).collect();
         let submitters: Vec<i64> = t.iter().map(|x| x.submitter_id).collect();
         let positions: Vec<Option<i32>> = t.iter().map(|x| x.position).collect();
@@ -284,28 +315,46 @@ impl GpSaved {
         Ok(())
     }
 
-    /// Guesses, likes and votes: replaced wholesale. A like can be taken back and
-    /// a guess changed, so the sets are rewritten rather than merged; they are
-    /// small, and this keeps the tables equal to the game rather than a superset.
+    /// Guesses, likes and votes of the changed rounds: replaced wholesale. A like
+    /// can be taken back and a guess changed, so the sets are rewritten rather
+    /// than merged; within two rounds they are small, and this keeps the tables
+    /// equal to the game rather than a superset.
     async fn save_reactions(
         &self,
         tx: &mut Transaction<'_, Postgres>,
         id: i64,
     ) -> sqlx::Result<()> {
-        sqlx::query!("DELETE FROM gp_guess WHERE game_id = $1", id)
-            .execute(&mut **tx)
-            .await?;
-        sqlx::query!("DELETE FROM gp_like WHERE game_id = $1", id)
-            .execute(&mut **tx)
-            .await?;
-        sqlx::query!("DELETE FROM gp_vote WHERE game_id = $1", id)
-            .execute(&mut **tx)
-            .await?;
+        let rounds = self.changed_rounds();
+        let (first, last) = (*rounds.start(), *rounds.end());
+        sqlx::query!(
+            "DELETE FROM gp_guess WHERE game_id = $1 AND round_idx BETWEEN $2 AND $3",
+            id,
+            first,
+            last
+        )
+        .execute(&mut **tx)
+        .await?;
+        sqlx::query!(
+            "DELETE FROM gp_like WHERE game_id = $1 AND round_idx BETWEEN $2 AND $3",
+            id,
+            first,
+            last
+        )
+        .execute(&mut **tx)
+        .await?;
+        sqlx::query!(
+            "DELETE FROM gp_vote WHERE game_id = $1 AND round_idx BETWEEN $2 AND $3",
+            id,
+            first,
+            last
+        )
+        .execute(&mut **tx)
+        .await?;
 
         let mut g = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let mut l = (Vec::new(), Vec::new(), Vec::new());
         let mut v = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-        for t in &self.tracks {
+        for t in self.changed_tracks() {
             for (guesser, guessed) in &t.guesses {
                 g.0.push(t.round_idx);
                 g.1.push(t.submitter_id);
@@ -742,6 +791,82 @@ mod tests {
                 .fetch_one(&pool)
                 .await?;
         assert_eq!(outcome.as_deref(), Some("finished"));
+        Ok(())
+    }
+
+    #[test]
+    fn the_changed_rounds_are_the_current_one_and_the_one_before() {
+        let mut s = saved(1, 1);
+        assert_eq!(s.changed_rounds(), 0..=0);
+        s.game.current_round = 1;
+        assert_eq!(s.changed_rounds(), 0..=1);
+        s.game.current_round = 7;
+        assert_eq!(s.changed_rounds(), 6..=7);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn only_the_rounds_that_can_have_changed_are_rewritten(pool: PgPool) -> sqlx::Result<()> {
+        // Round 0 is played out and the game has moved on to round 1: the save
+        // at round 0's last song end covers both rounds.
+        let mut s = saved(7, 1_700_000_000);
+        s.rounds.push(GpRoundRow {
+            round_idx: 2,
+            prompt: "p2".into(),
+            closes_at: None,
+            prompt_channel_id: None,
+            prompt_message_id: None,
+        });
+        s.game.phase = "submitting".into();
+        s.game.current_round = 1;
+        s.tracks = vec![track(0, 100, Some(0)), track(0, 200, Some(1))];
+        s.tracks[0].guesses = vec![(200, 100)];
+        s.tracks[0].likes = vec![200];
+        s.tracks[1].guesses = vec![(100, 200)];
+        s.save(&pool).await?;
+        assert_eq!(GpSaved::load_live(&pool, 7).await?.unwrap().saved, s);
+
+        // Two rounds later. Rows this struct carries for round 0 are now stale
+        // by construction -- a like removed, a guess changed, a track gone --
+        // and none of it may reach the table, because round 0 is frozen.
+        s.game.current_round = 2;
+        s.tracks[0].likes.clear();
+        s.tracks[0].guesses = vec![(200, 200)];
+        s.tracks.remove(1);
+        s.tracks.push(track(1, 100, Some(0)));
+        s.tracks.push(track(2, 300, None));
+        s.tracks[1].likes = vec![300];
+        s.save(&pool).await?;
+
+        let loaded = GpSaved::load_live(&pool, 7).await?.unwrap().saved;
+        let r0: Vec<&GpTrackRow> = loaded.tracks.iter().filter(|t| t.round_idx == 0).collect();
+        assert_eq!(r0.len(), 2, "round 0's tracks are as first written");
+        assert_eq!(r0[0].guesses, vec![(200, 100)]);
+        assert_eq!(r0[0].likes, vec![200]);
+        assert_eq!(r0[1].guesses, vec![(100, 200)]);
+        let r1: Vec<&GpTrackRow> = loaded.tracks.iter().filter(|t| t.round_idx == 1).collect();
+        assert_eq!(r1.len(), 1);
+        assert_eq!(r1[0].likes, vec![300]);
+        assert_eq!(
+            loaded.tracks.iter().filter(|t| t.round_idx == 2).count(),
+            1,
+            "the open round's submission is written"
+        );
+
+        // And within the changed rounds a like taken back is still gone.
+        s.tracks[1].likes.clear();
+        s.save(&pool).await?;
+        let loaded = GpSaved::load_live(&pool, 7).await?.unwrap().saved;
+        assert!(loaded
+            .tracks
+            .iter()
+            .find(|t| t.round_idx == 1)
+            .unwrap()
+            .likes
+            .is_empty());
         Ok(())
     }
 
