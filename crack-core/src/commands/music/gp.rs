@@ -270,19 +270,20 @@ pub enum GpPhase {
 /// command types.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, poise::ChoiceParameter)]
 pub enum GpReveal {
-    /// The submitter is named when their song ends, as the game has always done.
-    #[name = "🎉 After each song"]
-    #[name = "song"]
-    #[default]
-    Song,
     /// Nothing is named until the round's last song has played: the reveal is
-    /// the round-results embed. With every song revealed as it ends, the last
-    /// song of a round is never a guess -- everyone has one song in, so by the
-    /// final one the room knows by elimination -- and with three players the
-    /// second is a coin flip. Holding the names keeps every song a guess.
+    /// the round-results embed. The default. With every song revealed as it
+    /// ends, the last song of a round is never a guess -- everyone has one song
+    /// in, so by the final one the room knows by elimination -- and with three
+    /// players the second is a coin flip. Holding the names keeps every song a
+    /// guess.
     #[name = "🤐 At the end of the round"]
     #[name = "round"]
+    #[default]
     Round,
+    /// The submitter is named when their song ends, as the game originally did.
+    #[name = "🎉 After each song"]
+    #[name = "song"]
+    Song,
 }
 
 impl GpReveal {
@@ -296,7 +297,7 @@ impl GpReveal {
     }
 
     pub fn from_slug(slug: &str) -> Option<Self> {
-        [Self::Song, Self::Round]
+        [Self::Round, Self::Song]
             .into_iter()
             .find(|r| r.slug() == slug)
     }
@@ -470,8 +471,8 @@ pub struct GpGame {
     pub timer_secs: u64,
     /// `None` plays whole songs.
     pub clip: Option<GpClip>,
-    /// When submitters are named: as each song ends, or only in the round's
-    /// results.
+    /// When submitters are named: only in the round's results (the default), or
+    /// as each song ends.
     pub reveal: GpReveal,
     /// Post the round-results embed when a round ends. Off, the game is as it
     /// was before there was one: each song's reveal and nothing summing them
@@ -2883,7 +2884,7 @@ pub async fn gp_start(
     #[min = 20]
     #[max = 300]
     clip_length: Option<u32>,
-    #[description = "Name submitters after each song (default), or only at the end of the round."]
+    #[description = "Name submitters only at the end of the round (default), or after each song."]
     reveal: Option<GpReveal>,
     #[description = "Sum each round up in a results embed when it ends (default yes; always on with reveal:round)."]
     results: Option<bool>,

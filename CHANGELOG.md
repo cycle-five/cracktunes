@@ -16,15 +16,16 @@
   `/gp start ... results:false` turns the embed off and has the game as it was,
   except with `reveal:round`, where the results are the reveal and stay on.
   (#433)
-- **`/gp start ... reveal:round`** holds every submitter's name until the
-  round's last song has played, and the round-results embed is the reveal. With
-  the default reveal after each song, the last song of a round is never a guess
+- **Submitters are now revealed at the end of the round, not after each song.**
+  Every name is held until the round's last song has played, and the
+  round-results embed is the reveal. With the reveal after each song, the last
+  song of a round is never a guess
   -- everyone has one song in, so by the final one the room knows by
   elimination, and with three players the second is a coin flip. While a round
   is held, a song's end shows only that it is over and its 👍; the scoreboard on
   it, and on `/gp status`, stays as it stood when the round began, since a
   player up a hundred after song one either guessed it or was the one nobody
-  guessed. The default is unchanged. (#450)
+  guessed. `/gp start ... reveal:song` is the old reveal after each song. (#450)
 
 - **`/gp` games survive a restart.** A game is written to Postgres each time a
   song is submitted and each time a song ends, and a bot that comes back within

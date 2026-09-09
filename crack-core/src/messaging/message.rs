@@ -535,10 +535,10 @@ impl Display for CrackedMessage {
                     None => String::new(),
                 },
                 match reveal {
-                    crate::commands::music::gp::GpReveal::Round => {
-                        format!(" {}", GP_STARTED_REVEAL_ROUND)
+                    crate::commands::music::gp::GpReveal::Song => {
+                        format!(" {}", GP_STARTED_REVEAL_SONG)
                     },
-                    crate::commands::music::gp::GpReveal::Song => String::new(),
+                    crate::commands::music::gp::GpReveal::Round => String::new(),
                 },
                 if *round_results {
                     String::new()
@@ -718,7 +718,7 @@ mod test {
     fn test_gp_messages_display() {
         use crate::messaging::messages::{
             GP_CLOSED_BY_HOST, GP_ENDED_BY, GP_QUEUE_CLEARED, GP_ROUND_SKIPPED, GP_STARTED,
-            GP_STARTED_NO_RESULTS, GP_STARTED_REVEAL_ROUND, GP_SUBMITTED, GP_SUBMITTED_REPLACED,
+            GP_STARTED_NO_RESULTS, GP_STARTED_REVEAL_SONG, GP_SUBMITTED, GP_SUBMITTED_REPLACED,
             GP_VOTEFULL_CARRIED, GP_VOTEFULL_ROOM, GP_VOTEFULL_ROOM_NEEDED, GP_VOTESKIP_CARRIED,
             GP_VOTESKIP_PULLED, GP_VOTESKIP_ROOM, GP_VOTESKIP_ROOM_NEEDED, GP_WINDOW_CLOSED_SONGS,
         };
@@ -761,24 +761,27 @@ mod test {
             rounds: 3,
             timer_secs: 60,
             clip: None,
-            reveal: crate::commands::music::gp::GpReveal::Song,
+            reveal: crate::commands::music::gp::GpReveal::Round,
             round_results: true,
             cleared_queue: true,
         };
         assert!(msg.to_string().ends_with(&format!(" {}", GP_QUEUE_CLEARED)));
         let s = msg.to_string();
-        assert!(!s.contains(GP_STARTED_REVEAL_ROUND), "{s}");
+        assert!(
+            !s.contains(GP_STARTED_REVEAL_SONG),
+            "the default says nothing: {s}"
+        );
         let msg = CrackedMessage::GpStarted {
             category: "🎲 Mixed",
             rounds: 3,
             timer_secs: 60,
             clip: None,
-            reveal: crate::commands::music::gp::GpReveal::Round,
+            reveal: crate::commands::music::gp::GpReveal::Song,
             round_results: true,
             cleared_queue: false,
         };
         let s = msg.to_string();
-        assert!(s.ends_with(GP_STARTED_REVEAL_ROUND), "{s}");
+        assert!(s.ends_with(GP_STARTED_REVEAL_SONG), "{s}");
         assert!(!s.contains(GP_STARTED_NO_RESULTS), "{s}");
         let msg = CrackedMessage::GpStarted {
             category: "🎲 Mixed",
