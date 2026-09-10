@@ -4,6 +4,32 @@
 
 ### Added
 
+- **Every `/gp` round ends with its results.** Once a round's last song has been
+  revealed, and before the next prompt goes up, a round-results embed sums the
+  round up at the bottom of the channel: each song with who submitted it, who
+  guessed it and its 👍, with "fooled everyone" and "played in full" marked;
+  what the round paid each player; and the scoreboard. Each song's own reveal is
+  still an edit of that song's message, which after five songs left the results
+  scattered up the channel behind the next prompt. The five-second breather
+  that already sat between songs now sits between the results and the next
+  prompt too. A round nobody submitted to has nothing to sum up and posts none.
+  `/gp start ... results:false` turns the embed off and has the game as it was,
+  except with `reveal:round`, where the results are the reveal and stay on.
+  The results survive a restart: the game is written down again once they are
+  posted, and a bot that comes back to a round that never got them -- or to a
+  game that finished without its last results and scoreboard going up -- posts
+  them first. (#433)
+- **Submitters are now revealed at the end of the round, not after each song.**
+  Every name is held until the round's last song has played, and the
+  round-results embed is the reveal. With the reveal after each song, the last
+  song of a round is never a guess
+  -- everyone has one song in, so by the final one the room knows by
+  elimination, and with three players the second is a coin flip. While a round
+  is held, a song's end shows only that it is over and its 👍; the scoreboard on
+  it, and on `/gp status`, stays as it stood when the round began, since a
+  player up a hundred after song one either guessed it or was the one nobody
+  guessed. `/gp start ... reveal:song` is the old reveal after each song. (#450)
+
 - **`/gp` games survive a restart.** A game is written to Postgres each time a
   song is submitted and each time a song ends, and a bot that comes back within
   five minutes picks it up where it was: a submission window with whatever time
@@ -36,6 +62,21 @@
 
 ### Changed
 
+- **`/gp voteskip` and `/gp votefull` no longer say who voted.** Both answered
+  in public as a slash-command reply, which Discord renders under "*name* used
+  `/gp voteskip`" -- so the room saw exactly who wanted the song gone, in a game
+  whose whole premise is that people submitted something embarrassing. The
+  confirmation (and any error, such as "you already voted") now goes to the
+  voter alone, ephemerally, the way `/gp submit` answers; the room gets a plain
+  message in the game's channel that names nobody: "someone voted to skip this
+  song -- *n* more and it's gone". A vote that carries, or a submitter pulling
+  their own song, is still announced to the room, but as a channel message
+  rather than a reply, so the last voter is not named on that either. The
+  prefix form of either command answers the voter by DM, since a prefix
+  invocation has no ephemeral reply -- though the `!gp voteskip` message itself
+  is in the channel, so the slash form is the one that keeps a vote to
+  yourself. (#433)
+
 - `/gp submit` refuses an album or playlist link rather than silently submitting
   its first track. Which song a player submits is the whole game, so choosing one
   for them would replace their move with ours and they would never know.
@@ -47,6 +88,20 @@
   degrades with a message saying so.
 
 ### Fixed
+
+- **A `/gp` round could play its songs in the same order as the round before.**
+  Each round's order was an independent uniform shuffle, which with three
+  players repeats the previous round's order one time in six and keeps someone
+  in the same slot two times in three -- and once a room has noticed, the
+  position in the round says whose song it is before a note has played. The
+  order is now drawn against the previous round: nobody keeps the slot they had
+  last time. Two-song rounds are left alone, since forbidding the repeat there
+  would make the rounds alternate, which is a tell of its own. (#450)
+- Scoring is now one function of a song as it stands -- guesses, likes, the
+  full-song vote, and whether it played at all -- used by the reveal, the round's
+  results and the held-back scoreboard alike, so they cannot disagree. Whether a
+  song failed to play is saved with the game, so a resumed game still pays
+  nothing for it.
 
 - Locale-prefixed Spotify links -- `/intl-de/track/<id>`, which is what
   Spotify's own web player hands out to much of the world -- were rejected as

@@ -230,6 +230,8 @@ pub enum CrackedMessage {
         rounds: usize,
         timer_secs: u64,
         clip: Option<crate::commands::music::gp::GpClip>,
+        reveal: crate::commands::music::gp::GpReveal,
+        round_results: bool,
         cleared_queue: bool,
     },
     GpRoundSkipped,
@@ -239,16 +241,29 @@ pub enum CrackedMessage {
     GpWindowClosed {
         count: usize,
     },
+    /// To the voter alone: their vote is in.
     GpVoteSkipCounted {
         votes: usize,
         needed: usize,
     },
+    /// To the room: a vote is in, from nobody in particular.
+    GpVoteSkipRoom {
+        needed: usize,
+    },
+    /// To the voter alone: theirs was the vote that carried it.
+    GpVoteSkipCarried,
     GpVoteSkipPassed,
     GpVoteSkipOwnSong,
+    /// To the room: the submitter pulled their own song.
+    GpVoteSkipPulled,
     GpVoteFullCounted {
         votes: usize,
         needed: usize,
     },
+    GpVoteFullRoom {
+        needed: usize,
+    },
+    GpVoteFullCarried,
     GpVoteFullPassed,
     GpVoteFullAlready,
 }
@@ -498,9 +513,11 @@ impl Display for CrackedMessage {
                 rounds,
                 timer_secs,
                 clip,
+                reveal,
+                round_results,
                 cleared_queue,
             } => f.write_str(&format!(
-                "{} {} {} {} — {} {}{}{}",
+                "{} {} {} {} — {} {}{}{}{}{}",
                 GP_STARTED,
                 rounds,
                 GP_STARTED_ROUNDS,
@@ -516,6 +533,17 @@ impl Display for CrackedMessage {
                         duration_to_string(c.start)
                     ),
                     None => String::new(),
+                },
+                match reveal {
+                    crate::commands::music::gp::GpReveal::Song => {
+                        format!(" {}", GP_STARTED_REVEAL_SONG)
+                    },
+                    crate::commands::music::gp::GpReveal::Round => String::new(),
+                },
+                if *round_results {
+                    String::new()
+                } else {
+                    format!(" {}", GP_STARTED_NO_RESULTS)
                 },
                 if *cleared_queue {
                     format!(" {}", GP_QUEUE_CLEARED)
@@ -533,12 +561,23 @@ impl Display for CrackedMessage {
                 "{} {} {} {} {}",
                 GP_VOTESKIP_COUNTED, votes, GP_VOTESKIP_SO_FAR, needed, GP_VOTESKIP_NEEDED
             )),
+            Self::GpVoteSkipRoom { needed } => f.write_str(&format!(
+                "{} {} {}",
+                GP_VOTESKIP_ROOM, needed, GP_VOTESKIP_ROOM_NEEDED
+            )),
+            Self::GpVoteSkipCarried => f.write_str(GP_VOTESKIP_CARRIED),
             Self::GpVoteSkipPassed => f.write_str(GP_VOTESKIP_PASSED),
             Self::GpVoteSkipOwnSong => f.write_str(GP_VOTESKIP_OWN),
+            Self::GpVoteSkipPulled => f.write_str(GP_VOTESKIP_PULLED),
             Self::GpVoteFullCounted { votes, needed } => f.write_str(&format!(
                 "{} {} {} {} {}",
                 GP_VOTEFULL_COUNTED, votes, GP_VOTESKIP_SO_FAR, needed, GP_VOTEFULL_NEEDED
             )),
+            Self::GpVoteFullRoom { needed } => f.write_str(&format!(
+                "{} {} {}",
+                GP_VOTEFULL_ROOM, needed, GP_VOTEFULL_ROOM_NEEDED
+            )),
+            Self::GpVoteFullCarried => f.write_str(GP_VOTEFULL_CARRIED),
             Self::GpVoteFullPassed => f.write_str(GP_VOTEFULL_PASSED),
             Self::GpVoteFullAlready => f.write_str(GP_VOTEFULL_ALREADY),
         }
@@ -679,7 +718,9 @@ mod test {
     fn test_gp_messages_display() {
         use crate::messaging::messages::{
             GP_CLOSED_BY_HOST, GP_ENDED_BY, GP_QUEUE_CLEARED, GP_ROUND_SKIPPED, GP_STARTED,
-            GP_SUBMITTED, GP_SUBMITTED_REPLACED, GP_WINDOW_CLOSED_SONGS,
+            GP_STARTED_NO_RESULTS, GP_STARTED_REVEAL_SONG, GP_SUBMITTED, GP_SUBMITTED_REPLACED,
+            GP_VOTEFULL_CARRIED, GP_VOTEFULL_ROOM, GP_VOTEFULL_ROOM_NEEDED, GP_VOTESKIP_CARRIED,
+            GP_VOTESKIP_PULLED, GP_VOTESKIP_ROOM, GP_VOTESKIP_ROOM_NEEDED, GP_WINDOW_CLOSED_SONGS,
         };
 
         let msg = CrackedMessage::GpSubmitted {
@@ -707,6 +748,8 @@ mod test {
             rounds: 5,
             timer_secs: 180,
             clip: None,
+            reveal: crate::commands::music::gp::GpReveal::Song,
+            round_results: true,
             cleared_queue: false,
         };
         let s = msg.to_string();
@@ -718,9 +761,72 @@ mod test {
             rounds: 3,
             timer_secs: 60,
             clip: None,
+            reveal: crate::commands::music::gp::GpReveal::Round,
+            round_results: true,
             cleared_queue: true,
         };
         assert!(msg.to_string().ends_with(&format!(" {}", GP_QUEUE_CLEARED)));
+        let s = msg.to_string();
+        assert!(
+            !s.contains(GP_STARTED_REVEAL_SONG),
+            "the default says nothing: {s}"
+        );
+        let msg = CrackedMessage::GpStarted {
+            category: "🎲 Mixed",
+            rounds: 3,
+            timer_secs: 60,
+            clip: None,
+            reveal: crate::commands::music::gp::GpReveal::Song,
+            round_results: true,
+            cleared_queue: false,
+        };
+        let s = msg.to_string();
+        assert!(s.ends_with(GP_STARTED_REVEAL_SONG), "{s}");
+        assert!(!s.contains(GP_STARTED_NO_RESULTS), "{s}");
+        let msg = CrackedMessage::GpStarted {
+            category: "🎲 Mixed",
+            rounds: 3,
+            timer_secs: 60,
+            clip: None,
+            reveal: crate::commands::music::gp::GpReveal::Song,
+            round_results: false,
+            cleared_queue: false,
+        };
+        let s = msg.to_string();
+        assert!(s.ends_with(GP_STARTED_NO_RESULTS), "{s}");
+
+        // A vote answers the voter and the room separately; only the voter's
+        // line carries the count so far, and the room's names nobody.
+        assert_eq!(
+            CrackedMessage::GpVoteSkipRoom { needed: 2 }.to_string(),
+            format!("{} 2 {}", GP_VOTESKIP_ROOM, GP_VOTESKIP_ROOM_NEEDED)
+        );
+        assert_eq!(
+            CrackedMessage::GpVoteFullRoom { needed: 1 }.to_string(),
+            format!("{} 1 {}", GP_VOTEFULL_ROOM, GP_VOTEFULL_ROOM_NEEDED)
+        );
+        assert_eq!(
+            CrackedMessage::GpVoteSkipCarried.to_string(),
+            GP_VOTESKIP_CARRIED
+        );
+        assert_eq!(
+            CrackedMessage::GpVoteSkipPulled.to_string(),
+            GP_VOTESKIP_PULLED
+        );
+        assert_eq!(
+            CrackedMessage::GpVoteFullCarried.to_string(),
+            GP_VOTEFULL_CARRIED
+        );
+        for room in [
+            CrackedMessage::GpVoteSkipRoom { needed: 1 },
+            CrackedMessage::GpVoteSkipPassed,
+            CrackedMessage::GpVoteSkipPulled,
+            CrackedMessage::GpVoteFullRoom { needed: 1 },
+            CrackedMessage::GpVoteFullPassed,
+        ] {
+            let s = room.to_string();
+            assert!(!s.contains("<@"), "a room message must mention nobody: {s}");
+        }
 
         assert_eq!(
             CrackedMessage::GpWindowClosed { count: 3 }.to_string(),

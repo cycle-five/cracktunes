@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, guild_id, started_at, host_id, voice_channel_id, text_channel_id,\n                      category, phase, current_round, current_track, timer_secs,\n                      clip_start_secs, clip_length_secs, generation,\n                      EXTRACT(EPOCH FROM now() - last_seen_at)::bigint AS \"last_seen_secs_ago!\"\n               FROM gp_game\n               WHERE guild_id = $1 AND finished_at IS NULL\n               ORDER BY started_at DESC\n               LIMIT 1",
+  "query": "SELECT id, guild_id, started_at, host_id, voice_channel_id, text_channel_id,\n                      category, phase, current_round, current_track, timer_secs,\n                      clip_start_secs, clip_length_secs, reveal, round_results, generation,\n                      EXTRACT(EPOCH FROM now() - last_seen_at)::bigint AS \"last_seen_secs_ago!\"\n               FROM gp_game\n               WHERE guild_id = $1 AND finished_at IS NULL\n               ORDER BY started_at DESC\n               LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -70,11 +70,21 @@
       },
       {
         "ordinal": 13,
+        "name": "reveal",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 14,
+        "name": "round_results",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
         "name": "generation",
         "type_info": "Int8"
       },
       {
-        "ordinal": 14,
+        "ordinal": 16,
         "name": "last_seen_secs_ago!",
         "type_info": "Int8"
       }
@@ -99,8 +109,10 @@
       true,
       true,
       false,
+      false,
+      false,
       null
     ]
   },
-  "hash": "56c10b4d1d935bfc72cb74c5fa8783b7857ff6a0ca0b724d063157fd89571b7a"
+  "hash": "ed82c4078379db3228e63271385f99485228a909952e23183d73fb715ec56b41"
 }

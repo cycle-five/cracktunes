@@ -22,12 +22,14 @@ use crate::{
         GP_GUESSED_RIGHT, GP_GUESS_CHANGED, GP_GUESS_RECORDED, GP_HOW_TO, GP_HOW_TO_TITLE,
         GP_LIKED, GP_LIKES, GP_LIKE_HINT, GP_LIKE_LABEL, GP_NOBODY_GUESSED, GP_NOBODY_YET,
         GP_PROMPT_CLOSES_EARLY, GP_PROMPT_CLOSES_TITLE, GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE,
-        GP_REVEAL, GP_ROUND_HINT, GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD,
-        GP_SELECT_PLACEHOLDER, GP_SONG_TITLE, GP_STATUS_CLOSES, GP_STATUS_GUESSED, GP_STATUS_LIKES,
-        GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SCORES, GP_STATUS_SUBMITTED,
-        GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, GP_UNLIKED,
-        GP_WINDOW_CLOSED, GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING,
-        GP_WINDOW_WARNING_IN, SPOTIFY_GP_ONE_SONG, SPOTIFY_NOTHING_PLAYABLE,
+        GP_RESULTS_GUESSED_BY, GP_RESULTS_GUESSED_COUNT, GP_RESULTS_NOBODY_SCORED,
+        GP_RESULTS_THIS_ROUND, GP_RESULTS_TITLE, GP_REVEAL, GP_REVEAL_HELD, GP_ROUND_HINT,
+        GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE,
+        GP_STATUS_CLOSES, GP_STATUS_GUESSED, GP_STATUS_LIKES, GP_STATUS_PLAYING, GP_STATUS_PROMPT,
+        GP_STATUS_SCORES, GP_STATUS_SUBMITTED, GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED,
+        GP_TRACK_FAILED_NOTE, GP_UNLIKED, GP_WINDOW_CLOSED, GP_WINDOW_CLOSED_SONGS,
+        GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN, SPOTIFY_GP_ONE_SONG,
+        SPOTIFY_NOTHING_PLAYABLE,
     },
     music::queue::build_track,
     poise_ext::PoiseContextExt,
@@ -181,6 +183,40 @@ pub fn gp_votes_required(eligible_voters: usize) -> usize {
     (eligible_voters / 2 + 1).max(1)
 }
 
+/// A round's order has to be a derangement of the last one, or at least this
+/// many songs long before that is asked of it. Two songs have two orders, and
+/// forbidding the one that repeats leaves exactly one -- so two-song rounds
+/// would alternate, which is a tell of its own. They stay a plain shuffle.
+pub const GP_DERANGE_MIN_SONGS: usize = 3;
+
+/// Shuffle `items` into a play order, then keep drawing until nobody sits in
+/// the slot they had in `previous` -- the previous round's order, by submitter.
+///
+/// A uniform shuffle is memoryless: with three players the next round repeats
+/// the last one's order one time in six and keeps someone's slot two times in
+/// three, and once a room has noticed, the position in the round says whose
+/// song it is before a note has played. Rejecting every order with a fixed
+/// point relative to the last round closes both. With at least
+/// [`GP_DERANGE_MIN_SONGS`] songs a passing order always exists (each slot
+/// forbids at most one player, and no player is forbidden from two slots), and
+/// with three players a third of draws pass, so this is a handful of shuffles
+/// at worst.
+pub fn shuffle_against<T>(items: &mut [(UserId, T)], previous: &[UserId], rng: &mut impl Rng) {
+    items.shuffle(rng);
+    if items.len() < GP_DERANGE_MIN_SONGS || previous.is_empty() {
+        return;
+    }
+    let keeps_a_slot =
+        |items: &[(UserId, T)]| items.iter().zip(previous).any(|((id, _), prev)| id == prev);
+    // Bounded only so a broken rng cannot spin forever; a real one leaves this
+    // loop within a few draws, and the fallback order is still a shuffle.
+    let mut tries = 0;
+    while keeps_a_slot(items) && tries < 1000 {
+        items.shuffle(rng);
+        tries += 1;
+    }
+}
+
 /// Unix seconds now; the game stores `closes_at` this way so the prompt embed
 /// can show Discord's live `<t:..:R>` countdown with a single send.
 pub fn now() -> i64 {
@@ -229,6 +265,44 @@ pub enum GpPhase {
     Finished,
 }
 
+/// When the room learns whose song was whose. The first `#[name]` is what
+/// Discord shows in the `/gp start` dropdown; the second is what a prefix
+/// command types.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, poise::ChoiceParameter)]
+pub enum GpReveal {
+    /// Nothing is named until the round's last song has played: the reveal is
+    /// the round-results embed. The default. With every song revealed as it
+    /// ends, the last song of a round is never a guess -- everyone has one song
+    /// in, so by the final one the room knows by elimination -- and with three
+    /// players the second is a coin flip. Holding the names keeps every song a
+    /// guess.
+    #[name = "🤐 At the end of the round"]
+    #[name = "round"]
+    #[default]
+    Round,
+    /// The submitter is named when their song ends, as the game originally did.
+    #[name = "🎉 After each song"]
+    #[name = "song"]
+    Song,
+}
+
+impl GpReveal {
+    /// A stable name for storage. Not the display name, whose emoji and wording
+    /// are free to change.
+    pub fn slug(self) -> &'static str {
+        match self {
+            Self::Song => "song",
+            Self::Round => "round",
+        }
+    }
+
+    pub fn from_slug(slug: &str) -> Option<Self> {
+        [Self::Round, Self::Song]
+            .into_iter()
+            .find(|r| r.slug() == slug)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct GpTrack {
     pub submitter: UserId,
@@ -243,8 +317,81 @@ pub struct GpTrack {
     /// The room voted to hear it all: the clip timer stands down and the
     /// submitter takes [`GP_POINTS_FULL_SONG`] at the reveal.
     pub play_full: bool,
+    /// The song never played -- songbird could not open the stream -- so
+    /// nothing was scored for it. Set when the song ends, and kept so the
+    /// round's results can say so and so its payout stays zero when re-derived.
+    pub failed: bool,
     /// The song message, so the reveal can edit it in place.
     pub message: Option<(GenericChannelId, MessageId)>,
+}
+
+/// What one song paid out, and to whom. A pure function of the song as it
+/// stands, so the reveal, the round's results and the visible scoreboard all
+/// agree on it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct GpTrackScore {
+    /// Everyone (other than the submitter) whose last guess was right.
+    pub correct: Vec<UserId>,
+    pub fooled_everyone: bool,
+    /// (player, points), one entry per player paid.
+    pub points: Vec<(UserId, u32)>,
+}
+
+impl GpTrack {
+    fn new(submitter: UserId, track: ResolvedTrack<'static>) -> Self {
+        Self {
+            submitter,
+            track,
+            guesses: HashMap::new(),
+            likes: HashSet::new(),
+            skip_votes: HashSet::new(),
+            full_votes: HashSet::new(),
+            play_full: false,
+            failed: false,
+            message: None,
+        }
+    }
+
+    /// The payout for this song. `guessable` is the round's: a one-song round
+    /// has nothing to guess, so no guess or fooled points are paid. A song that
+    /// never played pays nothing at all -- not even for its likes.
+    fn score(&self, guessable: bool) -> GpTrackScore {
+        if self.failed {
+            return GpTrackScore::default();
+        }
+        let mut correct: Vec<UserId> = if guessable {
+            self.guesses
+                .iter()
+                .filter(|(guesser, guessed)| {
+                    **guesser != self.submitter && **guessed == self.submitter
+                })
+                .map(|(guesser, _)| *guesser)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        // A stable order, so two derivations of the same song agree exactly.
+        correct.sort_unstable();
+        let fooled_everyone = guessable && correct.is_empty();
+        let mut points: Vec<(UserId, u32)> =
+            correct.iter().map(|g| (*g, GP_POINTS_CORRECT)).collect();
+        let mut own = 0;
+        if fooled_everyone {
+            own += GP_POINTS_FOOLED_ALL;
+        }
+        own += self.likes.len() as u32 * GP_POINTS_PER_LIKE;
+        if self.play_full {
+            own += GP_POINTS_FULL_SONG;
+        }
+        if own > 0 {
+            points.push((self.submitter, own));
+        }
+        GpTrackScore {
+            correct,
+            fooled_everyone,
+            points,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -258,6 +405,13 @@ pub struct GpRound {
     pub prompt_message: Option<(GenericChannelId, MessageId)>,
     /// Unix seconds; `Some` while the window is open.
     pub closes_at: Option<i64>,
+    /// The round's results embed has reached the channel. The snapshot that
+    /// moves the game past a round is written *before* its results are posted,
+    /// so a restart in between would otherwise lose them -- and with the reveal
+    /// held to the round's end, that embed is the only place the round's
+    /// submitters are ever named. A resume posts the results of any round the
+    /// game has moved past that does not have this set.
+    pub results_posted: bool,
 }
 
 impl GpRound {
@@ -268,7 +422,22 @@ impl GpRound {
             tracks: Vec::new(),
             prompt_message: None,
             closes_at: None,
+            results_posted: false,
         }
+    }
+
+    /// Everything the first `n` songs of this round paid out, added up per
+    /// player. Only songs that have ended are scored, and `n` is how many have:
+    /// a song still playing would be scored on guesses that can still change.
+    fn points_through(&self, n: usize) -> HashMap<UserId, u32> {
+        let guessable = self.guessable();
+        let mut total: HashMap<UserId, u32> = HashMap::new();
+        for t in self.tracks.iter().take(n) {
+            for (who, pts) in t.score(guessable).points {
+                *total.entry(who).or_insert(0) += pts;
+            }
+        }
+        total
     }
 
     /// Distinct people with a song in this round (the only valid guesses).
@@ -310,6 +479,14 @@ pub struct GpGame {
     pub timer_secs: u64,
     /// `None` plays whole songs.
     pub clip: Option<GpClip>,
+    /// When submitters are named: only in the round's results (the default), or
+    /// as each song ends.
+    pub reveal: GpReveal,
+    /// Post the round-results embed when a round ends. Off, the game is as it
+    /// was before there was one: each song's reveal and nothing summing them
+    /// up. Ignored -- always on -- when `reveal` is held to the round's end,
+    /// since then the results embed is the reveal.
+    pub round_results: bool,
     /// Bumped on every phase transition. Timers capture the generation they
     /// were spawned for and do nothing once it has moved on, so a window that
     /// closed early (host, or everyone submitted) leaves no stale fire behind.
@@ -337,6 +514,8 @@ impl GpGame {
         prompts: Vec<String>,
         timer_secs: u64,
         clip: Option<GpClip>,
+        reveal: GpReveal,
+        round_results: bool,
         started_at: i64,
     ) -> Self {
         Self {
@@ -352,6 +531,8 @@ impl GpGame {
             current_track: 0,
             timer_secs,
             clip,
+            reveal,
+            round_results,
             generation: 0,
             parked_for_end: false,
             players: HashMap::new(),
@@ -391,11 +572,42 @@ impl GpGame {
     /// Every player with their points, best first; ties broken by name so the
     /// order is stable between edits.
     pub(crate) fn sorted_scores(&self) -> Vec<(UserId, u32)> {
-        let mut v: Vec<(UserId, u32)> = self
-            .players
-            .keys()
-            .map(|id| (*id, self.scores.get(id).copied().unwrap_or(0)))
-            .collect();
+        self.sort_points(
+            self.players
+                .keys()
+                .map(|id| (*id, self.scores.get(id).copied().unwrap_or(0)))
+                .collect(),
+        )
+    }
+
+    /// The scoreboard the room may see right now. The same as
+    /// [`Self::sorted_scores`], except while a round is playing with the reveal
+    /// held to its end: then the totals still carry what this round's finished
+    /// songs paid out, and showing them would give the round away -- a player
+    /// up a hundred after song one either guessed it or was the one nobody
+    /// guessed. So the round's payout so far is taken back off, and the board
+    /// reads as it did when the round began.
+    pub(crate) fn visible_scores(&self) -> Vec<(UserId, u32)> {
+        if self.reveal != GpReveal::Round || self.phase != GpPhase::Playing {
+            return self.sorted_scores();
+        }
+        let held = self.rounds[self.current_round].points_through(self.current_track);
+        self.sort_points(
+            self.players
+                .keys()
+                .map(|id| {
+                    let total = self.scores.get(id).copied().unwrap_or(0);
+                    (
+                        *id,
+                        total.saturating_sub(held.get(id).copied().unwrap_or(0)),
+                    )
+                })
+                .collect(),
+        )
+    }
+
+    /// Best first, ties by name.
+    fn sort_points(&self, mut v: Vec<(UserId, u32)>) -> Vec<(UserId, u32)> {
         v.sort_by(|a, b| {
             b.1.cmp(&a.1).then_with(|| {
                 self.name_of(a.0)
@@ -404,6 +616,68 @@ impl GpGame {
             })
         });
         v
+    }
+
+    /// Whether this game posts a round's results: a host may turn them off,
+    /// unless the reveal is held to the round's end, in which case they are the
+    /// reveal and there is no game without them.
+    pub(crate) fn posts_results(&self) -> bool {
+        self.round_results || self.reveal == GpReveal::Round
+    }
+
+    /// The rounds the game has moved past whose results never reached the
+    /// channel: the bot went down between the snapshot that ended the round and
+    /// the post. Whatever else becomes of the game, the room is owed these. A
+    /// round nobody submitted to has no results and is not.
+    pub(crate) fn unposted_results(&self) -> Vec<usize> {
+        if !self.posts_results() {
+            return Vec::new();
+        }
+        self.rounds
+            .iter()
+            .take(self.current_round)
+            .enumerate()
+            .filter(|(_, r)| !r.tracks.is_empty() && !r.results_posted)
+            .map(|(idx, _)| idx)
+            .collect()
+    }
+
+    /// The round as it ended, for the results embed: every song with who
+    /// submitted it and who got it, what the round paid each player, and the
+    /// scoreboard after it.
+    pub(crate) fn round_result(&self, round_idx: usize) -> GpRoundResult {
+        let round = &self.rounds[round_idx];
+        let guessable = round.guessable();
+        let songs = round
+            .tracks
+            .iter()
+            .map(|t| {
+                let score = t.score(guessable);
+                GpSongResult {
+                    submitter: t.submitter,
+                    title: t.track.get_title(),
+                    correct: score.correct,
+                    fooled_everyone: score.fooled_everyone,
+                    likes: t.likes.len(),
+                    played_full: t.play_full,
+                    failed: t.failed,
+                }
+            })
+            .collect();
+        let points: Vec<(UserId, u32)> = round
+            .points_through(round.tracks.len())
+            .into_iter()
+            .filter(|(_, pts)| *pts > 0)
+            .collect();
+        GpRoundResult {
+            round_idx,
+            total_rounds: self.rounds.len(),
+            prompt: round.prompt.clone(),
+            guessable,
+            songs,
+            points: self.sort_points(points),
+            scores: self.sorted_scores(),
+        }
     }
 
     fn open_window(&mut self, now: i64) -> GpWindowOpened {
@@ -432,24 +706,24 @@ impl GpGame {
         self.generation += 1;
         let idx = self.current_round;
         let total_rounds = self.rounds.len();
+        // The last play order before this round, so this one can be drawn
+        // against it. A round nobody submitted to has no order and is skipped
+        // over, not treated as a blank slate.
+        let previous: Vec<UserId> = self.rounds[..idx]
+            .iter()
+            .rev()
+            .find(|r| !r.tracks.is_empty())
+            .map(|r| r.tracks.iter().map(|t| t.submitter).collect())
+            .unwrap_or_default();
         let round = &mut self.rounds[idx];
         // Sort before shuffling so a seeded rng gives the same order regardless
         // of HashMap iteration order.
         let mut subs: Vec<(UserId, ResolvedTrack<'static>)> = round.submissions.drain().collect();
         subs.sort_by_key(|(id, _)| *id);
-        subs.shuffle(rng);
+        shuffle_against(&mut subs, &previous, rng);
         round.tracks = subs
             .into_iter()
-            .map(|(submitter, track)| GpTrack {
-                submitter,
-                track,
-                guesses: HashMap::new(),
-                likes: HashSet::new(),
-                skip_votes: HashSet::new(),
-                full_votes: HashSet::new(),
-                play_full: false,
-                message: None,
-            })
+            .map(|(submitter, track)| GpTrack::new(submitter, track))
             .collect();
         round.closes_at = None;
         let count = round.tracks.len();
@@ -638,6 +912,40 @@ pub struct GpTrackResult {
     /// The song never played: songbird failed to open the stream. Nothing was
     /// scored for it.
     pub failed: bool,
+    /// The game reveals at the end of the round, not now: the song's own message
+    /// names nobody and shows no scores, and `round` does the revealing when it
+    /// comes.
+    pub held: bool,
+    /// This was the round's last song and the game posts results: the round's
+    /// results, to post after the reveal and before whatever comes next.
+    pub round: Option<GpRoundResult>,
+}
+
+/// One song on the round-results embed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GpSongResult {
+    pub submitter: UserId,
+    pub title: String,
+    pub correct: Vec<UserId>,
+    pub fooled_everyone: bool,
+    pub likes: usize,
+    pub played_full: bool,
+    pub failed: bool,
+}
+
+/// A round as it ended, cloned out of the map for the results embed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GpRoundResult {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub prompt: String,
+    pub guessable: bool,
+    /// In play order.
+    pub songs: Vec<GpSongResult>,
+    /// What this round paid each player who took anything, best first.
+    pub points: Vec<(UserId, u32)>,
+    /// The running totals after it, best first.
+    pub scores: Vec<(UserId, u32)>,
 }
 
 #[derive(Clone, Debug)]
@@ -686,6 +994,8 @@ impl Data {
         prompts: Vec<String>,
         timer_secs: u64,
         clip: Option<GpClip>,
+        reveal: GpReveal,
+        round_results: bool,
         now: i64,
     ) -> CrackedResult<GpWindowOpened> {
         // `contains_key` then `insert` would let two `/gp start` race through and
@@ -705,6 +1015,8 @@ impl Data {
             prompts,
             timer_secs,
             clip,
+            reveal,
+            round_results,
             now,
         );
         game.players.insert(host, host_name);
@@ -1172,42 +1484,30 @@ impl Data {
         {
             return None;
         }
-        let round = &game.rounds[round_idx];
-        let guessable = round.guessable();
-        let t = &round.tracks[track_idx];
+        let guessable = game.rounds[round_idx].guessable();
+        let t = &mut game.rounds[round_idx].tracks[track_idx];
+        t.failed = failed;
         let (submitter, likes, message) = (t.submitter, t.likes.len(), t.message);
         let played_full = t.play_full;
         let (title, url) = (t.track.get_title(), t.track.get_url());
-        let correct: Vec<UserId> = if guessable && !failed {
-            t.guesses
-                .iter()
-                .filter(|(guesser, guessed)| **guesser != submitter && **guessed == submitter)
-                .map(|(guesser, _)| *guesser)
-                .collect()
-        } else {
-            Vec::new()
-        };
-        for g in &correct {
-            *game.scores.entry(*g).or_insert(0) += GP_POINTS_CORRECT;
-        }
-        let fooled_everyone = guessable && !failed && correct.is_empty();
-        if fooled_everyone {
-            *game.scores.entry(submitter).or_insert(0) += GP_POINTS_FOOLED_ALL;
-        }
-        if likes > 0 && !failed {
-            *game.scores.entry(submitter).or_insert(0) += likes as u32 * GP_POINTS_PER_LIKE;
-        }
-        if played_full && !failed {
-            *game.scores.entry(submitter).or_insert(0) += GP_POINTS_FULL_SONG;
+        let GpTrackScore {
+            correct,
+            fooled_everyone,
+            points,
+        } = t.score(guessable);
+        for (who, pts) in points {
+            *game.scores.entry(who).or_insert(0) += pts;
         }
         game.generation += 1;
         game.current_track += 1;
         let total_tracks = game.rounds[round_idx].tracks.len();
-        let next = if game.current_track < total_tracks {
-            GpNext::Track(Box::new(game.track_start()))
-        } else {
+        let last_of_round = game.current_track >= total_tracks;
+        let next = if last_of_round {
             game.advance_round(now)
+        } else {
+            GpNext::Track(Box::new(game.track_start()))
         };
+        let round = (last_of_round && game.posts_results()).then(|| game.round_result(round_idx));
         // A song ending is the other moment the game is written down: the scores
         // it just paid out, and the position the game moves to.
         self.gp_snapshot(&game);
@@ -1225,11 +1525,13 @@ impl Data {
             likes,
             played_full,
             guessable,
-            scores: game.sorted_scores(),
+            scores: game.visible_scores(),
             message,
             text_channel: game.text_channel,
             next,
             failed,
+            held: game.reveal == GpReveal::Round,
+            round,
         })
     }
 
@@ -1338,6 +1640,20 @@ impl Data {
         Some((game.track_start(), old))
     }
 
+    /// The round's results embed is in the channel. Written down at once: it is
+    /// what a resume reads to know the round is not still owed them, and
+    /// the snapshot that ended the round went out before the post.
+    pub fn gp_mark_results_posted(&self, guild_id: GuildId, round_idx: usize) {
+        let Some(mut game) = self.gp_games.get_mut(&guild_id) else {
+            return;
+        };
+        let Some(round) = game.rounds.get_mut(round_idx) else {
+            return;
+        };
+        round.results_posted = true;
+        self.gp_snapshot(&game);
+    }
+
     /// Who may act in a running game: anyone who has submitted, plus the host, so
     /// that whoever is running the game can always see where it stands. The play
     /// actions themselves (guess, 👍, vote to skip) are stricter -- they require an
@@ -1375,7 +1691,7 @@ impl Data {
                 prompt: round.prompt.clone(),
                 closes_at: round.closes_at.unwrap_or(0),
                 submitted: names(round.submissions.keys().copied().collect()),
-                scores: game.sorted_scores(),
+                scores: game.visible_scores(),
             },
             GpPhase::Playing | GpPhase::Finished => {
                 let t = round.tracks.get(game.current_track);
@@ -1390,7 +1706,7 @@ impl Data {
                             .unwrap_or_default(),
                     ),
                     likes: t.map(|t| t.likes.len()).unwrap_or(0),
-                    scores: game.sorted_scores(),
+                    scores: game.visible_scores(),
                 }
             },
         })
@@ -1405,6 +1721,12 @@ impl Data {
 
     pub fn gp_voice_channel(&self, guild_id: GuildId) -> Option<ChannelId> {
         self.gp_games.get(&guild_id).map(|g| g.voice_channel)
+    }
+
+    /// The channel the game plays out in: where the prompts and songs are posted,
+    /// and so where a message to the room belongs.
+    pub fn gp_text_channel(&self, guild_id: GuildId) -> Option<GenericChannelId> {
+        self.gp_games.get(&guild_id).map(|g| g.text_channel)
     }
 }
 
@@ -1593,7 +1915,31 @@ pub fn gp_track_embed(s: &GpTrackStart) -> CreateEmbed<'static> {
         .colour(Colour::BLURPLE)
 }
 
+/// The song message once the song has ended. Names the submitter and shows what
+/// they scored -- unless the game reveals at the end of the round, in which
+/// case it names nobody and shows no scores: only that the song is over, and
+/// its likes, which give nothing away.
 pub fn gp_reveal_embed(res: &GpTrackResult) -> CreateEmbed<'static> {
+    if res.held {
+        let e = CreateEmbed::new()
+            .title(song_title(
+                res.round_idx,
+                res.total_rounds,
+                res.track_idx,
+                res.total_tracks,
+            ))
+            .description(format!(
+                "*{}*\n\n**[{}]({})**\n\n{GP_REVEAL_HELD}",
+                res.prompt, res.title, res.url
+            ));
+        return if res.failed {
+            e.field(GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, false)
+                .colour(Colour::RED)
+        } else {
+            e.field(GP_LIKES, res.likes.to_string(), true)
+                .colour(Colour::DARKER_GREY)
+        };
+    }
     if res.failed {
         return CreateEmbed::new()
             .title(song_title(
@@ -1662,6 +2008,95 @@ pub fn gp_scoreboard_embed(scores: &[(UserId, u32)], title: &str) -> CreateEmbed
         .title(title.to_string())
         .description(scores_lines(scores))
         .colour(Colour::GOLD)
+}
+
+/// Discord's ceiling on an embed description.
+pub const GP_EMBED_DESCRIPTION_MAX: usize = 4096;
+
+fn points_lines(points: &[(UserId, u32)]) -> String {
+    if points.is_empty() {
+        return GP_RESULTS_NOBODY_SCORED.to_string();
+    }
+    points
+        .iter()
+        .enumerate()
+        .map(|(i, (id, pts))| format!("{}. {} — +{pts}", i + 1, id.mention()))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// One line of the results per song. `names` lists who guessed right by
+/// mention; otherwise it is a count, for a round too big for the names to fit.
+fn song_result_line(i: usize, s: &GpSongResult, guessable: bool, names: bool) -> String {
+    let mut line = format!("{}. **{}** · {}", i + 1, s.title, s.submitter.mention());
+    if s.failed {
+        line.push_str(&format!(" · {GP_TRACK_FAILED}"));
+        return line;
+    }
+    if guessable {
+        let guessed = if s.correct.is_empty() {
+            GP_NOBODY_GUESSED.to_string()
+        } else if names {
+            s.correct
+                .iter()
+                .map(|id| id.mention().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        } else {
+            format!("{} {GP_RESULTS_GUESSED_COUNT}", s.correct.len())
+        };
+        line.push_str(&format!(" · {GP_RESULTS_GUESSED_BY} {guessed}"));
+    }
+    line.push_str(&format!(" · 👍 {}", s.likes));
+    if s.fooled_everyone {
+        line.push_str(&format!(" · {GP_FOOLED_EVERYONE}"));
+    }
+    if s.played_full {
+        line.push_str(&format!(" · {GP_FULL_SONG}"));
+    }
+    line
+}
+
+/// The round summed up, posted at the bottom of the channel once its last
+/// song has been revealed: every song with who submitted it and who got it,
+/// what the round paid out, and the scoreboard. Each song's own reveal is an
+/// edit of a message somewhere up the channel, and after five songs nobody
+/// finds them; this is the one place the round's results are together. In a
+/// game that reveals at the end of the round it is also the reveal itself.
+pub fn gp_round_results_embed(r: &GpRoundResult) -> CreateEmbed<'static> {
+    let lines = |names: bool| {
+        let songs = r
+            .songs
+            .iter()
+            .enumerate()
+            .map(|(i, s)| song_result_line(i, s, r.guessable, names))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("**{}**\n\n{songs}", r.prompt)
+    };
+    // Twenty-five songs each naming two dozen guessers by mention is well past
+    // what a description holds; fall back to counting the guessers, and past
+    // that cut the list rather than have Discord refuse the whole embed.
+    let mut description = lines(true);
+    if description.chars().count() > GP_EMBED_DESCRIPTION_MAX {
+        description = lines(false);
+    }
+    if description.chars().count() > GP_EMBED_DESCRIPTION_MAX {
+        description = description
+            .chars()
+            .take(GP_EMBED_DESCRIPTION_MAX - 1)
+            .collect::<String>()
+            + "…";
+    }
+    CreateEmbed::new()
+        .title(format!(
+            "{} {GP_RESULTS_TITLE}",
+            round_title(r.round_idx, r.total_rounds)
+        ))
+        .description(description)
+        .field(GP_RESULTS_THIS_ROUND, points_lines(&r.points), false)
+        .field(GP_SCOREBOARD, scores_lines(&r.scores), false)
+        .colour(Colour::DARK_GOLD)
 }
 
 pub fn gp_status_embed(status: &GpStatus) -> CreateEmbed<'static> {
@@ -1935,19 +2370,21 @@ pub async fn gp_after_close(pb: GpPlayback, closed: GpWindowClosed) -> Result<()
     gp_follow(pb, closed.next, closed.text_channel, false).await
 }
 
+/// Move the game on to `next`. `after_reveal` says something was just posted
+/// that the room should get a beat to read -- a song's reveal, or a round's
+/// results -- before the next song starts or the next prompt pushes it up the
+/// channel. The close of a window has nothing to read and goes straight on.
 async fn gp_follow(
     pb: GpPlayback,
     next: GpNext,
     text_channel: GenericChannelId,
-    pause_before_track: bool,
+    after_reveal: bool,
 ) -> Result<(), Error> {
+    if after_reveal {
+        tokio::time::sleep(Duration::from_secs(GP_REVEAL_PAUSE_SECS)).await;
+    }
     match next {
-        GpNext::Track(start) => {
-            if pause_before_track {
-                tokio::time::sleep(Duration::from_secs(GP_REVEAL_PAUSE_SECS)).await;
-            }
-            gp_play_track(&pb, *start).await
-        },
+        GpNext::Track(start) => gp_play_track(&pb, *start).await,
         GpNext::Window(opened) => gp_open_round(&pb, opened).await,
         GpNext::Finished(scores) => {
             // Remove first: a game that cannot post its scoreboard must still end,
@@ -2222,7 +2659,32 @@ pub async fn gp_advance_track(
             tracing::warn!("gp: posting the reveal: {e}");
         }
     }
-    gp_follow(pb, res.next, res.text_channel, true).await
+    // The round's last song: sum the round up at the bottom of the channel
+    // before the next prompt (or the final scoreboard) goes up. Never reached
+    // for a round nobody submitted to, which ends at the close, not here. Once
+    // it is up the round is marked as having had its results, and the game
+    // written down again: the snapshot that ended the round went out before
+    // this post, and a round left unmarked is posted by the next resume.
+    if let Some(round) = &res.round {
+        match res
+            .text_channel
+            .send_message(
+                &pb.http,
+                CreateMessage::new().embed(gp_round_results_embed(round)),
+            )
+            .await
+        {
+            Ok(_) => pb.data.gp_mark_results_posted(guild_id, round.round_idx),
+            Err(e) => tracing::warn!(
+                "gp: posting round {} results in {guild_id}: {e}",
+                round.round_idx + 1
+            ),
+        }
+    }
+    // A beat before the next song always; before the next prompt only if the
+    // results were posted, so a game without them moves on as it used to.
+    let pause = matches!(res.next, GpNext::Track(_)) || res.round.is_some();
+    gp_follow(pb, res.next, res.text_channel, pause).await
 }
 
 /// Handle a dropdown pick or a 👍. Called from `SerenityHandler::dispatch` for
@@ -2436,6 +2898,7 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Start a game in your voice channel: pick a category, rounds, and the submission timer.
 #[cfg(not(tarpaulin_include))]
+#[allow(clippy::too_many_arguments)]
 #[poise::command(
     rename = "start",
     category = "Games",
@@ -2466,6 +2929,10 @@ pub async fn gp_start(
     #[min = 20]
     #[max = 300]
     clip_length: Option<u32>,
+    #[description = "Name submitters only at the end of the round (default), or after each song."]
+    reveal: Option<GpReveal>,
+    #[description = "Sum each round up in a results embed when it ends (default yes; always on with reveal:round)."]
+    results: Option<bool>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
@@ -2509,6 +2976,8 @@ pub async fn gp_start(
                 .clamp(GP_MIN_CLIP_LENGTH_SECS, GP_MAX_CLIP_LENGTH_SECS),
         ),
     });
+    let reveal = reveal.unwrap_or_default();
+    let round_results = results.unwrap_or(true) || reveal == GpReveal::Round;
     let prompts = draw_prompts(category, rounds, &mut rand::rng());
 
     // Create the game first so the global TrackEndHandler ignores the End
@@ -2523,6 +2992,8 @@ pub async fn gp_start(
         prompts,
         timer_secs,
         clip,
+        reveal,
+        round_results,
         now(),
     )?;
     let cleared_queue = {
@@ -2540,6 +3011,8 @@ pub async fn gp_start(
             rounds: opened.total_rounds,
             timer_secs,
             clip,
+            reveal,
+            round_results,
             cleared_queue,
         },
         true,
@@ -2730,6 +3203,69 @@ pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// What a vote command says: `mine` goes to the voter alone, `room` -- if there
+/// is anything the room should hear -- to the game's channel, naming nobody.
+type GpVoteAnswer = (CrackedMessage, Option<CrackedMessage>);
+
+/// Answer a vote. The voter's confirmation is ephemeral, the same as
+/// `/gp submit`'s: a slash reply lands under "*name* used `/gp voteskip`", and
+/// who wants a song gone is nobody's business in a game whose whole premise is
+/// that people submitted something embarrassing. What the room is told goes to
+/// the game's channel as a plain message, so the last voter is not named on
+/// that either.
+async fn gp_answer_vote(ctx: Context<'_>, (mine, room): GpVoteAnswer) -> Result<(), Error> {
+    if ctx.is_prefix() {
+        // `ephemeral` is an interaction flag: a prefix invocation gets a public
+        // reply, and "you already voted to skip this" names the voter as surely
+        // as the vote would have. Answer by DM instead, and if that cannot be
+        // delivered say nothing in the channel -- the room's line below still
+        // says the vote counted. (The `!gp voteskip` message itself is public;
+        // the slash form is the one that keeps a vote to yourself.)
+        let dm = ctx
+            .author()
+            .create_dm_channel(&ctx)
+            .await
+            .map(|c| c.id.widen());
+        let sent = match dm {
+            Ok(dm) => dm
+                .send_message(
+                    &ctx.serenity_context().http,
+                    CreateMessage::new().content(mine.to_string()),
+                )
+                .await
+                .map(|_| ()),
+            Err(e) => Err(e),
+        };
+        if let Err(e) = sent {
+            tracing::warn!(
+                "gp: answering a prefix vote by DM in {:?}: {e}",
+                ctx.guild_id()
+            );
+        }
+    } else {
+        ctx.send_message(SendMessageParams::new(mine).with_ephemeral(true))
+            .await?;
+    }
+    let Some(room) = room else {
+        return Ok(());
+    };
+    // The vote may have ended the game's last song; then there is no game and
+    // nothing to tell anyone.
+    let Some(channel) = ctx
+        .guild_id()
+        .and_then(|guild_id| ctx.data().gp_text_channel(guild_id))
+    else {
+        return Ok(());
+    };
+    channel
+        .send_message(
+            &ctx.serenity_context().http,
+            CreateMessage::new().content(room.to_string()),
+        )
+        .await?;
+    Ok(())
+}
+
 /// Vote to end the current song early -- a majority of the voice channel ends it.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
@@ -2738,39 +3274,55 @@ pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
     slash_command,
     prefix_command,
     guild_only,
+    ephemeral,
     check = "cmd_check_music"
 )]
 pub async fn gp_voteskip(ctx: Context<'_>) -> Result<(), Error> {
+    // Errors are answered here, ephemerally, rather than through the framework's
+    // public error reply: "you already voted to skip this" names the voter as
+    // surely as the vote would have.
+    let answer = match gp_voteskip_internal(ctx).await {
+        Ok(a) => a,
+        Err(e) => (CrackedMessage::CrackedError(e), None),
+    };
+    gp_answer_vote(ctx, answer).await
+}
+
+#[cfg(not(tarpaulin_include))]
+async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
     let game_vc = gp_require_player(ctx, guild_id)?;
     let vc_members = gp_vc_members(ctx, game_vc);
     let name = author_display_name(ctx).await;
     let outcome = data.gp_vote_skip(guild_id, ctx.author().id, name, &vc_members)?;
-
-    let ended = match outcome {
-        GpVoteSkipOutcome::Counted { votes, needed } => {
-            ctx.send_reply(CrackedMessage::GpVoteSkipCounted { votes, needed }, true)
-                .await?;
-            return Ok(());
-        },
-        GpVoteSkipOutcome::Passed => CrackedMessage::GpVoteSkipPassed,
-        GpVoteSkipOutcome::OwnSong => CrackedMessage::GpVoteSkipOwnSong,
+    let answer = match outcome {
+        GpVoteSkipOutcome::Counted { votes, needed } => (
+            CrackedMessage::GpVoteSkipCounted { votes, needed },
+            Some(CrackedMessage::GpVoteSkipRoom { needed }),
+        ),
+        GpVoteSkipOutcome::Passed => (
+            CrackedMessage::GpVoteSkipCarried,
+            Some(CrackedMessage::GpVoteSkipPassed),
+        ),
+        GpVoteSkipOutcome::OwnSong => (
+            CrackedMessage::GpVoteSkipOwnSong,
+            Some(CrackedMessage::GpVoteSkipPulled),
+        ),
     };
-    let call = data
-        .songbird
-        .get(guild_id)
-        .ok_or(CrackedError::NotConnected)?;
-    {
+    if !matches!(outcome, GpVoteSkipOutcome::Counted { .. }) {
+        let call = data
+            .songbird
+            .get(guild_id)
+            .ok_or(CrackedError::NotConnected)?;
         let handler = call.lock().await;
         if handler.queue().is_empty() {
-            return Err(CrackedError::NothingPlaying.into());
+            return Err(CrackedError::NothingPlaying);
         }
         // stop() fires TrackEvent::End, which is what advances the game.
         force_skip_top_track(&handler).await?;
     }
-    ctx.send_reply(ended, true).await?;
-    Ok(())
+    Ok(answer)
 }
 
 /// Vote to hear the whole song instead of just the clip -- a majority lets it run.
@@ -2781,25 +3333,41 @@ pub async fn gp_voteskip(ctx: Context<'_>) -> Result<(), Error> {
     slash_command,
     prefix_command,
     guild_only,
+    ephemeral,
     check = "cmd_check_music"
 )]
 pub async fn gp_votefull(ctx: Context<'_>) -> Result<(), Error> {
+    // Same split as `/gp voteskip`, for the same reason: one pattern, not two.
+    let answer = match gp_votefull_internal(ctx).await {
+        Ok(a) => a,
+        Err(e) => (CrackedMessage::CrackedError(e), None),
+    };
+    gp_answer_vote(ctx, answer).await
+}
+
+#[cfg(not(tarpaulin_include))]
+async fn gp_votefull_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
     let game_vc = gp_require_player(ctx, guild_id)?;
     let vc_members = gp_vc_members(ctx, game_vc);
     let name = author_display_name(ctx).await;
-    let msg = match data.gp_vote_full(guild_id, ctx.author().id, name, &vc_members)? {
-        GpVoteFullOutcome::Counted { votes, needed } => {
-            CrackedMessage::GpVoteFullCounted { votes, needed }
+    Ok(
+        match data.gp_vote_full(guild_id, ctx.author().id, name, &vc_members)? {
+            GpVoteFullOutcome::Counted { votes, needed } => (
+                CrackedMessage::GpVoteFullCounted { votes, needed },
+                Some(CrackedMessage::GpVoteFullRoom { needed }),
+            ),
+            // Nothing to do to the track: the clip timer checks `play_full` before
+            // it stops anything, so letting it run on is simply not stopping it.
+            GpVoteFullOutcome::Passed => (
+                CrackedMessage::GpVoteFullCarried,
+                Some(CrackedMessage::GpVoteFullPassed),
+            ),
+            // Already carried by an earlier vote: the room heard about it then.
+            GpVoteFullOutcome::AlreadyFull => (CrackedMessage::GpVoteFullAlready, None),
         },
-        // Nothing to do to the track: the clip timer checks `play_full` before it
-        // stops anything, so letting it run on is simply not stopping it.
-        GpVoteFullOutcome::Passed => CrackedMessage::GpVoteFullPassed,
-        GpVoteFullOutcome::AlreadyFull => CrackedMessage::GpVoteFullAlready,
-    };
-    ctx.send_reply(msg, true).await?;
-    Ok(())
+    )
 }
 
 /// The prompt, who has submitted or guessed, likes, and the scores so far.
@@ -2936,8 +3504,32 @@ mod test {
         game_with_clip(data, prompt_list, None)
     }
 
-    /// As [`game_with`], with an explicit clip setting.
+    /// As [`game_with`], with an explicit clip setting. The reveal is the
+    /// game's default -- held to the round's end -- so the tests below exercise
+    /// the game as it is played; one about per-song reveals opts into
+    /// [`GpReveal::Song`] through [`game_with_reveal`].
     fn game_with_clip(data: &Data, prompt_list: &[&str], clip: Option<GpClip>) -> GpWindowOpened {
+        game_with_reveal(data, prompt_list, clip, GpReveal::default())
+    }
+
+    /// As [`game_with_clip`], with an explicit reveal setting.
+    fn game_with_reveal(
+        data: &Data,
+        prompt_list: &[&str],
+        clip: Option<GpClip>,
+        reveal: GpReveal,
+    ) -> GpWindowOpened {
+        game_with_settings(data, prompt_list, clip, reveal, true)
+    }
+
+    /// Every setting spelled out.
+    fn game_with_settings(
+        data: &Data,
+        prompt_list: &[&str],
+        clip: Option<GpClip>,
+        reveal: GpReveal,
+        round_results: bool,
+    ) -> GpWindowOpened {
         data.gp_start(
             G,
             A,
@@ -2948,6 +3540,8 @@ mod test {
             prompts(prompt_list),
             TIMER,
             clip,
+            reveal,
+            round_results,
             NOW,
         )
         .unwrap()
@@ -2994,6 +3588,8 @@ mod test {
                 prompts(&["x"]),
                 TIMER,
                 None,
+                GpReveal::Song,
+                true,
                 NOW
             )
             .unwrap_err(),
@@ -3010,6 +3606,8 @@ mod test {
                 vec![],
                 TIMER,
                 None,
+                GpReveal::Song,
+                true,
                 NOW
             )
             .unwrap_err(),
@@ -3898,7 +4496,7 @@ mod test {
     #[test]
     fn failed_reveal_embed_json() {
         let data = data();
-        game_with(&data, &["p1"]);
+        game_with_reveal(&data, &["p1"], None, GpReveal::Song);
         submit(&data, A, "alice", "a");
         submit(&data, B, "bob", "b");
         data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
@@ -4113,6 +4711,540 @@ mod test {
         }
     }
 
+    /// Play the current round out with no guesses, so the game moves on to the
+    /// next window (or finishes). Returns the play order it had.
+    fn play_out(data: &Data, round_idx: usize) -> Vec<UserId> {
+        let order: Vec<UserId> = game(data).rounds[round_idx]
+            .tracks
+            .iter()
+            .map(|t| t.submitter)
+            .collect();
+        for i in 0..order.len() {
+            data.gp_reveal_and_advance(G, round_idx, i, NOW).unwrap();
+        }
+        order
+    }
+
+    /// The order of one round must never repeat the order of the round before
+    /// it -- stronger, nobody may keep the slot they had -- or the position in
+    /// the round says whose song it is before a note has played (#450).
+    #[test]
+    fn nobody_keeps_their_slot_from_one_round_to_the_next() {
+        let players = [(A, "alice"), (B, "bob"), (C, "carol")];
+        for seed in 0..40u64 {
+            let data = data();
+            game_with(&data, &["p0", "p1", "p2", "p3"]);
+            let mut rng = StdRng::seed_from_u64(seed);
+            let mut previous: Option<Vec<UserId>> = None;
+            for round in 0..4 {
+                for (id, name) in players {
+                    submit(&data, id, name, &format!("{name}{round}"));
+                }
+                data.gp_close_window(G, A, &mut rng, NOW).unwrap();
+                let order = play_out(&data, round);
+                if let Some(prev) = &previous {
+                    for (slot, (now, then)) in order.iter().zip(prev).enumerate() {
+                        assert_ne!(
+                            now, then,
+                            "seed {seed}, round {round}: slot {slot} kept between rounds"
+                        );
+                    }
+                }
+                previous = Some(order);
+            }
+        }
+    }
+
+    /// A round nobody submitted to has no order; the constraint reaches back
+    /// past it to the last round that was actually played.
+    #[test]
+    fn the_previous_order_skips_an_empty_round() {
+        for seed in 0..40u64 {
+            let data = data();
+            game_with(&data, &["p0", "p1", "p2"]);
+            let mut rng = StdRng::seed_from_u64(seed);
+            for (id, name) in [(A, "alice"), (B, "bob"), (C, "carol")] {
+                submit(&data, id, name, name);
+            }
+            data.gp_close_window(G, A, &mut rng, NOW).unwrap();
+            let first = play_out(&data, 0);
+            // Round 1: nobody submits, straight on to round 2's window.
+            let closed = data.gp_close_window(G, A, &mut rng, NOW).unwrap();
+            assert!(matches!(closed.next, GpNext::Window(_)));
+            for (id, name) in [(A, "alice"), (B, "bob"), (C, "carol")] {
+                submit(&data, id, name, name);
+            }
+            data.gp_close_window(G, A, &mut rng, NOW).unwrap();
+            let third: Vec<UserId> = game(&data).rounds[2]
+                .tracks
+                .iter()
+                .map(|t| t.submitter)
+                .collect();
+            assert!(
+                first.iter().zip(&third).all(|(a, b)| a != b),
+                "seed {seed}: {first:?} then {third:?}"
+            );
+        }
+    }
+
+    /// Two songs have two orders, and forbidding the repeat would leave one:
+    /// the rounds would alternate, which is a tell of its own. So two-song
+    /// rounds are a plain shuffle, and over enough seeds one of them repeats.
+    #[test]
+    fn two_song_rounds_are_not_deranged() {
+        let mut repeats = 0;
+        for seed in 0..40u64 {
+            let data = data();
+            game_with(&data, &["p0", "p1"]);
+            let mut rng = StdRng::seed_from_u64(seed);
+            submit(&data, A, "alice", "a0");
+            submit(&data, B, "bob", "b0");
+            data.gp_close_window(G, A, &mut rng, NOW).unwrap();
+            let first = play_out(&data, 0);
+            submit(&data, A, "alice", "a1");
+            submit(&data, B, "bob", "b1");
+            data.gp_close_window(G, A, &mut rng, NOW).unwrap();
+            let second: Vec<UserId> = game(&data).rounds[1]
+                .tracks
+                .iter()
+                .map(|t| t.submitter)
+                .collect();
+            if first == second {
+                repeats += 1;
+            }
+        }
+        assert!(repeats > 0, "a two-song round should be free to repeat");
+        assert!(repeats < 40, "and free not to");
+    }
+
+    /// The constraint only reaches as far as the previous order does: slots the
+    /// previous round did not have, and players who were not in it, are free.
+    #[test]
+    fn shuffle_against_constrains_only_the_slots_it_can() {
+        let mut rng = rng();
+        let ids: Vec<UserId> = (1..=5).map(UserId::new).collect();
+        // A shorter previous round: only its slots are constrained.
+        for _ in 0..200 {
+            let mut items: Vec<(UserId, ())> = ids.iter().map(|id| (*id, ())).collect();
+            shuffle_against(&mut items, &ids[..2], &mut rng);
+            assert_ne!(items[0].0, ids[0]);
+            assert_ne!(items[1].0, ids[1]);
+        }
+        // A previous round of strangers constrains nothing, and every order is
+        // still reachable.
+        let strangers: Vec<UserId> = (100..=104).map(UserId::new).collect();
+        let mut items: Vec<(UserId, ())> = ids.iter().map(|id| (*id, ())).collect();
+        shuffle_against(&mut items, &strangers, &mut rng);
+        let mut seen: Vec<UserId> = items.iter().map(|(id, _)| *id).collect();
+        seen.sort_unstable();
+        assert_eq!(seen, ids);
+        // No previous round at all: a plain shuffle.
+        let mut items: Vec<(UserId, ())> = ids.iter().map(|id| (*id, ())).collect();
+        shuffle_against(&mut items, &[], &mut rng);
+        assert_eq!(items.len(), 5);
+        // Fewer than the minimum: unconstrained even against the same players.
+        let mut same = 0;
+        for _ in 0..100 {
+            let mut items: Vec<(UserId, ())> = ids[..2].iter().map(|id| (*id, ())).collect();
+            shuffle_against(&mut items, &ids[..2], &mut rng);
+            if items[0].0 == ids[0] {
+                same += 1;
+            }
+        }
+        assert!(same > 0 && same < 100);
+    }
+
+    /// One scoring rule, derived from the song as it stands, so the reveal, the
+    /// round's results and the held-back scoreboard cannot disagree.
+    #[test]
+    fn a_song_scores_from_what_the_room_did_to_it() {
+        let mut t = GpTrack::new(A, track("a"));
+        // Nothing happened: nobody guessed, so the submitter fooled everyone.
+        assert_eq!(
+            t.score(true),
+            GpTrackScore {
+                correct: vec![],
+                fooled_everyone: true,
+                points: vec![(A, GP_POINTS_FOOLED_ALL)],
+            }
+        );
+        // Two right guesses (in a stable order), one wrong, the submitter's own
+        // pick ignored; two likes; voted up to full length.
+        t.guesses.insert(C, A);
+        t.guesses.insert(B, A);
+        t.guesses.insert(D, B);
+        t.guesses.insert(A, A);
+        t.likes.insert(B);
+        t.likes.insert(C);
+        t.play_full = true;
+        assert_eq!(
+            t.score(true),
+            GpTrackScore {
+                correct: vec![B, C],
+                fooled_everyone: false,
+                points: vec![
+                    (B, GP_POINTS_CORRECT),
+                    (C, GP_POINTS_CORRECT),
+                    (A, 2 * GP_POINTS_PER_LIKE + GP_POINTS_FULL_SONG),
+                ],
+            }
+        );
+        // A one-song round: guesses and the fooled bonus are off, the rest stands.
+        assert_eq!(
+            t.score(false),
+            GpTrackScore {
+                correct: vec![],
+                fooled_everyone: false,
+                points: vec![(A, 2 * GP_POINTS_PER_LIKE + GP_POINTS_FULL_SONG)],
+            }
+        );
+        // A song that never played pays nobody, whatever was cast on it.
+        t.failed = true;
+        assert_eq!(t.score(true), GpTrackScore::default());
+    }
+
+    /// The round's last reveal carries the round summed up: every song, what
+    /// the round paid, and the board after it. Earlier reveals carry nothing.
+    /// Per-song reveals here, so each song's reveal can be checked as it goes;
+    /// the held reveal's results are covered by `a_held_reveal_*` below.
+    #[test]
+    fn the_last_song_of_a_round_carries_the_rounds_results() {
+        let data = data();
+        game_with_reveal(&data, &["p1", "p2"], None, GpReveal::Song);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        submit(&data, C, "carol", "c");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let order: Vec<UserId> = game(&data).rounds[0]
+            .tracks
+            .iter()
+            .map(|t| t.submitter)
+            .collect();
+        let before = game(&data).sorted_scores();
+
+        // Song 0: everyone else guesses it, one like. Song 1: nobody does.
+        // Song 2: never played.
+        for u in [A, B, C].into_iter().filter(|u| *u != order[0]) {
+            data.gp_record_guess(G, 0, 0, u, "n".into(), order[0])
+                .unwrap();
+        }
+        let liker = [A, B, C].into_iter().find(|u| *u != order[0]).unwrap();
+        data.gp_toggle_like(G, 0, 0, liker, "n".into()).unwrap();
+        let res = data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        assert!(res.round.is_none(), "not the last song");
+        assert!(!res.held);
+        let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+        assert!(res.round.is_none());
+        let res = data.gp_fail_and_advance(G, 0, 2, NOW).unwrap();
+        let round = res.round.expect("the last song carries the results");
+        assert!(matches!(res.next, GpNext::Window(_)));
+
+        assert_eq!((round.round_idx, round.total_rounds), (0, 2));
+        assert_eq!(round.prompt, "p1");
+        assert!(round.guessable);
+        assert_eq!(round.songs.len(), 3);
+        let s0 = &round.songs[0];
+        assert_eq!(s0.submitter, order[0]);
+        let mut guessers: Vec<UserId> = [A, B, C].into_iter().filter(|u| *u != order[0]).collect();
+        guessers.sort_unstable();
+        assert_eq!(s0.correct, guessers);
+        assert!(!s0.fooled_everyone);
+        assert_eq!(s0.likes, 1);
+        assert!(!s0.failed);
+        let s1 = &round.songs[1];
+        assert_eq!(s1.submitter, order[1]);
+        assert!(s1.correct.is_empty());
+        assert!(s1.fooled_everyone);
+        let s2 = &round.songs[2];
+        assert!(s2.failed);
+        assert!(!s2.fooled_everyone, "an unheard song fools nobody");
+
+        // What the round paid is exactly the change in the totals.
+        let after = game(&data).sorted_scores();
+        let paid: HashMap<UserId, u32> = round.points.iter().copied().collect();
+        for (id, total) in &after {
+            let was = before
+                .iter()
+                .find(|(i, _)| i == id)
+                .map(|(_, p)| *p)
+                .unwrap_or(0);
+            assert_eq!(total - was, paid.get(id).copied().unwrap_or(0), "{id}");
+        }
+        assert!(
+            round.points.iter().all(|(_, p)| *p > 0),
+            "only players who took something"
+        );
+        assert_eq!(round.points[0].1, GP_POINTS_CORRECT + GP_POINTS_FOOLED_ALL);
+        assert_eq!(round.scores, after);
+
+        // The last round's results come with the finish.
+        submit(&data, A, "alice", "a2");
+        submit(&data, B, "bob", "b2");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        data.gp_reveal_and_advance(G, 1, 0, NOW).unwrap();
+        let res = data.gp_reveal_and_advance(G, 1, 1, NOW).unwrap();
+        assert!(matches!(res.next, GpNext::Finished(_)));
+        assert_eq!(res.round.unwrap().round_idx, 1);
+    }
+
+    /// With the reveal held to the end of the round, a song's end names nobody
+    /// and moves no visible score: the totals still carry the round's payout,
+    /// and showing them would say who guessed right and who fooled the room.
+    #[test]
+    fn a_held_reveal_names_nobody_and_moves_no_visible_score() {
+        let data = data();
+        game_with_reveal(&data, &["p1", "p2"], None, GpReveal::Round);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        submit(&data, C, "carol", "c");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let s0 = game(&data).rounds[0].tracks[0].submitter;
+        let guesser = [A, B, C].into_iter().find(|u| *u != s0).unwrap();
+        data.gp_record_guess(G, 0, 0, guesser, "n".into(), s0)
+            .unwrap();
+        data.gp_toggle_like(G, 0, 0, guesser, "n".into()).unwrap();
+
+        let res = data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        assert!(res.held);
+        assert!(res.scores.iter().all(|(_, p)| *p == 0), "{:?}", res.scores);
+        let g = game(&data);
+        assert!(g.scores.values().sum::<u32>() > 0, "paid, just not shown");
+        assert!(g.visible_scores().iter().all(|(_, p)| *p == 0));
+        assert!(g.sorted_scores().iter().any(|(_, p)| *p > 0));
+        // `/gp status` shows the same held-back board.
+        let GpStatus::Playing { scores, .. } = data.gp_status(G).unwrap() else {
+            panic!("playing");
+        };
+        assert!(scores.iter().all(|(_, p)| *p == 0));
+
+        let v = serde_json::to_value(gp_reveal_embed(&res)).unwrap();
+        let desc = v["description"].as_str().unwrap();
+        assert!(desc.contains(GP_REVEAL_HELD), "{desc}");
+        assert!(!desc.contains("<@"), "must name nobody: {desc}");
+        assert!(!desc.contains(GP_REVEAL), "{desc}");
+        let fields = v["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), 1, "likes only, no scoreboard: {fields:?}");
+        assert_eq!(fields[0]["name"], GP_LIKES);
+        assert_eq!(fields[0]["value"], "1");
+
+        // A song that never played, held: says so, still names nobody.
+        let res = data.gp_fail_and_advance(G, 0, 1, NOW).unwrap();
+        assert!(res.held && res.failed);
+        let v = serde_json::to_value(gp_reveal_embed(&res)).unwrap();
+        assert!(!serde_json::to_string(&v).unwrap().contains("<@"));
+        assert_eq!(v["fields"][0]["name"], GP_TRACK_FAILED);
+
+        // The round's end is the reveal: the results carry names and totals, and
+        // from then on the board is whole again.
+        let res = data.gp_reveal_and_advance(G, 0, 2, NOW).unwrap();
+        let round = res.round.unwrap();
+        assert!(round.scores.iter().any(|(_, p)| *p > 0));
+        assert_eq!(round.scores, game(&data).sorted_scores());
+        assert_eq!(game(&data).visible_scores(), game(&data).sorted_scores());
+        let GpStatus::Submitting { scores, .. } = data.gp_status(G).unwrap() else {
+            panic!("submitting");
+        };
+        assert!(scores.iter().any(|(_, p)| *p > 0));
+    }
+
+    /// A host may turn the round's results off and have the game as it was:
+    /// each song's reveal and nothing summing them up. Not with the reveal held
+    /// to the round's end, though -- then the results are the reveal.
+    #[test]
+    fn round_results_can_be_turned_off_unless_they_are_the_reveal() {
+        for (reveal, expect_results) in [(GpReveal::Song, false), (GpReveal::Round, true)] {
+            let data = data();
+            game_with_settings(&data, &["p1"], None, reveal, false);
+            submit(&data, A, "alice", "a");
+            submit(&data, B, "bob", "b");
+            data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+            data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+            let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+            assert!(matches!(res.next, GpNext::Finished(_)));
+            assert_eq!(res.round.is_some(), expect_results, "{reveal:?}");
+        }
+    }
+
+    /// In the default game the visible board is the board; nothing is held.
+    #[test]
+    fn the_default_reveal_is_held_to_the_round() {
+        // `/gp start` without `reveal:` is `unwrap_or_default()`; the tests'
+        // `game_with` starts the same game.
+        assert_eq!(GpReveal::default(), GpReveal::Round);
+        let data = data();
+        game_with(&data, &["p1"]);
+        assert_eq!(game(&data).reveal, GpReveal::Round);
+    }
+
+    #[test]
+    fn a_round_owes_its_results_until_they_are_marked_posted() {
+        let data = data();
+        game_with(&data, &["p1", "p2"]);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        // Mid-round nothing is owed: the round has not ended.
+        assert!(game(&data).unposted_results().is_empty());
+        let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+        assert!(res.round.is_some(), "the round's results go out now");
+        // The snapshot has moved the game on; until the post is marked, a
+        // resume would owe round 0 its results.
+        assert_eq!(game(&data).current_round, 1);
+        assert_eq!(game(&data).unposted_results(), vec![0]);
+        data.gp_mark_results_posted(G, 0);
+        assert!(game(&data).rounds[0].results_posted);
+        assert!(game(&data).unposted_results().is_empty());
+        // Out of range is ignored, not a panic.
+        data.gp_mark_results_posted(G, 9);
+        data.gp_mark_results_posted(GuildId::new(2), 0);
+    }
+
+    #[test]
+    fn a_game_without_results_and_a_skipped_round_owe_nothing() {
+        // Results off and a per-song reveal: there is no embed to owe.
+        let data = data();
+        game_with_settings(&data, &["p1", "p2"], None, GpReveal::Song, false);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        let res = data.gp_reveal_and_advance(G, 0, 1, NOW).unwrap();
+        assert!(res.round.is_none());
+        assert!(game(&data).unposted_results().is_empty());
+
+        // A round nobody submitted to ends at the close with nothing to sum up.
+        let empty = self::data();
+        game_with(&empty, &["p1", "p2"]);
+        let closed = empty.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        assert!(matches!(closed.next, GpNext::Window(_)));
+        assert_eq!(game(&empty).current_round, 1);
+        assert!(game(&empty).unposted_results().is_empty());
+    }
+
+    #[test]
+    fn a_song_reveal_shows_the_running_total() {
+        let data = data();
+        game_with_reveal(&data, &["p1"], None, GpReveal::Song);
+        submit(&data, A, "alice", "a");
+        submit(&data, B, "bob", "b");
+        data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        let res = data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+        assert!(!res.held);
+        assert!(res.scores.iter().any(|(_, p)| *p > 0), "fooled everyone");
+        assert_eq!(res.scores, game(&data).sorted_scores());
+        assert_eq!(game(&data).visible_scores(), game(&data).sorted_scores());
+    }
+
+    #[test]
+    fn round_results_embed_json() {
+        let song = |submitter, title: &str, correct: Vec<UserId>| GpSongResult {
+            submitter,
+            title: title.into(),
+            correct,
+            fooled_everyone: false,
+            likes: 2,
+            played_full: false,
+            failed: false,
+        };
+        let r = GpRoundResult {
+            round_idx: 1,
+            total_rounds: 5,
+            prompt: "Cry song.".into(),
+            guessable: true,
+            songs: vec![
+                song(A, "one", vec![B, C]),
+                GpSongResult {
+                    fooled_everyone: true,
+                    played_full: true,
+                    ..song(B, "two", vec![])
+                },
+                GpSongResult {
+                    failed: true,
+                    ..song(C, "three", vec![A])
+                },
+            ],
+            points: vec![(B, 250), (C, 100), (A, 20)],
+            scores: vec![(B, 400), (A, 300), (C, 100)],
+        };
+        let v = serde_json::to_value(gp_round_results_embed(&r)).unwrap();
+        assert_eq!(
+            v["title"],
+            format!("{GP_ROUND_TITLE} 2/5 {GP_RESULTS_TITLE}")
+        );
+        let desc = v["description"].as_str().unwrap();
+        let lines: Vec<&str> = desc.lines().collect();
+        assert_eq!(lines[0], "**Cry song.**");
+        assert_eq!(
+            lines[2],
+            format!("1. **one** · <@100> · {GP_RESULTS_GUESSED_BY} <@200>, <@300> · 👍 2")
+        );
+        assert_eq!(
+            lines[3],
+            format!(
+                "2. **two** · <@200> · {GP_RESULTS_GUESSED_BY} {GP_NOBODY_GUESSED} · 👍 2 · {GP_FOOLED_EVERYONE} · {GP_FULL_SONG}"
+            )
+        );
+        assert_eq!(
+            lines[4],
+            format!("3. **three** · <@300> · {GP_TRACK_FAILED}")
+        );
+        let fields = v["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0]["name"], GP_RESULTS_THIS_ROUND);
+        assert_eq!(
+            fields[0]["value"],
+            "1. <@200> — +250\n2. <@300> — +100\n3. <@100> — +20"
+        );
+        assert_eq!(fields[1]["name"], GP_SCOREBOARD);
+        assert_eq!(
+            fields[1]["value"],
+            "1. <@200> — 400\n2. <@100> — 300\n3. <@300> — 100"
+        );
+
+        // A one-song round has no guessing to report, and nobody may have scored.
+        let solo = GpRoundResult {
+            guessable: false,
+            songs: vec![song(A, "only", vec![])],
+            points: vec![],
+            ..r.clone()
+        };
+        let v = serde_json::to_value(gp_round_results_embed(&solo)).unwrap();
+        let desc = v["description"].as_str().unwrap();
+        assert!(!desc.contains(GP_RESULTS_GUESSED_BY), "{desc}");
+        assert!(desc.contains("**only** · <@100> · 👍 2"), "{desc}");
+        assert_eq!(v["fields"][0]["value"], GP_RESULTS_NOBODY_SCORED);
+
+        // A full room: 25 songs each guessed by the other 24 is more mentions
+        // than a description holds, so the guessers are counted instead.
+        let ids: Vec<UserId> = (1..=25).map(|i| UserId::new(1_000_000_000 + i)).collect();
+        let big = GpRoundResult {
+            songs: ids
+                .iter()
+                .map(|id| {
+                    song(
+                        *id,
+                        "a song with a fairly long title",
+                        ids.iter().copied().filter(|o| o != id).collect(),
+                    )
+                })
+                .collect(),
+            ..r
+        };
+        let v = serde_json::to_value(gp_round_results_embed(&big)).unwrap();
+        let desc = v["description"].as_str().unwrap();
+        assert!(
+            desc.chars().count() <= GP_EMBED_DESCRIPTION_MAX,
+            "{}",
+            desc.len()
+        );
+        assert!(
+            desc.contains(&format!("24 {GP_RESULTS_GUESSED_COUNT}")),
+            "{desc}"
+        );
+        assert_eq!(desc.lines().count(), 27, "every song is still there");
+    }
+
     #[test]
     fn custom_ids() {
         assert_eq!(
@@ -4290,6 +5422,8 @@ mod test {
             text_channel: TC,
             next: GpNext::Finished(vec![]),
             failed: false,
+            held: false,
+            round: None,
         };
         let v = serde_json::to_value(gp_reveal_embed(&res)).unwrap();
         assert_eq!(
@@ -4480,6 +5614,12 @@ mod test {
                     sub.name
                 );
             }
+            // A vote is nobody's business but the voter's: a public reply would
+            // land under "*name* used `/gp voteskip`" and say exactly who wants
+            // the song gone.
+            if sub.name == "voteskip" || sub.name == "votefull" {
+                assert!(sub.ephemeral, "{} replies must be ephemeral", sub.name);
+            }
             if sub.name == "start" {
                 let params: Vec<&str> = sub.parameters.iter().map(|p| p.name.as_ref()).collect();
                 assert_eq!(
@@ -4490,10 +5630,14 @@ mod test {
                         "timer",
                         "clips",
                         "clip_start",
-                        "clip_length"
+                        "clip_length",
+                        "reveal",
+                        "results"
                     ]
                 );
                 assert!(sub.parameters[0].required);
+                let reveal = sub.parameters.iter().find(|p| p.name == "reveal").unwrap();
+                assert_eq!(reveal.choices.len(), 2, "after each song, or at the end");
                 assert_eq!(
                     sub.parameters[0].choices.len(),
                     crate::commands::music::gp_prompts::GP_PROMPTS.len() + 1,

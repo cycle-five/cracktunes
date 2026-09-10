@@ -59,6 +59,10 @@ pub struct GpGameRow {
     pub timer_secs: i64,
     pub clip_start_secs: Option<i64>,
     pub clip_length_secs: Option<i64>,
+    /// `song` | `round`: when submitters are named.
+    pub reveal: String,
+    /// Post a results embed when a round ends.
+    pub round_results: bool,
     pub generation: i64,
 }
 
@@ -76,6 +80,10 @@ pub struct GpRoundRow {
     pub closes_at: Option<i64>,
     pub prompt_channel_id: Option<i64>,
     pub prompt_message_id: Option<i64>,
+    /// The round's results embed has reached the channel. Written back once it
+    /// is posted, so a resume knows whether the round still owes the room its
+    /// results (the reveal, when it is held to the round's end).
+    pub results_posted: bool,
 }
 
 /// A song in a round, with everything the room did to it. `position` is `None`
@@ -90,6 +98,8 @@ pub struct GpTrackRow {
     pub artist: Option<String>,
     pub duration_secs: Option<i64>,
     pub play_full: bool,
+    /// The song never played, so it paid nothing.
+    pub failed: bool,
     pub message_channel_id: Option<i64>,
     pub message_id: Option<i64>,
     /// (guesser, guessed submitter)
@@ -162,9 +172,10 @@ impl GpSaved {
             r#"INSERT INTO gp_game (
                    guild_id, started_at, host_id, voice_channel_id, text_channel_id,
                    category, phase, current_round, current_track, timer_secs,
-                   clip_start_secs, clip_length_secs, generation, last_seen_at
+                   clip_start_secs, clip_length_secs, reveal, round_results, generation,
+                   last_seen_at
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now())
                ON CONFLICT (guild_id, started_at) DO UPDATE SET
                    phase = EXCLUDED.phase,
                    current_round = EXCLUDED.current_round,
@@ -185,6 +196,8 @@ impl GpSaved {
             g.timer_secs,
             g.clip_start_secs,
             g.clip_length_secs,
+            g.reveal,
+            g.round_results,
             g.generation,
         )
         .fetch_one(&mut *tx)
@@ -194,10 +207,6 @@ impl GpSaved {
         self.save_rounds(&mut tx, id).await?;
         self.save_tracks(&mut tx, id).await?;
         self.save_reactions(&mut tx, id).await?;
-
-        if g.phase == "finished" {
-            mark_finished_in(&mut tx, g.guild_id, g.started_at, GpOutcome::Finished).await?;
-        }
         tx.commit().await?;
         Ok(id)
     }
@@ -238,19 +247,27 @@ impl GpSaved {
         let closes: Vec<Option<i64>> = self.rounds.iter().map(|r| r.closes_at).collect();
         let chans: Vec<Option<i64>> = self.rounds.iter().map(|r| r.prompt_channel_id).collect();
         let msgs: Vec<Option<i64>> = self.rounds.iter().map(|r| r.prompt_message_id).collect();
+        let posted: Vec<bool> = self.rounds.iter().map(|r| r.results_posted).collect();
         sqlx::query!(
-            r#"INSERT INTO gp_round (game_id, round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id)
-               SELECT $1, * FROM UNNEST($2::int[], $3::text[], $4::bigint[], $5::bigint[], $6::bigint[])
+            r#"INSERT INTO gp_round (
+                   game_id, round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id,
+                   results_posted
+               )
+               SELECT $1, * FROM UNNEST(
+                   $2::int[], $3::text[], $4::bigint[], $5::bigint[], $6::bigint[], $7::bool[]
+               )
                ON CONFLICT (game_id, round_idx) DO UPDATE SET
                    closes_at = EXCLUDED.closes_at,
                    prompt_channel_id = EXCLUDED.prompt_channel_id,
-                   prompt_message_id = EXCLUDED.prompt_message_id"#,
+                   prompt_message_id = EXCLUDED.prompt_message_id,
+                   results_posted = EXCLUDED.results_posted"#,
             id,
             &idxs,
             &prompts,
             &closes as &[Option<i64>],
             &chans as &[Option<i64>],
             &msgs as &[Option<i64>],
+            &posted,
         )
         .execute(&mut **tx)
         .await?;
@@ -278,16 +295,17 @@ impl GpSaved {
         let artists: Vec<Option<String>> = t.iter().map(|x| x.artist.clone()).collect();
         let durations: Vec<Option<i64>> = t.iter().map(|x| x.duration_secs).collect();
         let fulls: Vec<bool> = t.iter().map(|x| x.play_full).collect();
+        let faileds: Vec<bool> = t.iter().map(|x| x.failed).collect();
         let chans: Vec<Option<i64>> = t.iter().map(|x| x.message_channel_id).collect();
         let msgs: Vec<Option<i64>> = t.iter().map(|x| x.message_id).collect();
         sqlx::query!(
             r#"INSERT INTO gp_track (
                    game_id, round_idx, submitter_id, position, url, title, artist,
-                   duration_secs, play_full, message_channel_id, message_id
+                   duration_secs, play_full, failed, message_channel_id, message_id
                )
                SELECT $1, * FROM UNNEST(
                    $2::int[], $3::bigint[], $4::int[], $5::text[], $6::text[], $7::text[],
-                   $8::bigint[], $9::bool[], $10::bigint[], $11::bigint[]
+                   $8::bigint[], $9::bool[], $10::bool[], $11::bigint[], $12::bigint[]
                )
                ON CONFLICT (game_id, round_idx, submitter_id) DO UPDATE SET
                    position = EXCLUDED.position,
@@ -296,6 +314,7 @@ impl GpSaved {
                    artist = EXCLUDED.artist,
                    duration_secs = EXCLUDED.duration_secs,
                    play_full = EXCLUDED.play_full,
+                   failed = EXCLUDED.failed,
                    message_channel_id = EXCLUDED.message_channel_id,
                    message_id = EXCLUDED.message_id"#,
             id,
@@ -307,6 +326,7 @@ impl GpSaved {
             &artists as &[Option<String>],
             &durations as &[Option<i64>],
             &fulls,
+            &faileds,
             &chans as &[Option<i64>],
             &msgs as &[Option<i64>],
         )
@@ -421,7 +441,7 @@ impl GpSaved {
         let Some(g) = sqlx::query!(
             r#"SELECT id, guild_id, started_at, host_id, voice_channel_id, text_channel_id,
                       category, phase, current_round, current_track, timer_secs,
-                      clip_start_secs, clip_length_secs, generation,
+                      clip_start_secs, clip_length_secs, reveal, round_results, generation,
                       EXTRACT(EPOCH FROM now() - last_seen_at)::bigint AS "last_seen_secs_ago!"
                FROM gp_game
                WHERE guild_id = $1 AND finished_at IS NULL
@@ -451,7 +471,8 @@ impl GpSaved {
         .collect();
 
         let rounds = sqlx::query!(
-            r#"SELECT round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id
+            r#"SELECT round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id,
+                      results_posted
                FROM gp_round WHERE game_id = $1 ORDER BY round_idx"#,
             id
         )
@@ -464,12 +485,13 @@ impl GpSaved {
             closes_at: r.closes_at,
             prompt_channel_id: r.prompt_channel_id,
             prompt_message_id: r.prompt_message_id,
+            results_posted: r.results_posted,
         })
         .collect();
 
         let mut tracks: Vec<GpTrackRow> = sqlx::query!(
             r#"SELECT round_idx, submitter_id, position, url, title, artist, duration_secs,
-                      play_full, message_channel_id, message_id
+                      play_full, failed, message_channel_id, message_id
                FROM gp_track WHERE game_id = $1
                ORDER BY round_idx, position NULLS LAST, submitter_id"#,
             id
@@ -486,6 +508,7 @@ impl GpSaved {
             artist: r.artist,
             duration_secs: r.duration_secs,
             play_full: r.play_full,
+            failed: r.failed,
             message_channel_id: r.message_channel_id,
             message_id: r.message_id,
             guesses: Vec::new(),
@@ -560,6 +583,8 @@ impl GpSaved {
                     timer_secs: g.timer_secs,
                     clip_start_secs: g.clip_start_secs,
                     clip_length_secs: g.clip_length_secs,
+                    reveal: g.reveal,
+                    round_results: g.round_results,
                     generation: g.generation,
                 },
                 players,
@@ -645,6 +670,7 @@ mod tests {
             artist: None,
             duration_secs: Some(200),
             play_full: false,
+            failed: false,
             message_channel_id: None,
             message_id: None,
             guesses: Vec::new(),
@@ -679,6 +705,8 @@ mod tests {
                 timer_secs: 120,
                 clip_start_secs: Some(30),
                 clip_length_secs: Some(45),
+                reveal: "round".into(),
+                round_results: false,
                 generation: 1,
             },
             players: vec![GpPlayerRow {
@@ -693,6 +721,7 @@ mod tests {
                     closes_at: Some(started_at + 120),
                     prompt_channel_id: Some(20),
                     prompt_message_id: Some(1),
+                    results_posted: false,
                 },
                 GpRoundRow {
                     round_idx: 1,
@@ -700,6 +729,7 @@ mod tests {
                     closes_at: None,
                     prompt_channel_id: None,
                     prompt_message_id: None,
+                    results_posted: false,
                 },
             ],
             tracks: vec![track(0, 100, None)],
@@ -729,6 +759,8 @@ mod tests {
         s.tracks[0].likes = vec![100];
         s.tracks[0].full_votes = vec![100];
         s.tracks[0].play_full = true;
+        s.tracks[1].failed = true;
+        s.rounds[0].results_posted = true;
         s.players.push(GpPlayerRow {
             user_id: 200,
             display_name: "bob".into(),
@@ -796,10 +828,19 @@ mod tests {
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
-    async fn a_finished_phase_is_written_as_finished(pool: PgPool) -> sqlx::Result<()> {
+    async fn a_finished_phase_stays_live_until_its_ending_is_posted(
+        pool: PgPool,
+    ) -> sqlx::Result<()> {
+        // The snapshot that moves a game to `finished` is written before the
+        // last round's results and the final scoreboard go up. The row stays
+        // live so a restart in that gap can post them; the tombstone is the
+        // remove's, once they are.
         let mut s = saved(4, 1_700_000_000);
         s.game.phase = "finished".into();
         s.save(&pool).await?;
+        let live = GpSaved::load_live(&pool, 4).await?.expect("still live");
+        assert_eq!(live.saved.game.phase, "finished");
+        assert!(gp_mark_finished(&pool, 4, 1_700_000_000, GpOutcome::Finished).await?);
         assert!(GpSaved::load_live(&pool, 4).await?.is_none());
         let outcome: Option<String> =
             sqlx::query_scalar!("SELECT outcome FROM gp_game WHERE guild_id = 4")
@@ -834,6 +875,7 @@ mod tests {
             closes_at: None,
             prompt_channel_id: None,
             prompt_message_id: None,
+            results_posted: false,
         });
         s.game.phase = "submitting".into();
         s.game.current_round = 1;
