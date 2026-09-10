@@ -2,12 +2,13 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
-    music::NewQueryType,
+    music::{NewQueryType, PlaybackOwner, QueueGuard},
     utils::{set_track_handle_metadata, set_track_handle_requesting_user, TrackData},
     Context as CrackContext, Error,
 };
 use crack_testing::ResolvedTrack;
 use crack_types::{Mode, NewAuxMetadata, QueryType};
+use rand::RngExt;
 use serenity::{
     all::{CreateEmbed, EditMessage, Message, UserId},
     small_fixed_array::FixedString,
@@ -23,15 +24,21 @@ use tokio::sync::{Mutex, RwLock};
 
 /// Takes a resolved track and queues it to the back of the queue.
 /// Returns a snapshot of th new queue as a [`Vec<TrackHandle>`].
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
 /// # Errors
 /// Returns a [`CrackedError`] if the track cannot be queued.
 /// Can fail during the search itself, or when adding the metadata to the track,
 /// or when adding the track to the internal queue.
 pub async fn queue_resolved_track_back(
+    guard: &QueueGuard,
     call: &Arc<Mutex<Call>>,
     track_resolved: ResolvedTrack<'static>,
     http_client: reqwest::Client,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    let _ = guard;
     // Through `build_track`, not a second copy of it. This function used to
     // construct its own `RustyYoutubeSearch` inline, which is why fixing the
     // source in `build_track` fixed `/gp` and left `/play` still silent.
@@ -135,11 +142,17 @@ impl Inserted {
 /// Returns only what THIS call inserted -- see [`Inserted`]. Callers that also
 /// want a whole-queue snapshot (to redraw a queue message, say) take it
 /// explicitly and separately; see #333.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
 pub async fn enqueue_resolved_tracks_back(
+    guard: &QueueGuard,
     call: &Arc<Mutex<Call>>,
     tracks: Vec<ResolvedTrack<'static>>,
     http_client: reqwest::Client,
 ) -> Result<Inserted, CrackedError> {
+    let _ = guard;
     let mut handler = call.lock().await;
     let mut handles = Vec::with_capacity(tracks.len());
     for resolved in &tracks {
@@ -190,10 +203,16 @@ pub async fn ready_query(
 }
 
 /// Pushes a track to the front of the queue, after readying it.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
 pub async fn queue_track_ready_front(
+    guard: &QueueGuard,
     call: &Arc<Mutex<Call>>,
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    let _ = guard;
     let mut handler = call.lock().await;
     let mut track_handle = handler.enqueue_input(ready_track.source).await;
     let new_q = handler.queue().current_queue();
@@ -215,10 +234,16 @@ pub async fn queue_track_ready_front(
 }
 
 /// Pushes a track to the back of the queue, after readying it.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
 pub async fn _queue_track_ready_back(
+    guard: &QueueGuard,
     call: &Arc<Mutex<Call>>,
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    let _ = guard;
     let mut handler = call.lock().await;
 
     let TrackReadyData {
@@ -241,20 +266,38 @@ pub async fn _queue_track_ready_back(
 }
 
 /// Pushes a track to the front of the queue.
+///
+/// Not itself in the guard-parameter group ([`queue_track_ready_front`] is):
+/// `ready_query` is the slow leg (it can hit the network), so the guard is
+/// acquired here internally, after readying completes, and held only for the
+/// enqueue that follows. A guard taken by the caller before this call would
+/// wrap the whole readying step, which is exactly the "second /play waits out
+/// the first one's resolution" shape the funnel exists to avoid.
 pub async fn queue_track_front(
     ctx: CrackContext<'_>,
     call: &Arc<Mutex<Call>>,
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let ready_track = ready_query(ctx, query_type.clone()).await?;
     // FIXME:
     //ctx.async_send_track_metadata_write_msg(&ready_track);
-    let q = queue_track_ready_front(call, ready_track).await?;
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+    let q = queue_track_ready_front(&guard, call, ready_track).await?;
     Ok(q)
 }
 
 use crack_types::TrackResolveError;
 /// Pushes a track to the front of the queue.
+///
+/// Not itself in the guard-parameter group ([`queue_resolved_track_back`] and
+/// [`_queue_track_ready_back`] are): this function resolves the query
+/// internally, and resolution is the slow leg (8-15s cold via `ct_client`, or
+/// the `ready_query` fallback). The guard is acquired here, after resolution
+/// completes on whichever branch was taken, and held only for the enqueue.
+/// Requiring an externally-supplied guard instead would make the caller hold
+/// playback exclusion for the whole resolution, which is the "second /play
+/// waits out the first one's resolve" shape the funnel exists to avoid.
 #[tracing::instrument(skip(ctx, call))]
 pub async fn queue_track_back(
     ctx: CrackContext<'_>,
@@ -262,6 +305,7 @@ pub async fn queue_track_back(
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let user_id = ctx.author().id;
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let begin = std::time::Instant::now();
     let resolved = match ctx.data().ct_client.resolve_track(query_type.clone()).await {
@@ -270,7 +314,8 @@ pub async fn queue_track_back(
             match e1.into() {
                 Some(_e) => {
                     let ready_track = ready_query(ctx, query_type.clone()).await?;
-                    return _queue_track_ready_back(call, ready_track).await;
+                    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+                    return _queue_track_ready_back(&guard, call, ready_track).await;
                 },
                 None => {
                     return Err(CrackedError::TrackResolveError(
@@ -285,8 +330,10 @@ pub async fn queue_track_back(
     //ctx.async_send_track_metadata_write_msg(&ready_track);
     let after_send = std::time::Instant::now();
     //let queue = queue_track_ready_back(call, ready_track).await;
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let queue =
-        queue_resolved_track_back(call, resolved, http_utils::get_client_old().clone()).await;
+        queue_resolved_track_back(&guard, call, resolved, http_utils::get_client_old().clone())
+            .await;
     let after_queue = std::time::Instant::now();
     tracing::warn!(
         r#"
@@ -304,10 +351,16 @@ pub async fn queue_track_back(
 }
 
 /// Append a list of tracks to the end of the queue.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
 pub async fn _append_queue(
+    guard: &QueueGuard,
     call: Arc<Mutex<Call>>,
     mut tracks: VecDeque<Queued>,
 ) -> Result<Vec<TrackHandle>, Error> {
+    let _ = guard;
     let handler = call.lock().await;
     handler.queue().modify_queue(|queue| {
         queue.append(&mut tracks);
@@ -407,11 +460,16 @@ pub async fn queue_resolved_list_back(
     }
 
     let rest = tracks.split_off(1);
-    enqueue_resolved_tracks_back(&call, tracks, client.clone()).await?;
-    // update_queue_messages redraws the whole queue message, so it wants the
-    // whole queue -- read deliberately here rather than received from the
-    // enqueue, which now reports only what this call added. See #333.
+    // Hold the guard across the enqueue AND the snapshot read right after it,
+    // closing the window a concurrent command's insert could otherwise land
+    // in -- the enqueue and the snapshot used to be two separate acquisitions
+    // of just the call lock. Neither `build_track` nor the enqueue itself does
+    // I/O (tracks here are already resolved), so this is never held across a
+    // slow operation. See #333.
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+    enqueue_resolved_tracks_back(&guard, &call, tracks, client.clone()).await?;
     let snapshot = call.lock().await.queue().current_queue();
+    drop(guard);
     update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
 
     if rest.is_empty() {
@@ -423,9 +481,15 @@ pub async fn queue_resolved_list_back(
     let mut last_edit = std::time::Instant::now();
 
     for chunk in rest.chunks(QUEUE_BATCH_SIZE) {
-        let inserted = enqueue_resolved_tracks_back(&call, chunk.to_vec(), client.clone()).await?;
+        // Same reasoning as the first batch above: guard held across the
+        // enqueue and its snapshot, dropped before the (network) progress
+        // message edit below. See #333.
+        let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+        let inserted =
+            enqueue_resolved_tracks_back(&guard, &call, chunk.to_vec(), client.clone()).await?;
         queued += inserted.count();
         let snapshot = call.lock().await.queue().current_queue();
+        drop(guard);
         update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
 
         let is_last = queued >= total;
@@ -450,7 +514,44 @@ pub async fn queue_resolved_list_back(
     Ok(())
 }
 
+/// Enqueue already-resolved tracks and hold `guard` across the snapshot read
+/// right after, closing the window a concurrent command's insert could
+/// otherwise land in -- those used to be two separate acquisitions of just the
+/// call lock. See #333.
+///
+/// Deliberately takes already-resolved tracks rather than doing the
+/// `resolve_track_many` itself: resolution is the slow leg, and a caller must
+/// do it before acquiring `guard`, not while holding it. [`queue_vec_query_type`]
+/// and [`queue_query_list_offset`]'s low-queue branch are the two callers, and
+/// each resolves on its own schedule before reaching here.
+#[cfg(not(tarpaulin_include))]
+async fn enqueue_resolved_and_snapshot(
+    guard: &QueueGuard,
+    ctx: CrackContext<'_>,
+    call: &Arc<Mutex<Call>>,
+    resolved: Vec<ResolvedTrack<'static>>,
+) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    debug_assert_eq!(
+        guard.guild_id(),
+        guild_id,
+        "QueueGuard is for another guild"
+    );
+    enqueue_resolved_tracks_back(guard, call, resolved, http_utils::get_client_old().clone())
+        .await?;
+    // update_queue_messages redraws the whole queue message, so it wants the
+    // whole queue -- read deliberately here rather than received from the
+    // enqueue, which now reports only what this call added. See #333.
+    let snapshot = call.lock().await.queue().current_queue();
+    update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+    Ok(())
+}
+
 /// Queue a list of keywords to be played with an offset.
+///
+/// Resolves first, then acquires a [`QueueGuard`] and holds it across the
+/// enqueue and its snapshot -- never across the resolve above, which is the
+/// slow leg. See [`enqueue_resolved_and_snapshot`].
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_vec_query_type(
     ctx: CrackContext<'_>,
@@ -473,20 +574,26 @@ pub async fn queue_vec_query_type(
         .map(|t| t.with_user_id(user_id))
         .collect::<Vec<_>>();
 
-    enqueue_resolved_tracks_back(&call, resolved, http_utils::get_client_old().clone()).await?;
-    // update_queue_messages redraws the whole queue message, so it wants the
-    // whole queue -- read deliberately here rather than received from the
-    // enqueue, which now reports only what this call added. See #333.
-    let snapshot = call.lock().await.queue().current_queue();
-    update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
-    Ok(())
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+    enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await
 }
 
 use crate::http_utils;
 /// Queue a list of queries to be played with a given offset.
 /// N.B. The offset must be 0 < offset < queue.len() + 1
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+///
+/// 🪤 The `resolve_track_many` call below runs while `guard` is held, which
+/// wraps a second `/play` in this guild around this call's whole 8-15s
+/// resolution rather than just its enqueue. That is a known, deliberate gap:
+/// fixing it means restructuring this function's check-then-act shape, which
+/// is a separate, already-tracked piece of work. Do not fix it here.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_query_list_offset(
+    guard: &QueueGuard,
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
@@ -494,6 +601,11 @@ pub async fn queue_query_list_offset(
     _search_msg: &mut Message,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    debug_assert_eq!(
+        guard.guild_id(),
+        guild_id,
+        "QueueGuard is for another guild"
+    );
 
     // Can this starting section be simplified?
     let queue_size = {
@@ -502,7 +614,22 @@ pub async fn queue_query_list_offset(
     };
 
     if queue_size <= 1 {
-        return queue_vec_query_type(ctx, call, queries, Mode::End).await;
+        // Reuses the guard already held here rather than going through
+        // `queue_vec_query_type`, which acquires its own -- a second
+        // `lock_queue` for this same guild from inside this call would
+        // deadlock on the per-guild mutex `QueueGuard` wraps, which is not
+        // re-entrant. This is the smallest change that avoids that; the
+        // check-then-act restructuring is the separate work referenced above.
+        let user_id = ctx.author().id;
+        let resolved = ctx
+            .data()
+            .ct_client
+            .resolve_track_many(queries)
+            .await?
+            .into_iter()
+            .map(|t| t.with_user_id(user_id))
+            .collect::<Vec<_>>();
+        return enqueue_resolved_and_snapshot(guard, ctx, &call, resolved).await;
     }
 
     verify(
@@ -546,6 +673,97 @@ pub async fn queue_query_list_offset(
     update_queue_messages(&ctx, ctx.data(), &cur_q, guild_id).await;
 
     Ok(())
+}
+
+/// Drop everything from `from` onward, stopping each track. Used by `/clear`.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+pub fn clear_from(guard: &QueueGuard, handler: &Call, from: usize) {
+    let _ = guard;
+    handler.queue().modify_queue(|v| {
+        v.drain(from..).for_each(|x| {
+            let _ = x.stop();
+            drop(x);
+        });
+    });
+}
+
+/// Drop `count` tracks after the currently-playing one. Used by `/skip`.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+pub fn drain_after_current(guard: &QueueGuard, handler: &Call, count: usize) {
+    let _ = guard;
+    handler.queue().modify_queue(|v| {
+        let end = (1 + count).min(v.len());
+        v.drain(1..end);
+    });
+}
+
+/// Reorder the queue behind the currently-playing track. Used by `/shuffle`.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+pub fn shuffle_behind_current(guard: &QueueGuard, handler: &Call) {
+    let _ = guard;
+    handler.queue().modify_queue(|queue| {
+        // skip the first track on queue because it's being played
+        fisher_yates(queue.make_contiguous()[1..].as_mut(), &mut rand::rng())
+    });
+}
+
+/// Move a track from one queue index to another. Used by `/movesong`.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+pub fn move_track(guard: &QueueGuard, handler: &Call, at: usize, to: usize) {
+    let _ = guard;
+    handler.queue().modify_queue(|queue| {
+        // The caller verifies both indices are in range before calling.
+        let song = queue.remove(at).expect("index out of bounds");
+        queue.insert(to, song);
+    });
+}
+
+/// Remove one track by queue index. Used by `/remove`.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+pub fn remove_at(guard: &QueueGuard, handler: &Call, index: usize) {
+    let _ = guard;
+    handler.queue().modify_queue(|v| {
+        if let Some(track) = v.remove(index) {
+            let _ = track.stop();
+        }
+    });
+}
+
+// `stop_queue` and `pause_queue` (guard-taking wrappers around
+// `call.lock().await.queue().stop()`/`.pause()`) are deliberately NOT defined
+// here. Their only intended callers are gp.rs and track_end.rs -- Task 6's
+// files, not this dispatch's -- so with no caller anywhere in this dispatch
+// they trip `dead_code` (this module is `pub(crate)`, so `pub` alone does not
+// exempt them), and "no new #[allow(dead_code)]" rules out silencing that.
+// Add them in queue.rs, with the same doc comments Task 4 specified, at the
+// point Task 6 gains a real call site for each -- that gives them a caller in
+// the same commit that defines them, same as every other helper here.
+
+/// Shuffle `values` in place using the Fisher-Yates algorithm.
+fn fisher_yates<T, R>(values: &mut [T], mut rng: R)
+where
+    R: rand::Rng + Sized,
+{
+    let mut index = values.len();
+    while index >= 2 {
+        index -= 1;
+        values.swap(index, rng.random_range(0..(index + 1)));
+    }
 }
 
 /// Get the play mode and the message from the parameters to the play command.
@@ -650,6 +868,13 @@ mod test {
     use crack_types::to_fixed;
 
     use super::*;
+
+    #[test]
+    fn test_fisher_yates() {
+        let mut values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+        fisher_yates(&mut values, &mut rand::rng());
+        assert_ne!(values, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    }
 
     #[test]
     fn test_get_mode() {

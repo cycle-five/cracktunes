@@ -1,9 +1,13 @@
 use crate::{
-    commands::cmd_check_music, errors::verify, handlers::track_end::update_queue_messages,
-    messaging::message::CrackedMessage, poise_ext::ContextExt, utils::send_reply, Context,
-    CrackedError, Error,
+    commands::cmd_check_music,
+    errors::verify,
+    handlers::track_end::update_queue_messages,
+    messaging::message::CrackedMessage,
+    music::{move_track, shuffle_behind_current, PlaybackOwner},
+    poise_ext::ContextExt,
+    utils::send_reply,
+    Context, CrackedError, Error,
 };
-use rand::RngExt;
 
 /// Move a song in the queue to a different position.
 #[cfg(not(tarpaulin_include))]
@@ -28,6 +32,10 @@ pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let call = ctx.get_call().await?;
 
+    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
+    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
+    // more kindly. This one cannot be forgotten.
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
     let len = handler.queue().current_queue().len();
     verify(
@@ -39,11 +47,7 @@ pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result
         CrackedError::Other("Index for `to` out of bounds"),
     )?;
 
-    handler.queue().modify_queue(|queue| {
-        // We verified before that this index is good, so this is safe.
-        let song = queue.remove(at).expect("Index out of bounds");
-        queue.insert(to, song);
-    });
+    move_track(&guard, &handler, at, to);
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
@@ -67,11 +71,12 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let call = ctx.get_call().await?;
 
+    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
+    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
+    // more kindly. This one cannot be forgotten.
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
-    handler.queue().modify_queue(|queue| {
-        // skip the first track on queue because it's being played
-        fisher_yates(queue.make_contiguous()[1..].as_mut(), &mut rand::rng())
-    });
+    shuffle_behind_current(&guard, &handler);
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
@@ -80,27 +85,4 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     send_reply(&ctx, CrackedMessage::Shuffle, true).await?;
     update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
     Ok(())
-}
-
-fn fisher_yates<T, R>(values: &mut [T], mut rng: R)
-where
-    R: rand::Rng + Sized,
-{
-    let mut index = values.len();
-    while index >= 2 {
-        index -= 1;
-        values.swap(index, rng.random_range(0..(index + 1)));
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_fisher_yates() {
-        let mut values = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-        fisher_yates(&mut values, &mut rand::rng());
-        assert_ne!(values, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    }
 }

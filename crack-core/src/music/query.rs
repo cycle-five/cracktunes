@@ -2,6 +2,7 @@ use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset, queue_resolved_list_back};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
+use crate::music::PlaybackOwner;
 use crate::sources::rusty_ytdl::NewSearchSource;
 use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
@@ -418,7 +419,7 @@ impl NewQueryType {
                 queue_track_front(ctx, &call, qt).await?;
             },
             QueryType::PlaylistLink(url) => {
-                let _guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+                let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
                 let playlist: Playlist = rusty_ytdl::search::Playlist::get(
                     url.clone(),
                     Some(&rusty_ytdl::search::PlaylistSearchOptions {
@@ -427,11 +428,25 @@ impl NewQueryType {
                     }),
                 )
                 .await?;
-                queue_query_list_offset(ctx, call, Queries::from(playlist).to_vec(), 1, search_msg)
-                    .await?;
+                // Ordinary music commands mutate as `Free`; a guild a game
+                // owns refuses here, which is the same refusal
+                // GP_BLOCKED_COMMANDS gives earlier and more kindly.
+                let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+                queue_query_list_offset(
+                    &guard,
+                    ctx,
+                    call,
+                    Queries::from(playlist).to_vec(),
+                    1,
+                    search_msg,
+                )
+                .await?;
             },
             QueryType::KeywordList(keywords_list) => {
+                let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+                let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
                 queue_query_list_offset(
+                    &guard,
                     ctx,
                     call,
                     Queries::from(keywords_list.clone()).to_vec(),
@@ -445,7 +460,10 @@ impl NewQueryType {
                 //     .iter()
                 //     .map(|x| x.build_query())
                 //     .collect::<Vec<String>>();
+                let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+                let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
                 queue_query_list_offset(
+                    &guard,
                     ctx,
                     call,
                     Queries::from(tracks.clone()).to_vec(),

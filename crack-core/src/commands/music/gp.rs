@@ -3211,12 +3211,18 @@ pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
         .get(guild_id)
         .ok_or(CrackedError::NotConnected)?;
     {
+        // `force_skip_top_track` now requires a `QueueGuard` -- Task 4/5's
+        // funnel work broke this call site mechanically. Locking as `Game`
+        // succeeds here because this guild's game already owns playback (see
+        // `the_owner_can_still_lock_its_own_queue` in lease.rs); the rest of
+        // this file's migration to the guard-taking helpers is Task 6's.
+        let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
         let handler = call.lock().await;
         if handler.queue().is_empty() {
             return Err(CrackedError::NothingPlaying.into());
         }
         // stop() fires TrackEvent::End, which is what advances the game.
-        force_skip_top_track(&handler).await?;
+        force_skip_top_track(&guard, &handler).await?;
     }
     ctx.send_reply(CrackedMessage::GpRoundSkipped, true).await?;
     Ok(())
@@ -3334,12 +3340,18 @@ async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
             .songbird
             .get(guild_id)
             .ok_or(CrackedError::NotConnected)?;
+        // `force_skip_top_track` now requires a `QueueGuard` -- Task 4/5's
+        // funnel work broke this call site mechanically. Locking as `Game`
+        // succeeds here because this guild's game already owns playback (see
+        // `the_owner_can_still_lock_its_own_queue` in lease.rs); the rest of
+        // this file's migration to the guard-taking helpers is Task 6's.
+        let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
         let handler = call.lock().await;
         if handler.queue().is_empty() {
             return Err(CrackedError::NothingPlaying);
         }
         // stop() fires TrackEvent::End, which is what advances the game.
-        force_skip_top_track(&handler).await?;
+        force_skip_top_track(&guard, &handler).await?;
     }
     Ok(answer)
 }

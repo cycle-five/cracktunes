@@ -6,6 +6,7 @@ use crate::{
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
+    music::PlaybackOwner,
     poise_ext::{ContextExt, PoiseContextExt},
     Context, Error,
 };
@@ -51,6 +52,10 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
     let manager = ctx.data().songbird.clone();
     let call = manager.get(guild_id).unwrap();
 
+    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
+    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
+    // more kindly. This one cannot be forgotten.
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
     let queue = handler.queue();
 
@@ -87,7 +92,7 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         //         user_id: user_id.0 as i64,
         //     },
         // );
-        force_skip_top_track(&handler).await?;
+        force_skip_top_track(&guard, &handler).await?;
         create_skip_response(ctx, &handler, 1).await
     } else {
         ctx.send_reply_embed(CrackedMessage::VoteSkip {

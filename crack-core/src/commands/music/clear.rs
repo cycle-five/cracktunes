@@ -3,6 +3,7 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
+    music::{clear_from, PlaybackOwner},
     utils::send_reply,
     Context, Error,
 };
@@ -34,17 +35,16 @@ pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     let manager = ctx.data().songbird.clone();
     let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
 
+    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
+    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
+    // more kindly. This one cannot be forgotten.
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
     let queue = handler.queue().current_queue();
 
     verify(queue.len() > 1, CrackedError::QueueEmpty)?;
 
-    handler.queue().modify_queue(|v| {
-        v.drain(1..).for_each(|x| {
-            let _ = x.stop();
-            drop(x);
-        });
-    });
+    clear_from(&guard, &handler, 1);
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
