@@ -32,6 +32,7 @@ use crate::{
         SPOTIFY_NOTHING_PLAYABLE,
     },
     music::queue::build_track,
+    music::PlaybackOwner,
     poise_ext::PoiseContextExt,
     sources::sleevenote,
     Context, CrackedResult, Data, Error,
@@ -1021,6 +1022,10 @@ impl Data {
         );
         game.players.insert(host, host_name);
         let opened = game.open_window(now);
+        // 🔑 Claimed here, inside the branch that inserts, so the lease and the
+        // map move together. See music/lease.rs on why this must not be called
+        // from anywhere else.
+        self.claim_playback(guild_id, PlaybackOwner::Game)?;
         slot.insert(game);
         Ok(opened)
     }
@@ -1580,6 +1585,7 @@ impl Data {
             .is_some_and(|g| g.parked_for_end);
         if parked {
             if let Some((_, game)) = self.gp_games.remove(&guild_id) {
+                self.release_playback(guild_id);
                 self.gp_mark_finished(&game, GpOutcome::Ended);
             }
         }
@@ -1594,6 +1600,7 @@ impl Data {
     /// after a redeploy and come back.
     pub fn gp_remove(&self, guild_id: GuildId) -> Option<GpGame> {
         let (_, game) = self.gp_games.remove(&guild_id)?;
+        self.release_playback(guild_id);
         let outcome = if game.parked_for_end {
             GpOutcome::Ended
         } else if game.phase == GpPhase::Finished {
@@ -1610,6 +1617,12 @@ impl Data {
     pub fn gp_restore(&self, guild_id: GuildId, game: GpGame) -> bool {
         match self.gp_games.entry(guild_id) {
             dashmap::mapref::entry::Entry::Vacant(slot) => {
+                // Reclaimed before anything is restored into the guild -- the
+                // arbitration #431 needed, so a resumed game and a restored
+                // queue cannot both take the voice channel.
+                if self.claim_playback(guild_id, PlaybackOwner::Game).is_err() {
+                    return false;
+                }
                 slot.insert(game);
                 true
             },
@@ -5647,5 +5660,128 @@ mod test {
                 assert!(sub.parameters[1..].iter().all(|p| !p.required));
             }
         }
+    }
+
+    // --- Playback lease ------------------------------------------------
+    //
+    // The primitives (`claim_playback`, `release_playback`, `lock_queue`) have
+    // their own tests in `music/lease.rs`. These exercise the lease as wired
+    // into the five places that move `gp_games` in this file.
+
+    use crate::commands::music::gp_persist::GpPersist;
+    use tokio::sync::mpsc;
+
+    /// A `Data` whose persistence writes land in a channel rather than
+    /// Postgres. Mirrors `gp_persist::test::recording`.
+    fn recording() -> (Data, mpsc::UnboundedReceiver<GpPersist>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let data = Data(Arc::new(DataInner {
+            gp_persist: Some(tx),
+            ..Default::default()
+        }));
+        (data, rx)
+    }
+
+    /// A minimal game, enough for `gp_restore` to accept.
+    fn a_game(guild_id: GuildId) -> GpGame {
+        GpGame::new(
+            guild_id,
+            A,
+            VC,
+            TC,
+            GpCategory::Nostalgia,
+            prompts(&["p1"]),
+            TIMER,
+            None,
+            GpReveal::default(),
+            true,
+            NOW,
+        )
+    }
+
+    /// Starts a minimal game and asserts it succeeded, so the tests below read
+    /// as lifecycle rather than setup.
+    fn start_a_game(data: &Data, guild_id: GuildId) {
+        data.gp_start(
+            guild_id,
+            A,
+            "alice".into(),
+            VC,
+            TC,
+            GpCategory::Nostalgia,
+            prompts(&["p1"]),
+            TIMER,
+            None,
+            GpReveal::default(),
+            true,
+            NOW,
+        )
+        .expect("gp_start should succeed");
+    }
+
+    /// The lease and the games map must agree after EVERY game-lifecycle method.
+    /// This is the regression guard for the drift the co-location design exists
+    /// to prevent: a lease that outlives its game wedges /play forever, with no
+    /// game left to end.
+    fn assert_lease_agrees(data: &Data, guild_id: GuildId) {
+        let has_game = data.gp_games.contains_key(&guild_id);
+        let owned = data.playback_owner(guild_id) == PlaybackOwner::Game;
+        assert_eq!(
+            has_game, owned,
+            "gp_games says {has_game} but the lease says {owned} for {guild_id}"
+        );
+    }
+
+    #[test]
+    fn gp_start_claims_playback() {
+        let (data, _rx) = recording();
+        assert_lease_agrees(&data, G);
+        start_a_game(&data, G);
+        assert_eq!(data.playback_owner(G), PlaybackOwner::Game);
+        assert_lease_agrees(&data, G);
+    }
+
+    #[test]
+    fn gp_remove_releases_playback() {
+        let (data, _rx) = recording();
+        start_a_game(&data, G);
+        data.gp_remove(G);
+        assert_eq!(data.playback_owner(G), PlaybackOwner::Free);
+        assert_lease_agrees(&data, G);
+    }
+
+    #[test]
+    fn gp_remove_if_parked_releases_only_when_it_removes() {
+        let (data, _rx) = recording();
+        start_a_game(&data, G);
+
+        // Not parked: nothing is removed, so nothing is released.
+        assert!(!data.gp_remove_if_parked(G));
+        assert_eq!(data.playback_owner(G), PlaybackOwner::Game);
+        assert_lease_agrees(&data, G);
+
+        data.gp_park_for_end(G, A, true).expect("park");
+        assert!(data.gp_remove_if_parked(G));
+        assert_eq!(data.playback_owner(G), PlaybackOwner::Free);
+        assert_lease_agrees(&data, G);
+    }
+
+    #[test]
+    fn gp_restore_claims_playback() {
+        let (data, _rx) = recording();
+        let game = a_game(G);
+        assert!(data.gp_restore(G, game));
+        assert_eq!(data.playback_owner(G), PlaybackOwner::Game);
+        assert_lease_agrees(&data, G);
+    }
+
+    #[test]
+    fn a_refused_restore_does_not_claim() {
+        // `gp_restore` returns false when /gp start got there first. The lease
+        // is already held by that game; the refused restore must not touch it.
+        let (data, _rx) = recording();
+        start_a_game(&data, G);
+        assert!(!data.gp_restore(G, a_game(G)));
+        assert_lease_agrees(&data, G);
     }
 }

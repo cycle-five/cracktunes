@@ -616,7 +616,14 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
         Ok(call) => call,
         Err(e) => {
             tracing::warn!("gp: rejoining {voice_channel} in {guild_id} to resume: {e}");
-            data.gp_games.remove(&guild_id);
+            // Through the method, not the map: `gp_remove` is the one place a
+            // game ends, and it is what releases the playback lease. A raw
+            // remove here would leave the guild owned by a game that no longer
+            // exists, and /play refused forever. Its own bookkeeping write is
+            // superseded below: the free function is the authoritative
+            // database write for this path, since `gp_remove`'s in-memory
+            // `game` reflects the pre-rejoin-failure state.
+            data.gp_remove(guild_id);
             if let Err(e) =
                 gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await
             {
