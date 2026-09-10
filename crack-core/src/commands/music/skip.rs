@@ -97,16 +97,21 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
 
     let call = get_call_or_join_author(ctx).await?;
 
+    // The downvote is a database round trip and the guard must not span one, so
+    // it happens first, outside. Reading the metadata needs the call lock but
+    // not exclusion -- it mutates nothing.
+    let metadata = {
+        let handler = call.lock().await;
+        get_track_handle_metadata(&handler.queue().current().unwrap()).await?
+    };
+    let source_url = &metadata.source_url.ok_or("ASDF").unwrap();
+    let res1 = ctx.data().downvote_track(guild_id, source_url).await?;
+
     // Ordinary music commands mutate as `Free`; a guild a game owns refuses
     // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
     // more kindly. This one cannot be forgotten.
     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
-    let queue = handler.queue();
-    let metadata = get_track_handle_metadata(&queue.current().unwrap()).await?;
-
-    let source_url = &metadata.source_url.ok_or("ASDF").unwrap();
-    let res1 = ctx.data().downvote_track(guild_id, source_url).await?;
     let res2 = force_skip_top_track(&guard, &handler).await?;
     // Released the moment the last mutation is done, the same as `skip` above.
     // `force_skip_top_track` fires `TrackEvent::End`, and since Task 6 the

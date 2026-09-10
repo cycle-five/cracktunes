@@ -14,11 +14,12 @@ use serenity::{
     small_fixed_array::FixedString,
 };
 use songbird::{
-    input::{Input as SongbirdInput, YoutubeDl},
-    tracks::{Queued, Track, TrackHandle},
+    input::{AuxMetadata, Input as SongbirdInput, YoutubeDl},
+    tracks::{Queued, Track, TrackHandle, TrackResult},
     Call,
 };
 use std::str::FromStr;
+use std::time::Duration;
 use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::{Mutex, RwLock};
 
@@ -44,7 +45,8 @@ pub async fn queue_resolved_track_back(
     // source in `build_track` fixed `/gp` and left `/play` still silent.
     let track = build_track(&track_resolved, &http_client)?;
     let mut handler = call.lock().await;
-    let _track_handle = handler.enqueue(track).await;
+    // `enqueue_with_preload`, not `enqueue`: see [`preload_time`].
+    let _track_handle = handler.enqueue_with_preload(track, preload_time(&track_resolved));
     // .enqueue_input(Into::<SongbirdInput>::into(track))
     let new_q = handler.queue().current_queue();
     drop(handler);
@@ -112,6 +114,42 @@ pub(crate) fn build_track(
     Ok(Track::new_with_data(ytdl.into(), track_data))
 }
 
+/// When to start loading the *next* track, given what we already know about this
+/// one.
+///
+/// # 🪤 This exists to keep yt-dlp out of the guard
+///
+/// `Call::enqueue` (songbird `driver/mod.rs:301`) calls
+/// `TrackQueue::get_preload_time`, which does
+/// `Input::Lazy(rec).aux_metadata().await` purely to read the duration.
+/// [`build_track`] hands songbird a `YoutubeDl` with `metadata: None`, so that
+/// `aux_metadata` falls through to `query(1)` and **spawns yt-dlp** -- 1-3s, per
+/// track, inside the enqueue, inside the [`QueueGuard`]. A 20-track playlist
+/// paid it twenty times and made a second `/play` in the same guild wait out
+/// every one of them.
+///
+/// songbird's `YoutubeDl::metadata` is private with no setter on the pinned rev
+/// (`3fe7289`), so it cannot be primed; `enqueue_with_preload` is the way out.
+/// This computes exactly what `get_preload_time` would have -- duration minus
+/// five seconds -- from the [`ResolvedTrack`] metadata resolution already
+/// produced, so preload is preserved rather than disabled.
+///
+/// `None` (no metadata, or metadata with no duration) disables preload for that
+/// track: it is readied when the previous one ends instead of five seconds
+/// early. That is a small gap, not a failure, and it is what songbird itself
+/// falls back to when the query yields no duration.
+pub(crate) fn preload_time(resolved: &ResolvedTrack<'_>) -> Option<Duration> {
+    preload_from_metadata(resolved.metadata.as_ref())
+}
+
+/// [`preload_time`] for the paths that hold [`AuxMetadata`] rather than a
+/// [`ResolvedTrack`]. The five seconds is songbird's own figure, from
+/// `TrackQueue::get_preload_time`.
+pub(crate) fn preload_from_metadata(meta: Option<&AuxMetadata>) -> Option<Duration> {
+    meta.and_then(|meta| meta.duration)
+        .map(|d| d.saturating_sub(Duration::from_secs(5)))
+}
+
 /// What one enqueue call put into the queue.
 ///
 /// 🔑 Deliberately NOT the whole queue. `enqueue_resolved_tracks_back` used to
@@ -157,7 +195,10 @@ pub async fn enqueue_resolved_tracks_back(
     let mut handles = Vec::with_capacity(tracks.len());
     for resolved in &tracks {
         match build_track(resolved, &http_client) {
-            Ok(track) => handles.push(handler.enqueue(track).await),
+            // `enqueue_with_preload`, not `enqueue`: see [`preload_time`]. This
+            // is the loop that made it matter -- a 20-track playlist ran yt-dlp
+            // twenty times here, under the guard, before this.
+            Ok(track) => handles.push(handler.enqueue_with_preload(track, preload_time(resolved))),
             Err(e) => tracing::warn!("Failed to enqueue {}: {e}", resolved.get_url()),
         }
     }
@@ -213,8 +254,11 @@ pub async fn queue_track_ready_front(
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let _ = guard;
+    // `enqueue_with_preload`, not `enqueue_input`: see [`preload_time`]. The
+    // readied metadata is right here, so songbird never has to go and ask.
+    let preload = preload_from_metadata(Some(&ready_track.metadata.0));
     let mut handler = call.lock().await;
-    let mut track_handle = handler.enqueue_input(ready_track.source).await;
+    let mut track_handle = handler.enqueue_with_preload(ready_track.source.into(), preload);
     let new_q = handler.queue().current_queue();
     // Zeroth index: Currently playing track
     // First index: Current next track
@@ -253,12 +297,15 @@ pub async fn _queue_track_ready_back(
         ..
     } = ready_track;
 
+    // Computed before `metadata` is moved into the track data below.
+    let preload = preload_from_metadata(Some(&metadata.0));
     let track_data = TrackData::new()
         .with_user_id(user_id.unwrap())
         .with_metadata(metadata.into());
     let track = Track::new_with_data(source, track_data);
 
-    let _track_handle = handler.enqueue(track).await;
+    // `enqueue_with_preload`, not `enqueue`: see [`preload_time`].
+    let _track_handle = handler.enqueue_with_preload(track, preload);
     let new_q = handler.queue().current_queue();
     drop(handler);
 
@@ -631,8 +678,10 @@ pub async fn queue_query_list_offset(
         CrackedError::NotInRange("index", offset as isize, 1, queue_size as isize),
     )?;
 
-    // One lock for the whole insert, and a lazy `Compose` per track rather than
-    // an eager `YoutubeDl` metadata fetch.
+    // One lock for the whole insert. The `Compose` per track is lazy, but
+    // `enqueue` is not: it reads the duration back off the input to schedule
+    // preload, which runs yt-dlp. `enqueue_with_preload` is what actually keeps
+    // this loop lazy -- see [`preload_time`].
     let client = http_utils::get_client_old().clone();
     let cur_q = {
         let mut handler = call.lock().await;
@@ -644,7 +693,7 @@ pub async fn queue_query_list_offset(
                     continue;
                 },
             };
-            let _ = handler.enqueue(track).await;
+            let _ = handler.enqueue_with_preload(track, preload_time(&resolved));
             handler.queue().modify_queue(|q| {
                 if let Some(back) = q.pop_back() {
                     q.insert((idx + offset).min(q.len()), back);
@@ -752,18 +801,33 @@ pub fn stop_queue(guard: &QueueGuard, handler: &Call) {
     handler.queue().stop();
 }
 
-/// Pause the queue. Used by autopause in the global track-end handler.
+/// Pause the queue. Used by `/pause` and by autopause in the global track-end
+/// handler.
 ///
-/// Same `&Call` shape as [`stop_queue`], for symmetry at the two call sites.
-/// A pause that fails (nothing is playing) is swallowed: autopause is a nicety
-/// nobody asked for at this instant, and it has no user to answer to.
+/// Same `&Call` shape as [`stop_queue`]. The failure is handed back rather than
+/// swallowed, because the two callers want opposite things with it: `/pause`
+/// has a user to tell, autopause does not.
 ///
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
-pub fn pause_queue(guard: &QueueGuard, handler: &Call) {
+pub fn pause_queue(guard: &QueueGuard, handler: &Call) -> TrackResult<()> {
     let _ = guard;
-    handler.queue().pause().ok();
+    handler.queue().pause()
+}
+
+/// Resume the queue. Used by `/resume`.
+///
+/// Same `&Call` shape as [`stop_queue`].
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. 🔴 That is not belt-and-braces here: `/resume` was in neither
+/// `GP_BLOCKED_COMMANDS` nor the funnel, so it was the one queue mutation a
+/// user could still land on a running `/gp` round. The guard is what closes it;
+/// the blocklist entry added alongside only makes the refusal arrive earlier.
+pub fn resume_queue(guard: &QueueGuard, handler: &Call) -> TrackResult<()> {
+    let _ = guard;
+    handler.queue().resume()
 }
 
 /// Enqueue an already-built [`Track`] at the back of the queue, returning its
@@ -773,6 +837,10 @@ pub fn pause_queue(guard: &QueueGuard, handler: &Call) {
 /// arms per-track event handlers on it; [`queue_resolved_track_back`] is the
 /// snapshot-returning shape.
 ///
+/// `preload` is passed explicitly rather than letting songbird derive it,
+/// because deriving it spawns yt-dlp inside the guard -- see [`preload_time`],
+/// which is how the caller should compute this.
+///
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
@@ -780,15 +848,20 @@ pub async fn enqueue_track_back(
     guard: &QueueGuard,
     call: &Arc<Mutex<Call>>,
     track: Track,
+    preload: Option<Duration>,
 ) -> TrackHandle {
     let _ = guard;
     let mut handler = call.lock().await;
-    handler.enqueue(track).await
+    handler.enqueue_with_preload(track, preload)
 }
 
 /// Enqueue an already-resolved songbird [`Input`](SongbirdInput) at the back of
 /// the queue, returning its handle. Used by autoplay in the global track-end
 /// handler.
+///
+/// `preload` is passed explicitly for the same reason as
+/// [`enqueue_track_back`]: `enqueue_input` would derive it by spawning yt-dlp
+/// under the guard. The caller has the resolved metadata and can supply it.
 ///
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
@@ -797,10 +870,11 @@ pub async fn enqueue_input_back(
     guard: &QueueGuard,
     call: &Arc<Mutex<Call>>,
     source: SongbirdInput,
+    preload: Option<Duration>,
 ) -> TrackHandle {
     let _ = guard;
     let mut handler = call.lock().await;
-    handler.enqueue_input(source).await
+    handler.enqueue_with_preload(source.into(), preload)
 }
 
 /// Shuffle `values` in place using the Fisher-Yates algorithm.

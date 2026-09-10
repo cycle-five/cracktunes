@@ -31,7 +31,7 @@ use crate::{
         GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN, SPOTIFY_GP_ONE_SONG,
         SPOTIFY_NOTHING_PLAYABLE,
     },
-    music::queue::{build_track, enqueue_track_back, stop_queue},
+    music::queue::{build_track, enqueue_track_back, preload_time, stop_queue},
     music::PlaybackOwner,
     poise_ext::PoiseContextExt,
     sources::sleevenote,
@@ -165,6 +165,7 @@ pub const GP_BLOCKED_COMMANDS: &[&str] = &[
     "seek",
     "repeat",
     "pause",
+    "resume",
     "summon",
     "summonchannel",
 ];
@@ -2526,10 +2527,14 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
                 return Ok(());
             },
         };
-        enqueue_track_back(&guard, &pb.call, songbird_track).await
-        // The guard drops with this block, before the seek below: forcing the
-        // stream open is the slow leg, and `lease.rs` forbids holding exclusion
-        // across one. Nothing after this point mutates the queue.
+        // The preload time is computed from metadata already in hand rather
+        // than derived by songbird, which would spawn yt-dlp here, under the
+        // guard -- see `preload_time`.
+        enqueue_track_back(&guard, &pb.call, songbird_track, preload_time(&start.track)).await
+        // The guard drops with this block, before the seek below. Both are slow
+        // legs -- the enqueue above no longer is, now that it does not run
+        // yt-dlp -- and `lease.rs` forbids holding exclusion across either.
+        // Nothing after this point mutates the queue.
     };
 
     // Arm every handler before awaiting anything. The seek below is the first
@@ -5639,7 +5644,28 @@ mod test {
         // The game has its own `/gp voteskip`; the music one bypasses the majority.
         assert!(GP_BLOCKED_COMMANDS.contains(&"voteskip"));
         assert!(!GP_BLOCKED_COMMANDS.contains(&"gp"));
-        assert!(!GP_BLOCKED_COMMANDS.contains(&"resume"), "the escape hatch");
+        // `resume` used to be left off deliberately, as an escape hatch for a
+        // queue somebody had paused. The playback lease withdrew that: `/resume`
+        // mutates the queue, so it now takes a `QueueGuard` and a guild the game
+        // owns refuses it there whatever this list says. Leaving it off only
+        // bought a later, less explanatory refusal -- and until the guard
+        // existed it bought a real one, `queue.resume()` landing on a live round.
+        assert!(GP_BLOCKED_COMMANDS.contains(&"resume"));
+        // A blocked name does nothing unless its command actually runs the
+        // check. `remove` sat on this list for exactly that reason with no
+        // `check = "cmd_check_music"`, so its entry was inert.
+        let by_name: std::collections::HashMap<String, _> =
+            crate::commands::music::music_commands()
+                .into_iter()
+                .map(|c| (c.name.to_string(), c.checks.len()))
+                .collect();
+        for blocked in GP_BLOCKED_COMMANDS {
+            assert_ne!(
+                by_name.get(*blocked).copied().unwrap_or_default(),
+                0,
+                "{blocked} is blocked but runs no check, so the block never fires"
+            );
+        }
         for sub in &gp().subcommands {
             let qualified = format!("gp {}", sub.name);
             assert!(!GP_BLOCKED_COMMANDS.contains(&qualified.as_str()));

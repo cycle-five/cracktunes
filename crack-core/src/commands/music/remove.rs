@@ -1,5 +1,6 @@
 use self::serenity::builder::CreateEmbed;
 use crate::{
+    commands::cmd_check_music,
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
@@ -15,7 +16,13 @@ use std::cmp::min;
 
 /// Remove track(s) from the queue.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(category = "Music", prefix_command, slash_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    guild_only
+)]
 pub async fn remove(
     ctx: Context<'_>,
     #[description = "Index in the queue to remove (Or number of tracks to remove if no second argument."]

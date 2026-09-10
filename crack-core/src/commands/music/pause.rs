@@ -2,6 +2,7 @@ use crate::{
     commands::cmd_check_music,
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
+    music::{queue::pause_queue, PlaybackOwner},
     poise_ext::ContextExt,
     utils::send_reply,
     {Context, Error},
@@ -17,10 +18,27 @@ use crate::{
     guild_only
 )]
 pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
-    let queue = ctx.get_queue().await?;
+    // `get_call_guild_id`, not `get_queue`: a cloned `TrackQueue` is a handle to
+    // the same queue with no `Call` attached, and the guard-taking helpers need
+    // the `Call`. Cloning it was also what hid this mutation from every
+    // verification grep in this branch.
+    let (call, guild_id) = ctx.get_call_guild_id().await?;
 
-    verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
-    verify(queue.pause(), CrackedError::Other("Failed to pause"))?;
+    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
+    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
+    // more kindly. This one cannot be forgotten.
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+    {
+        let handler = call.lock().await;
+
+        verify(!handler.queue().is_empty(), CrackedError::NothingPlaying)?;
+        verify(
+            pause_queue(&guard, &handler),
+            CrackedError::Other("Failed to pause"),
+        )?;
+    }
+    // Held for the mutation, not across the reply below.
+    drop(guard);
 
     send_reply(&ctx, CrackedMessage::Pause, true).await?;
     Ok(())

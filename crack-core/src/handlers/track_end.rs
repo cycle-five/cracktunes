@@ -7,7 +7,7 @@ use crate::{
         messages::{AUTOPLAY_DISABLED_ERROR, AUTOPLAY_DISABLED_SPOTIFY, SPOTIFY_AUTH_FAILED},
     },
     music::query::NewQueryType,
-    music::queue::{enqueue_input_back, pause_queue},
+    music::queue::{enqueue_input_back, pause_queue, preload_from_metadata},
     music::PlaybackOwner,
     sources::spotify::{Spotify, SPOTIFY},
     utils::{
@@ -150,7 +150,9 @@ impl EventHandler for TrackEndHandler {
             {
                 Ok(guard) => {
                     let handler = self.call.lock().await;
-                    pause_queue(&guard, &handler);
+                    // Nobody asked for this pause, so a failure has nobody to
+                    // report it to.
+                    pause_queue(&guard, &handler).ok();
                 },
                 // A nicety with nobody to answer to: log it and carry on.
                 Err(e) => tracing::trace!("autopause skipped in {}: {e}", self.guild_id),
@@ -273,9 +275,13 @@ pub async fn queue_query(
     let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) = qt
         .get_track_source_and_metadata(Some(client.clone()))
         .await?;
+    // Supplied rather than derived: `enqueue_input` would read it back off the
+    // input, which for a lazy source means spawning yt-dlp under the guard.
+    // Resolution above already produced the duration.
+    let preload = preload_from_metadata(metadata_vec.first().map(|meta| &meta.0));
     let mut track = {
         let guard = data.lock_queue(guild_id, PlaybackOwner::Free).await?;
-        enqueue_input_back(&guard, &call, source).await
+        enqueue_input_back(&guard, &call, source, preload).await
         // The guard drops with this block. `add_metadata_to_track` below writes
         // the track's own typemap, not the queue, so it needs no exclusion.
     };
