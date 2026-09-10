@@ -1620,6 +1620,12 @@ impl Data {
                 // Reclaimed before anything is restored into the guild -- the
                 // arbitration #431 needed, so a resumed game and a restored
                 // queue cannot both take the voice channel.
+                //
+                // 🪤 This branch is unreachable today: `claim_playback` only
+                // errs for a *different* owner, and `Game` is the only owner
+                // that exists. It stays as deliberate defensive coding for
+                // when a second `PlaybackOwner` variant arrives -- not dead
+                // code to be simplified away.
                 if self.claim_playback(guild_id, PlaybackOwner::Game).is_err() {
                     return false;
                 }
@@ -5775,10 +5781,15 @@ mod test {
         assert_lease_agrees(&data, G);
     }
 
+    /// `gp_restore` returns false when `/gp start` got there first. This guards
+    /// the `Entry::Occupied` arm only: it must never claim, release, or
+    /// otherwise disturb the lease the running game already holds.
+    ///
+    /// 🪤 It does NOT exercise the Vacant-arm claim -- it structurally cannot
+    /// reach that branch. `gp_restore_claims_playback` covers that, and does
+    /// fail without the claim line.
     #[test]
-    fn a_refused_restore_does_not_claim() {
-        // `gp_restore` returns false when /gp start got there first. The lease
-        // is already held by that game; the refused restore must not touch it.
+    fn restoring_over_a_live_game_leaves_the_lease_alone() {
         let (data, _rx) = recording();
         start_a_game(&data, G);
         assert!(!data.gp_restore(G, a_game(G)));
