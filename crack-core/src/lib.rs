@@ -376,6 +376,12 @@ pub struct DataInner {
     pub authorized_users: HashSet<u64>,
     // Why not Arc here?
     pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
+    /// Who owns playback per guild. Written ONLY by `claim_playback` /
+    /// `release_playback`, which are called from inside the methods that move
+    /// `gp_games` -- see `music/lease.rs`. Do not write it anywhere else.
+    pub playback_owners: dashmap::DashMap<serenity::GuildId, crate::music::lease::PlaybackOwner>,
+    /// Per-guild queue-mutation mutex. Held for milliseconds; see `lock_queue`.
+    pub queue_locks: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
     pub phone_data: PhoneCodeData,
     pub event_log_async: EventLogAsync,
     // Why Option instead of Arc here? Certainly it's an indirection to allow for an uninitialized state
@@ -593,6 +599,8 @@ impl Default for DataInner {
             phone_data: PhoneCodeData::default(),
             bot_settings: Default::default(),
             join_vc_tokens: Default::default(),
+            playback_owners: Default::default(),
+            queue_locks: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
