@@ -105,32 +105,67 @@ pub(crate) fn build_track(
     Ok(Track::new_with_data(ytdl.into(), track_data))
 }
 
+/// What one enqueue call put into the queue.
+///
+/// 🔑 Deliberately NOT the whole queue. `enqueue_resolved_tracks_back` used to
+/// return `handler.queue().current_queue()` *after* enqueueing, so two
+/// concurrent `/play` calls both read the post-both state and both replies
+/// listed both sets of songs -- #333, reported as "one of the songs got queued
+/// twice". A reply built from what *this* call inserted cannot be corrupted by
+/// a concurrent one.
+#[derive(Debug, Clone)]
+pub struct Inserted {
+    /// The handles this call added, in the order they were added.
+    pub handles: Vec<TrackHandle>,
+    /// Where the first of them landed in the queue.
+    ///
+    /// Not read by any caller in this crate yet -- no current call site builds
+    /// a "queued at position N" reply. Carried for the callers that will.
+    #[allow(dead_code)]
+    pub first_position: usize,
+    /// Queue length after this call. For "added N, now M in queue" replies.
+    ///
+    /// Not read by any caller in this crate yet, same as `first_position`.
+    #[allow(dead_code)]
+    pub queue_len: usize,
+}
+
+impl Inserted {
+    /// How many tracks this call added.
+    #[must_use]
+    pub fn count(&self) -> usize {
+        self.handles.len()
+    }
+}
+
 /// Queue a batch of resolved tracks to the back of the queue.
 ///
 /// Takes the call lock once for the whole batch instead of once per track,
 /// which matters when a playlist adds tens of tracks at a time.
+///
+/// Returns only what THIS call inserted -- see [`Inserted`]. Callers that also
+/// want a whole-queue snapshot (to redraw a queue message, say) take it
+/// explicitly and separately; see #333.
 pub async fn enqueue_resolved_tracks_back(
     call: &Arc<Mutex<Call>>,
     tracks: Vec<ResolvedTrack<'static>>,
     http_client: reqwest::Client,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    if tracks.is_empty() {
-        let handler = call.lock().await;
-        return Ok(handler.queue().current_queue());
-    }
-
+) -> Result<Inserted, CrackedError> {
     let mut handler = call.lock().await;
+    let first_position = handler.queue().len();
+    let mut handles = Vec::with_capacity(tracks.len());
     for resolved in &tracks {
         match build_track(resolved, &http_client) {
-            Ok(track) => {
-                let _ = handler.enqueue(track).await;
-            },
-            Err(e) => {
-                tracing::warn!("Failed to enqueue {}: {e}", resolved.get_url());
-            },
+            Ok(track) => handles.push(handler.enqueue(track).await),
+            Err(e) => tracing::warn!("Failed to enqueue {}: {e}", resolved.get_url()),
         }
     }
-    Ok(handler.queue().current_queue())
+    let queue_len = handler.queue().len();
+    Ok(Inserted {
+        handles,
+        first_position,
+        queue_len,
+    })
 }
 
 /// Data needed to queue a track.
@@ -389,8 +424,12 @@ pub async fn queue_resolved_list_back(
     }
 
     let rest = tracks.split_off(1);
-    let queue = enqueue_resolved_tracks_back(&call, tracks, client.clone()).await?;
-    update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
+    enqueue_resolved_tracks_back(&call, tracks, client.clone()).await?;
+    // update_queue_messages redraws the whole queue message, so it wants the
+    // whole queue -- read deliberately here rather than received from the
+    // enqueue, which now reports only what this call added. See #333.
+    let snapshot = call.lock().await.queue().current_queue();
+    update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
 
     if rest.is_empty() {
         return Ok(());
@@ -401,9 +440,10 @@ pub async fn queue_resolved_list_back(
     let mut last_edit = std::time::Instant::now();
 
     for chunk in rest.chunks(QUEUE_BATCH_SIZE) {
-        let queue = enqueue_resolved_tracks_back(&call, chunk.to_vec(), client.clone()).await?;
-        queued += chunk.len();
-        update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
+        let inserted = enqueue_resolved_tracks_back(&call, chunk.to_vec(), client.clone()).await?;
+        queued += inserted.count();
+        let snapshot = call.lock().await.queue().current_queue();
+        update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
 
         let is_last = queued >= total;
         if is_last || last_edit.elapsed() >= PROGRESS_EDIT_INTERVAL {
@@ -450,9 +490,12 @@ pub async fn queue_vec_query_type(
         .map(|t| t.with_user_id(user_id))
         .collect::<Vec<_>>();
 
-    let queue =
-        enqueue_resolved_tracks_back(&call, resolved, http_utils::get_client_old().clone()).await?;
-    update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
+    enqueue_resolved_tracks_back(&call, resolved, http_utils::get_client_old().clone()).await?;
+    // update_queue_messages redraws the whole queue message, so it wants the
+    // whole queue -- read deliberately here rather than received from the
+    // enqueue, which now reports only what this call added. See #333.
+    let snapshot = call.lock().await.queue().current_queue();
+    update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
     Ok(())
 }
 
@@ -733,5 +776,35 @@ mod test {
         let is_prefix = true;
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod insertion_tests {
+    use super::*;
+
+    #[test]
+    fn inserted_describes_only_this_call() {
+        // #333: the bug was returning the whole queue after enqueueing, so two
+        // concurrent /play calls each reported both sets of songs. `Inserted`
+        // cannot express that -- it carries only what this call added.
+        let inserted = Inserted {
+            handles: Vec::new(),
+            first_position: 3,
+            queue_len: 5,
+        };
+        assert_eq!(inserted.count(), 0);
+        assert_eq!(inserted.first_position, 3);
+        assert_eq!(inserted.queue_len, 5);
+    }
+
+    #[test]
+    fn count_is_the_handles_this_call_added() {
+        let inserted = Inserted {
+            handles: Vec::new(),
+            first_position: 0,
+            queue_len: 0,
+        };
+        assert_eq!(inserted.count(), inserted.handles.len());
     }
 }
