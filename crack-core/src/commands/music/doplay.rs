@@ -3,6 +3,7 @@ use crate::music::query::{query_type_from_url, ResolvedQuery};
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
 use crate::music::NewQueryType;
 use crate::utils::edit_embed_response2;
+use crate::CrackedResult;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
     errors::{verify, CrackedError},
@@ -19,7 +20,6 @@ use crate::{
     utils::get_track_handle_metadata,
     Context, Data, Error,
 };
-use crate::{http_utils, CrackedResult};
 use ::serenity::all::CreateAutocompleteResponse;
 use ::serenity::{
     all::{CommandInteraction, Message},
@@ -95,7 +95,7 @@ pub async fn search(
     play_internal(ctx, Some("search".to_string()), None, Some(query)).await
 }
 
-use crack_testing::{suggestion2, ResolvedTrack};
+use crack_testing::suggestion2;
 
 /// Autocomplete to suggest a search query.
 pub async fn autocomplete<'a>(
@@ -185,34 +185,12 @@ pub async fn playfile(
     play_internal(ctx, None, Some(file), None).await
 }
 
-use songbird::input::{Input as SongbirdInput, YoutubeDl};
-
-/// Enqueue an extrernal queue of resolved tracks to the internal queue
-/// for the bot in songbird.
-pub async fn enqueue_resolved_tracks(
-    call: Arc<Mutex<Call>>,
-    tracks: Vec<ResolvedTrack<'_>>,
-    mode: crack_types::Mode,
-) -> Vec<TrackHandle> {
-    let mut handler = call.lock().await;
-    let http_client = http_utils::get_client_old();
-    let mut out_tracks: Vec<TrackHandle> = Vec::new();
-    match mode {
-        crack_types::Mode::End => {
-            for track in tracks.iter() {
-                let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
-                let res = handler
-                    .enqueue_input(Into::<SongbirdInput>::into(ytdl))
-                    .await;
-                //handler.queue()
-                out_tracks.push(res);
-            }
-        },
-        //crack_types::Mode::Next => {},
-        _ => unimplemented!(),
-    }
-    out_tracks
-}
+// `enqueue_resolved_tracks` (called `handler.enqueue_input(...)` directly,
+// bypassing the guard funnel) was removed here: both its call sites were
+// already commented out (below, and queue.rs's `queue_query_list_offset`),
+// and being `pub` it never tripped `dead_code`, so it sat as an unguarded
+// public escape hatch of exactly the class this funnel exists to close. Use
+// `enqueue_resolved_tracks_back` instead if this is ever needed again.
 
 // /// Pushes a track to the front of the queue, after readying it.
 // pub async fn queue_track_ready_front(

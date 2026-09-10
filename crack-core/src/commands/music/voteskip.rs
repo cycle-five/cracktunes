@@ -93,8 +93,15 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         //     },
         // );
         force_skip_top_track(&guard, &handler).await?;
+        // The guard is held only for the mutation above, not across the
+        // Discord round trip in `create_skip_response` -- see lease.rs.
+        drop(guard);
         create_skip_response(ctx, &handler, 1).await
     } else {
+        // Never mutates the queue on this path, so the guard is dropped
+        // before the Discord round trip below rather than held idle across
+        // it -- see lease.rs.
+        drop(guard);
         ctx.send_reply_embed(CrackedMessage::VoteSkip {
             mention: ctx.get_user_id().mention(),
             missing: skip_threshold - cache.current_skip_votes.len(),

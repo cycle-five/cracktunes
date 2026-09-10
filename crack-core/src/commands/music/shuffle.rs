@@ -48,6 +48,9 @@ pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result
     )?;
 
     move_track(&guard, &handler, at, to);
+    // The guard is held only for the mutation, not across the Discord round
+    // trips below (`send_reply`, `update_queue_messages`) -- see lease.rs.
+    drop(guard);
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
@@ -77,6 +80,9 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
     shuffle_behind_current(&guard, &handler);
+    // The guard is held only for the mutation, not across the Discord round
+    // trips below (`send_reply`, `update_queue_messages`) -- see lease.rs.
+    drop(guard);
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();

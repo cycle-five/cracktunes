@@ -514,23 +514,29 @@ pub async fn queue_resolved_list_back(
     Ok(())
 }
 
-/// Enqueue already-resolved tracks and hold `guard` across the snapshot read
-/// right after, closing the window a concurrent command's insert could
-/// otherwise land in -- those used to be two separate acquisitions of just the
-/// call lock. See #333.
+/// Enqueue already-resolved tracks and return a snapshot of the queue taken
+/// right after, while `guard` is still held -- closing the window a
+/// concurrent command's insert could otherwise land in between the enqueue
+/// and the snapshot. See #333.
 ///
 /// Deliberately takes already-resolved tracks rather than doing the
 /// `resolve_track_many` itself: resolution is the slow leg, and a caller must
 /// do it before acquiring `guard`, not while holding it. [`queue_vec_query_type`]
 /// and [`queue_query_list_offset`]'s low-queue branch are the two callers, and
 /// each resolves on its own schedule before reaching here.
+///
+/// Deliberately does NOT call `update_queue_messages` itself: that is a
+/// Discord HTTP round trip, and `guard` -- borrowed here, owned by the caller
+/// -- must be dropped before it, not held across it (`lease.rs`: "held for
+/// milliseconds ... do not hold one across a slow operation"). Callers drop
+/// their guard, then redraw with the returned snapshot.
 #[cfg(not(tarpaulin_include))]
 async fn enqueue_resolved_and_snapshot(
     guard: &QueueGuard,
     ctx: CrackContext<'_>,
     call: &Arc<Mutex<Call>>,
     resolved: Vec<ResolvedTrack<'static>>,
-) -> Result<(), Error> {
+) -> Result<Vec<TrackHandle>, CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     debug_assert_eq!(
         guard.guild_id(),
@@ -539,19 +545,16 @@ async fn enqueue_resolved_and_snapshot(
     );
     enqueue_resolved_tracks_back(guard, call, resolved, http_utils::get_client_old().clone())
         .await?;
-    // update_queue_messages redraws the whole queue message, so it wants the
-    // whole queue -- read deliberately here rather than received from the
-    // enqueue, which now reports only what this call added. See #333.
-    let snapshot = call.lock().await.queue().current_queue();
-    update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
-    Ok(())
+    // The whole queue, not what this call added -- `update_queue_messages`
+    // redraws the whole queue message. See #333.
+    Ok(call.lock().await.queue().current_queue())
 }
 
 /// Queue a list of keywords to be played with an offset.
 ///
-/// Resolves first, then acquires a [`QueueGuard`] and holds it across the
-/// enqueue and its snapshot -- never across the resolve above, which is the
-/// slow leg. See [`enqueue_resolved_and_snapshot`].
+/// Resolves first, then acquires a [`QueueGuard`] and holds it only across
+/// the enqueue and its snapshot -- never across the resolve above (the slow
+/// leg) or the Discord round trip below. See [`enqueue_resolved_and_snapshot`].
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_vec_query_type(
     ctx: CrackContext<'_>,
@@ -575,25 +578,24 @@ pub async fn queue_vec_query_type(
         .collect::<Vec<_>>();
 
     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
-    enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await
+    let snapshot = enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await?;
+    drop(guard);
+    update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+    Ok(())
 }
 
 use crate::http_utils;
 /// Queue a list of queries to be played with a given offset.
 /// N.B. The offset must be 0 < offset < queue.len() + 1
 ///
-/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
-/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
-/// error message rather than a corrupted `/gp` round.
-///
-/// 🪤 The `resolve_track_many` call below runs while `guard` is held, which
-/// wraps a second `/play` in this guild around this call's whole 8-15s
-/// resolution rather than just its enqueue. That is a known, deliberate gap:
-/// fixing it means restructuring this function's check-then-act shape, which
-/// is a separate, already-tracked piece of work. Do not fix it here.
+/// Resolves first (the slow leg -- worse than the usual 8-15s here, since a
+/// big playlist batches through `RESOLVE_CONCURRENCY` lookups at a time), then
+/// acquires a [`QueueGuard`] and reads *and* acts on the queue length under
+/// that one guard, so the length cannot go stale between the check and the
+/// insert -- it used to be read before resolving and acted on afterward,
+/// against whatever the queue had become in between.
 #[cfg(not(tarpaulin_include))]
 pub async fn queue_query_list_offset(
-    guard: &QueueGuard,
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
@@ -601,51 +603,33 @@ pub async fn queue_query_list_offset(
     _search_msg: &mut Message,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    debug_assert_eq!(
-        guard.guild_id(),
-        guild_id,
-        "QueueGuard is for another guild"
-    );
+    let user_id = ctx.author().id;
 
-    // Can this starting section be simplified?
+    // Resolved concurrently; this was a serial round trip per track. Runs
+    // before the guard is taken -- see the doc comment above.
+    let tracks = ctx.data().ct_client.resolve_track_many(queries).await?;
+
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let queue_size = {
         let handler = call.lock().await;
         handler.queue().len()
     };
 
     if queue_size <= 1 {
-        // Reuses the guard already held here rather than going through
-        // `queue_vec_query_type`, which acquires its own -- a second
-        // `lock_queue` for this same guild from inside this call would
-        // deadlock on the per-guild mutex `QueueGuard` wraps, which is not
-        // re-entrant. This is the smallest change that avoids that; the
-        // check-then-act restructuring is the separate work referenced above.
-        let user_id = ctx.author().id;
-        let resolved = ctx
-            .data()
-            .ct_client
-            .resolve_track_many(queries)
-            .await?
+        let resolved = tracks
             .into_iter()
             .map(|t| t.with_user_id(user_id))
             .collect::<Vec<_>>();
-        return enqueue_resolved_and_snapshot(guard, ctx, &call, resolved).await;
+        let snapshot = enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await?;
+        drop(guard);
+        update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+        return Ok(());
     }
 
     verify(
         offset > 0 && offset <= queue_size + 1,
         CrackedError::NotInRange("index", offset as isize, 1, queue_size as isize),
     )?;
-
-    // Resolved concurrently; this was a serial round trip per track.
-    let tracks = ctx.data().ct_client.resolve_track_many(queries).await?;
-    // enqueue_resolved_tracks(ctx.get_call(), tracks).await?;
-    // for query in queries {
-    //     let ready_track = ready_query(ctx, query).await?;
-    //     // FIXME:
-    //     //ctx.async_send_track_metadata_write_msg(&ready_track);
-    //     tracks.push(ready_track);
-    // }
 
     // One lock for the whole insert, and a lazy `Compose` per track rather than
     // an eager `YoutubeDl` metadata fetch.
@@ -669,6 +653,7 @@ pub async fn queue_query_list_offset(
         }
         handler.queue().current_queue()
     };
+    drop(guard);
 
     update_queue_messages(&ctx, ctx.data(), &cur_q, guild_id).await;
 

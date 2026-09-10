@@ -79,6 +79,9 @@ pub async fn remove_internal(
     for _ in remove_index..=remove_until {
         remove_at(&guard, &handler, remove_index);
     }
+    // The guard is held only for the mutation, not across the Discord round
+    // trips below (the reply, then `update_queue_messages`) -- see lease.rs.
+    drop(guard);
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();

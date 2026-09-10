@@ -45,6 +45,9 @@ pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     verify(queue.len() > 1, CrackedError::QueueEmpty)?;
 
     clear_from(&guard, &handler, 1);
+    // The guard is held only for the mutation, not across the Discord round
+    // trips below (`send_reply`, `update_queue_messages`) -- see lease.rs.
+    drop(guard);
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();
