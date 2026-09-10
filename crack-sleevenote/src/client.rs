@@ -127,6 +127,15 @@ impl Endpoint {
             Endpoint::Playlist => "playlist",
         }
     }
+
+    /// Whether this endpoint returns a listing, and so can come back partial.
+    ///
+    /// A track has no listing to be short of, and the service refuses to apply
+    /// its completeness predicate to one -- sending `partial=allow` there would
+    /// be noise at best.
+    fn is_listing(self) -> bool {
+        matches!(self, Endpoint::Album | Endpoint::Playlist)
+    }
 }
 
 /// Configuration for a [`Client`].
@@ -148,6 +157,7 @@ pub struct ClientBuilder {
     timeout: Duration,
     user_agent: String,
     http: Option<reqwest::Client>,
+    allow_partial_listings: bool,
 }
 
 impl Default for ClientBuilder {
@@ -157,6 +167,9 @@ impl Default for ClientBuilder {
             timeout: DEFAULT_TIMEOUT,
             user_agent: default_user_agent(),
             http: None,
+            // Strict, matching the service's own default: a caller that has
+            // not thought about partial listings must not be handed one.
+            allow_partial_listings: false,
         }
     }
 }
@@ -214,6 +227,22 @@ impl ClientBuilder {
         self
     }
 
+    /// Accept listings the service could only partly recover.
+    ///
+    /// Sends `?partial=allow` on album and playlist requests, never on tracks
+    /// -- a track has no listing, and the service ignores the flag there.
+    ///
+    /// Off by default. With it off, a listing the service could not fully
+    /// extract is a [`ErrorCode::ExtractionIncomplete`] 502 and the recovered
+    /// tracks are discarded; with it on, they arrive with `complete: false` and
+    /// the caller decides what to say about the shortfall. See
+    /// [`Album::shortfall`](crate::Album::shortfall).
+    #[must_use]
+    pub fn allow_partial_listings(mut self, allow: bool) -> Self {
+        self.allow_partial_listings = allow;
+        self
+    }
+
     /// Reuse an existing [`reqwest::Client`] and its connection pool.
     ///
     /// The timeout configured here still applies: it is set per request, so it
@@ -261,6 +290,7 @@ impl ClientBuilder {
             http,
             base_url,
             timeout: self.timeout,
+            allow_partial_listings: self.allow_partial_listings,
         })
     }
 }
@@ -282,6 +312,7 @@ pub struct Client {
     http: reqwest::Client,
     base_url: Url,
     timeout: Duration,
+    allow_partial_listings: bool,
 }
 
 impl Client {
@@ -406,7 +437,7 @@ impl Client {
         id: &str,
     ) -> Result<(T, Option<CacheStatus>)> {
         validate_id(id)?;
-        let url = self.join(&["v1", endpoint.segment(), id])?;
+        let url = self.entity_url(endpoint, id)?;
         tracing::debug!(%url, "sleevenote request");
 
         let response = self.http.get(url).timeout(self.timeout).send().await?;
@@ -426,6 +457,21 @@ impl Client {
             Ok(value) => Ok((value, cache)),
             Err(source) => Err(Error::Decode { source, body }),
         }
+    }
+
+    /// The full request URL for one entity, including the partial opt-in.
+    ///
+    /// Split out from [`Client::fetch`] so the query can be asserted without a
+    /// live service: the opt-in is a wire detail, and a test that has to make a
+    /// request to see it is a test nobody runs.
+    fn entity_url(&self, endpoint: Endpoint, id: &str) -> Result<Url> {
+        let mut url = self.join(&["v1", endpoint.segment(), id])?;
+        if self.allow_partial_listings && endpoint.is_listing() {
+            // The service tests `req.query.partial === 'allow'` exactly; no
+            // other value opts in.
+            url.query_pairs_mut().append_pair("partial", "allow");
+        }
+        Ok(url)
     }
 
     /// Append path segments to the base URL, percent-encoding each one.
@@ -478,6 +524,47 @@ mod tests {
     fn accepts_ids_that_the_service_would_accept() {
         for good in ["2h8wlptrZOjSnZQKoNnLge", "a", &"9".repeat(64)] {
             validate_id(good).expect("should accept");
+        }
+    }
+
+    #[test]
+    fn a_partial_opt_in_reaches_listings_and_never_tracks() {
+        let client = ClientBuilder::new()
+            .base_url("http://sleevenote.test:3000")
+            .allow_partial_listings(true)
+            .build()
+            .unwrap();
+
+        // The service matches `partial === 'allow'` exactly.
+        assert_eq!(
+            client.entity_url(Endpoint::Album, "abc").unwrap().as_str(),
+            "http://sleevenote.test:3000/v1/album/abc?partial=allow"
+        );
+        assert_eq!(
+            client
+                .entity_url(Endpoint::Playlist, "abc")
+                .unwrap()
+                .as_str(),
+            "http://sleevenote.test:3000/v1/playlist/abc?partial=allow"
+        );
+        // A track has no listing; the flag must not leak onto it.
+        assert_eq!(
+            client.entity_url(Endpoint::Track, "abc").unwrap().as_str(),
+            "http://sleevenote.test:3000/v1/track/abc"
+        );
+    }
+
+    #[test]
+    fn the_default_client_stays_strict() {
+        // Opting in is the caller's decision, and silence means strict -- the
+        // same default the service itself applies.
+        let client = ClientBuilder::new()
+            .base_url("http://sleevenote.test:3000")
+            .build()
+            .unwrap();
+        for endpoint in [Endpoint::Track, Endpoint::Album, Endpoint::Playlist] {
+            let url = client.entity_url(endpoint, "abc").unwrap();
+            assert_eq!(url.query(), None, "{endpoint:?} carried a query");
         }
     }
 

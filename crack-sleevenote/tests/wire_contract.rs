@@ -81,7 +81,13 @@ fn album_fixture_has_sixty_tracks_and_nothing_unresolved() {
     assert_eq!(album.tracks.len(), 60, "the album has 60 tracks");
     assert_eq!(album.unresolved_items, 0);
     assert_eq!(album.total_items(), 60);
-    assert!(album.is_complete());
+    assert!(album.all_items_resolved());
+
+    // Nothing was dropped and nothing was missed: the two are separate claims
+    // and this fixture happens to satisfy both.
+    assert_eq!(album.declared_items, Some(60));
+    assert!(album.complete);
+    assert_eq!(album.shortfall(), Some(0));
 
     assert_eq!(album.tracks[0].name, "King Creole");
     assert_eq!(album.tracks[59].name, "Playing For Keeps");
@@ -117,7 +123,16 @@ fn playlist_fixture_reports_two_tracks_and_two_unresolved() {
     // client that drops this reports a half-broken playlist as a complete one.
     assert_eq!(playlist.unresolved_items, 2);
     assert_eq!(playlist.total_items(), 4);
-    assert!(!playlist.is_complete());
+    assert!(!playlist.all_items_resolved());
+
+    // This fixture is why the two notions cannot share a name. Extraction saw
+    // every one of the four items Spotify declared -- `complete` is true and
+    // there is no shortfall -- and two of them still could not be turned into
+    // tracks. "We saw the whole listing" and "everything in it played" are
+    // different facts, and a single `is_complete()` would have to lie about one.
+    assert_eq!(playlist.declared_items, Some(4));
+    assert!(playlist.complete);
+    assert_eq!(playlist.shortfall(), Some(0));
 
     assert_eq!(playlist.tracks[0].name, "Oh Shit I'm Feeling It");
     assert_eq!(playlist.tracks[0].duration_ms, Some(215_484));
@@ -347,5 +362,43 @@ fn a_renamed_field_fails_to_deserialize() {
     assert!(
         serde_json::from_str::<Playlist>(&drifted).is_err(),
         "a camelCase -> snake_case rename must fail loudly"
+    );
+}
+
+#[test]
+fn a_listing_without_the_completeness_fields_fails_to_deserialize() {
+    // `declaredItems` and `complete` arrived in sleevenote 0.4.0 and are
+    // required, not optional. A response without them is an older service, and
+    // defaulting `complete` to true there would take a silently truncated
+    // listing as a whole one -- precisely what these fields exist to expose.
+    let no_complete = PLAYLIST_JSON.replace(r#","complete":true"#, "");
+    assert_ne!(
+        no_complete, PLAYLIST_JSON,
+        "the substitution must have applied"
+    );
+    assert!(
+        serde_json::from_str::<Playlist>(&no_complete).is_err(),
+        "a listing without `complete` must fail, not default to true"
+    );
+
+    let no_declared = ALBUM_JSON.replace(r#""declaredItems":60,"#, "");
+    assert_ne!(
+        no_declared, ALBUM_JSON,
+        "the substitution must have applied"
+    );
+    assert!(
+        serde_json::from_str::<Album>(&no_declared).is_err(),
+        "an omitted `declaredItems` must fail, not default to None"
+    );
+
+    // An explicit null is legal and distinct: the page declared no total at
+    // all, so no shortfall can be claimed either way.
+    let nulled = ALBUM_JSON.replace(r#""declaredItems":60"#, r#""declaredItems":null"#);
+    let album: Album = serde_json::from_str(&nulled).expect("an explicit null is legal");
+    assert_eq!(album.declared_items, None);
+    assert_eq!(
+        album.shortfall(),
+        None,
+        "no declared total means no claim of a shortfall"
     );
 }

@@ -27,7 +27,10 @@ use crate::messaging::messages::{
     SPOTIFY_NOT_CONFIGURED, SPOTIFY_NOT_FOUND, SPOTIFY_PARTIAL_LISTING, SPOTIFY_TIMEOUT,
     SPOTIFY_UNREACHABLE,
 };
-use crack_sleevenote::{Client as Sleevenote, Error as SleevenoteError, Track, BASE_URL_ENV};
+use crack_sleevenote::{
+    Client as Sleevenote, ClientBuilder as SleevenoteBuilder, Error as SleevenoteError, Track,
+    BASE_URL_ENV,
+};
 use crack_types::NewAuxMetadata;
 use songbird::input::AuxMetadata;
 use std::str::FromStr;
@@ -186,7 +189,17 @@ pub fn is_configured() -> bool {
 /// to its own default base URL.
 pub fn client() -> Result<&'static Sleevenote, String> {
     CLIENT
-        .get_or_init(|| Sleevenote::from_env().map_err(|e| e.to_string()))
+        .get_or_init(|| {
+            // Partial listings are opted into for the whole process. A playlist
+            // sleevenote could only partly recover is worth more to a room than
+            // a hard failure -- the shortfall is reported rather than hidden,
+            // see `SpotifyResolution::shortfall`. Tracks are unaffected: the
+            // client never sends the flag on them.
+            SleevenoteBuilder::from_env()
+                .allow_partial_listings(true)
+                .build()
+                .map_err(|e| e.to_string())
+        })
         .as_ref()
         .map_err(Clone::clone)
 }
@@ -212,6 +225,21 @@ pub struct SpotifyResolution {
     pub unresolved: u32,
     /// Podcast episodes dropped from a playlist: listed, but not songs.
     pub episodes_skipped: usize,
+    /// Spotify's own declared item count, or `None` for a track link or a page
+    /// that declared no total.
+    pub declared: Option<u32>,
+    /// Whether sleevenote saw every item Spotify declared.
+    ///
+    /// Distinct from `unresolved`: that counts items it saw and could not use,
+    /// this says whether it saw them all. A playlist can be `complete` with a
+    /// nonzero `unresolved` -- four items seen, two of them local files.
+    pub complete: bool,
+    /// How many items the service saw, playable or not.
+    ///
+    /// The denominator the shortfall is measured against. It counts episodes
+    /// and unresolved items too, so it must not be confused with
+    /// [`SpotifyResolution::len`], which is playable songs only.
+    pub items_seen: u64,
 }
 
 impl SpotifyResolution {
@@ -237,6 +265,17 @@ impl SpotifyResolution {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.tracks.is_empty()
+    }
+
+    /// How many declared items sleevenote never saw, or `None` when Spotify
+    /// declared no total and no shortfall can honestly be claimed.
+    ///
+    /// `Some(0)` and `None` are different answers: the first says the listing
+    /// was whole, the second that we cannot tell.
+    #[must_use]
+    pub fn shortfall(&self) -> Option<u64> {
+        self.declared
+            .map(|declared| u64::from(declared).saturating_sub(self.items_seen))
     }
 }
 
@@ -335,9 +374,15 @@ pub async fn resolve_spotify(url: &str) -> Result<SpotifyResolution, CrackedErro
                 tracks,
                 unresolved: 0,
                 episodes_skipped,
+                // A track has no listing to be short of. The service does not
+                // apply the completeness rule to one, and neither do we.
+                declared: None,
+                complete: true,
+                items_seen: 1,
             }
         }),
         MediaType::Album => client.album(id).await.map(|album| {
+            let items_seen = album.total_items();
             let (tracks, episodes_skipped) = songs_only(album.tracks);
             SpotifyResolution {
                 media_type: MediaType::Album,
@@ -345,9 +390,15 @@ pub async fn resolve_spotify(url: &str) -> Result<SpotifyResolution, CrackedErro
                 tracks,
                 unresolved: album.unresolved_items,
                 episodes_skipped,
+                declared: album.declared_items,
+                complete: album.complete,
+                // Read before `album.tracks` was split: it counts every item
+                // the service saw, episodes and unresolved included.
+                items_seen,
             }
         }),
         MediaType::Playlist => client.playlist(id).await.map(|playlist| {
+            let items_seen = playlist.total_items();
             let (tracks, episodes_skipped) = songs_only(playlist.tracks);
             SpotifyResolution {
                 media_type: MediaType::Playlist,
@@ -355,6 +406,11 @@ pub async fn resolve_spotify(url: &str) -> Result<SpotifyResolution, CrackedErro
                 tracks,
                 unresolved: playlist.unresolved_items,
                 episodes_skipped,
+                declared: playlist.declared_items,
+                complete: playlist.complete,
+                // Read before `playlist.tracks` was split: it counts every item
+                // the service saw, episodes and unresolved included.
+                items_seen,
             }
         }),
     };
@@ -559,5 +615,77 @@ mod tests {
         assert!(!MediaType::Track.is_collection());
         assert!(MediaType::Album.is_collection());
         assert!(MediaType::Playlist.is_collection());
+    }
+
+    /// A resolution as `resolve_spotify` would build one for a listing.
+    fn listing(
+        playable: usize,
+        episodes: usize,
+        unresolved: u32,
+        declared: Option<u32>,
+    ) -> SpotifyResolution {
+        SpotifyResolution {
+            media_type: MediaType::Playlist,
+            name: "x".to_string(),
+            tracks: Vec::new(),
+            unresolved,
+            episodes_skipped: episodes,
+            declared,
+            complete: declared.is_none_or(|d| {
+                u64::from(d) <= (playable + episodes) as u64 + u64::from(unresolved)
+            }),
+            // What `Playlist::total_items` reports: everything the service saw,
+            // before episodes were filtered out of the playable list.
+            items_seen: (playable + episodes) as u64 + u64::from(unresolved),
+        }
+    }
+
+    #[test]
+    fn episodes_and_local_files_do_not_invent_a_shortfall() {
+        // The trap: 50 declared, 45 songs, 3 podcast episodes, 2 local files.
+        // Measured against the 45 *playable* tracks this looks like 5 missing;
+        // measured against the 50 items actually seen, nothing is missing.
+        let whole = listing(45, 3, 2, Some(50));
+        assert_eq!(whole.items_seen, 50);
+        assert_eq!(whole.len(), 0, "playable tracks are counted separately");
+        assert_eq!(
+            whole.shortfall(),
+            Some(0),
+            "every declared item was seen; some just were not songs"
+        );
+        assert!(whole.complete);
+    }
+
+    #[test]
+    fn a_truncated_listing_reports_what_it_never_saw() {
+        // 50 declared, only 45 reached at all.
+        let short = listing(45, 0, 0, Some(50));
+        assert_eq!(short.items_seen, 45);
+        assert_eq!(short.shortfall(), Some(5));
+        assert!(!short.complete);
+    }
+
+    #[test]
+    fn a_track_link_never_claims_a_shortfall() {
+        // Tracks carry no listing, so the client never sends `partial=allow`
+        // for one and the service never sets `complete` on it.
+        let track = SpotifyResolution {
+            media_type: MediaType::Track,
+            name: "x".to_string(),
+            tracks: Vec::new(),
+            unresolved: 0,
+            episodes_skipped: 0,
+            declared: None,
+            complete: true,
+            items_seen: 1,
+        };
+        assert_eq!(track.shortfall(), None);
+    }
+
+    #[test]
+    fn a_page_that_declared_no_total_cannot_be_called_whole() {
+        // `None` is not `Some(0)`: we do not know, and must not imply we do.
+        let unknown = listing(20, 0, 0, None);
+        assert_eq!(unknown.shortfall(), None);
     }
 }
