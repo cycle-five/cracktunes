@@ -34,8 +34,45 @@
 //! # Lock ordering
 //!
 //! The lease sits alongside `join_vc_tokens`, not replacing it, so there are two
-//! per-guild locks. **Playback lease first, join token second, never the
-//! reverse.**
+//! per-guild locks: the exclusion mutex behind [`Data::lock_queue`] (via
+//! `queue_locks`) and the one behind `JoinVCToken::acquire`
+//! (`crate::poise_ext`, backed by `Data::join_vc_tokens`). **Playback lease
+//! first, join token second, never the reverse.** A task that holds one must
+//! not go on to take the other in the wrong order: two per-guild locks taken
+//! in opposite orders by two concurrent tasks is a textbook AB-BA deadlock,
+//! and because songbird dispatches track events inline (see
+//! `src/events/store.rs:89` and `:130`), a task parked on either lock also
+//! blocks that event store's dispatch loop for the guild -- the deadlock does
+//! not stay contained to the two commands that caused it.
+//!
+//! Three independent reviews traced every call site that takes the queue
+//! lock -- the 16 pre-existing `lock_queue` sites plus the six added
+//! alongside this lease -- and found the order uniform everywhere: lease
+//! (ownership check, then `queue_locks`) before any voice-join step, never
+//! after. Every site also drops its [`QueueGuard`] before doing Discord HTTP,
+//! so a guard is never held across the kind of slow `.await` that would let
+//! the ordering matter in practice today.
+//!
+//! 🪤 That last point is why this rule is written down rather than asserted.
+//! `JoinVCToken::acquire` (`crate::poise_ext`) currently has no caller that
+//! also holds a [`QueueGuard`] -- `do_join`
+//! (`crate::commands::music_utils::do_join`) calls `songbird::Songbird::join`
+//! directly and never constructs a `JoinVCToken` at all, so the two locks are
+//! never actually taken together yet. A `debug_assert` in `acquire` was tried
+//! and rejected: the only cheap signal available is "is `queue_locks[guild_id]`
+//! contended right now", checked with `try_lock` from a task that does not
+//! hold it -- and `tokio::sync::Mutex` has no task-affinity introspection, so
+//! that can't distinguish *this task is mid-violation* from *a sibling
+//! command for the same guild is legitimately mid-mutation*, which is normal:
+//! exclusion is held for milliseconds, and two commands for one guild are
+//! free to interleave. A version sound enough to fire only on a real
+//! same-task violation would need task-local state set for the lifetime of a
+//! [`QueueGuard`] and checked in `acquire` -- real machinery for a path
+//! nothing exercises yet. Build it when `do_join` is wired through
+//! `JoinVCToken`, not before; until then, the regression test below is the
+//! cheap version of this guarantee -- it proves the sanctioned order
+//! (lease, then join token) completes without deadlocking, which is the one
+//! thing worth locking in now.
 
 use crate::errors::CrackedError;
 use crate::Data;
@@ -273,5 +310,18 @@ mod test {
         d.lock_queue(G, PlaybackOwner::Free)
             .await
             .expect("the lock is released on drop");
+    }
+
+    #[tokio::test]
+    async fn the_sanctioned_lock_order_completes() {
+        // Lease first, join token second. Two per-guild locks taken in
+        // opposite orders is a textbook deadlock; this proves the sanctioned
+        // order is not itself blocking. See the module doc's "Lock ordering"
+        // section for why this is a regression test rather than an assert.
+        let d = data();
+        let guard = d.lock_queue(G, PlaybackOwner::Free).await.unwrap();
+        let token = crate::poise_ext::JoinVCToken::acquire(&d, G);
+        drop(token);
+        drop(guard);
     }
 }
