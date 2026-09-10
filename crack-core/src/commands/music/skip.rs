@@ -97,21 +97,23 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
 
     let call = get_call_or_join_author(ctx).await?;
 
-    // The downvote is a database round trip and the guard must not span one, so
-    // it happens first, outside. Reading the metadata needs the call lock but
-    // not exclusion -- it mutates nothing.
-    let metadata = {
-        let handler = call.lock().await;
-        get_track_handle_metadata(&handler.queue().current().unwrap()).await?
-    };
-    let source_url = &metadata.source_url.ok_or("ASDF").unwrap();
-    let res1 = ctx.data().downvote_track(guild_id, source_url).await?;
-
     // Ordinary music commands mutate as `Free`; a guild a game owns refuses
     // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
     // more kindly. This one cannot be forgotten.
+    //
+    // 🪤 The database write below sits *under* the guard, against the usual
+    // rule. It was hoisted above the lock once and that bought two holes: a
+    // refused lock left an orphan downvote row with no skip to go with it, and
+    // the `current()` read moved outside exclusion, so the track downvoted was
+    // not provably the track skipped. Closing either needs the write to sit
+    // between the read and the skip, which is to say inside. One `UPDATE` is
+    // the lesser evil now that every other hold on this guard is milliseconds.
     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
+    let metadata = get_track_handle_metadata(&handler.queue().current().unwrap()).await?;
+
+    let source_url = &metadata.source_url.ok_or("ASDF").unwrap();
+    let res1 = ctx.data().downvote_track(guild_id, source_url).await?;
     let res2 = force_skip_top_track(&guard, &handler).await?;
     // Released the moment the last mutation is done, the same as `skip` above.
     // `force_skip_top_track` fires `TrackEvent::End`, and since Task 6 the

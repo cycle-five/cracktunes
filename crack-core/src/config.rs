@@ -54,6 +54,35 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             //     .with_label_values(&[&ctx.command().qualified_name])
             //     .inc();
         },
+        // #467. Without this arm a failed *check* falls through to poise's
+        // builtin, which only logs -- so every `GP_BLOCKED_COMMANDS` refusal
+        // reached the user as Discord's "The application did not respond".
+        // The check refusal is meant to be the friendlier of the two a blocked
+        // command can hit, arriving before the command body rather than out of
+        // it, but that is only true if it is actually delivered.
+        poise::FrameworkError::CommandCheckFailed { error, ctx, .. } => {
+            let reply = match error {
+                Some(error) => Some(CrackedError::Poise(error)),
+                // A check that returned `Ok(false)` rather than `Err` carries
+                // nothing to report, so the refusal is named generically.
+                // `cmd_check_music` does that for a permission refusal -- and,
+                // deliberately silently, for a bot author: `ignore_bots` is off
+                // for the smoke tests, and answering a bot every time it trips a
+                // check is how a reply loop starts.
+                None if ctx.author().bot() => None,
+                None => Some(CrackedError::UnauthorizedUser),
+            };
+            match reply {
+                Some(err) => {
+                    let params = SendMessageParams::new(CrackedMessage::CrackedError(err));
+                    check_reply(ctx.send_message(params).await.map_err(Into::into));
+                },
+                None => tracing::trace!(
+                    "check on {} refused a bot author, saying nothing",
+                    ctx.command().qualified_name
+                ),
+            }
+        },
         error => {
             if let Err(e) = poise::builtins::on_error(error).await {
                 tracing::error!("Error while handling error: {}", e)
