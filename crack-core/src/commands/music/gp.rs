@@ -147,6 +147,21 @@ pub const GP_CUSTOM_ID_PREFIX: &str = "gp:";
 /// The game's own `/gp skip` and `/gp voteskip` are the sanctioned ways to end a
 /// song. Matched against the command's *qualified* name so `gp skip` is not caught
 /// by `skip`.
+///
+/// # The property this list has
+///
+/// It is exactly **the registered music commands that take a [`QueueGuard`] as
+/// [`PlaybackOwner::Free`]** -- no more and no less. That is checkable rather
+/// than trusted: `grep -rln "lock_queue(guild_id, PlaybackOwner::Free)"
+/// crack-core/src/commands` names the files, and `blocklist_matches_registry`
+/// asserts every name here is registered and runs a check.
+///
+/// Both halves matter, and each has already failed once. `remove` sat here from
+/// #422 with no `check = "cmd_check_music"`, so its entry never fired; `resume`
+/// took the guard but was absent from this list *and* from the funnel, which is
+/// the one case where a user could still land a mutation on a live round.
+///
+/// [`QueueGuard`]: crate::music::QueueGuard
 pub const GP_BLOCKED_COMMANDS: &[&str] = &[
     "play",
     "playnext",
@@ -5651,6 +5666,18 @@ mod test {
         // bought a later, less explanatory refusal -- and until the guard
         // existed it bought a real one, `queue.resume()` landing on a live round.
         assert!(GP_BLOCKED_COMMANDS.contains(&"resume"));
+        // 🪤 `downvote` (`skip.rs`) belongs to this list by every property it
+        // has -- it takes the guard as `Free` and mutates the queue through
+        // `force_skip_top_track` -- and is deliberately absent, because it is
+        // registered nowhere: `music_commands()` does not list it, so
+        // `all_commands()` does not either, and the assertion above would
+        // reject it. Registering it is not a formality; as written it
+        // `.unwrap()`s `queue().current()` and would panic on an empty queue.
+        // The day it is registered, this fails and says what to do about it.
+        assert!(
+            !music.contains(&"downvote".to_string()),
+            "downvote is registered now -- add it to GP_BLOCKED_COMMANDS"
+        );
         // A blocked name does nothing unless its command actually runs the
         // check. `remove` sat on this list for exactly that reason with no
         // `check = "cmd_check_music"`, so its entry was inert.
