@@ -666,9 +666,24 @@ pub async fn run() -> Result<(), Error> {
 
 #[cfg(test)]
 mod tests {
-    use std::env;
-
     use super::*;
+
+    // 🔑 EVERY `#[ignore]`d TEST BELOW REACHES LIVE YOUTUBE. They answer "is
+    // YouTube up and still shaped the way rusty_ytdl expects", which is a real
+    // question and not one a pull request should be gated on -- a YouTube
+    // change or a rate-limited runner reddens whatever PR happens to be
+    // running, and the blame lands on a diff that never touched playback.
+    //
+    // Run them deliberately, when that is the question being asked:
+    //
+    //     cargo test -p crack-testing -- --ignored --nocapture
+    //
+    // 🪤 They previously used `if env::var("CI").is_ok() { return; }` instead.
+    // That is strictly worse than `#[ignore]`: the test reports **PASSED** in
+    // CI while executing nothing, so the suite claims coverage it does not
+    // have. Two of them also carried an `else` branch behind a second CI check
+    // that the early return had already made unreachable. Do not reintroduce
+    // the pattern -- an honest `ignored` beats a vacuous `ok`.
 
     #[ignore = "hits live YouTube"]
     #[tokio::test]
@@ -720,12 +735,9 @@ mod tests {
         assert_eq!(track.video, None);
     }
 
+    #[ignore = "hits live YouTube"]
     #[tokio::test]
     async fn test_resolve_track() {
-        if env::var("CI").is_ok() {
-            return;
-        }
-
         let query = QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string());
         let client = CrackTrackClient {
             req_client: reqwest::Client::new(),
@@ -735,21 +747,15 @@ mod tests {
 
         let resolved = client.resolve_track(query).await;
 
-        if env::var("CI").is_ok() {
-            assert!(resolved.is_err());
-        } else {
-            let res = resolved.expect("Failed to resolve track");
-            let metadata = res.metadata.expect("No metadata");
-            let title = metadata.title.expect("No title");
-            assert_eq!(title, r#"Molly Nilsson "1995""#.to_string());
-        }
+        let res = resolved.expect("Failed to resolve track");
+        let metadata = res.metadata.expect("No metadata");
+        let title = metadata.title.expect("No title");
+        assert_eq!(title, r#"Molly Nilsson "1995""#.to_string());
     }
 
+    #[ignore = "hits live YouTube"]
     #[tokio::test]
     async fn test_suggestion2() {
-        if env::var("CI").is_ok() {
-            return;
-        }
         let client = CrackTrackClient {
             req_client: reqwest::Client::new(),
             yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
@@ -771,11 +777,9 @@ mod tests {
         );
     }
 
+    #[ignore = "hits live YouTube"]
     #[tokio::test]
     async fn test_suggestion() {
-        if env::var("CI").is_ok() {
-            return;
-        }
         let client = CrackTrackClient {
             req_client: reqwest::Client::new(),
             yt_client: rusty_ytdl::search::YouTube::new().expect(NEW_FAILED),
@@ -796,26 +800,18 @@ mod tests {
         );
     }
 
+    #[ignore = "hits live YouTube"]
     #[tokio::test]
     async fn test_suggestion_function() {
-        if env::var("CI").is_ok() {
-            return;
-        }
         let client = YOUTUBE_CLIENT.clone();
         let res = suggestion_yt(client.clone(), "molly nilsson").await;
-        if env::var("CI").is_ok() {
-            assert!(res.is_err());
-        } else {
-            let res = res.expect("No results");
-            assert_eq!(res.len(), 10);
-        }
+        let res = res.expect("No results");
+        assert_eq!(res.len(), 10);
     }
 
+    #[ignore = "hits live YouTube"]
     #[tokio::test]
     async fn test_enqueue_query() {
-        if env::var("CI").is_ok() {
-            return;
-        }
         let guild = GuildId::new(1);
         let mut client = CrackTrackClient {
             req_client: reqwest::Client::new(),
@@ -823,9 +819,15 @@ mod tests {
             ..Default::default()
         };
 
+        // 🪤 These ids rot. `u8ZiCfW02S8` was removed from YouTube some time
+        // before 2026-09-10 and took this test down with it -- which is the
+        // whole hazard of a live fixture: the red says "a video was deleted",
+        // not "playback broke". Check with the oembed endpoint before assuming
+        // a regression; it 404s for a video that is gone:
+        //   curl -o /dev/null -w '%{http_code}' \
+        //     'https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=<id>&format=json'
         let queries = vec![
             QueryType::VideoLink("https://www.youtube.com/watch?v=X9ukSm5gmKk".to_string()),
-            QueryType::VideoLink("https://www.youtube.com/watch?v=u8ZiCfW02S8".to_string()),
             QueryType::VideoLink("https://www.youtube.com/watch?v=r-Ag3DJ_VUE".to_string()),
         ];
         for query in queries {
@@ -837,7 +839,7 @@ mod tests {
                     .expect("Failed to build display");
                 let disp: String = client.get_display(guild);
                 println!("{}", disp);
-            } else if std::env::var("CI").is_err() {
+            } else {
                 panic!("failed to enqueue query");
             }
         }
@@ -848,7 +850,7 @@ mod tests {
             .expect("Failed to build display");
 
         let mut q = client.get_queue(guild).await;
-        assert_eq!(q.len(), 3);
+        assert_eq!(q.len(), 2);
         let first = q.pop_front().unwrap();
         assert!(first.get_title().contains("Molly Nilsson"));
     }
