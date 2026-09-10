@@ -108,6 +108,18 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
     // not provably the track skipped. Closing either needs the write to sit
     // between the read and the skip, which is to say inside. One `UPDATE` is
     // the lesser evil now that every other hold on this guard is milliseconds.
+    //
+    // That trade also holds `handler` (the songbird `Call` mutex) across the
+    // `downvote_track` DB round trip below, not just the guard -- `handler` is
+    // locked before the write and not dropped until after the skip. A re-lock
+    // around just the write was considered and rejected: `TrackQueue` advances
+    // to the next track from its own `End` handler under the queue's internal
+    // lock, not under `Call`, so releasing `handler` for the UPDATE would not
+    // buy back the "the track downvoted is the track skipped" property this
+    // comment is about -- a concurrent skip could still land between the
+    // re-lock and the read. And nothing is blocked behind the UPDATE today
+    // regardless: `downvote` is unregistered (see `blocklist_matches_registry`
+    // in gp.rs), so this hold has no observable cost yet.
     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
     let metadata = get_track_handle_metadata(&handler.queue().current().unwrap()).await?;

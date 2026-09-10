@@ -166,23 +166,28 @@ commands at all.)
 ### What the funnel does NOT cover
 
 The claim "forgetting to list a command becomes a worse error message" holds
-only for commands that reach the queue. **Three of the nineteen never do:**
+only for commands that reach the queue. **Five of the twenty never do:**
 
 | command | what it actually touches |
 |---|---|
 | `leave` | `manager.remove(guild_id)` — songbird voice state (`leave.rs:38`) |
 | `summon` | joins a voice channel |
 | `summonchannel` | joins a voice channel |
+| `seek` | seeks the current `TrackHandle` (`seek.rs`) — track state, not queue structure |
+| `repeat` | toggles looping on the current `TrackHandle` (`repeat.rs:36` reads only `handler.queue().current()`) — track state, not queue structure |
 
-A `QueueGuard` cannot gate these; they change voice membership, which is
-`join_vc_tokens`' territory. They stay guarded by `GP_BLOCKED_COMMANDS` and the
-`cmd_check_music` check, and a future command of that shape can still be
-forgotten.
+A `QueueGuard` cannot gate `leave`, `summon` or `summonchannel`; they change
+voice membership, which is `join_vc_tokens`' territory. `seek` and `repeat`
+mutate a single track in place rather than queue structure, so a guard would
+not add anything a `TrackHandle` doesn't already own. All five stay guarded by
+`GP_BLOCKED_COMMANDS` and the `cmd_check_music` check, and a future command of
+either shape can still be forgotten.
 
 So the honest claim is: **the funnel converts the bug class for queue mutation
-(16 of 19), and leaves it intact for voice-state changes (3 of 19).** Closing the
-remainder is what subsuming `JoinVCToken` into the lease would buy — listed under
-non-goals, and this is the argument for eventually doing it.
+(15 of 20), and leaves it intact for voice-state and track-state changes (5 of
+20).** Closing the voice-state remainder is what subsuming `JoinVCToken` into
+the lease would buy — listed under non-goals, and this is the argument for
+eventually doing it.
 
 ### Phase C — report from the insertion result
 

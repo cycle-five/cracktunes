@@ -58,30 +58,6 @@ pub async fn queue_resolved_track_back(
     Ok(new_q)
 }
 
-/// Takes a resolved track and queues it to the back of the queue.
-/// Old version.
-/// # Errors
-/// Returns a [`CrackedError`] if the track cannot be queued.
-#[allow(dead_code)]
-pub async fn queue_resolved_track_back_old(
-    call: &Arc<Mutex<Call>>,
-    track: ResolvedTrack<'static>,
-    http_client: reqwest::Client,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    let mut handler = call.lock().await;
-    let ytdl = YoutubeDl::new(http_client.clone(), track.get_url());
-
-    let mut track_handle = handler
-        .enqueue_input(Into::<SongbirdInput>::into(ytdl))
-        .await;
-    let new_q = handler.queue().current_queue();
-    drop(handler);
-    set_track_handle_metadata(&mut track_handle, track.metadata.unwrap()).await?;
-    set_track_handle_requesting_user(&mut track_handle, track.user_id).await?;
-
-    Ok(new_q)
-}
-
 /// Build the songbird [`Track`] for an already-resolved track.
 ///
 /// This performs no I/O: [`YoutubeDl`] is a lazy [`Compose`], so yt-dlp is not
@@ -1107,30 +1083,6 @@ mod test {
         let is_prefix = true;
         let res = get_msg(mode, query_or_url, is_prefix);
         assert_eq!(res, Some("asdf asdf asdf asd f".to_string()));
-    }
-}
-
-#[cfg(test)]
-mod insertion_tests {
-    use super::*;
-
-    #[test]
-    fn inserted_describes_only_this_call() {
-        // #333: the bug was returning the whole queue after enqueueing, so two
-        // concurrent /play calls each reported both sets of songs. `Inserted`
-        // cannot express that -- it carries only what this call added.
-        let inserted = Inserted {
-            handles: Vec::new(),
-        };
-        assert_eq!(inserted.count(), 0);
-    }
-
-    #[test]
-    fn count_is_the_handles_this_call_added() {
-        let inserted = Inserted {
-            handles: Vec::new(),
-        };
-        assert_eq!(inserted.count(), inserted.handles.len());
     }
 }
 

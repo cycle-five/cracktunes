@@ -148,18 +148,21 @@ pub const GP_CUSTOM_ID_PREFIX: &str = "gp:";
 /// song. Matched against the command's *qualified* name so `gp skip` is not caught
 /// by `skip`.
 ///
-/// # The property this list has
+/// # What `blocklist_matches_registry` actually checks
 ///
-/// It is exactly **the registered music commands that take a [`QueueGuard`] as
-/// [`PlaybackOwner::Free`]** -- no more and no less. That is checkable rather
-/// than trusted: `grep -rln "lock_queue(guild_id, PlaybackOwner::Free)"
-/// crack-core/src/commands` names the files, and `blocklist_matches_registry`
-/// asserts every name here is registered and runs a check.
+/// Only that every name here is a registered music command that runs a check
+/// -- not that this is the exact set of commands that take a [`QueueGuard`] as
+/// [`PlaybackOwner::Free`]. The converse does not hold: `leave`, `summon`,
+/// `summonchannel`, `seek` and `repeat` are on this list and take no guard at
+/// all. See "What the funnel does NOT cover" in
+/// `docs/superpowers/specs/2026-09-10-playback-ownership-lease-design.md` for
+/// why voice-state and track-state commands are blocked here without one.
 ///
-/// Both halves matter, and each has already failed once. `remove` sat here from
-/// #422 with no `check = "cmd_check_music"`, so its entry never fired; `resume`
-/// took the guard but was absent from this list *and* from the funnel, which is
-/// the one case where a user could still land a mutation on a live round.
+/// Both halves the test *does* check have already failed once. `remove` sat
+/// here from #422 with no `check = "cmd_check_music"`, so its entry never
+/// fired; `resume` took the guard but was absent from this list *and* from the
+/// funnel, which is the one case where a user could still land a mutation on a
+/// live round.
 ///
 /// [`QueueGuard`]: crate::music::QueueGuard
 pub const GP_BLOCKED_COMMANDS: &[&str] = &[
