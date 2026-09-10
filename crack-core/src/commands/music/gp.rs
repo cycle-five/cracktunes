@@ -31,7 +31,7 @@ use crate::{
         GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN, SPOTIFY_GP_ONE_SONG,
         SPOTIFY_NOTHING_PLAYABLE,
     },
-    music::queue::build_track,
+    music::queue::{build_track, enqueue_track_back, stop_queue},
     music::PlaybackOwner,
     poise_ext::PoiseContextExt,
     sources::sleevenote,
@@ -2269,7 +2269,25 @@ async fn gp_abort(pb: &GpPlayback, text_channel: GenericChannelId, reason: &str)
         return;
     }
     tracing::warn!("gp: {reason} in {}, game discarded", pb.guild_id);
-    pb.call.lock().await.queue().stop();
+    // 🪤 ORDER MATTERS: lock as whoever holds the lease *at this line*.
+    // `gp_remove` four lines above already released it, so the guild is `Free`
+    // by the time we get here and `Free` is what must be passed. Locking as
+    // `Game` would be refused, and a refusal is silent -- the queue would
+    // simply play on under a game that no longer exists.
+    match pb.data.lock_queue(pb.guild_id, PlaybackOwner::Free).await {
+        Ok(guard) => {
+            let handler = pb.call.lock().await;
+            stop_queue(&guard, &handler);
+        },
+        Err(e) => tracing::warn!(
+            "gp: could not lock the queue to abort in {}: {e}",
+            pb.guild_id
+        ),
+    }
+    // Both the guard and the call lock are dropped above, before the Discord
+    // round trip below: `stop()` fires `End` inline on songbird's event task,
+    // and a handler awaiting `lock_queue` would park that task for the length
+    // of this send. See `stop_queue`.
     // Best effort: the channel is usually what just failed.
     if let Err(e) = text_channel
         .send_message(&pb.http, CreateMessage::new().content(GP_ABORTED))
@@ -2488,8 +2506,30 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
     }
 
     let handle = {
-        let mut handler = pb.call.lock().await;
-        handler.enqueue(songbird_track).await
+        // The game still owns playback here: `gp_start` claimed the lease and
+        // nothing on this path has released it, so lock as `Game`. `Free` would
+        // be refused and the song would silently never be enqueued -- no `End`
+        // would ever arrive and the round would hang forever.
+        let guard = match pb.data.lock_queue(guild_id, PlaybackOwner::Game).await {
+            Ok(guard) => guard,
+            Err(e) => {
+                // Unreachable while `PlaybackOwner` has only `Free` and `Game`
+                // -- locking as `Game` matches both -- but a third owner is
+                // foreseeable, and a song that cannot be enqueued is fatal to
+                // the round in exactly the way the two aborts below are.
+                gp_abort(
+                    pb,
+                    start.text_channel,
+                    &format!("locking the queue to play failed: {e}"),
+                )
+                .await;
+                return Ok(());
+            },
+        };
+        enqueue_track_back(&guard, &pb.call, songbird_track).await
+        // The guard drops with this block, before the seek below: forcing the
+        // stream open is the slow leg, and `lease.rs` forbids holding exclusion
+        // across one. Nothing after this point mutates the queue.
     };
 
     // Arm every handler before awaiting anything. The seek below is the first
@@ -3015,14 +3055,26 @@ pub async fn gp_start(
         round_results,
         now(),
     )?;
+    // `data.gp_start` above claimed the lease, so the game owns playback by the
+    // time we reach here and this must lock as `Game`; `Free` would be refused
+    // and the previous queue would keep playing underneath the new game.
+    // 🪤 Do NOT reorder the claim below this call to make the guild `Free`
+    // here: creating the game first is load-bearing, for the reason the comment
+    // above `data.gp_start` gives. Locking as `Game` cannot be refused (`as_`
+    // matches both `Free` and `Game`), so this `?` cannot orphan the game that
+    // was just created.
+    let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
     let cleared_queue = {
         let handler = call.lock().await;
         let non_empty = !handler.queue().is_empty();
         if non_empty {
-            handler.queue().stop();
+            stop_queue(&guard, &handler);
         }
         non_empty
     };
+    // Released before the Discord round trip below -- `stop_queue` fires `End`
+    // inline on songbird's event task, which must not wait out a send.
+    drop(guard);
 
     ctx.send_reply(
         CrackedMessage::GpStarted {
@@ -3211,11 +3263,10 @@ pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
         .get(guild_id)
         .ok_or(CrackedError::NotConnected)?;
     {
-        // `force_skip_top_track` now requires a `QueueGuard` -- Task 4/5's
-        // funnel work broke this call site mechanically. Locking as `Game`
-        // succeeds here because this guild's game already owns playback (see
-        // `the_owner_can_still_lock_its_own_queue` in lease.rs); the rest of
-        // this file's migration to the guard-taking helpers is Task 6's.
+        // Locking as `Game` succeeds here because this guild's game already
+        // owns playback and has not released it (see
+        // `the_owner_can_still_lock_its_own_queue` in lease.rs); `Free` would
+        // be refused and the skip would silently do nothing.
         let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
         let handler = call.lock().await;
         if handler.queue().is_empty() {
@@ -3340,11 +3391,10 @@ async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
             .songbird
             .get(guild_id)
             .ok_or(CrackedError::NotConnected)?;
-        // `force_skip_top_track` now requires a `QueueGuard` -- Task 4/5's
-        // funnel work broke this call site mechanically. Locking as `Game`
-        // succeeds here because this guild's game already owns playback (see
-        // `the_owner_can_still_lock_its_own_queue` in lease.rs); the rest of
-        // this file's migration to the guard-taking helpers is Task 6's.
+        // Locking as `Game` succeeds here because this guild's game already
+        // owns playback and has not released it (see
+        // `the_owner_can_still_lock_its_own_queue` in lease.rs); `Free` would
+        // be refused and the skip would silently do nothing.
         let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
         let handler = call.lock().await;
         if handler.queue().is_empty() {
@@ -3443,10 +3493,17 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
     let game = data.gp_park_for_end(guild_id, ctx.author().id, is_admin)?;
     let was_playing = match data.songbird.get(guild_id) {
         Some(call) => {
+            // `gp_park_for_end` only sets a flag -- the game stays in the map,
+            // and with it the lease, until `gp_remove_if_parked` collects it in
+            // the track-end handler. So the game still owns playback here and
+            // this locks as `Game`; `Free` would be refused and the queue would
+            // never stop, leaving the parked game with no `End` to collect it.
+            let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
             let handler = call.lock().await;
             let playing = !handler.queue().is_empty();
-            handler.queue().stop();
+            stop_queue(&guard, &handler);
             playing
+            // Both locks drop with this arm, before the replies below.
         },
         None => false,
     };

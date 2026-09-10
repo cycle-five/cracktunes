@@ -729,15 +729,79 @@ pub fn remove_at(guard: &QueueGuard, handler: &Call, index: usize) {
     });
 }
 
-// `stop_queue` and `pause_queue` (guard-taking wrappers around
-// `call.lock().await.queue().stop()`/`.pause()`) are deliberately NOT defined
-// here. Their only intended callers are gp.rs and track_end.rs -- Task 6's
-// files, not this dispatch's -- so with no caller anywhere in this dispatch
-// they trip `dead_code` (this module is `pub(crate)`, so `pub` alone does not
-// exempt them), and "no new #[allow(dead_code)]" rules out silencing that.
-// Add them in queue.rs, with the same doc comments Task 4 specified, at the
-// point Task 6 gains a real call site for each -- that gives them a caller in
-// the same commit that defines them, same as every other helper here.
+/// Stop everything in the queue. Used by `/gp start`, `/gp end` and the abort
+/// path.
+///
+/// Takes the already-locked `handler` rather than the `Arc<Mutex<Call>>`, like
+/// the other synchronous helpers above: two of its three callers read
+/// `queue().is_empty()` under the same lock to report what they cleared, and a
+/// helper that re-locked internally would deadlock them.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+///
+/// # 🪤 This fires `TrackEvent::End`
+///
+/// `stop()` queues the `End` rather than firing it inline, and songbird's event
+/// task dispatches handlers inline. So a handler that awaits `lock_queue` parks
+/// that task until this caller's guard drops -- release it before anything slow
+/// (Discord HTTP, resolution, the database), never after.
+pub fn stop_queue(guard: &QueueGuard, handler: &Call) {
+    let _ = guard;
+    handler.queue().stop();
+}
+
+/// Pause the queue. Used by autopause in the global track-end handler.
+///
+/// Same `&Call` shape as [`stop_queue`], for symmetry at the two call sites.
+/// A pause that fails (nothing is playing) is swallowed: autopause is a nicety
+/// nobody asked for at this instant, and it has no user to answer to.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+pub fn pause_queue(guard: &QueueGuard, handler: &Call) {
+    let _ = guard;
+    handler.queue().pause().ok();
+}
+
+/// Enqueue an already-built [`Track`] at the back of the queue, returning its
+/// handle. Used by `/gp` to play a round's song.
+///
+/// Returns the [`TrackHandle`] rather than a queue snapshot because the caller
+/// arms per-track event handlers on it; [`queue_resolved_track_back`] is the
+/// snapshot-returning shape.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+pub async fn enqueue_track_back(
+    guard: &QueueGuard,
+    call: &Arc<Mutex<Call>>,
+    track: Track,
+) -> TrackHandle {
+    let _ = guard;
+    let mut handler = call.lock().await;
+    handler.enqueue(track).await
+}
+
+/// Enqueue an already-resolved songbird [`Input`](SongbirdInput) at the back of
+/// the queue, returning its handle. Used by autoplay in the global track-end
+/// handler.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+pub async fn enqueue_input_back(
+    guard: &QueueGuard,
+    call: &Arc<Mutex<Call>>,
+    source: SongbirdInput,
+) -> TrackHandle {
+    let _ = guard;
+    let mut handler = call.lock().await;
+    handler.enqueue_input(source).await
+}
 
 /// Shuffle `values` in place using the Fisher-Yates algorithm.
 fn fisher_yates<T, R>(values: &mut [T], mut rng: R)

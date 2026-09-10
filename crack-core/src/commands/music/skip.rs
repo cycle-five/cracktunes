@@ -108,6 +108,11 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
     let source_url = &metadata.source_url.ok_or("ASDF").unwrap();
     let res1 = ctx.data().downvote_track(guild_id, source_url).await?;
     let res2 = force_skip_top_track(&guard, &handler).await?;
+    // Released the moment the last mutation is done, the same as `skip` above.
+    // `force_skip_top_track` fires `TrackEvent::End`, and since Task 6 the
+    // global track-end handler awaits `lock_queue` for autopause -- holding on
+    // past here would park songbird's event task for the formatting below.
+    drop(guard);
 
     tracing::warn!("downvoted track: {:#?}", res1);
     tracing::warn!("refetched queue: {:#?}", res2);
