@@ -53,26 +53,35 @@
 //! so a guard is never held across the kind of slow `.await` that would let
 //! the ordering matter in practice today.
 //!
-//! 🪤 That last point is why this rule is written down rather than asserted.
-//! `JoinVCToken::acquire` (`crate::poise_ext`) currently has no caller that
-//! also holds a [`QueueGuard`] -- `do_join`
+//! 🪤 That last point is why this rule is written down rather than asserted
+//! or tested. `JoinVCToken::acquire` (`crate::poise_ext`) currently has no
+//! caller that also holds a [`QueueGuard`] -- `do_join`
 //! (`crate::commands::music_utils::do_join`) calls `songbird::Songbird::join`
 //! directly and never constructs a `JoinVCToken` at all, so the two locks are
-//! never actually taken together yet. A `debug_assert` in `acquire` was tried
-//! and rejected: the only cheap signal available is "is `queue_locks[guild_id]`
-//! contended right now", checked with `try_lock` from a task that does not
-//! hold it -- and `tokio::sync::Mutex` has no task-affinity introspection, so
-//! that can't distinguish *this task is mid-violation* from *a sibling
-//! command for the same guild is legitimately mid-mutation*, which is normal:
-//! exclusion is held for milliseconds, and two commands for one guild are
-//! free to interleave. A version sound enough to fire only on a real
-//! same-task violation would need task-local state set for the lifetime of a
-//! [`QueueGuard`] and checked in `acquire` -- real machinery for a path
-//! nothing exercises yet. Build it when `do_join` is wired through
-//! `JoinVCToken`, not before; until then, the regression test below is the
-//! cheap version of this guarantee -- it proves the sanctioned order
-//! (lease, then join token) completes without deadlocking, which is the one
-//! thing worth locking in now.
+//! never actually taken together yet. It goes further than that: the only
+//! code that ever locks `join_vc_tokens` is the *consumer*,
+//! `SongbirdManagerExt::join_vc` (`poise_ext.rs`), and it too has zero call
+//! sites. `acquire` itself takes no lock at all -- it clones an `Arc` out of
+//! `join_vc_tokens` and returns, per the comparison table above -- so the
+//! whole join-token mechanism is unreachable from production code today, not
+//! merely decoupled from `QueueGuard`. A `debug_assert` in `acquire` was
+//! tried and rejected: the only cheap signal available is "is
+//! `queue_locks[guild_id]` contended right now", checked with `try_lock` from
+//! a task that does not hold it -- and `tokio::sync::Mutex` has no
+//! task-affinity introspection, so that can't distinguish *this task is
+//! mid-violation* from *a sibling command for the same guild is legitimately
+//! mid-mutation*, which is normal: exclusion is held for milliseconds, and
+//! two commands for one guild are free to interleave. For the same reason no
+//! regression test is shipped either: with the second lock never actually
+//! taken, any test that calls `lock_queue` then `acquire` in one task
+//! exercises zero contention between the two locks and cannot fail
+//! regardless of the order it uses -- it would pass as long as the code
+//! compiles, which is not a guarantee worth having a test for. A sound
+//! version of either -- assert or test -- would need task-local state set
+//! for the lifetime of a [`QueueGuard`] and checked in `join_vc`, real
+//! machinery for a path nothing exercises yet. Build it, and add the test,
+//! the day `JoinVCToken`/`join_vc` gains a real production caller; until
+//! then this paragraph is the only enforcement the rule has.
 
 use crate::errors::CrackedError;
 use crate::Data;
@@ -310,18 +319,5 @@ mod test {
         d.lock_queue(G, PlaybackOwner::Free)
             .await
             .expect("the lock is released on drop");
-    }
-
-    #[tokio::test]
-    async fn the_sanctioned_lock_order_completes() {
-        // Lease first, join token second. Two per-guild locks taken in
-        // opposite orders is a textbook deadlock; this proves the sanctioned
-        // order is not itself blocking. See the module doc's "Lock ordering"
-        // section for why this is a regression test rather than an assert.
-        let d = data();
-        let guard = d.lock_queue(G, PlaybackOwner::Free).await.unwrap();
-        let token = crate::poise_ext::JoinVCToken::acquire(&d, G);
-        drop(token);
-        drop(guard);
     }
 }
