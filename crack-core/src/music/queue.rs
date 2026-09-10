@@ -117,17 +117,6 @@ pub(crate) fn build_track(
 pub struct Inserted {
     /// The handles this call added, in the order they were added.
     pub handles: Vec<TrackHandle>,
-    /// Where the first of them landed in the queue.
-    ///
-    /// Not read by any caller in this crate yet -- no current call site builds
-    /// a "queued at position N" reply. Carried for the callers that will.
-    #[allow(dead_code)]
-    pub first_position: usize,
-    /// Queue length after this call. For "added N, now M in queue" replies.
-    ///
-    /// Not read by any caller in this crate yet, same as `first_position`.
-    #[allow(dead_code)]
-    pub queue_len: usize,
 }
 
 impl Inserted {
@@ -152,7 +141,6 @@ pub async fn enqueue_resolved_tracks_back(
     http_client: reqwest::Client,
 ) -> Result<Inserted, CrackedError> {
     let mut handler = call.lock().await;
-    let first_position = handler.queue().len();
     let mut handles = Vec::with_capacity(tracks.len());
     for resolved in &tracks {
         match build_track(resolved, &http_client) {
@@ -160,12 +148,7 @@ pub async fn enqueue_resolved_tracks_back(
             Err(e) => tracing::warn!("Failed to enqueue {}: {e}", resolved.get_url()),
         }
     }
-    let queue_len = handler.queue().len();
-    Ok(Inserted {
-        handles,
-        first_position,
-        queue_len,
-    })
+    Ok(Inserted { handles })
 }
 
 /// Data needed to queue a track.
@@ -790,20 +773,14 @@ mod insertion_tests {
         // cannot express that -- it carries only what this call added.
         let inserted = Inserted {
             handles: Vec::new(),
-            first_position: 3,
-            queue_len: 5,
         };
         assert_eq!(inserted.count(), 0);
-        assert_eq!(inserted.first_position, 3);
-        assert_eq!(inserted.queue_len, 5);
     }
 
     #[test]
     fn count_is_the_handles_this_call_added() {
         let inserted = Inserted {
             handles: Vec::new(),
-            first_position: 0,
-            queue_len: 0,
         };
         assert_eq!(inserted.count(), inserted.handles.len());
     }
