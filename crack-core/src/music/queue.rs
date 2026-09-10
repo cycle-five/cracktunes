@@ -1133,3 +1133,134 @@ mod insertion_tests {
         assert_eq!(inserted.count(), inserted.handles.len());
     }
 }
+
+#[cfg(test)]
+mod queue_query_list_offset_ordering_tests {
+    //! Regression test for the Critical fixed in 6f2d8b4:
+    //! `queue_query_list_offset` used to take its `QueueGuard` as an external
+    //! parameter, so callers held it across the function's own
+    //! `resolve_track_many` -- up to ~13 sequential resolve batches for a
+    //! 100-track playlist, meaning every other music command in the guild
+    //! could block for over a minute. The fix moved guard acquisition inside
+    //! the function, *after* resolution, and made the queue length get read
+    //! (and acted on) under that same guard instead of being read before
+    //! resolving and acted on against a stale number afterward.
+    //!
+    //! Neither half of that fix has a behavioural test available offline: it
+    //! needs a live songbird `Call`, a real voice connection, and a genuinely
+    //! slow (8-15s+) resolve to observe the blocking, none of which are
+    //! reachable without the network -- which tests in this repo may not
+    //! touch. So this test reads the function's own source text and asserts
+    //! the ordering of four markers instead. It is a deliberately unusual
+    //! shape for a test; keep it that way rather than deleting it unless a
+    //! real behavioural test becomes possible.
+
+    /// The whole file, included as a string so the test can scan the
+    /// function's own source. If `queue_query_list_offset` is ever renamed,
+    /// moved to another file, or restructured past what the markers below
+    /// can find, every `.expect`/panic here fails loudly with a message that
+    /// says so -- on purpose. A test that silently stops checking and keeps
+    /// passing is worse than no test at all (see ct#448, #449, #471); this
+    /// one refuses to pass vacuously.
+    const SRC: &str = include_str!("queue.rs");
+
+    const FN_SIGNATURE: &str = "pub async fn queue_query_list_offset(";
+    const RESOLVE_MARKER: &str = "resolve_track_many(queries)";
+    const LOCK_MARKER: &str = "lock_queue(guild_id, PlaybackOwner::Free)";
+    const LEN_MARKER: &str = "handler.queue().len()";
+    const DROP_MARKER: &str = "drop(guard)";
+
+    /// Slices out `queue_query_list_offset`'s own body, from its signature to
+    /// the first column-0 `}` that follows it. Every top-level item in this
+    /// file is rustfmt'd with its closing brace alone on an unindented line;
+    /// every brace inside the function body (blocks, closures, `if`, loops)
+    /// is indented. That makes `"\n}\n"` a reliable end-of-function marker
+    /// without a full brace-matching parser.
+    fn function_body() -> &'static str {
+        let sig_idx = SRC.find(FN_SIGNATURE).unwrap_or_else(|| {
+            panic!(
+                "queue_query_list_offset's signature (`{FN_SIGNATURE}`) is no \
+                 longer found in queue.rs -- the function was renamed, moved, \
+                 or restructured. This test guards a Critical fixed in \
+                 6f2d8b4: resolve_track_many must run before the QueueGuard \
+                 is acquired, and the queue length must be read and acted on \
+                 under that one guard, not read, dropped, and acted on \
+                 stale. Update the markers in this test to match the new \
+                 shape rather than deleting it."
+            )
+        });
+        let end_rel = SRC[sig_idx..].find("\n}\n").unwrap_or_else(|| {
+            panic!(
+                "could not find the end of queue_query_list_offset (no \
+                 unindented closing brace found after its signature) -- the \
+                 function's shape changed enough that this test's \
+                 end-of-body heuristic no longer applies. Update it rather \
+                 than deleting the test; see the module doc comment for why \
+                 it exists."
+            )
+        });
+        &SRC[sig_idx..sig_idx + end_rel + 2]
+    }
+
+    fn find_marker(body: &str, marker: &str, what: &str) -> usize {
+        body.find(marker).unwrap_or_else(|| {
+            panic!(
+                "expected to find `{marker}` ({what}) inside \
+                 queue_query_list_offset, but it's gone. This test guards the \
+                 Critical fixed in 6f2d8b4 -- see the module doc comment. If \
+                 the code was legitimately restructured, update this marker \
+                 to match rather than deleting the assertion."
+            )
+        })
+    }
+
+    #[test]
+    fn resolves_before_locking_and_reads_length_under_the_guard() {
+        let body = function_body();
+
+        let resolve_idx = find_marker(body, RESOLVE_MARKER, "the resolve_track_many call");
+        let lock_idx = find_marker(body, LOCK_MARKER, "the lock_queue call");
+        let len_idx = find_marker(body, LEN_MARKER, "the queue-length read");
+        let drop_idx = find_marker(body, DROP_MARKER, "the first guard drop");
+
+        // Invariant 1: resolution (the slow, network-bound leg) happens
+        // entirely before the guard is acquired. If this regresses, a
+        // second `/play` in the guild waits out someone else's resolve --
+        // up to ~13 sequential batches, over a minute, for a big playlist.
+        assert!(
+            resolve_idx < lock_idx,
+            "resolve_track_many must be called before lock_queue in \
+             queue_query_list_offset (found resolve at byte {resolve_idx}, \
+             lock at byte {lock_idx}). Holding the QueueGuard across \
+             resolution blocks every other music command in the guild for \
+             as long as the resolve takes (8-15s+, worse for playlists) -- \
+             this was a shipped Critical, fixed in 6f2d8b4. Do not reorder \
+             these calls; if resolution genuinely needs to move, the guard \
+             must not be held across it."
+        );
+
+        // Invariant 2: the queue length is read after the guard is
+        // acquired, and before the guard is ever dropped -- i.e. under the
+        // one guard that also performs the insert, not read, dropped, and
+        // acted on stale. If this regresses, the length used to decide
+        // "insert at offset" vs. "just append" can be stale against a
+        // concurrent mutation that happened while the guard was released.
+        assert!(
+            lock_idx < len_idx,
+            "the queue-length read (`{LEN_MARKER}`) must come after \
+             lock_queue in queue_query_list_offset (found lock at byte \
+             {lock_idx}, length read at byte {len_idx}) -- the length must \
+             be read under the guard, not before it is acquired."
+        );
+        assert!(
+            len_idx < drop_idx,
+            "the queue-length read (`{LEN_MARKER}`) must come before the \
+             guard is ever dropped (found length read at byte {len_idx}, \
+             first `drop(guard)` at byte {drop_idx}) in \
+             queue_query_list_offset. If the guard is dropped before the \
+             length is read and acted on, the check-then-act race this \
+             guard exists to close (fixed in 6f2d8b4) is back: the length \
+             can go stale between the check and the insert."
+        );
+    }
+}
