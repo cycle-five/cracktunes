@@ -1,13 +1,13 @@
 # Wire-contract fixtures
 
 These five files are **real HTTP responses captured from a running sleevenote
-v0.1.0 deployment**. They are not hand-written, and they are not to be edited
+v0.4.0 deployment**. They are not hand-written, and they are not to be edited
 to make a test pass.
 
 ## Provenance
 
 Copied verbatim from `docs/examples/` in [cycle-five/sleevenote][repo] at
-v0.1.0, where they are maintained as a contract artifact and checked against
+v0.4.0 (`ae1731d`), where they are maintained as a contract artifact and checked against
 that service's own `src/types.ts` by its `tests/examples.test.ts`. That repo's
 README for them says, of this crate:
 
@@ -20,8 +20,8 @@ This crate is that client. `tests/wire_contract.rs` is that CI check.
 | File            | Response | Contents                                                                    |
 |-----------------|----------|-----------------------------------------------------------------------------|
 | `track.json`    | 200      | a `Track`                                                                    |
-| `album.json`    | 200      | an `Album` (60 tracks, 0 unresolved; every nested track has `album: null`)   |
-| `playlist.json` | 200      | a `Playlist` (2 tracks, 2 unresolved -- a podcast episode and a local file)  |
+| `album.json`    | 200      | an `Album` (60 tracks, 0 unresolved, 60 declared, `complete`)                |
+| `playlist.json` | 200      | a `Playlist` (2 tracks, 2 unresolved -- a podcast episode and a local file; 4 declared, `complete`) |
 | `notfound.json` | 404      | the error shape, `error: "not_found"`                                        |
 | `invalid.json`  | 400      | the error shape, `error: "invalid_id"`                                       |
 
@@ -35,6 +35,11 @@ This crate is that client. `tests/wire_contract.rs` is that CI check.
 * `playlist.json` deliberately contains a podcast episode whose `url` is
   `/episode/...` rather than `/track/...`. That is not a defect in the capture;
   it is the case a naive client gets wrong. Keep it.
+* **Both listings are `complete: true`.** The service ships no partial capture,
+  and one must not be invented here -- a hand-built partial would be exactly the
+  edited evidence the first rule forbids. The partial arithmetic
+  (`shortfall`, a declared total below what was seen, an absent declared total)
+  is unit-tested on constructed values in `src/model.rs` instead.
 * The files have no trailing newline, exactly as the service emitted them.
   `wire_contract.rs` asserts a byte-exact re-serialization round trip, so
   adding one will fail the suite.

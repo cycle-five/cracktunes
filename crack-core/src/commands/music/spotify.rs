@@ -91,6 +91,8 @@ fn track_embed(track: Track) -> CreateEmbed<'static> {
 }
 
 fn album_embed(album: Album) -> CreateEmbed<'static> {
+    // Read before the fields below are moved out of `album`.
+    let shortfall = album.shortfall();
     let names = album
         .artists
         .iter()
@@ -103,17 +105,21 @@ fn album_embed(album: Album) -> CreateEmbed<'static> {
         names,
         &album.tracks,
         album.unresolved_items,
+        shortfall,
         album.image,
     )
 }
 
 fn playlist_embed(playlist: Playlist) -> CreateEmbed<'static> {
+    // Read before the fields below are moved out of `playlist`.
+    let shortfall = playlist.shortfall();
     collection_embed(
         playlist.name,
         playlist.url,
         playlist.owner.unwrap_or_else(|| "Spotify".to_string()),
         &playlist.tracks,
         playlist.unresolved_items,
+        shortfall,
         playlist.image,
     )
 }
@@ -124,6 +130,7 @@ fn collection_embed(
     byline: String,
     tracks: &[Track],
     unresolved: u32,
+    shortfall: Option<u64>,
     image: Option<String>,
 ) -> CreateEmbed<'static> {
     let mut listing = tracks
@@ -153,6 +160,12 @@ fn collection_embed(
     // Local files land here, and there is nothing to play for them.
     if unresolved > 0 {
         embed = embed.field("Unavailable", unresolved.to_string(), true);
+    }
+    // A second, unrelated way to come up short: items Spotify declared that the
+    // scrape never reached. "Unavailable" counts things we saw and could not
+    // use; this counts things we never saw. A listing can have both, or either.
+    if let Some(missing) = shortfall.filter(|n| *n > 0) {
+        embed = embed.field("Not recovered", missing.to_string(), true);
     }
     if let Some(image) = image {
         embed = embed.thumbnail(image, None);

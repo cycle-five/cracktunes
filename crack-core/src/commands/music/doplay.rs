@@ -1,5 +1,5 @@
 use crate::commands::{cmd_check_music, help};
-use crate::music::query::query_type_from_url;
+use crate::music::query::{query_type_from_url, ResolvedQuery};
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
 use crate::music::NewQueryType;
 use crate::utils::edit_embed_response2;
@@ -418,10 +418,16 @@ pub async fn play_internal(
 
     // FIXME: Decide whether we're using this everywhere, or not.
     // Don't like the inconsistency.
-    let query_type = verify(
+    let resolved = verify(
         query_type,
         CrackedError::Other("Something went wrong while parsing your query!"),
     )?;
+    // The shortfall travels beside the query so it can be reported *after* the
+    // queue reply, once there is something to report it against.
+    let ResolvedQuery {
+        query: query_type,
+        shortfall,
+    } = resolved;
 
     tracing::warn!("query_type: {:?}", query_type);
 
@@ -459,6 +465,25 @@ pub async fn play_internal(
     let _after_embed = std::time::Instant::now();
 
     let _msg = edit_embed_response2(ctx, embed, search_msg.clone()).await?;
+
+    // A partial listing is a success with something missing, so it is said
+    // after the queue embed rather than instead of it: the recovered tracks are
+    // already queued and playing, and this is the footnote. Silent when the
+    // listing was whole, which is the overwhelming majority of the time.
+    if let Some(short) = shortfall {
+        tracing::warn!(
+            "spotify: partial listing served -- {} of {} seen, {} missing",
+            short.seen,
+            short.declared,
+            short.missing
+        );
+        ctx.send_reply_embed(CrackedMessage::SpotifyListingShort {
+            seen: short.seen,
+            declared: short.declared,
+            missing: short.missing,
+        })
+        .await?;
+    }
 
     // [Manage Messages]: Permissions::MANAGE_MESSAGES
     // I think this does different things based on prefix or not?

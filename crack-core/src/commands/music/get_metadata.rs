@@ -46,10 +46,13 @@ pub async fn get_metadata(ctx: Context<'_>, query_or_url: String) -> Result<(), 
 
     let query_type = query_type_from_url(ctx, &query_or_url, None).await?;
 
+    // Metadata lookup reports nothing to a channel, so a listing shortfall has
+    // no audience here; `/play` is where it gets said.
     let query_type = verify(
         query_type,
         CrackedError::Other("Something went wrong while parsing your query!"),
-    )?;
+    )?
+    .query;
 
     tracing::warn!("query_type: {:?}", query_type);
 

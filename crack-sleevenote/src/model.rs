@@ -17,6 +17,30 @@
 //! The `type` discriminator on each entity is modelled as a single-variant enum
 //! rather than a `String`. That is what makes a drift in the discriminator a
 //! deserialization failure instead of a value nobody checks.
+//!
+//! # Two kinds of shortfall, deliberately not merged
+//!
+//! A listing can come up short for two unrelated reasons, and conflating them
+//! is how a caller tells a room the wrong thing:
+//!
+//! * **`unresolved_items`** -- Spotify listed an item and it could not be
+//!   turned into a [`Track`]. Local files, mostly. The service *saw* it.
+//!   Asked by `all_items_resolved`.
+//! * **`complete`** -- extraction never saw part of the listing at all, so the
+//!   items are missing rather than unplayable. `declared_items` is the evidence,
+//!   and `shortfall` turns it into a count.
+//!
+//! The vendored `playlist.json` fixture is exactly why these need separate
+//! names: it has two unresolved items and `complete: true`. Every declared item
+//! was seen; two of them just were not songs. A single `is_complete()` would
+//! have to lie about one of those facts, so there is no longer such a method.
+//!
+//! # Version floor
+//!
+//! `declared_items` and `complete` are **required**, per the present-and-nullable
+//! rule above, so this crate requires **sleevenote >= 0.4.0**. Against an older
+//! service every listing fails to deserialize, which is the intended outcome:
+//! defaulting `complete` to true would take a truncated listing as a whole one.
 
 use serde::{Deserialize, Deserializer, Serialize};
 use std::time::Duration;
@@ -203,6 +227,17 @@ pub struct Album {
     /// See [`Album::total_items`]. Ignoring this is how a caller mistakes a
     /// half-resolved listing for a complete one.
     pub unresolved_items: u32,
+    /// Spotify's own declared total, or `null` when the page declared none.
+    ///
+    /// Evidence for [`Album::complete`], kept so a caller can say "25 of 50"
+    /// rather than only "incomplete".
+    #[serde(deserialize_with = "required_nullable")]
+    pub declared_items: Option<u32>,
+    /// Whether extraction saw every item Spotify declared.
+    ///
+    /// **Not the same question as [`Album::all_items_resolved`].** See the
+    /// module docs on the two kinds of shortfall.
+    pub complete: bool,
 }
 
 impl Album {
@@ -212,10 +247,24 @@ impl Album {
         self.tracks.len() as u64 + u64::from(self.unresolved_items)
     }
 
-    /// Whether every item the service saw made it into [`Album::tracks`].
+    /// Whether every item the service *saw* made it into [`Album::tracks`].
+    ///
+    /// Says nothing about whether the service saw the whole listing -- that is
+    /// [`Album::complete`].
     #[must_use]
-    pub fn is_complete(&self) -> bool {
+    pub fn all_items_resolved(&self) -> bool {
         self.unresolved_items == 0
+    }
+
+    /// How many declared items were never seen, or `None` when Spotify
+    /// declared no total and no shortfall can be claimed.
+    ///
+    /// Saturating: a page occasionally declares fewer items than it lists, and
+    /// a negative shortfall is not a thing.
+    #[must_use]
+    pub fn shortfall(&self) -> Option<u64> {
+        self.declared_items
+            .map(|declared| u64::from(declared).saturating_sub(self.total_items()))
     }
 }
 
@@ -246,6 +295,17 @@ pub struct Playlist {
     /// this field a two-track playlist and a four-item playlist half of which
     /// failed to resolve are indistinguishable.
     pub unresolved_items: u32,
+    /// Spotify's own declared total, or `null` when the page declared none.
+    ///
+    /// Evidence for [`Playlist::complete`], kept so a caller can say "25 of 50"
+    /// rather than only "incomplete".
+    #[serde(deserialize_with = "required_nullable")]
+    pub declared_items: Option<u32>,
+    /// Whether extraction saw every item Spotify declared.
+    ///
+    /// **Not the same question as [`Playlist::all_items_resolved`].** See the
+    /// module docs on the two kinds of shortfall.
+    pub complete: bool,
 }
 
 impl Playlist {
@@ -255,9 +315,102 @@ impl Playlist {
         self.tracks.len() as u64 + u64::from(self.unresolved_items)
     }
 
-    /// Whether every item the service saw made it into [`Playlist::tracks`].
+    /// Whether every item the service *saw* made it into [`Playlist::tracks`].
+    ///
+    /// Says nothing about whether the service saw the whole listing -- that is
+    /// [`Playlist::complete`].
     #[must_use]
-    pub fn is_complete(&self) -> bool {
+    pub fn all_items_resolved(&self) -> bool {
         self.unresolved_items == 0
+    }
+
+    /// How many declared items were never seen, or `None` when Spotify
+    /// declared no total and no shortfall can be claimed.
+    ///
+    /// Saturating: a page occasionally declares fewer items than it lists, and
+    /// a negative shortfall is not a thing.
+    #[must_use]
+    pub fn shortfall(&self) -> Option<u64> {
+        self.declared_items
+            .map(|declared| u64::from(declared).saturating_sub(self.total_items()))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// A playlist with `seen` resolvable tracks, `unresolved` that were not,
+    /// and whatever Spotify declared.
+    fn playlist(seen: usize, unresolved: u32, declared: Option<u32>) -> Playlist {
+        Playlist {
+            id: "x".into(),
+            tag: PlaylistTag::Playlist,
+            name: "x".into(),
+            owner: None,
+            image: None,
+            url: "x".into(),
+            tracks: (0..seen)
+                .map(|i| Track {
+                    id: i.to_string(),
+                    tag: TrackTag::Track,
+                    name: i.to_string(),
+                    artists: Vec::new(),
+                    album: None,
+                    duration_ms: None,
+                    url: format!("https://open.spotify.com/track/{i}"),
+                })
+                .collect(),
+            unresolved_items: unresolved,
+            declared_items: declared,
+            // Set independently on purpose: these tests are about the
+            // arithmetic, and the service is the authority on the flag.
+            complete: declared.is_none_or(|d| u64::from(d) <= seen as u64 + u64::from(unresolved)),
+        }
+    }
+
+    #[test]
+    fn shortfall_counts_declared_items_that_were_never_seen() {
+        // 50 declared, 45 seen (43 playable + 2 local files) -> 5 never seen.
+        let short = playlist(43, 2, Some(50));
+        assert_eq!(short.total_items(), 45);
+        assert_eq!(short.shortfall(), Some(5));
+        assert!(!short.complete);
+        // The five missing items are a separate fact from the two unresolved.
+        assert!(!short.all_items_resolved());
+    }
+
+    #[test]
+    fn no_declared_total_means_no_shortfall_can_be_claimed() {
+        // A page that declares nothing is not evidence of a whole listing, and
+        // must not be reported as "0 missing" -- that is a claim we cannot make.
+        let unknown = playlist(20, 0, None);
+        assert_eq!(unknown.shortfall(), None);
+        assert!(unknown.all_items_resolved());
+    }
+
+    #[test]
+    fn a_declared_total_below_what_was_seen_saturates_rather_than_wrapping() {
+        // Spotify occasionally declares fewer items than the page lists. On
+        // `u64` a naive subtraction would underflow to ~1.8e19 missing tracks.
+        let over = playlist(30, 0, Some(25));
+        assert_eq!(over.total_items(), 30);
+        assert_eq!(over.shortfall(), Some(0));
+    }
+
+    #[test]
+    fn everything_resolved_and_nothing_missing_are_independent() {
+        // The fixture case, as a unit test: saw the whole listing, could not
+        // play part of it.
+        let whole_but_lossy = playlist(2, 2, Some(4));
+        assert!(whole_but_lossy.complete);
+        assert_eq!(whole_but_lossy.shortfall(), Some(0));
+        assert!(!whole_but_lossy.all_items_resolved());
+
+        // And the mirror: everything that was seen played, but items are missing.
+        let partial_but_clean = playlist(45, 0, Some(50));
+        assert!(!partial_but_clean.complete);
+        assert_eq!(partial_but_clean.shortfall(), Some(5));
+        assert!(partial_but_clean.all_items_resolved());
     }
 }

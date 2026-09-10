@@ -132,6 +132,18 @@ pub enum CrackedMessage {
         title: String,
         url: String,
     },
+    /// A Spotify listing that sleevenote could only partly read.
+    ///
+    /// Only built when `missing > 0`: a whole listing says nothing, and a page
+    /// that declared no total cannot claim a shortfall either way.
+    SpotifyListingShort {
+        /// Items sleevenote saw, playable or not.
+        seen: u64,
+        /// Items Spotify declared the listing held.
+        declared: u32,
+        /// Declared items never seen. Always non-zero.
+        missing: u64,
+    },
     Summon {
         mention: Mention,
     },
@@ -343,6 +355,13 @@ impl Display for CrackedMessage {
             )),
             Self::PlaylistQueuing(name) => f.write_str(&format!("Queuing **{}**", name)),
             Self::PlaylistQueued => f.write_str(PLAY_PLAYLIST),
+            Self::SpotifyListingShort {
+                seen,
+                declared,
+                missing,
+            } => f.write_str(&format!(
+                "⚠️ **{seen} of {declared}** — {missing} {SPOTIFY_LISTING_SHORT}"
+            )),
             Self::PlayAllFailed => f.write_str(PLAY_ALL_FAILED),
             Self::PlayDomainBanned { domain } => {
                 f.write_str(&format!("⚠️ **{}** {}", domain, PLAY_FAILED_BLOCKED_DOMAIN))

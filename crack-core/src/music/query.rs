@@ -914,7 +914,12 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
 ///
 /// The counts are logged rather than dropped: a playlist that resolved 3 of 40
 /// items is not the same event as one that simply has 3 songs.
-async fn spotify_query(url: &str) -> Result<QueryType, CrackedError> {
+///
+/// A shortfall comes back beside the query rather than being logged and
+/// forgotten. Since sleevenote serves partial listings, a link that used to
+/// fail outright now succeeds quietly missing songs, and the room has no way to
+/// know unless we say so.
+async fn spotify_query(url: &str) -> Result<(QueryType, Option<ListingShortfall>), CrackedError> {
     let resolution = sleevenote::resolve_spotify(url).await?;
     tracing::info!(
         "{}: {} {} -> {} playable, {} unresolved, {} episode(s) skipped",
@@ -925,27 +930,72 @@ async fn spotify_query(url: &str) -> Result<QueryType, CrackedError> {
         resolution.unresolved,
         resolution.episodes_skipped,
     );
+    let shortfall = ListingShortfall::of(&resolution);
     let mut queries = resolution.queries();
     if queries.len() == 1 {
         // `swap_remove` over `into_iter().next()` so the `Vec` is not rebuilt
         // for the common case of a single-track link.
-        return Ok(QueryType::Keywords(queries.swap_remove(0)));
+        return Ok((QueryType::Keywords(queries.swap_remove(0)), shortfall));
     }
-    Ok(QueryType::KeywordList(queries))
+    Ok((QueryType::KeywordList(queries), shortfall))
 }
 
-// This should not be permenant, but just to get it working
-// with the port before re-enabling all the other modules.
-#[allow(dead_code)]
+/// A listing that came back short of what Spotify said it held.
+///
+/// Only constructed when there is something to report: a whole listing, or one
+/// whose page declared no total, produces `None` rather than a zero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListingShortfall {
+    /// Items sleevenote saw, playable or not.
+    pub seen: u64,
+    /// Items Spotify declared the listing held.
+    pub declared: u32,
+    /// Declared items sleevenote never saw. Always non-zero.
+    pub missing: u64,
+}
+
+impl ListingShortfall {
+    /// The shortfall worth telling a user about, if any.
+    #[must_use]
+    pub fn of(resolution: &sleevenote::SpotifyResolution) -> Option<Self> {
+        match (resolution.shortfall(), resolution.declared) {
+            (Some(missing), Some(declared)) if missing > 0 => Some(Self {
+                seen: resolution.items_seen,
+                declared,
+                missing,
+            }),
+            _ => None,
+        }
+    }
+}
+
+/// A query built from a URL, with whatever the resolution wants said about it.
+#[derive(Debug)]
+pub struct ResolvedQuery {
+    /// The query the queueing path will run.
+    pub query: NewQueryType,
+    /// Set only when a Spotify listing came back short. See [`ListingShortfall`].
+    pub shortfall: Option<ListingShortfall>,
+}
+
 /// Returns the QueryType for a given URL (or query string, or file attachment)
+///
+/// This carried an `#[allow(dead_code)]` from 2024-11-24 (`4195522`), added
+/// while `commands::music` was commented out of the build for the module port.
+/// The module came back two days later in `3098fd8` and the attribute did not
+/// go with it; both callers -- `doplay` and `get_metadata` -- have been live
+/// ever since.
 pub async fn query_type_from_url(
     ctx: Context<'_>,
     url: &str,
     file: Option<Attachment>,
-) -> Result<Option<NewQueryType>, Error> {
+) -> Result<Option<ResolvedQuery>, Error> {
     tracing::info!("url: {}", url);
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
+    // Set by the Spotify branches below; every other query kind has no listing
+    // and so nothing to be short of.
+    let mut shortfall = None;
     let query_type = match Url::parse(url) {
         Ok(url_data) => match url_data.host_str() {
             Some("open.spotify.com") | Some("play.spotify.com") | Some("spotify.link") => {
@@ -954,7 +1004,9 @@ pub async fn query_type_from_url(
                 // found on YouTube exactly as the old rspotify path did. A
                 // collection becomes a `KeywordList`, which the queueing path
                 // already resolves concurrently.
-                Some(spotify_query(url).await?)
+                let (query, short) = spotify_query(url).await?;
+                shortfall = short;
+                Some(query)
             },
             Some("cdn.discordapp.com") => {
                 tracing::info!("{}: {}", "attachement file".blue(), url.underline().blue());
@@ -1013,7 +1065,9 @@ pub async fn query_type_from_url(
                     // so the kind is read from the URI rather than assumed to
                     // be a track, which is what the old path did -- it built a
                     // /track/ URL out of an album id and looked up nothing.
-                    Some(spotify_query(url).await?)
+                    let (query, short) = spotify_query(url).await?;
+                    shortfall = short;
+                    Some(query)
                 } else {
                     Some(QueryType::Keywords(url.to_string()))
                 }
@@ -1029,5 +1083,6 @@ pub async fn query_type_from_url(
         .get_guild_settings(guild_id)
         .await
         .ok_or(CrackedError::NoGuildSettings)?;
-    check_banned_domains(&guild_settings, query_type.map(NewQueryType)).map_err(Into::into)
+    let query = check_banned_domains(&guild_settings, query_type.map(NewQueryType))?;
+    Ok(query.map(|query| ResolvedQuery { query, shortfall }))
 }

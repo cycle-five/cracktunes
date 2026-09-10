@@ -190,6 +190,11 @@ pub const SPOTIFY_ENABLED_LOG: &str = "spotify: autoplay enabled -- client crede
 pub const SLEEVENOTE_CONFIGURED_LOG: &str =
     "sleevenote: configured -- Spotify links resolve through";
 pub const SLEEVENOTE_UNCONFIGURED_LOG: &str = "sleevenote: SLEEVENOTE_BASE_URL is not set, so Spotify links will be tried against the default and will fail unless sleevenote runs beside this bot. Set it to your sleevenote deployment.";
+/// Tail of the line `/play` adds when sleevenote served a partial listing.
+///
+/// Says what happened without implying the bot failed: the tracks that were
+/// recovered are queued and playing, and this is the footnote.
+pub const SPOTIFY_LISTING_SHORT: &str = "couldn't be recovered";
 pub const SPOTIFY_INVALID_QUERY: &str =
     "⚠️ **Could not find any tracks with that link!**\nAre you sure that is a valid Spotify URL?";
 // Spotify resolution through sleevenote (`sources::sleevenote`). These stay
