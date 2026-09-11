@@ -1,9 +1,11 @@
 use self::serenity::builder::CreateEmbed;
 use crate::{
+    commands::cmd_check_music,
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     messaging::message::CrackedMessage,
     messaging::messages::REMOVED_QUEUE,
+    music::{remove_at, PlaybackOwner},
     utils::send_reply,
     utils::{get_track_handle_metadata, send_embed_response_poise},
     Context, Error,
@@ -14,7 +16,13 @@ use std::cmp::min;
 
 /// Remove track(s) from the queue.
 #[cfg(not(tarpaulin_include))]
-#[poise::command(category = "Music", prefix_command, slash_command, guild_only)]
+#[poise::command(
+    category = "Music",
+    check = "cmd_check_music",
+    prefix_command,
+    slash_command,
+    guild_only
+)]
 pub async fn remove(
     ctx: Context<'_>,
     #[description = "Index in the queue to remove (Or number of tracks to remove if no second argument."]
@@ -46,6 +54,10 @@ pub async fn remove_internal(
         None => remove_index,
     };
 
+    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
+    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
+    // more kindly. This one cannot be forgotten.
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
     let queue = handler.queue().current_queue();
 
@@ -69,14 +81,14 @@ pub async fn remove_internal(
 
     let track = queue.get(remove_index).unwrap();
 
-    handler.queue().modify_queue(|v| {
-        // This is what songbird does internally when it stops the queue
-        // so it should be the right thing to do here.
-        v.drain(remove_index..=remove_until).for_each(|x| {
-            let _ = x.stop();
-            drop(x);
-        });
-    });
+    // Removing repeatedly at `remove_index` shifts each later track down into
+    // it, so this reaches the same tracks as the old `v.drain(a..=b)` did.
+    for _ in remove_index..=remove_until {
+        remove_at(&guard, &handler, remove_index);
+    }
+    // The guard is held only for the mutation, not across the Discord round
+    // trips below (the reply, then `update_queue_messages`) -- see lease.rs.
+    drop(guard);
 
     // refetch the queue after modification
     let queue = handler.queue().current_queue();

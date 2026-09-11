@@ -418,7 +418,6 @@ impl NewQueryType {
                 queue_track_front(ctx, &call, qt).await?;
             },
             QueryType::PlaylistLink(url) => {
-                let _guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
                 let playlist: Playlist = rusty_ytdl::search::Playlist::get(
                     url.clone(),
                     Some(&rusty_ytdl::search::PlaylistSearchOptions {
@@ -427,6 +426,9 @@ impl NewQueryType {
                     }),
                 )
                 .await?;
+                // queue_query_list_offset acquires its own guard internally,
+                // after it resolves -- no guard passed in here. See its doc
+                // comment.
                 queue_query_list_offset(ctx, call, Queries::from(playlist).to_vec(), 1, search_msg)
                     .await?;
             },

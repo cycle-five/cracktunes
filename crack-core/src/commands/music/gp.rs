@@ -31,7 +31,8 @@ use crate::{
         GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN, SPOTIFY_GP_ONE_SONG,
         SPOTIFY_NOTHING_PLAYABLE,
     },
-    music::queue::build_track,
+    music::queue::{build_track, enqueue_track_back, preload_time, stop_queue},
+    music::PlaybackOwner,
     poise_ext::PoiseContextExt,
     sources::sleevenote,
     Context, CrackedResult, Data, Error,
@@ -146,6 +147,24 @@ pub const GP_CUSTOM_ID_PREFIX: &str = "gp:";
 /// The game's own `/gp skip` and `/gp voteskip` are the sanctioned ways to end a
 /// song. Matched against the command's *qualified* name so `gp skip` is not caught
 /// by `skip`.
+///
+/// # What `blocklist_matches_registry` actually checks
+///
+/// Only that every name here is a registered music command that runs a check
+/// -- not that this is the exact set of commands that take a [`QueueGuard`] as
+/// [`PlaybackOwner::Free`]. The converse does not hold: `leave`, `summon`,
+/// `summonchannel`, `seek` and `repeat` are on this list and take no guard at
+/// all. See "What the funnel does NOT cover" in
+/// `docs/superpowers/specs/2026-09-10-playback-ownership-lease-design.md` for
+/// why voice-state and track-state commands are blocked here without one.
+///
+/// Both halves the test *does* check have already failed once. `remove` sat
+/// here from #422 with no `check = "cmd_check_music"`, so its entry never
+/// fired; `resume` took the guard but was absent from this list *and* from the
+/// funnel, which is the one case where a user could still land a mutation on a
+/// live round.
+///
+/// [`QueueGuard`]: crate::music::QueueGuard
 pub const GP_BLOCKED_COMMANDS: &[&str] = &[
     "play",
     "playnext",
@@ -164,6 +183,7 @@ pub const GP_BLOCKED_COMMANDS: &[&str] = &[
     "seek",
     "repeat",
     "pause",
+    "resume",
     "summon",
     "summonchannel",
 ];
@@ -1021,6 +1041,10 @@ impl Data {
         );
         game.players.insert(host, host_name);
         let opened = game.open_window(now);
+        // 🔑 Claimed here, inside the branch that inserts, so the lease and the
+        // map move together. See music/lease.rs on why this must not be called
+        // from anywhere else.
+        self.claim_playback(guild_id, PlaybackOwner::Game)?;
         slot.insert(game);
         Ok(opened)
     }
@@ -1580,6 +1604,7 @@ impl Data {
             .is_some_and(|g| g.parked_for_end);
         if parked {
             if let Some((_, game)) = self.gp_games.remove(&guild_id) {
+                self.release_playback(guild_id);
                 self.gp_mark_finished(&game, GpOutcome::Ended);
             }
         }
@@ -1594,6 +1619,7 @@ impl Data {
     /// after a redeploy and come back.
     pub fn gp_remove(&self, guild_id: GuildId) -> Option<GpGame> {
         let (_, game) = self.gp_games.remove(&guild_id)?;
+        self.release_playback(guild_id);
         let outcome = if game.parked_for_end {
             GpOutcome::Ended
         } else if game.phase == GpPhase::Finished {
@@ -1610,6 +1636,18 @@ impl Data {
     pub fn gp_restore(&self, guild_id: GuildId, game: GpGame) -> bool {
         match self.gp_games.entry(guild_id) {
             dashmap::mapref::entry::Entry::Vacant(slot) => {
+                // Reclaimed before anything is restored into the guild -- the
+                // arbitration #431 needed, so a resumed game and a restored
+                // queue cannot both take the voice channel.
+                //
+                // 🪤 This branch is unreachable today: `claim_playback` only
+                // errs for a *different* owner, and `Game` is the only owner
+                // that exists. It stays as deliberate defensive coding for
+                // when a second `PlaybackOwner` variant arrives -- not dead
+                // code to be simplified away.
+                if self.claim_playback(guild_id, PlaybackOwner::Game).is_err() {
+                    return false;
+                }
                 slot.insert(game);
                 true
             },
@@ -2250,7 +2288,25 @@ async fn gp_abort(pb: &GpPlayback, text_channel: GenericChannelId, reason: &str)
         return;
     }
     tracing::warn!("gp: {reason} in {}, game discarded", pb.guild_id);
-    pb.call.lock().await.queue().stop();
+    // 🪤 ORDER MATTERS: lock as whoever holds the lease *at this line*.
+    // `gp_remove` four lines above already released it, so the guild is `Free`
+    // by the time we get here and `Free` is what must be passed. Locking as
+    // `Game` would be refused, and a refusal is silent -- the queue would
+    // simply play on under a game that no longer exists.
+    match pb.data.lock_queue(pb.guild_id, PlaybackOwner::Free).await {
+        Ok(guard) => {
+            let handler = pb.call.lock().await;
+            stop_queue(&guard, &handler);
+        },
+        Err(e) => tracing::warn!(
+            "gp: could not lock the queue to abort in {}: {e}",
+            pb.guild_id
+        ),
+    }
+    // Both the guard and the call lock are dropped above, before the Discord
+    // round trip below: `stop()` fires `End` inline on songbird's event task,
+    // and a handler awaiting `lock_queue` would park that task for the length
+    // of this send. See `stop_queue`.
     // Best effort: the channel is usually what just failed.
     if let Err(e) = text_channel
         .send_message(&pb.http, CreateMessage::new().content(GP_ABORTED))
@@ -2469,8 +2525,34 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
     }
 
     let handle = {
-        let mut handler = pb.call.lock().await;
-        handler.enqueue(songbird_track).await
+        // The game still owns playback here: `gp_start` claimed the lease and
+        // nothing on this path has released it, so lock as `Game`. `Free` would
+        // be refused and the song would silently never be enqueued -- no `End`
+        // would ever arrive and the round would hang forever.
+        let guard = match pb.data.lock_queue(guild_id, PlaybackOwner::Game).await {
+            Ok(guard) => guard,
+            Err(e) => {
+                // Unreachable while `PlaybackOwner` has only `Free` and `Game`
+                // -- locking as `Game` matches both -- but a third owner is
+                // foreseeable, and a song that cannot be enqueued is fatal to
+                // the round in exactly the way the two aborts below are.
+                gp_abort(
+                    pb,
+                    start.text_channel,
+                    &format!("locking the queue to play failed: {e}"),
+                )
+                .await;
+                return Ok(());
+            },
+        };
+        // The preload time is computed from metadata already in hand rather
+        // than derived by songbird, which would spawn yt-dlp here, under the
+        // guard -- see `preload_time`.
+        enqueue_track_back(&guard, &pb.call, songbird_track, preload_time(&start.track)).await
+        // The guard drops with this block, before the seek below. Both are slow
+        // legs -- the enqueue above no longer is, now that it does not run
+        // yt-dlp -- and `lease.rs` forbids holding exclusion across either.
+        // Nothing after this point mutates the queue.
     };
 
     // Arm every handler before awaiting anything. The seek below is the first
@@ -2996,14 +3078,26 @@ pub async fn gp_start(
         round_results,
         now(),
     )?;
+    // `data.gp_start` above claimed the lease, so the game owns playback by the
+    // time we reach here and this must lock as `Game`; `Free` would be refused
+    // and the previous queue would keep playing underneath the new game.
+    // 🪤 Do NOT reorder the claim below this call to make the guild `Free`
+    // here: creating the game first is load-bearing, for the reason the comment
+    // above `data.gp_start` gives. Locking as `Game` cannot be refused (`as_`
+    // matches both `Free` and `Game`), so this `?` cannot orphan the game that
+    // was just created.
+    let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
     let cleared_queue = {
         let handler = call.lock().await;
         let non_empty = !handler.queue().is_empty();
         if non_empty {
-            handler.queue().stop();
+            stop_queue(&guard, &handler);
         }
         non_empty
     };
+    // Released before the Discord round trip below -- `stop_queue` fires `End`
+    // inline on songbird's event task, which must not wait out a send.
+    drop(guard);
 
     ctx.send_reply(
         CrackedMessage::GpStarted {
@@ -3192,12 +3286,17 @@ pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
         .get(guild_id)
         .ok_or(CrackedError::NotConnected)?;
     {
+        // Locking as `Game` succeeds here because this guild's game already
+        // owns playback and has not released it (see
+        // `the_owner_can_still_lock_its_own_queue` in lease.rs); `Free` would
+        // be refused and the skip would silently do nothing.
+        let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
         let handler = call.lock().await;
         if handler.queue().is_empty() {
             return Err(CrackedError::NothingPlaying.into());
         }
         // stop() fires TrackEvent::End, which is what advances the game.
-        force_skip_top_track(&handler).await?;
+        force_skip_top_track(&guard, &handler).await?;
     }
     ctx.send_reply(CrackedMessage::GpRoundSkipped, true).await?;
     Ok(())
@@ -3315,12 +3414,17 @@ async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
             .songbird
             .get(guild_id)
             .ok_or(CrackedError::NotConnected)?;
+        // Locking as `Game` succeeds here because this guild's game already
+        // owns playback and has not released it (see
+        // `the_owner_can_still_lock_its_own_queue` in lease.rs); `Free` would
+        // be refused and the skip would silently do nothing.
+        let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
         let handler = call.lock().await;
         if handler.queue().is_empty() {
             return Err(CrackedError::NothingPlaying);
         }
         // stop() fires TrackEvent::End, which is what advances the game.
-        force_skip_top_track(&handler).await?;
+        force_skip_top_track(&guard, &handler).await?;
     }
     Ok(answer)
 }
@@ -3412,10 +3516,17 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
     let game = data.gp_park_for_end(guild_id, ctx.author().id, is_admin)?;
     let was_playing = match data.songbird.get(guild_id) {
         Some(call) => {
+            // `gp_park_for_end` only sets a flag -- the game stays in the map,
+            // and with it the lease, until `gp_remove_if_parked` collects it in
+            // the track-end handler. So the game still owns playback here and
+            // this locks as `Game`; `Free` would be refused and the queue would
+            // never stop, leaving the parked game with no `End` to collect it.
+            let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
             let handler = call.lock().await;
             let playing = !handler.queue().is_empty();
-            handler.queue().stop();
+            stop_queue(&guard, &handler);
             playing
+            // Both locks drop with this arm, before the replies below.
         },
         None => false,
     };
@@ -5551,7 +5662,40 @@ mod test {
         // The game has its own `/gp voteskip`; the music one bypasses the majority.
         assert!(GP_BLOCKED_COMMANDS.contains(&"voteskip"));
         assert!(!GP_BLOCKED_COMMANDS.contains(&"gp"));
-        assert!(!GP_BLOCKED_COMMANDS.contains(&"resume"), "the escape hatch");
+        // `resume` used to be left off deliberately, as an escape hatch for a
+        // queue somebody had paused. The playback lease withdrew that: `/resume`
+        // mutates the queue, so it now takes a `QueueGuard` and a guild the game
+        // owns refuses it there whatever this list says. Leaving it off only
+        // bought a later, less explanatory refusal -- and until the guard
+        // existed it bought a real one, `queue.resume()` landing on a live round.
+        assert!(GP_BLOCKED_COMMANDS.contains(&"resume"));
+        // 🪤 `downvote` (`skip.rs`) belongs to this list by every property it
+        // has -- it takes the guard as `Free` and mutates the queue through
+        // `force_skip_top_track` -- and is deliberately absent, because it is
+        // registered nowhere: `music_commands()` does not list it, so
+        // `all_commands()` does not either, and the assertion above would
+        // reject it. Registering it is not a formality; as written it
+        // `.unwrap()`s `queue().current()` and would panic on an empty queue.
+        // The day it is registered, this fails and says what to do about it.
+        assert!(
+            !music.contains(&"downvote".to_string()),
+            "downvote is registered now -- add it to GP_BLOCKED_COMMANDS"
+        );
+        // A blocked name does nothing unless its command actually runs the
+        // check. `remove` sat on this list for exactly that reason with no
+        // `check = "cmd_check_music"`, so its entry was inert.
+        let by_name: std::collections::HashMap<String, _> =
+            crate::commands::music::music_commands()
+                .into_iter()
+                .map(|c| (c.name.to_string(), c.checks.len()))
+                .collect();
+        for blocked in GP_BLOCKED_COMMANDS {
+            assert_ne!(
+                by_name.get(*blocked).copied().unwrap_or_default(),
+                0,
+                "{blocked} is blocked but runs no check, so the block never fires"
+            );
+        }
         for sub in &gp().subcommands {
             let qualified = format!("gp {}", sub.name);
             assert!(!GP_BLOCKED_COMMANDS.contains(&qualified.as_str()));
@@ -5647,5 +5791,133 @@ mod test {
                 assert!(sub.parameters[1..].iter().all(|p| !p.required));
             }
         }
+    }
+
+    // --- Playback lease ------------------------------------------------
+    //
+    // The primitives (`claim_playback`, `release_playback`, `lock_queue`) have
+    // their own tests in `music/lease.rs`. These exercise the lease as wired
+    // into the five places that move `gp_games` in this file.
+
+    use crate::commands::music::gp_persist::GpPersist;
+    use tokio::sync::mpsc;
+
+    /// A `Data` whose persistence writes land in a channel rather than
+    /// Postgres. Mirrors `gp_persist::test::recording`.
+    fn recording() -> (Data, mpsc::UnboundedReceiver<GpPersist>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let data = Data(Arc::new(DataInner {
+            gp_persist: Some(tx),
+            ..Default::default()
+        }));
+        (data, rx)
+    }
+
+    /// A minimal game, enough for `gp_restore` to accept.
+    fn a_game(guild_id: GuildId) -> GpGame {
+        GpGame::new(
+            guild_id,
+            A,
+            VC,
+            TC,
+            GpCategory::Nostalgia,
+            prompts(&["p1"]),
+            TIMER,
+            None,
+            GpReveal::default(),
+            true,
+            NOW,
+        )
+    }
+
+    /// Starts a minimal game and asserts it succeeded, so the tests below read
+    /// as lifecycle rather than setup.
+    fn start_a_game(data: &Data, guild_id: GuildId) {
+        data.gp_start(
+            guild_id,
+            A,
+            "alice".into(),
+            VC,
+            TC,
+            GpCategory::Nostalgia,
+            prompts(&["p1"]),
+            TIMER,
+            None,
+            GpReveal::default(),
+            true,
+            NOW,
+        )
+        .expect("gp_start should succeed");
+    }
+
+    /// The lease and the games map must agree after EVERY game-lifecycle method.
+    /// This is the regression guard for the drift the co-location design exists
+    /// to prevent: a lease that outlives its game wedges /play forever, with no
+    /// game left to end.
+    fn assert_lease_agrees(data: &Data, guild_id: GuildId) {
+        let has_game = data.gp_games.contains_key(&guild_id);
+        let owned = data.playback_owner(guild_id) == PlaybackOwner::Game;
+        assert_eq!(
+            has_game, owned,
+            "gp_games says {has_game} but the lease says {owned} for {guild_id}"
+        );
+    }
+
+    #[test]
+    fn gp_start_claims_playback() {
+        let (data, _rx) = recording();
+        assert_lease_agrees(&data, G);
+        start_a_game(&data, G);
+        assert_eq!(data.playback_owner(G), PlaybackOwner::Game);
+        assert_lease_agrees(&data, G);
+    }
+
+    #[test]
+    fn gp_remove_releases_playback() {
+        let (data, _rx) = recording();
+        start_a_game(&data, G);
+        data.gp_remove(G);
+        assert_eq!(data.playback_owner(G), PlaybackOwner::Free);
+        assert_lease_agrees(&data, G);
+    }
+
+    #[test]
+    fn gp_remove_if_parked_releases_only_when_it_removes() {
+        let (data, _rx) = recording();
+        start_a_game(&data, G);
+
+        // Not parked: nothing is removed, so nothing is released.
+        assert!(!data.gp_remove_if_parked(G));
+        assert_eq!(data.playback_owner(G), PlaybackOwner::Game);
+        assert_lease_agrees(&data, G);
+
+        data.gp_park_for_end(G, A, true).expect("park");
+        assert!(data.gp_remove_if_parked(G));
+        assert_eq!(data.playback_owner(G), PlaybackOwner::Free);
+        assert_lease_agrees(&data, G);
+    }
+
+    #[test]
+    fn gp_restore_claims_playback() {
+        let (data, _rx) = recording();
+        let game = a_game(G);
+        assert!(data.gp_restore(G, game));
+        assert_eq!(data.playback_owner(G), PlaybackOwner::Game);
+        assert_lease_agrees(&data, G);
+    }
+
+    /// `gp_restore` returns false when `/gp start` got there first. This guards
+    /// the `Entry::Occupied` arm only: it must never claim, release, or
+    /// otherwise disturb the lease the running game already holds.
+    ///
+    /// 🪤 It does NOT exercise the Vacant-arm claim -- it structurally cannot
+    /// reach that branch. `gp_restore_claims_playback` covers that, and does
+    /// fail without the claim line.
+    #[test]
+    fn restoring_over_a_live_game_leaves_the_lease_alone() {
+        let (data, _rx) = recording();
+        start_a_game(&data, G);
+        assert!(!data.gp_restore(G, a_game(G)));
+        assert_lease_agrees(&data, G);
     }
 }

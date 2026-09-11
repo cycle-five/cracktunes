@@ -7,6 +7,8 @@ use crate::{
         messages::{AUTOPLAY_DISABLED_ERROR, AUTOPLAY_DISABLED_SPOTIFY, SPOTIFY_AUTH_FAILED},
     },
     music::query::NewQueryType,
+    music::queue::{enqueue_input_back, pause_queue, preload_from_metadata},
+    music::PlaybackOwner,
     sources::spotify::{Spotify, SPOTIFY},
     utils::{
         calculate_num_pages, forget_queue_message, set_track_handle_metadata,
@@ -135,7 +137,26 @@ impl EventHandler for TrackEndHandler {
 
         if autopause {
             tracing::trace!("Pausing");
-            self.call.lock().await.queue().pause().ok();
+            // Autopause has no command and no user behind it, but it mutates
+            // the queue, so it takes the guard like every other mutation.
+            // `Free` is correct: the early return above has already left for
+            // any guild a game owns, so by the time control reaches this line
+            // nothing holds the lease. Passing `Game` here would be refused for
+            // every ordinary guild -- which is to say, always.
+            match self
+                .data
+                .lock_queue(self.guild_id, PlaybackOwner::Free)
+                .await
+            {
+                Ok(guard) => {
+                    let handler = self.call.lock().await;
+                    // Nobody asked for this pause, so a failure has nobody to
+                    // report it to.
+                    pause_queue(&guard, &handler).ok();
+                },
+                // A nicety with nobody to answer to: log it and carry on.
+                Err(e) => tracing::trace!("autopause skipped in {}: {e}", self.guild_id),
+            }
         } else {
             tracing::trace!("Not pausing");
         }
@@ -206,7 +227,7 @@ impl EventHandler for TrackEndHandler {
         };
 
         let call = self.call.clone();
-        match queue_query(query, call).await {
+        match queue_query(&self.data, self.guild_id, query, call).await {
             Ok(_) => (),
             Err(e) => {
                 self.data.set_autoplay(self.guild_id, false).await;
@@ -227,7 +248,19 @@ impl EventHandler for TrackEndHandler {
 
 use songbird::input::Input as SongbirdInput;
 /// Queues a query and returns the track handle.
+///
+/// Resolves first, *then* acquires the [`QueueGuard`], the same shape as
+/// [`queue_track_back`](crate::music::queue::queue_track_back): resolution is
+/// the slow leg (8-15s cold) and `lease.rs` forbids holding exclusion across
+/// one, so the guard cannot be supplied by the caller.
+///
+/// [`PlaybackOwner::Free`] is what it locks as. Its only caller is the autoplay
+/// tail of [`TrackEndHandler::act`], which has already returned early for any
+/// guild a game owns, so nothing holds the lease by then -- and locking as
+/// `Game` would be refused for every ordinary guild.
 pub async fn queue_query(
+    data: &Data,
+    guild_id: GuildId,
     query: QueryType,
     call: Arc<Mutex<Call>>,
 ) -> Result<TrackHandle, CrackedError> {
@@ -242,7 +275,16 @@ pub async fn queue_query(
     let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) = qt
         .get_track_source_and_metadata(Some(client.clone()))
         .await?;
-    let mut track = call.as_ref().lock().await.enqueue_input(source).await;
+    // Supplied rather than derived: `enqueue_input` would read it back off the
+    // input, which for a lazy source means spawning yt-dlp under the guard.
+    // Resolution above already produced the duration.
+    let preload = preload_from_metadata(metadata_vec.first().map(|meta| &meta.0));
+    let mut track = {
+        let guard = data.lock_queue(guild_id, PlaybackOwner::Free).await?;
+        enqueue_input_back(&guard, &call, source, preload).await
+        // The guard drops with this block. `add_metadata_to_track` below writes
+        // the track's own typemap, not the queue, so it needs no exclusion.
+    };
     if let Some(metadata) = metadata_vec.first() {
         add_metadata_to_track(&mut track, metadata.clone().into()).await?;
     }

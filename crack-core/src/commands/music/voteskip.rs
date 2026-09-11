@@ -6,6 +6,7 @@ use crate::{
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
+    music::PlaybackOwner,
     poise_ext::{ContextExt, PoiseContextExt},
     Context, Error,
 };
@@ -51,6 +52,10 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
     let manager = ctx.data().songbird.clone();
     let call = manager.get(guild_id).unwrap();
 
+    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
+    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
+    // more kindly. This one cannot be forgotten.
+    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
     let queue = handler.queue();
 
@@ -87,9 +92,16 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         //         user_id: user_id.0 as i64,
         //     },
         // );
-        force_skip_top_track(&handler).await?;
+        force_skip_top_track(&guard, &handler).await?;
+        // The guard is held only for the mutation above, not across the
+        // Discord round trip in `create_skip_response` -- see lease.rs.
+        drop(guard);
         create_skip_response(ctx, &handler, 1).await
     } else {
+        // Never mutates the queue on this path, so the guard is dropped
+        // before the Discord round trip below rather than held idle across
+        // it -- see lease.rs.
+        drop(guard);
         ctx.send_reply_embed(CrackedMessage::VoteSkip {
             mention: ctx.get_user_id().mention(),
             missing: skip_threshold - cache.current_skip_votes.len(),
