@@ -254,7 +254,7 @@ impl Display for BotConfig {
             self.guild_settings_map
         ));
         result.push_str(&format!(
-            "prefix: {}",
+            "prefix: {}\n",
             self.prefix
                 .as_ref()
                 .cloned()
@@ -857,5 +857,33 @@ msg_on_dc:     false
         let guild_settings = GuildSettingsMapParam::default();
         let new_data = new_data.with_guild_settings_map(guild_settings);
         assert!(new_data.guild_settings_map.read().await.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod redaction_tests {
+    use super::*;
+
+    /// The config is logged at startup. A password must not survive the trip
+    /// through `Display`. See #473.
+    #[test]
+    fn display_redacts_the_database_password() {
+        let config = BotConfig {
+            database_url: Some(
+                "postgres://cracktunes:sup3rs3cr3t@postgres:5432/cracktunes".to_string(),
+            ),
+            ..Default::default()
+        };
+
+        let rendered = format!("{}", config);
+
+        assert!(
+            !rendered.contains("sup3rs3cr3t"),
+            "Display leaked the password:\n{rendered}"
+        );
+        assert!(
+            rendered.contains("<redacted>"),
+            "Display did not redact at all:\n{rendered}"
+        );
     }
 }

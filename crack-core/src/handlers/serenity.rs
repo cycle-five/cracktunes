@@ -3,7 +3,7 @@ use crate::{
     commands::music::gp::{handle_gp_component, GP_CUSTOM_ID_PREFIX},
     db::GuildEntity,
     errors::CrackedError,
-    guild::settings::{GuildSettings, DEFAULT_ACTIVITY},
+    guild::settings::{GuildSettings, Provenance, DEFAULT_ACTIVITY},
     handlers::voice_chat_stats::cam_status_loop,
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig,
@@ -356,7 +356,13 @@ impl SerenityHandler {
             )
             .await
             {
-                Ok((_guild, settings)) => settings,
+                // 🔑 The ONLY place settings become persistable. get_or_create
+                // is an upsert returning the live row, so Ok means Postgres and
+                // memory agree the row exists -- including for a guild just
+                // joined. The Err and no-pool arms below deliberately keep the
+                // Fallback default, so a transient read failure cannot become a
+                // permanent write at shutdown.
+                Ok((_guild, settings)) => settings.with_provenance(Provenance::Database),
                 Err(err) => {
                     tracing::error!(
                         "Failed to load settings for guild {} from the database, \
@@ -804,4 +810,53 @@ pub async fn voice_state_diff_str(
         ));
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod provenance_wiring_tests {
+    /// `on_guild_create` is an async serenity event handler taking a live
+    /// `Context`; it cannot be called from a unit test. The property that
+    /// matters is which of its three arms marks settings persistable, so this
+    /// reads the source.
+    ///
+    /// If this test becomes annoying, the fix is to extract the arm selection
+    /// into a pure function and test that -- not to delete the test.
+    #[test]
+    fn only_the_database_arm_marks_settings_persistable() {
+        let src = include_str!("serenity.rs");
+
+        // Scan only the handler code above this test module. `include_str!`
+        // pulls in this test's own source too, and its filter predicate and
+        // assertion messages necessarily contain the string "with_provenance"
+        // -- left unscoped, the test would count itself and always fail.
+        let production_src = src
+            .split_once("#[cfg(test)]\nmod provenance_wiring_tests")
+            .map(|(before, _)| before)
+            .unwrap_or(src);
+
+        let marks: Vec<&str> = production_src
+            .lines()
+            .filter(|l| l.contains("with_provenance"))
+            .map(|l| l.trim())
+            .collect();
+
+        assert_eq!(
+            marks.len(),
+            1,
+            "expected exactly one with_provenance call in this file, found {}: {:#?}",
+            marks.len(),
+            marks
+        );
+        assert!(
+            marks[0].contains("Provenance::Database"),
+            "the only with_provenance call should mark Database: {}",
+            marks[0]
+        );
+        assert!(
+            marks[0].contains("Ok(("),
+            "with_provenance must be on the Ok arm of get_or_create, so a failed \
+             load keeps the Fallback default: {}",
+            marks[0]
+        );
+    }
 }

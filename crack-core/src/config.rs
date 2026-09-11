@@ -413,8 +413,16 @@ pub async fn poise_framework(
 
         println!("Saving guilds...");
         if let Some(p) = pool {
+            let mut skipped = 0usize;
             for (k, v) in guilds {
-                //tracing::warn!("Saving Guild: {}", k);
+                // 🔑 Only write back settings that came FROM the database. A
+                // guild whose load failed is holding defaults, and writing
+                // those over its stored row destroys it -- permanently, and
+                // with no backup behind it. See guild::settings::Provenance.
+                if !v.is_persistable() {
+                    skipped += 1;
+                    continue;
+                }
                 match v.save(&p).await {
                     Ok(_) => {
                         saved_guilds.push(k);
@@ -423,6 +431,14 @@ pub async fn poise_framework(
                         tracing::error!("Error saving guild settings: {}", e);
                     },
                 }
+            }
+            if skipped > 0 {
+                // Loud on purpose: a large skip count means many guilds failed
+                // to load at boot, which is worth knowing about.
+                tracing::warn!(
+                    "Skipped {} guild(s) at shutdown whose settings never loaded from the database",
+                    skipped
+                );
             }
             p.close().await;
         }

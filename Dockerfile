@@ -11,6 +11,14 @@ RUN apk add --no-cache \
   cmake \
   git
 
+# 🔑 BEFORE `COPY . .`, deliberately. sqlx-cli takes minutes to build and never
+# changes with our source, so keeping it above the copy means the layer caches
+# across every source change and only rebuilds when this base image moves.
+#
+# Pinned to ~0.8 to match the sqlx 0.8.2 that writes the _sqlx_migrations
+# ledger; a mismatched CLI can disagree with the library about that table.
+RUN cargo install sqlx-cli --version '~0.8' --no-default-features --features rustls,postgres
+
 # Default directory
 WORKDIR /app
 
@@ -59,3 +67,21 @@ COPY --from=builder /app/target/dist/cracktunes /app/app
 COPY --from=builder /app/scripts/start.sh /app/start.sh
 
 CMD ["/app/start.sh"]
+
+# STAGE3: the migration runner, used as a one-shot before the bot starts.
+#
+# 🪤 This stage is LAST, which makes it the default build target. The bot image
+# must therefore be built with an explicit `--target runner`; the Docker
+# workflow does this. Building with no target gets you this image, which is
+# emphatically not the bot.
+FROM alpine:3.22 AS migrate
+COPY --from=builder /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
+COPY --from=builder /app/migrations /migrations
+# Needs DATABASE_URL in the environment and nothing else.
+#
+# No ca-certificates here. Harmless today -- compose points this at a
+# Postgres on the compose network with no sslmode, so rustls never needs a
+# root store -- but the first `sslmode=require` or managed Postgres target
+# will fail a TLS handshake from a one-shot container with no other context
+# to explain why.
+ENTRYPOINT ["sqlx", "migrate", "run", "--source", "/migrations"]
