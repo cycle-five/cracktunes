@@ -40,6 +40,11 @@ pub async fn authorize(
     let id = user.id;
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
+    // 🔑 Before mutating: make sure what is in memory came from Postgres. A
+    // guild whose boot load failed holds defaults, and `save()` below is a
+    // full-row upsert that would write them over its stored row.
+    ctx.data().ensure_settings_loaded(guild_id).await?;
+
     let guild_settings = ctx
         .data()
         .guild_settings_map

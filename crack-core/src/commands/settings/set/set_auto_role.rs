@@ -62,13 +62,25 @@ pub async fn auto_role_internal(ctx: Context<'_>, auto_role: RoleId) -> Result<(
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let mention = auto_role.mention();
 
+    // 🔑 Before mutating: make sure what is in memory came from Postgres. A
+    // guild whose boot load failed holds defaults, and `save()` below is a
+    // full-row upsert that would write them over its stored row.
+    ctx.data().ensure_settings_loaded(guild_id).await?;
+
     ctx.data().set_auto_role(guild_id, auto_role.get()).await;
     let res = ctx
         .data()
         .get_guild_settings(guild_id)
         .await
         .ok_or(CrackedError::NoGuildSettings)?;
-    res.save(&ctx.data().database_pool.clone().unwrap()).await?;
+    // 🪤 `unwrap()` here panicked on a tokio worker whenever there was no pool,
+    // which is production's deliberate config today.
+    let pool = ctx
+        .data()
+        .database_pool
+        .clone()
+        .ok_or(CrackedError::Other("No database pool"))?;
+    res.save(&pool).await?;
 
     //ctx.say(format!("Auto role set to {}", mention)).await?;
     let params = SendMessageParams::new(CrackedMessage::Other(format!(

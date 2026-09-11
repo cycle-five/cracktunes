@@ -43,7 +43,10 @@ pub async fn toggle_autopause_internal(
     guild_name: Option<FixedString>,
     prefix: String,
 ) -> Result<GuildSettings, CrackedError> {
-
+    // 🔑 Before mutating: make sure what is in memory came from Postgres. A
+    // guild whose boot load failed holds defaults, and `save()` below is a
+    // full-row upsert that would write them over its stored row.
+    data.ensure_settings_loaded(guild_id).await?;
 
     let res = data
         .guild_settings_map

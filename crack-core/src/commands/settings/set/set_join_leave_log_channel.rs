@@ -45,6 +45,11 @@ pub async fn join_leave_log_channel(
     //     .unwrap()
     //     .get_mut(&guild_id);
 
+    // 🔑 Before mutating: make sure what is in memory came from Postgres. A
+    // guild whose boot load failed holds defaults, and `save()` below is a
+    // full-row upsert that would write them over its stored row.
+    ctx.data().ensure_settings_loaded(guild_id).await?;
+
     let data = ctx.data();
     let _ = data
         .guild_settings_map
@@ -58,8 +63,15 @@ pub async fn join_leave_log_channel(
     let settings_temp = data.get_guild_settings(guild_id).await;
     let settings = settings_temp.as_ref();
 
-    let pg_pool = ctx.data().database_pool.clone().unwrap();
-    settings.map(|s| s.save(&pg_pool)).unwrap().await?;
+    // 🪤 `unwrap()` here panicked on a tokio worker whenever there was no pool.
+    let pg_pool = ctx
+        .data()
+        .database_pool
+        .clone()
+        .ok_or(CrackedError::Other("No database pool"))?;
+    if let Some(s) = settings {
+        s.save(&pg_pool).await?;
+    }
 
     send_reply(
         &ctx,

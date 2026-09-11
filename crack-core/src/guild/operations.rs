@@ -6,7 +6,7 @@ use serenity::{
 use std::str::FromStr;
 use std::{future::Future, sync::Arc};
 
-use super::settings::DEFAULT_VOLUME_LEVEL;
+use super::settings::{Provenance, DEFAULT_VOLUME_LEVEL};
 
 pub trait GuildSettingsOperations {
     fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
@@ -21,7 +21,7 @@ pub trait GuildSettingsOperations {
         name: Option<String>,
         prefix: Option<&str>,
     ) -> impl Future<Output = GuildSettings>;
-    fn save_guild_settings(
+    fn ensure_settings_loaded(
         &self,
         guild_id: GuildId,
     ) -> impl Future<Output = Result<(), CrackedError>>;
@@ -115,17 +115,79 @@ impl GuildSettingsOperations for Data {
             .or_insert_with(|| GuildSettings::new(guild_id, None, None));
     }
 
-    /// Save the guild settings to the database.
+    /// Make sure this guild's in-memory settings came from Postgres, before a
+    /// command mutates them and writes them back.
     ///
-    /// Writes back without checking `Provenance`; currently unused. Anything
-    /// wiring this up must check `is_persistable()` first or it will overwrite
-    /// stored settings with fallback defaults.
-    async fn save_guild_settings(&self, guild_id: GuildId) -> Result<(), CrackedError> {
-        let opt_settings = self.guild_settings_map.read().await;
-        let settings = opt_settings.get(&guild_id);
+    /// 🔑 **Call this before any command path that ends in
+    /// [`GuildSettings::save`].** A guild whose boot load failed is holding
+    /// `GuildSettings::new()` defaults. `save()` is a full-row 14-column
+    /// upsert, so mutating those defaults and saving them replaces the guild's
+    /// stored row wholesale -- the same unrecoverable loss the shutdown
+    /// handler's `is_persistable()` guard prevents, reached through a
+    /// different door. See [`crate::guild::settings::Provenance`].
+    ///
+    /// 🪤 **The guard belongs here, not inside `save()`.** `save()` itself
+    /// calls `get_or_create`, so a blanket `is_persistable()` check in there
+    /// would refuse the legitimate first write for a guild that has no row
+    /// yet, silently doing nothing.
+    ///
+    /// Returns `Ok(())` and changes nothing when there is no pool: with no
+    /// database there is nothing to overwrite and no write to guard.
+    ///
+    /// No lock is held across the `get_or_create` await -- both read guards
+    /// below are statement-scoped temporaries. There is a benign race: a
+    /// concurrent command could mutate the map between the read and the write,
+    /// and lose that mutation to the freshly-loaded row. Deliberately not
+    /// serialised, because the harm is bounded to an in-memory change on
+    /// settings that were `Fallback` and therefore unsafe to persist anyway --
+    /// the stored row, which is what this guard protects, is never at risk.
+    async fn ensure_settings_loaded(&self, guild_id: GuildId) -> Result<(), CrackedError> {
+        let Some(pool) = self.database_pool.as_ref() else {
+            return Ok(());
+        };
 
-        let pg_pool = self.database_pool.clone().unwrap();
-        settings.map(|s| s.save(&pg_pool)).unwrap().await
+        // Already round-tripped through Postgres -- nothing to do. Read lock is
+        // dropped before the await below.
+        if self
+            .guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .is_some_and(|s| s.is_persistable())
+        {
+            return Ok(());
+        }
+
+        let name = self
+            .guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .map(|s| s.guild_name.clone())
+            .unwrap_or_default();
+        let prefix = self.bot_settings.get_prefix();
+
+        // 🪤 Returning Err here is the point: the caller must NOT fall through to
+        // `save()`. If the row cannot be read, whatever is in memory is still
+        // defaults, and writing those back is the loss this guard exists to
+        // stop. The detail goes to the log; the caller only needs "not safe".
+        let (_guild, settings) =
+            crate::db::GuildEntity::get_or_create(pool, guild_id.get() as i64, name, prefix)
+                .await
+                .map_err(|err| {
+                    tracing::error!(
+                        "Refusing to write guild {guild_id} settings: could not re-load \
+                         them from the database: {err}"
+                    );
+                    CrackedError::Other("guild settings could not be loaded; refusing to overwrite")
+                })?;
+
+        self.guild_settings_map
+            .write()
+            .await
+            .insert(guild_id, settings.with_provenance(Provenance::Database));
+
+        Ok(())
     }
 
     /// Get the idle timeout for the bot in VC for the guild.
@@ -712,5 +774,108 @@ mod test {
         })));
 
         assert!(!data.get_autoplay(guild_id).await);
+    }
+
+    /// With no pool there is nothing to overwrite and no write to guard, so the
+    /// helper must succeed and leave the map exactly as it found it. This is
+    /// production's configuration today, so it is the case that must not break.
+    #[tokio::test]
+    async fn ensure_settings_loaded_is_a_noop_without_a_pool() {
+        use crate::guild::settings::Provenance;
+
+        let guild_id = GuildId::new(1);
+        let mut map = HashMap::new();
+        map.insert(guild_id, GuildSettings::new(guild_id, Some("!"), None));
+        let data = Data::default().with_guild_settings_map(Arc::new(RwLock::new(map)));
+
+        assert!(
+            data.database_pool.is_none(),
+            "this test needs the no-pool path"
+        );
+
+        data.ensure_settings_loaded(guild_id)
+            .await
+            .expect("must succeed with no pool");
+
+        let after = data
+            .get_guild_settings(guild_id)
+            .await
+            .expect("still present");
+        assert_eq!(
+            after.provenance,
+            Provenance::Fallback,
+            "with no pool nothing round-tripped through Postgres, so the tag must stay Fallback"
+        );
+        assert_eq!(after.prefix, "!", "settings must be untouched");
+    }
+
+    /// A guild absent from the map is also a no-op without a pool -- the helper
+    /// must not invent an entry, because an invented entry is exactly the
+    /// fallback-default value that must never be written back.
+    #[tokio::test]
+    async fn ensure_settings_loaded_does_not_invent_an_entry_without_a_pool() {
+        let guild_id = GuildId::new(42);
+        let data = Data::default().with_guild_settings_map(Arc::new(RwLock::new(HashMap::new())));
+
+        data.ensure_settings_loaded(guild_id)
+            .await
+            .expect("must succeed with no pool");
+
+        assert!(
+            data.get_guild_settings(guild_id).await.is_none(),
+            "the helper must not create a Fallback entry that a later save() could write back"
+        );
+    }
+
+    /// 🔑 The regression this whole change exists to prevent: a NEW command that
+    /// writes guild settings back but forgets the guard.
+    ///
+    /// Every command file that calls `GuildSettings::save` must also call
+    /// `ensure_settings_loaded`. Reading the tree is the only way to assert
+    /// this -- there is no type that forces it, and the failure is silent.
+    #[test]
+    fn every_command_that_saves_settings_also_guards_first() {
+        use std::path::Path;
+
+        fn walk(dir: &Path, out: &mut Vec<(String, String)>) {
+            for entry in std::fs::read_dir(dir).expect("readable") {
+                let path = entry.expect("entry").path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let src = std::fs::read_to_string(&path).expect("readable");
+                    out.push((path.display().to_string(), src));
+                }
+            }
+        }
+
+        let mut files = Vec::new();
+        walk(Path::new("src/commands"), &mut files);
+        assert!(!files.is_empty(), "found no command sources to scan");
+
+        let mut unguarded = Vec::new();
+        for (path, src) in &files {
+            // The bug needs BOTH halves: read the in-memory settings map, then
+            // write it back. A file that saves some other type (GpSaved,
+            // WelcomeSettings) never touches `guild_settings_map` and so cannot
+            // be this bug -- requiring both keeps the scan precise instead of
+            // maintaining a list of filenames to skip.
+            let saves = src
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .any(|l| l.contains(".save(&pool)") || l.contains(".save(&pg_pool)"));
+            let reads_the_map =
+                src.contains("guild_settings_map") || src.contains("get_guild_settings");
+            if saves && reads_the_map && !src.contains("ensure_settings_loaded") {
+                unguarded.push(path.clone());
+            }
+        }
+
+        assert!(
+            unguarded.is_empty(),
+            "these command files write guild settings back without first calling \
+             ensure_settings_loaded, which lets a guild whose load failed overwrite \
+             its stored row with defaults: {unguarded:#?}"
+        );
     }
 }

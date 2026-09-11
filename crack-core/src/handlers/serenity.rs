@@ -464,44 +464,6 @@ impl SerenityHandler {
     //     );
     // }
 
-    async fn _load_guilds_settings(&self, ctx: &SerenityContext, ready: &Ready) {
-        let prefix = self.data.bot_settings.get_prefix();
-        tracing::info!("Loading guilds' settings");
-
-        for guild in &ready.guilds {
-            let guild_id = guild.id;
-            let guild_name = match guild_id.to_guild_cached(&ctx.cache) {
-                Some(guild_match) => guild_match.name.clone(),
-                None => {
-                    tracing::error!("Guild not found in cache");
-                    continue;
-                },
-            };
-            let to_write = guild_name.clone();
-            tracing::info!("Loading guild settings for {guild_id}, {to_write}");
-
-            let mut default = GuildSettings::new(guild_id, Some(&prefix), Some(guild_name));
-
-            let pool = self.data.database_pool.clone().unwrap();
-            let _ = default.load_if_exists(&pool).await.map_err(|err| {
-                tracing::error!("Failed to load guild {} settings due to {}", guild_id, err);
-            });
-
-            tracing::warn!("GuildSettings: {:?}", default);
-
-            self.data
-                .guild_settings_map
-                .write()
-                .await
-                .insert(guild_id, default.clone());
-
-            match default.save(&pool).await {
-                Ok(()) => tracing::info!("Saved guild {to_write}..."),
-                Err(err) => tracing::error!("Failed to save guild {to_write} due to {err}"),
-            }
-        }
-    }
-
     async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
         if self.data.bot_settings.self_deafen.is_some() {
             return;
