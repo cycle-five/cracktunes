@@ -1096,6 +1096,10 @@ impl GuildSettings {
 }
 
 /// Save the guild settings to the database.
+///
+/// Writes back without checking `Provenance`; currently unused. Anything
+/// wiring this up must check `is_persistable()` first or it will overwrite
+/// stored settings with fallback defaults.
 pub async fn save_guild_settings(
     guild_settings_map: &HashMap<GuildId, GuildSettings>,
     pool: &PgPool,

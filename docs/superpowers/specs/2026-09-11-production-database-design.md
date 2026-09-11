@@ -126,25 +126,29 @@ overwrite a stored row.
 Recorded because it is the obvious "simplification" and it is wrong.
 
 Of the 8 commands under `commands/settings/set/` (excluding `mod.rs`), 4 call
-`save()` and 4 do not. These mutate the in-memory map and **never** touch
-Postgres:
+`save()` and 4 do not. Three of those four mutate the in-memory map and
+**never** touch Postgres:
 
 - `set_volume.rs`
 - `set_idle_timeout.rs`
 - `set_all_log_channel.rs`
-- `set_premium.rs`
 
-`commands/settings/prefix.rs` — a directory up, not under `set/` — is a fifth,
-and also mutates the map without saving.
+(`set_premium.rs` is the fourth that skips `save()`, but it is not in this
+list — it calls `GuildEntity::update_premium` directly and persists on its
+own.)
 
-For those five, the shutdown write is the **only** persistence path. Deleting it
+`commands/settings/prefix.rs` — a directory up, not under `set/` — is a
+fourth command with no persistence path of its own, and also mutates the map
+without saving.
+
+For those four, the shutdown write is the **only** persistence path. Deleting it
 trades a rare data-loss bug for a guaranteed one. Verified by reading
 `set_volume`, which does `and_modify`/`or_insert` and no `save()`.
 
 Dirty-tracking (write only mutated guilds) is the better long-term model and
 was considered. It was rejected **for this change** because it inverts the
 default to "don't write", so a missed mutation site silently breaks persistence
-forever — and five sites already mutate without saving. Provenance fails safe in
+forever — and four sites already mutate without saving. Provenance fails safe in
 the other direction: a mistag costs a redundant write, never a lost row.
 
 ### 1.4 Cost accepted

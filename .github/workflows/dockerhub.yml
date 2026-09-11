@@ -64,6 +64,10 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          # 🪤 EXPLICIT. The Dockerfile's last stage is `migrate`, and an
+          # unspecified target builds the last stage -- which would publish the
+          # migration runner as the bot.
+          target: runner
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

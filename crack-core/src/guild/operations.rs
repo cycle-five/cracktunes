@@ -116,6 +116,10 @@ impl GuildSettingsOperations for Data {
     }
 
     /// Save the guild settings to the database.
+    ///
+    /// Writes back without checking `Provenance`; currently unused. Anything
+    /// wiring this up must check `is_persistable()` first or it will overwrite
+    /// stored settings with fallback defaults.
     async fn save_guild_settings(&self, guild_id: GuildId) -> Result<(), CrackedError> {
         let opt_settings = self.guild_settings_map.read().await;
         let settings = opt_settings.get(&guild_id);

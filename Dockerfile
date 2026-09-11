@@ -78,4 +78,10 @@ FROM alpine:3.22 AS migrate
 COPY --from=builder /usr/local/cargo/bin/sqlx /usr/local/bin/sqlx
 COPY --from=builder /app/migrations /migrations
 # Needs DATABASE_URL in the environment and nothing else.
+#
+# No ca-certificates here. Harmless today -- compose points this at a
+# Postgres on the compose network with no sslmode, so rustls never needs a
+# root store -- but the first `sslmode=require` or managed Postgres target
+# will fail a TLS handshake from a one-shot container with no other context
+# to explain why.
 ENTRYPOINT ["sqlx", "migrate", "run", "--source", "/migrations"]

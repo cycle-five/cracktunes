@@ -254,7 +254,7 @@ impl Display for BotConfig {
             self.guild_settings_map
         ));
         result.push_str(&format!(
-            "prefix: {}",
+            "prefix: {}\n",
             self.prefix
                 .as_ref()
                 .cloned()
