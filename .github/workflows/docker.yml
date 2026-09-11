@@ -40,12 +40,31 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - 
+      -
         name: Build & Push Docker Image
         uses: docker/build-push-action@v5
         with:
           context: .
+          # 🪤 EXPLICIT. The Dockerfile's last stage is `migrate`, and an
+          # unspecified target builds the last stage -- which would publish the
+          # migration runner as the bot.
+          target: runner
           # push: ${{ github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/') }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      -
+        name: Extract Git Metadata (migrate image)
+        id: meta-migrate
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-migrate
+      -
+        name: Build & Push Migration Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: migrate
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-migrate.outputs.tags }}
+          labels: ${{ steps.meta-migrate.outputs.labels }}
