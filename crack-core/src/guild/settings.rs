@@ -303,9 +303,34 @@ impl UserPermission {
 
 use super::permissions::GenericPermissionSettings;
 
+/// Where a guild's in-memory settings came from, and therefore whether writing
+/// them back to Postgres is safe.
+///
+/// 🔑 `Fallback` is the `Default` **deliberately**. The shutdown handler writes
+/// every in-memory guild back to the database, and `on_guild_create` falls back
+/// to `GuildSettings::new()` defaults when the load fails. Without this tag a
+/// transient read failure at boot becomes a permanent write at shutdown --
+/// defaults silently replacing a guild's stored settings, with no backup to
+/// restore from. Defaulting to `Fallback` means anything we did not explicitly
+/// load from Postgres is never written back.
+///
+/// 🪤 **Mutations must not reset this.** `set_volume` and friends use
+/// `and_modify` / `..self`, which leave the tag alone -- the behaviour we want.
+/// A future mutation site that *replaces* the map entry with a fresh
+/// `GuildSettings::new()` would silently re-arm the bug.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Provenance {
+    /// Defaults, built in memory. NOT safe to write back.
+    #[default]
+    Fallback,
+    /// Round-tripped through Postgres, so the row exists and a write updates
+    /// a row we actually read. Safe to write back.
+    Database,
+}
+
 // TODO
 //#[derive(Debug, Clone, Serialize, PartialEq)]
-#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GuildSettings {
     pub guild_id: GuildId,
     pub guild_name: FixedString,
@@ -340,6 +365,39 @@ pub struct GuildSettings {
     pub log_settings: Option<LogSettings>,
     #[serde(default = "additional_prefixes_default")]
     pub additional_prefixes: Vec<String>,
+    /// Not a column and not on the wire -- see [`Provenance`].
+    #[serde(skip)]
+    pub provenance: Provenance,
+}
+
+/// 🔑 Hand-written to exclude `provenance`, which is bookkeeping about where a
+/// value came from rather than part of a guild's settings. Two guilds with
+/// identical settings are equal regardless of how they were loaded, and the
+/// existing equality tests should not care.
+impl PartialEq for GuildSettings {
+    fn eq(&self, other: &Self) -> bool {
+        self.guild_id == other.guild_id
+            && self.guild_name == other.guild_name
+            && self.prefix == other.prefix
+            && self.premium == other.premium
+            && self.command_settings == other.command_settings
+            && self.autopause == other.autopause
+            && self.autoplay == other.autoplay
+            && self.reply_with_embed == other.reply_with_embed
+            && self.allow_all_domains == other.allow_all_domains
+            && self.allowed_domains == other.allowed_domains
+            && self.banned_domains == other.banned_domains
+            && self.authorized_users == other.authorized_users
+            && self.authorized_groups == other.authorized_groups
+            && self.ignored_channels == other.ignored_channels
+            && self.old_volume == other.old_volume
+            && self.volume == other.volume
+            && self.self_deafen == other.self_deafen
+            && self.timeout == other.timeout
+            && self.welcome_settings == other.welcome_settings
+            && self.log_settings == other.log_settings
+            && self.additional_prefixes == other.additional_prefixes
+    }
 }
 
 /// Default value function for serialization that is false.
@@ -470,6 +528,7 @@ impl GuildSettings {
             welcome_settings: None,
             log_settings: None,
             additional_prefixes: Vec::new(),
+            provenance: Provenance::Fallback,
         }
     }
 
@@ -660,6 +719,19 @@ impl GuildSettings {
             volume,
             ..self
         }
+    }
+
+    /// Record where these settings came from. See [`Provenance`].
+    pub fn with_provenance(self, provenance: Provenance) -> Self {
+        Self { provenance, ..self }
+    }
+
+    /// Whether the shutdown handler may write these settings back to Postgres.
+    ///
+    /// Only settings that round-tripped through the database may be written:
+    /// writing a fallback default over a stored row destroys it.
+    pub fn is_persistable(&self) -> bool {
+        self.provenance == Provenance::Database
     }
 
     /// Set the volume level with mutating.
@@ -1064,6 +1136,7 @@ pub type GuildSettingsMapParam =
 
 #[cfg(test)]
 mod test {
+    use crate::guild::settings::{GuildSettings, Provenance};
     use serenity::all::GuildId;
 
     #[test]
@@ -1125,5 +1198,58 @@ mod test {
         assert!(!premium_default());
         assert!(!default_false());
         assert!(default_true());
+    }
+
+    #[test]
+    fn a_fresh_settings_value_is_fallback() {
+        // The safe direction: anything not explicitly loaded from Postgres
+        // must never be written back over a stored row.
+        let settings = GuildSettings::new(GuildId::new(123), None, None);
+        assert_eq!(settings.provenance, Provenance::Fallback);
+        assert!(!settings.is_persistable());
+    }
+
+    #[test]
+    fn the_default_provenance_is_the_safe_one() {
+        assert_eq!(Provenance::default(), Provenance::Fallback);
+    }
+
+    #[test]
+    fn with_provenance_marks_it_persistable() {
+        let settings =
+            GuildSettings::new(GuildId::new(123), None, None).with_provenance(Provenance::Database);
+        assert_eq!(settings.provenance, Provenance::Database);
+        assert!(settings.is_persistable());
+    }
+
+    #[test]
+    fn provenance_does_not_affect_equality() {
+        // GuildSettings derives PartialEq and is compared in existing tests.
+        // Provenance is bookkeeping, not part of a guild's settings.
+        let fallback = GuildSettings::new(GuildId::new(123), None, None);
+        let from_db = fallback.clone().with_provenance(Provenance::Database);
+        assert_eq!(fallback, from_db);
+    }
+
+    #[test]
+    fn provenance_is_not_serialized() {
+        // It is not a column and must not reach the wire.
+        let from_db =
+            GuildSettings::new(GuildId::new(123), None, None).with_provenance(Provenance::Database);
+        let json = serde_json::to_string(&from_db).expect("serialize");
+        assert!(
+            !json.contains("provenance"),
+            "provenance leaked into serialized output: {json}"
+        );
+    }
+
+    #[test]
+    fn a_builder_that_copies_self_preserves_provenance() {
+        // `with_volume` and friends use `..self`. A mutation must not silently
+        // downgrade a Database-loaded value back to Fallback.
+        let from_db = GuildSettings::new(GuildId::new(123), None, None)
+            .with_provenance(Provenance::Database)
+            .with_volume(0.8);
+        assert_eq!(from_db.provenance, Provenance::Database);
     }
 }
