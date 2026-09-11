@@ -67,7 +67,10 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 
     // init_metrics();
     let config = load_bot_config().expect("Error: Failed to load bot config");
-    tracing::warn!("Using config: {:?}", config);
+    // 🔑 `{}` not `{:?}`. BotConfig's hand-written Display redacts
+    // database_url through redact_url; the derived Debug does not, and this
+    // line is what put the Postgres password into `docker logs` (#473).
+    tracing::warn!("Using config: {}", config);
 
     let mut client = config::poise_framework(config, event_log_async).await?;
 
@@ -361,5 +364,29 @@ mod test {
     fn test_load_bot_config() {
         let result = load_bot_config();
         assert!(result.is_ok() || result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod log_site_tests {
+    /// #473: the startup config log must use `Display` (`{}`), which redacts,
+    /// not the derived `Debug` (`{:?}`), which does not. A unit test cannot
+    /// observe a `tracing` macro's format string, so this reads the source.
+    #[test]
+    fn the_config_is_logged_with_display_not_debug() {
+        let src = include_str!("main.rs");
+        let line = src
+            .lines()
+            .find(|l| l.contains("Using config:"))
+            .expect("the startup config log line vanished; update this test");
+
+        assert!(
+            !line.contains("{:?}"),
+            "config is logged with derived Debug, which leaks the password (#473): {line}"
+        );
+        assert!(
+            line.contains("{}"),
+            "config log line no longer uses Display: {line}"
+        );
     }
 }
