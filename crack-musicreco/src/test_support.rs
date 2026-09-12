@@ -107,3 +107,18 @@ pub(crate) async fn serve<T: Into<Canned>>(
     });
     (format!("http://{addr}"), hits, seen)
 }
+
+/// A listener that never accepts, reads, or answers -- for exercising a
+/// client's own request timeout in isolation from an actual slow upstream.
+///
+/// 🔑 No `accept()` loop is needed: the OS completes the TCP handshake into
+/// the listen backlog on its own, so a client's `connect()` succeeds and the
+/// connection then simply never produces a response. The listener is leaked
+/// (not dropped) so the port stays open for the test's lifetime without
+/// anything servicing it.
+pub(crate) async fn accept_and_hang() -> String {
+    let l = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = l.local_addr().expect("local_addr");
+    std::mem::forget(l);
+    format!("http://{addr}")
+}

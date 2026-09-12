@@ -28,13 +28,31 @@ struct Page {
 
 #[derive(Debug, Deserialize)]
 struct Track {
+    // No default on `id` or `trackTitle`: a track missing either fails the
+    // WHOLE page, not just this track, same as `Page.content` above -- R10's
+    // page-level strictness is deliberate here too. Silently dropping one
+    // malformed track (or the whole page) would be worse than surfacing the
+    // parse error and letting the orchestrator try the next provider.
+    // Whether ReccoBeats ever actually sends a malformed track is unmeasured.
     id: String,
     #[serde(rename = "trackTitle")]
     track_title: String,
-    #[serde(default)]
+    // `null` and a missing key both read as "no artist" -- `#[serde(default)]`
+    // alone only covers the missing case; an explicit `null` needs
+    // `null_as_empty` to not fail the whole page over a field that's
+    // genuinely optional per track. Whether ReccoBeats ever sends `null` here
+    // is unmeasured.
+    #[serde(default, deserialize_with = "null_as_empty")]
     artists: Vec<Artist>,
     #[serde(default)]
     isrc: Option<String>,
+}
+
+fn null_as_empty<'de, D>(deserializer: D) -> std::result::Result<Vec<Artist>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(Option::<Vec<Artist>>::deserialize(deserializer)?.unwrap_or_default())
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,7 +80,7 @@ impl ReccoBeats {
     pub fn with_base_url(base_url: impl Into<String>) -> Result<Self> {
         Ok(Self {
             base_url: base_url.into(),
-            http: http::client(NAME)?,
+            http: http::client(NAME, http::USER_AGENT)?,
         })
     }
 
@@ -144,12 +162,25 @@ impl crate::provider::Recommender for ReccoBeats {
         let found = self
             .get(&format!("{base}/track/search?searchText={q}&size=1"))
             .await?;
-        let Some(first) = found.content.into_iter().next() else {
-            // No seed track: do NOT spend the second call.
+        // An empty `id` is as useless as no result at all -- a request with
+        // `seeds=` (nothing after the `=`) cannot succeed, so it gets the
+        // same short-circuit as an empty search rather than spending the
+        // second call on a request known to fail.
+        let Some(first) = found
+            .content
+            .into_iter()
+            .next()
+            .filter(|t| !t.id.is_empty())
+        else {
             return Ok(Vec::new());
         };
         // The id is provider-supplied text interpolated straight into a URL.
         let seed_id = http::encode_query(&first.id);
+        // 🔑 `want` passes through unclamped: ReccoBeats' limits on `size` are
+        // undisclosed, so no number here would be measured rather than
+        // invented. A caller-supplied `usize::MAX` is passed straight to the
+        // wire; clamping belongs at the orchestrator, once a real limit is
+        // known.
         let page = self
             .get(&format!(
                 "{base}/track/recommendation?size={want}&seeds={seed_id}"
@@ -230,15 +261,21 @@ mod tests {
         // Assert on what we SENT, not only what came back -- every
         // response-shaped assertion above would pass with the wrong URL, the
         // wrong seed id, or no User-Agent at all.
+        //
+        // 🪤 Whole-line equality, not `starts_with`: a prefix match lets
+        // `size=1` regress to `size=10`, or `seeds=uuid-1` grow a trailing
+        // `&seeds=junk`, without ever failing this assertion.
         let reqs = seen.lock().expect("test mutex");
         assert_eq!(reqs.len(), 2);
-        assert!(
-            reqs[0].starts_with("GET /track/search?searchText=Queen%20Bohemian%20Rhapsody&size=1"),
+        assert_eq!(
+            reqs[0].lines().next(),
+            Some("GET /track/search?searchText=Queen%20Bohemian%20Rhapsody&size=1 HTTP/1.1"),
             "request 1: {}",
             reqs[0]
         );
-        assert!(
-            reqs[1].starts_with("GET /track/recommendation?size=5&seeds=uuid-1"),
+        assert_eq!(
+            reqs[1].lines().next(),
+            Some("GET /track/recommendation?size=5&seeds=uuid-1 HTTP/1.1"),
             "request 2 must seed from the search response's id, not the query text: {}",
             reqs[1]
         );
@@ -246,6 +283,58 @@ mod tests {
             reqs[0].to_lowercase().contains("user-agent:") && reqs[0].contains(USER_AGENT),
             "no explicit User-Agent in: {}",
             reqs[0]
+        );
+    }
+
+    /// M1: `encode_query` is unit-tested directly in `provider::http`, but
+    /// that alone doesn't prove `recommend()` actually routes the seed
+    /// through it. A raw `&` would silently merge with the next query param,
+    /// and a raw `#` would truncate the URL at a fragment, dropping
+    /// `&size=1` entirely -- both survive every other test here, since none
+    /// of them puts a reserved character in the seed.
+    #[tokio::test]
+    async fn a_seed_with_reserved_characters_is_percent_encoded_on_the_wire() {
+        let (base, _, seen) = serve(vec![SEARCH, RECO]).await;
+        let p = ReccoBeats::with_base_url(base).expect("client builds");
+        let seed = Seed {
+            artist: "Simon & Garfunkel".into(),
+            title: "Song #1".into(),
+            mbid: None,
+            confidence: 100,
+        };
+        let _ = p.recommend(&seed, 5).await;
+
+        let reqs = seen.lock().expect("test mutex");
+        assert_eq!(
+            reqs[0].lines().next(),
+            Some(
+                "GET /track/search?searchText=Simon%20%26%20Garfunkel%20Song%20%231&size=1 HTTP/1.1"
+            ),
+            "request 1: {}",
+            reqs[0]
+        );
+    }
+
+    /// M1 / R12: the search-response id is provider-supplied text
+    /// interpolated straight into `seeds=`. Nothing previously put a
+    /// reserved character in that id, so an unencoded `first.id.clone()`
+    /// passed every other test.
+    #[tokio::test]
+    async fn a_search_result_id_with_reserved_characters_is_percent_encoded_into_seeds() {
+        const SEARCH_RESERVED_ID: (u16, &str) = (
+            200,
+            r#"{"content":[{"id":"a&b c","trackTitle":"x","artists":[],"isrc":null,"href":"h"}]}"#,
+        );
+        let (base, _, seen) = serve(vec![SEARCH_RESERVED_ID, RECO]).await;
+        let p = ReccoBeats::with_base_url(base).expect("client builds");
+        let _ = p.recommend(&seed(), 5).await;
+
+        let reqs = seen.lock().expect("test mutex");
+        assert_eq!(
+            reqs[1].lines().next(),
+            Some("GET /track/recommendation?size=5&seeds=a%26b%20c HTTP/1.1"),
+            "request 2: {}",
+            reqs[1]
         );
     }
 
@@ -298,6 +387,29 @@ mod tests {
         assert!(!err.is_transient(), "a bad seed is permanent, not a flake");
     }
 
+    /// M3: the only non-2xx fixture elsewhere in this file (400 with the 4002
+    /// body) has no `content` field, so it fails the parse regardless of
+    /// whether the status is even checked -- deleting the "any other non-2xx"
+    /// arm would leave it passing anyway. This fixture's body WOULD parse
+    /// successfully (an empty `content` array is valid), so it is this test,
+    /// not the 400 one, that actually needs the status check to exist.
+    #[tokio::test]
+    async fn a_404_is_unexpected_body_naming_the_status() {
+        let (base, _, _seen) = serve(vec![(404, r#"{"content":[]}"#)]).await;
+        let p = ReccoBeats::with_base_url(base).expect("client builds");
+        let err = p.recommend(&seed(), 5).await.expect_err("404 is an error");
+        match &err {
+            Error::UnexpectedBody { message, .. } => {
+                assert!(
+                    message.contains("404"),
+                    "message should name the status: {message}"
+                );
+            },
+            other => panic!("expected UnexpectedBody, got {other}"),
+        }
+        assert!(!err.is_transient(), "a 404 is not a flake");
+    }
+
     /// 🪤 THE TRAP for `#[serde(default)]` on `Page.content`. A 200 whose body
     /// has no `content` field at all must be a parse error, not a silent
     /// empty page -- see the trap comment on `Page`.
@@ -348,10 +460,21 @@ mod tests {
             1,
             "a followed redirect would cost a second request"
         );
-        assert!(
-            matches!(got, Err(Error::UnexpectedBody { .. })),
-            "an unfollowed 3xx should surface, got {got:?}"
-        );
+        // 🪤 I2: `matches!(UnexpectedBody)` alone doesn't discriminate --
+        // when the redirect IS followed, the chain lands on the mock's
+        // past-the-end default (missing `content`) and ALSO ends up
+        // `UnexpectedBody`. `hits == 1` above is what actually catches a
+        // followed redirect; this only additionally checks that the message
+        // names the status we refused.
+        match &got {
+            Err(Error::UnexpectedBody { message, .. }) => {
+                assert!(
+                    message.contains("302"),
+                    "message should name the 3xx status: {message}"
+                );
+            },
+            other => panic!("expected UnexpectedBody naming the 3xx status, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -418,6 +541,42 @@ mod tests {
             out[0].search_text(),
             "Mulla",
             "no leading ' - ' when there is no artist"
+        );
+    }
+
+    /// L6: `#[serde(default)]` alone covers a MISSING `artists` key, not an
+    /// explicit `null`. Whether ReccoBeats ever actually sends `null` here is
+    /// unmeasured, but the deserializer should not crash the whole page over
+    /// a field the doc comment already calls "genuinely optional" if it does.
+    #[tokio::test]
+    async fn a_null_artists_field_is_treated_as_no_artist() {
+        const RECO_NULL_ARTISTS: (u16, &str) = (
+            200,
+            r#"{"content":[{"id":"uuid-4","trackTitle":"Mulla","artists":null,"isrc":"X","href":"h"}]}"#,
+        );
+        let (base, _, _seen) = serve(vec![SEARCH, RECO_NULL_ARTISTS]).await;
+        let p = ReccoBeats::with_base_url(base).expect("client builds");
+        let out = p.recommend(&seed(), 5).await.unwrap();
+        assert_eq!(out[0].artist, "");
+        assert_eq!(out[0].search_text(), "Mulla");
+    }
+
+    /// L8: `{"content":[{"id":""}]}"` used to send `seeds=` (nothing after
+    /// the `=`), a request that cannot possibly succeed. Treated the same as
+    /// no search result at all.
+    #[tokio::test]
+    async fn an_empty_search_result_id_short_circuits_like_an_empty_search() {
+        const SEARCH_EMPTY_ID: (u16, &str) = (
+            200,
+            r#"{"content":[{"id":"","trackTitle":"x","artists":[],"isrc":null,"href":"h"}]}"#,
+        );
+        let (base, hits, _seen) = serve(vec![SEARCH_EMPTY_ID, RECO]).await;
+        let p = ReccoBeats::with_base_url(base).expect("client builds");
+        assert!(p.recommend(&seed(), 5).await.unwrap().is_empty());
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "must NOT reach the canned recommendation response"
         );
     }
 

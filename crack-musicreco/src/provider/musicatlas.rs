@@ -72,7 +72,7 @@ impl MusicAtlas {
         Ok(Self {
             api_key: api_key.into(),
             base_url: base_url.into(),
-            http: http::client(NAME)?,
+            http: http::client(NAME, http::USER_AGENT)?,
         })
     }
 }
@@ -89,6 +89,12 @@ impl crate::provider::Recommender for MusicAtlas {
     }
 
     async fn recommend(&self, seed: &Seed, want: usize) -> Result<Vec<Recommendation>> {
+        if want == 0 {
+            // This is the METERED provider: a call spent for zero wanted
+            // results is one of the 100/day gone for nothing.
+            return Ok(Vec::new());
+        }
+
         let url = format!("{}/api/similar_tracks", self.base_url.trim_end_matches('/'));
         let resp = self
             .http
@@ -332,11 +338,20 @@ mod tests {
         assert!(!err.is_transient());
     }
 
+    /// P09 (review): before the `want == 0` guard, this returned `Ok([])`
+    /// after spending 1 of the 100/day metered calls -- a plausible-looking
+    /// output that hid a wasted call. Asserting only `.len() == 0` cannot see
+    /// that; `hits == 0` is the assertion that matters here.
     #[tokio::test]
     async fn want_caps_the_returned_count() {
-        let (base, _, _seen) = serve(vec![OK]).await;
+        let (base, hits, _seen) = serve(vec![OK]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
         assert_eq!(p.recommend(&seed(), 0).await.unwrap().len(), 0);
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            0,
+            "must not spend a metered call for zero wanted"
+        );
     }
 
     /// Not in the measured contract as an observed musicatlas response, but the
@@ -390,7 +405,11 @@ mod tests {
     /// the one provider where guessing wrong costs metered calls.
     ///
     /// The header has to be taken BEFORE `resp.text()`, which consumes the
-    /// response -- so this also pins the ordering, not just the parse.
+    /// response. The COMPILER pins that ordering -- reading it after would be
+    /// E0382, a borrow of moved/consumed data, not something a test could
+    /// even exercise. What THIS test pins is that the header's VALUE is
+    /// actually carried through into the returned error, which nothing
+    /// enforces at compile time.
     #[tokio::test]
     async fn a_429_carries_the_providers_own_retry_after() {
         let (base, _, _seen) = serve(vec![Canned {
