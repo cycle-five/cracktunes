@@ -22,4 +22,6 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+# test-util: MusicBrainz's 1/sec gate (Task 5) is pinned under
+# `#[tokio::test(start_paused = true)]` rather than timing real sleeps.
+tokio = { workspace = true, features = ["test-util"] }

@@ -1,7 +1,9 @@
 use crate::{RawTrack, Result, Seed};
 use async_trait::async_trait;
 
+pub mod musicbrainz;
 pub mod title_parse;
+pub use musicbrainz::MusicBrainz;
 pub use title_parse::TitleParseResolver;
 
 /// Turn what the bot knows about a finished track into a seed worth spending a

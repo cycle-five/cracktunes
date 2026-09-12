@@ -21,4 +21,4 @@ pub(crate) mod test_support;
 pub use error::{Error, Result};
 pub use model::{Playable, RawTrack, Recommendation, Seed};
 pub use provider::{MusicAtlas, ReccoBeats, Recommender};
-pub use resolver::{SeedResolver, TitleParseResolver};
+pub use resolver::{MusicBrainz, SeedResolver, TitleParseResolver};
