@@ -1078,9 +1078,13 @@ mod tests {
         let p = compute(text_ch(), TEXT_REQUIRED, None);
         let out = render(&p);
         // 🪤 Absent is not denied. Rendering this as a missing permission
-        // would send someone to grant Connect when Connect is already granted.
+        // would send someone to grant Connect when Connect is already
+        // granted. Nor may this collapse into the all-clear line: we did not
+        // check voice, so we must not claim it is fine.
         assert!(out.contains("not in a voice channel"), "got {out}");
-        assert!(!out.contains("Connect"), "must not imply a denial: {out}");
+        assert!(!out.contains("All clear"), "voice was never checked: {out}");
+        assert!(!out.contains("\u{274c}"), "nothing is denied here: {out}");
+        assert!(!out.contains("problem"), "nothing is wrong here: {out}");
     }
 
     #[test]
@@ -1149,15 +1153,18 @@ fn render(p: &MusicPermissions) -> String {
         }
     }
 
+    // All-clear requires that we actually checked both halves. With no voice
+    // channel to check we fall through to the table, which says so — claiming
+    // "all clear" on a voice channel we never looked at would be a lie the
+    // user only discovers when /play refuses.
     if problems.is_empty() {
-        return format!(
-            "✅ All clear — I have everything I need in {}{}.",
-            p.text.channel.mention(),
-            match &p.voice {
-                Some(v) => format!(" and {}", v.channel.mention()),
-                None => String::new(),
-            }
-        );
+        if let Some(v) = &p.voice {
+            return format!(
+                "✅ All clear — I have everything I need in {} and {}.",
+                p.text.channel.mention(),
+                v.channel.mention()
+            );
+        }
     }
 
     let mut out = String::from("🔍 **Permission check**\n");
@@ -1182,12 +1189,16 @@ fn render(p: &MusicPermissions) -> String {
         ),
     }
 
-    let n = problems.len();
-    out.push_str(&format!(
-        "\n**{n} problem{}**\n{}\n\nFix: Server Settings → Roles → CrackTunes",
-        if n == 1 { "" } else { "s" },
-        problems.join("\n"),
-    ));
+    // Omitted entirely when nothing is wrong -- reached only via the
+    // no-voice-channel path above, where there is nothing to report.
+    if !problems.is_empty() {
+        let n = problems.len();
+        out.push_str(&format!(
+            "\n**{n} problem{}**\n{}\n\nFix: Server Settings → Roles → CrackTunes",
+            if n == 1 { "" } else { "s" },
+            problems.join("\n"),
+        ));
+    }
     out
 }
 
