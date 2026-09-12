@@ -1,0 +1,26 @@
+[package]
+name = "crack-musicreco"
+version = "0.9.8"
+edition = "2021"
+authors = ["Cycle Five <cycle.five@proton.me>"]
+publish = true
+license = "MIT"
+description = "Provider-agnostic music recommendation: musicatlas, ReccoBeats, MusicBrainz."
+keywords = ["music", "discord", "bot", "crack", "tunes"]
+categories = ["multimedia::audio"]
+homepage = "https://cracktun.es/"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = "../"
+
+[dependencies]
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0.69"
+url = "2.5"
+reqwest = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

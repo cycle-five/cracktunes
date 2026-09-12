@@ -1080,6 +1080,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "crack-musicreco"
+version = "0.9.8"
+dependencies = [
+ "async-trait",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "crack-osint"
 version = "0.9.8"
 dependencies = [
