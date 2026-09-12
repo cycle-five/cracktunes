@@ -284,18 +284,64 @@ mod join_order_guard_tests {
     /// lookup names `NoChannelId`, and sits above the gate. Searching raw
     /// text found the prose first and failed correct code. A guard that reads
     /// commentary is not reading the program.
+    /// Drop a trailing `//` comment, but not the `//` in a URL.
+    ///
+    /// 🪤 A naive cut at the first `//` truncates any line holding a
+    /// `https://` literal -- routine in a Discord bot -- and a guard that
+    /// silently scans less than it claims is the failure this whole module
+    /// exists to prevent.
+    fn strip_comment(line: &str) -> &str {
+        let b = line.as_bytes();
+        let mut i = 0;
+        while i + 1 < b.len() {
+            if b[i] == b'/' && b[i + 1] == b'/' {
+                if i > 0 && b[i - 1] == b':' {
+                    i += 2;
+                    continue;
+                }
+                return &line[..i];
+            }
+            i += 1;
+        }
+        line
+    }
+
+    #[test]
+    fn strip_comment_cuts_comments_and_keeps_urls() {
+        assert_eq!(strip_comment("let x = 1; // note"), "let x = 1; ");
+        assert_eq!(strip_comment("// whole line"), "");
+        assert_eq!(strip_comment("no comment here"), "no comment here");
+        assert_eq!(
+            strip_comment(r#"warn!("see https://x/y");"#),
+            r#"warn!("see https://x/y");"#
+        );
+        assert_eq!(
+            strip_comment(r#"let u = "https://a"; // trailing"#),
+            r#"let u = "https://a"; "#
+        );
+    }
+
     fn body_of(src: &str, signature: &str) -> String {
         let start = src.find(signature).unwrap_or_else(|| {
             panic!("{signature} not found -- guard is looking at the wrong file")
         });
+        // 🪤 `find` takes the FIRST match, and the test module below holds
+        // these same signatures as string literals. That resolves to the real
+        // definition only because the module happens to sit at the bottom of
+        // the file -- position, not design. Pin it, so moving this module up
+        // fails loudly instead of silently parsing its own literals.
+        if let Some(tests) = src.find("#[cfg(test)]") {
+            assert!(
+                start < tests,
+                "`{signature}` was first found inside a test module. `body_of` is \
+                 parsing the guard's own string literals, not the program."
+            );
+        }
         let rest = &src[start..];
         let end = rest.find("\n}\n").expect("unterminated function body");
         rest[..end]
             .lines()
-            .map(|line| match line.find("//") {
-                Some(i) => &line[..i],
-                None => line,
-            })
+            .map(strip_comment)
             .collect::<Vec<_>>()
             .join("\n")
     }
@@ -363,10 +409,7 @@ mod join_order_guard_tests {
                 String::new()
             };
             for (n, line) in src.lines().enumerate() {
-                let code = match line.find("//") {
-                    Some(i) => &line[..i],
-                    None => line,
-                };
+                let code = strip_comment(line);
                 if !code.contains("manager.get(") {
                     continue;
                 }
