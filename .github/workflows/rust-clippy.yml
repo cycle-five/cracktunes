@@ -12,9 +12,12 @@ name: rust-clippy analyze
 on:
   push:
     branches: [ "master" ]
-  pull_request:
-    # The branches below must be a subset of the branches above
-    branches: [ "master" ]
+  # No `pull_request:` trigger. This workflow exists to feed SARIF into code
+  # scanning, not to gate a PR -- lint.yml already runs clippy with
+  # `-D warnings` on two toolchains, so a PR is gated twice over before this
+  # would have said anything. Running it here as well cost a third full
+  # clippy (~3.2m) on every push to a PR branch. master and the nightly cron
+  # still keep the Security tab current.
   schedule:
     - cron: '0 0 * * *'
   # Lets this be re-run by hand. GitHub disables workflows with a `schedule:`
