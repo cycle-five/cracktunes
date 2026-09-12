@@ -295,43 +295,37 @@ pub async fn edit_reponse_interaction(
     }
 }
 
-/// Edit the embed response of the given message.
+/// Edit the message `msg` points to.
 ///
 /// `content` is for text that must survive when the embed does not. 🪤 A
 /// channel without `EMBED_LINKS` has its embeds stripped by Discord, so a
 /// notice about that very permission is invisible if it rides inside one.
+///
+/// 🪤 This edits **the handle it is given**, for slash and prefix alike. The
+/// slash branch used to ignore `msg` and PATCH `@original` instead, which is
+/// the right message only when `msg` IS the initial response. A `/play` that
+/// has to join answers first ("Summoned", or a defer), so its `🔎 Searching…`
+/// placeholder is a followup: the edit overwrote the join announcement with
+/// the now-playing embed and left the placeholder stuck forever (#494) -- on
+/// the success path, and only when joining, so it looked intermittent.
+/// poise's `ReplyHandle::edit` already routes both cases (`followup: None` →
+/// edit the response, `Some` → edit that followup).
+///
+/// Returns nothing: both callers discarded the `Message`, and producing one
+/// for a slash command costs an extra GET after the edit.
 #[cfg(not(tarpaulin_include))]
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
     embed: CreateEmbed<'_>,
     msg: ReplyHandle<'_>,
     content: Option<String>,
-) -> Result<Message, Error> {
-    match get_interaction(ctx) {
-        Some(interaction) => {
-            let mut edit = EditInteractionResponse::new().add_embed(embed);
-            if let Some(content) = content {
-                edit = edit.content(content);
-            }
-            interaction
-                .edit_response(ctx.http(), edit)
-                .await
-                .map_err(Into::into)
-        },
-        None => {
-            let mut reply = CreateReply::default().embed(embed);
-            if let Some(content) = content {
-                reply = reply.content(content);
-            }
-            msg.edit(ctx, reply).await?;
-            Ok(msg.into_message().await?)
-            // let msg = msg.into_message().await?;
-            // msg.edit(&ctx, EditMessage::new().embed(embed))
-            //     .await
-            //     .map(|_| msg)
-            //     .map_err(Into::into)
-        },
+) -> Result<(), Error> {
+    let mut reply = CreateReply::default().embed(embed);
+    if let Some(content) = content {
+        reply = reply.content(content);
     }
+    msg.edit(ctx, reply).await?;
+    Ok(())
 }
 
 /// WHY ARE THERE TWO OF THESE?
