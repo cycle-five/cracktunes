@@ -1,7 +1,13 @@
 name: CI Workflow
 
 on:
+  # Branches only. A bare `push:` also matches tag pushes, so cutting a
+  # release re-ran this whole workflow -- build and lint on both toolchains --
+  # against a commit master had already built and tested minutes earlier.
+  # Nothing here is tag-conditional: the Docker job below requires
+  # refs/heads/master, and cargo-dist's release lives in release.yml.
   push:
+    branches: ['**']
   pull_request:
     types: [opened, synchronize, reopened]
 

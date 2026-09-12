@@ -53,6 +53,13 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # This image is built from scratch twice for every release: once on
+          # the push to master, then again on the tag, which is what produces
+          # the vX.Y.Z tag the compose files pin to. The layers are identical;
+          # only the tag differs. A shared GHA layer cache makes the second
+          # build a retag rather than a rebuild.
+          cache-from: type=gha,scope=runner
+          cache-to: type=gha,mode=max,scope=runner
       -
         name: Extract Git Metadata (migrate image)
         id: meta-migrate
@@ -68,3 +75,5 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta-migrate.outputs.tags }}
           labels: ${{ steps.meta-migrate.outputs.labels }}
+          cache-from: type=gha,scope=migrate
+          cache-to: type=gha,mode=max,scope=migrate
