@@ -1,5 +1,6 @@
 pub mod context;
 pub mod lease;
+pub mod perms;
 pub(crate) mod query;
 pub(crate) mod queue;
 
