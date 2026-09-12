@@ -8,10 +8,12 @@ use crate::{
 };
 use colored::Colorize;
 use core::panic;
+use crack_testing::ResolvedTrack;
 use crack_types::NewAuxMetadata;
 use poise::serenity_prelude as serenity;
 use poise::{CreateReply, ReplyHandle};
 use serenity::all::{CreateEmbed, GenericChannelId, GuildId, Message, UserId};
+use songbird::input::AuxMetadata;
 use songbird::tracks::{PlayMode, TrackQueue};
 use songbird::Call;
 use std::{future::Future, sync::Arc};
@@ -21,6 +23,20 @@ use tokio::sync::Mutex;
 pub trait ContextExt<'ctx> {
     /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(self, ready_track: &TrackReadyData);
+    /// Same, for the resolved path. `queue_track_back`'s fast leg never builds a
+    /// [`TrackReadyData`] -- it goes straight from `ct_client` to a
+    /// [`ResolvedTrack`] -- so without this overload that path has no way to log
+    /// a play at all.
+    fn send_resolved_metadata_write_msg(self, resolved: &ResolvedTrack<'_>);
+    /// The one place a [`MetadataMsg`] is actually put on the worker channel.
+    /// Both senders above funnel through it so the "no channel means no pool,
+    /// degrade quietly" rule lives in exactly one place.
+    fn queue_metadata_write(
+        self,
+        aux_metadata: AuxMetadata,
+        user_id: Option<UserId>,
+        username: Option<String>,
+    );
     fn async_send_track_metadata_write_msg(
         self,
         ready_track: &TrackReadyData,
@@ -127,7 +143,11 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         let username = ready_track.username.clone();
         let NewAuxMetadata(aux_metadata) = ready_track.metadata.clone();
         let user_id = ready_track.user_id;
-        let guild_id = self.guild_id().unwrap();
+        // 🪤 Both of these were `.unwrap()`. This runs on a tokio worker, so a
+        // DM context (no guild) or a deployment with no `DATABASE_URL` -- still
+        // a supported mode, since rollback is "delete DATABASE_URL" -- panicked
+        // the worker rather than skipping a log line nobody reads.
+        let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         let channel_id = self.channel_id();
 
         let write_data: MetadataMsg = MetadataMsg {
@@ -138,30 +158,71 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
             channel_id,
         };
 
-        let pool = self.data().get_db_pool().unwrap();
+        let pool = self.data().get_db_pool()?;
         crate::db::write_metadata_pg(&pool, write_data).await?;
         Ok(())
     }
 
+    fn queue_metadata_write(
+        self,
+        aux_metadata: AuxMetadata,
+        user_id: Option<UserId>,
+        username: Option<String>,
+    ) {
+        // 🔑 `db_channel` is None exactly when there is no pool, which is still
+        // a supported deployment (rollback is "delete DATABASE_URL"). Returning
+        // quietly is the whole reason this is the safe sender: the async one
+        // needs a pool in hand and errors without it.
+        let Some(channel) = &self.data().db_channel else {
+            return;
+        };
+        // 🪤 Was `.unwrap()` in both senders. These run from command paths that
+        // are guild-only today, but a panic here takes a tokio worker down over
+        // a log line; skipping the write is the right failure.
+        let Some(guild_id) = self.guild_id() else {
+            tracing::debug!("no guild id on context; skipping play log");
+            return;
+        };
+        let write_data: MetadataMsg = MetadataMsg {
+            aux_metadata,
+            user_id,
+            username,
+            guild_id,
+            channel_id: self.channel_id(),
+        };
+        // try_send, not send: the worker owns a 1024-deep channel, and a full
+        // one means the writer is wedged. Blocking the PLAY path on a wedged
+        // logger is strictly worse than dropping the log line.
+        if let Err(e) = channel.try_send(write_data) {
+            tracing::error!("Error sending metadata to db_channel: {}", e);
+        }
+    }
+
     /// Send a message to tell the worker pool to do a db write when it feels like it.
     fn send_track_metadata_write_msg(self, ready_track: &TrackReadyData) {
-        let username = ready_track.username.clone();
         let NewAuxMetadata(aux_metadata) = ready_track.metadata.clone();
-        let user_id = ready_track.user_id;
-        let guild_id = self.guild_id().unwrap();
-        let channel_id = self.channel_id();
-        if let Some(channel) = &self.data().db_channel {
-            let write_data: MetadataMsg = MetadataMsg {
-                aux_metadata,
-                user_id,
-                username,
-                guild_id,
-                channel_id,
-            };
-            if let Err(e) = channel.try_send(write_data) {
-                tracing::error!("Error sending metadata to db_channel: {}", e);
-            }
-        }
+        self.queue_metadata_write(
+            aux_metadata,
+            ready_track.user_id,
+            ready_track.username.clone(),
+        );
+    }
+
+    /// Send a message to tell the worker pool to do a db write when it feels like it.
+    ///
+    /// 🪤 [`ResolvedTrack`] carries no username -- it is built by `ct_client`,
+    /// which never saw the invoking message -- so the author's name is taken
+    /// from the context here. Passing `None` instead would write every play
+    /// under an empty username.
+    fn send_resolved_metadata_write_msg(self, resolved: &ResolvedTrack<'_>) {
+        let Some(aux_metadata) = resolved.metadata.clone() else {
+            // A resolve that produced no metadata has nothing to log. Not an
+            // error: the track still plays.
+            tracing::debug!("no metadata on resolved track; skipping play log");
+            return;
+        };
+        let username = Some(self.author().name.to_string());
+        self.queue_metadata_write(aux_metadata, Some(resolved.user_id), username);
     }
 
     /// Return the call that the bot is currently in, if it is in one.
