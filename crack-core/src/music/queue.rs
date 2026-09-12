@@ -1282,11 +1282,16 @@ mod play_history_wiring_tests {
         Delegates(&'static str),
         /// Takes a `QueueGuard` and NO `ctx`, so it structurally cannot log --
         /// it has no channel to send on. Its ctx-bearing callers do.
+        ///
+        /// 🪤 There is deliberately NO `Exempt` variant for "takes ctx but
+        /// should not log". Nothing needs one today, and its absence is what
+        /// forces the conversation: such a path cannot be marked `Primitive`
+        /// (that assertion checks for the absence of a ctx) and cannot be
+        /// marked `Logs` without actually logging, so it fails the suite until
+        /// someone adds the variant along with a written reason.
         Primitive(&'static str),
-        /// Takes `ctx` and deliberately does not log, reason recorded.
-        Exempt(&'static str),
     }
-    use Expect::{Delegates, Exempt, Logs, Primitive};
+    use Expect::{Delegates, Logs, Primitive};
 
     /// THE PINNED SURFACE. Adding a `pub async fn queue_*`/`enqueue_*` without
     /// adding it here fails `the_enqueue_surface_is_exactly_what_we_reviewed`.
