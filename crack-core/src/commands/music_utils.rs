@@ -2,13 +2,14 @@ use crate::connection::get_voice_channel_for_user;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::handlers::{IdleHandler, TrackEndHandler};
 use crate::messaging::message::CrackedMessage;
+use crate::music::perms::JoinPermit;
 use crate::poise_ext::PoiseContextExt;
 use crate::CrackedError;
 use crate::{Context, Data, Error};
 // use crack_testing::ReplyHandleWrapper;
 use poise::serenity_prelude::{Context as SerenityContext, Mentionable};
 use serenity::all::{ChannelId, GenericChannelId, GuildId};
-use songbird::{Call, Event, TrackEvent};
+use songbird::{error::JoinError, Call, Event, TrackEvent};
 use std::{
     sync::{atomic::AtomicBool, Arc},
     time::Duration,
@@ -131,12 +132,12 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 /// bot in no voice channel, and `summon_internal` and `get_call_or_join_author`
 /// skipped the join -- and therefore the permission gate -- entirely.
 ///
-/// This is the only `Songbird::get` **on the join path**, which is what
-/// `join_order_guard_tests` enforces, over `music_utils.rs` and `summon.rs`.
-/// It is NOT the only one in the crate: ~20 other sites read the Call to
-/// answer "are we playing?" for `/queue`, `/volume`, `/clear` and friends.
-/// Those want a registered Call and are mostly harmless, but several would
-/// also be better off asking this question -- tracked separately.
+/// This is the only `Songbird::get` **on the join path**. It is NOT the only
+/// one in the crate: ~17 other sites read the Call to answer "are we
+/// playing?" for `/queue`, `/volume`, `/clear` and friends. Eight of those
+/// spell their result `CrackedError::NotConnected` while asking a question
+/// that cannot establish it -- tracked in #507, along with banning the raw
+/// method via clippy's `disallowed-methods` so the list cannot grow again.
 ///
 /// 🪤 `expect` matters because "connected" is not "connected to the channel
 /// you asked for". A concurrent `/gp` resume can land a join on another
@@ -163,6 +164,97 @@ pub(crate) async fn connected_call(
     }
 }
 
+/// Join the channel a [`JoinPermit`] was issued for.
+///
+/// **The crate's only caller of `Songbird::join`.** Taking the permit by value
+/// is what makes that enforceable rather than aspirational: `ensure_can_join`
+/// is its only constructor, so a join that skipped the permission gate does
+/// not typecheck. This is the compiler doing the job `join_site_guard_tests`
+/// was scanning source text to approximate.
+///
+/// Because there is one implementation, every join site gets the same failure
+/// handling. They used to get three different ones (#502): `do_join` dropped
+/// the connectionless `Call`, `join_vc` called `leave` -- which clears the
+/// connection but deliberately keeps the handler registered, so the stale
+/// entry survived exactly as if nothing had been done -- and the `/gp`
+/// restart-resume did neither.
+pub(crate) async fn join_permitted(
+    manager: &songbird::Songbird,
+    permit: JoinPermit,
+) -> Result<Arc<Mutex<Call>>, JoinError> {
+    let (guild_id, channel_id) = permit.into_parts();
+    // The one permitted `Songbird::join` in the crate -- `clippy.toml` bans it
+    // everywhere else, which is what makes this function the only door rather
+    // than merely the recommended one.
+    #[allow(clippy::disallowed_methods)]
+    let joined = manager.join(guild_id, channel_id).await;
+    match joined {
+        Ok(call) => Ok(call),
+        Err(err) => match connected_call(manager, guild_id, Some(channel_id)).await {
+            Some(call) => {
+                // The handshake reported a problem but the connection is up.
+                // Worth a line: a recovered join should be distinguishable in
+                // the log from a clean one.
+                tracing::warn!("Join into {channel_id:?} reported {err:?} but connected");
+                Ok(call)
+            },
+            None => {
+                tracing::warn!("Error joining channel: {:?}", err);
+                // Drop the connectionless Call, or the next join finds it and
+                // reports success without ever trying. songbird's `remove` is
+                // `leave(..)?` *then* `calls.remove(..)`, so a failing leave
+                // skips the removal -- log it rather than discarding the only
+                // signal that the Call is still registered.
+                //
+                // 🪤 Guarded on there being NO connection at all. The arm
+                // above is also taken when we are connected to a *different*
+                // channel -- the concurrent-`/gp`-resume race `expect` exists
+                // for -- and `remove` is `leave` then drop, so removing here
+                // would disconnect that live session and bin its queue.
+                if connected_call(manager, guild_id, None).await.is_none() {
+                    if let Err(e) = manager.remove(guild_id).await {
+                        tracing::warn!(
+                            "Could not remove the connectionless Call for {guild_id:?}: {e:?}. \
+                             A later join may find it and skip the permission gate."
+                        );
+                    }
+                }
+                Err(err)
+            },
+        },
+    }
+}
+
+/// Tell the user we joined, and keep trying until something lands.
+///
+/// 🪤 The join has already succeeded by the time this runs, so a failure here
+/// must not be reported as a failed join. It must not be silent either:
+/// [`do_join`] defers before the handshake, and a deferred interaction that is
+/// never answered leaves the user on "Bot is thinking..." **forever**, rather
+/// than degrading to Discord's "The application did not respond" after three
+/// seconds (#501). Swallowing this into a `tracing::warn!` traded a visible
+/// failure for an invisible one.
+///
+/// The likeliest cause is `EMBED_LINKS` denied in the invoking *text* channel:
+/// the permission gate covers the voice channel it is about to join, and
+/// nothing checks the channel the answer goes to. A content-only reply needs
+/// `SEND_MESSAGES` alone, so the retry survives exactly that case.
+async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
+    let summoned = || CrackedMessage::Summon {
+        mention: channel_id.mention(),
+    };
+    let Err(embed_err) = ctx.send_reply_embed(summoned()).await else {
+        return;
+    };
+    tracing::warn!("Could not answer the join with an embed: {embed_err:?}, retrying as text");
+    if let Err(text_err) = PoiseContextExt::send_reply_owned(ctx, summoned(), false).await {
+        tracing::warn!(
+            "Could not answer the deferred interaction at all: {text_err:?}. \
+             The bot IS in {channel_id:?}; the user is left on \"thinking...\"."
+        );
+    }
+}
+
 /// Join a voice channel.
 ///
 /// Defers before the handshake, and only there. Every join that reaches
@@ -176,8 +268,9 @@ pub(crate) async fn connected_call(
 /// and answers in microseconds, so it should not spend a round-trip putting
 /// the user on "thinking...".
 ///
-/// 🪤 `perms::join_site_guard_tests` asserts the gate appears within 1200
-/// bytes before `manager.join`, so keep prose out of the span between them.
+/// The gate can no longer be skipped or reordered by accident -- [`JoinPermit`]
+/// is the only way to reach [`join_permitted`] -- so the defer is free to sit
+/// between them.
 #[cfg(not(tarpaulin_include))]
 #[tracing::instrument]
 pub async fn do_join(
@@ -226,63 +319,14 @@ pub async fn do_join(
     // Refuse a join Discord would silently drop. Without this the voice state
     // update is accepted, nothing happens, and songbird reports TimedOut ~10s
     // later naming no permission at all.
-    crate::music::perms::ensure_can_join(ctx.cache(), guild_id, channel_id)
+    let permit = crate::music::perms::ensure_can_join(ctx.cache(), guild_id, channel_id)
         .map_err(|e| -> Error { Box::new(e) })?;
     // See this function's doc comment for why the defer sits exactly here.
     ctx.defer().await?;
-    let call = match manager.join(guild_id, channel_id).await {
-        Ok(call) => call,
-        Err(err) => match connected_call(manager, guild_id, Some(channel_id)).await {
-            Some(call) => {
-                // The handshake reported a problem but the connection is up.
-                // Worth a line: a recovered join should be distinguishable in
-                // the log from a clean one.
-                tracing::warn!("Join into {channel_id:?} reported {err:?} but connected");
-                call
-            },
-            None => {
-                tracing::warn!("Error joining channel: {:?}", err);
-                // Drop the connectionless Call, or the next join finds it and
-                // reports success without ever trying. songbird's `remove` is
-                // `leave(..)?` *then* `calls.remove(..)`, so a failing leave
-                // skips the removal -- log it rather than discarding the only
-                // signal that the Call is still registered.
-                //
-                // 🪤 Guarded on there being NO connection at all. The arm
-                // above is also taken when we are connected to a *different*
-                // channel -- the concurrent-`/gp`-resume race `expect` exists
-                // for -- and `remove` is `leave` then drop, so removing here
-                // would disconnect that live session and bin its queue.
-                if connected_call(manager, guild_id, None).await.is_none() {
-                    if let Err(e) = manager.remove(guild_id).await {
-                        tracing::warn!(
-                            "Could not remove the connectionless Call for {guild_id:?}: {e:?}. \
-                             A later join may find it and skip the permission gate."
-                        );
-                    }
-                }
-                // let str = err.to_string().clone();
-                let my_err = CrackedError::JoinChannelError(err);
-                // let crack_msg = CrackedMessage::CrackedRed(str.clone());
-                // let msg = PoiseContextExt::send_reply_embed(ctx, crack_msg).await?;
-                // //ctx.defer().await;
-                // //msg.delete_after(ctx, Duration::from_secs(10)).await;
-                // let msg_or_reply =
-                //     MessageOrReplyHandle::from(ReplyHandleWrapper { handle: msg.into() });
-                // ctx.data().push_latest_msg(guild_id, msg_or_reply).await;
-                return Err(Box::new(my_err));
-            },
-        },
-    };
+    let call = join_permitted(manager, permit)
+        .await
+        .map_err(|err| -> Error { Box::new(CrackedError::JoinChannelError(err)) })?;
     set_global_handlers(ctx, call.clone(), guild_id, channel_id.widen()).await;
-    let msg = CrackedMessage::Summon {
-        mention: channel_id.mention(),
-    };
-    match ctx.send_reply_embed(msg).await {
-        Ok(_) => (),
-        Err(err) => {
-            tracing::warn!("Error sending reply: {:?}", err);
-        },
-    };
+    announce_join(ctx, channel_id).await;
     Ok(call)
 }

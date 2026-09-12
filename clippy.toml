@@ -1,0 +1,15 @@
+# `Songbird::join` is the raw handshake. It performs no permission check, and
+# after a failure it leaves a connectionless `Call` registered that a later
+# join will find and mistake for success.
+#
+# `music_utils::join_permitted` is the one wrapper that gates and cleans up,
+# and it takes a `perms::JoinPermit` -- which only `ensure_can_join` can mint.
+# The permit makes the *ordering* a compile error; this rule makes the permit
+# unavoidable, by leaving exactly one door. Without it a new call site could
+# still reach past both by calling the raw method.
+#
+# Three sites once cleaned up after a failed join three different ways (#502);
+# two of the three were wrong. There is now one implementation.
+disallowed-methods = [
+    { path = "songbird::Songbird::join", reason = "does not check permissions and leaves a connectionless Call behind on failure; use music_utils::join_permitted, which takes a perms::JoinPermit" },
+]

@@ -3,7 +3,7 @@ use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings}
 use crate::music::TrackReadyData;
 use crate::{
     commands::CrackedError, db, http_utils, http_utils::SendMessageParams,
-    messaging::message::CrackedMessage, utils::OptionTryUnwrap, CrackedResult, Data, Error,
+    messaging::message::CrackedMessage, utils::OptionTryUnwrap, CrackedResult, Error,
     MessageOrReplyHandle,
 };
 use colored::Colorize;
@@ -665,51 +665,17 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
 /// Extension trait for the poise::Context<'_> for owned contexts.
 pub trait OwnedContextExt {}
 
-///Struct to represent everything needed to join a voice call.
-pub struct JoinVCToken(pub serenity::GuildId, pub Arc<tokio::sync::Mutex<()>>);
-impl JoinVCToken {
-    pub fn acquire(data: &Data, guild_id: serenity::GuildId) -> Self {
-        let lock = data
-            .join_vc_tokens
-            .entry(guild_id)
-            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
-            .clone();
-
-        Self(guild_id, lock)
-    }
-}
-
-/// Extension trait for Songbird.
-pub trait SongbirdManagerExt {
-    fn join_vc(
-        &self,
-        cache: &serenity::Cache,
-        guild_id: JoinVCToken,
-        channel_id: serenity::ChannelId,
-    ) -> impl Future<Output = Result<Arc<tokio::sync::Mutex<songbird::Call>>, CrackedError>>;
-}
-
-/// Implementation of the extension trait for Songbird's manager.
-impl SongbirdManagerExt for songbird::Songbird {
-    async fn join_vc(
-        &self,
-        cache: &serenity::Cache,
-        JoinVCToken(guild_id, lock): JoinVCToken,
-        channel_id: serenity::ChannelId,
-    ) -> Result<Arc<tokio::sync::Mutex<songbird::Call>>, CrackedError> {
-        let _guard = lock.lock().await;
-        crate::music::perms::ensure_can_join(cache, guild_id, channel_id)?;
-        match self.join(guild_id, channel_id).await {
-            Ok(call) => Ok(call),
-            Err(err) => {
-                // On error, the Call is left in a semi-connected state.
-                // We need to correct this by removing the call from the manager.
-                drop(self.leave(guild_id).await);
-                Err(CrackedError::JoinChannelError(err))
-            },
-        }
-    }
-}
+// `JoinVCToken` and `SongbirdManagerExt::join_vc` lived here and were deleted
+// in #481: zero callers workspace-wide, and the per-guild mutex backing them
+// was allocated for every guild the bot has ever joined and never once taken.
+//
+// The parts worth keeping outlived them. Its permission check is now
+// `perms::JoinPermit`, which the type system enforces rather than asking each
+// site to remember; its cleanup was the buggiest of the three (#502) --
+// `leave` clears the connection but deliberately keeps the handler
+// registered, so the connectionless `Call` it meant to drop survived intact.
+// `music_utils::join_permitted` is the single implementation both are now
+// part of.
 
 use poise::serenity_prelude::Context as SerenityContext;
 use std::collections::HashSet;

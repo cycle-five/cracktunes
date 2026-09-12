@@ -19,69 +19,42 @@
 //! yourself calling `claim_playback` from a new place, you are adding the bug
 //! this design exists to prevent.
 //!
-//! # 🪤 `QueueGuard` is NOT shaped like `JoinVCToken`
+//! # 🔑 There is exactly one per-guild lock, and that is recent
 //!
-//! #434 describes it as "in the shape of `JoinVCToken`", and the *intent* is the
-//! same -- an unforgeable proof carried in the type system -- but the mechanism
-//! differs and assuming otherwise will produce a bug:
+//! #434 described this guard as "in the shape of `JoinVCToken`". That type is
+//! gone (#481) -- zero callers workspace-wide -- and with it the second
+//! per-guild lock it was backed by, `Data::join_vc_tokens`.
 //!
-//! | | `JoinVCToken` | `QueueGuard` |
-//! |---|---|---|
-//! | `acquire` | not `async`, takes no lock | `async`, holds the lock on return |
-//! | who locks | the consumer (`join_vc`) | the constructor |
-//! | what it proves | you went through the right door | you hold exclusion *now* |
+//! That deletion is what lets this section be four paragraphs instead of a
+//! page. The lock-ordering rule that used to live here -- *playback lease
+//! first, join token second, never the reverse* -- guarded against an AB-BA
+//! deadlock between two per-guild locks. With one lock left there is no pair
+//! to order, so the rule is not merely unenforced, it is vacuous.
 //!
-//! # Lock ordering
-//!
-//! The lease sits alongside `join_vc_tokens`, not replacing it, so there are two
-//! per-guild locks: the exclusion mutex behind [`Data::lock_queue`] (via
-//! `queue_locks`) and the one behind `JoinVCToken::acquire`
-//! (`crate::poise_ext`, backed by `Data::join_vc_tokens`). **Playback lease
-//! first, join token second, never the reverse.** A task that holds one must
-//! not go on to take the other in the wrong order: two per-guild locks taken
-//! in opposite orders by two concurrent tasks is a textbook AB-BA deadlock,
-//! and because songbird dispatches track events inline (see
-//! `src/events/store.rs:89` and `:130`), a task parked on either lock also
-//! blocks that event store's dispatch loop for the guild -- the deadlock does
-//! not stay contained to the two commands that caused it.
-//!
-//! Three independent reviews traced every call site that takes the queue
-//! lock -- the 16 pre-existing `lock_queue` sites plus the six added
-//! alongside this lease -- and found the order uniform everywhere: lease
-//! (ownership check, then `queue_locks`) before any voice-join step, never
-//! after. Every site also drops its [`QueueGuard`] before doing Discord HTTP,
-//! so a guard is never held across the kind of slow `.await` that would let
-//! the ordering matter in practice today.
-//!
-//! 🪤 That last point is why this rule is written down rather than asserted
-//! or tested. `JoinVCToken::acquire` (`crate::poise_ext`) currently has no
-//! caller that also holds a [`QueueGuard`] -- `do_join`
-//! (`crate::commands::music_utils::do_join`) calls `songbird::Songbird::join`
-//! directly and never constructs a `JoinVCToken` at all, so the two locks are
-//! never actually taken together yet. It goes further than that: the only
-//! code that ever locks `join_vc_tokens` is the *consumer*,
-//! `SongbirdManagerExt::join_vc` (`poise_ext.rs`), and it too has zero call
-//! sites. `acquire` itself takes no lock at all -- it clones an `Arc` out of
-//! `join_vc_tokens` and returns, per the comparison table above -- so the
-//! whole join-token mechanism is unreachable from production code today, not
-//! merely decoupled from `QueueGuard`. A `debug_assert` in `acquire` was
-//! tried and rejected: the only cheap signal available is "is
-//! `queue_locks[guild_id]` contended right now", checked with `try_lock` from
-//! a task that does not hold it -- and `tokio::sync::Mutex` has no
-//! task-affinity introspection, so that can't distinguish *this task is
+//! 🪤 Why that rule could never be tested, kept because the reasoning
+//! generalises. The join-token mechanism had no production caller, so any test
+//! that took both locks in one task exercised zero contention and passed as
+//! long as the code compiled. A `debug_assert` fared no better:
+//! `tokio::sync::Mutex` has no task-affinity introspection, so "is this
+//! guild's queue lock contended right now" cannot distinguish *this task is
 //! mid-violation* from *a sibling command for the same guild is legitimately
-//! mid-mutation*, which is normal: exclusion is held for milliseconds, and
-//! two commands for one guild are free to interleave. For the same reason no
-//! regression test is shipped either: with the second lock never actually
-//! taken, any test that calls `lock_queue` then `acquire` in one task
-//! exercises zero contention between the two locks and cannot fail
-//! regardless of the order it uses -- it would pass as long as the code
-//! compiles, which is not a guarantee worth having a test for. A sound
-//! version of either -- assert or test -- would need task-local state set
-//! for the lifetime of a [`QueueGuard`] and checked in `join_vc`, real
-//! machinery for a path nothing exercises yet. Build it, and add the test,
-//! the day `JoinVCToken`/`join_vc` gains a real production caller; until
-//! then this paragraph is the only enforcement the rule has.
+//! mid-mutation*, which is normal -- exclusion is held for milliseconds and
+//! two commands for one guild are free to interleave. **If a second per-guild
+//! lock is ever introduced it needs task-local state set for the lifetime of a
+//! [`QueueGuard`], not a comment.** That is the price of the rule, and it is
+//! why deleting the dead lock was a better answer than writing it down again.
+//!
+//! The reason ordering mattered at all still holds and is worth keeping in
+//! view: songbird dispatches track events inline (see `src/events/store.rs:89`
+//! and `:130`), so a task parked on a per-guild lock also blocks that event
+//! store's dispatch loop for the guild. A deadlock here would not stay
+//! contained to the two commands that caused it.
+//!
+//! Three independent reviews traced every site that takes the queue lock --
+//! the 16 pre-existing `lock_queue` sites plus the six added alongside this
+//! lease -- and every one drops its [`QueueGuard`] before doing Discord HTTP,
+//! so a guard is never held across a slow `.await`. That property is worth
+//! preserving on its own merits.
 
 use crate::errors::CrackedError;
 use crate::Data;
@@ -190,7 +163,7 @@ impl Data {
 
         // 🪤 The `.clone()` matters: a dashmap reference held across the await
         // below deadlocks the shard. Cloning the Arc lets the entry ref drop at
-        // the end of this statement. Same shape as `JoinVCToken::acquire`.
+        // the end of this statement.
         let lock = self
             .queue_locks
             .entry(guild_id)

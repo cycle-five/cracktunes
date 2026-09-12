@@ -375,7 +375,6 @@ pub struct DataInner {
     pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
     pub authorized_users: HashSet<u64>,
     // Why not Arc here?
-    pub join_vc_tokens: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
     /// Who owns playback per guild. Written ONLY by `claim_playback` /
     /// `release_playback`, which are called from inside the methods that move
     /// `gp_games` -- see `music/lease.rs`. Do not write it anywhere else.
@@ -598,7 +597,6 @@ impl Default for DataInner {
             songbird: Songbird::serenity(), // Initialize with an uninitialized Songbird instance
             phone_data: PhoneCodeData::default(),
             bot_settings: Default::default(),
-            join_vc_tokens: Default::default(),
             playback_owners: Default::default(),
             queue_locks: Default::default(),
             authorized_users: Default::default(),
