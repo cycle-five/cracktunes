@@ -13,6 +13,8 @@
 
 pub mod error;
 pub mod model;
+pub mod resolver;
 
 pub use error::{Error, Result};
 pub use model::{Playable, RawTrack, Recommendation, Seed};
+pub use resolver::{SeedResolver, TitleParseResolver};
