@@ -66,3 +66,45 @@ impl Error {
         matches!(self, Error::Transport { .. } | Error::RateLimited { .. })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 🪤 `is_transient` drives every retry decision in this crate and shipped
+    /// with no coverage at all. Moving `BudgetExhausted` into the transient arm
+    /// would compile clean and pass every other test here, while spending the
+    /// metered 100/day quota against a provider that has already said no.
+    ///
+    /// Asserted per variant rather than by counting: a `matches!` over a list
+    /// would pass a new variant silently, and "is this new error retryable" is
+    /// exactly the question a new variant has to answer.
+    #[test]
+    fn only_rate_limits_and_transport_faults_are_worth_retrying() {
+        assert!(Error::RateLimited {
+            provider: "musicatlas",
+            retry_after: None,
+        }
+        .is_transient());
+
+        assert!(!Error::BudgetExhausted {
+            provider: "musicatlas",
+            budget: 100,
+        }
+        .is_transient());
+
+        assert!(!Error::NotATrack {
+            provider: "musicatlas",
+            artist: "Queen".into(),
+            title: "Bohemian Rhapsody".into(),
+            message: "no match".into(),
+        }
+        .is_transient());
+
+        assert!(!Error::InvalidKey {
+            provider: "musicatlas",
+            message: "bad key".into(),
+        }
+        .is_transient());
+    }
+}
