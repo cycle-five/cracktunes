@@ -27,7 +27,9 @@ pub async fn add_to_playlist(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = ctx.data().songbird.clone();
-    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let call = crate::commands::connected_call(&manager, guild_id, None)
+        .await
+        .ok_or(CrackedError::NotConnected)?;
     let queue = call.lock().await.queue().clone();
     let cur_track = queue.current().ok_or(CrackedError::NothingPlaying)?;
     let typemap = cur_track.typemap().read().await;

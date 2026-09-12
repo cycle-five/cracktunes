@@ -3197,7 +3197,12 @@ pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResul
     // `Playing`, so discovering there is nothing to play on afterwards would
     // strand the round with nothing ever enqueued to advance it.
     if outcome.everyone_in {
-        if let Some(call) = data.songbird.get(guild_id) {
+        // 🪤 `connected_call`, not `Songbird::get` (#507). A Call left behind by
+        // a join that never completed satisfied `get`, so the window closed and
+        // the round was enqueued into a driver connected to nothing -- the
+        // "Queued, then silence" #499 fixed on /play. Not connected, the window
+        // now stays open rather than closing onto nothing.
+        if let Some(call) = crate::commands::connected_call(&data.songbird, guild_id, None).await {
             if let Some(closed) =
                 data.gp_close_window_if(guild_id, outcome.generation, &mut rand::rng(), now())
             {
@@ -3209,6 +3214,11 @@ pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResul
                     }
                 });
             }
+        } else {
+            tracing::warn!(
+                "gp: everyone is in for {guild_id} but the bot is not connected; \
+                 leaving the submission window open"
+            );
         }
     }
     Ok(CrackedMessage::GpSubmitted {
@@ -3236,9 +3246,8 @@ pub async fn gp_close(ctx: Context<'_>) -> Result<(), Error> {
     // Take the call *before* closing: `gp_close_window` commits the shuffle and
     // moves the game to `Playing`, and bailing after that would leave the round
     // closed with nothing ever enqueued to advance it.
-    let call = data
-        .songbird
-        .get(guild_id)
+    let call = crate::commands::connected_call(&data.songbird, guild_id, None)
+        .await
         .ok_or(CrackedError::NotConnected)?;
     let closed = data.gp_close_window(guild_id, ctx.author().id, &mut rand::rng(), now())?;
     if let Err(e) = ctx
@@ -3281,9 +3290,8 @@ pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
             return Err(CrackedError::GameNotPlaying.into());
         }
     }
-    let call = data
-        .songbird
-        .get(guild_id)
+    let call = crate::commands::connected_call(&data.songbird, guild_id, None)
+        .await
         .ok_or(CrackedError::NotConnected)?;
     {
         // Locking as `Game` succeeds here because this guild's game already
@@ -3410,9 +3418,8 @@ async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
         ),
     };
     if !matches!(outcome, GpVoteSkipOutcome::Counted { .. }) {
-        let call = data
-            .songbird
-            .get(guild_id)
+        let call = crate::commands::connected_call(&data.songbird, guild_id, None)
+            .await
             .ok_or(CrackedError::NotConnected)?;
         // Locking as `Game` succeeds here because this guild's game already
         // owns playback and has not released it (see
@@ -3514,6 +3521,11 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
     // here would beat it to the map and hand the event to autoplay. The global
     // track-end handler collects the parked game when the `End` actually lands.
     let game = data.gp_park_for_end(guild_id, ctx.author().id, is_admin)?;
+    // Raw `get` on purpose (#507), unlike `/gp submit`. This is cleanup, and
+    // stopping the queue must reach any registered Call, connected or not:
+    // songbird reuses a guild's Call on the next join, so tracks left in a
+    // stranded one would start playing in whatever comes next.
+    #[allow(clippy::disallowed_methods)]
     let was_playing = match data.songbird.get(guild_id) {
         Some(call) => {
             // `gp_park_for_end` only sets a flag -- the game stays in the map,

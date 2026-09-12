@@ -60,6 +60,11 @@ pub async fn debug_internal(ctx: Context<'_>) -> Result<(), Error> {
     let bot_name = ctx.cache().current_user().mention().to_string();
 
     // Get the voice channel we're in if any.
+    //
+    // Raw `get` on purpose (#507): a debug dump wants whatever songbird holds,
+    // connected or not. A Call stranded by a failed join is exactly what
+    // someone debugging needs to see, not have filtered out.
+    #[allow(clippy::disallowed_methods)]
     let call = manager.get(guild_id);
     let mut vc_status = match call {
         Some(call) => {

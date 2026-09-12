@@ -33,7 +33,9 @@ pub async fn clear(
 pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().unwrap();
     let manager = ctx.data().songbird.clone();
-    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let call = crate::commands::connected_call(&manager, guild_id, None)
+        .await
+        .ok_or(CrackedError::NotConnected)?;
 
     // Ordinary music commands mutate as `Free`; a guild a game owns refuses
     // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and

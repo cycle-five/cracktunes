@@ -28,6 +28,10 @@ pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
         .unwrap()
         .clone();
     let manager = data.songbird.clone();
+    // Raw `get` on purpose (#507): an admin queue dump wants whatever songbird
+    // holds. A Call stranded by a failed join is exactly what someone debugging
+    // needs to see, not have filtered out.
+    #[allow(clippy::disallowed_methods)]
     let call = match manager.get(guild.id) {
         Some(call) => call,
         None => {

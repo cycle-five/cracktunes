@@ -132,12 +132,12 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 /// bot in no voice channel, and `summon_internal` and `get_call_or_join_author`
 /// skipped the join -- and therefore the permission gate -- entirely.
 ///
-/// This is the only `Songbird::get` **on the join path**. It is NOT the only
-/// one in the crate: ~17 other sites read the Call to answer "are we
-/// playing?" for `/queue`, `/volume`, `/clear` and friends. Eight of those
-/// spell their result `CrackedError::NotConnected` while asking a question
-/// that cannot establish it -- tracked in #507, along with banning the raw
-/// method via clippy's `disallowed-methods` so the list cannot grow again.
+/// `Songbird::get` is banned in `clippy.toml` (#507). It used to be called
+/// from ~17 sites, eight of which spelled their result
+/// `CrackedError::NotConnected` while asking a question that cannot establish
+/// it. Those now come here. The few that genuinely want "is a Call
+/// registered" (debug dumps, `/gp end`'s cleanup) carry an `#[allow]` saying
+/// why.
 ///
 /// 🪤 `expect` matters because "connected" is not "connected to the channel
 /// you asked for". A concurrent `/gp` resume can land a join on another
@@ -148,6 +148,9 @@ pub(crate) async fn connected_call(
     guild_id: GuildId,
     expect: Option<ChannelId>,
 ) -> Option<Arc<Mutex<Call>>> {
+    // The one place the raw question is asked: this function exists to turn
+    // it into the right one.
+    #[allow(clippy::disallowed_methods)]
     let call = manager.get(guild_id)?;
     let (connected, here) = {
         let handler = call.lock().await;

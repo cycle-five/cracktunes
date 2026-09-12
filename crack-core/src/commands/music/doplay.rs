@@ -849,7 +849,9 @@ pub async fn queue_aux_metadata(
     let client = &ctx.data().http_client;
     let manager = ctx.data().songbird.clone();
 
-    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let call = crate::commands::connected_call(&manager, guild_id, None)
+        .await
+        .ok_or(CrackedError::NotConnected)?;
 
     let req = RequestOptionsBuilder::new()
         .set_client(client.clone())
