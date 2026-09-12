@@ -29,10 +29,47 @@ pub const VOICE_REQUIRED: Permissions = Permissions::CONNECT.union(Permissions::
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MusicPermissions {
     pub text: TextPerms,
-    /// `None` when the author is in no voice channel at all — deliberately a
-    /// distinct state from "in a channel we cannot join", because the two
-    /// need different messages.
-    pub voice: Option<VoicePerms>,
+    pub voice: VoiceCheck,
+}
+
+/// What we were able to learn about the voice channel the author is sitting in.
+///
+/// Three states, not two. 🪤 Collapsing "in a channel we cannot see" into "in
+/// no channel" is the bug this enum exists to prevent. Discord omits channels
+/// the bot lacks `VIEW_CHANNEL` on from `GUILD_CREATE`, so such a channel is
+/// simply absent from `guild.channels`; with only two states that came out as
+/// "you're not in a voice channel" to someone who was plainly in one, and
+/// [`ensure_can_join`] waved the join through into songbird's ~10s
+/// `JoinError::TimedOut` — the exact symptom this module exists to delete.
+///
+/// Named `VoiceCheck` rather than `VoiceState` because serenity already has a
+/// `VoiceState`, and [`resolve`] reads a map of those one line away.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VoiceCheck {
+    /// The author is in no voice channel. Not a denial, and not a problem.
+    NotInVoice,
+    /// The author is in a channel that is absent from an **already-cached**
+    /// guild. That absence is information, not ignorance: Discord would have
+    /// sent the channel if the bot could see it.
+    Unreadable(ChannelId),
+    /// Read successfully.
+    Resolved(VoicePerms),
+}
+
+impl VoiceCheck {
+    /// The resolved permissions, if we got that far. `None` for both of the
+    /// other states — callers that need to tell them apart must match.
+    pub fn perms(&self) -> Option<&VoicePerms> {
+        match self {
+            Self::Resolved(v) => Some(v),
+            Self::NotInVoice | Self::Unreadable(_) => None,
+        }
+    }
+
+    /// Build the resolved case from a raw bitset.
+    pub fn resolved(channel: ChannelId, granted: Permissions) -> Self {
+        Self::Resolved(VoicePerms { channel, granted })
+    }
 }
 
 /// What the bot may do in the channel a command was invoked in.
@@ -94,14 +131,14 @@ impl VoicePerms {
 pub fn compute(
     text_channel: GenericChannelId,
     text_granted: Permissions,
-    voice: Option<(ChannelId, Permissions)>,
+    voice: VoiceCheck,
 ) -> MusicPermissions {
     MusicPermissions {
         text: TextPerms {
             channel: text_channel,
             granted: text_granted,
         },
-        voice: voice.map(|(channel, granted)| VoicePerms { channel, granted }),
+        voice,
     }
 }
 
@@ -128,15 +165,21 @@ pub fn resolve(
     let text_chan = guild.channels.get(&text_channel.expect_channel())?;
     let text_granted = guild.user_permissions_in(text_chan, bot);
 
-    // The author's voice channel, if they are in one. Absent is not a denial.
-    let voice = guild
-        .voice_states
-        .get(&author)
-        .and_then(|vs| vs.channel_id)
-        .and_then(|cid| {
-            let chan = guild.channels.get(&cid)?;
-            Some((cid, guild.user_permissions_in(chan, bot)))
-        });
+    // The author's voice channel, if they are in one. Absent from the voice
+    // states is not a denial; absent from an already-cached guild's channel
+    // list is a different thing entirely, and gets its own state.
+    let voice = match guild.voice_states.get(&author).and_then(|vs| vs.channel_id) {
+        None => VoiceCheck::NotInVoice,
+        Some(cid) => match guild.channels.get(&cid) {
+            Some(chan) => VoiceCheck::resolved(cid, guild.user_permissions_in(chan, bot)),
+            // 🪤 Not a cache miss. The guild is cached, so Discord already
+            // sent its channel list, and it omits the channels the bot lacks
+            // VIEW_CHANNEL on. A channel the author is demonstrably sitting
+            // in that is missing from that list is therefore the answer, not
+            // the absence of one.
+            None => VoiceCheck::Unreadable(cid),
+        },
+    };
 
     Some(compute(text_channel, text_granted, voice))
 }
@@ -160,34 +203,100 @@ pub fn voice_refusal(channel: ChannelId, granted: Permissions) -> Option<Cracked
     }
 }
 
+/// The refusal a voice channel we cannot even see earns.
+///
+/// Legitimate only against an **already-cached** guild, which is what makes it
+/// compatible with failing open: we are not guessing at a permission state we
+/// could not read, we are reading Discord's decision not to send us the
+/// channel.
+///
+/// 🪤 Names `VIEW_CHANNEL` and nothing else. `CONNECT` and `SPEAK` may well be
+/// granted here — there is no way to compute them for a channel Discord never
+/// sent — and naming a permission that is already granted is precisely the
+/// failure this module exists to avoid.
+pub fn unreadable_refusal(channel: ChannelId) -> CrackedError {
+    CrackedError::MissingBotPermissions {
+        scope: PermScope::Voice,
+        channel: channel.widen(),
+        missing: Permissions::VIEW_CHANNEL,
+    }
+}
+
 /// The blocking gate: refuse a join Discord would silently drop.
 ///
-/// Call this immediately before every `songbird.join`. It takes cache handles
-/// rather than a poise `Context` on purpose — one of its call sites is a
-/// restart-resume with no invoking user and therefore no `Context`.
+/// Call this immediately before every `songbird.join`.
 ///
-/// Fails **open** on a cache miss: an unknown permission state must not refuse
-/// a join that would have worked.
+/// A thin cache layer over [`join_refusal`], which holds the actual rule.
 pub fn ensure_can_join(
     cache: &Cache,
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<(), CrackedError> {
+    match join_refusal(channel_id, join_lookup(cache, guild_id, channel_id)) {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
+}
+
+/// What the cache was able to say about the channel a join is aimed at.
+///
+/// The three cases are deliberately not `Option<Permissions>`: "we know
+/// nothing" and "we know Discord withheld this channel" demand opposite
+/// answers, and flattening them into one `None` is the defect [`VoiceCheck`]
+/// exists to prevent, one layer down.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum JoinLookup {
+    /// Genuine ignorance — the guild is not cached, or the bot's own member
+    /// is not cached.
+    Unknown,
+    /// The guild **is** cached and the channel is absent from it, which
+    /// Discord does exactly when the bot lacks `VIEW_CHANNEL` there.
+    Withheld,
+    /// Resolved.
+    Granted(Permissions),
+}
+
+/// The decision the gate makes once the cache has had its say.
+///
+/// Pure, so all three outcomes — fail open, refuse for `VIEW_CHANNEL`, refuse
+/// for `CONNECT`/`SPEAK` — are testable without a populated [`Cache`], the
+/// same split [`compute`]/[`resolve`] already use. It is also the split that
+/// matters most here: the two-state version of this decision answered
+/// `Ok(())` for [`JoinLookup::Withheld`] and nothing could catch it.
+pub fn join_refusal(channel: ChannelId, lookup: JoinLookup) -> Option<CrackedError> {
+    match lookup {
+        // 🪤 Fail OPEN. An unknown permission state must not refuse a join
+        // that would have worked; that would break working guilds during the
+        // cache warm-up after every restart.
+        JoinLookup::Unknown => None,
+        // 🪤 NOT a cache miss, and this is the one asymmetry worth its own
+        // state. The guild is cached, so its channel list is as complete as
+        // the bot is allowed to see it; a channel absent from that list is
+        // one Discord withheld. Refusing here is reading an answer, not
+        // guessing at one, so it does not violate fail-open. Returning
+        // `Ok(())` instead is what let the join run on into songbird's ~10s
+        // `JoinError::TimedOut`, naming nothing.
+        JoinLookup::Withheld => Some(unreadable_refusal(channel)),
+        JoinLookup::Granted(granted) => voice_refusal(channel, granted),
+    }
+}
+
+/// Ask the cache what it knows about a join target. No HTTP, no `await`.
+///
+/// Takes cache handles rather than a poise `Context` on purpose — one of
+/// [`ensure_can_join`]'s call sites is a restart-resume with no invoking user
+/// and therefore no `Context`.
+fn join_lookup(cache: &Cache, guild_id: GuildId, channel_id: ChannelId) -> JoinLookup {
     let Some(guild) = cache.guild(guild_id) else {
-        return Ok(());
+        return JoinLookup::Unknown;
     };
     let bot_id = cache.current_user().id;
     let Some(bot) = guild.members.get(&bot_id) else {
-        return Ok(());
+        return JoinLookup::Unknown;
     };
-    let Some(chan) = guild.channels.get(&channel_id) else {
-        return Ok(());
-    };
-
-    let granted = guild.user_permissions_in(chan, bot);
-    match voice_refusal(channel_id, granted) {
-        Some(err) => Err(err),
-        None => Ok(()),
+    match guild.channels.get(&channel_id) {
+        Some(chan) => JoinLookup::Granted(guild.user_permissions_in(chan, bot)),
+        None => JoinLookup::Withheld,
     }
 }
 
@@ -205,10 +314,14 @@ mod tests {
 
     #[test]
     fn everything_granted_is_whole_and_joinable() {
-        let p = compute(text_ch(), TEXT_REQUIRED, Some((voice_ch(), VOICE_REQUIRED)));
+        let p = compute(
+            text_ch(),
+            TEXT_REQUIRED,
+            VoiceCheck::resolved(voice_ch(), VOICE_REQUIRED),
+        );
         assert!(p.text.is_whole());
         assert!(p.text.missing().is_empty());
-        let v = p.voice.expect("voice was supplied");
+        let v = p.voice.perms().expect("voice was supplied");
         assert!(v.can_join());
         assert!(v.missing().is_empty());
     }
@@ -216,8 +329,12 @@ mod tests {
     #[test]
     fn a_missing_speak_blocks_the_join_and_names_only_speak() {
         let granted = VOICE_REQUIRED - Permissions::SPEAK;
-        let p = compute(text_ch(), TEXT_REQUIRED, Some((voice_ch(), granted)));
-        let v = p.voice.expect("voice was supplied");
+        let p = compute(
+            text_ch(),
+            TEXT_REQUIRED,
+            VoiceCheck::resolved(voice_ch(), granted),
+        );
+        let v = p.voice.perms().expect("voice was supplied");
         assert!(!v.can_join());
         assert_eq!(v.missing(), Permissions::SPEAK);
         assert!(
@@ -232,9 +349,9 @@ mod tests {
         let p = compute(
             text_ch(),
             TEXT_REQUIRED,
-            Some((voice_ch(), Permissions::empty())),
+            VoiceCheck::resolved(voice_ch(), Permissions::empty()),
         );
-        let v = p.voice.expect("voice was supplied");
+        let v = p.voice.perms().expect("voice was supplied");
         assert_eq!(v.missing(), VOICE_REQUIRED);
         // The copy is built from Display on the whole set, so both names must
         // appear. This is the property the refusal message depends on.
@@ -246,22 +363,74 @@ mod tests {
     #[test]
     fn a_missing_embed_links_degrades_text_but_leaves_voice_joinable() {
         let granted = TEXT_REQUIRED - Permissions::EMBED_LINKS;
-        let p = compute(text_ch(), granted, Some((voice_ch(), VOICE_REQUIRED)));
+        let p = compute(
+            text_ch(),
+            granted,
+            VoiceCheck::resolved(voice_ch(), VOICE_REQUIRED),
+        );
         assert!(!p.text.is_whole());
         assert_eq!(p.text.missing(), Permissions::EMBED_LINKS);
         assert!(p.text.view() && p.text.send() && !p.text.embed());
-        assert!(p.voice.expect("voice was supplied").can_join());
+        assert!(p.voice.perms().expect("voice was supplied").can_join());
     }
 
     #[test]
-    fn no_voice_channel_is_none_not_a_denial() {
-        let p = compute(text_ch(), TEXT_REQUIRED, None);
-        // 🪤 `None` means "the author is in no voice channel", which is a
-        // different thing from "in a channel we cannot join". Rendering it as
-        // a denial would tell someone to grant a permission that is already
-        // granted.
-        assert!(p.voice.is_none());
+    fn no_voice_channel_is_its_own_state_not_a_denial() {
+        let p = compute(text_ch(), TEXT_REQUIRED, VoiceCheck::NotInVoice);
+        // 🪤 `NotInVoice` means "the author is in no voice channel", which is
+        // a different thing from "in a channel we cannot join". Rendering it
+        // as a denial would tell someone to grant a permission that is
+        // already granted.
+        assert_eq!(p.voice, VoiceCheck::NotInVoice);
+        assert!(p.voice.perms().is_none());
         assert!(p.text.is_whole());
+    }
+
+    #[test]
+    fn an_unseeable_voice_channel_is_not_the_same_state_as_no_voice_channel() {
+        let unreadable = compute(text_ch(), TEXT_REQUIRED, VoiceCheck::Unreadable(voice_ch()));
+        let absent = compute(text_ch(), TEXT_REQUIRED, VoiceCheck::NotInVoice);
+        // 🪤 Both have no `VoicePerms`, which is exactly how the two-state
+        // version collapsed them into one and told a user sitting in a voice
+        // channel that they were not in one. `perms()` returning `None` must
+        // never be read as "no voice channel".
+        assert!(unreadable.voice.perms().is_none());
+        assert!(absent.voice.perms().is_none());
+        assert_ne!(unreadable.voice, absent.voice);
+        assert_eq!(unreadable.voice, VoiceCheck::Unreadable(voice_ch()));
+    }
+
+    #[test]
+    fn a_channel_we_cannot_see_earns_a_view_channel_refusal_and_names_nothing_else() {
+        let err = unreadable_refusal(voice_ch());
+        match &err {
+            CrackedError::MissingBotPermissions {
+                scope,
+                channel,
+                missing,
+            } => {
+                assert_eq!(*scope, PermScope::Voice);
+                assert_eq!(*channel, voice_ch().widen());
+                assert_eq!(*missing, Permissions::VIEW_CHANNEL);
+            },
+            other => panic!("expected MissingBotPermissions, got {other:?}"),
+        }
+        let rendered = format!("{err}");
+        assert!(rendered.contains("View Channel"), "got {rendered}");
+        assert!(
+            rendered.contains(&format!("<#{}>", voice_ch())),
+            "must name the channel: {rendered}"
+        );
+        // 🪤 CONNECT and SPEAK are *unknown* here, not known-missing. Naming
+        // them would send an admin to grant permissions they already granted.
+        assert!(
+            !rendered.contains("Connect"),
+            "Connect is unknown, not missing: {rendered}"
+        );
+        assert!(
+            !rendered.contains("Speak"),
+            "Speak is unknown, not missing: {rendered}"
+        );
     }
 
     #[test]
@@ -334,6 +503,45 @@ mod tests {
     // `voice_refusal` above and their *placement* by the source-scan guard in
     // Task 4. What is tested here is the one decision that is neither:
     // what they do when the cache cannot answer.
+
+    #[test]
+    fn an_unknown_lookup_refuses_nothing() {
+        // 🪤 Fail OPEN. Refusing a join we merely could not verify would
+        // break working guilds during the cache warm-up after every restart.
+        assert!(join_refusal(voice_ch(), JoinLookup::Unknown).is_none());
+    }
+
+    #[test]
+    fn a_withheld_channel_refuses_the_join_instead_of_waving_it_through() {
+        // 🪤 This is the C1 regression. The two-state version answered
+        // `Ok(())` here, so the join went ahead and songbird spent ~10s
+        // arriving at `JoinError::TimedOut`, which names nothing -- the exact
+        // symptom this module exists to delete.
+        let err = join_refusal(voice_ch(), JoinLookup::Withheld)
+            .expect("a channel Discord withheld must not be waved through");
+        match err {
+            CrackedError::MissingBotPermissions { missing, .. } => {
+                assert_eq!(missing, Permissions::VIEW_CHANNEL);
+            },
+            other => panic!("expected MissingBotPermissions, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_granted_lookup_defers_to_the_voice_bitset() {
+        assert!(join_refusal(voice_ch(), JoinLookup::Granted(VOICE_REQUIRED)).is_none());
+        let err = join_refusal(
+            voice_ch(),
+            JoinLookup::Granted(VOICE_REQUIRED - Permissions::CONNECT),
+        )
+        .expect("CONNECT is missing");
+        match err {
+            CrackedError::MissingBotPermissions { missing, .. } => {
+                assert_eq!(missing, Permissions::CONNECT);
+            },
+            other => panic!("expected MissingBotPermissions, got {other:?}"),
+        }
+    }
 
     #[test]
     fn the_gate_fails_open_when_the_cache_is_empty() {
