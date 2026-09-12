@@ -22,7 +22,7 @@ several facts contradict the vendors' own docs.
 
 ## Global Constraints
 
-- Workspace members are all at version `0.9.5`; the new crate joins at `0.9.5`.
+- Workspace members are all at version `0.9.7`; the new crate joins at `0.9.7`.
 - Every commit ends with exactly this trailer and no other `Co-Authored-By`:
   `Co-Authored-By: Claude & Lothrop (cycle.five@proton.me)`
 - **Typed serde only.** No `serde_json::json!` or `serde_json::Value` for data
@@ -67,7 +67,7 @@ after `"crack-sleevenote",`.
 ```toml
 [package]
 name = "crack-musicreco"
-version = "0.9.5"
+version = "0.9.7"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
@@ -1822,11 +1822,11 @@ Co-Authored-By: Claude & Lothrop (cycle.five@proton.me)"
 - Modify: `docs/superpowers/specs/2026-09-12-musicatlas-autoplay-design.md` (delete)
 - Modify: `README.md` (env var table, if one exists)
 
-- [ ] **Step 1: Bump every member to 0.9.6**
+- [ ] **Step 1: Bump every member to 0.9.8**
 
 ```bash
-for f in */Cargo.toml; do sed -i '0,/^version = "0.9.5"/s//version = "0.9.6"/' "$f"; done
-grep -c '^version = "0.9.6"' */Cargo.toml | grep -v ':0' | wc -l   # expect 10
+for f in */Cargo.toml; do sed -i '0,/^version = "0.9.7"/s//version = "0.9.8"/' "$f"; done
+grep -c '^version = "0.9.8"' */Cargo.toml | grep -v ':0' | wc -l   # expect 10
 ```
 
 - [ ] **Step 2: Delete the superseded spec**
@@ -1851,7 +1851,7 @@ docker host.** Add the compose `environment:` line in the homelab repo, not here
 ```bash
 cargo fmt --check && SQLX_OFFLINE=true cargo check --workspace && cargo test --workspace
 git add -A
-git commit -m "chore: v0.9.6 -- autoplay on crack-musicreco
+git commit -m "chore: v0.9.8 -- autoplay on crack-musicreco
 
 Deletes the superseded single-provider musicatlas spec; its measured API facts
 live on in the musicreco spec, and keeping both invites someone to implement the
@@ -1871,6 +1871,10 @@ Deploy to **tunetitan first**, then confirm on a real play:
 4. Force `MUSICATLAS_API_KEY` empty → autoplay still works via ReccoBeats.
 
 🪤 **The deploy succeeding is not the verification.** A v0.9.3 fix for play
-history passed its tests, deployed cleanly, verified green — and wrote nothing,
-because the test encoded the author's survey rather than the property. Confirm
-against the database, on a real play.
+history passed its tests, deployed cleanly, verified green — and wrote history
+for single tracks only, silently writing nothing for playlists, because the
+test asserted a hard-coded count of the three enqueue sites its author knew
+about rather than the property. Playlists went through a fourth. v0.9.5 fixed
+it by pinning the whole enqueue surface, which immediately turned up two more
+entry points. Confirm against the database, on a real play — and on a real
+playlist, since the difference between those two paths IS what was missed.
