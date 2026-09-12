@@ -210,6 +210,11 @@ pub const SPOTIFY_TIMEOUT: &str = "⏳ **Spotify took too long to answer.**\nTry
 // Deliberately offers no retry: the lookup service stopped matching Spotify's
 // page, so retrying the same link fails identically until it is fixed.
 pub const SPOTIFY_LOOKUP_BROKEN: &str = "⚠️ **Spotify lookup is broken right now.**\nThis has been logged. Search for the track by name and I'll play it.";
+/// `extraction_silent` that survived the client's retry. Unlike
+/// [`SPOTIFY_LOOKUP_BROKEN`] this one IS worth retrying -- measured at ~14%
+/// per attempt with every failing id succeeding later -- so the message says
+/// so instead of sending the user off to search by name.
+pub const SPOTIFY_LOOKUP_FLAKY: &str = "⚠️ **Spotify didn't answer that one.**\nThis usually clears on a second try — run the same link again.";
 // Distinct from the above, and the distinction is the whole reason sleevenote
 // keeps these two apart: something *was* recovered, just not all of it. The
 // service returns the shortfall rather than a partial listing, so there is

@@ -23,9 +23,9 @@
 use crate::errors::CrackedError;
 use crate::http_utils;
 use crate::messaging::messages::{
-    SPOTIFY_INVALID_QUERY, SPOTIFY_LOOKUP_BROKEN, SPOTIFY_LOOKUP_FAILED, SPOTIFY_NOTHING_PLAYABLE,
-    SPOTIFY_NOT_CONFIGURED, SPOTIFY_NOT_FOUND, SPOTIFY_PARTIAL_LISTING, SPOTIFY_TIMEOUT,
-    SPOTIFY_UNREACHABLE,
+    SPOTIFY_INVALID_QUERY, SPOTIFY_LOOKUP_BROKEN, SPOTIFY_LOOKUP_FAILED, SPOTIFY_LOOKUP_FLAKY,
+    SPOTIFY_NOTHING_PLAYABLE, SPOTIFY_NOT_CONFIGURED, SPOTIFY_NOT_FOUND, SPOTIFY_PARTIAL_LISTING,
+    SPOTIFY_TIMEOUT, SPOTIFY_UNREACHABLE,
 };
 use crack_sleevenote::{
     Client as Sleevenote, ClientBuilder as SleevenoteBuilder, Error as SleevenoteError, Track,
@@ -437,8 +437,21 @@ pub fn user_message(err: &SleevenoteError) -> &'static str {
         SleevenoteError::NotFound(_) => SPOTIFY_NOT_FOUND,
         SleevenoteError::InvalidId(_) => SPOTIFY_INVALID_QUERY,
         SleevenoteError::Timeout(_) => SPOTIFY_TIMEOUT,
+        // 🔑 Retried ALREADY, by the client, and still failed -- so both
+        // attempts lost. Measured transient at ~14% per attempt, which is why
+        // this tells the user to try again where ExtractionEmpty below tells
+        // them not to bother. Logged at warn, not error: a flake that survived
+        // one retry is notable, not a service defect.
+        SleevenoteError::ExtractionSilent(_) => {
+            tracing::warn!("sleevenote extraction silent after retry: {err}");
+            SPOTIFY_LOOKUP_FLAKY
+        },
         // Not the caller's fault and not retryable by them: the service
         // stopped matching Spotify's page. Offering a retry would be a lie.
+        //
+        // 🪤 Reads almost identically to ExtractionSilent above and means
+        // something different: that one is a flake, this one is extraction
+        // genuinely no longer matching. Do not merge the arms.
         SleevenoteError::ExtractionEmpty(_) => {
             tracing::error!("sleevenote extraction returned nothing: {err}");
             SPOTIFY_LOOKUP_BROKEN

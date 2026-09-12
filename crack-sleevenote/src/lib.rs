@@ -58,7 +58,7 @@ pub mod model;
 
 pub use client::{
     CacheStatus, Client, ClientBuilder, Health, BASE_URL_ENV, CACHE_HEADER, DEFAULT_BASE_URL,
-    DEFAULT_TIMEOUT, ID_PATTERN, TIMEOUT_SECS_ENV,
+    DEFAULT_EXTRACTION_SILENT_RETRIES, DEFAULT_TIMEOUT, ID_PATTERN, TIMEOUT_SECS_ENV,
 };
 pub use error::{Error, ErrorBody, ErrorCode, ErrorDetail, Result};
 pub use model::{
