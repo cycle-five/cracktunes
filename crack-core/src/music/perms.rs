@@ -12,7 +12,7 @@
 //!   would be strictly worse for the user than playing silently.
 
 use poise::serenity_prelude as serenity;
-use serenity::all::{Cache, ChannelId, GenericChannelId, GuildId, Permissions, UserId};
+use serenity::all::{Cache, ChannelId, GenericChannelId, GuildId, Permissions, RoleId, UserId};
 
 use crate::errors::{CrackedError, PermScope};
 
@@ -142,10 +142,34 @@ pub fn compute(
     }
 }
 
+/// Whether every role the permission math depends on is actually in the cache.
+///
+/// 🪤 `Guild::user_permissions_in` has no way to say "unknown role". When a
+/// role id on the member is absent from `guild.roles`, or the `@everyone` role
+/// (whose id is the guild id) is, serenity substitutes `Permissions::empty()`
+/// for it and only logs — see `user_permissions_in_` in serenity's
+/// `model/guild/mod.rs`, the `@everyone role missing` error and the
+/// `has non-existent role` warning. The bitset that comes back is then
+/// **under**-reported, which would make the gate refuse a join that would have
+/// worked and send an admin to grant a permission they had already granted.
+/// That is the fail-open constraint violated in the worst direction, so both
+/// cache readers below check this first and give up rather than guess.
+///
+/// Takes a lookup closure rather than a `Guild` so the rule is pure and
+/// testable without a populated [`Cache`].
+pub fn roles_resolvable(
+    guild_id: GuildId,
+    member_roles: &[RoleId],
+    is_known: impl Fn(RoleId) -> bool,
+) -> bool {
+    is_known(RoleId::new(guild_id.get())) && member_roles.iter().all(|r| is_known(*r))
+}
+
 /// Read the bot's permissions out of the cache.
 ///
 /// Returns `None` when the guild, the bot's own member, or the text channel is
-/// not cached — callers treat that as "assume fine" rather than refusing.
+/// not cached, or when the bot's roles cannot all be resolved — callers treat
+/// that as "assume fine" rather than refusing.
 ///
 /// No HTTP on this path. `GatewayIntents::GUILD_MEMBERS` is enabled
 /// (`config.rs:321`), so the bot's own `Member` is cached and permissions
@@ -161,6 +185,12 @@ pub fn resolve(
     let bot_id = cache.current_user().id;
     let guild = cache.guild(guild_id)?;
     let bot = guild.members.get(&bot_id)?;
+
+    // An under-reported bitset is worse than no answer at all: see
+    // [`roles_resolvable`].
+    if !roles_resolvable(guild_id, &bot.roles, |r| guild.roles.get(&r).is_some()) {
+        return None;
+    }
 
     let text_chan = guild.channels.get(&text_channel.expect_channel())?;
     let text_granted = guild.user_permissions_in(text_chan, bot);
@@ -246,8 +276,8 @@ pub fn ensure_can_join(
 /// exists to prevent, one layer down.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JoinLookup {
-    /// Genuine ignorance — the guild is not cached, or the bot's own member
-    /// is not cached.
+    /// Genuine ignorance — the guild is not cached, the bot's own member is
+    /// not cached, or one of the bot's roles cannot be resolved.
     Unknown,
     /// The guild **is** cached and the channel is absent from it, which
     /// Discord does exactly when the bot lacks `VIEW_CHANNEL` there.
@@ -294,6 +324,11 @@ fn join_lookup(cache: &Cache, guild_id: GuildId, channel_id: ChannelId) -> JoinL
     let Some(bot) = guild.members.get(&bot_id) else {
         return JoinLookup::Unknown;
     };
+    // An under-reported bitset would refuse a join that works: see
+    // [`roles_resolvable`].
+    if !roles_resolvable(guild_id, &bot.roles, |r| guild.roles.get(&r).is_some()) {
+        return JoinLookup::Unknown;
+    }
     match guild.channels.get(&channel_id) {
         Some(chan) => JoinLookup::Granted(guild.user_permissions_in(chan, bot)),
         None => JoinLookup::Withheld,
@@ -303,7 +338,7 @@ fn join_lookup(cache: &Cache, guild_id: GuildId, channel_id: ChannelId) -> JoinL
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ::serenity::all::{ChannelId, GenericChannelId};
+    use ::serenity::all::{ChannelId, GenericChannelId, RoleId};
 
     fn text_ch() -> GenericChannelId {
         GenericChannelId::new(1)
@@ -431,6 +466,35 @@ mod tests {
             !rendered.contains("Speak"),
             "Speak is unknown, not missing: {rendered}"
         );
+    }
+
+    #[test]
+    fn a_role_the_cache_does_not_have_makes_the_bitset_untrustworthy() {
+        let gid = serenity::all::GuildId::new(10);
+        let everyone = RoleId::new(10);
+        let extra = RoleId::new(11);
+        let known = [everyone, extra];
+
+        assert!(
+            roles_resolvable(gid, &[extra], |r| known.contains(&r)),
+            "every role resolves, so the bitset can be trusted"
+        );
+        // 🪤 serenity substitutes Permissions::empty() for a role it cannot
+        // find and only logs, so the bitset comes back *under*-reported and
+        // the gate would refuse a join that works.
+        assert!(
+            !roles_resolvable(gid, &[RoleId::new(99)], |r| known.contains(&r)),
+            "an unknown bot role must not be silently treated as no permissions"
+        );
+    }
+
+    #[test]
+    fn a_missing_everyone_role_makes_the_bitset_untrustworthy() {
+        let gid = serenity::all::GuildId::new(10);
+        // @everyone carries the guild's baseline grants and its id is the
+        // guild id; without it every permission looks denied.
+        assert!(!roles_resolvable(gid, &[], |_| false));
+        assert!(roles_resolvable(gid, &[], |r| r == RoleId::new(10)));
     }
 
     #[test]
