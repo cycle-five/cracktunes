@@ -295,26 +295,16 @@ mod tests {
 /// playlists routed through a fourth path. Pinning the whole surface instead
 /// immediately turned up two more entry points.
 ///
-/// So this DERIVES the set of join sites by scanning source, and asserts each
-/// one it finds is gated. Adding a fourth join site fails this test until it
-/// is gated too.
+/// A first version of this module still got that shape wrong one level up:
+/// it derived the join sites *within* a file, but the file list itself was
+/// three `include_str!` literals, hand-chosen the same way the old play-
+/// history count was. A join added in a fourth *file* would never be
+/// scanned, and the test would pass silently. So this walks `src/` at test
+/// time instead — the file set is discovered, not listed. Adding a fourth
+/// join site, in any file, fails this test until it is gated too.
 #[cfg(test)]
 mod join_site_guard_tests {
-    /// Every file that may contain a `songbird` join. Adding a file here is
-    /// cheap; forgetting one is the failure mode, so the assertion below also
-    /// requires the total to be non-zero — a scan that silently finds nothing
-    /// and passes is worse than no test at all (ct#448, #449, #471).
-    const SOURCES: &[(&str, &str)] = &[
-        (
-            "commands/music_utils.rs",
-            include_str!("../commands/music_utils.rs"),
-        ),
-        (
-            "commands/music/gp_persist.rs",
-            include_str!("../commands/music/gp_persist.rs"),
-        ),
-        ("poise_ext.rs", include_str!("../poise_ext.rs")),
-    ];
+    use std::path::{Path, PathBuf};
 
     /// The call that must precede every join.
     const GATE: &str = "ensure_can_join(";
@@ -323,6 +313,41 @@ mod join_site_guard_tests {
     /// a `let Some(..) = ... else` or a log line in between, tight enough that
     /// a gate on an unrelated earlier join cannot satisfy a later one.
     const WINDOW: usize = 1200;
+
+    /// This file, relative to `src/`. Excluded from the walk below: it
+    /// contains the literal `GATE` string (and this very sentence), so
+    /// scanning it would let it satisfy its own check no matter what the
+    /// rest of the tree looks like. The three-file hand-list this replaced
+    /// happened to be safe from that trap by omission, not by design --
+    /// this exclusion makes it deliberate.
+    const SELF_PATH: &str = "music/perms.rs";
+
+    /// Every `.rs` file under `src/`, found by walking the tree rather than
+    /// naming files up front -- a hard-coded list is the exact defect this
+    /// test exists to prevent, moved up one level.
+    fn all_source_files() -> Vec<PathBuf> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut out = Vec::new();
+        walk(&root, &root, &mut out);
+        out
+    }
+
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let rel = path.strip_prefix(root).unwrap_or(&path);
+                if rel != Path::new(SELF_PATH) {
+                    out.push(path);
+                }
+            }
+        }
+    }
 
     /// Finds `.join(` calls that are songbird joins. String `.join(" ")` and
     /// friends are excluded by requiring the first argument to not be a
@@ -344,21 +369,35 @@ mod join_site_guard_tests {
 
     #[test]
     fn every_songbird_join_is_preceded_by_the_gate() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files = all_source_files();
+        assert!(
+            !files.is_empty(),
+            "the walk from {} found zero .rs files -- the scan has stopped \
+             checking, not that there is nothing left to check. Fix the walk \
+             before trusting this test again.",
+            root.display()
+        );
+
         let mut checked = 0usize;
-        for (name, src) in SOURCES {
-            for at in songbird_join_offsets(src) {
+        for path in &files {
+            let rel = path.strip_prefix(&root).unwrap_or(path);
+            let src = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
+            for at in songbird_join_offsets(&src) {
                 checked += 1;
                 let start = at.saturating_sub(WINDOW);
                 let before = &src[start..at];
                 assert!(
                     before.contains(GATE),
-                    "{name}: a songbird join at byte {at} is not preceded by \
+                    "{}: a songbird join at byte {at} is not preceded by \
                      `{GATE}` within {WINDOW} bytes.\n\n\
                      Every join must be gated, or a guild missing CONNECT or \
                      SPEAK gets songbird's ~10s JoinError::TimedOut, which \
                      names nothing. Add the gate rather than widening this \
                      test.\n\n\
                      Context:\n{}",
+                    rel.display(),
                     &src[start.max(at.saturating_sub(300))..at]
                 );
             }
@@ -366,9 +405,10 @@ mod join_site_guard_tests {
         assert!(
             checked >= 3,
             "expected at least the 3 known songbird join sites, scanned \
-             {checked} -- the scan found less than it should, which means it \
-             has stopped checking rather than that the joins are gone. Fix \
-             the scan."
+             {checked} across {} files -- the scan found less than it \
+             should, which means it has stopped checking rather than that \
+             the joins are gone. Fix the scan.",
+            files.len()
         );
     }
 }
