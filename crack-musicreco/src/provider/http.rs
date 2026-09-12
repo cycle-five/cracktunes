@@ -113,6 +113,31 @@ pub(crate) fn encode_query(s: &str) -> String {
         .collect()
 }
 
+/// Reject a malformed base URL at construction time, rather than letting
+/// reqwest's deferred parsing surface it as a transient `Error::Transport` on
+/// the FIRST request. For a throttled or metered provider that spends a
+/// slot -- MusicBrainz's 1/sec gate, musicatlas's 100/day budget -- on a
+/// request that never leaves the process, and invites a retrying orchestrator
+/// to repeat a fault retrying cannot fix.
+///
+/// # Errors
+/// [`Error::Config`] if `base_url` does not parse as a URL, or its scheme is
+/// neither `http` nor `https`.
+pub(crate) fn validate_base_url(provider: &'static str, base_url: &str) -> Result<()> {
+    let url = reqwest::Url::parse(base_url).map_err(|e| {
+        Error::Config(format!(
+            "{provider}: base url {base_url:?} does not parse: {e}"
+        ))
+    })?;
+    if url.scheme() != "http" && url.scheme() != "https" {
+        return Err(Error::Config(format!(
+            "{provider}: base url {base_url:?} must be http or https, got {:?}",
+            url.scheme()
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,5 +217,26 @@ mod tests {
         );
         let err = inner.expect_err("a hung peer must produce an error, not a response");
         assert!(err.is_timeout(), "expected a timeout error, got {err}");
+    }
+
+    /// L4 / Ruling 30 (Task 5 review): a malformed base url used to slip
+    /// through construction and surface as a transient `Transport` error --
+    /// spending a throttled/metered slot -- on the first real request.
+    #[test]
+    fn validate_base_url_accepts_http_and_https() {
+        assert!(validate_base_url("test", "http://example.com").is_ok());
+        assert!(validate_base_url("test", "https://example.com/v1").is_ok());
+    }
+
+    #[test]
+    fn validate_base_url_rejects_an_unparseable_url() {
+        let err = validate_base_url("test", "not a url").expect_err("must be rejected");
+        assert!(matches!(err, Error::Config(_)), "got {err}");
+    }
+
+    #[test]
+    fn validate_base_url_rejects_a_non_http_scheme() {
+        let err = validate_base_url("test", "ftp://example.com").expect_err("must be rejected");
+        assert!(matches!(err, Error::Config(_)), "got {err}");
     }
 }

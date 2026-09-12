@@ -69,9 +69,15 @@ impl MusicAtlas {
         //
         // It also made `new`'s documented `# Errors` unreachable: the function
         // said it could return `Error::Config` and no input could make it.
+        let base_url = base_url.into();
+        // 🪤 Ruling 30 (Task 5 review): reqwest defers URL parsing to
+        // `send()`, so a malformed base URL used to surface as a transient
+        // `Error::Transport` on the FIRST call -- spending one of the
+        // 100/day metered budget on a request that never leaves.
+        http::validate_base_url(NAME, &base_url)?;
         Ok(Self {
             api_key: api_key.into(),
-            base_url: base_url.into(),
+            base_url,
             http: http::client(NAME, http::USER_AGENT)?,
         })
     }
@@ -410,6 +416,15 @@ mod tests {
     /// even exercise. What THIS test pins is that the header's VALUE is
     /// actually carried through into the returned error, which nothing
     /// enforces at compile time.
+    /// L4 / Ruling 30 (Task 5 review): rejected at construction, not spent as
+    /// a metered call that never leaves the process.
+    #[test]
+    fn with_base_url_rejects_a_malformed_url() {
+        let err = MusicAtlas::with_base_url("k", "not a url")
+            .expect_err("must be rejected before any request");
+        assert!(matches!(err, Error::Config(_)), "got {err}");
+    }
+
     #[tokio::test]
     async fn a_429_carries_the_providers_own_retry_after() {
         let (base, _, _seen) = serve(vec![Canned {

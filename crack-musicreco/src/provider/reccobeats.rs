@@ -78,8 +78,14 @@ impl ReccoBeats {
     /// # Errors
     /// [`Error::Config`] if the HTTP client cannot be built.
     pub fn with_base_url(base_url: impl Into<String>) -> Result<Self> {
+        let base_url = base_url.into();
+        // 🪤 Ruling 30 (Task 5 review): reqwest defers URL parsing to
+        // `send()`, so a malformed base URL used to surface as a transient
+        // `Error::Transport` on the FIRST call instead of failing at
+        // construction, where it belongs.
+        http::validate_base_url(NAME, &base_url)?;
         Ok(Self {
-            base_url: base_url.into(),
+            base_url,
             http: http::client(NAME, http::USER_AGENT)?,
         })
     }
@@ -243,6 +249,15 @@ mod tests {
         200,
         r#"{"content":[{"id":"uuid-2","trackTitle":"Mulla","artists":[{"name":"Kashcoming"}],"isrc":"USA2P2511772","href":"https://open.spotify.com/track/7x"}]}"#,
     );
+
+    /// L4 / Ruling 30 (Task 5 review): rejected at construction, not spent as
+    /// a request that never leaves the process.
+    #[test]
+    fn with_base_url_rejects_a_malformed_url() {
+        let err = ReccoBeats::with_base_url("not a url")
+            .expect_err("must be rejected before any request");
+        assert!(matches!(err, Error::Config(_)), "got {err}");
+    }
 
     #[tokio::test]
     async fn search_then_recommend_takes_two_calls_and_yields_search_queries() {

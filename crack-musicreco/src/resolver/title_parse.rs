@@ -101,9 +101,19 @@ impl SeedResolver for TitleParseResolver {
     async fn resolve(&self, raw: &RawTrack) -> Result<Option<Seed>> {
         // A supplied artist is a fact, not a guess.
         if let Some(artist) = raw.artist.as_ref().filter(|a| !a.trim().is_empty()) {
+            let title = clean_title(&raw.title);
+            // 🪤 L6 (Task 5 review): a supplied artist with a title that
+            // cleans to empty (e.g. just "(Official Video)") used to produce
+            // a seed with an empty title -- a guaranteed non-match for every
+            // downstream consumer (MusicBrainz, musicatlas, ReccoBeats).
+            // Fixed at the source so every caller of this resolver gets it,
+            // not just the ones that remember to check.
+            if title.is_empty() {
+                return Ok(None);
+            }
             return Ok(Some(Seed {
                 artist: artist.trim().to_string(),
-                title: clean_title(&raw.title),
+                title,
                 mbid: None,
                 confidence: 100,
             }));
@@ -238,5 +248,25 @@ mod tests {
         assert_eq!(seed.artist, "Real Artist");
         assert_eq!(seed.title, "Anything At All");
         assert_eq!(seed.confidence, 100, "a supplied artist is not a guess");
+    }
+
+    /// L6 (Task 5 review): before this, `artist: Some("Queen")` with a title
+    /// of just `"(Official Video)"` produced `Seed { title: "", .. }` -- a
+    /// query with nothing to search for.
+    #[tokio::test]
+    async fn a_supplied_artist_with_a_title_that_cleans_to_empty_yields_no_seed() {
+        let r = TitleParseResolver::new();
+        let got = r
+            .resolve(&RawTrack {
+                title: "(Official Video)".into(),
+                artist: Some("Queen".into()),
+                uploader: None,
+            })
+            .await
+            .unwrap();
+        assert!(
+            got.is_none(),
+            "an empty-after-cleaning title has nothing to search for"
+        );
     }
 }
