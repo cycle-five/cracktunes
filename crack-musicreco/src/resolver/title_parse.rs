@@ -21,8 +21,14 @@ const NOISE_WORDS: &[&str] = &[
     "visualizer",
 ];
 
-/// Strip "(Official Music Video)" / "[HD]" style suffixes, then a trailing
-/// "ft. …" / "feat. …" clause.
+/// A featured-artist credit. Dropped from the seed wherever it appears: for a
+/// recording lookup "Get Lucky" is the title and "Pharrell Williams" is a
+/// credit, and carrying the credit into the query is what makes MusicBrainz
+/// miss.
+const FEAT_MARKERS: &[&str] = &["feat.", "feat ", "ft.", "ft "];
+
+/// Strip "(Official Music Video)" / "[HD]" style suffixes and featured-artist
+/// credits, whether bracketed or trailing plain text.
 fn clean_title(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut depth = 0usize;
@@ -30,13 +36,31 @@ fn clean_title(s: &str) -> String {
     for ch in s.chars() {
         match ch {
             '(' | '[' => {
+                // 🪤 Only the OUTERMOST bracket resets the buffer. Clearing on
+                // every open bracket discarded everything before a nested one,
+                // so "Song (Live (2011))" came out as "Song (2011)()" -- the
+                // outer text lost and an empty pair emitted.
+                if depth == 0 {
+                    buf.clear();
+                } else {
+                    buf.push(ch);
+                }
                 depth += 1;
-                buf.clear();
             },
             ')' | ']' if depth > 0 => {
                 depth -= 1;
+                if depth > 0 {
+                    buf.push(ch);
+                    continue;
+                }
                 let lower = buf.to_lowercase();
-                if !NOISE_WORDS.iter().any(|w| lower.contains(w)) {
+                let is_noise = NOISE_WORDS.iter().any(|w| lower.contains(w))
+                    // 🪤 "(feat. Pharrell Williams)" is at least as common on
+                    // YouTube as the trailing plain-text form, and the marker
+                    // pass below cannot see it: that looks for " feat. " with a
+                    // LEADING SPACE, and here the marker is preceded by '('.
+                    || FEAT_MARKERS.iter().any(|m| lower.trim_start().starts_with(m));
+                if !is_noise {
                     out.push('(');
                     out.push_str(&buf);
                     out.push(')');
@@ -48,8 +72,8 @@ fn clean_title(s: &str) -> String {
         }
     }
     let lower = out.to_lowercase();
-    for marker in [" ft. ", " feat. ", " ft ", " feat "] {
-        if let Some(i) = lower.find(marker) {
+    for marker in FEAT_MARKERS {
+        if let Some(i) = lower.find(&format!(" {marker}")) {
             out.truncate(i);
             break;
         }
@@ -144,10 +168,59 @@ mod tests {
                 Some((a, t)) => {
                     let s = got.unwrap_or_else(|| panic!("no seed for {title}"));
                     assert_eq!((s.artist.as_str(), s.title.as_str()), (a, t), "{title}");
+                    // 🪤 Was untested. Without this, changing the parse path's
+                    // confidence from 50 to 0 -- or to 99, which WOULD clear a
+                    // metered floor -- passed both tests in this file.
+                    assert_eq!(
+                        s.confidence, 50,
+                        "a parse is a guess; only MusicBrainz raises this ({title})"
+                    );
                 },
                 None => assert!(got.is_none(), "{title} should yield no seed"),
             }
         }
+    }
+
+    /// 🪤 Every fixture above splits on `" - "`, whose surrounding spaces
+    /// `split_once` already consumes -- so deleting `.trim()` from the artist
+    /// chunk produced byte-identical output on all of them and would have
+    /// shipped silently. This is the one shape that needs it: padding that the
+    /// separator itself does not absorb.
+    #[tokio::test]
+    async fn padding_around_the_separator_is_trimmed() {
+        let r = TitleParseResolver::new();
+        let seed = r
+            .resolve(&raw("  Pink Floyd   -   Time  "))
+            .await
+            .unwrap()
+            .expect("a padded title is still a title");
+        assert_eq!(seed.artist, "Pink Floyd");
+        assert_eq!(seed.title, "Time");
+    }
+
+    /// Two defects found in review, neither reachable from the brief's
+    /// fixtures.
+    #[tokio::test]
+    async fn brackets_that_nest_and_credits_that_hide_in_them() {
+        let r = TitleParseResolver::new();
+
+        // `buf.clear()` on every open bracket lost the outer content:
+        // this used to come out as "Live Aid (1985)()".
+        let seed = r
+            .resolve(&raw("Queen - Live Aid (Wembley (1985))"))
+            .await
+            .unwrap()
+            .expect("nested brackets still parse");
+        assert_eq!(seed.title, "Live Aid (Wembley (1985))");
+
+        // The trailing-marker pass searches for " feat. " with a leading space,
+        // so a credit opening a bracket was invisible to it.
+        let seed = r
+            .resolve(&raw("Daft Punk - Get Lucky (feat. Pharrell Williams)"))
+            .await
+            .unwrap()
+            .expect("a bracketed credit still parses");
+        assert_eq!(seed.title, "Get Lucky");
     }
 
     #[tokio::test]
