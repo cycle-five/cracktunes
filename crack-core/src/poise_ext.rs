@@ -28,6 +28,14 @@ pub trait ContextExt<'ctx> {
     /// [`ResolvedTrack`] -- so without this overload that path has no way to log
     /// a play at all.
     fn send_resolved_metadata_write_msg(self, resolved: &ResolvedTrack<'_>);
+    /// Log a whole resolved list: playlists, albums, and multi-track searches.
+    ///
+    /// 🔑 The list paths are not reachable from
+    /// [`ContextExt::send_resolved_metadata_write_msg`] one track at a time by
+    /// the caller, because they branch internally (low-queue vs bulk) and
+    /// would need the call duplicated per branch. Sending the whole slice once,
+    /// right after resolution, covers every branch by construction.
+    fn send_resolved_metadata_write_msgs(self, resolved: &[ResolvedTrack<'_>]);
     /// The one place a [`MetadataMsg`] is actually put on the worker channel.
     /// Both senders above funnel through it so the "no channel means no pool,
     /// degrade quietly" rule lives in exactly one place.
@@ -223,6 +231,22 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         };
         let username = Some(self.author().name.to_string());
         self.queue_metadata_write(aux_metadata, Some(resolved.user_id), username);
+    }
+
+    fn send_resolved_metadata_write_msgs(self, resolved: &[ResolvedTrack<'_>]) {
+        // 🪤 `self.author().id`, NOT `t.user_id`. On the list paths
+        // `with_user_id` is applied per branch AFTER resolution -- in one
+        // branch not until the enqueue loop -- so reading it here would log
+        // every playlist track under a default id. The invoking user is the
+        // requester for every track in a list play by definition.
+        let user_id = Some(self.author().id);
+        let username = Some(self.author().name.to_string());
+        for track in resolved {
+            let Some(aux_metadata) = track.metadata.clone() else {
+                continue;
+            };
+            self.queue_metadata_write(aux_metadata, user_id, username.clone());
+        }
     }
 
     /// Return the call that the bot is currently in, if it is in one.
