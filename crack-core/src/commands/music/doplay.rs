@@ -262,14 +262,35 @@ pub async fn playytplaylist(
 
 use crate::commands::resume_internal;
 use crate::messaging::interface as msg_int;
+use crate::music::perms::TextPerms;
 use crate::poise_ext::PoiseContextExt;
 use crack_types::to_fixed;
 
-pub async fn build_play_embed(
-    queue: &[TrackHandle],
+/// The note appended to a play reply when the bot cannot fully use the text
+/// channel. `None` means say nothing — either everything is granted, or the
+/// cache could not tell us, and a false warning is worse than silence.
+///
+/// This is a note on a reply that was being sent anyway, never a message of
+/// its own: it costs nothing extra, stays next to the action that prompted
+/// it, and disappears the moment the permission is granted, with no state to
+/// keep and nothing to expire.
+fn degraded_notice(text: Option<&TextPerms>) -> Option<String> {
+    let text = text?;
+    if text.is_whole() {
+        return None;
+    }
+    Some(format!(
+        "⚠️ Missing **{}** here — I won't post now-playing. `/diagnose` for detail.",
+        text.missing()
+    ))
+}
+
+pub async fn build_play_embed<'a>(
+    queue: &'a [TrackHandle],
     mode: Mode,
     query_type: NewQueryType,
-) -> Result<CreateEmbed<'_>, Error> {
+    text: Option<&TextPerms>,
+) -> Result<CreateEmbed<'a>, Error> {
     // let estimated_time = calculate_time_until_play(&queue, Mode::Next).await.unwrap_or_default();
     // let track = queue.first().unwrap();
     // let embed = build_queued_embed(PLAY_TOP, track, estimated_time).await;
@@ -333,6 +354,10 @@ pub async fn build_play_embed(
                 .description("No tracks in queue!")
                 .footer(CreateEmbedFooter::new("No tracks in queue!"))
         },
+    };
+    let embed = match degraded_notice(text) {
+        Some(note) => embed.field("⚠️ Limited permissions", note, false),
+        None => embed,
     };
     Ok(embed)
 }
@@ -438,7 +463,11 @@ pub async fn play_internal(
     // Ah! Also, sometimes after a long queue process the now playing message says that it's already
     // X seconds into the song, so this is definitely after the section of the code that
     // takes a long time.
-    let embed = build_play_embed(&queue, mode, query_type).await?;
+    let text_perms = ctx.guild_id().and_then(|gid| {
+        crate::music::perms::resolve(ctx.cache(), gid, ctx.channel_id(), ctx.author().id)
+            .map(|p| p.text)
+    });
+    let embed = build_play_embed(&queue, mode, query_type, text_perms.as_ref()).await?;
 
     let _after_embed = std::time::Instant::now();
 
@@ -803,4 +832,52 @@ pub async fn queue_aux_metadata(
     let queue = call.lock().await.queue().current_queue();
     update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
     Ok(())
+}
+
+#[cfg(test)]
+mod degraded_perms_notice_tests {
+    use super::*;
+    use crate::music::perms::{TextPerms, TEXT_REQUIRED};
+    use poise::serenity_prelude::all::{GenericChannelId, Permissions};
+
+    fn perms(granted: Permissions) -> TextPerms {
+        TextPerms {
+            channel: GenericChannelId::new(1),
+            granted,
+        }
+    }
+
+    #[test]
+    fn whole_text_perms_add_no_notice() {
+        let note = degraded_notice(Some(&perms(TEXT_REQUIRED)));
+        assert!(
+            note.is_none(),
+            "a guild with every permission must see nothing: {note:?}"
+        );
+    }
+
+    #[test]
+    fn absent_perms_add_no_notice() {
+        // `resolve` returned None (cache miss). Fail open: say nothing.
+        assert!(degraded_notice(None).is_none());
+    }
+
+    #[test]
+    fn a_missing_embed_links_is_named_in_the_notice() {
+        let note = degraded_notice(Some(&perms(TEXT_REQUIRED - Permissions::EMBED_LINKS)))
+            .expect("degraded perms must produce a notice");
+        assert!(note.contains("Embed Links"), "got {note}");
+        assert!(
+            note.contains("/diagnose"),
+            "the notice must point at the diagnostic: {note}"
+        );
+    }
+
+    #[test]
+    fn several_missing_permissions_are_all_named() {
+        let note = degraded_notice(Some(&perms(Permissions::VIEW_CHANNEL)))
+            .expect("degraded perms must produce a notice");
+        assert!(note.contains("Send Messages"), "got {note}");
+        assert!(note.contains("Embed Links"), "got {note}");
+    }
 }
