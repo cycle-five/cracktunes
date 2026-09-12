@@ -54,6 +54,12 @@ pub async fn summon_internal(
     channel: Option<Channel>,
     channel_id_str: Option<String>,
 ) -> Result<(), Error> {
+    // A voice handshake can outlive Discord's three-second interaction
+    // deadline -- songbird waits a full 10s before giving up -- so defer
+    // before touching it. Without this a slow or refused join answers an
+    // already-dead token: the user sees "The application did not respond"
+    // and the eventual reply 404s.
+    ctx.defer().await?;
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let manager = ctx.data().songbird.clone();
     let guild = ctx.guild().ok_or(CrackedError::NoGuildCached)?.clone();
