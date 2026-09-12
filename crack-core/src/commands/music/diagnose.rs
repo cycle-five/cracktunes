@@ -123,8 +123,17 @@ pub async fn diagnose(ctx: Context<'_>) -> Result<(), Error> {
         Some(p) => render(&p),
         // Fail open in the wording too: say we could not read, not that
         // something is wrong.
-        None => "I couldn't read my own permissions from cache just now — \
-                 try again in a moment."
+        //
+        // 🪤 Not "try again in a moment". The commonest way to land here is a
+        // thread: threads live in `guild.threads`, not `guild.channels`, so
+        // `resolve` finds no channel and gives up, and waiting changes
+        // nothing. A retry that can never succeed is a worse answer than no
+        // answer. Resolving threads is not a copy change -- posting in one
+        // needs SEND_MESSAGES_IN_THREADS rather than SEND_MESSAGES, so
+        // `TEXT_REQUIRED` would have to vary by channel type.
+        None => "I couldn't read my own permissions for this channel. That \
+                 usually means it's a thread, or a channel I can't see — try \
+                 running this in a regular text channel in this server."
             .to_string(),
     };
     ctx.say(out).await?;

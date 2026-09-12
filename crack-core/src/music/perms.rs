@@ -652,7 +652,16 @@ mod tests {
 /// history count was. A join added in a fourth *file* would never be
 /// scanned, and the test would pass silently. So this walks `src/` at test
 /// time instead — the file set is discovered, not listed. Adding a fourth
-/// join site, in any file, fails this test until it is gated too.
+/// join site anywhere in `crack-core` fails this test until it is gated too.
+///
+/// 🪤 Anywhere in `crack-core`, and nowhere else. `crack-types` also depends
+/// on songbird, so a join added there is NOT guarded by this. The walk is
+/// not simply widened to the workspace root because the matcher below is not
+/// songbird-aware: `crack-sleevenote/src/client.rs` calls
+/// `self.join(&["health"])` on a URL builder, whose first argument is not a
+/// string literal either, and every such call would fail this test. Widening
+/// the walk means teaching the matcher what a songbird join looks like
+/// first.
 #[cfg(test)]
 mod join_site_guard_tests {
     use std::path::{Path, PathBuf};
@@ -661,8 +670,12 @@ mod join_site_guard_tests {
     const GATE: &str = "ensure_can_join(";
 
     /// How far back from a join to look for its gate. Generous enough to span
-    /// a `let Some(..) = ... else` or a log line in between, tight enough that
-    /// a gate on an unrelated earlier join cannot satisfy a later one.
+    /// a `let Some(..) = ... else` or a log line in between.
+    ///
+    /// 🪤 It does NOT pair a gate with its own join. Any two joins within
+    /// 1200 bytes of each other share a window, so an earlier join's gate
+    /// satisfies a later one. What this catches is an *ungated* join, not a
+    /// mis-paired one -- and no window size fixes that, only parsing would.
     const WINDOW: usize = 1200;
 
     /// This file, relative to `src/`. Excluded from the walk below: it
@@ -700,6 +713,20 @@ mod join_site_guard_tests {
         }
     }
 
+    /// Round a raw byte offset down to a char boundary.
+    ///
+    /// 🪤 `at - WINDOW` is arithmetic on bytes and can land inside a
+    /// multi-byte character. This repo puts 🪤, ⚠️ and ❌ in comments
+    /// routinely, so that is a question of when, not whether. Slicing there
+    /// panics with `str`'s byte-index error, which replaces the report this
+    /// test exists to produce with noise about UTF-8.
+    fn floor_boundary(src: &str, mut i: usize) -> usize {
+        while i > 0 && !src.is_char_boundary(i) {
+            i -= 1;
+        }
+        i
+    }
+
     /// Finds `.join(` calls that are songbird joins. String `.join(" ")` and
     /// friends are excluded by requiring the first argument to not be a
     /// literal.
@@ -716,6 +743,26 @@ mod join_site_guard_tests {
             from = at + ".join(".len();
         }
         out
+    }
+
+    #[test]
+    fn a_window_edge_inside_a_multibyte_character_reports_instead_of_panicking() {
+        // 🪤 The window edge is byte arithmetic, and this repo puts 🪤, ⚠️
+        // and ❌ in comments routinely, so it lands mid-character sooner or
+        // later. A raw slice there panics with `str`'s byte-index error,
+        // replacing the report this guard exists to print with noise about
+        // UTF-8 -- the test fails, but for the wrong reason and with the
+        // wrong message.
+        let src = "🪤 ensure_can_join( .join(x)";
+        for i in 1..4 {
+            assert!(!src.is_char_boundary(i), "byte {i} is inside the trap");
+            assert_eq!(floor_boundary(src, i), 0);
+            // The point: this does not panic.
+            let _ = &src[floor_boundary(src, i)..];
+        }
+        // A boundary is left exactly where it is.
+        assert_eq!(floor_boundary(src, 4), 4);
+        assert_eq!(floor_boundary(src, 0), 0);
     }
 
     #[test]
@@ -737,7 +784,7 @@ mod join_site_guard_tests {
                 .unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
             for at in songbird_join_offsets(&src) {
                 checked += 1;
-                let start = at.saturating_sub(WINDOW);
+                let start = floor_boundary(&src, at.saturating_sub(WINDOW));
                 let before = &src[start..at];
                 assert!(
                     before.contains(GATE),
@@ -749,7 +796,7 @@ mod join_site_guard_tests {
                      test.\n\n\
                      Context:\n{}",
                     rel.display(),
-                    &src[start.max(at.saturating_sub(300))..at]
+                    &src[floor_boundary(&src, start.max(at.saturating_sub(300)))..at]
                 );
             }
         }
