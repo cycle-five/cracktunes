@@ -33,7 +33,12 @@ jobs:
     # branch where it would succeed: a PR build pushed under `push: true`
     # publishes unreviewed code to cyclefive/cracktunes. docker.yml (GHCR)
     # has carried this same guard all along; only this file lost it.
-    if: github.event_name == 'push' || (github.event_name == 'workflow_call' && github.event.inputs.trigger == 'build')
+    #
+    # The old second clause (`event_name == 'workflow_call' &&
+    # inputs.trigger == 'build'`) could never be true -- a called workflow sees
+    # its caller's event name, and no `trigger` input exists (actionlint flags
+    # it). It also refused `workflow_dispatch`. Same fix as docker.yml.
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       packages: write
@@ -71,3 +76,17 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # 🔑 Read-only use of the cache docker.yml writes. This file had no
+          # cache at all, so every tag push recompiled the whole bot from
+          # scratch for an image whose layers already existed: v0.9.8 took 26m
+          # here while docker.yml's build of the same commit took 3s.
+          #
+          # Same Dockerfile, same `target: runner`, same context -- the layer
+          # keys are identical, so the GHCR build's cache is this build's
+          # cache. No `cache-to`: two writers racing one scope is what
+          # docker.yml's own duplicate master build was doing.
+          #
+          # On a master push this still compiles (it starts at once, while
+          # ci_workflow's Docker job waits ~12m for Build and Lint), but the
+          # apk and sqlx-cli layers above `COPY . .` now come from cache.
+          cache-from: type=gha,scope=runner

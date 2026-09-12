@@ -1,14 +1,23 @@
 name: Docker Workflow
 
+# 🪤 No `push: branches: [master]` here. `ci_workflow.yml` already calls this
+# file on every master push, gated on Build and Lint passing. With this file's
+# own master trigger as well, every merge built and pushed the SAME image to
+# the SAME tags twice, concurrently, both writing one cache scope: measured on
+# ce9225b, 25m42s via ci_workflow and 25m standalone. The standalone copy also
+# had no concurrency group, so a superseded commit (aaa29b4, whose CI run was
+# cancelled) still got a full 27-minute build.
+#
+# Tags stay: ci_workflow triggers on branches only, and the tag build is what
+# produces the vX.Y.Z image the compose files pin to. It is a retag, not a
+# rebuild -- v0.9.8's image step took 3s with every layer CACHED.
+#
+# There was also a `pull_request` trigger. The job's `if` refused every such
+# event, so it did nothing except add a skipped run to every PR.
 on:
   workflow_dispatch:
   push:
-    branches:
-      - 'master'
     tags: ['v*.*.*']
-  pull_request:
-    branches:
-      - 'master'
   workflow_call:
 
 env:
@@ -19,7 +28,14 @@ jobs:
   push:
     name: Build & Push Docker Image
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || (github.event_name == 'workflow_call' && github.event.inputs.trigger == 'build')
+    # Was `event_name == 'push' || (event_name == 'workflow_call' &&
+    # inputs.trigger == 'build')`. The second clause could never be true: a
+    # called workflow sees its CALLER's event name, never 'workflow_call', and
+    # nothing passes a `trigger` input. It also refused `workflow_dispatch`, so
+    # the manual trigger at the top of this file silently skipped.
+    #
+    # Kept as a guard rather than dropped: a PR build must never push.
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       packages: write
