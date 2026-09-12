@@ -22,8 +22,29 @@ pub const TEXT_REQUIRED: Permissions = Permissions::VIEW_CHANNEL
     .union(Permissions::SEND_MESSAGES)
     .union(Permissions::EMBED_LINKS);
 
-/// Voice permissions a join needs. Missing either blocks playback outright.
-pub const VOICE_REQUIRED: Permissions = Permissions::CONNECT.union(Permissions::SPEAK);
+/// Permissions a voice join needs. Missing any of them blocks it outright.
+///
+/// 🪤 `VIEW_CHANNEL` is in here, not only in [`TEXT_REQUIRED`]. It is required
+/// to *initiate* a connection, which is the only way a bot ever gets into a
+/// voice channel: it sends a voice state update over the gateway, and Discord
+/// validates that against VIEW_CHANNEL as well as CONNECT, then silently
+/// drops it.
+///
+/// Note this is NOT the same as "cannot be present in". Hiding a voice
+/// channel while granting CONNECT is a deliberate pattern -- members who
+/// cannot see it can still be dragged in by someone with MOVE_MEMBERS and
+/// then talk normally. That escape hatch does not exist for a bot: there is
+/// nothing to drag until it is already in voice, and it cannot get there by
+/// itself. So for our purposes the channel is unreachable, and the refusal
+/// names the permission that would actually fix it.
+///
+/// Classified as text-only degradation ("I can play, I just cannot announce")
+/// until production proved otherwise: SHAMELESS 21+, 2026-09-12, where
+/// Discord reported CONNECT: YES, SPEAK: YES, VIEW_CHANNEL: NO and the join
+/// died in songbird's ~10s timeout while this gate said everything was fine.
+pub const VOICE_REQUIRED: Permissions = Permissions::VIEW_CHANNEL
+    .union(Permissions::CONNECT)
+    .union(Permissions::SPEAK);
 
 /// The bot's permissions as they bear on playing music in one guild.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -659,6 +680,39 @@ mod tests {
     #[test]
     fn everything_granted_earns_no_refusal() {
         assert!(voice_refusal(voice_ch(), VOICE_REQUIRED).is_none());
+    }
+
+    /// 🪤 Written with literal permissions rather than `VOICE_REQUIRED - X`.
+    /// Every other refusal test derives its input from the constant, so they
+    /// move with it and cannot notice it being wrong -- all 36 passed both
+    /// before and after `VIEW_CHANNEL` was added to it. A test defined in
+    /// terms of the value under test checks an identity, not a fact.
+    #[test]
+    fn connect_and_speak_without_view_channel_still_blocks_the_join() {
+        let granted = Permissions::CONNECT.union(Permissions::SPEAK);
+        let err = voice_refusal(voice_ch(), granted).expect("VIEW_CHANNEL is missing");
+        match err {
+            CrackedError::MissingBotPermissions {
+                scope,
+                channel,
+                missing,
+            } => {
+                assert_eq!(scope, PermScope::Voice);
+                assert_eq!(channel, voice_ch().widen());
+                assert_eq!(missing, Permissions::VIEW_CHANNEL);
+            },
+            other => panic!("expected MissingBotPermissions, got {other:?}"),
+        }
+    }
+
+    /// The other direction, also spelled out, so the pair pins the exact
+    /// boundary Discord enforces rather than the one we happen to declare.
+    #[test]
+    fn view_channel_connect_and_speak_together_earn_no_refusal() {
+        let granted = Permissions::VIEW_CHANNEL
+            .union(Permissions::CONNECT)
+            .union(Permissions::SPEAK);
+        assert!(voice_refusal(voice_ch(), granted).is_none());
     }
 
     #[test]
