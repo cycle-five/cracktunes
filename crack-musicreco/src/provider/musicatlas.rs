@@ -11,6 +11,10 @@ pub const DEFAULT_BASE_URL: &str = "https://musicatlas.ai";
 /// SAME body as a bad key, so omitting this looks exactly like a bad credential.
 pub const USER_AGENT: &str = concat!("cracktunes/", env!("CARGO_PKG_VERSION"));
 
+/// Ceiling for one call. This runs on the track-end path, so a hung peer must
+/// not hold up the next song.
+const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 #[derive(Debug, Serialize)]
 struct Request<'a> {
     artist: &'a str,
@@ -74,6 +78,20 @@ impl MusicAtlas {
         // said it could return `Error::Config` and no input could make it.
         let http = reqwest::Client::builder()
             .user_agent(USER_AGENT)
+            // 🪤 reqwest follows redirects by default, and this provider is
+            // metered at 100 calls/day with no header reporting the remainder.
+            // A 302 anywhere upstream -- canonicalisation, a load-balancer
+            // quirk -- turns one logical call into two physical ones and
+            // silently halves the daily budget, with nothing to see it by.
+            // Verified: an identical client against a mock returning 302
+            // issued two requests.
+            //
+            // A redirect we did not expect is a fact worth surfacing, not
+            // something to quietly obey.
+            .redirect(reqwest::redirect::Policy::none())
+            // A hung peer would otherwise stall `recommend()` forever rather
+            // than surfacing `Transport`, and this sits on the track-end path.
+            .timeout(REQUEST_TIMEOUT)
             .build()
             .map_err(|e| Error::Config(format!("could not build the {NAME} HTTP client: {e}")))?;
         Ok(Self {
@@ -113,6 +131,18 @@ impl crate::provider::Recommender for MusicAtlas {
             })?;
 
         let status = resp.status().as_u16();
+        // 🪤 Read BEFORE the body: `resp.text()` consumes the response, so a
+        // header not taken here is gone. `Retry-After` was being discarded
+        // this way, and the 429 arm then hardcoded `None` -- throwing away the
+        // provider's own answer to "when may I try again" on the one provider
+        // where that answer costs something to guess wrong.
+        let retry_after = resp
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .map(std::time::Duration::from_secs);
+
         let body = resp.text().await.map_err(|source| Error::Transport {
             provider: NAME,
             source,
@@ -127,7 +157,29 @@ impl crate::provider::Recommender for MusicAtlas {
         if status == 429 {
             return Err(Error::RateLimited {
                 provider: NAME,
-                retry_after: None,
+                retry_after,
+            });
+        }
+        // Redirects are not followed (see the client builder), so a 3xx
+        // arrives here intact rather than as a second billed request.
+        if (300..400).contains(&status) {
+            return Err(Error::UnexpectedBody {
+                provider: NAME,
+                message: format!(
+                    "{status} redirect, not followed -- following it would spend a second \
+                     metered call. Check the base url."
+                ),
+            });
+        }
+        // 🪤 Before this, a 500 with a non-JSON body ("Internal Server Error")
+        // fell through to the parse below and became `UnexpectedBody`, which
+        // `is_transient()` reports as FALSE -- so a plain outage was
+        // classified permanent and never retried. Server faults are the
+        // textbook transient case.
+        if status >= 500 {
+            return Err(Error::RateLimited {
+                provider: NAME,
+                retry_after,
             });
         }
 
@@ -198,12 +250,29 @@ mod tests {
                     .get(n)
                     .copied()
                     .unwrap_or((200, r#"{"success":true,"matches":[]}"#));
-                let mut buf = [0u8; 2048];
-                let read = s.read(&mut buf).await.unwrap_or(0);
+                // 🪤 Read until the end of the request head rather than once.
+                // A single `read` is not guaranteed to deliver it all -- that
+                // holds today only because these payloads are tiny and travel
+                // over loopback, which is a property of the test environment,
+                // not of TCP.
+                let mut raw = Vec::new();
+                let mut buf = [0u8; 1024];
+                loop {
+                    match s.read(&mut buf).await {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            raw.extend_from_slice(&buf[..n]);
+                            if raw.windows(4).any(|w| w == b"\r\n\r\n") {
+                                break;
+                            }
+                        },
+                        Err(_) => break,
+                    }
+                }
                 recorded
                     .lock()
                     .expect("test mutex")
-                    .push(String::from_utf8_lossy(&buf[..read]).into_owned());
+                    .push(String::from_utf8_lossy(&raw).into_owned());
                 let r = format!(
                     "HTTP/1.1 {code} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
@@ -239,6 +308,110 @@ mod tests {
         assert_eq!(out.len(), 1, "the match with no youtube id is dropped");
         assert_eq!(out[0].youtube_id(), Some("vid1"));
         assert_eq!(out[0].source, "musicatlas");
+        // 🪤 Was unasserted. The fixture distinguishes the two fields ("A"
+        // and "T"), so swapping `artist: m.title, title: m.artist` in the map
+        // passed every test in this file -- and a swapped seed is a wrong
+        // search on every subsequent provider.
+        assert_eq!(out[0].artist, "A", "artist must come from the artist field");
+        assert_eq!(out[0].title, "T", "title must come from the title field");
+    }
+
+    /// 🪤 `want` was never actually exercised. Every other fixture yields at
+    /// most one playable match, so `.take(want)`, `.take(want - 1)` and no
+    /// `.take` at all produced identical output. This is the shape that can
+    /// tell them apart: more playable matches than asked for.
+    #[tokio::test]
+    async fn want_is_a_ceiling_and_it_is_exact() {
+        const THREE: (u16, &str) = (
+            200,
+            r#"{"success":true,"matches":[
+            {"artist":"A","title":"T","platform_ids":{"youtube":"v1"}},
+            {"artist":"B","title":"U","platform_ids":{"youtube":"v2"}},
+            {"artist":"C","title":"V","platform_ids":{"youtube":"v3"}}]}"#,
+        );
+        let (base, _, _seen) = serve(vec![THREE]).await;
+        let p = MusicAtlas::with_base_url("k", base).expect("client builds");
+        let out = p.recommend(&seed(), 2).await.unwrap();
+        assert_eq!(out.len(), 2, "asked for 2 of 3 playable matches");
+        // In order, so a `.take` that also reorders is caught.
+        assert_eq!(out[0].youtube_id(), Some("v1"));
+        assert_eq!(out[1].youtube_id(), Some("v2"));
+    }
+
+    /// One logical call must cost exactly one metered request. A followed
+    /// redirect would make it two, against a 100/day budget with no header
+    /// reporting the remainder.
+    ///
+    /// 🪤 The first version of this test served a 302 with **no `Location`
+    /// header**, and so proved nothing: reqwest has nothing to follow, and the
+    /// test passed identically with the redirect policy removed. A sabotage run
+    /// caught that. The redirect must be one a client would actually take.
+    #[tokio::test]
+    async fn a_redirect_is_refused_rather_than_followed() {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let served = Arc::clone(&hits);
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut s, _)) = l.accept().await else {
+                    return;
+                };
+                let n = served.fetch_add(1, Ordering::SeqCst);
+                let mut buf = [0u8; 2048];
+                let _ = s.read(&mut buf).await;
+                // First request: redirect to ourselves, with a real `Location`
+                // so a permissive client follows it. Second: a normal success,
+                // which is what makes a followed redirect look like it worked.
+                let r = if n == 0 {
+                    format!(
+                        "HTTP/1.1 302 Found\r\nLocation: http://{addr}/v1/recommend\r\n\
+                         Content-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                } else {
+                    let body = r#"{"success":true,"matches":[]}"#;
+                    format!(
+                        "HTTP/1.1 200 X\r\nContent-Type: application/json\r\n\
+                         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    )
+                };
+                let _ = s.write_all(r.as_bytes()).await;
+                let _ = s.shutdown().await;
+            }
+        });
+
+        let p = MusicAtlas::with_base_url("k", format!("http://{addr}")).expect("client builds");
+        let got = p.recommend(&seed(), 5).await;
+
+        // 🔑 The assertion that matters is the REQUEST COUNT, not the returned
+        // value: following the redirect yields `Ok([])`, a perfectly plausible
+        // answer, while having spent two of 100 daily calls.
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "one logical call must cost exactly one metered request; a followed \
+             redirect spends two and looks like success"
+        );
+        assert!(
+            matches!(got, Err(Error::UnexpectedBody { .. })),
+            "an unfollowed 3xx should surface, got {got:?}"
+        );
+    }
+
+    /// A server fault is the textbook transient case. A 500 with a non-JSON
+    /// body used to fall through to the JSON parse and become
+    /// `UnexpectedBody`, which `is_transient()` reports as false -- so a plain
+    /// outage was classified permanent and never retried.
+    #[tokio::test]
+    async fn a_server_fault_is_retryable() {
+        let (base, _, _seen) = serve(vec![(500, "Internal Server Error")]).await;
+        let p = MusicAtlas::with_base_url("k", base).expect("client builds");
+        let err = p.recommend(&seed(), 5).await.expect_err("500 is an error");
+        assert!(
+            err.is_transient(),
+            "a 5xx must be retryable, got {err} (is_transient=false)"
+        );
     }
 
     /// 🪤 THE TRAP. A status-only client reads this as success.
@@ -318,5 +491,42 @@ mod tests {
             req.contains(USER_AGENT),
             "User-Agent is not ours (expected {USER_AGENT}):\n{req}"
         );
+    }
+    /// 🪤 `Retry-After` was read nowhere and the 429 arm hardcoded `None`,
+    /// throwing away the provider's own answer to "when may I try again" on
+    /// the one provider where guessing wrong costs metered calls.
+    ///
+    /// The header has to be taken BEFORE `resp.text()`, which consumes the
+    /// response -- so this also pins the ordering, not just the parse.
+    #[tokio::test]
+    async fn a_429_carries_the_providers_own_retry_after() {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        tokio::spawn(async move {
+            let Ok((mut s, _)) = l.accept().await else {
+                return;
+            };
+            let mut buf = [0u8; 2048];
+            let _ = s.read(&mut buf).await;
+            let body = r#"{"error":"slow down"}"#;
+            let r = format!(
+                "HTTP/1.1 429 X\r\nRetry-After: 42\r\nContent-Type: application/json\r\n\
+                 Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = s.write_all(r.as_bytes()).await;
+            let _ = s.shutdown().await;
+        });
+
+        let p = MusicAtlas::with_base_url("k", format!("http://{addr}")).expect("client builds");
+        let err = p.recommend(&seed(), 5).await.expect_err("429 is an error");
+        match err {
+            Error::RateLimited { retry_after, .. } => assert_eq!(
+                retry_after,
+                Some(std::time::Duration::from_secs(42)),
+                "the provider said 42 seconds and we must carry that"
+            ),
+            other => panic!("expected RateLimited, got {other}"),
+        }
     }
 }
