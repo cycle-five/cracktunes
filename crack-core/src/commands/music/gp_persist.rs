@@ -654,8 +654,8 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
             // Through the method, not the map: `gp_remove` is the one place a
             // game ends, and it is what releases the playback lease. A raw
             // remove here would leave the guild owned by a game that no longer
-            // exists, and /play refused forever. Its own bookkeeping write is
-            // superseded below: the free function is the authoritative
+            // exists, and /play refused forever. Its own bookkeeping write
+            // is superseded by `abandon_resume`, which owns the authoritative
             // database write for this path, since `gp_remove`'s in-memory
             // `game` reflects the pre-rejoin-failure state.
             abandon_resume(data, pool, guild_id, started_at, text_channel, &ctx.http).await;

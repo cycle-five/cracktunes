@@ -6,9 +6,9 @@
 //! configuration reason is the worst possible diagnostic, because the reason
 //! to run it is that the bot is being silent.
 
-use crate::music::perms::{resolve, MusicPermissions};
+use crate::music::perms::{resolve, MusicPermissions, VoiceCheck};
 use crate::{Context, Error};
-use poise::serenity_prelude::all::Mentionable;
+use poise::serenity_prelude::all::{Mentionable, Permissions};
 
 fn tick(ok: bool) -> &'static str {
     if ok {
@@ -30,14 +30,22 @@ fn render(p: &MusicPermissions) -> String {
             p.text.channel.mention()
         ));
     }
-    if let Some(v) = &p.voice {
-        if !v.can_join() {
-            problems.push(format!(
-                "• **{}** in {} — /play will refuse to connect",
-                v.missing(),
-                v.channel.mention()
-            ));
-        }
+    match &p.voice {
+        VoiceCheck::Resolved(v) if !v.can_join() => problems.push(format!(
+            "• **{}** in {} — /play will refuse to connect",
+            v.missing(),
+            v.channel.mention()
+        )),
+        // 🪤 A channel we cannot see is a problem too, and a different one:
+        // the author IS in a voice channel, and the missing permission is the
+        // one that hid it. Connect and Speak are unknown here, so they are
+        // not named -- see `perms::unreadable_refusal`.
+        VoiceCheck::Unreadable(cid) => problems.push(format!(
+            "• **{}** in {} — I can't even see it, so /play will refuse to connect",
+            Permissions::VIEW_CHANNEL,
+            cid.mention()
+        )),
+        VoiceCheck::Resolved(_) | VoiceCheck::NotInVoice => {},
     }
 
     // All-clear requires that we actually checked both halves. With no voice
@@ -45,7 +53,7 @@ fn render(p: &MusicPermissions) -> String {
     // "all clear" on a voice channel we never looked at would be a lie the
     // user only discovers when /play refuses.
     if problems.is_empty() {
-        if let Some(v) = &p.voice {
+        if let VoiceCheck::Resolved(v) = &p.voice {
             return format!(
                 "✅ All clear — I have everything I need in {} and {}.",
                 p.text.channel.mention(),
@@ -63,14 +71,23 @@ fn render(p: &MusicPermissions) -> String {
         tick(p.text.embed()),
     ));
     match &p.voice {
-        Some(v) => out.push_str(&format!(
+        VoiceCheck::Resolved(v) => out.push_str(&format!(
             "**Voice** {}  {} Connect  {} Speak\n",
             v.channel.mention(),
             tick(v.connect()),
             tick(v.speak()),
         )),
+        // 🪤 Not "you're not in a voice channel" — the author is in one, and
+        // saying otherwise was the false, unactionable answer this state was
+        // added to replace.
+        VoiceCheck::Unreadable(cid) => out.push_str(&format!(
+            "**Voice** {}  {} View Channel — I can't even see that channel, so \
+             I can't check Connect/Speak.\n",
+            cid.mention(),
+            tick(false),
+        )),
         // Absent is not denied.
-        None => out.push_str(
+        VoiceCheck::NotInVoice => out.push_str(
             "**Voice** — you're not in a voice channel, so I can't check \
              Connect/Speak. Join one and run this again.\n",
         ),
@@ -106,8 +123,17 @@ pub async fn diagnose(ctx: Context<'_>) -> Result<(), Error> {
         Some(p) => render(&p),
         // Fail open in the wording too: say we could not read, not that
         // something is wrong.
-        None => "I couldn't read my own permissions from cache just now — \
-                 try again in a moment."
+        //
+        // 🪤 Not "try again in a moment". The commonest way to land here is a
+        // thread: threads live in `guild.threads`, not `guild.channels`, so
+        // `resolve` finds no channel and gives up, and waiting changes
+        // nothing. A retry that can never succeed is a worse answer than no
+        // answer. Resolving threads is not a copy change -- posting in one
+        // needs SEND_MESSAGES_IN_THREADS rather than SEND_MESSAGES, so
+        // `TEXT_REQUIRED` would have to vary by channel type.
+        None => "I couldn't read my own permissions for this channel. That \
+                 usually means it's a thread, or a channel I can't see — try \
+                 running this in a regular text channel in this server."
             .to_string(),
     };
     ctx.say(out).await?;
@@ -129,7 +155,11 @@ mod tests {
 
     #[test]
     fn all_clear_says_so_and_lists_no_problems() {
-        let p = compute(text_ch(), TEXT_REQUIRED, Some((voice_ch(), VOICE_REQUIRED)));
+        let p = compute(
+            text_ch(),
+            TEXT_REQUIRED,
+            VoiceCheck::resolved(voice_ch(), VOICE_REQUIRED),
+        );
         let out = render(&p);
         assert!(out.contains("All clear"), "got {out}");
         assert!(
@@ -143,7 +173,7 @@ mod tests {
         let p = compute(
             text_ch(),
             TEXT_REQUIRED - Permissions::EMBED_LINKS,
-            Some((voice_ch(), VOICE_REQUIRED - Permissions::SPEAK)),
+            VoiceCheck::resolved(voice_ch(), VOICE_REQUIRED - Permissions::SPEAK),
         );
         let out = render(&p);
         assert!(out.contains("2 problems"), "got {out}");
@@ -156,7 +186,7 @@ mod tests {
 
     #[test]
     fn no_voice_channel_asks_the_user_to_join_one_rather_than_reporting_a_denial() {
-        let p = compute(text_ch(), TEXT_REQUIRED, None);
+        let p = compute(text_ch(), TEXT_REQUIRED, VoiceCheck::NotInVoice);
         let out = render(&p);
         // 🪤 Absent is not denied. Rendering this as a missing permission
         // would send someone to grant Connect when Connect is already
@@ -173,10 +203,37 @@ mod tests {
         let p = compute(
             text_ch(),
             TEXT_REQUIRED - Permissions::EMBED_LINKS,
-            Some((voice_ch(), VOICE_REQUIRED)),
+            VoiceCheck::resolved(voice_ch(), VOICE_REQUIRED),
         );
         let out = render(&p);
         assert!(out.contains("1 problem"), "got {out}");
         assert!(!out.contains("1 problems"), "got {out}");
+    }
+
+    #[test]
+    fn a_voice_channel_we_cannot_see_is_named_as_such_not_as_no_voice_channel() {
+        let p = compute(text_ch(), TEXT_REQUIRED, VoiceCheck::Unreadable(voice_ch()));
+        let out = render(&p);
+        // 🪤 The whole point of the third state. Telling someone sitting in a
+        // voice channel that they are not in one is false and unactionable,
+        // and it is what the two-state version did.
+        assert!(
+            !out.contains("not in a voice channel"),
+            "the author IS in one: {out}"
+        );
+        assert!(!out.contains("All clear"), "voice is not fine: {out}");
+        assert!(out.contains("View Channel"), "name the fix: {out}");
+        assert!(out.contains("can't even see"), "say what is wrong: {out}");
+        assert!(
+            out.contains(&format!("<#{}>", voice_ch())),
+            "name the channel: {out}"
+        );
+        assert!(out.contains("1 problem"), "it is a problem: {out}");
+        // Connect and Speak are unknown for a channel Discord never sent us,
+        // so the table must not tick or cross them.
+        assert!(
+            !out.contains("Connect  "),
+            "Connect is unknown, not denied: {out}"
+        );
     }
 }

@@ -200,9 +200,10 @@ impl Display for CrackedError {
                     PermScope::Text => FAIL_MISSING_TEXT_PERMS,
                 };
                 // `missing` renders as permission names via serenity's own
-                // Display: two permissions render as "A and B", three or more as
-                // comma-separated "A, B, and C", so we name all of them without
-                // any joining logic here.
+                // Display: two permissions render as "A and B", three or more
+                // as "A, B and C" -- comma-separated, with no Oxford comma
+                // before the final "and". Either way we name all of them
+                // without any joining logic here.
                 f.write_fmt(format_args!(
                     "{} {} — I'm missing **{}** there.\n\n{}",
                     lead,

@@ -285,6 +285,39 @@ fn degraded_notice(text: Option<&TextPerms>) -> Option<String> {
     ))
 }
 
+/// Where the note has to ride to actually be seen.
+///
+/// 🪤 An embed field is invisible in exactly the case that needs it most. On a
+/// prefix `r!play` in a channel without `EMBED_LINKS`, Discord strips the
+/// embed from the message — and takes "Missing **Embed Links** here" with it.
+/// The one reader who needs that sentence is the only one who never gets it.
+/// Message content is not stripped, so that is where the note goes whenever
+/// `EMBED_LINKS` is among the missing set.
+///
+/// Slash commands are not affected (interaction responses bypass the
+/// channel's permission check), but the note is routed the same way for both:
+/// one rule, and the surviving delivery is correct everywhere.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum NoticeDelivery {
+    /// Embeds render here, so the note rides as a field on the reply's embed,
+    /// next to the queue entry it qualifies.
+    Field(String),
+    /// `EMBED_LINKS` is missing, so the embed may never be shown. The note
+    /// goes in the message content, which always survives.
+    Content(String),
+}
+
+/// Route [`degraded_notice`] to a delivery that will actually be seen.
+fn degraded_delivery(text: Option<&TextPerms>) -> Option<NoticeDelivery> {
+    let note = degraded_notice(text)?;
+    // `text` is Some here: degraded_notice returned a note.
+    if text.is_some_and(|t| !t.embed()) {
+        Some(NoticeDelivery::Content(note))
+    } else {
+        Some(NoticeDelivery::Field(note))
+    }
+}
+
 pub async fn build_play_embed<'a>(
     queue: &'a [TrackHandle],
     mode: Mode,
@@ -355,11 +388,34 @@ pub async fn build_play_embed<'a>(
                 .footer(CreateEmbedFooter::new("No tracks in queue!"))
         },
     };
-    let embed = match degraded_notice(text) {
-        Some(note) => embed.field("⚠️ Limited permissions", note, false),
-        None => embed,
+    let embed = match degraded_delivery(text) {
+        Some(NoticeDelivery::Field(note)) => embed.field("⚠️ Limited permissions", note, false),
+        // Deliberately not attached: the caller puts this one in the message
+        // content, because the embed it would ride on is exactly what Discord
+        // strips when EMBED_LINKS is missing.
+        Some(NoticeDelivery::Content(_)) | None => embed,
     };
     Ok(embed)
+}
+
+/// The whole play reply: the embed, plus the note that cannot ride inside it.
+///
+/// 🪤 Returned as a pair on purpose. The `Content` half exists precisely
+/// because a channel without `EMBED_LINKS` never shows the embed, so handing
+/// a caller only the embed is exactly how that note goes missing. A caller
+/// that drops the second element now has to do it in plain sight.
+pub async fn build_play_reply<'a>(
+    queue: &'a [TrackHandle],
+    mode: Mode,
+    query_type: NewQueryType,
+    text: Option<&TextPerms>,
+) -> Result<(CreateEmbed<'a>, Option<String>), Error> {
+    let content = match degraded_delivery(text) {
+        Some(NoticeDelivery::Content(note)) => Some(note),
+        Some(NoticeDelivery::Field(_)) | None => None,
+    };
+    let embed = build_play_embed(queue, mode, query_type, text).await?;
+    Ok((embed, content))
 }
 
 /// Does the actual playing of the song, all the other commands use this.
@@ -467,11 +523,12 @@ pub async fn play_internal(
         crate::music::perms::resolve(ctx.cache(), gid, ctx.channel_id(), ctx.author().id)
             .map(|p| p.text)
     });
-    let embed = build_play_embed(&queue, mode, query_type, text_perms.as_ref()).await?;
+    let (embed, notice_content) =
+        build_play_reply(&queue, mode, query_type, text_perms.as_ref()).await?;
 
     let _after_embed = std::time::Instant::now();
 
-    let _msg = edit_embed_response2(ctx, embed, search_msg.clone()).await?;
+    let _msg = edit_embed_response2(ctx, embed, search_msg.clone(), notice_content).await?;
 
     // A partial listing is a success with something missing, so it is said
     // after the queue embed rather than instead of it: the recovered tracks are
@@ -879,5 +936,127 @@ mod degraded_perms_notice_tests {
             .expect("degraded perms must produce a notice");
         assert!(note.contains("Send Messages"), "got {note}");
         assert!(note.contains("Embed Links"), "got {note}");
+    }
+
+    #[test]
+    fn a_missing_embed_links_is_delivered_as_content_not_as_an_embed_field() {
+        // 🪤 The one case where an embed field is invisible. On a prefix
+        // `r!play` Discord strips the embed from a message in a channel
+        // without EMBED_LINKS, so a note saying "Missing **Embed Links**
+        // here" attached to that embed reaches nobody -- the reader who needs
+        // it is the only one who never sees it.
+        match degraded_delivery(Some(&perms(TEXT_REQUIRED - Permissions::EMBED_LINKS))) {
+            Some(NoticeDelivery::Content(note)) => {
+                assert!(note.contains("Embed Links"), "got {note}");
+            },
+            other => panic!("a note about EMBED_LINKS must survive the embed: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_degradation_that_still_renders_embeds_rides_in_the_embed() {
+        match degraded_delivery(Some(&perms(TEXT_REQUIRED - Permissions::SEND_MESSAGES))) {
+            Some(NoticeDelivery::Field(note)) => {
+                assert!(note.contains("Send Messages"), "got {note}");
+            },
+            other => panic!("embeds render here, so the note belongs in one: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn whole_perms_are_delivered_nowhere() {
+        assert!(degraded_delivery(Some(&perms(TEXT_REQUIRED))).is_none());
+        assert!(degraded_delivery(None).is_none());
+    }
+}
+
+/// 🪤 The tests above all exercise the private helpers in isolation. Delete
+/// the notice from `build_play_embed` and the `text_perms` resolve at the call
+/// site, and every one of them still passes while the feature does nothing at
+/// all -- which is the same defect as a guard test that asserts a hard-coded
+/// count. These pin the **wiring**: what the built reply actually carries.
+#[cfg(test)]
+mod degraded_notice_wiring_tests {
+    use super::*;
+    use crate::music::perms::{TextPerms, TEXT_REQUIRED};
+    use poise::serenity_prelude::all::{GenericChannelId, Permissions};
+
+    fn perms(granted: Permissions) -> TextPerms {
+        TextPerms {
+            channel: GenericChannelId::new(1),
+            granted,
+        }
+    }
+
+    /// Build the reply the play path would send. An empty queue takes the
+    /// `Ordering::Less` branch, which needs no `TrackHandle` and therefore no
+    /// Discord, no songbird and no network.
+    async fn reply(text: Option<&TextPerms>) -> (String, Option<String>) {
+        let (embed, content) = build_play_reply(
+            &[],
+            Mode::End,
+            NewQueryType(QueryType::Keywords("anything".to_string())),
+            text,
+        )
+        .await
+        .expect("an empty queue still builds a reply");
+        // `CreateEmbed` is a third-party builder with no accessors, so its
+        // own `Serialize` is the only way to read one back. An opaque
+        // payload whose shape we do not own is exactly what `Value` is for.
+        let rendered = serde_json::to_value(&embed)
+            .expect("CreateEmbed serialises")
+            .to_string();
+        (rendered, content)
+    }
+
+    #[tokio::test]
+    async fn a_degraded_text_channel_actually_reaches_the_built_embed() {
+        let (embed, content) =
+            reply(Some(&perms(TEXT_REQUIRED - Permissions::SEND_MESSAGES))).await;
+        assert!(
+            embed.contains("Limited permissions"),
+            "the notice never reached the embed: {embed}"
+        );
+        assert!(embed.contains("Send Messages"), "got {embed}");
+        assert!(
+            content.is_none(),
+            "embeds render here, so nothing needs to escape one: {content:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn whole_text_perms_leave_the_built_reply_unmarked() {
+        let (embed, content) = reply(Some(&perms(TEXT_REQUIRED))).await;
+        assert!(
+            !embed.contains("Limited permissions"),
+            "nothing is wrong, so the embed must say nothing: {embed}"
+        );
+        assert!(content.is_none(), "got {content:?}");
+    }
+
+    #[tokio::test]
+    async fn absent_perms_leave_the_built_reply_unmarked() {
+        // `resolve` returned None (cache miss). Fail open: say nothing.
+        let (embed, content) = reply(None).await;
+        assert!(!embed.contains("Limited permissions"), "got {embed}");
+        assert!(content.is_none(), "got {content:?}");
+    }
+
+    #[tokio::test]
+    async fn a_missing_embed_links_leaves_the_embed_and_rides_in_the_content() {
+        // 🪤 The whole point of I3. This note must NOT be in the embed --
+        // Discord strips the embed in exactly this channel -- and it must be
+        // somewhere the caller can still deliver it.
+        let (embed, content) = reply(Some(&perms(TEXT_REQUIRED - Permissions::EMBED_LINKS))).await;
+        assert!(
+            !embed.contains("Limited permissions"),
+            "an embed that will be stripped must not be the only carrier: {embed}"
+        );
+        let content = content.expect("the note must survive outside the embed");
+        assert!(content.contains("Embed Links"), "got {content}");
+        assert!(
+            content.contains("/diagnose"),
+            "the notice must point at the diagnostic: {content}"
+        );
     }
 }
