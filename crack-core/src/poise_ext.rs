@@ -487,8 +487,24 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let handle = self.send(reply).await?;
         let id = self.get_cache_id();
         if params.cache_msg {
-            let msg = handle.clone().into_message().await?;
-            self.data().add_msg_to_cache_int(id, msg).await;
+            // 🪤 Deliberately not `?`. The message is ALREADY DELIVERED by the
+            // line above; `into_message` is a *follow-up* -- on an application
+            // context it is a fresh `get_response` HTTP call -- and its only
+            // purpose is to let `/clean` find the message later
+            // (`utility/clean.rs` reads `time_ordered_messages`).
+            //
+            // Propagating its failure told every caller that the SEND failed,
+            // after a successful send. A 429 or a transient 5xx on this GET
+            // made `music_utils::announce_join` post a duplicate reply and
+            // `summon_internal`'s `?` raise an error over a correct answer.
+            // Losing a cache entry costs one uncleanable message; reporting a
+            // successful send as a failure costs the user a wrong answer.
+            match handle.clone().into_message().await {
+                Ok(msg) => {
+                    self.data().add_msg_to_cache_int(id, msg).await;
+                },
+                Err(e) => tracing::warn!("Message sent, but caching it for /clean failed: {e:?}"),
+            }
         }
         Ok(handle)
     }
@@ -518,10 +534,26 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         };
         let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
         let handle = self.send(reply).await?;
+        let id = self.get_cache_id();
         if params.cache_msg {
-            let msg = handle.clone().into_message().await?;
-            let id = self.get_cache_id();
-            self.data().add_msg_to_cache_int(id, msg).await;
+            // 🪤 Deliberately not `?`. The message is ALREADY DELIVERED by the
+            // line above; `into_message` is a *follow-up* -- on an application
+            // context it is a fresh `get_response` HTTP call -- and its only
+            // purpose is to let `/clean` find the message later
+            // (`utility/clean.rs` reads `time_ordered_messages`).
+            //
+            // Propagating its failure told every caller that the SEND failed,
+            // after a successful send. A 429 or a transient 5xx on this GET
+            // made `music_utils::announce_join` post a duplicate reply and
+            // `summon_internal`'s `?` raise an error over a correct answer.
+            // Losing a cache entry costs one uncleanable message; reporting a
+            // successful send as a failure costs the user a wrong answer.
+            match handle.clone().into_message().await {
+                Ok(msg) => {
+                    self.data().add_msg_to_cache_int(id, msg).await;
+                },
+                Err(e) => tracing::warn!("Message sent, but caching it for /clean failed: {e:?}"),
+            }
         }
         Ok(handle)
     }

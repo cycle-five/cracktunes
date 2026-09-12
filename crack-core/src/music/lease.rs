@@ -19,42 +19,61 @@
 //! yourself calling `claim_playback` from a new place, you are adding the bug
 //! this design exists to prevent.
 //!
-//! # 🔑 There is exactly one per-guild lock, and that is recent
+//! # 🪤 Lock ordering: queue lease FIRST, songbird's `Call` SECOND
 //!
-//! #434 described this guard as "in the shape of `JoinVCToken`". That type is
-//! gone (#481) -- zero callers workspace-wide -- and with it the second
-//! per-guild lock it was backed by, `Data::join_vc_tokens`.
+//! **Never the reverse.** Two per-guild locks taken in opposite orders by two
+//! concurrent tasks is a textbook AB-BA deadlock.
 //!
-//! That deletion is what lets this section be four paragraphs instead of a
-//! page. The lock-ordering rule that used to live here -- *playback lease
-//! first, join token second, never the reverse* -- guarded against an AB-BA
-//! deadlock between two per-guild locks. With one lock left there is no pair
-//! to order, so the rule is not merely unenforced, it is vacuous.
+//! The two locks are:
 //!
-//! 🪤 Why that rule could never be tested, kept because the reasoning
-//! generalises. The join-token mechanism had no production caller, so any test
-//! that took both locks in one task exercised zero contention and passed as
-//! long as the code compiled. A `debug_assert` fared no better:
-//! `tokio::sync::Mutex` has no task-affinity introspection, so "is this
-//! guild's queue lock contended right now" cannot distinguish *this task is
+//! 1. the exclusion mutex behind [`Data::lock_queue`] (via `queue_locks`)
+//! 2. **songbird's `Arc<Mutex<Call>>`**, which is per-guild — songbird keys one
+//!    `Call` per guild in its manager
+//!
+//! ⚠️ An earlier version of this comment claimed the second lock had been
+//! deleted along with `JoinVCToken` (#481) and that the rule was therefore
+//! vacuous. **That was wrong.** `JoinVCToken` was backed by a *third*,
+//! never-taken lock (`Data::join_vc_tokens`); deleting it changed nothing about
+//! the two locks that are actually taken. The rule below is live and always has
+//! been.
+//!
+//! Every queue-mutating site takes them in this order today, verified:
+//!
+//! ```text
+//! pause.rs:30/32   skip.rs:36/37   skip.rs:123/124   stop.rs:37/38
+//! clear.rs:41/42   remove.rs:60/61 shuffle.rs:38/39  shuffle.rs:80/81
+//! resume.rs:37/39  voteskip.rs:58/59                 track_end.rs:148/152
+//! gp.rs:2296/2298, 3089/3091, 3293/3294, 3421/3422, 3524/3525
+//! ```
+//!
+//! In each, `lock_queue` comes first and `call.lock()` second.
+//!
+//! 🪤 **A reversal does not stay contained to the two commands that caused
+//! it.** songbird dispatches track events inline (see `src/events/store.rs:89`
+//! and `:130`), so a task parked on either lock also blocks that event store's
+//! dispatch loop for the guild: playback and event handling wedge until
+//! restart, not just the two commands.
+//!
+//! # Why this rule is a comment rather than an assertion
+//!
+//! A `debug_assert` in `lock_queue` has no sound signal to check. The only
+//! cheap one available is "is this guild's `Call` mutex contended right now",
+//! via `try_lock` from a task that does not hold it — and `tokio::sync::Mutex`
+//! has no task-affinity introspection, so that cannot distinguish *this task is
 //! mid-violation* from *a sibling command for the same guild is legitimately
-//! mid-mutation*, which is normal -- exclusion is held for milliseconds and
-//! two commands for one guild are free to interleave. **If a second per-guild
-//! lock is ever introduced it needs task-local state set for the lifetime of a
-//! [`QueueGuard`], not a comment.** That is the price of the rule, and it is
-//! why deleting the dead lock was a better answer than writing it down again.
+//! mid-mutation*, which is normal: exclusion is held for milliseconds and two
+//! commands for one guild are free to interleave.
 //!
-//! The reason ordering mattered at all still holds and is worth keeping in
-//! view: songbird dispatches track events inline (see `src/events/store.rs:89`
-//! and `:130`), so a task parked on a per-guild lock also blocks that event
-//! store's dispatch loop for the guild. A deadlock here would not stay
-//! contained to the two commands that caused it.
+//! A sound version needs task-local state set for the lifetime of a
+//! [`QueueGuard`] and checked wherever `Call` is locked. **That is the price of
+//! enforcing this mechanically; until someone pays it, this paragraph is the
+//! only enforcement the rule has.**
 //!
-//! Three independent reviews traced every site that takes the queue lock --
-//! the 16 pre-existing `lock_queue` sites plus the six added alongside this
-//! lease -- and every one drops its [`QueueGuard`] before doing Discord HTTP,
-//! so a guard is never held across a slow `.await`. That property is worth
-//! preserving on its own merits.
+//! Three independent reviews traced every site that takes the queue lock — the
+//! 16 pre-existing `lock_queue` sites plus the six added alongside this lease —
+//! and every one drops its [`QueueGuard`] before doing Discord HTTP, so a guard
+//! is never held across a slow `.await`. That property is worth preserving on
+//! its own merits, and it is why the ordering has not yet bitten in practice.
 
 use crate::errors::CrackedError;
 use crate::Data;

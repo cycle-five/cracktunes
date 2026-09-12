@@ -29,3 +29,6 @@ dist-manifest.json
 # code coverage
 cobertura.xml
 **/*.profraw
+
+# git worktrees created for parallel work; never part of the tree
+.worktrees/

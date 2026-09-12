@@ -1,15 +1,24 @@
-# `Songbird::join` is the raw handshake. It performs no permission check, and
-# after a failure it leaves a connectionless `Call` registered that a later
-# join will find and mistake for success.
+# songbird offers FOUR ways to start a voice connection. None of them checks
+# Discord permissions, and after a failure they leave a connectionless `Call`
+# registered that a later join finds and mistakes for success.
 #
 # `music_utils::join_permitted` is the one wrapper that gates and cleans up,
 # and it takes a `perms::JoinPermit` -- which only `ensure_can_join` can mint.
-# The permit makes the *ordering* a compile error; this rule makes the permit
-# unavoidable, by leaving exactly one door. Without it a new call site could
-# still reach past both by calling the raw method.
+# The permit makes the *ordering* a compile error; these rules make the permit
+# unavoidable by closing every door but one.
+#
+# 🪤 Banning only `Songbird::join` was not enough, and the gap was real rather
+# than theoretical: ~17 sites in this crate hold an `Arc<Mutex<Call>>`, so
+# `call.lock().await.join(chan)` was reachable with no permit and no lint. The
+# source-scanning guard this replaced matched any `.join(` whose first argument
+# was not a string literal, so it *would* have caught that one -- the type plus
+# a single lint was a net regression until these three were added.
 #
 # Three sites once cleaned up after a failed join three different ways (#502);
 # two of the three were wrong. There is now one implementation.
 disallowed-methods = [
     { path = "songbird::Songbird::join", reason = "does not check permissions and leaves a connectionless Call behind on failure; use music_utils::join_permitted, which takes a perms::JoinPermit" },
+    { path = "songbird::Songbird::join_gateway", reason = "same as Songbird::join, and additionally hands back raw gateway state; use music_utils::join_permitted" },
+    { path = "songbird::Call::join", reason = "reachable from any held Arc<Mutex<Call>> and bypasses the permission gate entirely; use music_utils::join_permitted" },
+    { path = "songbird::Call::join_gateway", reason = "reachable from any held Arc<Mutex<Call>> and bypasses the permission gate entirely; use music_utils::join_permitted" },
 ]
