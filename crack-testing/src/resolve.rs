@@ -181,13 +181,22 @@ impl ResolvedTrack<'_> {
         let duration = self.get_duration();
         let dur_len = duration.len() + 3;
         let mut str = format!("{} ({})", title, duration);
-        let len = str.len();
-        if len > 100 - dur_len {
+        if str.len() > 100 - dur_len {
+            // 🪤 Walk BACK to a character boundary and truncate THERE. This
+            // used to compute `truncate_index` and then call
+            // `str.truncate(100 - dur_len)` anyway, discarding it -- so any
+            // title whose cut point landed inside a multi-byte character
+            // panicked `String::truncate`'s `is_char_boundary` assertion.
+            //
+            // YouTube titles are full of multi-byte characters (curly
+            // apostrophes, em dashes, emoji, CJK), and this runs in the
+            // AUTOCOMPLETE task, so the panic killed the suggestion silently:
+            // `/play` showed "Searching..." and then nothing at all.
             let mut truncate_index = 100 - dur_len;
             while !str.is_char_boundary(truncate_index) {
                 truncate_index -= 1;
             }
-            str.truncate(100 - dur_len);
+            str.truncate(truncate_index);
         }
         str
     }
@@ -344,6 +353,73 @@ impl From<&ResolvedTrack<'_>> for SavedTrack {
             title: Some(track.get_title()).filter(|t| !t.is_empty()),
             artist: metadata.as_ref().and_then(|m| m.artist.clone()),
             duration: metadata.and_then(|m| m.duration),
+        }
+    }
+}
+
+#[cfg(test)]
+mod suggest_string_tests {
+    use super::*;
+    use crack_types::AuxMetadata;
+    use std::time::Duration;
+
+    /// Discord caps an autocomplete choice's name, so `suggest_string` trims to
+    /// fit. The trim is by BYTE index, and YouTube titles are full of multi-byte
+    /// characters -- curly apostrophes, em dashes, emoji, CJK.
+    fn track(title: &str, secs: u64) -> ResolvedTrack<'static> {
+        ResolvedTrack::default().with_metadata(AuxMetadata {
+            title: Some(title.to_string()),
+            duration: Some(Duration::from_secs(secs)),
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn a_short_title_is_returned_whole() {
+        let s = track("Short Title", 272).suggest_string();
+        assert!(s.starts_with("Short Title"), "got {s:?}");
+    }
+
+    /// 🔴 THE BUG (ct: autocomplete panic). `suggest_string` walked back to a
+    /// char boundary, computed `truncate_index`, and then truncated at the
+    /// ORIGINAL index anyway -- so any title whose cut point landed inside a
+    /// multi-byte character panicked the autocomplete task.
+    ///
+    /// Production symptom: `/play` in a guild replied "Searching..." and then
+    /// nothing, because the panic killed the autocomplete before a result could
+    /// be returned. Measured on a real Cranberries search.
+    #[test]
+    fn a_multibyte_character_straddling_the_cut_does_not_panic() {
+        // A curly apostrophe (U+2019, 3 bytes) placed so the byte the trim
+        // lands on is INSIDE it.
+        let pad = "The Cranberries Everybody Else Is Doing It So Why Cant We Full Album ";
+        let title = format!("{}{pad}\u{2019}s Greatest Hits", "x".repeat(92 - pad.len()));
+        let s = track(&title, 272).suggest_string();
+        assert!(
+            s.len() <= 100,
+            "must still fit Discord's cap, got {}",
+            s.len()
+        );
+        // The real assertion is that the line above did not panic.
+        assert!(s.is_char_boundary(s.len()), "result must be valid UTF-8");
+    }
+
+    /// Every byte offset is exercised, so a regression cannot hide behind one
+    /// lucky alignment.
+    #[test]
+    fn no_offset_of_a_multibyte_character_can_panic() {
+        for shift in 0..40usize {
+            let title = format!("{}\u{2019}{}", "a".repeat(60 + shift), "b".repeat(60));
+            let s = track(&title, 272).suggest_string();
+            assert!(s.len() <= 100, "shift {shift} produced {} bytes", s.len());
+        }
+        // Multi-byte characters of every UTF-8 width, not just 3-byte ones.
+        for ch in ['\u{00e9}', '\u{2019}', '\u{1F600}'] {
+            for shift in 0..12usize {
+                let title = format!("{}{ch}{}", "a".repeat(85 + shift), "b".repeat(30));
+                let s = track(&title, 272).suggest_string();
+                assert!(s.len() <= 100, "{ch:?} at shift {shift}");
+            }
         }
     }
 }
