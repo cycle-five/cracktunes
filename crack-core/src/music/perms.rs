@@ -284,3 +284,91 @@ mod tests {
         assert!(got.is_none(), "an uncached guild has no answer to give");
     }
 }
+
+/// 🪤 This module exists because the obvious test — "assert the three join
+/// sites are guarded" — is a survey of what was found on 2026-09-12, not a
+/// property. It would pass while a fourth site was live.
+///
+/// That is not hypothetical. In v0.9.5 a guard test for play-history writes
+/// asserted a hard-coded count of the three call sites then known, passed,
+/// and the bug it was written to prevent was live the entire time, because
+/// playlists routed through a fourth path. Pinning the whole surface instead
+/// immediately turned up two more entry points.
+///
+/// So this DERIVES the set of join sites by scanning source, and asserts each
+/// one it finds is gated. Adding a fourth join site fails this test until it
+/// is gated too.
+#[cfg(test)]
+mod join_site_guard_tests {
+    /// Every file that may contain a `songbird` join. Adding a file here is
+    /// cheap; forgetting one is the failure mode, so the assertion below also
+    /// requires the total to be non-zero — a scan that silently finds nothing
+    /// and passes is worse than no test at all (ct#448, #449, #471).
+    const SOURCES: &[(&str, &str)] = &[
+        (
+            "commands/music_utils.rs",
+            include_str!("../commands/music_utils.rs"),
+        ),
+        (
+            "commands/music/gp_persist.rs",
+            include_str!("../commands/music/gp_persist.rs"),
+        ),
+        ("poise_ext.rs", include_str!("../poise_ext.rs")),
+    ];
+
+    /// The call that must precede every join.
+    const GATE: &str = "ensure_can_join(";
+
+    /// How far back from a join to look for its gate. Generous enough to span
+    /// a `let Some(..) = ... else` or a log line in between, tight enough that
+    /// a gate on an unrelated earlier join cannot satisfy a later one.
+    const WINDOW: usize = 1200;
+
+    /// Finds `.join(` calls that are songbird joins. String `.join(" ")` and
+    /// friends are excluded by requiring the first argument to not be a
+    /// literal.
+    fn songbird_join_offsets(src: &str) -> Vec<usize> {
+        let mut out = Vec::new();
+        let mut from = 0;
+        while let Some(rel) = src[from..].find(".join(") {
+            let at = from + rel;
+            let arg = src[at + ".join(".len()..].trim_start();
+            // `.join(" ")`, `.join("\n")`, `.join(", ")` are slice joins.
+            if !arg.starts_with('"') {
+                out.push(at);
+            }
+            from = at + ".join(".len();
+        }
+        out
+    }
+
+    #[test]
+    fn every_songbird_join_is_preceded_by_the_gate() {
+        let mut checked = 0usize;
+        for (name, src) in SOURCES {
+            for at in songbird_join_offsets(src) {
+                checked += 1;
+                let start = at.saturating_sub(WINDOW);
+                let before = &src[start..at];
+                assert!(
+                    before.contains(GATE),
+                    "{name}: a songbird join at byte {at} is not preceded by \
+                     `{GATE}` within {WINDOW} bytes.\n\n\
+                     Every join must be gated, or a guild missing CONNECT or \
+                     SPEAK gets songbird's ~10s JoinError::TimedOut, which \
+                     names nothing. Add the gate rather than widening this \
+                     test.\n\n\
+                     Context:\n{}",
+                    &src[start.max(at.saturating_sub(300))..at]
+                );
+            }
+        }
+        assert!(
+            checked >= 3,
+            "expected at least the 3 known songbird join sites, scanned \
+             {checked} -- the scan found less than it should, which means it \
+             has stopped checking rather than that the joins are gone. Fix \
+             the scan."
+        );
+    }
+}

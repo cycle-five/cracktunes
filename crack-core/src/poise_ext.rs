@@ -683,26 +683,29 @@ impl JoinVCToken {
 pub trait SongbirdManagerExt {
     fn join_vc(
         &self,
+        cache: &serenity::Cache,
         guild_id: JoinVCToken,
         channel_id: serenity::ChannelId,
-    ) -> impl Future<Output = Result<Arc<tokio::sync::Mutex<songbird::Call>>, songbird::error::JoinError>>;
+    ) -> impl Future<Output = Result<Arc<tokio::sync::Mutex<songbird::Call>>, CrackedError>>;
 }
 
 /// Implementation of the extension trait for Songbird's manager.
 impl SongbirdManagerExt for songbird::Songbird {
     async fn join_vc(
         &self,
+        cache: &serenity::Cache,
         JoinVCToken(guild_id, lock): JoinVCToken,
         channel_id: serenity::ChannelId,
-    ) -> Result<Arc<tokio::sync::Mutex<songbird::Call>>, songbird::error::JoinError> {
+    ) -> Result<Arc<tokio::sync::Mutex<songbird::Call>>, CrackedError> {
         let _guard = lock.lock().await;
+        crate::music::perms::ensure_can_join(cache, guild_id, channel_id)?;
         match self.join(guild_id, channel_id).await {
             Ok(call) => Ok(call),
             Err(err) => {
                 // On error, the Call is left in a semi-connected state.
                 // We need to correct this by removing the call from the manager.
                 drop(self.leave(guild_id).await);
-                Err(err)
+                Err(CrackedError::JoinChannelError(err))
             },
         }
     }
