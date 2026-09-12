@@ -199,8 +199,9 @@ impl Display for CrackedError {
                     PermScope::Voice => FAIL_MISSING_VOICE_PERMS,
                     PermScope::Text => FAIL_MISSING_TEXT_PERMS,
                 };
-                // `missing` renders as comma-separated names via serenity's
-                // own Display, so a two-permission refusal names both without
+                // `missing` renders as permission names via serenity's own
+                // Display: two permissions render as "A and B", three or more as
+                // comma-separated "A, B, and C", so we name all of them without
                 // any joining logic here.
                 f.write_fmt(format_args!(
                     "{} {} — I'm missing **{}** there.\n\n{}",
@@ -738,25 +739,43 @@ mod test {
 
     #[test]
     fn a_text_refusal_reads_differently_from_a_voice_one() {
+        // Hold the permission constant so scope is the only variable: both
+        // errors carry SPEAK, differing only in scope. If scope changes the
+        // rendered output, this test fails; if it doesn't, the test passes.
+        let perm = serenity::Permissions::SPEAK;
+        let channel = GenericChannelId::new(1);
+
         let voice = format!(
             "{}",
             CrackedError::MissingBotPermissions {
                 scope: PermScope::Voice,
-                channel: GenericChannelId::new(1),
-                missing: serenity::Permissions::SPEAK,
+                channel,
+                missing: perm,
             }
         );
         let text = format!(
             "{}",
             CrackedError::MissingBotPermissions {
                 scope: PermScope::Text,
-                channel: GenericChannelId::new(1),
-                missing: serenity::Permissions::EMBED_LINKS,
+                channel,
+                missing: perm,
             }
         );
+
+        // Assert the rendered strings differ because of scope
         assert_ne!(
             voice, text,
             "a blocking refusal and a degradation notice must not read alike"
+        );
+
+        // Assert each contains its own scope-specific lead constant
+        assert!(
+            voice.contains(FAIL_MISSING_VOICE_PERMS),
+            "voice refusal must contain the voice lead: {voice}"
+        );
+        assert!(
+            text.contains(FAIL_MISSING_TEXT_PERMS),
+            "text refusal must contain the text lead: {text}"
         );
     }
 }
