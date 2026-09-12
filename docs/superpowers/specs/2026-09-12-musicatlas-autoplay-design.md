@@ -133,7 +133,10 @@ The buffer lives in `Data` beside the existing per-guild maps, keyed by
 ### 4.3 Cache, including negative results
 
 Postgres table `musicatlas_similar`, keyed on the **normalized** `(artist,
-track)` seed:
+track)` seed. Normalization is: trim, collapse internal whitespace to single
+spaces, and lowercase. It exists so `Queen ` and `queen` are one cache entry
+rather than two calls; the un-normalized values are what get sent to the API,
+so normalization affects the key only.
 
 ```sql
 CREATE TABLE musicatlas_similar (
@@ -157,7 +160,19 @@ typed-struct rule still governs the Rust side.
 ### 4.4 Budget
 
 A daily counter of calls made, persisted so a restart cannot reset it into an
-overspend. When the budget is exhausted, autoplay does **not** silently stop:
+overspend:
+
+```sql
+CREATE TABLE musicatlas_budget (
+    day   DATE    PRIMARY KEY,
+    calls INTEGER NOT NULL DEFAULT 0
+);
+```
+
+Incremented in the same transaction that writes the cache row, so a crash
+between the call and the bookkeeping cannot under-count. Rows for past days are
+retained -- they are the only record of actual usage against the quota, since
+the API returns no rate-limit headers. When the budget is exhausted, autoplay does **not** silently stop:
 it turns off for that guild and announces why, reusing the existing
 `announce_autoplay_off` path, which already exists precisely because silent
 disabling was a past complaint.
