@@ -157,11 +157,20 @@ cargo +nightly test --all-features --workspace
 
 Some tests are available inside the `src/tests` folder, others are in their respective
 files. It's recommended that you run the tests before submitting a Pull Request.
-Increasing the test coverage is also welcome. Test coverage is tracked using
-[tarpaulin]().
+Increasing the test coverage is also welcome.
+
+Coverage is **not measured in CI right now.** The tarpaulin job took 9-16
+minutes on every push, gated nothing, and nobody read its output, so it was
+made manual-only (`workflow_dispatch`) in `.github/workflows/coverage.yml`
+pending a faster replacement -- most likely
+[cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov), which uses LLVM
+source-based coverage and runs on stable.
+
+To measure locally in the meantime:
 
 ```shell
-cargo +nightly tarpaulin --all-features --workspace
+cargo install cargo-llvm-cov
+cargo llvm-cov --workspace
 ```
 
 ## Linting

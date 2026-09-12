@@ -1,6 +1,24 @@
 name: coverage
 
-on: [push]
+# 🔴 DISABLED 2026-09-12: manual-only, was `on: [push]`.
+#
+# tarpaulin took 9-16 minutes on EVERY push -- tags included, so it ran twice
+# more during each release -- making it far and away the slowest job in the
+# repo. It gated nothing: master's branch protection lists no required status
+# checks, so a red coverage run never blocked anything, and nobody was reading
+# the codecov result.
+#
+# Kept rather than deleted because the scaffolding below is the expensive part
+# and a replacement needs all of it verbatim: a real Postgres service, `sqlx
+# database create` + `migrate run`, `cargo sqlx prepare`, and the three
+# `db-tests` features. Only the measurement tool should change.
+#
+# 🔑 When replacing it, prefer `cargo-llvm-cov` over tarpaulin: it uses LLVM
+# source-based coverage instead of ptrace, runs on stable rather than nightly,
+# needs no separate instrumented rebuild of the world, and emits lcov for the
+# same codecov upload. Point it at the same env this job already sets up.
+on:
+  workflow_dispatch:
 
 # Least privilege: these jobs only check out and build.
 permissions:
