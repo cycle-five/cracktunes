@@ -494,6 +494,10 @@ pub async fn queue_resolved_list_back(
         return Err(CrackedError::Other("Playlist resolved to no playable tracks").into());
     }
 
+    // Before `split_off`, so the whole list is logged rather than just the
+    // head that gets enqueued first.
+    ctx.send_resolved_metadata_write_msgs(&tracks);
+
     let rest = tracks.split_off(1);
     // Hold the guard across the enqueue AND the snapshot read right after it,
     // closing the window a concurrent command's insert could otherwise land
@@ -612,6 +616,10 @@ pub async fn queue_vec_query_type(
         .map(|t| t.with_user_id(user_id))
         .collect::<Vec<_>>();
 
+    // Logged before the guard is taken: the send is a non-blocking channel
+    // push, and keeping it off the guarded section costs playback nothing.
+    ctx.send_resolved_metadata_write_msgs(&resolved);
+
     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let snapshot = enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await?;
     drop(guard);
@@ -643,6 +651,12 @@ pub async fn queue_query_list_offset(
     // Resolved concurrently; this was a serial round trip per track. Runs
     // before the guard is taken -- see the doc comment above.
     let tracks = ctx.data().ct_client.resolve_track_many(queries).await?;
+
+    // 🪤 Sent HERE, once, rather than inside the two branches below. This
+    // function splits into a low-queue path (`enqueue_resolved_and_snapshot`)
+    // and a bulk loop; a send placed in either one silently misses the other,
+    // which is the shape of the bug this whole fix exists to close.
+    ctx.send_resolved_metadata_write_msgs(&tracks);
 
     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let queue_size = {
@@ -1231,28 +1245,26 @@ mod queue_query_list_offset_ordering_tests {
 
 #[cfg(test)]
 mod play_history_wiring_tests {
-    //! Regression guard for #486.
+    //! Regression guard for #486, REWRITTEN after the first version of it
+    //! passed while the bug was still live.
     //!
-    //! Play history was never written on ANY commit in this repo's history:
-    //! both metadata-write call sites in this file sat commented out behind a
-    //! `// FIXME:`, and the channel-based sender had zero callers, so the
-    //! worker `config.rs` spawns idled forever on a channel nothing fed. The
-    //! visible symptom was not an empty `/playlog` -- it was autoplay failing
-    //! with "I can't pick a next track right now", because
-    //! `track_end.rs::get_recommended_track_query` seeds Spotify from
-    //! `get_last_played_by_guild`, which returned nothing.
+    //! v0.9.3 wired the three single-track call sites and this test asserted
+    //! exactly those three. It was green, and a Spotify playlist still wrote
+    //! nothing -- because the LIST paths (`queue_query_list_offset`,
+    //! `queue_vec_query_type`, `queue_resolved_list_back`) had no metadata
+    //! write at all and the test never knew to look for one.
     //!
-    //! That is invisible by construction: a missing call emits no log line and
-    //! no error, so nothing short of reading the source or querying the
-    //! database reveals it. Hence a source scan rather than a behavioural test
-    //! -- the write path needs a live songbird `Call` and a real voice
-    //! connection to exercise, which is why it went unnoticed for years.
+    //! 🔑 **A source scan is only ever as good as the set it enumerates.** The
+    //! first version hard-coded a count of call sites, so it encoded the
+    //! author's survey rather than the property. This version pins the whole
+    //! enqueue SURFACE: every public enqueue entry point is listed with what it
+    //! is expected to do, and a function added, renamed or removed fails the
+    //! test until someone states which case it is. That is the only shape that
+    //! could have caught the playlist gap.
 
-    /// 🪤 The scan STOPS at the first `#[cfg(test)]`. This test module names
-    /// the very functions it is counting, so scanning the whole file would
-    /// count this doc comment and pass vacuously no matter what the real code
-    /// did -- the same self-referential trap that made an earlier version of
-    /// the #484 guard unable to ever fail.
+    /// 🪤 Stops at the first `#[cfg(test)]`. This module names the very
+    /// functions and senders it counts, so scanning the whole file would match
+    /// its own text and pass no matter what the real code did.
     fn production_source() -> String {
         let src = std::fs::read_to_string("src/music/queue.rs").expect("readable");
         let end = src
@@ -1261,39 +1273,176 @@ mod play_history_wiring_tests {
         src[..end].to_string()
     }
 
-    /// Count call sites, ignoring commented-out ones -- the exact state #486
-    /// was in.
-    fn live_call_sites(src: &str, needle: &str) -> usize {
-        src.lines()
+    /// What each public enqueue entry point is expected to do about history.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Expect {
+        /// Takes `ctx` and must contain a live metadata-sender call.
+        Logs,
+        /// Takes `ctx` but enqueues only via the named entry point, which logs.
+        Delegates(&'static str),
+        /// Takes a `QueueGuard` and NO `ctx`, so it structurally cannot log --
+        /// it has no channel to send on. Its ctx-bearing callers do.
+        Primitive(&'static str),
+        /// Takes `ctx` and deliberately does not log, reason recorded.
+        Exempt(&'static str),
+    }
+    use Expect::{Delegates, Exempt, Logs, Primitive};
+
+    /// THE PINNED SURFACE. Adding a `pub async fn queue_*`/`enqueue_*` without
+    /// adding it here fails `the_enqueue_surface_is_exactly_what_we_reviewed`.
+    const SURFACE: &[(&str, Expect)] = &[
+        ("queue_track_front", Logs),
+        ("queue_track_back", Logs),
+        ("queue_resolved_list_back", Logs),
+        ("queue_vec_query_type", Logs),
+        ("queue_query_list_offset", Logs),
+        ("queue_keyword_list_back", Delegates("queue_vec_query_type")),
+        (
+            "queue_track_ready_front",
+            Primitive("caller: queue_track_front"),
+        ),
+        (
+            "queue_resolved_track_back",
+            Primitive("caller: queue_track_back"),
+        ),
+        (
+            "enqueue_resolved_tracks_back",
+            Primitive("callers: queue_vec_query_type, queue_resolved_list_back"),
+        ),
+        (
+            "enqueue_track_back",
+            Primitive("caller: gp.rs, which keeps submissions out of history before the reveal"),
+        ),
+        (
+            "enqueue_input_back",
+            Primitive(
+                "caller: track_end.rs autoplay. ⚠️ KNOWN GAP: an autoplayed track \
+                 is not logged. Harmless today only because autoplay is dead on \
+                 production (no Spotify client credentials, and Spotify blocked \
+                 new Web API apps ~2025-12). Revisit if autoplay ever returns.",
+            ),
+        ),
+    ];
+
+    /// Any call that puts metadata on the db worker channel.
+    const SENDERS: &[&str] = &[
+        "send_track_metadata_write_msg(",
+        "send_resolved_metadata_write_msg(",
+        "send_resolved_metadata_write_msgs(",
+    ];
+
+    /// Every `pub async fn` in the production source whose name enqueues.
+    fn declared_entry_points(src: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        for line in src.lines() {
+            let line = line.trim_start();
+            let Some(rest) = line.strip_prefix("pub async fn ") else {
+                continue;
+            };
+            let Some(name) = rest.split('(').next() else {
+                continue;
+            };
+            if name.starts_with("queue_") || name.starts_with("enqueue_") {
+                out.push(name.to_owned());
+            }
+        }
+        out
+    }
+
+    /// A function's body: its signature line through to the next `pub async fn`.
+    fn body_of<'a>(src: &'a str, name: &str) -> &'a str {
+        let sig = format!("pub async fn {name}(");
+        let start = src.find(&sig).unwrap_or_else(|| panic!("{name} not found"));
+        let after = &src[start + sig.len()..];
+        match after.find("\npub async fn ") {
+            Some(end) => &after[..end],
+            None => after,
+        }
+    }
+
+    fn has_live_sender(body: &str) -> bool {
+        body.lines()
             .filter(|l| !l.trim_start().starts_with("//"))
-            .filter(|l| l.contains(needle))
-            .count()
+            .any(|l| SENDERS.iter().any(|s| l.contains(s)))
     }
 
     #[test]
-    fn both_queue_paths_still_log_play_history() {
+    fn the_enqueue_surface_is_exactly_what_we_reviewed() {
         let src = production_source();
+        let mut found = declared_entry_points(&src);
+        found.sort();
+        let mut pinned: Vec<String> = SURFACE.iter().map(|(n, _)| (*n).to_owned()).collect();
+        pinned.sort();
 
-        // `queue_track_front`, plus the `ready_query` FALLBACK branch inside
-        // `queue_track_back` -- that branch returns early, so it needs its own
-        // send and is the easiest of the three to drop in a refactor.
-        let ready = live_call_sites(&src, "send_track_metadata_write_msg(");
-        assert!(
-            ready >= 2,
-            "expected at least 2 live send_track_metadata_write_msg call sites \
-             (queue_track_front, and queue_track_back's ready_query fallback), \
-             found {ready}. Play history stops being written and autoplay dies \
-             with it -- silently, with no error in the log."
+        assert_eq!(
+            found, pinned,
+            "the set of public enqueue entry points changed. Add the new one to \
+             SURFACE with Logs / DelegatesTo / Exempt -- an unreviewed enqueue \
+             path is exactly how playlists went unlogged through v0.9.3 while \
+             this test was green."
         );
+    }
 
-        // `queue_track_back`'s fast leg goes ct_client -> ResolvedTrack and
-        // never builds a TrackReadyData, so it cannot use the sender above.
-        let resolved = live_call_sites(&src, "send_resolved_metadata_write_msg(");
+    #[test]
+    fn every_logging_entry_point_actually_sends() {
+        let src = production_source();
+        let mut missing = Vec::new();
+        for (name, expect) in SURFACE {
+            if *expect != Logs {
+                continue;
+            }
+            if !has_live_sender(body_of(&src, name)) {
+                missing.push(*name);
+            }
+        }
         assert!(
-            resolved >= 1,
-            "expected at least 1 live send_resolved_metadata_write_msg call site \
-             (queue_track_back's resolved fast path), found {resolved}. This is \
-             the leg MOST plays take, so losing it loses nearly all history."
+            missing.is_empty(),
+            "these enqueue paths are marked Logs but contain no live metadata \
+             sender, so plays through them vanish silently -- no error, no log \
+             line, just an empty play_log: {missing:#?}"
         );
+    }
+
+    #[test]
+    fn delegation_targets_exist_and_log() {
+        let src = production_source();
+        for (name, expect) in SURFACE {
+            let Delegates(target) = expect else { continue };
+            let entry = SURFACE
+                .iter()
+                .find(|(n, _)| n == target)
+                .unwrap_or_else(|| panic!("{name} delegates to unknown {target}"));
+            assert_eq!(
+                entry.1, Logs,
+                "{name} delegates to {target}, which is not marked Logs -- a \
+                 delegation chain has to end somewhere that writes"
+            );
+            assert!(
+                body_of(&src, name).contains(target),
+                "{name} is marked as delegating to {target} but does not call it"
+            );
+        }
+    }
+
+    /// A `Primitive` is only safe to leave unlogged because it has no `ctx` --
+    /// it physically cannot reach the db channel, so responsibility sits with
+    /// its caller. If one ever gains a `ctx`, that reasoning evaporates and
+    /// this test says so.
+    #[test]
+    fn primitives_really_have_no_context_to_log_with() {
+        let src = production_source();
+        for (name, expect) in SURFACE {
+            let Primitive(note) = expect else { continue };
+            let sig_end = body_of(&src, name)
+                .find(')')
+                .expect("a signature has a closing paren");
+            let params = &body_of(&src, name)[..sig_end];
+            assert!(
+                !params.contains("ctx: CrackContext"),
+                "{name} is marked Primitive ({note}) but now takes a CrackContext -- \
+                 it can reach the db channel, so it must either log or be \
+                 re-marked Exempt with a reason"
+            );
+        }
     }
 }
