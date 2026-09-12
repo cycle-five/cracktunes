@@ -141,6 +141,11 @@ pub async fn do_join(
     tracing::warn!(
         "Joining channel: {channel_name} ({channel_id:?}) in {guild_name} ({guild_id:?})"
     );
+    // Refuse a join Discord would silently drop. Without this the voice state
+    // update is accepted, nothing happens, and songbird reports TimedOut ~10s
+    // later with no mention of a permission.
+    crate::music::perms::ensure_can_join(ctx.cache(), guild_id, channel_id)
+        .map_err(|e| -> Error { Box::new(e) })?;
     let call = match manager.join(guild_id, channel_id).await {
         Ok(call) => call,
         Err(err) => match manager.get(guild_id) {

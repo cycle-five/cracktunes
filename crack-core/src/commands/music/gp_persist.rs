@@ -495,6 +495,31 @@ fn vc_members(guild: &Guild, vc: ChannelId, me: UserId) -> usize {
         .count()
 }
 
+/// Give up on a resume entirely: release the lease, mark the game lost in the
+/// database, and tell the channel. Shared by every failure path in
+/// [`gp_resume_guild`] once the game has been restored to the guild.
+///
+/// Goes through the method, not a raw map removal: `gp_remove` is the one
+/// place a game ends, and it is what releases the playback lease. A raw
+/// remove here would leave the guild owned by a game that no longer exists,
+/// and `/play` refused forever (`music/lease.rs`).
+async fn abandon_resume(
+    data: &Data,
+    pool: &PgPool,
+    guild_id: GuildId,
+    started_at: i64,
+    text_channel: GenericChannelId,
+    http: &Http,
+) {
+    data.gp_remove(guild_id);
+    if let Err(e) = gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await {
+        tracing::warn!("gp: marking the game in {guild_id} lost: {e}");
+    }
+    let _ = text_channel
+        .send_message(http, CreateMessage::new().content(GP_LOST))
+        .await;
+}
+
 /// Bring back the guild's live game, if it has one and it is worth bringing
 /// back. Called for every guild as it arrives after a (re)connect; a guild with
 /// a game already in memory, or with nothing saved, is a quick no.
@@ -612,6 +637,16 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     for idx in owed {
         data.gp_mark_results_posted(guild_id, idx);
     }
+    // No invoking user on this path -- the guild is being restored after a
+    // restart -- so a refusal is reported to the tracing log and the game's
+    // own text channel rather than a reply. It abandons the resume exactly
+    // like a failed join does below: otherwise the guild stays owned by a
+    // game that can never play again (`music/lease.rs`).
+    if let Err(e) = crate::music::perms::ensure_can_join(&ctx.cache, guild_id, voice_channel) {
+        tracing::warn!("gp: cannot rejoin {voice_channel} in {guild_id} to resume: {e}");
+        abandon_resume(data, pool, guild_id, started_at, text_channel, &ctx.http).await;
+        return;
+    }
     let call = match data.songbird.join(guild_id, voice_channel).await {
         Ok(call) => call,
         Err(e) => {
@@ -623,15 +658,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
             // superseded below: the free function is the authoritative
             // database write for this path, since `gp_remove`'s in-memory
             // `game` reflects the pre-rejoin-failure state.
-            data.gp_remove(guild_id);
-            if let Err(e) =
-                gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await
-            {
-                tracing::warn!("gp: marking the game in {guild_id} lost: {e}");
-            }
-            let _ = text_channel
-                .send_message(&ctx.http, CreateMessage::new().content(GP_LOST))
-                .await;
+            abandon_resume(data, pool, guild_id, started_at, text_channel, &ctx.http).await;
             return;
         },
     };

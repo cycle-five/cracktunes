@@ -6,10 +6,11 @@ use crate::messaging::messages::{
     FAIL_GP_NOT_IN_GAME_VC, FAIL_GP_NOT_PLAYING, FAIL_GP_NO_GAME, FAIL_GP_OWNS_PLAYBACK,
     FAIL_GP_OWN_SONG, FAIL_GP_OWN_SONG_FULL, FAIL_GP_STALE_ROUND, FAIL_GP_TOO_MANY,
     FAIL_GP_WINDOW_CLOSED, FAIL_INSERT, FAIL_INVALID_PERMS, FAIL_INVALID_TOPGG_TOKEN,
-    FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED, FAIL_NO_QUERY_PROVIDED, FAIL_NO_SONGBIRD,
-    FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH,
-    FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE, FAIL_WRONG_CHANNEL, GUILD_ONLY, NOT_IN_MUSIC_CHANNEL,
-    NO_CHANNEL_ID, NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA,
+    FAIL_MISSING_TEXT_PERMS, FAIL_MISSING_VOICE_PERMS, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
+    FAIL_NO_QUERY_PROVIDED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
+    FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE,
+    FAIL_WRONG_CHANNEL, GUILD_ONLY, MISSING_PERMS_FIX, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID,
+    NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA,
     NO_USER_AUTOPLAY, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
 use std::borrow::Cow;
@@ -32,6 +33,15 @@ use std::fmt::{self};
 use std::fmt::{Debug, Display};
 use std::process::ExitStatus;
 use tokio::time::error::Elapsed;
+
+/// Which tier a missing permission belongs to. The two are reported
+/// differently because they mean different things: a `Voice` refusal stopped
+/// the command, a `Text` one only limited what it could say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermScope {
+    Text,
+    Voice,
+}
 
 /// A common error enum returned by most of the crate's functions within a [`Result`].
 #[derive(Debug)]
@@ -60,6 +70,11 @@ pub enum CrackedError {
     InvalidIP(&'static str),
     InvalidTopGGToken,
     InvalidPermissions,
+    MissingBotPermissions {
+        scope: PermScope,
+        channel: GenericChannelId,
+        missing: serenity::Permissions,
+    },
     IO(std::io::Error),
     LogChannelWarning(&'static str, GuildId),
     NotInRange(&'static str, isize, isize, isize),
@@ -175,6 +190,27 @@ impl Display for CrackedError {
             Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),
             Self::InvalidTopGGToken => f.write_str(FAIL_INVALID_TOPGG_TOKEN),
             Self::InvalidPermissions => f.write_str(FAIL_INVALID_PERMS),
+            Self::MissingBotPermissions {
+                scope,
+                channel,
+                missing,
+            } => {
+                let lead = match scope {
+                    PermScope::Voice => FAIL_MISSING_VOICE_PERMS,
+                    PermScope::Text => FAIL_MISSING_TEXT_PERMS,
+                };
+                // `missing` renders as permission names via serenity's own
+                // Display: two permissions render as "A and B", three or more as
+                // comma-separated "A, B, and C", so we name all of them without
+                // any joining logic here.
+                f.write_fmt(format_args!(
+                    "{} {} — I'm missing **{}** there.\n\n{}",
+                    lead,
+                    channel.mention(),
+                    missing,
+                    MISSING_PERMS_FIX
+                ))
+            },
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
             Self::Json(err) => f.write_str(&format!("{err}")),
             Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
@@ -680,5 +716,66 @@ mod test {
                 assert_eq!(response1.unwrap().status(), StatusCode::FORBIDDEN);
             },
         }
+    }
+
+    #[test]
+    fn a_voice_refusal_names_every_missing_permission_not_just_the_first() {
+        let err = CrackedError::MissingBotPermissions {
+            scope: PermScope::Voice,
+            channel: GenericChannelId::new(42),
+            missing: serenity::Permissions::CONNECT | serenity::Permissions::SPEAK,
+        };
+        let rendered = format!("{err}");
+        // 🪤 The bug worth guarding is reporting only the first missing
+        // permission: someone grants Connect, tries again, and is refused for
+        // Speak with no warning it was also missing.
+        assert!(rendered.contains("Connect"), "got {rendered}");
+        assert!(rendered.contains("Speak"), "got {rendered}");
+        assert!(
+            rendered.contains("<#42>"),
+            "must name the channel: {rendered}"
+        );
+    }
+
+    #[test]
+    fn a_text_refusal_reads_differently_from_a_voice_one() {
+        // Hold the permission constant so scope is the only variable: both
+        // errors carry SPEAK, differing only in scope. If scope changes the
+        // rendered output, this test fails; if it doesn't, the test passes.
+        let perm = serenity::Permissions::SPEAK;
+        let channel = GenericChannelId::new(1);
+
+        let voice = format!(
+            "{}",
+            CrackedError::MissingBotPermissions {
+                scope: PermScope::Voice,
+                channel,
+                missing: perm,
+            }
+        );
+        let text = format!(
+            "{}",
+            CrackedError::MissingBotPermissions {
+                scope: PermScope::Text,
+                channel,
+                missing: perm,
+            }
+        );
+
+        // Assert the rendered strings differ because of scope
+        assert_ne!(
+            voice, text,
+            "a blocking refusal and a degradation notice must not read alike"
+        );
+
+        // Assert each contains its own scope-specific lead constant
+        assert!(
+            voice.contains(FAIL_MISSING_VOICE_PERMS),
+            "voice refusal must contain the voice lead: {voice}"
+        );
+        assert!(
+            text.contains(FAIL_MISSING_TEXT_PERMS),
+            "text refusal must contain the text lead: {text}"
+        );
     }
 }
