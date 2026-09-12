@@ -1,6 +1,9 @@
 use crate::{Recommendation, Result, Seed};
 use async_trait::async_trait;
 
+// `pub(crate)`, not private: Task 5's MusicBrainz resolver (outside this
+// module's descendants) also needs `http::encode_query`.
+pub(crate) mod http;
 pub mod musicatlas;
 pub mod reccobeats;
 pub use musicatlas::MusicAtlas;

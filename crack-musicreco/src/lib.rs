@@ -15,6 +15,8 @@ pub mod error;
 pub mod model;
 pub mod provider;
 pub mod resolver;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 pub use error::{Error, Result};
 pub use model::{Playable, RawTrack, Recommendation, Seed};

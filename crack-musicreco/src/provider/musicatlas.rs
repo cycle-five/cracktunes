@@ -1,19 +1,13 @@
 //! The primary recommender. The only provider that hands back a directly
 //! playable YouTube id, which is why it is tried first despite being metered.
 
+use super::http;
 use crate::{Error, Playable, Recommendation, Result, Seed};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 const NAME: &str = "musicatlas";
 pub const DEFAULT_BASE_URL: &str = "https://musicatlas.ai";
-/// 🪤 MANDATORY. The API answers a default/absent User-Agent with 403 and the
-/// SAME body as a bad key, so omitting this looks exactly like a bad credential.
-pub const USER_AGENT: &str = concat!("cracktunes/", env!("CARGO_PKG_VERSION"));
-
-/// Ceiling for one call. This runs on the track-end path, so a hung peer must
-/// not hold up the next song.
-const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 #[derive(Debug, Serialize)]
 struct Request<'a> {
@@ -68,36 +62,17 @@ impl MusicAtlas {
     pub fn with_base_url(api_key: impl Into<String>, base_url: impl Into<String>) -> Result<Self> {
         // 🪤 This was `.unwrap_or_default()`, which is not a harmless fallback
         // here. `Client::default()` carries **no User-Agent**, and an explicit
-        // one is a binding constraint of this crate: musicatlas answers an
-        // unrecognised agent with 403 and a bad-key body. So a builder failure
-        // would have produced a client that gets refused, and the refusal would
-        // have read as `InvalidKey` -- sending whoever debugged it to rotate a
-        // credential that was fine.
+        // one is a binding constraint of this crate (see `http::client`): a
+        // builder failure would have produced a client that gets refused, and
+        // the refusal would have read as `InvalidKey` -- sending whoever
+        // debugged it to rotate a credential that was fine.
         //
         // It also made `new`'s documented `# Errors` unreachable: the function
         // said it could return `Error::Config` and no input could make it.
-        let http = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            // 🪤 reqwest follows redirects by default, and this provider is
-            // metered at 100 calls/day with no header reporting the remainder.
-            // A 302 anywhere upstream -- canonicalisation, a load-balancer
-            // quirk -- turns one logical call into two physical ones and
-            // silently halves the daily budget, with nothing to see it by.
-            // Verified: an identical client against a mock returning 302
-            // issued two requests.
-            //
-            // A redirect we did not expect is a fact worth surfacing, not
-            // something to quietly obey.
-            .redirect(reqwest::redirect::Policy::none())
-            // A hung peer would otherwise stall `recommend()` forever rather
-            // than surfacing `Transport`, and this sits on the track-end path.
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .map_err(|e| Error::Config(format!("could not build the {NAME} HTTP client: {e}")))?;
         Ok(Self {
             api_key: api_key.into(),
             base_url: base_url.into(),
-            http,
+            http: http::client(NAME)?,
         })
     }
 }
@@ -136,12 +111,7 @@ impl crate::provider::Recommender for MusicAtlas {
         // this way, and the 429 arm then hardcoded `None` -- throwing away the
         // provider's own answer to "when may I try again" on the one provider
         // where that answer costs something to guess wrong.
-        let retry_after = resp
-            .headers()
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.trim().parse::<u64>().ok())
-            .map(std::time::Duration::from_secs);
+        let retry_after = http::retry_after(resp.headers());
 
         let body = resp.text().await.map_err(|source| Error::Transport {
             provider: NAME,
@@ -218,71 +188,8 @@ impl crate::provider::Recommender for MusicAtlas {
 mod tests {
     use super::*;
     use crate::provider::Recommender as _;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
-    use std::sync::Mutex;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpListener;
-
-    /// Serves canned bodies in order. Returns the base url, a request counter,
-    /// and the raw text of every request received.
-    ///
-    /// Counting REQUESTS is the point: a provider that silently skips or
-    /// double-calls still returns a plausible value. Keeping the request TEXT
-    /// is the same idea one level down -- the only way to assert on what we
-    /// actually sent, rather than on what we got back.
-    async fn serve(
-        bodies: Vec<(u16, &'static str)>,
-    ) -> (String, Arc<AtomicUsize>, Arc<Mutex<Vec<String>>>) {
-        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        let hits = Arc::new(AtomicUsize::new(0));
-        let served = Arc::clone(&hits);
-        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let recorded = Arc::clone(&seen);
-        tokio::spawn(async move {
-            loop {
-                let Ok((mut s, _)) = l.accept().await else {
-                    return;
-                };
-                let n = served.fetch_add(1, Ordering::SeqCst);
-                let (code, body) = bodies
-                    .get(n)
-                    .copied()
-                    .unwrap_or((200, r#"{"success":true,"matches":[]}"#));
-                // 🪤 Read until the end of the request head rather than once.
-                // A single `read` is not guaranteed to deliver it all -- that
-                // holds today only because these payloads are tiny and travel
-                // over loopback, which is a property of the test environment,
-                // not of TCP.
-                let mut raw = Vec::new();
-                let mut buf = [0u8; 1024];
-                loop {
-                    match s.read(&mut buf).await {
-                        Ok(0) => break,
-                        Ok(n) => {
-                            raw.extend_from_slice(&buf[..n]);
-                            if raw.windows(4).any(|w| w == b"\r\n\r\n") {
-                                break;
-                            }
-                        },
-                        Err(_) => break,
-                    }
-                }
-                recorded
-                    .lock()
-                    .expect("test mutex")
-                    .push(String::from_utf8_lossy(&raw).into_owned());
-                let r = format!(
-                    "HTTP/1.1 {code} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                );
-                let _ = s.write_all(r.as_bytes()).await;
-                let _ = s.shutdown().await;
-            }
-        });
-        (format!("http://{addr}"), hits, seen)
-    }
+    use crate::test_support::{serve, Canned};
+    use std::sync::atomic::Ordering;
 
     fn seed() -> Seed {
         Seed {
@@ -348,40 +255,24 @@ mod tests {
     /// caught that. The redirect must be one a client would actually take.
     #[tokio::test]
     async fn a_redirect_is_refused_rather_than_followed() {
-        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        let hits = Arc::new(AtomicUsize::new(0));
-        let served = Arc::clone(&hits);
-        tokio::spawn(async move {
-            loop {
-                let Ok((mut s, _)) = l.accept().await else {
-                    return;
-                };
-                let n = served.fetch_add(1, Ordering::SeqCst);
-                let mut buf = [0u8; 2048];
-                let _ = s.read(&mut buf).await;
-                // First request: redirect to ourselves, with a real `Location`
-                // so a permissive client follows it. Second: a normal success,
-                // which is what makes a followed redirect look like it worked.
-                let r = if n == 0 {
-                    format!(
-                        "HTTP/1.1 302 Found\r\nLocation: http://{addr}/v1/recommend\r\n\
-                         Content-Length: 0\r\nConnection: close\r\n\r\n"
-                    )
-                } else {
-                    let body = r#"{"success":true,"matches":[]}"#;
-                    format!(
-                        "HTTP/1.1 200 X\r\nContent-Type: application/json\r\n\
-                         Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                        body.len()
-                    )
-                };
-                let _ = s.write_all(r.as_bytes()).await;
-                let _ = s.shutdown().await;
-            }
-        });
+        // First request: redirect to ourselves, with a real `Location` so a
+        // permissive client follows it. Second: a normal success, which is
+        // what makes a followed redirect look like it worked.
+        let (base, hits, _seen) = serve(vec![
+            Canned {
+                status: 302,
+                body: "",
+                headers: &[("Location", "http://{addr}/v1/recommend")],
+            },
+            Canned {
+                status: 200,
+                body: r#"{"success":true,"matches":[]}"#,
+                headers: &[],
+            },
+        ])
+        .await;
 
-        let p = MusicAtlas::with_base_url("k", format!("http://{addr}")).expect("client builds");
+        let p = MusicAtlas::with_base_url("k", base).expect("client builds");
         let got = p.recommend(&seed(), 5).await;
 
         // 🔑 The assertion that matters is the REQUEST COUNT, not the returned
@@ -476,6 +367,8 @@ mod tests {
     /// with the header absent.
     #[tokio::test]
     async fn the_request_carries_an_explicit_user_agent() {
+        use crate::provider::http::USER_AGENT;
+
         let (base, _, seen) = serve(vec![OK]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
         let _ = p.recommend(&seed(), 5).await;
@@ -500,25 +393,14 @@ mod tests {
     /// response -- so this also pins the ordering, not just the parse.
     #[tokio::test]
     async fn a_429_carries_the_providers_own_retry_after() {
-        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        tokio::spawn(async move {
-            let Ok((mut s, _)) = l.accept().await else {
-                return;
-            };
-            let mut buf = [0u8; 2048];
-            let _ = s.read(&mut buf).await;
-            let body = r#"{"error":"slow down"}"#;
-            let r = format!(
-                "HTTP/1.1 429 X\r\nRetry-After: 42\r\nContent-Type: application/json\r\n\
-                 Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = s.write_all(r.as_bytes()).await;
-            let _ = s.shutdown().await;
-        });
+        let (base, _, _seen) = serve(vec![Canned {
+            status: 429,
+            body: r#"{"error":"slow down"}"#,
+            headers: &[("Retry-After", "42")],
+        }])
+        .await;
 
-        let p = MusicAtlas::with_base_url("k", format!("http://{addr}")).expect("client builds");
+        let p = MusicAtlas::with_base_url("k", base).expect("client builds");
         let err = p.recommend(&seed(), 5).await.expect_err("429 is an error");
         match err {
             Error::RateLimited { retry_after, .. } => assert_eq!(
