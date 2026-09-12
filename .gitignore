@@ -29,3 +29,11 @@ dist-manifest.json
 # code coverage
 cobertura.xml
 **/*.profraw
+
+# subagent-driven-development scratch: ledger, briefs, reports, review packages.
+# Working notes for executing a plan, not part of what ships. The plan and spec
+# under docs/superpowers/ stay tracked -- those are the durable documents.
+.superpowers/
+
+# git worktrees created for parallel work
+.worktrees/
