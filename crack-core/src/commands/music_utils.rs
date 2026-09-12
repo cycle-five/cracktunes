@@ -87,9 +87,14 @@ pub async fn set_global_handlers_with(
 pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>, CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = ctx.data().songbird.clone();
-    // Return the call if it already exists.
+    // Return the call if it already exists AND actually carries a connection.
     // Otherwise, try to join the channel of the user who sent the message.
-    if let Some(call) = manager.get(guild_id) {
+    //
+    // 🪤 `Songbird::get` alone was the bug: a connectionless Call short-
+    // circuited the join here, so `/play` and `/downvote` bypassed
+    // `ensure_can_join` and enqueued into a driver connected to nothing --
+    // a "Queued" embed and silence, with no error anywhere.
+    if let Some(call) = connected_call(&manager, guild_id, None).await {
         Ok(call)
     } else {
         let channel_id = {
@@ -116,21 +121,41 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
     // Ok(call)
 }
 
-/// The guild's Call, but only if it actually carries a voice connection.
+/// The guild's Call, but only if it actually carries a voice connection --
+/// and, when `expect` is given, only if that connection is to that channel.
 ///
-/// 🪤 `Songbird::get` is not a connection test. songbird registers the Call
-/// when a join is *attempted*, before the gateway handshake, so a join that
-/// timed out still hands one back. `do_join` used to treat that as success:
-/// it registered handlers, sent a "Summoned" embed and logged "joined
-/// channel" while the bot sat in no voice channel at all -- which is why a
-/// total failure left no error anywhere in the log.
-async fn connected_call(
+/// 🪤 `Songbird::get` is not a connection test, and this is the only place in
+/// the crate allowed to call it (`join_order_guard_tests` enforces that).
+/// songbird registers the Call when a join is *attempted*, before the gateway
+/// handshake, so a join that timed out still hands one back. Three call sites
+/// used to treat that as success: `do_join` registered handlers and sent a
+/// "Summoned" embed for a bot in no voice channel, and `summon_internal` and
+/// `get_call_or_join_author` skipped the join -- and therefore the permission
+/// gate -- entirely.
+///
+/// 🪤 `expect` matters because "connected" is not "connected to the channel
+/// you asked for". A concurrent `/gp` resume can land a join on another
+/// channel between a failed `manager.join` and this check, and without the
+/// comparison `do_join` would announce "Summoned <#B>" for a bot in A.
+pub(crate) async fn connected_call(
     manager: &songbird::Songbird,
     guild_id: GuildId,
+    expect: Option<ChannelId>,
 ) -> Option<Arc<Mutex<Call>>> {
     let call = manager.get(guild_id)?;
-    let connected = call.lock().await.current_connection().is_some();
-    connected.then_some(call)
+    let (connected, here) = {
+        let handler = call.lock().await;
+        (
+            handler.current_connection().is_some(),
+            handler.current_channel(),
+        )
+    };
+    match (connected, here, expect) {
+        (false, _, _) => None,
+        (true, _, None) => Some(call),
+        (true, Some(here), Some(want)) => (here.get() == want.get()).then_some(call),
+        (true, None, Some(_)) => None,
+    }
 }
 
 /// Join a voice channel.
@@ -170,15 +195,32 @@ pub async fn do_join(
     tracing::warn!(
         "Joining channel: {channel_name} ({channel_id:?}) in {guild_name} ({guild_id:?})"
     );
+    // Every join that gets this far can outlive Discord's three-second
+    // interaction deadline -- songbird's gateway_timeout is 10s -- so defer
+    // here, the one point every command's join funnels through, rather than
+    // in each of them. poise's defer is idempotent and a no-op on prefix
+    // commands, so callers that already deferred pay nothing.
+    //
+    // Deliberately AFTER the gate: a refusal is cache-only and answers in
+    // microseconds, so it should not spend a round-trip on "thinking...".
+    ctx.defer().await?;
     let call = match manager.join(guild_id, channel_id).await {
         Ok(call) => call,
-        Err(err) => match connected_call(manager, guild_id).await {
+        Err(err) => match connected_call(manager, guild_id, Some(channel_id)).await {
             Some(call) => call,
             None => {
                 tracing::warn!("Error joining channel: {:?}", err);
-                // Drop the connectionless Call, or the next summon finds it
-                // via `manager.get` and reports success without ever trying.
-                let _ = manager.remove(guild_id).await;
+                // Drop the connectionless Call, or the next join finds it and
+                // reports success without ever trying. songbird's `remove` is
+                // `leave(..)?` *then* `calls.remove(..)`, so a failing leave
+                // skips the removal -- log it rather than discarding the only
+                // signal that the Call is still registered.
+                if let Err(e) = manager.remove(guild_id).await {
+                    tracing::warn!(
+                        "Could not remove the connectionless Call for {guild_id:?}: {e:?}. \
+                         A later join may find it and skip the permission gate."
+                    );
+                }
                 // let str = err.to_string().clone();
                 let my_err = CrackedError::JoinChannelError(err);
                 // let crack_msg = CrackedMessage::CrackedRed(str.clone());
@@ -280,42 +322,95 @@ mod join_order_guard_tests {
     fn a_failed_join_is_not_reported_as_success() {
         let body = body_of(&read("commands/music_utils.rs"), "pub async fn do_join(");
         assert!(
-            body.contains("connected_call(manager, guild_id)"),
-            "the join-failure fallback must go through `connected_call`"
-        );
-        assert!(
-            !body.contains("manager.get(guild_id)"),
-            "`do_join` must not consult `Songbird::get` directly: it returns a Call for a \
-             join that only *started*, so a timed-out join is reported as success. Route \
-             it through `connected_call`, which checks for an actual connection."
-        );
-        let helper = body_of(&read("commands/music_utils.rs"), "async fn connected_call(");
-        assert!(
-            helper.contains("current_connection().is_some()"),
-            "`connected_call` must test the connection, not merely fetch the Call"
+            body.contains("connected_call(manager, guild_id, Some(channel_id))"),
+            "the join-failure fallback must go through `connected_call`, and must name \
+             the channel it asked for -- a Call connected to a *different* channel is \
+             not a successful join of this one"
         );
         assert!(
             body.contains("manager.remove(guild_id)"),
-            "a connectionless Call must be dropped, or the next summon finds it via \
-             `manager.get` and reports success without ever attempting a join"
+            "a connectionless Call must be dropped, or a later join finds it and skips \
+             the gate"
+        );
+        assert!(
+            !body.contains("let _ = manager.remove"),
+            "songbird's `remove` is `leave(..)?` then `calls.remove(..)`, so a failing \
+             leave skips the removal entirely. Discarding that error hides the fact \
+             that the Call is still registered."
+        );
+    }
+
+    /// The twin-hunting guard. The narrow version of this pinned `do_join`
+    /// alone and read green while two live copies of the same defect shipped
+    /// on the `/summon` and `/play` entry points.
+    #[test]
+    fn songbird_get_is_reachable_only_through_connected_call() {
+        let files = ["commands/music_utils.rs", "commands/music/summon.rs"];
+        let mut inspected = 0usize;
+        for rel in files {
+            // 🪤 Stop at the first test module. This very guard contains the
+            // literal it searches for, so scanning itself fails itself -- the
+            // fourth time in this change that a scanner tripped over text
+            // written about it. A guard reads the program, not the tests.
+            let whole = read(rel);
+            let src = match whole.find("#[cfg(test)]") {
+                Some(i) => whole[..i].to_string(),
+                None => whole,
+            };
+            let helper_body = if rel.ends_with("music_utils.rs") {
+                body_of(&src, "pub(crate) async fn connected_call(")
+            } else {
+                String::new()
+            };
+            for (n, line) in src.lines().enumerate() {
+                let code = match line.find("//") {
+                    Some(i) => &line[..i],
+                    None => line,
+                };
+                if !code.contains("manager.get(") {
+                    continue;
+                }
+                inspected += 1;
+                assert!(
+                    helper_body.lines().any(|h| h.trim() == code.trim()),
+                    "{rel}:{}: `Songbird::get` outside `connected_call`.\n\n\
+                     It returns a Call for a join that only *started*, so this reads a \
+                     connectionless handle as a live one -- skipping the join, and with \
+                     it `ensure_can_join`. Route it through `connected_call`.\n\n  {}",
+                    n + 1,
+                    code.trim()
+                );
+            }
+        }
+        assert!(
+            inspected >= 1,
+            "scanned {inspected} `manager.get(` sites across {} files -- the scan has \
+             stopped checking rather than the calls being gone. Fix the scan.",
+            files.len()
         );
     }
 
     #[test]
-    fn summon_defers_before_joining() {
-        let body = body_of(
-            &read("commands/music/summon.rs"),
-            "pub async fn summon_internal(",
+    fn do_join_defers_before_the_handshake() {
+        let body = body_of(&read("commands/music_utils.rs"), "pub async fn do_join(");
+        let defer = body.find("ctx.defer()").expect(
+            "do_join must defer: songbird waits 10s for the handshake, the interaction \
+             token dies at 3s. It is the one point every command's join funnels through.",
         );
-        let defer = body
-            .find("ctx.defer()")
-            .expect("summon_internal must defer: a join can take 10s, the token dies at 3s");
         let join = body
-            .find("do_join(")
-            .expect("summon_internal no longer calls do_join -- rewrite this guard");
+            .find("manager.join(")
+            .expect("do_join no longer joins -- rewrite this guard");
+        let gate = body
+            .find("ensure_can_join(")
+            .expect("do_join lost its gate -- see the other guard");
         assert!(
             defer < join,
-            "the defer must precede the join, not follow it"
+            "the defer must precede the handshake it exists to outlast"
+        );
+        assert!(
+            gate < defer,
+            "the gate must precede the defer: a refusal is cache-only and answers in \
+             microseconds, so it should not spend a round-trip on \"thinking...\""
         );
     }
 }
