@@ -12,7 +12,9 @@
 //!   would be strictly worse for the user than playing silently.
 
 use poise::serenity_prelude as serenity;
-use serenity::all::{ChannelId, GenericChannelId, Permissions};
+use serenity::all::{Cache, ChannelId, GenericChannelId, GuildId, Permissions, UserId};
+
+use crate::errors::{CrackedError, PermScope};
 
 /// Text permissions the now-playing posts need. Missing any of these degrades
 /// the bot; it never blocks it.
@@ -103,6 +105,78 @@ pub fn compute(
     }
 }
 
+/// Read the bot's permissions out of the cache.
+///
+/// Returns `None` when the guild, the bot's own member, or the text channel is
+/// not cached — callers treat that as "assume fine" rather than refusing.
+///
+/// No HTTP on this path. `GatewayIntents::GUILD_MEMBERS` is enabled
+/// (`config.rs:321`), so the bot's own `Member` is cached and permissions
+/// resolve locally. That matters because [`ensure_can_join`] runs on every
+/// join, and a per-join round trip would be a latency and rate-limit
+/// regression.
+pub fn resolve(
+    cache: &Cache,
+    guild_id: GuildId,
+    text_channel: GenericChannelId,
+    author: UserId,
+) -> Option<MusicPermissions> {
+    let bot_id = cache.current_user().id;
+    let guild = cache.guild(guild_id)?;
+    let bot = guild.members.get(&bot_id)?;
+
+    let text_chan = guild.channels.get(&text_channel.expect_channel())?;
+    let text_granted = guild.user_permissions_in(text_chan, bot);
+
+    // The author's voice channel, if they are in one. Absent is not a denial.
+    let voice = guild
+        .voice_states
+        .get(&author)
+        .and_then(|vs| vs.channel_id)
+        .and_then(|cid| {
+            let chan = guild.channels.get(&cid)?;
+            Some((cid, guild.user_permissions_in(chan, bot)))
+        });
+
+    Some(compute(text_channel, text_granted, voice))
+}
+
+/// The blocking gate: refuse a join Discord would silently drop.
+///
+/// Call this immediately before every `songbird.join`. It takes cache handles
+/// rather than a poise `Context` on purpose — one of its call sites is a
+/// restart-resume with no invoking user and therefore no `Context`.
+///
+/// Fails **open** on a cache miss: an unknown permission state must not refuse
+/// a join that would have worked.
+pub fn ensure_can_join(
+    cache: &Cache,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> Result<(), CrackedError> {
+    let Some(guild) = cache.guild(guild_id) else {
+        return Ok(());
+    };
+    let bot_id = cache.current_user().id;
+    let Some(bot) = guild.members.get(&bot_id) else {
+        return Ok(());
+    };
+    let Some(chan) = guild.channels.get(&channel_id) else {
+        return Ok(());
+    };
+
+    let missing = VOICE_REQUIRED - guild.user_permissions_in(chan, bot);
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(CrackedError::MissingBotPermissions {
+            scope: PermScope::Voice,
+            channel: channel_id.widen(),
+            missing,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,5 +248,39 @@ mod tests {
         // granted.
         assert!(p.voice.is_none());
         assert!(p.text.is_whole());
+    }
+
+    // `resolve` and `ensure_can_join` read a live serenity Cache, which cannot
+    // be constructed meaningfully offline, so their *logic* is tested through
+    // `compute` above and their *placement* by the source-scan guard in
+    // Task 4. What is tested here is the one decision that is neither:
+    // what they do when the cache cannot answer.
+
+    #[test]
+    fn the_gate_fails_open_when_the_cache_is_empty() {
+        let cache = serenity::all::Cache::new();
+        // No guild cached, so nothing can be known about permissions.
+        let res = ensure_can_join(&cache, serenity::all::GuildId::new(1), voice_ch());
+        // 🪤 Fail OPEN, not closed. A cache miss means "we don't know", and
+        // refusing a join we could have made would be a worse bug than the
+        // timeout this gate exists to replace -- it would break working
+        // guilds during the cache warm-up after every restart.
+        assert!(
+            res.is_ok(),
+            "a cache miss must not refuse a join: {:?}",
+            res.err().map(|e| e.to_string())
+        );
+    }
+
+    #[test]
+    fn resolving_an_uncached_guild_yields_none() {
+        let cache = serenity::all::Cache::new();
+        let got = resolve(
+            &cache,
+            serenity::all::GuildId::new(1),
+            text_ch(),
+            serenity::all::UserId::new(7),
+        );
+        assert!(got.is_none(), "an uncached guild has no answer to give");
     }
 }
