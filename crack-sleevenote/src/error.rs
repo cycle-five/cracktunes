@@ -8,12 +8,13 @@
 //! |------|-------------------------|--------------------------------------------------|
 //! | 400  | `invalid_id`            | the id failed the pattern; nothing was fetched   |
 //! | 404  | `not_found`             | the entity does not exist (negative-cached)      |
+//! | 502  | `extraction_silent`     | navigated fine, nothing on the page matched     |
 //! | 502  | `extraction_empty`      | navigated fine, zero tracks -- extraction broke  |
 //! | 502  | `extraction_incomplete` | recovered fewer items than Spotify declared      |
 //! | 504  | `timeout`               | exceeded the whole-call budget                   |
 //! | 502  | `internal`              | anything else                                    |
 //!
-//! **These do not collapse.** Three of them share HTTP 502, and flattening any
+//! **These do not collapse.** Four of them share HTTP 502, and flattening any
 //! pair of them into one condition is precisely the failure mode sleevenote
 //! exists to prevent. "This id does not exist" is a permanent fact about the
 //! world; "our extraction stopped matching Spotify's page" is a bug on our
@@ -23,6 +24,17 @@
 //! a missing song. So this client keeps one [`Error`] variant per code, and
 //! deliberately does not offer a single `is_retryable()` shortcut that would
 //! quietly re-merge them.
+//!
+//! 🔑 **`extraction_silent` is the exception the taxonomy earned.** It reads
+//! like `extraction_empty` -- both say extraction stopped matching -- but it
+//! measures differently. Four days of production logs: 65 requests, 9
+//! `extraction_silent` failures (~14%), spread across both tracks and
+//! playlists, and **every one of the nine ids succeeded on a later attempt**.
+//! It is transient, not a shape change, so [`Client`] retries it and only it.
+//! That is exactly the distinction this taxonomy exists to make possible; it
+//! is not a step back toward `is_retryable()`.
+//!
+//! [`Client`]: crate::Client
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error as ThisError;
@@ -42,6 +54,11 @@ pub enum ErrorCode {
     InvalidId,
     /// HTTP 404. The entity does not exist. Negative-cached by the service.
     NotFound,
+    /// HTTP 502. Navigation succeeded but nothing on the page matched.
+    ///
+    /// Measured as transient rather than a shape change -- see the module
+    /// docs. [`crate::Client`] retries this code once by default.
+    ExtractionSilent,
     /// HTTP 502. Navigation succeeded but yielded zero tracks: extraction broke.
     ExtractionEmpty,
     /// HTTP 502. Fewer items recovered than Spotify declared.
@@ -97,6 +114,19 @@ pub enum Error {
     /// HTTP 404 `not_found`: the entity does not exist. Permanent.
     #[error("no such entity `{}`: {} (HTTP {})", .0.id, .0.message, .0.status)]
     NotFound(ErrorDetail),
+
+    /// HTTP 502 `extraction_silent`: navigation worked, nothing matched.
+    ///
+    /// 🔑 **Transient, despite reading like [`Error::ExtractionEmpty`].**
+    /// Measured in production over four days: ~14% of requests, both tracks
+    /// and playlists, and every failing id succeeded on a later attempt. A
+    /// fresh browser context on the same host recovers the entity data
+    /// perfectly, so this is not Spotify changing shape.
+    ///
+    /// [`crate::Client`] retries it once by default, so a caller normally
+    /// never sees this variant -- when it does, both attempts failed.
+    #[error("extraction found nothing for `{}`: {} (HTTP {})", .0.id, .0.message, .0.status)]
+    ExtractionSilent(ErrorDetail),
 
     /// HTTP 502 `extraction_empty`: navigation worked, zero tracks came back.
     ///
@@ -197,6 +227,7 @@ impl Error {
         match parsed.error {
             ErrorCode::InvalidId => Error::InvalidId(detail),
             ErrorCode::NotFound => Error::NotFound(detail),
+            ErrorCode::ExtractionSilent => Error::ExtractionSilent(detail),
             ErrorCode::ExtractionEmpty => Error::ExtractionEmpty(detail),
             ErrorCode::ExtractionIncomplete => Error::ExtractionIncomplete(detail),
             ErrorCode::Timeout => Error::Timeout(detail),
@@ -213,6 +244,7 @@ impl Error {
         match self {
             Error::InvalidId(_) => Some(ErrorCode::InvalidId),
             Error::NotFound(_) => Some(ErrorCode::NotFound),
+            Error::ExtractionSilent(_) => Some(ErrorCode::ExtractionSilent),
             Error::ExtractionEmpty(_) => Some(ErrorCode::ExtractionEmpty),
             Error::ExtractionIncomplete(_) => Some(ErrorCode::ExtractionIncomplete),
             Error::Timeout(_) => Some(ErrorCode::Timeout),
@@ -228,6 +260,7 @@ impl Error {
         match self {
             Error::InvalidId(detail)
             | Error::NotFound(detail)
+            | Error::ExtractionSilent(detail)
             | Error::ExtractionEmpty(detail)
             | Error::ExtractionIncomplete(detail)
             | Error::Timeout(detail)

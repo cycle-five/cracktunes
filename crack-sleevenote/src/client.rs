@@ -33,6 +33,15 @@ pub const TIMEOUT_SECS_ENV: &str = "SLEEVENOTE_TIMEOUT_SECS";
 /// A warm hit still returns in single-digit milliseconds.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(180);
 
+/// Default re-requests after an `extraction_silent` failure.
+///
+/// One, not more. Measured in production: ~14% of requests fail this way and
+/// every failing id succeeded on a later attempt, so a single retry takes
+/// user-visible failure from roughly 1-in-7 to roughly 1-in-50. A second retry
+/// would buy about another 1%, against a request that costs 4-6 seconds -- the
+/// bot is holding a Discord interaction open the whole time.
+pub const DEFAULT_EXTRACTION_SILENT_RETRIES: u8 = 1;
+
 /// The id pattern the service enforces, mirrored client-side.
 pub const ID_PATTERN: &str = "^[A-Za-z0-9]{1,64}$";
 
@@ -158,6 +167,7 @@ pub struct ClientBuilder {
     user_agent: String,
     http: Option<reqwest::Client>,
     allow_partial_listings: bool,
+    extraction_silent_retries: u8,
 }
 
 impl Default for ClientBuilder {
@@ -170,6 +180,8 @@ impl Default for ClientBuilder {
             // Strict, matching the service's own default: a caller that has
             // not thought about partial listings must not be handed one.
             allow_partial_listings: false,
+            // One retry, on `extraction_silent` alone. See the builder method.
+            extraction_silent_retries: DEFAULT_EXTRACTION_SILENT_RETRIES,
         }
     }
 }
@@ -243,6 +255,24 @@ impl ClientBuilder {
         self
     }
 
+    /// How many times to re-request after an `extraction_silent` failure.
+    ///
+    /// Defaults to [`DEFAULT_EXTRACTION_SILENT_RETRIES`]. Set `0` to disable.
+    ///
+    /// 🔑 **Only `extraction_silent` is retried, and deliberately so.** It is
+    /// the one code in the taxonomy measured as transient: production logs
+    /// show ~14% of requests failing this way and **every** failing id
+    /// succeeding on a later attempt. `extraction_empty` reads almost
+    /// identically and is NOT retried -- it means extraction genuinely stopped
+    /// matching Spotify's page, which a retry cannot fix and a deploy can.
+    /// Widening this to other codes would re-merge the taxonomy the error
+    /// module exists to keep apart.
+    #[must_use]
+    pub fn extraction_silent_retries(mut self, retries: u8) -> Self {
+        self.extraction_silent_retries = retries;
+        self
+    }
+
     /// Reuse an existing [`reqwest::Client`] and its connection pool.
     ///
     /// The timeout configured here still applies: it is set per request, so it
@@ -291,6 +321,7 @@ impl ClientBuilder {
             base_url,
             timeout: self.timeout,
             allow_partial_listings: self.allow_partial_listings,
+            extraction_silent_retries: self.extraction_silent_retries,
         })
     }
 }
@@ -313,6 +344,7 @@ pub struct Client {
     base_url: Url,
     timeout: Duration,
     allow_partial_listings: bool,
+    extraction_silent_retries: u8,
 }
 
 impl Client {
@@ -431,12 +463,51 @@ impl Client {
     }
 
     /// Issue one entity request and interpret the response.
+    /// One attempt, plus up to [`Client::extraction_silent_retries`] more on
+    /// `extraction_silent`.
+    ///
+    /// 🪤 The retry is here, at the single chokepoint every entity method
+    /// funnels through, rather than in each of `track`/`album`/`playlist`.
+    /// Putting it in the three public methods would mean a fourth endpoint
+    /// added later silently does not retry.
     async fn fetch<T: DeserializeOwned>(
         &self,
         endpoint: Endpoint,
         id: &str,
     ) -> Result<(T, Option<CacheStatus>)> {
+        // Validate ONCE, outside the loop: a bad id is not transient and
+        // re-checking it per attempt only obscures where the error came from.
         validate_id(id)?;
+
+        let mut attempt = 0u8;
+        loop {
+            let result = self.fetch_once(endpoint, id).await;
+            let Err(err) = result else { return result };
+
+            // Only `extraction_silent`, and only while attempts remain. Every
+            // other error -- including `extraction_empty`, which reads almost
+            // the same -- returns untouched.
+            if !matches!(err, Error::ExtractionSilent(_))
+                || attempt >= self.extraction_silent_retries
+            {
+                return Err(err);
+            }
+            attempt += 1;
+            tracing::warn!(
+                %id,
+                attempt,
+                retries = self.extraction_silent_retries,
+                "sleevenote returned extraction_silent; retrying: {err}"
+            );
+        }
+    }
+
+    /// A single request, with no retry policy of its own.
+    async fn fetch_once<T: DeserializeOwned>(
+        &self,
+        endpoint: Endpoint,
+        id: &str,
+    ) -> Result<(T, Option<CacheStatus>)> {
         let url = self.entity_url(endpoint, id)?;
         tracing::debug!(%url, "sleevenote request");
 
@@ -622,5 +693,134 @@ mod tests {
         assert_eq!("miss".parse(), Ok(CacheStatus::Miss));
         assert_eq!("negative".parse(), Ok(CacheStatus::Negative));
         assert_eq!("FRESH".parse::<CacheStatus>(), Err(()));
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    //! The `extraction_silent` retry, proven by counting REQUESTS rather than
+    //! by inspecting the returned value. A retry that quietly never re-requests
+    //! still returns the right error, so the request count is the only thing
+    //! that distinguishes "retried and both failed" from "never retried".
+    //!
+    //! A hand-rolled listener rather than a mock-server dev-dependency: the
+    //! crate's tests are otherwise offline and unit-level, and the whole
+    //! contract under test is "how many times did it ask".
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// Serves `bodies` in order, one per connection, then 200s forever.
+    /// Returns the base url and a live count of requests served.
+    async fn serve(bodies: Vec<(u16, &'static str)>) -> (String, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        let hits = Arc::new(AtomicUsize::new(0));
+        let served = Arc::clone(&hits);
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                let n = served.fetch_add(1, Ordering::SeqCst);
+                let (status, body) = bodies
+                    .get(n)
+                    .copied()
+                    .unwrap_or((200, r#"{"id":"x","type":"track","name":"ok","artists":[],"album":null,"url":"u","durationMs":1}"#));
+                // Read the request line so the client is not writing into a
+                // socket nobody drained.
+                let mut buf = [0u8; 1024];
+                let _ = sock.read(&mut buf).await;
+                let resp = format!(
+                    "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = sock.write_all(resp.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            }
+        });
+        (format!("http://{addr}"), hits)
+    }
+
+    const SILENT: (u16, &str) = (
+        502,
+        r#"{"error":"extraction_silent","id":"x","message":"nothing matched"}"#,
+    );
+    const EMPTY: (u16, &str) = (
+        502,
+        r#"{"error":"extraction_empty","id":"x","message":"zero tracks"}"#,
+    );
+
+    #[tokio::test]
+    async fn extraction_silent_is_retried_and_can_succeed() {
+        let (base, hits) = serve(vec![SILENT]).await;
+        let client = ClientBuilder::new().base_url(base).build().unwrap();
+
+        client.track("abc").await.expect("second attempt succeeds");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            2,
+            "one failure plus one retry == two requests"
+        );
+    }
+
+    #[tokio::test]
+    async fn extraction_silent_past_the_budget_surfaces_the_error() {
+        // Both attempts fail: the caller must see ExtractionSilent, not a
+        // success and not some flattened variant.
+        let (base, hits) = serve(vec![SILENT, SILENT]).await;
+        let client = ClientBuilder::new().base_url(base).build().unwrap();
+
+        let err = client.track("abc").await.expect_err("both attempts fail");
+        assert!(matches!(err, Error::ExtractionSilent(_)), "got {err}");
+        assert_eq!(hits.load(Ordering::SeqCst), 2, "bounded at one retry");
+    }
+
+    #[tokio::test]
+    async fn extraction_empty_is_never_retried() {
+        // 🔑 The distinction the taxonomy exists for. `extraction_empty` means
+        // extraction stopped matching Spotify's page -- retrying it burns 4-6
+        // seconds of a held Discord interaction to fail identically.
+        let (base, hits) = serve(vec![EMPTY, (200, r#"{"id":"x"}"#)]).await;
+        let client = ClientBuilder::new().base_url(base).build().unwrap();
+
+        let err = client.track("abc").await.expect_err("must not retry");
+        assert!(matches!(err, Error::ExtractionEmpty(_)), "got {err}");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "retrying this would have succeeded on the canned 200, which is exactly \
+             the bug: it must NOT reach the second response"
+        );
+    }
+
+    #[tokio::test]
+    async fn retries_can_be_disabled() {
+        let (base, hits) = serve(vec![SILENT]).await;
+        let client = ClientBuilder::new()
+            .base_url(base)
+            .extraction_silent_retries(0)
+            .build()
+            .unwrap();
+
+        let err = client.track("abc").await.expect_err("no retry configured");
+        assert!(matches!(err, Error::ExtractionSilent(_)), "got {err}");
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn an_invalid_id_is_never_retried_and_never_requested() {
+        let (base, hits) = serve(vec![]).await;
+        let client = ClientBuilder::new().base_url(base).build().unwrap();
+
+        let err = client.track("not!valid").await.expect_err("rejected");
+        assert!(matches!(err, Error::InvalidId(_)), "got {err}");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            0,
+            "validated before any request"
+        );
     }
 }
