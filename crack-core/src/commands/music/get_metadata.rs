@@ -71,7 +71,8 @@ pub async fn get_metadata(ctx: Context<'_>, query_or_url: String) -> Result<(), 
         .join("\n");
 
     let crack_msg = CrackedMessage::Other(str);
-    match crate::utils::edit_embed_response2(ctx, crack_msg.into(), search_msg.clone()).await {
+    match crate::utils::edit_embed_response2(ctx, crack_msg.into(), search_msg.clone(), None).await
+    {
         Ok(_) => {},
         Err(e) => {
             tracing::error!("Error editing embed: {:?}", e);

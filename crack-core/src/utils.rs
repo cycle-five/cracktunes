@@ -296,19 +296,34 @@ pub async fn edit_reponse_interaction(
 }
 
 /// Edit the embed response of the given message.
+///
+/// `content` is for text that must survive when the embed does not. 🪤 A
+/// channel without `EMBED_LINKS` has its embeds stripped by Discord, so a
+/// notice about that very permission is invisible if it rides inside one.
 #[cfg(not(tarpaulin_include))]
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
     embed: CreateEmbed<'_>,
     msg: ReplyHandle<'_>,
+    content: Option<String>,
 ) -> Result<Message, Error> {
     match get_interaction(ctx) {
-        Some(interaction) => interaction
-            .edit_response(ctx.http(), EditInteractionResponse::new().add_embed(embed))
-            .await
-            .map_err(Into::into),
+        Some(interaction) => {
+            let mut edit = EditInteractionResponse::new().add_embed(embed);
+            if let Some(content) = content {
+                edit = edit.content(content);
+            }
+            interaction
+                .edit_response(ctx.http(), edit)
+                .await
+                .map_err(Into::into)
+        },
         None => {
-            msg.edit(ctx, CreateReply::default().embed(embed)).await?;
+            let mut reply = CreateReply::default().embed(embed);
+            if let Some(content) = content {
+                reply = reply.content(content);
+            }
+            msg.edit(ctx, reply).await?;
             Ok(msg.into_message().await?)
             // let msg = msg.into_message().await?;
             // msg.edit(&ctx, EditMessage::new().embed(embed))
