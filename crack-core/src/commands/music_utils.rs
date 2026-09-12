@@ -225,32 +225,59 @@ pub(crate) async fn join_permitted(
     }
 }
 
-/// Tell the user we joined, and keep trying until something lands.
+/// Tell the user we joined; if the embed cannot be delivered, retry as text.
 ///
-/// 🪤 The join has already succeeded by the time this runs, so a failure here
-/// must not be reported as a failed join. It must not be silent either:
-/// [`do_join`] defers before the handshake, and a deferred interaction that is
-/// never answered leaves the user on "Bot is thinking..." **forever**, rather
-/// than degrading to Discord's "The application did not respond" after three
-/// seconds (#501). Swallowing this into a `tracing::warn!` traded a visible
-/// failure for an invisible one.
+/// The join has already succeeded by the time this runs, so a failure here must
+/// not be reported as a failed join -- but it must not be silent either, which
+/// is what the `tracing::warn!`-and-return-`Ok` it replaces did (#501). The bot
+/// ended up sitting in a voice channel with nothing in the text channel saying
+/// so.
 ///
-/// The likeliest cause is `EMBED_LINKS` denied in the invoking *text* channel:
-/// the permission gate covers the voice channel it is about to join, and
-/// nothing checks the channel the answer goes to. A content-only reply needs
-/// `SEND_MESSAGES` alone, so the retry survives exactly that case.
+/// 🪤 **This does NOT rescue a stranded "Bot is thinking..." placeholder, and
+/// an earlier version of this comment claimed it did.** Two reasons, and they
+/// do not overlap:
+///
+/// - For a **slash** command the reply goes out over the interaction webhook,
+///   which is not gated by the text channel's `EMBED_LINKS` / `SEND_MESSAGES`.
+///   So the permission case the retry exists for does not arise there.
+/// - For a **prefix** command those permissions do apply -- but poise's
+///   `defer()` is `if let Self::Application(ctx)`, a no-op for prefix, so there
+///   is no deferred interaction to strand in the first place.
+///
+/// The placeholder is never cleared either way, because poise's
+/// `send_application_reply` has only `create_response` and `create_followup`
+/// branches and never PATCHes `@original`. That is #504, and it is untouched
+/// here.
+///
+/// What the retry genuinely buys: a **prefix** `/summon` in a channel where
+/// `EMBED_LINKS` is denied but `SEND_MESSAGES` is not now gets an answer
+/// instead of silence. Cheap, and worth keeping -- just not for the reason
+/// first written down.
 async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
-    let summoned = || CrackedMessage::Summon {
-        mention: channel_id.mention(),
-    };
-    let Err(embed_err) = ctx.send_reply_embed(summoned()).await else {
+    let Err(embed_err) = ctx
+        .send_reply_embed(CrackedMessage::Summon {
+            mention: channel_id.mention(),
+        })
+        .await
+    else {
         return;
     };
     tracing::warn!("Could not answer the join with an embed: {embed_err:?}, retrying as text");
-    if let Err(text_err) = PoiseContextExt::send_reply_owned(ctx, summoned(), false).await {
+    // 🪤 Built here rather than through `send_reply_owned(.., false)`. That
+    // helper's non-embed branch pipes the text through `colored`, whose
+    // tty/`CLICOLOR_FORCE`/`NO_COLOR` decision nothing here pins -- if it ever
+    // resolves to "yes", the user's join confirmation arrives as a literal
+    // `\e[38;2;...m` escape sequence. Discord is not a terminal.
+    let plain = poise::CreateReply::default().content(
+        CrackedMessage::Summon {
+            mention: channel_id.mention(),
+        }
+        .to_string(),
+    );
+    if let Err(text_err) = ctx.send(plain).await {
         tracing::warn!(
-            "Could not answer the deferred interaction at all: {text_err:?}. \
-             The bot IS in {channel_id:?}; the user is left on \"thinking...\"."
+            "Could not answer the join at all: {text_err:?}. \
+             The bot IS in {channel_id:?} but nothing in the channel says so."
         );
     }
 }

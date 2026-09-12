@@ -90,7 +90,12 @@ pub async fn summon_internal(
                     // #499 fixed on this exact path. `/summon` into the channel
                     // we are already in is a no-op, and a no-op still owes the
                     // user a sentence.
-                    ctx.send_reply_embed(CrackedMessage::Summon {
+                    // 🪤 `AlreadyHere`, not `Summon`. `Summon` renders as
+                    // "Joining <#X>!" and nothing is being joined -- the bot is
+                    // already sitting there. Answering a no-op with a claim
+                    // about an action is a smaller lie than #506's red error,
+                    // but it is still a lie.
+                    ctx.send_reply_embed(CrackedMessage::AlreadyHere {
                         mention: channel_id.mention(),
                     })
                     .await?;
