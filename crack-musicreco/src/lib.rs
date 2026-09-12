@@ -13,8 +13,10 @@
 
 pub mod error;
 pub mod model;
+pub mod provider;
 pub mod resolver;
 
 pub use error::{Error, Result};
 pub use model::{Playable, RawTrack, Recommendation, Seed};
+pub use provider::{MusicAtlas, ReccoBeats, Recommender};
 pub use resolver::{SeedResolver, TitleParseResolver};
