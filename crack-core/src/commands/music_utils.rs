@@ -87,9 +87,14 @@ pub async fn set_global_handlers_with(
 pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>, CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = ctx.data().songbird.clone();
-    // Return the call if it already exists.
+    // Return the call if it already exists AND actually carries a connection.
     // Otherwise, try to join the channel of the user who sent the message.
-    if let Some(call) = manager.get(guild_id) {
+    //
+    // 🪤 `Songbird::get` alone was the bug: a connectionless Call short-
+    // circuited the join here, so `/play` and `/downvote` bypassed
+    // `ensure_can_join` and enqueued into a driver connected to nothing --
+    // a "Queued" embed and silence, with no error anywhere.
+    if let Some(call) = connected_call(&manager, guild_id, None).await {
         Ok(call)
     } else {
         let channel_id = {
@@ -116,7 +121,63 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
     // Ok(call)
 }
 
+/// The guild's Call, but only if it actually carries a voice connection --
+/// and, when `expect` is given, only if that connection is to that channel.
+///
+/// 🪤 `Songbird::get` is not a connection test. songbird registers the Call
+/// when a join is *attempted*, before the gateway handshake, so a join that
+/// timed out still hands one back. Three call sites used to treat that as
+/// success: `do_join` registered handlers and sent a "Summoned" embed for a
+/// bot in no voice channel, and `summon_internal` and `get_call_or_join_author`
+/// skipped the join -- and therefore the permission gate -- entirely.
+///
+/// This is the only `Songbird::get` **on the join path**, which is what
+/// `join_order_guard_tests` enforces, over `music_utils.rs` and `summon.rs`.
+/// It is NOT the only one in the crate: ~20 other sites read the Call to
+/// answer "are we playing?" for `/queue`, `/volume`, `/clear` and friends.
+/// Those want a registered Call and are mostly harmless, but several would
+/// also be better off asking this question -- tracked separately.
+///
+/// 🪤 `expect` matters because "connected" is not "connected to the channel
+/// you asked for". A concurrent `/gp` resume can land a join on another
+/// channel between a failed `manager.join` and this check, and without the
+/// comparison `do_join` would announce "Summoned <#B>" for a bot in A.
+pub(crate) async fn connected_call(
+    manager: &songbird::Songbird,
+    guild_id: GuildId,
+    expect: Option<ChannelId>,
+) -> Option<Arc<Mutex<Call>>> {
+    let call = manager.get(guild_id)?;
+    let (connected, here) = {
+        let handler = call.lock().await;
+        (
+            handler.current_connection().is_some(),
+            handler.current_channel(),
+        )
+    };
+    match (connected, here, expect) {
+        (false, _, _) => None,
+        (true, _, None) => Some(call),
+        (true, Some(here), Some(want)) => (here.get() == want.get()).then_some(call),
+        (true, None, Some(_)) => None,
+    }
+}
+
 /// Join a voice channel.
+///
+/// Defers before the handshake, and only there. Every join that reaches
+/// `Songbird::join` can outlive Discord's three-second interaction deadline --
+/// songbird's `gateway_timeout` is 10s -- and this is the one point every
+/// command's join funnels through, so the defer belongs here rather than in
+/// each of them. poise's defer is idempotent and a no-op on prefix commands,
+/// so a caller that already deferred pays nothing.
+///
+/// It sits deliberately *after* the permission gate: a refusal is cache-only
+/// and answers in microseconds, so it should not spend a round-trip putting
+/// the user on "thinking...".
+///
+/// 🪤 `perms::join_site_guard_tests` asserts the gate appears within 1200
+/// bytes before `manager.join`, so keep prose out of the span between them.
 #[cfg(not(tarpaulin_include))]
 #[tracing::instrument]
 pub async fn do_join(
@@ -125,33 +186,81 @@ pub async fn do_join(
     guild_id: GuildId,
     channel_id: ChannelId,
 ) -> Result<Arc<Mutex<Call>>, Error> {
-    // let ctx_owned = ctx.clone();
-    let guild = guild_id
-        .to_guild_cached(ctx.cache())
-        .ok_or(CrackedError::NoGuildCached)?
-        .clone();
-    let guild_name = guild.name;
-    let channel_name = guild
-        .channels
-        .get(&channel_id)
-        .ok_or(CrackedError::NoChannelId)?
-        .base
-        .name
-        .clone();
+    // One cache read, no clone. This used to deep-copy the whole Guild --
+    // every member, role, channel and presence -- for a name and one lookup.
+    // The ref is confined to this block because it cannot be held across the
+    // await below.
+    let (guild_name, channel_name) = {
+        let guild = guild_id
+            .to_guild_cached(ctx.cache())
+            .ok_or(CrackedError::NoGuildCached)?;
+        let channel = guild.channels.get(&channel_id);
+        // A channel missing from the cache is ambiguous: either Discord
+        // withheld it (the bot lacks VIEW_CHANNEL, and it omits those from
+        // GUILD_CREATE) or it is not a channel in this guild at all --
+        // `/summonchannel` takes a raw id, so a typo lands here. Voice states
+        // are NOT filtered by VIEW_CHANNEL, so a member sitting in it proves
+        // it is real and merely hidden. With nobody in it we cannot tell, and
+        // `NoChannelId` is the answer that does not invent a permission
+        // problem on a channel that may not exist.
+        if channel.is_none()
+            && !guild
+                .voice_states
+                .iter()
+                .any(|vs| vs.channel_id == Some(channel_id))
+        {
+            return Err(Box::new(CrackedError::NoChannelId));
+        }
+        (
+            guild.name.to_string(),
+            channel.map(|c| c.base.name.to_string()),
+        )
+    };
+    // Logged before the gate so a refusal is visible server-side too. The
+    // name is an Option because the channel we most need to report on is
+    // exactly the one Discord did not send us.
     tracing::warn!(
-        "Joining channel: {channel_name} ({channel_id:?}) in {guild_name} ({guild_id:?})"
+        "Joining {} ({channel_id:?}) in {guild_name} ({guild_id:?})",
+        channel_name.as_deref().unwrap_or("<not visible to us>")
     );
     // Refuse a join Discord would silently drop. Without this the voice state
     // update is accepted, nothing happens, and songbird reports TimedOut ~10s
-    // later with no mention of a permission.
+    // later naming no permission at all.
     crate::music::perms::ensure_can_join(ctx.cache(), guild_id, channel_id)
         .map_err(|e| -> Error { Box::new(e) })?;
+    // See this function's doc comment for why the defer sits exactly here.
+    ctx.defer().await?;
     let call = match manager.join(guild_id, channel_id).await {
         Ok(call) => call,
-        Err(err) => match manager.get(guild_id) {
-            Some(call) => call,
+        Err(err) => match connected_call(manager, guild_id, Some(channel_id)).await {
+            Some(call) => {
+                // The handshake reported a problem but the connection is up.
+                // Worth a line: a recovered join should be distinguishable in
+                // the log from a clean one.
+                tracing::warn!("Join into {channel_id:?} reported {err:?} but connected");
+                call
+            },
             None => {
                 tracing::warn!("Error joining channel: {:?}", err);
+                // Drop the connectionless Call, or the next join finds it and
+                // reports success without ever trying. songbird's `remove` is
+                // `leave(..)?` *then* `calls.remove(..)`, so a failing leave
+                // skips the removal -- log it rather than discarding the only
+                // signal that the Call is still registered.
+                //
+                // 🪤 Guarded on there being NO connection at all. The arm
+                // above is also taken when we are connected to a *different*
+                // channel -- the concurrent-`/gp`-resume race `expect` exists
+                // for -- and `remove` is `leave` then drop, so removing here
+                // would disconnect that live session and bin its queue.
+                if connected_call(manager, guild_id, None).await.is_none() {
+                    if let Err(e) = manager.remove(guild_id).await {
+                        tracing::warn!(
+                            "Could not remove the connectionless Call for {guild_id:?}: {e:?}. \
+                             A later join may find it and skip the permission gate."
+                        );
+                    }
+                }
                 // let str = err.to_string().clone();
                 let my_err = CrackedError::JoinChannelError(err);
                 // let crack_msg = CrackedMessage::CrackedRed(str.clone());

@@ -1,4 +1,4 @@
-use crate::commands::{cmd_check_music, do_join, help, sub_help as help};
+use crate::commands::{cmd_check_music, connected_call, do_join, help, sub_help as help};
 use crate::{
     connection::get_voice_channel_for_user_summon, errors::CrackedError, poise_ext::ContextExt,
     Context, Error,
@@ -64,20 +64,26 @@ pub async fn summon_internal(
         None => get_voice_channel_for_user_summon(&guild, &user_id)?,
     };
 
-    let call: Arc<Mutex<Call>> = match manager.get(guild_id) {
+    // 🪤 This must ask for a *connected* call, not merely a registered one.
+    // songbird keeps the Call after a failed join or a forced disconnect, and
+    // the old `manager.get` accepted it: the `_ => call.clone()` arm below
+    // returned that dead handle, so `do_join` never ran, `ensure_can_join`
+    // never ran, no join was attempted and the command returned Ok having
+    // sent nothing at all.
+    let call: Arc<Mutex<Call>> = match connected_call(&manager, guild_id, None).await {
         Some(call) => {
-            let handler = call.lock().await;
-            let has_current_connection = handler.current_connection().is_some();
-            let chan_id = handler
+            let chan_id = call
+                .lock()
+                .await
                 .current_channel()
                 .map(|c| GenericChannelId::new(c.get()));
 
-            match (has_current_connection, chan_id) {
-                (true, Some(chan_id)) => {
+            match chan_id {
+                Some(chan_id) => {
                     // bot is in another channel
                     return Err(CrackedError::AlreadyConnected(chan_id.mention()).into());
                 },
-                _ => call.clone(),
+                None => call.clone(),
             }
         },
         None => do_join(ctx, &manager, guild_id, channel_id).await?,
