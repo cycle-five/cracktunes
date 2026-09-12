@@ -141,6 +141,25 @@ pub fn resolve(
     Some(compute(text_channel, text_granted, voice))
 }
 
+/// The refusal a set of granted voice permissions earns, if any.
+///
+/// Pure, so the gate's actual decision — what counts as a refusal, and what
+/// it says — is testable without a populated [`Cache`]. [`ensure_can_join`]
+/// is the thin layer that reads the cache and calls this, the same split
+/// [`compute`] and [`resolve`] already use.
+pub fn voice_refusal(channel: ChannelId, granted: Permissions) -> Option<CrackedError> {
+    let missing = VOICE_REQUIRED - granted;
+    if missing.is_empty() {
+        None
+    } else {
+        Some(CrackedError::MissingBotPermissions {
+            scope: PermScope::Voice,
+            channel: channel.widen(),
+            missing,
+        })
+    }
+}
+
 /// The blocking gate: refuse a join Discord would silently drop.
 ///
 /// Call this immediately before every `songbird.join`. It takes cache handles
@@ -165,15 +184,10 @@ pub fn ensure_can_join(
         return Ok(());
     };
 
-    let missing = VOICE_REQUIRED - guild.user_permissions_in(chan, bot);
-    if missing.is_empty() {
-        Ok(())
-    } else {
-        Err(CrackedError::MissingBotPermissions {
-            scope: PermScope::Voice,
-            channel: channel_id.widen(),
-            missing,
-        })
+    let granted = guild.user_permissions_in(chan, bot);
+    match voice_refusal(channel_id, granted) {
+        Some(err) => Err(err),
+        None => Ok(()),
     }
 }
 
@@ -250,9 +264,74 @@ mod tests {
         assert!(p.text.is_whole());
     }
 
+    #[test]
+    fn everything_granted_earns_no_refusal() {
+        assert!(voice_refusal(voice_ch(), VOICE_REQUIRED).is_none());
+    }
+
+    #[test]
+    fn missing_speak_only_is_named_bit_exactly() {
+        let granted = VOICE_REQUIRED - Permissions::SPEAK;
+        let err = voice_refusal(voice_ch(), granted).expect("SPEAK is missing");
+        match err {
+            CrackedError::MissingBotPermissions {
+                scope,
+                channel,
+                missing,
+            } => {
+                assert_eq!(scope, PermScope::Voice);
+                assert_eq!(channel, voice_ch().widen());
+                assert_eq!(missing, Permissions::SPEAK);
+            },
+            other => panic!("expected MissingBotPermissions, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn missing_connect_only_is_named_bit_exactly() {
+        let granted = VOICE_REQUIRED - Permissions::CONNECT;
+        let err = voice_refusal(voice_ch(), granted).expect("CONNECT is missing");
+        match err {
+            CrackedError::MissingBotPermissions {
+                scope,
+                channel,
+                missing,
+            } => {
+                assert_eq!(scope, PermScope::Voice);
+                assert_eq!(channel, voice_ch().widen());
+                assert_eq!(missing, Permissions::CONNECT);
+            },
+            other => panic!("expected MissingBotPermissions, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn both_missing_are_named_together_and_the_channel_is_in_the_message() {
+        let err = voice_refusal(voice_ch(), Permissions::empty()).expect("both perms are missing");
+        match &err {
+            CrackedError::MissingBotPermissions {
+                scope,
+                channel,
+                missing,
+            } => {
+                assert_eq!(*scope, PermScope::Voice);
+                assert_eq!(*channel, voice_ch().widen());
+                assert_eq!(*missing, VOICE_REQUIRED);
+            },
+            other => panic!("expected MissingBotPermissions, got {other:?}"),
+        }
+        let rendered = format!("{err}");
+        assert!(rendered.contains("Connect"), "got {rendered}");
+        assert!(rendered.contains("Speak"), "got {rendered}");
+        assert!(
+            rendered.contains(&format!("<#{}>", voice_ch())),
+            "must name the channel: {rendered}"
+        );
+    }
+
     // `resolve` and `ensure_can_join` read a live serenity Cache, which cannot
     // be constructed meaningfully offline, so their *logic* is tested through
-    // `compute` above and their *placement* by the source-scan guard in
+    // `voice_refusal` above and their *placement* by the source-scan guard in
     // Task 4. What is tested here is the one decision that is neither:
     // what they do when the cache cannot answer.
 
