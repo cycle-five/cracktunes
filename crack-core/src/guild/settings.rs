@@ -1095,20 +1095,6 @@ impl GuildSettings {
     }
 }
 
-/// Save the guild settings to the database.
-///
-/// Writes back without checking `Provenance`; currently unused. Anything
-/// wiring this up must check `is_persistable()` first or it will overwrite
-/// stored settings with fallback defaults.
-pub async fn save_guild_settings(
-    guild_settings_map: &HashMap<GuildId, GuildSettings>,
-    pool: &PgPool,
-) {
-    for guild_settings in guild_settings_map.values() {
-        let _ = guild_settings.save(pool).await;
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct CommandSettingsMap;
 

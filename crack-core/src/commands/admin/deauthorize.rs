@@ -33,6 +33,11 @@ pub async fn deauthorize(
         .map(|g| g.name)
         .unwrap_or_else(|_| <FixedString>::from_str(UNKNOWN).expect(""));
 
+    // 🔑 Before mutating: make sure what is in memory came from Postgres. A
+    // guild whose boot load failed holds defaults, and `save()` below is a
+    // full-row upsert that would write them over its stored row.
+    ctx.data().ensure_settings_loaded(guild_id).await?;
+
     let res = ctx
         .data()
         .guild_settings_map
@@ -51,6 +56,18 @@ pub async fn deauthorize(
             .clone()
         })
         .clone();
+
+    // 🔴 This save was MISSING. `authorize` persisted, `deauthorize` did not, so
+    // a revoked authorization was only ever held in memory -- a crash, an OOM
+    // kill, or (since v0.9.1) a guild skipped at shutdown for holding Fallback
+    // settings would all silently restore access that was deliberately removed.
+    let pool = ctx
+        .data()
+        .database_pool
+        .clone()
+        .ok_or(CrackedError::Other("No database pool"))?;
+    res.save(&pool).await?;
+
     tracing::info!("User Deauthorized: UserId = {}, GuildId = {}", id, res);
 
     let mention = user.mention();

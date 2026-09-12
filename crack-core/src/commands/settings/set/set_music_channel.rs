@@ -35,6 +35,11 @@ pub async fn music_channel(
         channel_id.unwrap()
     };
 
+    // 🔑 Before mutating: make sure what is in memory came from Postgres. A
+    // guild whose boot load failed holds defaults, and `save()` below is a
+    // full-row upsert that would write them over its stored row.
+    ctx.data().ensure_settings_loaded(guild_id).await?;
+
     let data = ctx.data();
     let _ = data.set_music_channel(guild_id, channel_id).await;
 
@@ -42,8 +47,15 @@ pub async fn music_channel(
     let settings = opt_settings.get(&guild_id);
 
     // FIXME: Do this with the async work queue.
-    let pg_pool = ctx.data().database_pool.clone().unwrap();
-    settings.map(|s| s.save(&pg_pool)).unwrap().await?;
+    // 🪤 `unwrap()` here panicked on a tokio worker whenever there was no pool.
+    let pg_pool = ctx
+        .data()
+        .database_pool
+        .clone()
+        .ok_or(CrackedError::Other("No database pool"))?;
+    if let Some(s) = settings {
+        s.save(&pg_pool).await?;
+    }
 
     let _ = send_reply(
         &ctx,
@@ -64,14 +76,26 @@ pub async fn music_denied_user(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
+    // 🔑 Before mutating: make sure what is in memory came from Postgres. A
+    // guild whose boot load failed holds defaults, and `save()` below is a
+    // full-row upsert that would write them over its stored row.
+    ctx.data().ensure_settings_loaded(guild_id).await?;
+
     let data = ctx.data();
     let _ = data.add_denied_music_user(guild_id, user).await;
 
     let opt_settings = data.guild_settings_map.read().await.clone();
     let settings = opt_settings.get(&guild_id);
 
-    let pg_pool = ctx.data().database_pool.clone().unwrap();
-    settings.map(|s| s.save(&pg_pool)).unwrap().await?;
+    // 🪤 `unwrap()` here panicked on a tokio worker whenever there was no pool.
+    let pg_pool = ctx
+        .data()
+        .database_pool
+        .clone()
+        .ok_or(CrackedError::Other("No database pool"))?;
+    if let Some(s) = settings {
+        s.save(&pg_pool).await?;
+    }
 
     let _ = send_reply(
         &ctx,
