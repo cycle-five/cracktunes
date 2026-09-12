@@ -26,6 +26,16 @@ jobs:
     steps:
       - name: Repository Checkout
         uses: actions/checkout@v4
+      -
+        # 🪤 Required before any `cache-to:` below. Without it build-push-action
+        # uses the default `docker` driver, which cannot export a cache and
+        # fails the whole build with "Cache export is not supported for the
+        # docker driver". dockerhub.yml has always had this; docker.yml did
+        # not, and a cache was added here without it -- which nothing could
+        # catch, because CI skips the Docker job on pull requests (#424), so
+        # this file is only ever exercised on master.
+        name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
       - 
         name: Extract Git Metadata
         id: meta
