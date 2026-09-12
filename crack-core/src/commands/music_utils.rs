@@ -124,14 +124,19 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 /// The guild's Call, but only if it actually carries a voice connection --
 /// and, when `expect` is given, only if that connection is to that channel.
 ///
-/// 🪤 `Songbird::get` is not a connection test, and this is the only place in
-/// the crate allowed to call it (`join_order_guard_tests` enforces that).
-/// songbird registers the Call when a join is *attempted*, before the gateway
-/// handshake, so a join that timed out still hands one back. Three call sites
-/// used to treat that as success: `do_join` registered handlers and sent a
-/// "Summoned" embed for a bot in no voice channel, and `summon_internal` and
-/// `get_call_or_join_author` skipped the join -- and therefore the permission
-/// gate -- entirely.
+/// 🪤 `Songbird::get` is not a connection test. songbird registers the Call
+/// when a join is *attempted*, before the gateway handshake, so a join that
+/// timed out still hands one back. Three call sites used to treat that as
+/// success: `do_join` registered handlers and sent a "Summoned" embed for a
+/// bot in no voice channel, and `summon_internal` and `get_call_or_join_author`
+/// skipped the join -- and therefore the permission gate -- entirely.
+///
+/// This is the only `Songbird::get` **on the join path**, which is what
+/// `join_order_guard_tests` enforces, over `music_utils.rs` and `summon.rs`.
+/// It is NOT the only one in the crate: ~20 other sites read the Call to
+/// answer "are we playing?" for `/queue`, `/volume`, `/clear` and friends.
+/// Those want a registered Call and are mostly harmless, but several would
+/// also be better off asking this question -- tracked separately.
 ///
 /// 🪤 `expect` matters because "connected" is not "connected to the channel
 /// you asked for". A concurrent `/gp` resume can land a join on another
@@ -159,6 +164,23 @@ pub(crate) async fn connected_call(
 }
 
 /// Join a voice channel.
+///
+/// Defers before the handshake, and only there. Every join that reaches
+/// `Songbird::join` can outlive Discord's three-second interaction deadline --
+/// songbird's `gateway_timeout` is 10s -- and this is the one point every
+/// command's join funnels through, so the defer belongs here rather than in
+/// each of them. poise's defer is idempotent and a no-op on prefix commands,
+/// so a caller that already deferred pays nothing.
+///
+/// It sits deliberately *after* the permission gate: a refusal is cache-only
+/// and answers in microseconds, so it should not spend a round-trip putting
+/// the user on "thinking...".
+///
+/// 🪤 Keep the body between the gate and `manager.join` short.
+/// `perms::join_site_guard_tests` asserts the gate appears within 1200 bytes
+/// before the join, so prose added between them eats that budget and makes an
+/// unrelated guard fail with a misleading "ungated join" message. That is why
+/// this rationale lives up here and not inline.
 #[cfg(not(tarpaulin_include))]
 #[tracing::instrument]
 pub async fn do_join(
@@ -183,8 +205,31 @@ pub async fn do_join(
     // say — and `NoChannelId` would win the race and report nothing useful.
     // That ordering made `JoinLookup::Withheld` unreachable from this, the
     // busiest of the three join sites.
-    crate::music::perms::ensure_can_join(ctx.cache(), guild_id, channel_id)
-        .map_err(|e| -> Error { Box::new(e) })?;
+    //
+    // 🪤 But a channel absent from the cache is ambiguous: either Discord
+    // withheld it (no VIEW_CHANNEL) or it is not a channel in this guild at
+    // all -- and `/summonchannel` takes a raw id, so a typo lands here.
+    // Voice states are NOT filtered by VIEW_CHANNEL, so a member sitting in
+    // it proves it is real and merely hidden. With nobody in it we cannot
+    // tell, and `NoChannelId` is the answer that does not invent a
+    // permission problem on a channel that may not exist.
+    if !guild.channels.contains_key(&channel_id)
+        && !guild
+            .voice_states
+            .iter()
+            .any(|vs| vs.channel_id == Some(channel_id))
+    {
+        return Err(Box::new(CrackedError::NoChannelId));
+    }
+    crate::music::perms::ensure_can_join(ctx.cache(), guild_id, channel_id).map_err(
+        |e| -> Error {
+            // The named "Joining channel" line below never runs for a refusal,
+            // so without this a gate refusal is invisible server-side -- the
+            // same blind spot as #467/#468, on the feature built to end it.
+            tracing::warn!("Refusing join into {channel_id:?} in {guild_id:?}: {e}");
+            Box::new(e)
+        },
+    )?;
     let channel_name = guild
         .channels
         .get(&channel_id)
@@ -195,19 +240,18 @@ pub async fn do_join(
     tracing::warn!(
         "Joining channel: {channel_name} ({channel_id:?}) in {guild_name} ({guild_id:?})"
     );
-    // Every join that gets this far can outlive Discord's three-second
-    // interaction deadline -- songbird's gateway_timeout is 10s -- so defer
-    // here, the one point every command's join funnels through, rather than
-    // in each of them. poise's defer is idempotent and a no-op on prefix
-    // commands, so callers that already deferred pay nothing.
-    //
-    // Deliberately AFTER the gate: a refusal is cache-only and answers in
-    // microseconds, so it should not spend a round-trip on "thinking...".
+    // See this function's doc comment for why the defer sits exactly here.
     ctx.defer().await?;
     let call = match manager.join(guild_id, channel_id).await {
         Ok(call) => call,
         Err(err) => match connected_call(manager, guild_id, Some(channel_id)).await {
-            Some(call) => call,
+            Some(call) => {
+                // The handshake reported a problem but the connection is up.
+                // Worth a line: a recovered join should be distinguishable in
+                // the log from a clean one.
+                tracing::warn!("Join into {channel_id:?} reported {err:?} but connected");
+                call
+            },
             None => {
                 tracing::warn!("Error joining channel: {:?}", err);
                 // Drop the connectionless Call, or the next join finds it and
@@ -215,11 +259,19 @@ pub async fn do_join(
                 // `leave(..)?` *then* `calls.remove(..)`, so a failing leave
                 // skips the removal -- log it rather than discarding the only
                 // signal that the Call is still registered.
-                if let Err(e) = manager.remove(guild_id).await {
-                    tracing::warn!(
-                        "Could not remove the connectionless Call for {guild_id:?}: {e:?}. \
-                         A later join may find it and skip the permission gate."
-                    );
+                //
+                // 🪤 Guarded on there being NO connection at all. The arm
+                // above is also taken when we are connected to a *different*
+                // channel -- the concurrent-`/gp`-resume race `expect` exists
+                // for -- and `remove` is `leave` then drop, so removing here
+                // would disconnect that live session and bin its queue.
+                if connected_call(manager, guild_id, None).await.is_none() {
+                    if let Err(e) = manager.remove(guild_id).await {
+                        tracing::warn!(
+                            "Could not remove the connectionless Call for {guild_id:?}: {e:?}. \
+                             A later join may find it and skip the permission gate."
+                        );
+                    }
                 }
                 // let str = err.to_string().clone();
                 let my_err = CrackedError::JoinChannelError(err);
@@ -272,6 +324,47 @@ mod join_order_guard_tests {
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
     }
 
+    /// Drop a trailing `//` comment.
+    ///
+    /// 🪤 Deliberately conservative: it refuses to cut when a quote appears
+    /// before the `//`, so a line carrying a string literal -- a URL, or any
+    /// text with a slash pair in it -- is scanned whole rather than truncated
+    /// mid-literal. Over-inclusion makes a guard fail loudly; truncation makes
+    /// it pass while checking less than it claims, which is the failure this
+    /// module exists to prevent. It does not parse Rust and does not need to:
+    /// every assertion here is "this exact code line is, or is not, present".
+    fn strip_comment(line: &str) -> &str {
+        match line.find("//") {
+            Some(i) if !line[..i].contains('"') => &line[..i],
+            _ => line,
+        }
+    }
+
+    #[test]
+    fn strip_comment_cuts_comments_but_never_truncates_a_literal() {
+        assert_eq!(strip_comment("let x = 1; // note"), "let x = 1; ");
+        assert_eq!(strip_comment("// whole line"), "");
+        assert_eq!(strip_comment("no comment here"), "no comment here");
+        // A URL inside a literal must not cost us the rest of the line.
+        assert_eq!(
+            strip_comment(r#"warn!("see https://x/y");"#),
+            r#"warn!("see https://x/y");"#
+        );
+        // The case that matters most: code AFTER a literal containing `//`
+        // stays visible. Truncating here would hide a banned call from the
+        // scan, which is a guard passing while checking less than it claims.
+        assert_eq!(
+            strip_comment(r#"warn!("a // b"); manager.get(guild_id)"#),
+            r#"warn!("a // b"); manager.get(guild_id)"#
+        );
+        // Over-inclusive by design: a genuine trailing comment after a literal
+        // survives. That can only make a guard louder, never blinder.
+        assert_eq!(
+            strip_comment(r#"let u = "x"; // trailing"#),
+            r#"let u = "x"; // trailing"#
+        );
+    }
+
     /// The body of one function, bounded at the next `}` in column 0, with
     /// `//` comments stripped.
     ///
@@ -284,43 +377,6 @@ mod join_order_guard_tests {
     /// lookup names `NoChannelId`, and sits above the gate. Searching raw
     /// text found the prose first and failed correct code. A guard that reads
     /// commentary is not reading the program.
-    /// Drop a trailing `//` comment, but not the `//` in a URL.
-    ///
-    /// 🪤 A naive cut at the first `//` truncates any line holding a
-    /// `https://` literal -- routine in a Discord bot -- and a guard that
-    /// silently scans less than it claims is the failure this whole module
-    /// exists to prevent.
-    fn strip_comment(line: &str) -> &str {
-        let b = line.as_bytes();
-        let mut i = 0;
-        while i + 1 < b.len() {
-            if b[i] == b'/' && b[i + 1] == b'/' {
-                if i > 0 && b[i - 1] == b':' {
-                    i += 2;
-                    continue;
-                }
-                return &line[..i];
-            }
-            i += 1;
-        }
-        line
-    }
-
-    #[test]
-    fn strip_comment_cuts_comments_and_keeps_urls() {
-        assert_eq!(strip_comment("let x = 1; // note"), "let x = 1; ");
-        assert_eq!(strip_comment("// whole line"), "");
-        assert_eq!(strip_comment("no comment here"), "no comment here");
-        assert_eq!(
-            strip_comment(r#"warn!("see https://x/y");"#),
-            r#"warn!("see https://x/y");"#
-        );
-        assert_eq!(
-            strip_comment(r#"let u = "https://a"; // trailing"#),
-            r#"let u = "https://a"; "#
-        );
-    }
-
     fn body_of(src: &str, signature: &str) -> String {
         let start = src.find(signature).unwrap_or_else(|| {
             panic!("{signature} not found -- guard is looking at the wrong file")
@@ -352,8 +408,11 @@ mod join_order_guard_tests {
         let gate = body
             .find("ensure_can_join(")
             .expect("do_join lost its gate");
+        // Anchored on the lookup itself, not on any mention of the error --
+        // there is a second, deliberate `NoChannelId` above the gate now, and
+        // matching that one made this guard fail correct code.
         let lookup = body
-            .find("NoChannelId")
+            .find(".ok_or(CrackedError::NoChannelId)")
             .expect("do_join lost its channel-name lookup -- rewrite this guard");
         assert!(
             gate < lookup,
@@ -361,6 +420,34 @@ mod join_order_guard_tests {
              voice channel the bot cannot see from GUILD_CREATE, so the lookup misses \
              exactly when the gate has the most to say, and `JoinLookup::Withheld` \
              becomes unreachable from this join site."
+        );
+    }
+
+    /// The gate may only claim VIEW_CHANNEL for a channel we have evidence is
+    /// real. `/summonchannel` takes a raw id, and a cache miss cannot tell a
+    /// hidden channel from a typo.
+    #[test]
+    fn an_unknown_unoccupied_channel_is_not_called_a_permission_problem() {
+        let body = body_of(&read("commands/music_utils.rs"), "pub async fn do_join(");
+        let bail = body
+            .find("return Err(Box::new(CrackedError::NoChannelId))")
+            .expect(
+                "do_join must bail on a channel that is neither cached nor occupied, or a \
+                 typo'd id is reported as a missing View Channel on a channel that does \
+                 not exist -- the exact false diagnosis perms.rs exists to prevent",
+            );
+        assert!(
+            body.contains("voice_states"),
+            "the existence check must consult voice states: they are NOT filtered by \
+             VIEW_CHANNEL, so a member sitting in the channel is the only offline proof \
+             that a channel missing from the cache is real rather than imaginary"
+        );
+        let gate = body
+            .find("ensure_can_join(")
+            .expect("do_join lost its gate");
+        assert!(
+            bail < gate,
+            "the existence check must precede the gate, or the gate answers first"
         );
     }
 
@@ -377,6 +464,14 @@ mod join_order_guard_tests {
             body.contains("manager.remove(guild_id)"),
             "a connectionless Call must be dropped, or a later join finds it and skips \
              the gate"
+        );
+        assert!(
+            body.contains("connected_call(manager, guild_id, None).await.is_none()"),
+            "the teardown must be guarded on there being NO connection at all. The arm \
+             above is also taken when we are connected to a DIFFERENT channel -- the \
+             concurrent-/gp-resume race `expect` exists for -- and `remove` is `leave` \
+             then drop, so removing there would disconnect a live session and bin its \
+             queue."
         );
         assert!(
             !body.contains("let _ = manager.remove"),
