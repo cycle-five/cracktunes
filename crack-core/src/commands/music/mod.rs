@@ -2,6 +2,7 @@ pub mod autopause;
 pub mod autoplay;
 pub mod clear;
 pub mod collector;
+pub mod diagnose;
 pub mod doplay;
 pub mod dosearch;
 pub mod gambling;
@@ -34,6 +35,7 @@ pub use autopause::*;
 pub use autoplay::*;
 pub use clear::*;
 pub use collector::*;
+pub use diagnose::*;
 pub use doplay::*;
 pub use gambling::*;
 pub use get_metadata::*;
@@ -65,6 +67,7 @@ pub fn music_commands() -> Vec<crate::Command> {
             autopause(),
             autoplay(),
             clear(),
+            diagnose(),
             grab(),
             leave(),
             lyrics(),
