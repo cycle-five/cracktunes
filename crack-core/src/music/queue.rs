@@ -3,6 +3,7 @@ use crate::{
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
     music::{NewQueryType, PlaybackOwner, QueueGuard},
+    poise_ext::ContextExt,
     utils::{set_track_handle_metadata, set_track_handle_requesting_user, TrackData},
     Context as CrackContext, Error,
 };
@@ -303,8 +304,10 @@ pub async fn queue_track_front(
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let ready_track = ready_query(ctx, query_type.clone()).await?;
-    // FIXME:
-    //ctx.async_send_track_metadata_write_msg(&ready_track);
+    // Logged BEFORE the guard is taken and before `ready_track` is moved into
+    // the enqueue below. The send is a non-blocking channel push, so it costs
+    // the play path nothing.
+    ctx.send_track_metadata_write_msg(&ready_track);
     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let q = queue_track_ready_front(&guard, call, ready_track).await?;
     Ok(q)
@@ -337,6 +340,11 @@ pub async fn queue_track_back(
             match e1.into() {
                 Some(_e) => {
                     let ready_track = ready_query(ctx, query_type.clone()).await?;
+                    // 🪤 This branch RETURNS, so the send below never runs for
+                    // it. A play that fell back to `ready_query` is still a
+                    // play and must be logged here, or the fallback path stays
+                    // silently unlogged exactly as it was before this fix.
+                    ctx.send_track_metadata_write_msg(&ready_track);
                     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
                     return _queue_track_ready_back(&guard, call, ready_track).await;
                 },
@@ -349,8 +357,12 @@ pub async fn queue_track_back(
         },
     };
     let after_ready = std::time::Instant::now();
-    // FIXME:
-    //ctx.async_send_track_metadata_write_msg(&ready_track);
+    // 🪤 `ready_track` is NOT in scope here -- it exists only in the fallback
+    // branch above, which returns. This leg goes `ct_client` -> ResolvedTrack
+    // and never builds one, which is why simply uncommenting the old
+    // `//ctx.async_send_track_metadata_write_msg(&ready_track);` line did not
+    // even compile, and why this path needs its own sender.
+    ctx.send_resolved_metadata_write_msg(&resolved);
     let after_send = std::time::Instant::now();
     //let queue = queue_track_ready_back(call, ready_track).await;
     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
@@ -1213,6 +1225,75 @@ mod queue_query_list_offset_ordering_tests {
              length is read and acted on, the check-then-act race this \
              guard exists to close (fixed in 6f2d8b4) is back: the length \
              can go stale between the check and the insert."
+        );
+    }
+}
+
+#[cfg(test)]
+mod play_history_wiring_tests {
+    //! Regression guard for #486.
+    //!
+    //! Play history was never written on ANY commit in this repo's history:
+    //! both metadata-write call sites in this file sat commented out behind a
+    //! `// FIXME:`, and the channel-based sender had zero callers, so the
+    //! worker `config.rs` spawns idled forever on a channel nothing fed. The
+    //! visible symptom was not an empty `/playlog` -- it was autoplay failing
+    //! with "I can't pick a next track right now", because
+    //! `track_end.rs::get_recommended_track_query` seeds Spotify from
+    //! `get_last_played_by_guild`, which returned nothing.
+    //!
+    //! That is invisible by construction: a missing call emits no log line and
+    //! no error, so nothing short of reading the source or querying the
+    //! database reveals it. Hence a source scan rather than a behavioural test
+    //! -- the write path needs a live songbird `Call` and a real voice
+    //! connection to exercise, which is why it went unnoticed for years.
+
+    /// 🪤 The scan STOPS at the first `#[cfg(test)]`. This test module names
+    /// the very functions it is counting, so scanning the whole file would
+    /// count this doc comment and pass vacuously no matter what the real code
+    /// did -- the same self-referential trap that made an earlier version of
+    /// the #484 guard unable to ever fail.
+    fn production_source() -> String {
+        let src = std::fs::read_to_string("src/music/queue.rs").expect("readable");
+        let end = src
+            .find("#[cfg(test)]")
+            .expect("this file has test modules");
+        src[..end].to_string()
+    }
+
+    /// Count call sites, ignoring commented-out ones -- the exact state #486
+    /// was in.
+    fn live_call_sites(src: &str, needle: &str) -> usize {
+        src.lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .filter(|l| l.contains(needle))
+            .count()
+    }
+
+    #[test]
+    fn both_queue_paths_still_log_play_history() {
+        let src = production_source();
+
+        // `queue_track_front`, plus the `ready_query` FALLBACK branch inside
+        // `queue_track_back` -- that branch returns early, so it needs its own
+        // send and is the easiest of the three to drop in a refactor.
+        let ready = live_call_sites(&src, "send_track_metadata_write_msg(");
+        assert!(
+            ready >= 2,
+            "expected at least 2 live send_track_metadata_write_msg call sites \
+             (queue_track_front, and queue_track_back's ready_query fallback), \
+             found {ready}. Play history stops being written and autoplay dies \
+             with it -- silently, with no error in the log."
+        );
+
+        // `queue_track_back`'s fast leg goes ct_client -> ResolvedTrack and
+        // never builds a TrackReadyData, so it cannot use the sender above.
+        let resolved = live_call_sites(&src, "send_resolved_metadata_write_msg(");
+        assert!(
+            resolved >= 1,
+            "expected at least 1 live send_resolved_metadata_write_msg call site \
+             (queue_track_back's resolved fast path), found {resolved}. This is \
+             the leg MOST plays take, so losing it loses nearly all history."
         );
     }
 }
