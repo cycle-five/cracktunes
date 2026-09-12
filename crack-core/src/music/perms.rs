@@ -165,6 +165,60 @@ pub fn roles_resolvable(
     is_known(RoleId::new(guild_id.get())) && member_roles.iter().all(|r| is_known(*r))
 }
 
+/// Classify the author's voice situation from already-looked-up facts.
+///
+/// Pure, so the distinction between "in no voice channel" and "in a channel
+/// we cannot see" is pinned without a populated [`Cache`]. 🪤 That
+/// distinction is the whole point of [`VoiceCheck`], and it lives **here**,
+/// not in [`compute`] — which only carries a `VoiceCheck` someone else
+/// decided. Leaving the decision inline in [`resolve`]'s cache reads left the
+/// one line that matters untested: flipping it back to `NotInVoice`
+/// reproduced the original bug with the whole suite still green.
+///
+/// `granted_in` is called only for a channel `channel_known` accepted, which
+/// is why callers may use a lookup that has no answer otherwise. The
+/// `granted_in_is_not_consulted_for_a_channel_we_cannot_see` test pins that
+/// order: reversing it would turn an unseeable channel into `Resolved` with
+/// an empty bitset, refusing for CONNECT and SPEAK instead of VIEW_CHANNEL.
+pub fn classify_voice(
+    author_channel: Option<ChannelId>,
+    channel_known: impl Fn(ChannelId) -> bool,
+    granted_in: impl Fn(ChannelId) -> Permissions,
+) -> VoiceCheck {
+    let Some(cid) = author_channel else {
+        return VoiceCheck::NotInVoice;
+    };
+    if !channel_known(cid) {
+        return VoiceCheck::Unreadable(cid);
+    }
+    VoiceCheck::resolved(cid, granted_in(cid))
+}
+
+/// Classify a join target from already-looked-up facts.
+///
+/// The same extraction as [`classify_voice`], for the same reason: the
+/// channel-miss arm is the line that decides whether the gate refuses or
+/// waves a join through, and inline in [`join_lookup`]'s cache reads nothing
+/// could pin it.
+///
+/// `guild_readable` is false when nothing is known — the guild is not cached,
+/// the bot's own member is not cached, or [`roles_resolvable`] said no.
+/// `granted_in` is called only for a channel `channel_known` accepted.
+pub fn classify_join(
+    channel: ChannelId,
+    guild_readable: bool,
+    channel_known: impl Fn(ChannelId) -> bool,
+    granted_in: impl Fn(ChannelId) -> Permissions,
+) -> JoinLookup {
+    if !guild_readable {
+        return JoinLookup::Unknown;
+    }
+    if !channel_known(channel) {
+        return JoinLookup::Withheld;
+    }
+    JoinLookup::Granted(granted_in(channel))
+}
+
 /// Read the bot's permissions out of the cache.
 ///
 /// Returns `None` when the guild, the bot's own member, or the text channel is
@@ -198,18 +252,23 @@ pub fn resolve(
     // The author's voice channel, if they are in one. Absent from the voice
     // states is not a denial; absent from an already-cached guild's channel
     // list is a different thing entirely, and gets its own state.
-    let voice = match guild.voice_states.get(&author).and_then(|vs| vs.channel_id) {
-        None => VoiceCheck::NotInVoice,
-        Some(cid) => match guild.channels.get(&cid) {
-            Some(chan) => VoiceCheck::resolved(cid, guild.user_permissions_in(chan, bot)),
-            // 🪤 Not a cache miss. The guild is cached, so Discord already
-            // sent its channel list, and it omits the channels the bot lacks
-            // VIEW_CHANNEL on. A channel the author is demonstrably sitting
-            // in that is missing from that list is therefore the answer, not
-            // the absence of one.
-            None => VoiceCheck::Unreadable(cid),
+    //
+    // 🪤 The classification is [`classify_voice`], not inline here. Discord
+    // omits the channels the bot lacks VIEW_CHANNEL on from GUILD_CREATE, so
+    // a channel missing from an already-cached guild is the answer rather
+    // than the absence of one -- and that call is exactly the line that has
+    // to stay pinned by a test.
+    let voice = classify_voice(
+        guild.voice_states.get(&author).and_then(|vs| vs.channel_id),
+        |cid| guild.channels.get(&cid).is_some(),
+        |cid| {
+            guild
+                .channels
+                .get(&cid)
+                .map(|chan| guild.user_permissions_in(chan, bot))
+                .unwrap_or_else(Permissions::empty)
         },
-    };
+    );
 
     Some(compute(text_channel, text_granted, voice))
 }
@@ -324,15 +383,20 @@ fn join_lookup(cache: &Cache, guild_id: GuildId, channel_id: ChannelId) -> JoinL
     let Some(bot) = guild.members.get(&bot_id) else {
         return JoinLookup::Unknown;
     };
-    // An under-reported bitset would refuse a join that works: see
-    // [`roles_resolvable`].
-    if !roles_resolvable(guild_id, &bot.roles, |r| guild.roles.get(&r).is_some()) {
-        return JoinLookup::Unknown;
-    }
-    match guild.channels.get(&channel_id) {
-        Some(chan) => JoinLookup::Granted(guild.user_permissions_in(chan, bot)),
-        None => JoinLookup::Withheld,
-    }
+    classify_join(
+        channel_id,
+        // An under-reported bitset would refuse a join that works: see
+        // [`roles_resolvable`].
+        roles_resolvable(guild_id, &bot.roles, |r| guild.roles.get(&r).is_some()),
+        |cid| guild.channels.get(&cid).is_some(),
+        |cid| {
+            guild
+                .channels
+                .get(&cid)
+                .map(|chan| guild.user_permissions_in(chan, bot))
+                .unwrap_or_else(Permissions::empty)
+        },
+    )
 }
 
 #[cfg(test)]
@@ -466,6 +530,101 @@ mod tests {
             !rendered.contains("Speak"),
             "Speak is unknown, not missing: {rendered}"
         );
+    }
+
+    // `classify_voice` is where the three-way distinction is actually made.
+    // `compute` only carries a `VoiceCheck` someone else decided, so testing
+    // `compute` proves nothing about whether `resolve` ever produces
+    // `Unreadable`. These are the tests that pin that.
+
+    #[test]
+    fn no_voice_channel_classifies_as_not_in_voice() {
+        let got = classify_voice(
+            None,
+            |_| panic!("nothing to look up"),
+            |_| panic!("nothing to look up"),
+        );
+        assert_eq!(got, VoiceCheck::NotInVoice);
+    }
+
+    #[test]
+    fn a_channel_the_guild_does_not_list_classifies_as_unreadable() {
+        // 🪤 THE regression. Discord omits channels the bot lacks
+        // VIEW_CHANNEL on from GUILD_CREATE, so an author sitting in one
+        // leaves the guild's channel list without an entry. Classifying that
+        // as `NotInVoice` tells them they are not in a voice channel -- false
+        // and unactionable -- and lets the gate wave the join through into
+        // songbird's ~10s timeout.
+        let got = classify_voice(Some(voice_ch()), |_| false, |_| VOICE_REQUIRED);
+        assert_eq!(
+            got,
+            VoiceCheck::Unreadable(voice_ch()),
+            "a channel we cannot see is not the same as no channel"
+        );
+        assert_ne!(
+            got,
+            VoiceCheck::NotInVoice,
+            "collapsing these two is the bug this state exists to prevent"
+        );
+        match got {
+            VoiceCheck::Unreadable(cid) => assert_eq!(cid, voice_ch(), "the id must survive"),
+            other => panic!("expected Unreadable, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_channel_the_guild_lists_classifies_as_resolved_carrying_its_bitset() {
+        let granted = VOICE_REQUIRED - Permissions::SPEAK;
+        let got = classify_voice(Some(voice_ch()), |_| true, |_| granted);
+        let v = got.perms().expect("a known channel resolves");
+        assert_eq!(v.channel, voice_ch());
+        // Bit-exact: a bitset mangled on the way through would name the wrong
+        // permission in the refusal.
+        assert_eq!(v.granted, granted);
+        assert_eq!(v.missing(), Permissions::SPEAK);
+    }
+
+    #[test]
+    fn granted_in_is_not_consulted_for_a_channel_we_cannot_see() {
+        // 🪤 Order matters. If `granted_in` were consulted first, a caller
+        // whose lookup falls back to `Permissions::empty()` for an absent
+        // channel would produce `Resolved(empty)` -- a refusal naming Connect
+        // and Speak instead of View Channel, sending an admin to grant two
+        // permissions that are very likely already granted.
+        let got = classify_voice(
+            Some(voice_ch()),
+            |_| false,
+            |_| panic!("granted_in must not be asked about a channel we cannot see"),
+        );
+        assert_eq!(got, VoiceCheck::Unreadable(voice_ch()));
+    }
+
+    #[test]
+    fn an_unreadable_guild_classifies_a_join_as_unknown() {
+        let got = classify_join(
+            voice_ch(),
+            false,
+            |_| panic!("nothing to look up"),
+            |_| panic!("nothing to look up"),
+        );
+        assert_eq!(got, JoinLookup::Unknown, "fail open on genuine ignorance");
+    }
+
+    #[test]
+    fn a_join_target_the_guild_does_not_list_classifies_as_withheld() {
+        // 🪤 The gate half of the same regression: this arm returning
+        // `Unknown` is `Ok(())`, and the join proceeds to songbird's ~10s
+        // `JoinError::TimedOut`, which names nothing.
+        let got = classify_join(voice_ch(), true, |_| false, |_| VOICE_REQUIRED);
+        assert_eq!(got, JoinLookup::Withheld);
+        assert_ne!(got, JoinLookup::Unknown, "this is information, not a gap");
+    }
+
+    #[test]
+    fn a_join_target_the_guild_lists_classifies_as_granted_bit_exactly() {
+        let granted = VOICE_REQUIRED - Permissions::CONNECT;
+        let got = classify_join(voice_ch(), true, |_| true, |_| granted);
+        assert_eq!(got, JoinLookup::Granted(granted));
     }
 
     #[test]
