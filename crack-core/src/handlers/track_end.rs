@@ -195,7 +195,7 @@ impl EventHandler for TrackEndHandler {
         }
 
         // The track that just ended seeds the next recommendation. No database:
-        // ReccoBeats needs none, so autoplay works without one.
+        // neither YouTube's Mix nor Deezer needs one, so autoplay works without one.
         let ended: Option<TrackHandle> = match event_ctx {
             EventContext::Track(tracks) => tracks.first().map(|(_, handle)| (*handle).clone()),
             _ => None,

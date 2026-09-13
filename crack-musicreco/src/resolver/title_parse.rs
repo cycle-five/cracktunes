@@ -7,7 +7,11 @@ use async_trait::async_trait;
 ///
 /// 🪤 The second and third are EN DASH and EM DASH, not hyphens. A measured
 /// Queen title uses the en dash; matching only '-' loses it silently.
-const SEPARATORS: &[&str] = &[" — ", " – ", " - ", " | "];
+///
+/// 🪤 ` ~ ` is measured too: a fan upload of The Offspring is titled "The
+/// Offspring ~ Hit That", and `/play <url>` gives it no artist, so the title is
+/// the only place the artist is.
+const SEPARATORS: &[&str] = &[" — ", " – ", " ~ ", " - ", " | "];
 
 /// Bracketed suffixes that are packaging, not part of a track name.
 const NOISE_WORDS: &[&str] = &[
@@ -120,7 +124,7 @@ impl SeedResolver for TitleParseResolver {
             // 🪤 L6 (Task 5 review): a supplied artist with a title that
             // cleans to empty (e.g. just "(Official Video)") used to produce
             // a seed with an empty title -- a guaranteed non-match for every
-            // downstream consumer (MusicBrainz, musicatlas, ReccoBeats).
+            // downstream consumer (MusicBrainz, musicatlas, Deezer).
             // Fixed at the source so every caller of this resolver gets it,
             // not just the ones that remember to check.
             if title.is_empty() {
@@ -162,6 +166,7 @@ mod tests {
             title: title.into(),
             artist: None,
             uploader: None,
+            video_id: None,
         }
     }
 
@@ -182,6 +187,11 @@ mod tests {
             (
                 "Daft Punk - Get Lucky (Official Audio) ft. Pharrell Williams",
                 Some(("Daft Punk", "Get Lucky")),
+            ),
+            // TILDE, on a fan upload whose `/play <url>` metadata has no artist.
+            (
+                "The Offspring ~ Hit That",
+                Some(("The Offspring", "Hit That")),
             ),
             // No separator: no seed, and therefore no metered call.
             ("Never Gonna Give You Up", None),
@@ -256,6 +266,7 @@ mod tests {
                 title: "Anything At All".into(),
                 artist: Some("Real Artist".into()),
                 uploader: None,
+                video_id: None,
             })
             .await
             .unwrap()
@@ -292,6 +303,7 @@ mod tests {
                     title: title.into(),
                     artist: Some(artist.into()),
                     uploader: None,
+                    video_id: None,
                 })
                 .await
                 .unwrap()
@@ -314,6 +326,7 @@ mod tests {
                 title: "Daft Punk - Get Lucky".into(),
                 artist: Some("Pharrell Williams".into()),
                 uploader: None,
+                video_id: None,
             })
             .await
             .unwrap()
@@ -332,6 +345,7 @@ mod tests {
                 title: "(Official Video)".into(),
                 artist: Some("Queen".into()),
                 uploader: None,
+                video_id: None,
             })
             .await
             .unwrap();

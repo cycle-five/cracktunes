@@ -409,7 +409,7 @@ pub struct DataInner {
     pub ct_client: CrackTrackClient<'static>,
     pub songbird: Arc<Songbird>,
     /// The autoplay recommender. ONE per process (Ruling 42): the MusicBrainz
-    /// 1/sec gate, a provider's disabled flag and ReccoBeats' cooldown all live
+    /// 1/sec gate and a provider's disabled flag both live
     /// inside it, and a second instance would quietly reset them. `None` when
     /// no recommender could be built.
     pub musicreco: Option<Arc<crack_musicreco::MusicReco>>,

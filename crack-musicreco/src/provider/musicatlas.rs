@@ -2,7 +2,7 @@
 //! playable YouTube id, which is why it is tried first despite being metered.
 
 use super::http;
-use crate::{Error, Playable, Recommendation, Result, Seed};
+use crate::{Error, Playable, RawTrack, Recommendation, Result, Seed};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -102,12 +102,22 @@ impl crate::provider::Recommender for MusicAtlas {
         true
     }
 
-    async fn recommend(&self, seed: &Seed, want: usize) -> Result<Vec<Recommendation>> {
+    async fn recommend(
+        &self,
+        _track: &RawTrack,
+        seed: Option<&Seed>,
+        want: usize,
+    ) -> Result<Vec<Recommendation>> {
         if want == 0 {
             // This is the METERED provider: a call spent for zero wanted
             // results is one of the 100/day gone for nothing.
             return Ok(Vec::new());
         }
+        // The orchestrator never calls a provider that needs a seed without
+        // one. Should it happen anyway, there is nothing to ask about.
+        let Some(seed) = seed else {
+            return Ok(Vec::new());
+        };
 
         let url = format!("{}/api/similar_tracks", self.base_url.trim_end_matches('/'));
         let resp = self
@@ -235,6 +245,25 @@ mod tests {
         }
     }
 
+    fn raw() -> RawTrack {
+        RawTrack {
+            title: "Queen - Bohemian Rhapsody".into(),
+            artist: None,
+            uploader: None,
+            video_id: None,
+        }
+    }
+
+    /// The METERED provider: a call without a seed would be one of the
+    /// 100/day spent asking about nothing.
+    #[tokio::test]
+    async fn no_seed_makes_no_request() {
+        let (base, hits, _seen) = serve(vec![OK]).await;
+        let p = MusicAtlas::with_base_url("k", base).expect("client builds");
+        assert!(p.recommend(&raw(), None, 10).await.unwrap().is_empty());
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+    }
+
     const OK: (u16, &str) = (
         200,
         r#"{"success":true,"matches":[
@@ -246,7 +275,7 @@ mod tests {
     async fn maps_matches_and_keeps_only_playable_ones() {
         let (base, _, _seen) = serve(vec![OK]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
-        let out = p.recommend(&seed(), 10).await.unwrap();
+        let out = p.recommend(&raw(), Some(&seed()), 10).await.unwrap();
         assert_eq!(out.len(), 1, "the match with no youtube id is dropped");
         assert_eq!(out[0].youtube_id(), Some("vid1"));
         assert_eq!(out[0].source, "musicatlas");
@@ -273,7 +302,7 @@ mod tests {
         );
         let (base, _, _seen) = serve(vec![THREE]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
-        let out = p.recommend(&seed(), 2).await.unwrap();
+        let out = p.recommend(&raw(), Some(&seed()), 2).await.unwrap();
         assert_eq!(out.len(), 2, "asked for 2 of 3 playable matches");
         // In order, so a `.take` that also reorders is caught.
         assert_eq!(out[0].youtube_id(), Some("v1"));
@@ -308,7 +337,7 @@ mod tests {
         .await;
 
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
-        let got = p.recommend(&seed(), 5).await;
+        let got = p.recommend(&raw(), Some(&seed()), 5).await;
 
         // 🔑 The assertion that matters is the REQUEST COUNT, not the returned
         // value: following the redirect yields `Ok([])`, a perfectly plausible
@@ -333,7 +362,10 @@ mod tests {
     async fn a_server_fault_is_retryable() {
         let (base, _, _seen) = serve(vec![(500, "Internal Server Error")]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
-        let err = p.recommend(&seed(), 5).await.expect_err("500 is an error");
+        let err = p
+            .recommend(&raw(), Some(&seed()), 5)
+            .await
+            .expect_err("500 is an error");
         assert!(
             err.is_transient(),
             "a 5xx must be retryable, got {err} (is_transient=false)"
@@ -350,7 +382,7 @@ mod tests {
         .await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
         let err = p
-            .recommend(&seed(), 10)
+            .recommend(&raw(), Some(&seed()), 10)
             .await
             .expect_err("must not read as success");
         assert!(matches!(err, Error::NotATrack { .. }), "got {err}");
@@ -362,7 +394,10 @@ mod tests {
         let (base, _, _seen) =
             serve(vec![(403, r#"{"error":"Invalid or unconfirmed API key"}"#)]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
-        let err = p.recommend(&seed(), 10).await.expect_err("403");
+        let err = p
+            .recommend(&raw(), Some(&seed()), 10)
+            .await
+            .expect_err("403");
         match &err {
             Error::InvalidKey { message, .. } => {
                 assert_eq!(message, "Invalid or unconfirmed API key");
@@ -386,7 +421,10 @@ mod tests {
         );
         let (base, hits, _seen) = serve(vec![(403, page)]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
-        let err = p.recommend(&seed(), 10).await.expect_err("403");
+        let err = p
+            .recommend(&raw(), Some(&seed()), 10)
+            .await
+            .expect_err("403");
         assert_eq!(hits.load(Ordering::SeqCst), 1);
         match err {
             Error::UnexpectedBody { message, .. } => {
@@ -405,7 +443,10 @@ mod tests {
     async fn want_caps_the_returned_count() {
         let (base, hits, _seen) = serve(vec![OK]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
-        assert_eq!(p.recommend(&seed(), 0).await.unwrap().len(), 0);
+        assert_eq!(
+            p.recommend(&raw(), Some(&seed()), 0).await.unwrap().len(),
+            0
+        );
         assert_eq!(
             hits.load(Ordering::SeqCst),
             0,
@@ -421,7 +462,10 @@ mod tests {
     async fn a_429_is_rate_limited_and_is_transient() {
         let (base, _, _seen) = serve(vec![(429, r#"{"error":"slow down"}"#)]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
-        let err = p.recommend(&seed(), 10).await.expect_err("429");
+        let err = p
+            .recommend(&raw(), Some(&seed()), 10)
+            .await
+            .expect_err("429");
         assert!(matches!(err, Error::RateLimited { .. }), "got {err}");
         assert!(
             err.is_transient(),
@@ -445,7 +489,7 @@ mod tests {
 
         let (base, _, seen) = serve(vec![OK]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
-        let _ = p.recommend(&seed(), 5).await;
+        let _ = p.recommend(&raw(), Some(&seed()), 5).await;
 
         let reqs = seen.lock().expect("test mutex");
         let req = reqs.first().expect("the provider made a request");
@@ -488,7 +532,10 @@ mod tests {
         .await;
 
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
-        let err = p.recommend(&seed(), 5).await.expect_err("429 is an error");
+        let err = p
+            .recommend(&raw(), Some(&seed()), 5)
+            .await
+            .expect_err("429 is an error");
         match err {
             Error::RateLimited { retry_after, .. } => assert_eq!(
                 retry_after,

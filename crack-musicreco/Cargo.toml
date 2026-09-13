@@ -1,11 +1,11 @@
 [package]
 name = "crack-musicreco"
-version = "0.11.1"
+version = "0.12.0"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
 license = "MIT"
-description = "Provider-agnostic music recommendation: musicatlas, ReccoBeats, MusicBrainz."
+description = "Provider-agnostic music recommendation: YouTube's Mix, Deezer, musicatlas, MusicBrainz."
 keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
@@ -19,7 +19,8 @@ serde_json = "1.0"
 thiserror = "1.0.69"
 reqwest = { workspace = true }
 tracing = { workspace = true }
-tokio = { workspace = true }
+# process: YouTube's Mix runs yt-dlp.
+tokio = { workspace = true, features = ["process"] }
 
 [dev-dependencies]
 # test-util: MusicBrainz's 1/sec gate (Task 5) is pinned under

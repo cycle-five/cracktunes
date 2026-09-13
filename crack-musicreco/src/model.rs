@@ -2,13 +2,18 @@ use serde::{Deserialize, Serialize};
 
 /// What the bot knows about the track that just ended.
 ///
-/// 🪤 `artist` is almost always `None`: measured, yt-dlp returns `artist: NA`
-/// and `track: NA` for ordinary music videos, leaving only the title.
+/// 🪤 `artist` is usually `None`, and when set it is often not the artist.
+/// Measured on production (2026-09-13): `/play <url>` resolves with no artist
+/// at all, and a keyword search reports the uploading channel as the artist --
+/// "MrCalienteLP" for a fan upload of The Offspring.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawTrack {
     pub title: String,
     pub artist: Option<String>,
     pub uploader: Option<String>,
+    /// The YouTube video id, when the track is a YouTube video. YouTube's Mix
+    /// needs nothing else: no seed and no parsing.
+    pub video_id: Option<String>,
 }
 
 /// A seed worth spending a metered call on.
@@ -24,8 +29,9 @@ pub struct Seed {
 }
 
 /// 🔑 Providers differ in how playable their results are and the type says so.
-/// musicatlas returns a video id; ReccoBeats never does. Flattening these to a
-/// single "url" field would make a ReccoBeats result look directly playable.
+/// YouTube's Mix and musicatlas return a video id; Deezer never does.
+/// Flattening these to a single "url" field would make a Deezer result look
+/// directly playable.
 ///
 /// 🔑 Adjacently tagged (`tag` + `content`), not serde's default external
 /// tagging. The house rule is an explicit discriminant on the wire; internal
@@ -163,7 +169,7 @@ mod tests {
         };
         assert_eq!(r.youtube_id(), Some("fJ9rUzIMcZQ"));
         // 🔑 The whole reason Playable is an enum: a caller must not be able to
-        // treat a ReccoBeats result as if it had a video id.
+        // treat a Deezer result as if it had a video id.
         assert_eq!(r.youtube_id().is_none(), false);
     }
 }

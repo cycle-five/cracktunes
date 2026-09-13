@@ -10,9 +10,10 @@
 //!   tries recommenders in order, falling through on failure, until one
 //!   answers.
 //!
-//! 🔑 The providers are not interchangeable. Only musicatlas returns a directly
-//! playable YouTube id, so [`model::Playable`] makes that difference explicit
-//! instead of hiding it behind a lowest common denominator.
+//! 🔑 The providers are not interchangeable. YouTube's Mix and musicatlas return
+//! directly playable YouTube ids and Deezer returns a search, so
+//! [`model::Playable`] makes that difference explicit instead of hiding it
+//! behind a lowest common denominator.
 
 pub mod error;
 pub mod model;
@@ -25,6 +26,7 @@ pub(crate) mod text;
 
 pub use error::{Error, Result};
 pub use model::{Playable, RawTrack, Recommendation, Seed};
-pub use provider::{MusicAtlas, ReccoBeats, Recommender};
+pub use provider::youtube_mix::video_id_from_url;
+pub use provider::{Deezer, MusicAtlas, Recommender, YouTubeMix};
 pub use reco::{MusicReco, MusicRecoBuilder, Policy};
 pub use resolver::{MusicBrainz, SeedResolver, TitleParseResolver};

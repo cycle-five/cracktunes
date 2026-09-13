@@ -7,7 +7,7 @@
 use crate::{Error, Result};
 use std::time::Duration;
 
-/// The contact-less User-Agent musicatlas and ReccoBeats both use. NOT
+/// The contact-less User-Agent musicatlas and Deezer both use. NOT
 /// suitable for every provider: MusicBrainz (Task 5) requires a UA with a
 /// contact address and IP-bans clients that omit one, so `client()` takes the
 /// User-Agent as a parameter rather than hardcoding this constant -- a fixed
@@ -35,7 +35,7 @@ pub(crate) fn client(provider: &'static str, user_agent: &str) -> Result<reqwest
 /// 🔑 Split out from [`client`] so a test can exercise the timeout itself
 /// (a short one, against a peer that never answers) without waiting out the
 /// real 10s default -- the public constructors (`MusicAtlas::with_base_url`,
-/// `ReccoBeats::with_base_url`) only ever call `client`, so production
+/// `Deezer::with_base_url`) only ever call `client`, so production
 /// behaviour is unaffected.
 ///
 /// # Errors
@@ -90,7 +90,7 @@ pub(crate) fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Durati
 }
 
 /// Minimal percent-encoding for a query value. `pub(crate)` at the provider
-/// level (not private to one provider) because ReccoBeats and Task 5's
+/// level (not private to one provider) because Deezer and Task 5's
 /// MusicBrainz resolver both need to interpolate provider-supplied text into
 /// a URL, and a resolver reaching into a specific provider's internals for a
 /// generic utility is worse layering than both reaching into shared plumbing.

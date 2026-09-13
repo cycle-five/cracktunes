@@ -1,4 +1,6 @@
 pub mod autoplay;
+#[cfg(test)]
+mod autoplay_probe;
 pub mod context;
 pub mod lease;
 pub mod perms;

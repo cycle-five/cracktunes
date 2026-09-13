@@ -2,8 +2,8 @@
 //! consulting resolvers for a seed, then trying recommenders in order until
 //! one answers.
 //!
-//! 🔑 Fallback is per-provider, not global (spec §3.2): a musicatlas quota
-//! exhaustion falls through to ReccoBeats instead of ending autoplay. That is
+//! 🔑 Fallback is per-provider, not global (spec §3.2): YouTube's Mix having
+//! nothing falls through to Deezer instead of ending autoplay. That is
 //! the entire point of this crate, so [`MusicReco::next_tracks`] never
 //! returns `Err` for a provider failure -- an empty `Vec` means every avenue
 //! was tried.
@@ -85,8 +85,8 @@ impl MusicRecoBuilder {
 }
 
 /// The orchestrator. Build one per process (spec §9, Ruling 18/23/24 carried
-/// from Task 5): MusicBrainz's 1/sec gate, a recommender's disabled flag, and
-/// ReccoBeats' own cooldown are all per-instance state that a fresh
+/// from Task 5): MusicBrainz's 1/sec gate and a recommender's disabled flag
+/// are per-instance state that a fresh
 /// `MusicReco` per call or per guild would silently reset.
 pub struct MusicReco {
     resolvers: Vec<Box<dyn SeedResolver>>,
@@ -158,11 +158,12 @@ impl MusicReco {
         // Our own ceiling, not a provider one (see `MAX_WANT`'s doc).
         let want = want.min(MAX_WANT);
 
-        let Some(seed) = self.best_seed(raw).await else {
-            tracing::debug!("no seed derivable from {:?}; spending nothing", raw.title);
-            return Ok(Vec::new());
-        };
-        let shaky = seed.confidence < self.policy.min_seed_confidence;
+        // Resolved when first needed, not up front (see
+        // `Recommender::needs_seed`): YouTube's Mix answers from the video id,
+        // and a Mix that answers must not have spent MusicBrainz's 1/sec slot
+        // on a seed nobody used. `None` = not resolved yet; `Some(None)` =
+        // resolved, and nothing was derivable.
+        let mut seed: Option<Option<Seed>> = None;
 
         for (r, disabled) in self.recommenders.iter().zip(&self.disabled) {
             // Ruling 23: a disabled recommender is skipped before `recommend`
@@ -170,23 +171,41 @@ impl MusicReco {
             if disabled.load(Ordering::SeqCst) {
                 continue;
             }
-            // 🔑 The floor gates METERED providers only (see
-            // `Recommender::is_metered`'s doc). Skipping free ones too would
-            // make a MusicBrainz outage fatal to autoplay.
-            if shaky && r.is_metered() {
-                tracing::debug!(
-                    "seed `{} - {}` scored {} (< {}); skipping metered {}",
-                    seed.artist,
-                    seed.title,
-                    seed.confidence,
-                    self.policy.min_seed_confidence,
-                    r.name()
-                );
-                continue;
-            }
-            match r.recommend(&seed, want).await {
+            let this_seed = if r.needs_seed() {
+                if seed.is_none() {
+                    let best = self.best_seed(raw).await;
+                    if best.is_none() {
+                        tracing::debug!(
+                            "no seed derivable from {:?}; skipping providers that need one",
+                            raw.title
+                        );
+                    }
+                    seed = Some(best);
+                }
+                let Some(s) = seed.as_ref().and_then(Option::as_ref) else {
+                    continue;
+                };
+                // 🔑 The floor gates METERED providers only (see
+                // `Recommender::is_metered`'s doc). Skipping free ones too would
+                // make a MusicBrainz outage fatal to autoplay.
+                if s.confidence < self.policy.min_seed_confidence && r.is_metered() {
+                    tracing::debug!(
+                        "seed `{} - {}` scored {} (< {}); skipping metered {}",
+                        s.artist,
+                        s.title,
+                        s.confidence,
+                        self.policy.min_seed_confidence,
+                        r.name()
+                    );
+                    continue;
+                }
+                Some(s)
+            } else {
+                None
+            };
+            match r.recommend(raw, this_seed, want).await {
                 Ok(v) if !v.is_empty() => return Ok(v),
-                Ok(_) => tracing::debug!("{} had nothing for `{}`", r.name(), seed.title),
+                Ok(_) => tracing::debug!("{} had nothing for {:?}", r.name(), raw.title),
                 Err(Error::InvalidKey { message, .. }) => {
                     // Ruling 23 / spec §9: log ERROR once, at the moment it
                     // trips, then never call this recommender again for the
@@ -242,7 +261,12 @@ mod tests {
         fn name(&self) -> &'static str {
             self.name
         }
-        async fn recommend(&self, _s: &Seed, _w: usize) -> Result<Vec<Recommendation>> {
+        async fn recommend(
+            &self,
+            _t: &RawTrack,
+            _s: Option<&Seed>,
+            _w: usize,
+        ) -> Result<Vec<Recommendation>> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             (self.result)()
         }
@@ -278,6 +302,7 @@ mod tests {
             title: "Queen - Bohemian Rhapsody".into(),
             artist: None,
             uploader: None,
+            video_id: None,
         }
     }
 
@@ -410,6 +435,7 @@ mod tests {
             title: "Never Gonna Give You Up".into(),
             artist: None,
             uploader: None,
+            video_id: None,
         };
         assert!(r.next_tracks(&raw, 5).await.unwrap().is_empty());
         assert_eq!(a.load(Ordering::SeqCst), 0, "no seed, no calls, no quota");
@@ -427,7 +453,12 @@ mod tests {
         fn is_metered(&self) -> bool {
             true
         }
-        async fn recommend(&self, _s: &Seed, _w: usize) -> Result<Vec<Recommendation>> {
+        async fn recommend(
+            &self,
+            _t: &RawTrack,
+            _s: Option<&Seed>,
+            _w: usize,
+        ) -> Result<Vec<Recommendation>> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             one("metered")
         }
@@ -499,6 +530,7 @@ mod tests {
             title: "Bohemian Rhapsody".into(),
             artist: Some("Queen".into()),
             uploader: None,
+            video_id: None,
         };
         let out = r.next_tracks(&raw, 5).await.unwrap();
         assert_eq!(out[0].source, "metered");
@@ -621,7 +653,12 @@ mod tests {
         fn name(&self) -> &'static str {
             "capture"
         }
-        async fn recommend(&self, _s: &Seed, w: usize) -> Result<Vec<Recommendation>> {
+        async fn recommend(
+            &self,
+            _t: &RawTrack,
+            _s: Option<&Seed>,
+            w: usize,
+        ) -> Result<Vec<Recommendation>> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             self.want_seen.store(w, Ordering::SeqCst);
             Ok(vec![])
@@ -692,8 +729,13 @@ mod tests {
         fn name(&self) -> &'static str {
             "capture"
         }
-        async fn recommend(&self, s: &Seed, _w: usize) -> Result<Vec<Recommendation>> {
-            *self.seen.lock().expect("test mutex") = Some(s.clone());
+        async fn recommend(
+            &self,
+            _t: &RawTrack,
+            s: Option<&Seed>,
+            _w: usize,
+        ) -> Result<Vec<Recommendation>> {
+            *self.seen.lock().expect("test mutex") = s.cloned();
             Ok(vec![])
         }
     }
@@ -730,5 +772,129 @@ mod tests {
             got.confidence, 50,
             "the parse's own confidence, unmodified by the failed resolver"
         );
+    }
+
+    /// Stands in for YouTube's Mix: works without a seed, and records the one
+    /// it was handed.
+    struct SeedlessFake {
+        calls: Arc<AtomicUsize>,
+        handed: Arc<Mutex<Option<Option<Seed>>>>,
+        result: fn() -> Result<Vec<Recommendation>>,
+    }
+
+    #[async_trait::async_trait]
+    impl Recommender for SeedlessFake {
+        fn name(&self) -> &'static str {
+            "seedless"
+        }
+        fn needs_seed(&self) -> bool {
+            false
+        }
+        async fn recommend(
+            &self,
+            _t: &RawTrack,
+            s: Option<&Seed>,
+            _w: usize,
+        ) -> Result<Vec<Recommendation>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            *self.handed.lock().expect("test mutex") = Some(s.cloned());
+            (self.result)()
+        }
+    }
+
+    /// 🔑 The seed is resolved lazily. A Mix that answers must not have spent
+    /// MusicBrainz's 1/sec slot on a seed no provider used.
+    #[tokio::test]
+    async fn a_provider_that_needs_no_seed_answers_without_any_resolver_running() {
+        let resolver_calls = Arc::new(AtomicUsize::new(0));
+        let handed = Arc::new(Mutex::new(None));
+        let r = MusicReco::builder()
+            .resolver(Box::new(FakeResolver {
+                name: "resolver",
+                calls: Arc::clone(&resolver_calls),
+                result: confirmed,
+            }))
+            .recommender(Box::new(SeedlessFake {
+                calls: Arc::new(AtomicUsize::new(0)),
+                handed: Arc::clone(&handed),
+                result: || one("seedless"),
+            }))
+            .recommender(Box::new(FakeReco {
+                name: "seeded",
+                calls: Arc::new(AtomicUsize::new(0)),
+                result: || one("seeded"),
+            }))
+            .policy(Policy {
+                min_seed_confidence: 0,
+            })
+            .build();
+        let out = r.next_tracks(&raw(), 5).await.unwrap();
+        assert_eq!(out[0].source, "seedless");
+        assert_eq!(resolver_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            *handed.lock().expect("test mutex"),
+            Some(None),
+            "it was called, and handed no seed"
+        );
+    }
+
+    /// The whole point for a title nothing can be parsed from: the providers
+    /// that need a seed are skipped, and the one that does not still runs.
+    #[tokio::test]
+    async fn a_provider_that_needs_no_seed_runs_when_none_can_be_derived() {
+        let (seeded, seedless) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let r = MusicReco::builder()
+            .resolver(Box::new(TitleParseResolver::new()))
+            .recommender(Box::new(FakeReco {
+                name: "seeded",
+                calls: Arc::clone(&seeded),
+                result: || one("seeded"),
+            }))
+            .recommender(Box::new(SeedlessFake {
+                calls: Arc::clone(&seedless),
+                handed: Arc::new(Mutex::new(None)),
+                result: || one("seedless"),
+            }))
+            .policy(Policy {
+                min_seed_confidence: 0,
+            })
+            .build();
+        let raw = RawTrack {
+            title: "Never Gonna Give You Up".into(),
+            artist: None,
+            uploader: None,
+            video_id: Some("dQw4w9WgXcQ".into()),
+        };
+        let out = r.next_tracks(&raw, 5).await.unwrap();
+        assert_eq!(out[0].source, "seedless");
+        assert_eq!(seeded.load(Ordering::SeqCst), 0, "no seed, so never called");
+        assert_eq!(seedless.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn the_seed_is_resolved_once_however_many_providers_need_it() {
+        let resolver_calls = Arc::new(AtomicUsize::new(0));
+        let r = MusicReco::builder()
+            .resolver(Box::new(FakeResolver {
+                name: "resolver",
+                calls: Arc::clone(&resolver_calls),
+                result: confirmed,
+            }))
+            .recommender(Box::new(FakeReco {
+                name: "first",
+                calls: Arc::new(AtomicUsize::new(0)),
+                result: empty,
+            }))
+            .recommender(Box::new(FakeReco {
+                name: "second",
+                calls: Arc::new(AtomicUsize::new(0)),
+                result: empty,
+            }))
+            .policy(Policy {
+                min_seed_confidence: 0,
+            })
+            .build();
+        let _ = r.next_tracks(&raw(), 5).await.unwrap();
+        assert_eq!(resolver_calls.load(Ordering::SeqCst), 1);
     }
 }

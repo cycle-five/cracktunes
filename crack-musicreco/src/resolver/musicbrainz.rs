@@ -1,6 +1,6 @@
 //! MusicBrainz as a seed canonicalizer, not a recommender: it has no
 //! similar-track capability at all, but it CONFIRMS a title-parsed guess so a
-//! metered call (musicatlas, ReccoBeats) is never spent on a bad one.
+//! call (musicatlas, Deezer) is never spent on a bad one.
 //!
 //! 🪤 Ruling 31 (measured against the live API): MusicBrainz's `score` is NOT
 //! a confidence signal. `artist:"Queen" AND recording:"Love"` returned 967
@@ -200,7 +200,7 @@ impl SeedResolver for MusicBrainz {
 
         // 🪤 R15: 503 is how MusicBrainz specifically signals rate limiting,
         // folded into the same "any 5xx is transient" arm musicatlas and
-        // ReccoBeats use, so callers do not need a MusicBrainz-specific case.
+        // Deezer use, so callers do not need a MusicBrainz-specific case.
         if status >= 500 {
             return Err(Error::RateLimited {
                 provider: NAME,
@@ -272,6 +272,7 @@ mod tests {
             title: title.into(),
             artist: None,
             uploader: None,
+            video_id: None,
         }
     }
 
@@ -519,6 +520,7 @@ mod tests {
             title: "(Official Video)".into(),
             artist: Some("Queen".into()),
             uploader: None,
+            video_id: None,
         };
         let got = mb.resolve(&raw).await.unwrap();
         assert!(got.is_none());
@@ -543,6 +545,7 @@ mod tests {
             title: r#"Song "Live" & Loud"#.into(),
             artist: Some("Guns N' Roses".into()),
             uploader: None,
+            video_id: None,
         };
         let _ = mb.resolve(&raw).await;
 

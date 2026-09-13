@@ -7,8 +7,8 @@
 use crate::db::{CachedRecommender, MUSICATLAS_DAILY_BUDGET};
 use ::serenity::model::id::GuildId;
 use crack_musicreco::{
-    MusicAtlas, MusicBrainz, MusicReco, Playable, RawTrack, ReccoBeats, Recommendation,
-    Recommender, TitleParseResolver,
+    video_id_from_url, Deezer, MusicAtlas, MusicBrainz, MusicReco, Playable, RawTrack,
+    Recommendation, Recommender, TitleParseResolver, YouTubeMix,
 };
 use crack_types::QueryType;
 use songbird::input::AuxMetadata;
@@ -22,7 +22,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 pub const REFILL_SIZE: usize = 20;
 
 /// The environment variable holding the musicatlas API key. Unset, autoplay
-/// recommends through ReccoBeats alone.
+/// recommends through YouTube's Mix and Deezer alone.
 pub const MUSICATLAS_KEY_ENV: &str = "MUSICATLAS_API_KEY";
 
 /// MusicBrainz requires a contact address in the User-Agent and blocks clients
@@ -101,8 +101,8 @@ impl AutoplayBuffer {
     }
 }
 
-/// The query a recommendation plays through: a musicatlas result is a YouTube
-/// video to play directly; a ReccoBeats result is a search.
+/// The query a recommendation plays through: a YouTube Mix or musicatlas result
+/// is a video to play directly; a Deezer result is a search.
 #[must_use]
 pub fn to_query(rec: &Recommendation) -> QueryType {
     match &rec.playable {
@@ -126,12 +126,16 @@ fn present(field: Option<&String>) -> Option<String> {
 /// Passed through, `NA` would read as a caller-supplied artist, which scores
 /// 100 and clears the floor for metered providers -- spending musicatlas'
 /// budget on "NA - <title>".
+///
+/// The video id comes from `source_url`. YouTube's Mix needs nothing else, so
+/// it answers even for a title with no artist in it.
 #[must_use]
 pub fn raw_track(meta: &AuxMetadata) -> Option<RawTrack> {
     Some(RawTrack {
         title: present(meta.title.as_ref())?,
         artist: present(meta.artist.as_ref()),
         uploader: present(meta.channel.as_ref()),
+        video_id: meta.source_url.as_deref().and_then(video_id_from_url),
     })
 }
 
@@ -139,10 +143,14 @@ pub fn raw_track(meta: &AuxMetadata) -> Option<RawTrack> {
 /// recommender could be built.
 ///
 /// - Seeds come from the title parse, then MusicBrainz.
-/// - musicatlas is tried first, and only with BOTH a key and a database. Its
-///   daily budget is counted in the database, and a quota that cannot be
-///   counted must not be spent (Ruling 40).
-/// - ReccoBeats always, behind the cache when there is a database.
+/// - YouTube's Mix first: free, needs no seed, and on-genre where ReccoBeats'
+///   audio-feature matching was not (measured 2026-09-13). Uncached: one
+///   yt-dlp run per refill, and a Mix changes.
+/// - Deezer's artist radio next, behind the cache when there is a database.
+/// - musicatlas last, and only with BOTH a key and a database. Its daily
+///   budget is counted in the database, and a quota that cannot be counted
+///   must not be spent (Ruling 40). Last, so the budget is spent only when
+///   both free providers had nothing.
 ///
 /// Every provider constructor can fail (Ruling 41). One that does is logged
 /// and left out; startup carries on.
@@ -165,6 +173,15 @@ pub fn build_musicreco(
     };
 
     let mut recommenders = 0;
+    builder = builder.recommender(Box::new(YouTubeMix::new()));
+    recommenders += 1;
+    match Deezer::new() {
+        Ok(deezer) => {
+            builder = builder.recommender(cached(Box::new(deezer), None));
+            recommenders += 1;
+        },
+        Err(e) => tracing::warn!("autoplay: Deezer left out: {e}"),
+    }
     match (musicatlas_key.filter(|k| !k.trim().is_empty()), &pool) {
         (Some(key), Some(_)) => match MusicAtlas::new(key) {
             Ok(musicatlas) => {
@@ -177,16 +194,9 @@ pub fn build_musicreco(
         (Some(_), None) => tracing::info!(
             "autoplay: musicatlas left out -- no database to count its daily budget in"
         ),
-        (None, _) => tracing::info!(
-            "autoplay: {MUSICATLAS_KEY_ENV} is unset, so recommendations come from ReccoBeats only"
-        ),
-    }
-    match ReccoBeats::new() {
-        Ok(reccobeats) => {
-            builder = builder.recommender(cached(Box::new(reccobeats), None));
-            recommenders += 1;
+        (None, _) => {
+            tracing::info!("autoplay: {MUSICATLAS_KEY_ENV} is unset, so musicatlas is left out")
         },
-        Err(e) => tracing::warn!("autoplay: ReccoBeats left out: {e}"),
     }
 
     if recommenders == 0 {
@@ -391,6 +401,22 @@ mod tests {
         assert_eq!(raw_track(&meta(Some("   "), Some("Queen"), None)), None);
     }
 
+    /// The Mix works from this alone. Measured on production: the fan upload
+    /// that `/play <url>` resolved with no artist.
+    #[test]
+    fn the_video_id_comes_from_the_source_url() {
+        let mut m = meta(Some("The Offspring ~ Hit That"), None, Some("MrCalienteLP"));
+        m.source_url = Some("https://www.youtube.com/watch?v=NJKhbnSGLsQ".into());
+        assert_eq!(
+            raw_track(&m).expect("has a title").video_id.as_deref(),
+            Some("NJKhbnSGLsQ")
+        );
+        m.source_url = Some("https://open.spotify.com/track/3lfmqF0ULXRHlWxBeaHo3t".into());
+        assert_eq!(raw_track(&m).expect("has a title").video_id, None);
+        m.source_url = None;
+        assert_eq!(raw_track(&m).expect("has a title").video_id, None);
+    }
+
     fn unreachable_pool() -> sqlx::PgPool {
         // Never connected: building providers makes no database call.
         sqlx::postgres::PgPoolOptions::new()
@@ -398,24 +424,29 @@ mod tests {
             .expect("a lazy pool only parses the url")
     }
 
+    /// Free first, metered last: musicatlas' budget is spent only when both
+    /// free providers had nothing.
     #[tokio::test]
-    async fn musicatlas_goes_first_given_a_key_and_a_database() {
+    async fn the_mix_goes_first_and_musicatlas_last_given_a_key_and_a_database() {
         let reco = build_musicreco(Some(unreachable_pool()), Some("key".into())).expect("built");
-        assert_eq!(reco.recommender_names(), ["musicatlas", "reccobeats"]);
+        assert_eq!(
+            reco.recommender_names(),
+            ["youtube-mix", "deezer", "musicatlas"]
+        );
     }
 
     /// Ruling 40: a quota that cannot be counted must not be spent.
     #[tokio::test]
     async fn musicatlas_is_left_out_without_a_database() {
         let reco = build_musicreco(None, Some("key".into())).expect("built");
-        assert_eq!(reco.recommender_names(), ["reccobeats"]);
+        assert_eq!(reco.recommender_names(), ["youtube-mix", "deezer"]);
     }
 
     #[tokio::test]
-    async fn no_key_or_a_blank_one_means_reccobeats_only() {
+    async fn no_key_or_a_blank_one_leaves_musicatlas_out() {
         for key in [None, Some(String::new()), Some("  ".into())] {
             let reco = build_musicreco(Some(unreachable_pool()), key).expect("built");
-            assert_eq!(reco.recommender_names(), ["reccobeats"]);
+            assert_eq!(reco.recommender_names(), ["youtube-mix", "deezer"]);
         }
     }
 }
