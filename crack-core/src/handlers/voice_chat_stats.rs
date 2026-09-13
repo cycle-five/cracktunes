@@ -1,6 +1,5 @@
 use crate::{
     commands::admin::{deafen::deafen_internal, mute::mute_internal},
-    errors::CrackedError,
     messaging::messages::UNKNOWN,
     BotConfig, CamKickConfig,
 };
@@ -68,61 +67,63 @@ impl CamPollEvent {
     }
 }
 
-/// Check the camera status of a user and enforce the rules if necessary.
-async fn check_and_enforce_cams(
-    cur_cam: CamPollEvent,
-    new_cam: &CamPollEvent,
-    cam_states: &mut HashMap<(UserId, ChannelId), CamPollEvent>,
-    config_map: &HashMap<u64, &CamKickConfig>,
-    //status_changes: &mut Vec<CamStatusChangeEvent>,
-    //ctx: Arc<SerenityContext>,
-    cache_http: &impl CacheHttp,
-) -> Result<(), CrackedError> {
-    let kick_conf = config_map
-        .get(&cur_cam.chan_id.get())
-        .ok_or(CrackedError::Other("Channel not found"))?;
-    tracing::trace!("kick_conf: {}", format!("{:?}", kick_conf).blue());
-    if cur_cam.status != new_cam.status {
-        let cam_event = CamPollEvent {
-            last_change: Instant::now(),
-            ..*new_cam
-        };
+/// Whether acting on a user -- deafening and muting them, and posting
+/// `dc_msg` -- is switched on at all.
+///
+/// 🔑 Off, deliberately, and not reachable from any command or config file.
+/// Server owners are expected to want camera enforcement, so the feature is
+/// kept working rather than deleted: the loop tracks camera state and reports
+/// who it WOULD act on (#515). Switching it on is a decision to make with the
+/// guilds it applies to, not a setting to leave lying around.
+const ENFORCE_CAMS: bool = false;
 
-        cam_states.insert(cam_event.key(), cam_event);
-    } else {
-        tracing::trace!("cur: {}, prev: {}", cur_cam.status, new_cam.status);
-        tracing::trace!(
-            "elapsed: {:?}, timeout: {}",
-            cur_cam.last_change.elapsed(),
-            kick_conf.timeout
-        );
-        if cur_cam.status == CamStatus::Off
-            && cur_cam.last_change.elapsed() > Duration::from_secs(kick_conf.timeout)
-        {
-            let user = match new_cam.user_id.to_user(cache_http).await {
-                Ok(user) => user,
-                Err(err) => {
-                    tracing::error!("Error getting user: {err}");
-                    return Err(CrackedError::Other("Error getting user"));
-                },
-            };
-            tracing::info!(
-                "User {} has been cammed down for {} seconds",
-                user.name,
-                cur_cam.last_change.elapsed().as_secs()
-            );
-
-            // let guild = cam.guild_id.to_guild_cached(&ctx.cache).unwrap();
-            let guild_id = new_cam.guild_id;
-            tracing::info!("about to deafen {:?}", new_cam.user_id);
-
-            if false {
-                run_cam_enforcement(cache_http, new_cam, guild_id, user, kick_conf, cam_states)
-                    .await;
-            }
+/// Fold one poll into the tracked camera state, and return every user whose
+/// camera has now been off for longer than their channel's rule allows.
+///
+/// Pure -- no cache, no HTTP -- because both bugs that kept this feature dead
+/// lived in exactly this bookkeeping (#515):
+///
+/// - 🪤 the poll was thrown away: a second `let mut new_cams` shadowed the
+///   populated vec, so every iteration walked an empty one;
+/// - 🪤 even un-shadowed, every poll re-stamped `last_change` with the poll's
+///   own `Instant::now()` and wrote it back, so "off for N seconds" restarted
+///   every interval and could never exceed any timeout.
+///
+/// An unchanged status keeps the time it was first seen; a change restarts the
+/// clock; a user no longer in voice is forgotten, so rejoining starts fresh.
+fn apply_poll(
+    tracked: &mut HashMap<(UserId, ChannelId), CamPollEvent>,
+    polled: Vec<CamPollEvent>,
+    timeouts: &HashMap<ChannelId, Duration>,
+    now: Instant,
+) -> Vec<CamPollEvent> {
+    let seen: HashSet<(UserId, ChannelId)> = polled.iter().map(CamPollEvent::key).collect();
+    for poll in polled {
+        match tracked.get(&poll.key()) {
+            Some(prev) if prev.status == poll.status => {},
+            _ => {
+                tracked.insert(
+                    poll.key(),
+                    CamPollEvent {
+                        last_change: now,
+                        ..poll
+                    },
+                );
+            },
         }
-    };
-    Ok(())
+    }
+    tracked.retain(|key, _| seen.contains(key));
+
+    tracked
+        .values()
+        .filter(|cam| cam.status == CamStatus::Off)
+        .filter(|cam| {
+            timeouts
+                .get(&cam.chan_id)
+                .is_some_and(|timeout| now.saturating_duration_since(cam.last_change) > *timeout)
+        })
+        .copied()
+        .collect()
 }
 
 /// Run the camera enforcement rules.
@@ -262,69 +263,83 @@ pub async fn cam_status_loop(
     guilds: Vec<GuildId>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        tracing::info!("Starting camera status check loop");
         let configs = config.cam_kick.clone().unwrap_or_default();
-        let conf_guilds = configs.iter().map(|x| x.guild_id).collect::<HashSet<_>>();
 
-        // This HashMap is used to keep track of the camera status of all the users in voice.
-        // channels. It gets initialized empty here and then is updated every iteration of the loop.
-        let mut cur_cams: HashMap<(UserId, ChannelId), CamPollEvent> =
-            HashMap::<(UserId, ChannelId), CamPollEvent>::new();
-        // This is
-        let channels: HashMap<u64, &CamKickConfig> = configs
+        // 🪤 Poll only the guilds a rule exists for. This used to walk every
+        // guild the bot is in -- ~140 -- resolving a user and a channel for
+        // every voice state, every interval, to feed rules that exist in none
+        // of them.
+        let conf_guilds: HashSet<u64> = configs.iter().map(|x| x.guild_id).collect();
+        let guilds: Vec<GuildId> = guilds
+            .into_iter()
+            .filter(|g| conf_guilds.contains(&g.get()))
+            .collect();
+        if guilds.is_empty() {
+            tracing::debug!("No cam_kick rule matches any guild; camera status loop not started");
+            return;
+        }
+        tracing::info!(
+            "Starting camera status check loop for {} guild(s)",
+            guilds.len()
+        );
+
+        let timeouts: HashMap<ChannelId, Duration> = configs
             .iter()
-            .map(|x| (x.chan_id, x))
-            .collect::<HashMap<_, _>>();
+            .map(|c| (ChannelId::new(c.chan_id), Duration::from_secs(c.timeout)))
+            .collect();
+        let rules: HashMap<u64, &CamKickConfig> = configs.iter().map(|c| (c.chan_id, c)).collect();
 
-        tracing::trace!("conf_guilds: {}", format!("{:?}", conf_guilds).green());
+        // Camera state per (user, channel), carried across polls. See
+        // `apply_poll` for why the bookkeeping lives there.
+        let mut tracked: HashMap<(UserId, ChannelId), CamPollEvent> = HashMap::new();
+
         loop {
-            // We clone Context again here, because Arc is owned, so it moves to the
-            // new function.
             // 🪤 Was ERROR. This is a heartbeat -- it fires every
             // `video_status_poll_interval` seconds whether or not anything
             // happened, and says only that the loop is alive (#491).
             tracing::trace!("Checking camera status for {} guilds", guilds.len());
-            // Go through all the guilds we have cached and check the camera status
-            // for all the users we can see in voice channels.
             let mut output = String::from("\n");
-            let mut new_cams = vec![];
+            let mut polled = Vec::new();
             for guild_id in &guilds {
-                let (add_new_cams, add_output) =
-                    check_camera_status(Arc::clone(&ctx), *guild_id).await;
-                new_cams.extend(add_new_cams);
+                let (cams, add_output) = check_camera_status(Arc::clone(&ctx), *guild_id).await;
+                polled.extend(cams);
                 output.push_str(&add_output);
             }
 
-            //let total_active_cams = cams.len();
-            let mut new_cams = Vec::<&CamPollEvent>::new();
-            //let mut status_changes = Vec::<CamStatusChangeEvent>::new();
-
-            for new_cam in new_cams.iter_mut() {
-                if let Some(status) = cur_cams.get(&new_cam.key()) {
-                    let _ =
-                        check_and_enforce_cams(*status, new_cam, &mut cur_cams, &channels, &ctx)
-                            .await;
-                } else {
-                    cur_cams.insert(new_cam.key(), **new_cam);
+            let due = apply_poll(&mut tracked, polled, &timeouts, Instant::now());
+            for cam in due {
+                if !ENFORCE_CAMS {
+                    tracing::debug!(
+                        "camera off past its limit for {} in {}; enforcement is off",
+                        cam.user_id,
+                        cam.chan_id
+                    );
+                    continue;
+                }
+                let Some(rule) = rules.get(&cam.chan_id.get()) else {
+                    continue;
+                };
+                match cam.user_id.to_user(ctx.as_ref()).await {
+                    Ok(user) => {
+                        run_cam_enforcement(
+                            ctx.as_ref(),
+                            &cam,
+                            cam.guild_id,
+                            user,
+                            rule,
+                            &mut tracked,
+                        )
+                        .await
+                    },
+                    Err(err) => {
+                        tracing::warn!("camera enforcement: cannot resolve {}: {err}", cam.user_id)
+                    },
                 }
             }
-            let res: i32 = new_cams
-                .iter()
-                .map(|x| Into::<i32>::into(cur_cams.insert(x.key(), **x).is_none()))
-                .sum();
 
-            // 🪤 All three were WARN. `output` is the worst of them: a single
-            // multi-line record naming every guild the bot is in -- ~140 of
-            // them -- re-emitted every 120 seconds. Measured on production at
-            // 186 of 3,410 log lines in 26 minutes (#491).
-            //
-            // ⚠️ `res` is structurally always 0 and this is not the place to
-            // fix that: the vec it counts is shadowed a few lines up, so the
-            // camera enforcement it belongs to has never run. See #515 --
-            // un-shadowing it starts deafening users, so it needs a decision
-            // rather than a patch.
+            // 🪤 Was WARN: a multi-line record naming every polled guild,
+            // re-emitted every interval (#491).
             tracing::trace!("{}", output);
-            tracing::trace!("num new cams: {}", res);
             tracing::trace!(
                 "Sleeping for {} seconds",
                 config.get_video_status_poll_interval()
@@ -338,7 +353,6 @@ pub async fn cam_status_loop(
 mod test {
     // Test CamStatus enum
     use super::*;
-    use crack_types::get_valid_token;
 
     #[test]
     fn test_cam_status() {
@@ -379,27 +393,194 @@ mod test {
         assert_eq!(cam.key(), (user_id, chan_id));
     }
 
-    #[tokio::test]
-    async fn test_check_and_enforce_cams() {
-        let user_id = UserId::new(123);
-        let chan_id = ChannelId::new(456);
-        let cam = CamPollEvent {
-            user_id,
+    fn cam(user: u64, chan: u64, status: CamStatus, at: Instant) -> CamPollEvent {
+        CamPollEvent {
+            user_id: UserId::new(user),
             guild_id: GuildId::new(789),
-            chan_id,
-            status: CamStatus::On,
-            last_change: Instant::now(),
-        };
-        let mut cam_states = HashMap::<(UserId, ChannelId), CamPollEvent>::new();
-        let config_map = HashMap::<u64, &CamKickConfig>::new();
-        let http = poise::serenity_prelude::http::Http::new(get_valid_token());
-        let cache = Arc::new(poise::serenity_prelude::Cache::new());
-        let cache_http = (Some(&cache), &http);
-        // let ctx = Arc::new(SerenityContext::new());
-        let res =
-            check_and_enforce_cams(cam, &cam, &mut cam_states, &config_map, &cache_http).await;
-        let want = CrackedError::Other("Channel not found");
-        assert_eq!(res, Err(want));
+            chan_id: ChannelId::new(chan),
+            status,
+            last_change: at,
+        }
+    }
+
+    fn rule(chan: u64, secs: u64) -> HashMap<ChannelId, Duration> {
+        HashMap::from([(ChannelId::new(chan), Duration::from_secs(secs))])
+    }
+
+    /// 🪤 The re-stamp bug (#515). Every poll carries its own `Instant::now()`;
+    /// writing that back restarted "off for N seconds" every interval, so no
+    /// timeout could ever be exceeded.
+    #[test]
+    fn an_unchanged_status_keeps_the_time_it_was_first_seen() {
+        let t0 = Instant::now();
+        let rules = rule(10, 600);
+        let mut tracked = HashMap::new();
+        apply_poll(
+            &mut tracked,
+            vec![cam(1, 10, CamStatus::Off, t0)],
+            &rules,
+            t0,
+        );
+        let later = t0 + Duration::from_secs(120);
+        apply_poll(
+            &mut tracked,
+            vec![cam(1, 10, CamStatus::Off, later)],
+            &rules,
+            later,
+        );
+        let state = tracked[&(UserId::new(1), ChannelId::new(10))];
+        assert_eq!(
+            state.last_change, t0,
+            "an unchanged Off must not restart its clock"
+        );
+    }
+
+    /// 🪤 The shadow bug (#515): the poll was discarded, so nothing was ever
+    /// tracked and nothing was ever due.
+    #[test]
+    fn off_past_the_limit_is_due_and_on_never_is() {
+        let t0 = Instant::now();
+        let rules = rule(10, 60);
+        let mut tracked = HashMap::new();
+        let first = vec![
+            cam(1, 10, CamStatus::Off, t0),
+            cam(2, 10, CamStatus::On, t0),
+        ];
+        assert!(
+            apply_poll(&mut tracked, first, &rules, t0).is_empty(),
+            "nobody is past the limit yet"
+        );
+        let t1 = t0 + Duration::from_secs(61);
+        let second = vec![
+            cam(1, 10, CamStatus::Off, t1),
+            cam(2, 10, CamStatus::On, t1),
+        ];
+        let due: Vec<u64> = apply_poll(&mut tracked, second, &rules, t1)
+            .iter()
+            .map(|c| c.user_id.get())
+            .collect();
+        assert_eq!(due, vec![1], "only the camera that stayed off is due");
+    }
+
+    #[test]
+    fn exactly_at_the_limit_is_not_yet_due() {
+        let t0 = Instant::now();
+        let rules = rule(10, 60);
+        let mut tracked = HashMap::new();
+        apply_poll(
+            &mut tracked,
+            vec![cam(1, 10, CamStatus::Off, t0)],
+            &rules,
+            t0,
+        );
+        let at = t0 + Duration::from_secs(60);
+        assert!(apply_poll(
+            &mut tracked,
+            vec![cam(1, 10, CamStatus::Off, at)],
+            &rules,
+            at
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn a_status_change_restarts_the_clock() {
+        let t0 = Instant::now();
+        let rules = rule(10, 60);
+        let mut tracked = HashMap::new();
+        apply_poll(
+            &mut tracked,
+            vec![cam(1, 10, CamStatus::Off, t0)],
+            &rules,
+            t0,
+        );
+        let t1 = t0 + Duration::from_secs(50);
+        apply_poll(
+            &mut tracked,
+            vec![cam(1, 10, CamStatus::On, t1)],
+            &rules,
+            t1,
+        );
+        let t2 = t0 + Duration::from_secs(55);
+        apply_poll(
+            &mut tracked,
+            vec![cam(1, 10, CamStatus::Off, t2)],
+            &rules,
+            t2,
+        );
+        // 70s after the first Off, but only 15s after the latest one.
+        let t3 = t0 + Duration::from_secs(70);
+        assert!(
+            apply_poll(
+                &mut tracked,
+                vec![cam(1, 10, CamStatus::Off, t3)],
+                &rules,
+                t3
+            )
+            .is_empty(),
+            "the clock restarted when the camera came back on"
+        );
+    }
+
+    #[test]
+    fn a_channel_without_a_rule_is_never_due() {
+        let t0 = Instant::now();
+        let rules = rule(10, 0);
+        let mut tracked = HashMap::new();
+        apply_poll(
+            &mut tracked,
+            vec![cam(1, 99, CamStatus::Off, t0)],
+            &rules,
+            t0,
+        );
+        let later = t0 + Duration::from_secs(3600);
+        assert!(apply_poll(
+            &mut tracked,
+            vec![cam(1, 99, CamStatus::Off, later)],
+            &rules,
+            later
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn a_user_who_left_voice_is_forgotten() {
+        let t0 = Instant::now();
+        let rules = rule(10, 60);
+        let mut tracked = HashMap::new();
+        apply_poll(
+            &mut tracked,
+            vec![cam(1, 10, CamStatus::Off, t0)],
+            &rules,
+            t0,
+        );
+        apply_poll(&mut tracked, vec![], &rules, t0 + Duration::from_secs(30));
+        assert!(tracked.is_empty(), "left voice, so no stale clock survives");
+        // Rejoining starts fresh: 61s after the ORIGINAL Off is 30s after rejoining.
+        let t2 = t0 + Duration::from_secs(31);
+        apply_poll(
+            &mut tracked,
+            vec![cam(1, 10, CamStatus::Off, t2)],
+            &rules,
+            t2,
+        );
+        let t3 = t0 + Duration::from_secs(61);
+        assert!(apply_poll(
+            &mut tracked,
+            vec![cam(1, 10, CamStatus::Off, t3)],
+            &rules,
+            t3
+        )
+        .is_empty());
+    }
+
+    /// 🔑 A product decision, pinned. Server owners are expected to want camera
+    /// enforcement; switching it on is a deliberate change made with them
+    /// (#515), not a side effect of fixing the tracking.
+    #[test]
+    #[allow(clippy::assertions_on_constants)]
+    fn camera_enforcement_ships_switched_off() {
+        assert!(!ENFORCE_CAMS);
     }
 
     // fn new_serenity_context() -> Arc<SerenityContext> {

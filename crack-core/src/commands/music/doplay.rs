@@ -528,7 +528,7 @@ pub async fn play_internal(
 
     let _after_embed = std::time::Instant::now();
 
-    let _msg = edit_embed_response2(ctx, embed, search_msg.clone(), notice_content).await?;
+    edit_embed_response2(ctx, embed, search_msg.clone(), notice_content).await?;
 
     // A partial listing is a success with something missing, so it is said
     // after the queue embed rather than instead of it: the recovered tracks are
