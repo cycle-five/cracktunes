@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO musicreco_cache (provider, artist, track, results, found)\n             VALUES ($1, $2, $3, $4::text::jsonb, $5)\n             ON CONFLICT (provider, artist, track)\n             DO UPDATE SET results = EXCLUDED.results, found = EXCLUDED.found, fetched_at = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0141c454ab93a73bb76a0ec06564a3fe40e69ecf9c96e57e0a5f91d9e5b63f68"
+}

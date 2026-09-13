@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT results::text AS \"results!\", found\n               FROM musicreco_cache\n               WHERE provider = $1 AND artist = $2 AND track = $3\n                 AND fetched_at > now() - make_interval(days => CASE WHEN found THEN $4::int4 ELSE $5::int4 END)",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "results!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "found",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      null,
+      false
+    ]
+  },
+  "hash": "1c85c4c8429f66e8c0aaec540862f3412a243d8fb4e850f4a318066526453e6e"
+}

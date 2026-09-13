@@ -1029,6 +1029,7 @@ dependencies = [
  "const-random",
  "crack-bf",
  "crack-gpt",
+ "crack-musicreco",
  "crack-osint",
  "crack-sleevenote",
  "crack-testing",

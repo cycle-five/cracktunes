@@ -86,6 +86,7 @@ crack-types = { path = "../crack-types", optional = true }
 # already have (reqwest, serde), so gating it would only put cfg noise on the
 # command that uses it.
 crack-sleevenote = { path = "../crack-sleevenote" }
+crack-musicreco = { path = "../crack-musicreco" }
 
 reqwest = { workspace = true }
 tracing = { workspace = true }
