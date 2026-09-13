@@ -7,6 +7,7 @@
 //! instead of being flattened into a single "url" field.
 
 use super::http;
+use crate::text::normalize;
 use crate::{Error, Playable, Recommendation, Result, Seed};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -15,6 +16,12 @@ use std::time::{Duration, Instant};
 
 const NAME: &str = "reccobeats";
 pub const DEFAULT_BASE_URL: &str = "https://api.reccobeats.com/v1";
+
+/// The most one search page holds: measured 2026-09-13, `size=100` is refused
+/// with 400 "must be less than or equal to 50". A common title has many
+/// covers, so the seed artist's own track can sit far down the page -- or not
+/// be on it at all (Queen's "Bohemian Rhapsody" is not in the first 50).
+const SEARCH_PAGE_SIZE: usize = 50;
 
 /// 🪤 Deliberately NOT `#[serde(default)]`. The measured rejection for a seed
 /// ReccoBeats cannot resolve (e.g. a Spotify id, which it does not accept) is
@@ -226,24 +233,32 @@ impl crate::provider::Recommender for ReccoBeats {
         // are rejected outright (measured: error code 4002, "Cannot find any
         // track"), so the seed's own artist/title has to be resolved to a
         // ReccoBeats id first.
-        let q = http::encode_query(&format!("{} {}", seed.artist, seed.title));
+        //
+        // 🪤 The title ALONE. ReccoBeats matches `searchText` against track
+        // titles only: measured 2026-09-13, "Queen Bohemian Rhapsody" returns
+        // nothing, "Bohemian Rhapsody" a full page. v0.11.0 sent both and so
+        // never found a seed for anything.
+        let q = http::encode_query(&seed.title);
         let found = self
-            .get_tracking_cooldown(&format!("{base}/track/search?searchText={q}&size=1"))
+            .get_tracking_cooldown(&format!(
+                "{base}/track/search?searchText={q}&size={SEARCH_PAGE_SIZE}"
+            ))
             .await?;
-        // An empty `id` is as useless as no result at all -- a request with
-        // `seeds=` (nothing after the `=`) cannot succeed, so it gets the
-        // same short-circuit as an empty search rather than spending the
-        // second call on a request known to fail.
-        let Some(first) = found
+        // A title search finds every song with that name, so the seed is the
+        // first track BY THE SEED'S ARTIST -- never a stranger's song that
+        // happened to rank first. An empty `id` is as useless as no result at
+        // all: `seeds=` with nothing after the `=` cannot succeed, so such a
+        // track is passed over rather than spending the second call on it.
+        let artist = normalize(&seed.artist);
+        let Some(matched) = found
             .content
             .into_iter()
-            .next()
-            .filter(|t| !t.id.is_empty())
+            .find(|t| !t.id.is_empty() && t.artists.iter().any(|a| normalize(&a.name) == artist))
         else {
             return Ok(Vec::new());
         };
         // The id is provider-supplied text interpolated straight into a URL.
-        let seed_id = http::encode_query(&first.id);
+        let seed_id = http::encode_query(&matched.id);
         // 🔑 `want` passes through unclamped: ReccoBeats' limits on `size` are
         // undisclosed, so no number here would be measured rather than
         // invented. A caller-supplied `usize::MAX` is passed straight to the
@@ -340,13 +355,17 @@ mod tests {
         // wrong seed id, or no User-Agent at all.
         //
         // 🪤 Whole-line equality, not `starts_with`: a prefix match lets
-        // `size=1` regress to `size=10`, or `seeds=uuid-1` grow a trailing
+        // `size=50` regress to `size=5`, or `seeds=uuid-1` grow a trailing
         // `&seeds=junk`, without ever failing this assertion.
+        //
+        // 🔑 The title ALONE. ReccoBeats matches `searchText` against track
+        // titles: measured 2026-09-13, "Queen Bohemian Rhapsody" returns
+        // nothing at all. v0.11.0 sent artist and title and found no seed.
         let reqs = seen.lock().expect("test mutex");
         assert_eq!(reqs.len(), 2);
         assert_eq!(
             reqs[0].lines().next(),
-            Some("GET /track/search?searchText=Queen%20Bohemian%20Rhapsody&size=1 HTTP/1.1"),
+            Some("GET /track/search?searchText=Bohemian%20Rhapsody&size=50 HTTP/1.1"),
             "request 1: {}",
             reqs[0]
         );
@@ -367,7 +386,7 @@ mod tests {
     /// that alone doesn't prove `recommend()` actually routes the seed
     /// through it. A raw `&` would silently merge with the next query param,
     /// and a raw `#` would truncate the URL at a fragment, dropping
-    /// `&size=1` entirely -- both survive every other test here, since none
+    /// `&size=50` entirely -- both survive every other test here, since none
     /// of them puts a reserved character in the seed.
     #[tokio::test]
     async fn a_seed_with_reserved_characters_is_percent_encoded_on_the_wire() {
@@ -375,7 +394,7 @@ mod tests {
         let p = ReccoBeats::with_base_url(base).expect("client builds");
         let seed = Seed {
             artist: "Simon & Garfunkel".into(),
-            title: "Song #1".into(),
+            title: "Song & Dance #1".into(),
             mbid: None,
             confidence: 100,
         };
@@ -384,9 +403,7 @@ mod tests {
         let reqs = seen.lock().expect("test mutex");
         assert_eq!(
             reqs[0].lines().next(),
-            Some(
-                "GET /track/search?searchText=Simon%20%26%20Garfunkel%20Song%20%231&size=1 HTTP/1.1"
-            ),
+            Some("GET /track/search?searchText=Song%20%26%20Dance%20%231&size=50 HTTP/1.1"),
             "request 1: {}",
             reqs[0]
         );
@@ -400,7 +417,7 @@ mod tests {
     async fn a_search_result_id_with_reserved_characters_is_percent_encoded_into_seeds() {
         const SEARCH_RESERVED_ID: (u16, &str) = (
             200,
-            r#"{"content":[{"id":"a&b c","trackTitle":"x","artists":[],"isrc":null,"href":"h"}]}"#,
+            r#"{"content":[{"id":"a&b c","trackTitle":"x","artists":[{"name":"Queen"}],"isrc":null,"href":"h"}]}"#,
         );
         let (base, _, seen) = serve(vec![SEARCH_RESERVED_ID, RECO]).await;
         let p = ReccoBeats::with_base_url(base).expect("client builds");
@@ -425,6 +442,72 @@ mod tests {
             1,
             "must NOT reach the canned recommendation response"
         );
+    }
+
+    /// Searching by title alone finds every song with that name. Measured
+    /// 2026-09-13: "Hit That" returns The Offspring's twice, then BIG SIS.
+    /// Seeding from whichever came first would recommend around a stranger's
+    /// song, so a page with no track by the seed's artist is no seed at all.
+    #[tokio::test]
+    async fn a_search_with_no_track_by_the_seed_artist_makes_no_recommendation_call() {
+        const OTHER_ARTISTS: (u16, &str) = (
+            200,
+            r#"{"content":[
+            {"id":"uuid-x","trackTitle":"Bohemian Rhapsody","artists":[{"name":"Pentatonix"}],"isrc":null,"href":"h"},
+            {"id":"uuid-y","trackTitle":"Bohemian Rhapsody","artists":[{"name":"Rockabye Baby!"}],"isrc":null,"href":"h"}]}"#,
+        );
+        let (base, hits, _seen) = serve(vec![OTHER_ARTISTS, RECO]).await;
+        let p = ReccoBeats::with_base_url(base).expect("client builds");
+        assert!(p.recommend(&seed(), 5).await.unwrap().is_empty());
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "must NOT reach the canned recommendation response"
+        );
+    }
+
+    /// The seed's own track need not be the first result, and a credit can
+    /// list the seed's artist second. The id sent is the one that matched.
+    #[tokio::test]
+    async fn the_first_track_by_the_seed_artist_seeds_the_recommendation() {
+        const LATER_MATCH: (u16, &str) = (
+            200,
+            r#"{"content":[
+            {"id":"uuid-cover","trackTitle":"Bohemian Rhapsody","artists":[{"name":"Pentatonix"}],"isrc":null,"href":"h"},
+            {"id":"uuid-queen","trackTitle":"Bohemian Rhapsody","artists":[{"name":"Someone"},{"name":"Queen"}],"isrc":null,"href":"h"},
+            {"id":"uuid-queen-2","trackTitle":"Bohemian Rhapsody","artists":[{"name":"Queen"}],"isrc":null,"href":"h"}]}"#,
+        );
+        let (base, _, seen) = serve(vec![LATER_MATCH, RECO]).await;
+        let p = ReccoBeats::with_base_url(base).expect("client builds");
+        assert_eq!(p.recommend(&seed(), 5).await.unwrap().len(), 1);
+
+        let reqs = seen.lock().expect("test mutex");
+        assert_eq!(
+            reqs[1].lines().next(),
+            Some("GET /track/recommendation?size=5&seeds=uuid-queen HTTP/1.1"),
+            "request 2: {}",
+            reqs[1]
+        );
+    }
+
+    /// The artist is compared the way MusicBrainz confirmations are: case,
+    /// spacing and a typographic apostrophe do not make it someone else.
+    #[tokio::test]
+    async fn the_artist_match_ignores_case_spacing_and_curly_apostrophes() {
+        const CURLY: (u16, &str) = (
+            200,
+            r#"{"content":[{"id":"uuid-gnr","trackTitle":"Sweet Child O' Mine","artists":[{"name":"guns  n’ ROSES"}],"isrc":null,"href":"h"}]}"#,
+        );
+        let (base, hits, _seen) = serve(vec![CURLY, RECO]).await;
+        let p = ReccoBeats::with_base_url(base).expect("client builds");
+        let seed = Seed {
+            artist: "Guns N' Roses".into(),
+            title: "Sweet Child O' Mine".into(),
+            mbid: None,
+            confidence: 100,
+        };
+        assert_eq!(p.recommend(&seed, 5).await.unwrap().len(), 1);
+        assert_eq!(hits.load(Ordering::SeqCst), 2, "search + recommend");
     }
 
     #[tokio::test]
@@ -645,7 +728,7 @@ mod tests {
     async fn an_empty_search_result_id_short_circuits_like_an_empty_search() {
         const SEARCH_EMPTY_ID: (u16, &str) = (
             200,
-            r#"{"content":[{"id":"","trackTitle":"x","artists":[],"isrc":null,"href":"h"}]}"#,
+            r#"{"content":[{"id":"","trackTitle":"x","artists":[{"name":"Queen"}],"isrc":null,"href":"h"}]}"#,
         );
         let (base, hits, _seen) = serve(vec![SEARCH_EMPTY_ID, RECO]).await;
         let p = ReccoBeats::with_base_url(base).expect("client builds");

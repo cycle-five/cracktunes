@@ -34,7 +34,6 @@ use songbird::input::AuxMetadata;
 use songbird::tracks::TrackHandle;
 use std::borrow::Cow;
 use std::fmt::Write;
-use std::str::FromStr;
 use std::time::Duration;
 
 //###########################################################################//
@@ -320,6 +319,14 @@ pub async fn create_lyrics_embed_old(
         .title(track)
         .description(lyric)
 }
+/// The author line of a lyrics embed, cut to the 255 bytes a
+/// `FixedString<u8>` holds, on a character boundary. lyric_finder can credit a
+/// song to dozens of artists; `from_str(..).expect` panicked on that, and the
+/// command never answered.
+fn lyrics_author(artists: &str) -> FixedString<u8> {
+    FixedString::from_str_trunc(artists)
+}
+
 /// Creates a paging embed for the lyrics of a song.
 #[cfg(not(tarpaulin_include))]
 pub async fn create_lyrics_embed(
@@ -341,7 +348,7 @@ pub async fn create_lyrics_embed(
 
     create_paged_embed(
         ctx,
-        FixedString::from_str(&artists).expect("wtf?"),
+        lyrics_author(&artists),
         track,
         lyric,
         DEFAULT_LYRICS_PAGE_SIZE,
@@ -492,6 +499,28 @@ mod test {
 
         assert_eq!(requesting_user_to_string(UserId::new(1)), "(auto)");
         assert_eq!(requesting_user_to_string(UserId::new(2)), "<@2>");
+    }
+
+    /// 🪤 Measured on production v0.11.0: lyric_finder credited a song to
+    /// dozens of artists, far past the 255 bytes a `FixedString<u8>` holds,
+    /// and `from_str(..).expect("wtf?")` panicked -- Discord showed "The
+    /// application did not respond".
+    #[test]
+    fn a_lyrics_credit_too_long_for_an_embed_author_is_cut_short_not_a_panic() {
+        use super::lyrics_author;
+
+        let credit = format!(
+            "Lyrical Lemonade (Ft. {})",
+            "Aesthetic (Rapper), ".repeat(20)
+        );
+        assert!(credit.len() > 255, "the fixture must be over the limit");
+        assert_eq!(lyrics_author(&credit).as_str(), &credit[..255]);
+
+        // Two bytes a char: byte 255 would split one, so the cut lands at 254.
+        let accents = "é".repeat(200);
+        assert_eq!(lyrics_author(&accents).as_str(), "é".repeat(127));
+
+        assert_eq!(lyrics_author("The Offspring").as_str(), "The Offspring");
     }
 
     #[tokio::test]
