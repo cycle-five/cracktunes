@@ -250,18 +250,25 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     }
 
     /// Return the call that the bot is currently in, if it is in one.
+    ///
+    /// 🪤 "In one" means connected (#507). This used `Songbird::get`, which
+    /// also hands back the Call a failed join leaves registered, so callers of
+    /// `get_call` and `get_queue` acted on a driver attached to nothing and
+    /// reported success under an error type that promised otherwise.
     async fn get_call(self) -> Result<Arc<Mutex<Call>>, CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         let manager = self.data().songbird.clone();
-        manager.get(guild_id).ok_or(CrackedError::NotConnected)
+        crate::commands::connected_call(&manager, guild_id, None)
+            .await
+            .ok_or(CrackedError::NotConnected)
     }
 
     /// Return the call that the bot is currently in, if it is in one.
     async fn get_call_guild_id(self) -> Result<(Arc<Mutex<Call>>, GuildId), CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         let manager = self.data().songbird.clone();
-        manager
-            .get(guild_id)
+        crate::commands::connected_call(&manager, guild_id, None)
+            .await
             .map(|x| (x, guild_id))
             .ok_or(CrackedError::NotConnected)
     }
@@ -286,7 +293,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     async fn get_active_channel_id(self, guild_id: GuildId) -> Option<GenericChannelId> {
         //let serenity_context = self.serenity_context();
         let manager = self.data().songbird.clone();
-        let call_lock = manager.get(guild_id)?;
+        let call_lock = crate::commands::connected_call(&manager, guild_id, None).await?;
         let call = call_lock.lock().await;
 
         let channel_id = call.current_channel()?;

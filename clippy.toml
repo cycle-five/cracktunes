@@ -21,4 +21,10 @@ disallowed-methods = [
     { path = "songbird::Songbird::join_gateway", reason = "same as Songbird::join, and additionally hands back raw gateway state; use music_utils::join_permitted" },
     { path = "songbird::Call::join", reason = "reachable from any held Arc<Mutex<Call>> and bypasses the permission gate entirely; use music_utils::join_permitted" },
     { path = "songbird::Call::join_gateway", reason = "reachable from any held Arc<Mutex<Call>> and bypasses the permission gate entirely; use music_utils::join_permitted" },
+    # 🪤 `get` is not a connection test (#507). songbird registers the Call when
+    # a join is *attempted*, so a join that timed out still hands one back.
+    # Eight commands asked `get(..).ok_or(NotConnected)` -- naming the question
+    # they meant while asking one that cannot answer it. The few sites that
+    # genuinely want "is a Call registered" carry an `#[allow]` saying why.
+    { path = "songbird::Songbird::get", reason = "returns a Call for a join that only STARTED, before the gateway handshake; use music_utils::connected_call to ask whether we are actually connected" },
 ]

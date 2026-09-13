@@ -46,7 +46,9 @@ pub async fn remove_internal(
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = ctx.data().songbird.clone();
-    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let call = crate::commands::connected_call(&manager, guild_id, None)
+        .await
+        .ok_or(CrackedError::NotConnected)?;
 
     let remove_index = b_index;
     let remove_until = match e_index {

@@ -29,8 +29,8 @@ pub async fn random_mute(
 
     let guild_id = ctx.guild_id().unwrap();
     let songbird = ctx.data().songbird.clone();
-    let call = songbird
-        .get(guild_id)
+    let call = crate::commands::connected_call(&songbird, guild_id, None)
+        .await
         .ok_or(CrackedError::WrongVoiceChannel)?;
 
     let handler = RandomMuteHandler {
