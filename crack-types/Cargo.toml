@@ -1,6 +1,6 @@
 [package]
 name = "crack-types"
-version = "0.10.5"
+version = "0.11.0"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
