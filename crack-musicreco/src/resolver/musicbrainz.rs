@@ -286,6 +286,22 @@ mod tests {
         }
     }
 
+    /// `normalize` in isolation, per the review's request for its own unit
+    /// test -- every other test here only exercises it indirectly through
+    /// `resolve()`.
+    #[test]
+    fn normalize_folds_case_whitespace_and_curly_apostrophes() {
+        assert_eq!(MusicBrainz::normalize("Queen"), "queen");
+        assert_eq!(
+            MusicBrainz::normalize("  Sweet   Child O\u{2019} Mine  "),
+            "sweet child o' mine"
+        );
+        assert_eq!(
+            MusicBrainz::normalize("queen  -  BOHEMIAN Rhapsody"),
+            "queen - bohemian rhapsody"
+        );
+    }
+
     #[tokio::test]
     async fn a_confident_match_raises_confidence_and_carries_the_mbid() {
         let (base, _hits, _seen) = serve(vec![HIT]).await;
@@ -308,24 +324,92 @@ mod tests {
         assert!(mb.resolve(&track("Queen - Nope")).await.unwrap().is_none());
     }
 
-    /// Ruling 31, the regression this ruling exists to prevent: measured
-    /// against the live API, `artist:"Queen" AND recording:"Love"` returns
-    /// "Mother Love" scoring 100 -- a phrase match, not the requested song.
-    /// Treating `score` as confidence would confirm it and spend a metered
-    /// musicatlas call on the wrong track.
+    /// Ruling 31's trap fixture, reproducing the measurement verbatim:
+    /// against the live API, `artist:"Queen" AND recording:"Love"` returned
+    /// "Mother Love" and "Love Kills" (and 965 others), ALL scoring 100 --
+    /// a phrase match anywhere in the title scores exactly like an exact
+    /// one. Treating `score` as confidence would confirm one of these and
+    /// spend a metered musicatlas call on the wrong track. `hits == 1`:
+    /// this must cost exactly the one search request, not a retry.
     #[tokio::test]
     async fn a_substring_match_at_score_100_does_not_confirm() {
-        let (base, _hits, _seen) = serve(vec![(
+        let (base, hits, _seen) = serve(vec![(
             200,
-            r#"{"recordings":[{"id":"mbid-wrong","score":100,"title":"Mother Love","artist-credit":[{"name":"Queen"}]}]}"#,
+            r#"{"recordings":[
+                {"id":"mbid-wrong-1","score":100,"title":"Mother Love","artist-credit":[{"name":"Queen"}]},
+                {"id":"mbid-wrong-2","score":100,"title":"Love Kills","artist-credit":[{"name":"Queen"}]}
+            ]}"#,
         )])
         .await;
         let mb = MusicBrainz::with_base_url("a@b.c", base).expect("client builds");
         let got = mb.resolve(&track("Queen - Love")).await.unwrap();
         assert!(
             got.is_none(),
-            "a non-exact title must not confirm, however high its score"
+            "neither candidate is an exact title match, however high their score"
         );
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+    }
+
+    /// Ruling 31: an exact match need not be first. Same guess as the trap
+    /// fixture above, but this time a real "Love" IS among the candidates,
+    /// behind the non-matching "Mother Love" -- it must still be found, with
+    /// its own mbid and confidence 100.
+    #[tokio::test]
+    async fn an_exact_match_behind_a_non_matching_candidate_is_still_found() {
+        let (base, _hits, _seen) = serve(vec![(
+            200,
+            r#"{"recordings":[
+                {"id":"mbid-wrong-1","score":100,"title":"Mother Love","artist-credit":[{"name":"Queen"}]},
+                {"id":"mbid-love","score":100,"title":"Love","artist-credit":[{"name":"Queen"}]}
+            ]}"#,
+        )])
+        .await;
+        let mb = MusicBrainz::with_base_url("a@b.c", base).expect("client builds");
+        let seed = mb
+            .resolve(&track("Queen - Love"))
+            .await
+            .unwrap()
+            .expect("the real match, even though it is not first");
+        assert_eq!(seed.mbid.as_deref(), Some("mbid-love"));
+        assert_eq!(seed.confidence, 100);
+    }
+
+    /// Ruling 31: an artist-credit that names a DIFFERENT (even overlapping)
+    /// artist must not confirm, even though the title matches exactly.
+    #[tokio::test]
+    async fn a_title_match_with_a_mismatched_artist_credit_does_not_confirm() {
+        let (base, _hits, _seen) = serve(vec![(
+            200,
+            r#"{"recordings":[{"id":"mbid-collab","score":100,"title":"Bohemian Rhapsody","artist-credit":[{"name":"Queen + Adam Lambert"}]}]}"#,
+        )])
+        .await;
+        let mb = MusicBrainz::with_base_url("a@b.c", base).expect("client builds");
+        let got = mb
+            .resolve(&track("Queen - Bohemian Rhapsody"))
+            .await
+            .unwrap();
+        assert!(
+            got.is_none(),
+            "the title matches but the credited artist does not"
+        );
+    }
+
+    /// Ruling 31: the messy side is usually the GUESS (a YouTube title), not
+    /// MusicBrainz's canonical text -- lowercase and doubled internal
+    /// whitespace here must still confirm, and the returned seed carries
+    /// MusicBrainz's own (clean) casing, not the guess's.
+    #[tokio::test]
+    async fn a_lowercase_double_spaced_guess_still_confirms_and_the_seed_carries_musicbrainzs_casing(
+    ) {
+        let (base, _hits, _seen) = serve(vec![HIT]).await;
+        let mb = MusicBrainz::with_base_url("a@b.c", base).expect("client builds");
+        let seed = mb
+            .resolve(&track("queen - bohemian  rhapsody"))
+            .await
+            .unwrap()
+            .expect("case and whitespace differences must not block confirmation");
+        assert_eq!(seed.artist, "Queen");
+        assert_eq!(seed.title, "Bohemian Rhapsody");
     }
 
     /// Ruling 31: confidence is always 100 on an exact match, never the
