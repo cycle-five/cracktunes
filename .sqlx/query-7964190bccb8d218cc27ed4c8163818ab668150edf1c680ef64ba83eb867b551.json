@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO musicreco_budget (provider, day, calls)\n             VALUES ($1, (now() AT TIME ZONE 'UTC')::date, 1)\n             ON CONFLICT (provider, day) DO UPDATE\n               SET calls = musicreco_budget.calls + 1\n               WHERE musicreco_budget.calls < $2\n             RETURNING calls",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "calls",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7964190bccb8d218cc27ed4c8163818ab668150edf1c680ef64ba83eb867b551"
+}

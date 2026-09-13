@@ -345,7 +345,8 @@ impl GuildSettingsOperations for Data {
             .await
             .get(&guild_id)
             .map(|settings| settings.autoplay)
-            .unwrap_or(true)
+            // Off by default, and session-only (Ruling 48).
+            .unwrap_or(false)
     }
 
     async fn set_autoplay_setting(&self, guild_id: GuildId, autoplay: bool) {
@@ -367,15 +368,22 @@ impl GuildSettingsOperations for Data {
             .unwrap_or(true)
     }
 
-    /// Set the autoplay setting
+    /// Turn autoplay on or off for this guild, for this session.
+    ///
+    /// 🪤 This was `and_modify` alone. A guild only got a cache entry from
+    /// `/queue` or `/voteskip`, so everywhere else this was a silent no-op:
+    /// `/autoplay` answered and nothing changed. Turning autoplay off also
+    /// drops the guild's buffered recommendations.
     async fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) {
         self.guild_cache_map
             .lock()
             .await
             .entry(guild_id)
-            .and_modify(|e| {
-                e.autoplay = autoplay;
-            });
+            .or_default()
+            .autoplay = autoplay;
+        if !autoplay {
+            self.autoplay_buffer.clear(guild_id);
+        }
     }
 
     /// Get the current autoplay settings.
@@ -774,6 +782,64 @@ mod test {
         })));
 
         assert!(!data.get_autoplay(guild_id).await);
+    }
+
+    /// Ruling 48: autoplay is off by default and session-only, and the setter
+    /// must work in a guild with no cache entry yet.
+    #[tokio::test]
+    async fn autoplay_is_off_by_default_and_the_setter_works_without_a_cache_entry() {
+        let data = Data::default();
+        let guild_id = GuildId::new(1);
+        assert!(!data.get_autoplay(guild_id).await, "off by default");
+        data.set_autoplay(guild_id, true).await;
+        assert!(
+            data.get_autoplay(guild_id).await,
+            "turning it on must stick"
+        );
+        data.set_autoplay(guild_id, false).await;
+        assert!(
+            !data.get_autoplay(guild_id).await,
+            "and so must turning it off"
+        );
+    }
+
+    /// A guild that turns autoplay off does not keep its buffered
+    /// recommendations for the next time it is turned on.
+    #[tokio::test]
+    async fn turning_autoplay_off_drops_the_buffer() {
+        use crack_musicreco::{Playable, Recommendation};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let rec = |t: &str| Recommendation {
+            artist: "A".into(),
+            title: t.into(),
+            playable: Playable::SearchQuery(t.into()),
+            isrc: None,
+            source: "test".into(),
+        };
+        let data = Data::default();
+        let guild_id = GuildId::new(1);
+        let first = data
+            .autoplay_buffer
+            .next(guild_id, || async { vec![rec("one"), rec("two")] })
+            .await;
+        assert_eq!(first.map(|r| r.title), Some("one".to_owned()));
+
+        data.set_autoplay(guild_id, false).await;
+
+        let refills = AtomicUsize::new(0);
+        let next = data
+            .autoplay_buffer
+            .next(guild_id, || async {
+                refills.fetch_add(1, Ordering::SeqCst);
+                Vec::new()
+            })
+            .await;
+        assert!(
+            next.is_none(),
+            "\"two\" must not survive autoplay being turned off"
+        );
+        assert_eq!(refills.load(Ordering::SeqCst), 1);
     }
 
     /// With no pool there is nothing to overwrite and no write to guard, so the

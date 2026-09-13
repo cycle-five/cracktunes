@@ -1,17 +1,13 @@
-//! What is left of the rspotify client: recommendations, and nothing else.
+//! What is left of the rspotify client.
 //!
 //! Every path that turns a Spotify *link* into something playable now goes
-//! through [`crate::sources::sleevenote`], which needs no credentials. This
-//! module survives only because sleevenote resolves ids to metadata and has no
-//! recommendations endpoint, so autoplay
-//! ([`crate::handlers::track_end`]) has nowhere else to go.
+//! through [`crate::sources::sleevenote`], which needs no credentials, and
+//! autoplay recommends through crack-musicreco ([`crate::music::autoplay`]).
+//! Autoplay no longer uses this module.
 //!
 //! It is dead in practice: Spotify stopped issuing Web API credentials in
 //! roughly December 2025, so [`Spotify::auth`] fails on every deployment that
-//! did not already hold a client id and secret. Autoplay says so
-//! ([`AUTOPLAY_DISABLED_SPOTIFY`](crate::messaging::messages::AUTOPLAY_DISABLED_SPOTIFY))
-//! rather than failing silently. Keep this until Spotify issues credentials
-//! again, or until autoplay picks its next track some other way.
+//! did not already hold a client id and secret.
 
 use crate::{errors::CrackedError, utils::MUSIC_SEARCH_SUFFIX};
 use crack_types::{QueryType, SpotifyTrack};

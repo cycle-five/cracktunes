@@ -408,6 +408,14 @@ pub struct DataInner {
     // What fundemental limitation comes up that must be solved by this?
     pub ct_client: CrackTrackClient<'static>,
     pub songbird: Arc<Songbird>,
+    /// The autoplay recommender. ONE per process (Ruling 42): the MusicBrainz
+    /// 1/sec gate, a provider's disabled flag and ReccoBeats' cooldown all live
+    /// inside it, and a second instance would quietly reset them. `None` when
+    /// no recommender could be built.
+    pub musicreco: Option<Arc<crack_musicreco::MusicReco>>,
+    /// Pending autoplay recommendations per guild. One call yields up to 20
+    /// tracks, which is what keeps musicatlas inside its daily budget.
+    pub autoplay_buffer: Arc<crate::music::autoplay::AutoplayBuffer>,
 }
 
 impl std::fmt::Debug for DataInner {
@@ -611,6 +619,8 @@ impl Default for DataInner {
             event_log_async: EventLogAsync::default(),
             database_pool: None,
             db_channel: None,
+            musicreco: None,
+            autoplay_buffer: Arc::default(),
         }
     }
 }

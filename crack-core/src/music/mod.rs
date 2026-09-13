@@ -1,3 +1,4 @@
+pub mod autoplay;
 pub mod context;
 pub mod lease;
 pub mod perms;

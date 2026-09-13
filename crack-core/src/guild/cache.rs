@@ -14,23 +14,14 @@ use typemap_rev::TypeMapKey;
 
 type QueueMessage = (Message, Arc<RwLock<usize>>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GuildCache {
+    /// Off by default, and session-only (Ruling 48): this cache is the only
+    /// place autoplay lives, so a restart turns it back off.
     pub autoplay: bool,
     pub time_ordered_messages: BTreeMap<DateTime<Utc>, Message>,
     pub queue_messages: Vec<QueueMessage>,
     pub current_skip_votes: HashSet<UserId>,
-}
-
-impl Default for GuildCache {
-    fn default() -> Self {
-        Self {
-            autoplay: true,
-            time_ordered_messages: BTreeMap::new(),
-            queue_messages: Vec::new(),
-            current_skip_votes: HashSet::new(),
-        }
-    }
 }
 
 #[derive(Default, Debug)]
@@ -48,7 +39,7 @@ mod test {
     #[tokio::test]
     async fn test_guild_cache() {
         let guild_cache = GuildCache::default();
-        assert!(guild_cache.autoplay);
+        assert!(!guild_cache.autoplay, "autoplay is off by default");
         assert_eq!(guild_cache.time_ordered_messages.len(), 0);
         assert_eq!(guild_cache.queue_messages.len(), 0);
         assert_eq!(guild_cache.current_skip_votes.len(), 0);

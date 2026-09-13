@@ -13,10 +13,8 @@
 //!
 //! # What sleevenote cannot do
 //!
-//! It resolves ids to metadata. It has no recommendations endpoint, so
-//! autoplay (`handlers::track_end`) cannot be moved off rspotify and stays
-//! dead until Spotify issues credentials again. That is a capability gap, not
-//! an oversight -- see [`AUTOPLAY_DISABLED_SPOTIFY`].
+//! It resolves ids to metadata. It has no recommendations endpoint, which is
+//! why autoplay recommends through crack-musicreco (`music::autoplay`) instead.
 //!
 //! [sleevenote]: https://github.com/cycle-five/sleevenote
 

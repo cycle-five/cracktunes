@@ -24,10 +24,16 @@ Everything below is optional, and the bot degrades rather than failing without i
 
 | variable | what you lose without it |
 | --- | --- |
-| `DATABASE_URL` | play history, track reactions, playlist storage, guild settings that survive a restart, and `/gp` games that survive one too |
+| `DATABASE_URL` | play history, track reactions, playlist storage, guild settings that survive a restart, `/gp` games that survive one too, and the autoplay cache |
 | `SLEEVENOTE_BASE_URL` | Spotify links in `/play`, `/gp submit`, `/spotify` and `/playlist loadspotify` |
+| `MUSICATLAS_API_KEY` | autoplay's best picks: musicatlas matches directly playable YouTube videos. It also needs `DATABASE_URL`, where its daily budget is counted. Without either, autoplay recommends through ReccoBeats, which needs no key |
 | `OPENAI_API_KEY` | ChatGPT commands |
 | `VIRUSTOTAL_API_KEY` | OSINT URL checking |
+
+Autoplay (`/autoplay`) is off by default and lasts until the bot restarts. It
+picks the next track from the one that just ended, through
+[musicatlas](https://musicatlas.ai) when `MUSICATLAS_API_KEY` and a database
+are both set, and through ReccoBeats otherwise. Neither needs Spotify.
 
 Spotify needs no credentials. It is served by
 [sleevenote](https://github.com/cycle-five/sleevenote) rather than the Spotify

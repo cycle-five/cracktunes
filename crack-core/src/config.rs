@@ -298,6 +298,14 @@ pub async fn poise_framework(
         .clone()
         .map(crate::commands::music::gp_persist::spawn_gp_writer);
 
+    // Autoplay recommendations, built once for the process (Ruling 42). See
+    // `music::autoplay::build_musicreco` for which providers a deployment gets.
+    let musicreco = crate::music::autoplay::build_musicreco(
+        database_pool.clone(),
+        std::env::var(crate::music::autoplay::MUSICATLAS_KEY_ENV).ok(),
+    )
+    .map(Arc::new);
+
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
         phone_data: PhoneCodeData::default(),
@@ -308,6 +316,7 @@ pub async fn poise_framework(
         database_pool,
         db_channel,
         gp_persist,
+        musicreco,
         ..Default::default()
     }));
 

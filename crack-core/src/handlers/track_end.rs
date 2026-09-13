@@ -1,18 +1,17 @@
 use crate::{
-    db::PgPoolExtPlayLog,
-    errors::{verify, CrackedError},
+    errors::CrackedError,
     guild::operations::GuildSettingsOperations,
     messaging::{
         interface::{create_nav_btns, create_queue_embed, send_now_playing},
-        messages::{AUTOPLAY_DISABLED_ERROR, AUTOPLAY_DISABLED_SPOTIFY, SPOTIFY_AUTH_FAILED},
+        messages::{AUTOPLAY_NEEDS_MUSICRECO, AUTOPLAY_STOPPED},
     },
+    music::autoplay,
     music::query::NewQueryType,
     music::queue::{enqueue_input_back, pause_queue, preload_from_metadata},
     music::PlaybackOwner,
-    sources::spotify::{Spotify, SPOTIFY},
     utils::{
-        calculate_num_pages, forget_queue_message, set_track_handle_metadata,
-        set_track_handle_requesting_user,
+        calculate_num_pages, forget_queue_message, get_track_handle_metadata,
+        set_track_handle_metadata, set_track_handle_requesting_user,
     },
     CrackedResult,
     Data, //, Error,
@@ -189,26 +188,28 @@ impl EventHandler for TrackEndHandler {
                 // message`), and it does not justify hoisting the channel lookup
                 // above the early returns below it.
                 if let Some(c) = music_channel {
-                    send_plain(c, self.http.clone(), AUTOPLAY_DISABLED_ERROR).await;
+                    send_plain(c, self.http.clone(), AUTOPLAY_STOPPED).await;
                 }
                 return None;
             }
         }
 
-        let pool = if let Some(pool) = &self.data.database_pool {
-            pool
-        } else {
-            return None;
+        // The track that just ended seeds the next recommendation. No database:
+        // ReccoBeats needs none, so autoplay works without one.
+        let ended: Option<TrackHandle> = match event_ctx {
+            EventContext::Track(tracks) => tracks.first().map(|(_, handle)| (*handle).clone()),
+            _ => None,
         };
 
         let (channel, next_track) = {
             let handler = self.call.lock().await;
-            let channel = match music_channel {
-                Some(c) => c,
-                _ => handler
-                    .current_channel()
-                    .map(|c| GenericChannelId::new(c.get()))
-                    .unwrap(),
+            let fallback = handler
+                .current_channel()
+                .map(|c| GenericChannelId::new(c.get()));
+            let Some(channel) = music_channel.or(fallback) else {
+                // Not connected any more: nowhere to announce, nothing to play
+                // into. This was an `unwrap` on a tokio worker.
+                return None;
             };
             let track = handler.queue().current().clone();
             (channel, track)
@@ -221,19 +222,26 @@ impl EventHandler for TrackEndHandler {
             return None;
         }
 
-        let query = match get_recommended_track_query(pool, self.guild_id).await {
-            Ok(query) => query,
-            Err(e) => {
-                // Turning a feature the user switched ON back OFF is not something
-                // to do silently. This used to be a `tracing::warn!` and nothing
-                // else, so from the channel's point of view the music simply
-                // stopped and autoplay was mysteriously off.
-                self.data.set_autoplay(self.guild_id, false).await;
-                tracing::warn!("autoplay disabled for {}: {}", self.guild_id, e);
-                announce_autoplay_off(channel, self.http.clone(), &e).await;
-                return None;
-            },
+        // 🔴 This replaces a Spotify path that could never run: it needed client
+        // credentials production does not have, and Spotify stopped issuing new
+        // Web API apps around 2025-12.
+        let Some(next) = self.next_autoplay_track(ended).await else {
+            // Turning a feature the user switched ON back OFF is not something
+            // to do silently: from the channel's point of view the music would
+            // simply stop.
+            self.data.set_autoplay(self.guild_id, false).await;
+            tracing::warn!("autoplay disabled for {}: no recommendation", self.guild_id);
+            announce_autoplay_off(channel, self.http.clone(), self.data.musicreco.is_some()).await;
+            return None;
         };
+        tracing::debug!(
+            "autoplay in {}: `{} - {}` from {}",
+            self.guild_id,
+            next.artist,
+            next.title,
+            next.source
+        );
+        let query = autoplay::to_query(&next);
 
         let call = self.call.clone();
         match queue_query(&self.data, self.guild_id, query, call).await {
@@ -241,7 +249,8 @@ impl EventHandler for TrackEndHandler {
             Err(e) => {
                 self.data.set_autoplay(self.guild_id, false).await;
                 tracing::warn!("autoplay disabled for {}: {}", self.guild_id, e);
-                announce_autoplay_off(channel, self.http.clone(), &e).await;
+                announce_autoplay_off(channel, self.http.clone(), self.data.musicreco.is_some())
+                    .await;
             },
         }
 
@@ -252,6 +261,42 @@ impl EventHandler for TrackEndHandler {
             Err(e) => tracing::warn!("Error sending now playing message: {}", e),
         };
         None
+    }
+}
+
+impl TrackEndHandler {
+    /// The guild's next recommendation: the front of its buffer, or a refill
+    /// seeded from the track that just ended.
+    async fn next_autoplay_track(
+        &self,
+        ended: Option<TrackHandle>,
+    ) -> Option<crack_musicreco::Recommendation> {
+        let reco = self.data.musicreco.clone()?;
+        let guild_id = self.guild_id;
+        self.data
+            .autoplay_buffer
+            .next(guild_id, || async move {
+                let Some(ended) = ended else {
+                    return Vec::new();
+                };
+                let meta = match get_track_handle_metadata(&ended).await {
+                    Ok(meta) => meta,
+                    Err(e) => {
+                        tracing::debug!(
+                            "autoplay in {guild_id}: no metadata on the ended track: {e}"
+                        );
+                        return Vec::new();
+                    },
+                };
+                let Some(raw) = autoplay::raw_track(&meta) else {
+                    tracing::debug!("autoplay in {guild_id}: the ended track has no title");
+                    return Vec::new();
+                };
+                reco.next_tracks(&raw, autoplay::REFILL_SIZE)
+                    .await
+                    .unwrap_or_default()
+            })
+            .await
     }
 }
 
@@ -386,42 +431,35 @@ async fn send_plain(channel: GenericChannelId, http: Arc<Http>, content: &str) {
     }
 }
 
-/// Tell the channel autoplay has been switched off, and say which kind of
-/// problem caused it.
-///
-/// The distinction is the point. "Spotify is unavailable" is a standing
-/// condition the listener can route around by queueing tracks themselves;
-/// "I couldn't work out what to play next" is a one-off. Collapsing both into a
-/// single message trains people to ignore it.
-async fn announce_autoplay_off(channel: GenericChannelId, http: Arc<Http>, err: &CrackedError) {
-    let content = match err {
-        CrackedError::SpotifyAuth
-        | CrackedError::RSpotify(_)
-        | CrackedError::RSpotifyLockError(_) => AUTOPLAY_DISABLED_SPOTIFY,
-        CrackedError::Other(msg) if *msg == SPOTIFY_AUTH_FAILED => AUTOPLAY_DISABLED_SPOTIFY,
-        _ => AUTOPLAY_DISABLED_ERROR,
-    };
-    send_plain(channel, http, content).await;
+/// Tell the channel autoplay has been switched off, in as few words as that
+/// takes. The reason is in the logs.
+async fn announce_autoplay_off(channel: GenericChannelId, http: Arc<Http>, has_recommender: bool) {
+    send_plain(channel, http, autoplay_off_notice(has_recommender)).await;
 }
 
-/// Get's the recommended tracks for a guild. Returns `QueryType::None` on failure.
-/// Looks at the top
-async fn get_recommended_track_query(
-    pool: &sqlx::PgPool,
-    guild_id: GuildId,
-) -> CrackedResult<QueryType> {
-    let spotify = SPOTIFY.lock().await;
-    let spotify = verify(spotify.as_ref(), CrackedError::SpotifyAuth)?;
-
-    let last_played = pool.get_last_played_by_guild(guild_id, 5).await?;
-    let res_rec = Spotify::get_recommendations(spotify, last_played.clone()).await?;
-
-    if res_rec.is_empty() {
-        return Ok(QueryType::None);
+/// "Autoplay off" -- unless this deployment has no recommender at all, which is
+/// the one reason worth naming.
+fn autoplay_off_notice(has_recommender: bool) -> &'static str {
+    if has_recommender {
+        AUTOPLAY_STOPPED
+    } else {
+        AUTOPLAY_NEEDS_MUSICRECO
     }
+}
 
-    match Spotify::search(spotify, &res_rec[0]).await {
-        Ok(query) => Ok(query),
-        Err(e) => Err(e),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The wording is the user's, exactly, so it is pinned against literals
+    /// rather than the constants -- a test comparing a constant to itself
+    /// would pass whatever the constant said.
+    #[test]
+    fn autoplay_off_says_nothing_more_than_it_needs_to() {
+        assert_eq!(autoplay_off_notice(true), "Autoplay off");
+        assert_eq!(
+            autoplay_off_notice(false),
+            "Autoplay needs crack-musicreco!"
+        );
     }
 }

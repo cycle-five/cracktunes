@@ -1,27 +1,27 @@
 [package]
-name = "crack-sleevenote"
+name = "crack-musicreco"
 version = "0.11.0"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
 license = "MIT"
-description = "Typed async client for the sleevenote Spotify metadata service. Wire contract v0.1.0."
+description = "Provider-agnostic music recommendation: musicatlas, ReccoBeats, MusicBrainz."
 keywords = ["music", "discord", "bot", "crack", "tunes"]
 categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
-# The official main repo is sr.ht, this is needed for the CI/CD pipeline.
-#repository = "https://git.sr.ht/~cycle-five/cracktunes"
 repository = "https://github.com/cycle-five/cracktunes"
 workspace = "../"
 
 [dependencies]
+async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0.69"
-url = "2.5"
-
 reqwest = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true }
+# test-util: MusicBrainz's 1/sec gate (Task 5) is pinned under
+# `#[tokio::test(start_paused = true)]` rather than timing real sleeps.
+tokio = { workspace = true, features = ["test-util"] }
