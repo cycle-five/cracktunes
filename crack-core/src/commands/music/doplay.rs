@@ -894,13 +894,14 @@ pub async fn queue_aux_metadata(
 #[cfg(test)]
 mod degraded_perms_notice_tests {
     use super::*;
-    use crate::music::perms::{TextPerms, TEXT_REQUIRED};
+    use crate::music::perms::{TextKind, TextPerms, TEXT_REQUIRED};
     use poise::serenity_prelude::all::{GenericChannelId, Permissions};
 
     fn perms(granted: Permissions) -> TextPerms {
         TextPerms {
             channel: GenericChannelId::new(1),
             granted,
+            kind: TextKind::Channel,
         }
     }
 
@@ -978,13 +979,14 @@ mod degraded_perms_notice_tests {
 #[cfg(test)]
 mod degraded_notice_wiring_tests {
     use super::*;
-    use crate::music::perms::{TextPerms, TEXT_REQUIRED};
+    use crate::music::perms::{TextKind, TextPerms, TEXT_REQUIRED};
     use poise::serenity_prelude::all::{GenericChannelId, Permissions};
 
     fn perms(granted: Permissions) -> TextPerms {
         TextPerms {
             channel: GenericChannelId::new(1),
             granted,
+            kind: TextKind::Channel,
         }
     }
 
