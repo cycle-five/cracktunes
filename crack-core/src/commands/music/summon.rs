@@ -1,7 +1,8 @@
 use crate::commands::{cmd_check_music, connected_call, do_join, help, sub_help as help};
 use crate::{
-    connection::get_voice_channel_for_user_summon, errors::CrackedError, poise_ext::ContextExt,
-    Context, Error,
+    connection::get_voice_channel_for_user_summon, errors::CrackedError,
+    messaging::message::CrackedMessage, poise_ext::ContextExt, poise_ext::PoiseContextExt, Context,
+    Error,
 };
 use ::serenity::all::{Channel, ChannelId, GenericChannelId, Mentionable};
 use songbird::Call;
@@ -72,18 +73,45 @@ pub async fn summon_internal(
     // sent nothing at all.
     let call: Arc<Mutex<Call>> = match connected_call(&manager, guild_id, None).await {
         Some(call) => {
-            let chan_id = call
-                .lock()
-                .await
-                .current_channel()
-                .map(|c| GenericChannelId::new(c.get()));
-
-            match chan_id {
-                Some(chan_id) => {
-                    // bot is in another channel
-                    return Err(CrackedError::AlreadyConnected(chan_id.mention()).into());
+            let here = call.lock().await.current_channel();
+            match here {
+                // 🪤 This arm used to be unreachable, and its absence was
+                // user-visible. songbird reads `current_connection()` and
+                // `current_channel()` from the same field, so a *connected*
+                // Call always has a channel -- which meant the arm below fired
+                // for every connected case, including a `/summon` into the
+                // channel the bot was already sitting in. The user got a red
+                // "⚠️ I'm already connected to <#X>" naming the channel they
+                // had just asked for (#506).
+                Some(here) if here.get() == channel_id.get() => {
+                    // Answer rather than falling through to `Ok(())` having
+                    // sent nothing: a command that returns without replying is
+                    // "The application did not respond", which is the failure
+                    // #499 fixed on this exact path. `/summon` into the channel
+                    // we are already in is a no-op, and a no-op still owes the
+                    // user a sentence.
+                    // 🪤 `AlreadyHere`, not `Summon`. `Summon` renders as
+                    // "Joining <#X>!" and nothing is being joined -- the bot is
+                    // already sitting there. Answering a no-op with a claim
+                    // about an action is a smaller lie than #506's red error,
+                    // but it is still a lie.
+                    ctx.send_reply_embed(CrackedMessage::AlreadyHere {
+                        mention: channel_id.mention(),
+                    })
+                    .await?;
+                    call
                 },
-                None => call.clone(),
+                // Genuinely somewhere else -- the case this error is for.
+                Some(here) => {
+                    return Err(CrackedError::AlreadyConnected(
+                        GenericChannelId::new(here.get()).mention(),
+                    )
+                    .into())
+                },
+                // Not reachable today, for the reason above. "Connected to
+                // nowhere" is still not something to report as
+                // already-connected, so treat it as needing a join.
+                None => do_join(ctx, &manager, guild_id, channel_id).await?,
             }
         },
         None => do_join(ctx, &manager, guild_id, channel_id).await?,

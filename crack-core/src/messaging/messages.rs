@@ -94,6 +94,10 @@ pub const GUILD_ONLY: &str = "⚠️ This command can only be used in a server!"
 pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while so I'm going to hop off, set the idle timeout to change this! Also support my development and I won't have to premium-gate features!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
 pub const IP_DETAILS: &str = "🌐 IP details for";
 pub const JOINING: &str = "Joining";
+/// 🪤 Distinct from [`JOINING`] on purpose. `/summon` into the channel the bot
+/// is already sitting in is a no-op, and answering it with "Joining" asserts
+/// an action that did not happen.
+pub const ALREADY_HERE: &str = "Already in";
 pub const KICKED: &str = "Kicked";
 pub const GRABBED_NOTICE: &str = "📃 Sent you a DM with the current track!";
 pub const LEAVING: &str = "👋 See you soon!";

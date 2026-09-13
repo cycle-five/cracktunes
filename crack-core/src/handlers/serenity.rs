@@ -317,8 +317,26 @@ impl SerenityHandler {
         // A: We don't
         // Q: Fuck you :(
         // A:
-        if manager.get(guild_id).is_some() {
-            manager.remove(guild_id).await.ok();
+        // 🪤 Not `.ok()`. songbird's `remove` is `leave(..)?` *then*
+        // `calls.remove(..)`, so a failing leave skips the removal and leaves
+        // the connectionless `Call` registered -- the stale handle the whole
+        // join path is built to defend against, since a later join finds it
+        // and reports success without ever connecting. This is the handler
+        // that runs when the bot is KICKED or disconnected, which is exactly
+        // when the gateway is unhappy and `leave` is most likely to fail, so
+        // it is the worst place in the crate to discard that signal (#505).
+        //
+        // `NoCall` is not a failure: it means nothing was registered, which is
+        // the ordinary case for a disconnect we were never party to. The
+        // `manager.get` guard that used to stand in for this test is gone --
+        // it asked songbird the same question twice.
+        if let Err(e) = manager.remove(guild_id).await {
+            if !matches!(e, songbird::error::JoinError::NoCall) {
+                tracing::warn!(
+                    "Could not remove the Call for {guild_id:?} after being disconnected: \
+                     {e:?}. A later join may find it and skip the permission gate."
+                );
+            }
         }
         // Kicked or disconnected mid-game: don't leave a zombie game behind.
         if self.data.gp_remove(guild_id).is_some() {

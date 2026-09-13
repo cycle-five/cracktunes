@@ -642,12 +642,20 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     // own text channel rather than a reply. It abandons the resume exactly
     // like a failed join does below: otherwise the guild stays owned by a
     // game that can never play again (`music/lease.rs`).
-    if let Err(e) = crate::music::perms::ensure_can_join(&ctx.cache, guild_id, voice_channel) {
-        tracing::warn!("gp: cannot rejoin {voice_channel} in {guild_id} to resume: {e}");
-        abandon_resume(data, pool, guild_id, started_at, text_channel, &ctx.http).await;
-        return;
-    }
-    let call = match data.songbird.join(guild_id, voice_channel).await {
+    let permit = match crate::music::perms::ensure_can_join(&ctx.cache, guild_id, voice_channel) {
+        Ok(permit) => permit,
+        Err(e) => {
+            tracing::warn!("gp: cannot rejoin {voice_channel} in {guild_id} to resume: {e}");
+            abandon_resume(data, pool, guild_id, started_at, text_channel, &ctx.http).await;
+            return;
+        },
+    };
+    // Through `join_permitted`, not `songbird.join`: this path used to do no
+    // cleanup at all after a failed join, so the connectionless `Call` songbird
+    // leaves registered survived and the next join found it and skipped the
+    // permission gate (#502). There is now one implementation of "join and tidy
+    // up if it fails", and this is the same one `do_join` uses.
+    let call = match crate::commands::music_utils::join_permitted(&data.songbird, permit).await {
         Ok(call) => call,
         Err(e) => {
             tracing::warn!("gp: rejoining {voice_channel} in {guild_id} to resume: {e}");
