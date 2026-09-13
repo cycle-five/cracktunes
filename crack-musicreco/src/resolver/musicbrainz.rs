@@ -145,19 +145,6 @@ impl MusicBrainz {
     fn escape(s: &str) -> String {
         s.replace('\\', "\\\\").replace('"', "\\\"")
     }
-
-    /// Normalize a title or artist name for exact-match confirmation:
-    /// Unicode-lowercase, collapse/trim whitespace, and treat a typographic
-    /// right single quote the same as an ASCII apostrophe -- MusicBrainz's
-    /// canonical text favors the former ("Guns N’ Roses"); YouTube titles
-    /// almost always use the latter.
-    fn normalize(s: &str) -> String {
-        s.replace('\u{2019}', "'")
-            .to_lowercase()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
 }
 
 #[async_trait]
@@ -241,8 +228,8 @@ impl SeedResolver for MusicBrainz {
                 message: format!("{e}: {}", http::excerpt(&body)),
             })?;
 
-        let want_artist = Self::normalize(&guess.artist);
-        let want_title = Self::normalize(&guess.title);
+        let want_artist = crate::text::normalize(&guess.artist);
+        let want_title = crate::text::normalize(&guess.title);
         // 🪤 Ruling 31: the FIRST EXACT match, not `recordings[0]`. Anything
         // short of an exact match on BOTH fields is not confirmation, so
         // `find_map` yielding `None` here is deliberately the same `Ok(None)`
@@ -252,7 +239,9 @@ impl SeedResolver for MusicBrainz {
             // Cloning immediately ends the borrow of `r.artist_credit` so
             // `r.title`/`r.id` can be moved out below without a conflict.
             let artist = r.artist_credit.first()?.name.clone();
-            if Self::normalize(&artist) != want_artist || Self::normalize(&r.title) != want_title {
+            if crate::text::normalize(&artist) != want_artist
+                || crate::text::normalize(&r.title) != want_title
+            {
                 return None;
             }
             Some(Seed {
@@ -284,22 +273,6 @@ mod tests {
             artist: None,
             uploader: None,
         }
-    }
-
-    /// `normalize` in isolation, per the review's request for its own unit
-    /// test -- every other test here only exercises it indirectly through
-    /// `resolve()`.
-    #[test]
-    fn normalize_folds_case_whitespace_and_curly_apostrophes() {
-        assert_eq!(MusicBrainz::normalize("Queen"), "queen");
-        assert_eq!(
-            MusicBrainz::normalize("  Sweet   Child O\u{2019} Mine  "),
-            "sweet child o' mine"
-        );
-        assert_eq!(
-            MusicBrainz::normalize("queen  -  BOHEMIAN Rhapsody"),
-            "queen - bohemian rhapsody"
-        );
     }
 
     #[tokio::test]

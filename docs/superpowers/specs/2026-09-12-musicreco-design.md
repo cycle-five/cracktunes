@@ -186,8 +186,18 @@ Base `https://api.reccobeats.com/v1`, no auth.
 are rejected (`4002 Cannot find any track for given seed ids`), and
 `/v1/track?ids=<spotify id>` returns `{"content":[]}`.
 
-1. `GET /v1/track/search?searchText=<artist title>&size=1` → `content[0].id`
+1. `GET /v1/track/search?searchText=<title>&size=50` → the `id` of the first
+   `content[]` entry whose `artists[].name` matches the seed artist (normalized)
 2. `GET /v1/track/recommendation?size=<n>&seeds=<uuid>` → `content[]`
+
+🪤 **`searchText` matches track titles only.** This spec originally said
+`<artist title>&size=1`; measured on production v0.11.0 (2026-09-13), that
+finds nothing for any seed ("Queen Bohemian Rhapsody" → `[]`, "Bohemian
+Rhapsody" → 50 results). A title search returns every song of that name, hence
+the artist match; `size` is capped at 50 (`size=100` → 400 "must be less than
+or equal to 50"). Coverage is partial: The Offspring's "Hit That" and Guns N'
+Roses' "Sweet Child O' Mine" match at index 0, but Queen's "Bohemian Rhapsody",
+Daft Punk's "Get Lucky" and Kendrick Lamar's "Love" are not in the first 50.
 
 Each result: `{id, trackTitle, artists[{name,href}], durationMs, isrc, href}`.
 `href` is a Spotify URL. **No YouTube id**, hence `Playable::SearchQuery`,

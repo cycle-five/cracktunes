@@ -1,4 +1,5 @@
 use crate::resolver::SeedResolver;
+use crate::text::normalize;
 use crate::{RawTrack, Result, Seed};
 use async_trait::async_trait;
 
@@ -81,6 +82,20 @@ fn clean_title(s: &str) -> String {
     out.trim().to_string()
 }
 
+/// The title without a leading "<artist><separator>", when that artist is the
+/// one supplied. Official uploads repeat the artist in the title ("The
+/// Offspring - Hit That"), and a seed that keeps it asks every provider for a
+/// track by that whole name. Any other text before a separator is kept: it is
+/// not this artist's name, and cutting it would be a guess.
+fn strip_artist_prefix<'a>(title: &'a str, artist: &str) -> &'a str {
+    let artist = normalize(artist);
+    SEPARATORS
+        .iter()
+        .filter_map(|sep| title.split_once(sep))
+        .find(|(head, _)| normalize(head) == artist)
+        .map_or(title, |(_, rest)| rest)
+}
+
 /// Offline, free, and always tried first.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct TitleParseResolver;
@@ -101,7 +116,7 @@ impl SeedResolver for TitleParseResolver {
     async fn resolve(&self, raw: &RawTrack) -> Result<Option<Seed>> {
         // A supplied artist is a fact, not a guess.
         if let Some(artist) = raw.artist.as_ref().filter(|a| !a.trim().is_empty()) {
-            let title = clean_title(&raw.title);
+            let title = clean_title(strip_artist_prefix(&raw.title, artist));
             // 🪤 L6 (Task 5 review): a supplied artist with a title that
             // cleans to empty (e.g. just "(Official Video)") used to produce
             // a seed with an empty title -- a guaranteed non-match for every
@@ -248,6 +263,62 @@ mod tests {
         assert_eq!(seed.artist, "Real Artist");
         assert_eq!(seed.title, "Anything At All");
         assert_eq!(seed.confidence, 100, "a supplied artist is not a guess");
+    }
+
+    /// 🪤 Measured in production on v0.11.0: yt-dlp supplied `artist: "The
+    /// Offspring"` for "The Offspring - Hit That (Official Music Video)", and
+    /// the seed kept the artist in its title -- so every provider was asked
+    /// for a track called "The Offspring - Hit That". Official uploads put the
+    /// artist in both places, so this is the common shape, not an edge.
+    #[tokio::test]
+    async fn a_supplied_artist_repeated_at_the_front_of_the_title_is_removed() {
+        let r = TitleParseResolver::new();
+        let cases = [
+            (
+                "The Offspring",
+                "The Offspring - Hit That (Official Music Video)",
+                "Hit That",
+            ),
+            // EN DASH, and the tag's case differs from the title's.
+            (
+                "QUEEN",
+                "Queen – Bohemian Rhapsody (Official Video Remastered)",
+                "Bohemian Rhapsody",
+            ),
+        ];
+        for (artist, title, want) in cases {
+            let seed = r
+                .resolve(&RawTrack {
+                    title: title.into(),
+                    artist: Some(artist.into()),
+                    uploader: None,
+                })
+                .await
+                .unwrap()
+                .unwrap_or_else(|| panic!("no seed for {title}"));
+            assert_eq!(seed.title, want, "{title}");
+            assert_eq!(seed.artist, artist, "the supplied artist is kept as given");
+            assert_eq!(seed.confidence, 100, "{title}");
+        }
+    }
+
+    /// Only the SUPPLIED artist is removed. A title that opens with someone
+    /// else is not this artist's name repeated, and cutting it would turn
+    /// "Daft Punk - Get Lucky" credited to Pharrell into a seed for "Get Lucky"
+    /// by Pharrell -- a guess dressed up as a fact at confidence 100.
+    #[tokio::test]
+    async fn a_different_artist_at_the_front_of_the_title_is_kept() {
+        let r = TitleParseResolver::new();
+        let seed = r
+            .resolve(&RawTrack {
+                title: "Daft Punk - Get Lucky".into(),
+                artist: Some("Pharrell Williams".into()),
+                uploader: None,
+            })
+            .await
+            .unwrap()
+            .expect("explicit artist is a seed");
+        assert_eq!(seed.title, "Daft Punk - Get Lucky");
     }
 
     /// L6 (Task 5 review): before this, `artist: Some("Queen")` with a title
