@@ -3,7 +3,7 @@ use crate::{
     guild::operations::GuildSettingsOperations,
     messaging::{
         interface::{create_nav_btns, create_queue_embed, send_now_playing},
-        messages::AUTOPLAY_DISABLED_ERROR,
+        messages::{AUTOPLAY_NEEDS_MUSICRECO, AUTOPLAY_STOPPED},
     },
     music::autoplay,
     music::query::NewQueryType,
@@ -188,7 +188,7 @@ impl EventHandler for TrackEndHandler {
                 // message`), and it does not justify hoisting the channel lookup
                 // above the early returns below it.
                 if let Some(c) = music_channel {
-                    send_plain(c, self.http.clone(), AUTOPLAY_DISABLED_ERROR).await;
+                    send_plain(c, self.http.clone(), AUTOPLAY_STOPPED).await;
                 }
                 return None;
             }
@@ -231,7 +231,7 @@ impl EventHandler for TrackEndHandler {
             // simply stop.
             self.data.set_autoplay(self.guild_id, false).await;
             tracing::warn!("autoplay disabled for {}: no recommendation", self.guild_id);
-            announce_autoplay_off(channel, self.http.clone()).await;
+            announce_autoplay_off(channel, self.http.clone(), self.data.musicreco.is_some()).await;
             return None;
         };
         tracing::debug!(
@@ -249,7 +249,8 @@ impl EventHandler for TrackEndHandler {
             Err(e) => {
                 self.data.set_autoplay(self.guild_id, false).await;
                 tracing::warn!("autoplay disabled for {}: {}", self.guild_id, e);
-                announce_autoplay_off(channel, self.http.clone()).await;
+                announce_autoplay_off(channel, self.http.clone(), self.data.musicreco.is_some())
+                    .await;
             },
         }
 
@@ -430,10 +431,35 @@ async fn send_plain(channel: GenericChannelId, http: Arc<Http>, content: &str) {
     }
 }
 
-/// Tell the channel autoplay has been switched off.
-///
-/// The Spotify-specific wording this used to choose between is gone with the
-/// Spotify path: nothing on the autoplay path can raise a Spotify error now.
-async fn announce_autoplay_off(channel: GenericChannelId, http: Arc<Http>) {
-    send_plain(channel, http, AUTOPLAY_DISABLED_ERROR).await;
+/// Tell the channel autoplay has been switched off, in as few words as that
+/// takes. The reason is in the logs.
+async fn announce_autoplay_off(channel: GenericChannelId, http: Arc<Http>, has_recommender: bool) {
+    send_plain(channel, http, autoplay_off_notice(has_recommender)).await;
+}
+
+/// "Autoplay off" -- unless this deployment has no recommender at all, which is
+/// the one reason worth naming.
+fn autoplay_off_notice(has_recommender: bool) -> &'static str {
+    if has_recommender {
+        AUTOPLAY_STOPPED
+    } else {
+        AUTOPLAY_NEEDS_MUSICRECO
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The wording is the user's, exactly, so it is pinned against literals
+    /// rather than the constants -- a test comparing a constant to itself
+    /// would pass whatever the constant said.
+    #[test]
+    fn autoplay_off_says_nothing_more_than_it_needs_to() {
+        assert_eq!(autoplay_off_notice(true), "Autoplay off");
+        assert_eq!(
+            autoplay_off_notice(false),
+            "Autoplay needs crack-musicreco!"
+        );
+    }
 }

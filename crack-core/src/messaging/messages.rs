@@ -174,15 +174,17 @@ pub const SKIPPED: &str = "⏭️ Skipped!";
 // operator without credentials often CANNOT obtain them, and sending them to the
 // dashboard wastes their time. Tell the person in the channel what they can
 // actually do instead; the operator gets the real diagnosis in the logs.
-// Reachable only through autoplay now: link resolution moved to sleevenote and
-// raises its own errors. `track_end` maps this onto AUTOPLAY_DISABLED_SPOTIFY
-// before a user ever sees it, but the Display impl is what shows if
-// CrackedError::SpotifyAuth ever surfaces anywhere else -- so it must not claim
-// links are broken, because they are not.
+// Nothing raises this today: link resolution moved to sleevenote, and autoplay
+// moved to crack-musicreco. The Display impl is what shows if
+// CrackedError::SpotifyAuth ever surfaces -- so it must not claim links are
+// broken, because they are not.
 pub const SPOTIFY_AUTH_FAILED: &str = "⚠️ **I can't pick a next track right now.**\nThat needs Spotify recommendations, which aren't available. Queue something up and I'll keep playing.";
-pub const AUTOPLAY_DISABLED_SPOTIFY: &str = "🤖 **Autoplay is off.**\nPicking the next track needs Spotify, which isn't available right now. Queue something up and I'll keep playing.";
-pub const AUTOPLAY_DISABLED_ERROR: &str =
-    "🤖 **Autoplay is off.**\nI couldn't work out what to play next.";
+/// Posted when autoplay switches itself off. Nothing more: the reason is in the
+/// logs, and what the listener can do about it is the same either way.
+pub const AUTOPLAY_STOPPED: &str = "Autoplay off";
+/// Posted instead when this deployment has no recommender at all
+/// (`Data::musicreco` is `None`) -- the one reason worth saying out loud.
+pub const AUTOPLAY_NEEDS_MUSICRECO: &str = "Autoplay needs crack-musicreco!";
 // Operator-facing. Never sent to a channel -- this is the detail a person
 // running the bot needs, and the detail a Discord user cannot act on.
 // ⚠️ These describe AUTOPLAY ONLY. Spotify *links* no longer need credentials
