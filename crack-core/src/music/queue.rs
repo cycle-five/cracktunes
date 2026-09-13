@@ -303,6 +303,9 @@ pub async fn queue_track_front(
     query_type: &QueryType,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    // A user queued something, so autoplay's buffered picks -- chosen from
+    // what played before -- no longer apply (Ruling 49).
+    ctx.data().autoplay_buffer.clear(guild_id);
     let ready_track = ready_query(ctx, query_type.clone()).await?;
     // Logged BEFORE the guard is taken and before `ready_track` is moved into
     // the enqueue below. The send is a non-blocking channel push, so it costs
@@ -332,6 +335,9 @@ pub async fn queue_track_back(
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let user_id = ctx.author().id;
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    // A user queued something, so autoplay's buffered picks -- chosen from
+    // what played before -- no longer apply (Ruling 49).
+    ctx.data().autoplay_buffer.clear(guild_id);
 
     let begin = std::time::Instant::now();
     let resolved = match ctx.data().ct_client.resolve_track(query_type.clone()).await {
@@ -483,6 +489,9 @@ pub async fn queue_resolved_list_back(
     msg: &mut Message,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    // A user queued something, so autoplay's buffered picks -- chosen from
+    // what played before -- no longer apply (Ruling 49).
+    ctx.data().autoplay_buffer.clear(guild_id);
     let user_id = ctx.author().id;
     let client = http_utils::get_client_old().clone();
 
@@ -602,6 +611,9 @@ pub async fn queue_vec_query_type(
     _mode: Mode,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    // A user queued something, so autoplay's buffered picks -- chosen from
+    // what played before -- no longer apply (Ruling 49).
+    ctx.data().autoplay_buffer.clear(guild_id);
     let user_id = ctx.author().id;
 
     // This used to be a serial `for` loop calling `ready_query`, which spawned
@@ -646,6 +658,9 @@ pub async fn queue_query_list_offset(
     _search_msg: &mut Message,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    // A user queued something, so autoplay's buffered picks -- chosen from
+    // what played before -- no longer apply (Ruling 49).
+    ctx.data().autoplay_buffer.clear(guild_id);
     let user_id = ctx.author().id;
 
     // Resolved concurrently; this was a serial round trip per track. Runs
@@ -1322,9 +1337,9 @@ mod play_history_wiring_tests {
             "enqueue_input_back",
             Primitive(
                 "caller: track_end.rs autoplay. ⚠️ KNOWN GAP: an autoplayed track \
-                 is not logged. Harmless today only because autoplay is dead on \
-                 production (no Spotify client credentials, and Spotify blocked \
-                 new Web API apps ~2025-12). Revisit if autoplay ever returns.",
+                 is not logged. Autoplay is live again through crack-musicreco \
+                 (off by default, session-only); whether autoplayed plays belong \
+                 in play history is still undecided.",
             ),
         ),
     ];
@@ -1427,6 +1442,32 @@ mod play_history_wiring_tests {
                 "{name} is marked as delegating to {target} but does not call it"
             );
         }
+    }
+
+    /// Ruling 49: every entry point a user queues through clears autoplay's
+    /// buffer, so the next autoplay pick is seeded from what they chose rather
+    /// than from a list made for an earlier track. `Logs` is exactly the set
+    /// with a user behind it; autoplay's own path is a `Primitive` and must not
+    /// clear what it is draining.
+    #[test]
+    fn every_user_entry_point_clears_the_autoplay_buffer() {
+        let src = production_source();
+        let missing: Vec<&str> = SURFACE
+            .iter()
+            .filter(|(_, expect)| *expect == Logs)
+            .map(|(name, _)| *name)
+            .filter(|name| {
+                !body_of(&src, name)
+                    .lines()
+                    .filter(|l| !l.trim_start().starts_with("//"))
+                    .any(|l| l.contains("autoplay_buffer.clear("))
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "these enqueue paths have a user behind them but leave autoplay's \
+             buffer alone, so autoplay would carry on from a stale list: {missing:#?}"
+        );
     }
 
     /// A `Primitive` is only safe to leave unlogged because it has no `ctx` --

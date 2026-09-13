@@ -105,6 +105,13 @@ impl MusicReco {
         MusicRecoBuilder::default()
     }
 
+    /// The recommenders, in the order they are tried. For the startup log line
+    /// and for tests of which providers a deployment actually wired up.
+    #[must_use]
+    pub fn recommender_names(&self) -> Vec<&'static str> {
+        self.recommenders.iter().map(|r| r.name()).collect()
+    }
+
     /// The best seed any resolver produced.
     ///
     /// Ruling 22: resolvers may only RAISE confidence -- MusicBrainz confirms
