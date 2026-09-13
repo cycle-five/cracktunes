@@ -849,7 +849,9 @@ pub async fn queue_aux_metadata(
     let client = &ctx.data().http_client;
     let manager = ctx.data().songbird.clone();
 
-    let call = manager.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let call = crate::commands::connected_call(&manager, guild_id, None)
+        .await
+        .ok_or(CrackedError::NotConnected)?;
 
     let req = RequestOptionsBuilder::new()
         .set_client(client.clone())
@@ -894,13 +896,14 @@ pub async fn queue_aux_metadata(
 #[cfg(test)]
 mod degraded_perms_notice_tests {
     use super::*;
-    use crate::music::perms::{TextPerms, TEXT_REQUIRED};
+    use crate::music::perms::{TextKind, TextPerms, TEXT_REQUIRED};
     use poise::serenity_prelude::all::{GenericChannelId, Permissions};
 
     fn perms(granted: Permissions) -> TextPerms {
         TextPerms {
             channel: GenericChannelId::new(1),
             granted,
+            kind: TextKind::Channel,
         }
     }
 
@@ -978,13 +981,14 @@ mod degraded_perms_notice_tests {
 #[cfg(test)]
 mod degraded_notice_wiring_tests {
     use super::*;
-    use crate::music::perms::{TextPerms, TEXT_REQUIRED};
+    use crate::music::perms::{TextKind, TextPerms, TEXT_REQUIRED};
     use poise::serenity_prelude::all::{GenericChannelId, Permissions};
 
     fn perms(granted: Permissions) -> TextPerms {
         TextPerms {
             channel: GenericChannelId::new(1),
             granted,
+            kind: TextKind::Channel,
         }
     }
 

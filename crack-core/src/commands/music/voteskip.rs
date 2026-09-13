@@ -39,18 +39,23 @@ pub async fn voteskip(
 async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
     // use crate::db::TrackReaction;
 
-    let guild_id = ctx.guild_id().unwrap();
+    // 🪤 Six unwraps used to live in this function, one of them
+    // `manager.get(guild_id).unwrap()` (#507): a /voteskip with no Call
+    // registered panicked on a tokio worker, so the user saw nothing and the
+    // log got a backtrace. Each is now an answer.
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let guild = ctx
         .serenity_context()
         .cache
         .guild(guild_id)
-        .unwrap()
+        .ok_or(CrackedError::NoGuildCached)?
         .clone();
     let bot_channel_id =
-        get_voice_channel_for_user(&guild, &ctx.serenity_context().cache.current_user().id)
-            .unwrap();
+        get_voice_channel_for_user(&guild, &ctx.serenity_context().cache.current_user().id)?;
     let manager = ctx.data().songbird.clone();
-    let call = manager.get(guild_id).unwrap();
+    let call = crate::commands::connected_call(&manager, guild_id, None)
+        .await
+        .ok_or(CrackedError::NotConnected)?;
 
     // Ordinary music commands mutate as `Free`; a guild a game owns refuses
     // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
@@ -73,12 +78,12 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         .serenity_context()
         .cache
         .guild(guild_id)
-        .unwrap()
+        .ok_or(CrackedError::NoGuildCached)?
         .clone()
         .voice_states;
     let channel_guild_users = guild_users
         .iter()
-        .filter(|v| v.channel_id.unwrap() == bot_channel_id);
+        .filter(|v| v.channel_id == Some(bot_channel_id));
     let skip_threshold = channel_guild_users.count() / 2;
 
     let _ = if cache.current_skip_votes.len() >= skip_threshold {

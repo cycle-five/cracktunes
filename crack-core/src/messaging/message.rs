@@ -147,6 +147,12 @@ pub enum CrackedMessage {
     Summon {
         mention: Mention,
     },
+    /// `/summon` into the channel the bot is already in. Deliberately not
+    /// [`Self::Summon`]: that one says "Joining", which would be a claim about
+    /// something that did not happen.
+    AlreadyHere {
+        mention: Mention,
+    },
     TextChannelCreated {
         channel_id: serenity::GenericChannelId,
         channel_name: FixedString<u16>,
@@ -419,6 +425,9 @@ impl Display for CrackedMessage {
                 f.write_str(&format!("{} [**{}**]({})!", SKIPPED_TO, title, url))
             },
             Self::Summon { mention } => f.write_str(&format!("{} **{}**!", JOINING, mention)),
+            Self::AlreadyHere { mention } => {
+                f.write_str(&format!("{} **{}**!", ALREADY_HERE, mention))
+            },
             Self::TextChannelCreated {
                 channel_id,
                 channel_name,

@@ -3,7 +3,7 @@ use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings}
 use crate::music::TrackReadyData;
 use crate::{
     commands::CrackedError, db, http_utils, http_utils::SendMessageParams,
-    messaging::message::CrackedMessage, utils::OptionTryUnwrap, CrackedResult, Data, Error,
+    messaging::message::CrackedMessage, utils::OptionTryUnwrap, CrackedResult, Error,
     MessageOrReplyHandle,
 };
 use colored::Colorize;
@@ -250,18 +250,25 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     }
 
     /// Return the call that the bot is currently in, if it is in one.
+    ///
+    /// 🪤 "In one" means connected (#507). This used `Songbird::get`, which
+    /// also hands back the Call a failed join leaves registered, so callers of
+    /// `get_call` and `get_queue` acted on a driver attached to nothing and
+    /// reported success under an error type that promised otherwise.
     async fn get_call(self) -> Result<Arc<Mutex<Call>>, CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         let manager = self.data().songbird.clone();
-        manager.get(guild_id).ok_or(CrackedError::NotConnected)
+        crate::commands::connected_call(&manager, guild_id, None)
+            .await
+            .ok_or(CrackedError::NotConnected)
     }
 
     /// Return the call that the bot is currently in, if it is in one.
     async fn get_call_guild_id(self) -> Result<(Arc<Mutex<Call>>, GuildId), CrackedError> {
         let guild_id = self.guild_id().ok_or(CrackedError::NoGuildId)?;
         let manager = self.data().songbird.clone();
-        manager
-            .get(guild_id)
+        crate::commands::connected_call(&manager, guild_id, None)
+            .await
             .map(|x| (x, guild_id))
             .ok_or(CrackedError::NotConnected)
     }
@@ -286,7 +293,7 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     async fn get_active_channel_id(self, guild_id: GuildId) -> Option<GenericChannelId> {
         //let serenity_context = self.serenity_context();
         let manager = self.data().songbird.clone();
-        let call_lock = manager.get(guild_id)?;
+        let call_lock = crate::commands::connected_call(&manager, guild_id, None).await?;
         let call = call_lock.lock().await;
 
         let channel_id = call.current_channel()?;
@@ -487,8 +494,24 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let handle = self.send(reply).await?;
         let id = self.get_cache_id();
         if params.cache_msg {
-            let msg = handle.clone().into_message().await?;
-            self.data().add_msg_to_cache_int(id, msg).await;
+            // 🪤 Deliberately not `?`. The message is ALREADY DELIVERED by the
+            // line above; `into_message` is a *follow-up* -- on an application
+            // context it is a fresh `get_response` HTTP call -- and its only
+            // purpose is to let `/clean` find the message later
+            // (`utility/clean.rs` reads `time_ordered_messages`).
+            //
+            // Propagating its failure told every caller that the SEND failed,
+            // after a successful send. A 429 or a transient 5xx on this GET
+            // made `music_utils::announce_join` post a duplicate reply and
+            // `summon_internal`'s `?` raise an error over a correct answer.
+            // Losing a cache entry costs one uncleanable message; reporting a
+            // successful send as a failure costs the user a wrong answer.
+            match handle.clone().into_message().await {
+                Ok(msg) => {
+                    self.data().add_msg_to_cache_int(id, msg).await;
+                },
+                Err(e) => tracing::warn!("Message sent, but caching it for /clean failed: {e:?}"),
+            }
         }
         Ok(handle)
     }
@@ -518,10 +541,26 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         };
         let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
         let handle = self.send(reply).await?;
+        let id = self.get_cache_id();
         if params.cache_msg {
-            let msg = handle.clone().into_message().await?;
-            let id = self.get_cache_id();
-            self.data().add_msg_to_cache_int(id, msg).await;
+            // 🪤 Deliberately not `?`. The message is ALREADY DELIVERED by the
+            // line above; `into_message` is a *follow-up* -- on an application
+            // context it is a fresh `get_response` HTTP call -- and its only
+            // purpose is to let `/clean` find the message later
+            // (`utility/clean.rs` reads `time_ordered_messages`).
+            //
+            // Propagating its failure told every caller that the SEND failed,
+            // after a successful send. A 429 or a transient 5xx on this GET
+            // made `music_utils::announce_join` post a duplicate reply and
+            // `summon_internal`'s `?` raise an error over a correct answer.
+            // Losing a cache entry costs one uncleanable message; reporting a
+            // successful send as a failure costs the user a wrong answer.
+            match handle.clone().into_message().await {
+                Ok(msg) => {
+                    self.data().add_msg_to_cache_int(id, msg).await;
+                },
+                Err(e) => tracing::warn!("Message sent, but caching it for /clean failed: {e:?}"),
+            }
         }
         Ok(handle)
     }
@@ -665,51 +704,17 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
 /// Extension trait for the poise::Context<'_> for owned contexts.
 pub trait OwnedContextExt {}
 
-///Struct to represent everything needed to join a voice call.
-pub struct JoinVCToken(pub serenity::GuildId, pub Arc<tokio::sync::Mutex<()>>);
-impl JoinVCToken {
-    pub fn acquire(data: &Data, guild_id: serenity::GuildId) -> Self {
-        let lock = data
-            .join_vc_tokens
-            .entry(guild_id)
-            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
-            .clone();
-
-        Self(guild_id, lock)
-    }
-}
-
-/// Extension trait for Songbird.
-pub trait SongbirdManagerExt {
-    fn join_vc(
-        &self,
-        cache: &serenity::Cache,
-        guild_id: JoinVCToken,
-        channel_id: serenity::ChannelId,
-    ) -> impl Future<Output = Result<Arc<tokio::sync::Mutex<songbird::Call>>, CrackedError>>;
-}
-
-/// Implementation of the extension trait for Songbird's manager.
-impl SongbirdManagerExt for songbird::Songbird {
-    async fn join_vc(
-        &self,
-        cache: &serenity::Cache,
-        JoinVCToken(guild_id, lock): JoinVCToken,
-        channel_id: serenity::ChannelId,
-    ) -> Result<Arc<tokio::sync::Mutex<songbird::Call>>, CrackedError> {
-        let _guard = lock.lock().await;
-        crate::music::perms::ensure_can_join(cache, guild_id, channel_id)?;
-        match self.join(guild_id, channel_id).await {
-            Ok(call) => Ok(call),
-            Err(err) => {
-                // On error, the Call is left in a semi-connected state.
-                // We need to correct this by removing the call from the manager.
-                drop(self.leave(guild_id).await);
-                Err(CrackedError::JoinChannelError(err))
-            },
-        }
-    }
-}
+// `JoinVCToken` and `SongbirdManagerExt::join_vc` lived here and were deleted
+// in #481: zero callers workspace-wide, and the per-guild mutex backing them
+// was allocated for every guild the bot has ever joined and never once taken.
+//
+// The parts worth keeping outlived them. Its permission check is now
+// `perms::JoinPermit`, which the type system enforces rather than asking each
+// site to remember; its cleanup was the buggiest of the three (#502) --
+// `leave` clears the connection but deliberately keeps the handler
+// registered, so the connectionless `Call` it meant to drop survived intact.
+// `music_utils::join_permitted` is the single implementation both are now
+// part of.
 
 use poise::serenity_prelude::Context as SerenityContext;
 use std::collections::HashSet;

@@ -81,9 +81,8 @@ A single image, no database of your own to run:
 docker run -d --env-file .env --restart unless-stopped --name cracktunes ghcr.io/cycle-five/cracktunes:latest
 ```
 
-Images are published to two registries by CI: `ghcr.io/cycle-five/cracktunes` and
-`docker.io/cyclefive/cracktunes`. Tagged releases get version tags; branch builds get
-floating ones.
+Images are published by CI to `ghcr.io/cycle-five/cracktunes`. Tagged releases get
+version tags; branch builds get floating ones.
 
 ### Docker Compose (the full stack)
 
@@ -211,7 +210,7 @@ cargo publish
 docker build -t cracktunes .
 ```
 
-Note that `docker-compose.yml` references the published `cyclefive/cracktunes:dev`
+Note that `docker-compose.yml` references the published `ghcr.io/cycle-five/cracktunes:master`
 image, not a locally built one — so building with the tag above does not change what
 `docker compose up` runs. Retag it or edit the compose file if you want your local
 build in the stack. Deploying is covered under [Deployment](#deployment) above.

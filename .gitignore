@@ -35,5 +35,5 @@ cobertura.xml
 # under docs/superpowers/ stay tracked -- those are the durable documents.
 .superpowers/
 
-# git worktrees created for parallel work
+# git worktrees created for parallel work; never part of the tree
 .worktrees/

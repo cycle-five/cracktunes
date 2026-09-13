@@ -53,7 +53,7 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
     let embed = {
         tracing::error!("embed");
         let manager = ctx.data().songbird.clone();
-        let call = match manager.get(guild_id) {
+        let call = match crate::commands::connected_call(&manager, guild_id, None).await {
             Some(call) => call,
             None => {
                 tracing::error!("Can't get call from manager.");

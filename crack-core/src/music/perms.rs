@@ -12,15 +12,54 @@
 //!   would be strictly worse for the user than playing silently.
 
 use poise::serenity_prelude as serenity;
-use serenity::all::{Cache, ChannelId, GenericChannelId, GuildId, Permissions, RoleId, UserId};
+use serenity::all::{
+    Cache, ChannelId, GenericChannelId, GuildId, Permissions, RoleId, ThreadId, UserId,
+};
 
 use crate::errors::{CrackedError, PermScope};
 
-/// Text permissions the now-playing posts need. Missing any of these degrades
-/// the bot; it never blocks it.
+/// Text permissions the now-playing posts need in a regular channel. Missing
+/// any of these degrades the bot; it never blocks it.
 pub const TEXT_REQUIRED: Permissions = Permissions::VIEW_CHANNEL
     .union(Permissions::SEND_MESSAGES)
     .union(Permissions::EMBED_LINKS);
+
+/// [`TEXT_REQUIRED`], inside a thread.
+///
+/// 🪤 Posting in a thread needs `SEND_MESSAGES_IN_THREADS`, not
+/// `SEND_MESSAGES`. They are separate bits: either can be denied while the
+/// other is granted. So a bot that can post in `#general` may be unable to
+/// post in a thread under it, and judging the thread by `SEND_MESSAGES` would
+/// report that as fine (#498).
+pub const THREAD_TEXT_REQUIRED: Permissions = Permissions::VIEW_CHANNEL
+    .union(Permissions::SEND_MESSAGES_IN_THREADS)
+    .union(Permissions::EMBED_LINKS);
+
+/// What kind of channel a command was invoked in, which decides the
+/// permission that posting there needs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextKind {
+    Channel,
+    Thread,
+}
+
+impl TextKind {
+    /// Everything a now-playing post needs here.
+    pub fn required(self) -> Permissions {
+        match self {
+            Self::Channel => TEXT_REQUIRED,
+            Self::Thread => THREAD_TEXT_REQUIRED,
+        }
+    }
+
+    /// The one permission that lets the bot post a message here.
+    pub fn send_permission(self) -> Permissions {
+        match self {
+            Self::Channel => Permissions::SEND_MESSAGES,
+            Self::Thread => Permissions::SEND_MESSAGES_IN_THREADS,
+        }
+    }
+}
 
 /// Permissions a voice join needs. Missing any of them blocks it outright.
 ///
@@ -97,7 +136,11 @@ impl VoiceCheck {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextPerms {
     pub channel: GenericChannelId,
+    /// For a thread, this is the PARENT channel's bitset. Threads carry no
+    /// permission overwrites of their own, so that is the right bitset; what
+    /// changes is which bit posting needs, and `kind` carries that.
     pub granted: Permissions,
+    pub kind: TextKind,
 }
 
 /// What the bot may do in the voice channel it would join.
@@ -108,10 +151,11 @@ pub struct VoicePerms {
 }
 
 impl TextPerms {
-    /// The subset of [`TEXT_REQUIRED`] we do not have. Renders itself as
+    /// The subset of what this kind of channel needs that we do not have
+    /// ([`TEXT_REQUIRED`] or [`THREAD_TEXT_REQUIRED`]). Renders itself as
     /// comma-separated permission names via serenity's `Display`.
     pub fn missing(&self) -> Permissions {
-        TEXT_REQUIRED - self.granted
+        self.kind.required() - self.granted
     }
     pub fn is_whole(&self) -> bool {
         self.missing().is_empty()
@@ -119,8 +163,10 @@ impl TextPerms {
     pub fn view(&self) -> bool {
         self.granted.contains(Permissions::VIEW_CHANNEL)
     }
+    /// Whether the bot may post here: `SEND_MESSAGES` in a channel,
+    /// `SEND_MESSAGES_IN_THREADS` in a thread.
     pub fn send(&self) -> bool {
-        self.granted.contains(Permissions::SEND_MESSAGES)
+        self.granted.contains(self.kind.send_permission())
     }
     pub fn embed(&self) -> bool {
         self.granted.contains(Permissions::EMBED_LINKS)
@@ -143,12 +189,15 @@ impl VoicePerms {
     }
 }
 
-/// Build the permission picture from already-resolved bitsets.
+/// Build the permission picture for a regular text channel from
+/// already-resolved bitsets.
 ///
 /// Pure on purpose: no cache, no `await`, no poise `Context`. Every case worth
 /// testing is a synthetic [`Permissions`] value, so the model is covered
-/// without Discord, a network, or an async runtime. [`resolve`] is the thin
-/// layer that reads the cache and calls this.
+/// without Discord, a network, or an async runtime.
+///
+/// Channel-only. [`resolve`] builds its [`TextPerms`] through
+/// [`classify_text`], which also knows threads.
 pub fn compute(
     text_channel: GenericChannelId,
     text_granted: Permissions,
@@ -158,6 +207,7 @@ pub fn compute(
         text: TextPerms {
             channel: text_channel,
             granted: text_granted,
+            kind: TextKind::Channel,
         },
         voice,
     }
@@ -240,11 +290,52 @@ pub fn classify_join(
     JoinLookup::Granted(granted_in(channel))
 }
 
+/// Classify the invocation channel from already-looked-up facts.
+///
+/// Pure for the same reason as [`classify_voice`]: the thread arm is the line
+/// #498 is about, and inline in [`resolve`]'s cache reads nothing could pin
+/// it.
+///
+/// `granted_in` answers for a channel in `guild.channels`, `None` otherwise.
+/// `thread_parent` answers for a thread in `guild.threads`, `None` otherwise.
+///
+/// 🪤 A thread is read through its PARENT and judged as a THREAD. Threads
+/// carry no permission overwrites of their own, so the parent's bitset is the
+/// correct one -- but posting needs a different bit, so reading the parent
+/// and then judging it as a channel would tell a bot that can post in
+/// `#general`, and cannot post in a thread under it, that all is well. That
+/// confidently wrong answer is why this was left unsupported rather than
+/// guessed at.
+///
+/// `None` still fails open: an id that is neither a cached channel nor a
+/// cached thread (the gateway sends active threads only), or a thread whose
+/// parent is not cached.
+pub fn classify_text(
+    channel: GenericChannelId,
+    granted_in: impl Fn(ChannelId) -> Option<Permissions>,
+    thread_parent: impl Fn(ThreadId) -> Option<ChannelId>,
+) -> Option<TextPerms> {
+    if let Some(granted) = granted_in(channel.expect_channel()) {
+        return Some(TextPerms {
+            channel,
+            granted,
+            kind: TextKind::Channel,
+        });
+    }
+    let parent = thread_parent(channel.expect_thread())?;
+    Some(TextPerms {
+        channel,
+        granted: granted_in(parent)?,
+        kind: TextKind::Thread,
+    })
+}
+
 /// Read the bot's permissions out of the cache.
 ///
-/// Returns `None` when the guild, the bot's own member, or the text channel is
-/// not cached, or when the bot's roles cannot all be resolved — callers treat
-/// that as "assume fine" rather than refusing.
+/// Returns `None` when the guild or the bot's own member is not cached, when
+/// [`classify_text`] cannot place the invocation channel, or when the bot's
+/// roles cannot all be resolved — callers treat that as "assume fine" rather
+/// than refusing.
 ///
 /// No HTTP on this path. `GatewayIntents::GUILD_MEMBERS` is enabled
 /// (`config.rs:321`), so the bot's own `Member` is cached and permissions
@@ -267,8 +358,18 @@ pub fn resolve(
         return None;
     }
 
-    let text_chan = guild.channels.get(&text_channel.expect_channel())?;
-    let text_granted = guild.user_permissions_in(text_chan, bot);
+    // Threads are not in `guild.channels`; [`classify_text`] reads them
+    // through their parent, which is where their permissions come from.
+    let text = classify_text(
+        text_channel,
+        |cid| {
+            guild
+                .channels
+                .get(&cid)
+                .map(|chan| guild.user_permissions_in(chan, bot))
+        },
+        |tid| guild.threads.get(&tid).map(|thread| thread.parent_id),
+    )?;
 
     // The author's voice channel, if they are in one. Absent from the voice
     // states is not a denial; absent from an already-cached guild's channel
@@ -291,7 +392,7 @@ pub fn resolve(
         },
     );
 
-    Some(compute(text_channel, text_granted, voice))
+    Some(MusicPermissions { text, voice })
 }
 
 /// The refusal a set of granted voice permissions earns, if any.
@@ -332,19 +433,58 @@ pub fn unreadable_refusal(channel: ChannelId) -> CrackedError {
     }
 }
 
+/// Proof that [`ensure_can_join`] said yes, for one specific guild and
+/// channel.
+///
+/// The fields are private and this module holds the only constructor, so the
+/// sole way to obtain one is to have passed the gate.
+/// `music_utils::join_permitted` -- the crate's only caller of
+/// `Songbird::join` -- takes one **by value**. A join that skipped the
+/// permission check therefore does not compile.
+///
+/// 🔑 This replaces `join_site_guard_tests`, which read the join sites as text
+/// and asserted `ensure_can_join(` appeared within 1200 bytes before
+/// `manager.join`. That guard could not pair a gate with its own join (any two
+/// joins inside one window satisfied each other), broke four separate times on
+/// ordinary prose landing in the window, and was in the end a linter written
+/// in a test. The compiler does the same job exactly, at every site, with no
+/// window and no false positives.
+#[derive(Debug)]
+#[must_use = "a JoinPermit that is never spent means the join never happened"]
+pub struct JoinPermit {
+    guild_id: GuildId,
+    channel_id: ChannelId,
+}
+
+impl JoinPermit {
+    /// The guild and channel this permit authorises.
+    ///
+    /// Consuming, because a permit authorises exactly one join: spending it is
+    /// what stops a single permission check from covering a later join into
+    /// somewhere else.
+    pub fn into_parts(self) -> (GuildId, ChannelId) {
+        (self.guild_id, self.channel_id)
+    }
+}
+
 /// The blocking gate: refuse a join Discord would silently drop.
 ///
-/// Call this immediately before every `songbird.join`.
-///
 /// A thin cache layer over [`join_refusal`], which holds the actual rule.
+///
+/// Returns a [`JoinPermit`] rather than `()` so that the ordering this gate
+/// depends on is enforced by the type system instead of by convention -- see
+/// that type for why.
 pub fn ensure_can_join(
     cache: &Cache,
     guild_id: GuildId,
     channel_id: ChannelId,
-) -> Result<(), CrackedError> {
+) -> Result<JoinPermit, CrackedError> {
     match join_refusal(channel_id, join_lookup(cache, guild_id, channel_id)) {
         Some(err) => Err(err),
-        None => Ok(()),
+        None => Ok(JoinPermit {
+            guild_id,
+            channel_id,
+        }),
     }
 }
 
@@ -430,6 +570,78 @@ mod tests {
     }
     fn voice_ch() -> ChannelId {
         ChannelId::new(2)
+    }
+    fn thread_ch() -> GenericChannelId {
+        GenericChannelId::new(3)
+    }
+    fn parent_ch() -> ChannelId {
+        ChannelId::new(4)
+    }
+
+    /// 🪤 #498's trap. `TEXT_REQUIRED` is VIEW + SEND_MESSAGES + EMBED_LINKS
+    /// with no thread bit: a bot that can post in the parent channel and
+    /// cannot post in the thread. Judged by `SEND_MESSAGES` this is whole.
+    #[test]
+    fn a_thread_needs_send_messages_in_threads_not_send_messages() {
+        let t = TextPerms {
+            channel: thread_ch(),
+            granted: TEXT_REQUIRED,
+            kind: TextKind::Thread,
+        };
+        assert!(!t.is_whole(), "cannot post in this thread");
+        assert_eq!(t.missing(), Permissions::SEND_MESSAGES_IN_THREADS);
+        assert!(!t.send(), "SEND_MESSAGES does not post in a thread");
+
+        // The converse: the thread bit without SEND_MESSAGES is enough.
+        let t = TextPerms {
+            channel: thread_ch(),
+            granted: THREAD_TEXT_REQUIRED,
+            kind: TextKind::Thread,
+        };
+        assert!(t.is_whole(), "missing: {}", t.missing());
+        assert!(t.send());
+    }
+
+    #[test]
+    fn a_cached_channel_is_classified_as_a_channel() {
+        let t = classify_text(
+            text_ch(),
+            |cid| (cid == text_ch().expect_channel()).then_some(TEXT_REQUIRED),
+            |_| panic!("a channel hit must not fall through to the thread lookup"),
+        )
+        .expect("a cached channel resolves");
+        assert_eq!(t.kind, TextKind::Channel);
+        assert_eq!(t.granted, TEXT_REQUIRED);
+        assert!(t.is_whole());
+    }
+
+    /// The thread arm: absent from the channels, present as a thread, read
+    /// through its parent, reported as itself and judged as a thread.
+    #[test]
+    fn a_thread_is_read_through_its_parent_and_judged_as_a_thread() {
+        let t = classify_text(
+            thread_ch(),
+            |cid| (cid == parent_ch()).then_some(TEXT_REQUIRED),
+            |tid| (tid == thread_ch().expect_thread()).then_some(parent_ch()),
+        )
+        .expect("a cached thread with a cached parent resolves");
+        assert_eq!(t.kind, TextKind::Thread);
+        assert_eq!(t.channel, thread_ch(), "report the thread, not its parent");
+        assert_eq!(t.granted, TEXT_REQUIRED, "the parent's bitset");
+        assert_eq!(t.missing(), Permissions::SEND_MESSAGES_IN_THREADS);
+    }
+
+    #[test]
+    fn a_thread_whose_parent_is_not_cached_fails_open() {
+        assert_eq!(
+            classify_text(thread_ch(), |_| None, |_| Some(parent_ch())),
+            None
+        );
+    }
+
+    #[test]
+    fn an_id_that_is_neither_a_channel_nor_a_thread_fails_open() {
+        assert_eq!(classify_text(thread_ch(), |_| None, |_| None), None);
     }
 
     #[test]
@@ -846,180 +1058,5 @@ mod tests {
             serenity::all::UserId::new(7),
         );
         assert!(got.is_none(), "an uncached guild has no answer to give");
-    }
-}
-
-/// 🪤 This module exists because the obvious test — "assert the three join
-/// sites are guarded" — is a survey of what was found on 2026-09-12, not a
-/// property. It would pass while a fourth site was live.
-///
-/// That is not hypothetical. In v0.9.5 a guard test for play-history writes
-/// asserted a hard-coded count of the three call sites then known, passed,
-/// and the bug it was written to prevent was live the entire time, because
-/// playlists routed through a fourth path. Pinning the whole surface instead
-/// immediately turned up two more entry points.
-///
-/// A first version of this module still got that shape wrong one level up:
-/// it derived the join sites *within* a file, but the file list itself was
-/// three `include_str!` literals, hand-chosen the same way the old play-
-/// history count was. A join added in a fourth *file* would never be
-/// scanned, and the test would pass silently. So this walks `src/` at test
-/// time instead — the file set is discovered, not listed. Adding a fourth
-/// join site anywhere in `crack-core` fails this test until it is gated too.
-///
-/// 🪤 Anywhere in `crack-core`, and nowhere else. `crack-types` also depends
-/// on songbird, so a join added there is NOT guarded by this. The walk is
-/// not simply widened to the workspace root because the matcher below is not
-/// songbird-aware: `crack-sleevenote/src/client.rs` calls
-/// `self.join(&["health"])` on a URL builder, whose first argument is not a
-/// string literal either, and every such call would fail this test. Widening
-/// the walk means teaching the matcher what a songbird join looks like
-/// first.
-#[cfg(test)]
-mod join_site_guard_tests {
-    use std::path::{Path, PathBuf};
-
-    /// The call that must precede every join.
-    const GATE: &str = "ensure_can_join(";
-
-    /// How far back from a join to look for its gate. Generous enough to span
-    /// a `let Some(..) = ... else` or a log line in between.
-    ///
-    /// 🪤 It does NOT pair a gate with its own join. Any two joins within
-    /// 1200 bytes of each other share a window, so an earlier join's gate
-    /// satisfies a later one. What this catches is an *ungated* join, not a
-    /// mis-paired one -- and no window size fixes that, only parsing would.
-    const WINDOW: usize = 1200;
-
-    /// This file, relative to `src/`. Excluded from the walk below: it
-    /// contains the literal `GATE` string (and this very sentence), so
-    /// scanning it would let it satisfy its own check no matter what the
-    /// rest of the tree looks like. The three-file hand-list this replaced
-    /// happened to be safe from that trap by omission, not by design --
-    /// this exclusion makes it deliberate.
-    const SELF_PATH: &str = "music/perms.rs";
-
-    /// Every `.rs` file under `src/`, found by walking the tree rather than
-    /// naming files up front -- a hard-coded list is the exact defect this
-    /// test exists to prevent, moved up one level.
-    fn all_source_files() -> Vec<PathBuf> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut out = Vec::new();
-        walk(&root, &root, &mut out);
-        out
-    }
-
-    fn walk(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                walk(root, &path, out);
-            } else if path.extension().is_some_and(|e| e == "rs") {
-                let rel = path.strip_prefix(root).unwrap_or(&path);
-                if rel != Path::new(SELF_PATH) {
-                    out.push(path);
-                }
-            }
-        }
-    }
-
-    /// Round a raw byte offset down to a char boundary.
-    ///
-    /// 🪤 `at - WINDOW` is arithmetic on bytes and can land inside a
-    /// multi-byte character. This repo puts 🪤, ⚠️ and ❌ in comments
-    /// routinely, so that is a question of when, not whether. Slicing there
-    /// panics with `str`'s byte-index error, which replaces the report this
-    /// test exists to produce with noise about UTF-8.
-    fn floor_boundary(src: &str, mut i: usize) -> usize {
-        while i > 0 && !src.is_char_boundary(i) {
-            i -= 1;
-        }
-        i
-    }
-
-    /// Finds `.join(` calls that are songbird joins. String `.join(" ")` and
-    /// friends are excluded by requiring the first argument to not be a
-    /// literal.
-    fn songbird_join_offsets(src: &str) -> Vec<usize> {
-        let mut out = Vec::new();
-        let mut from = 0;
-        while let Some(rel) = src[from..].find(".join(") {
-            let at = from + rel;
-            let arg = src[at + ".join(".len()..].trim_start();
-            // `.join(" ")`, `.join("\n")`, `.join(", ")` are slice joins.
-            if !arg.starts_with('"') {
-                out.push(at);
-            }
-            from = at + ".join(".len();
-        }
-        out
-    }
-
-    #[test]
-    fn a_window_edge_inside_a_multibyte_character_reports_instead_of_panicking() {
-        // 🪤 The window edge is byte arithmetic, and this repo puts 🪤, ⚠️
-        // and ❌ in comments routinely, so it lands mid-character sooner or
-        // later. A raw slice there panics with `str`'s byte-index error,
-        // replacing the report this guard exists to print with noise about
-        // UTF-8 -- the test fails, but for the wrong reason and with the
-        // wrong message.
-        let src = "🪤 ensure_can_join( .join(x)";
-        for i in 1..4 {
-            assert!(!src.is_char_boundary(i), "byte {i} is inside the trap");
-            assert_eq!(floor_boundary(src, i), 0);
-            // The point: this does not panic.
-            let _ = &src[floor_boundary(src, i)..];
-        }
-        // A boundary is left exactly where it is.
-        assert_eq!(floor_boundary(src, 4), 4);
-        assert_eq!(floor_boundary(src, 0), 0);
-    }
-
-    #[test]
-    fn every_songbird_join_is_preceded_by_the_gate() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let files = all_source_files();
-        assert!(
-            !files.is_empty(),
-            "the walk from {} found zero .rs files -- the scan has stopped \
-             checking, not that there is nothing left to check. Fix the walk \
-             before trusting this test again.",
-            root.display()
-        );
-
-        let mut checked = 0usize;
-        for path in &files {
-            let rel = path.strip_prefix(&root).unwrap_or(path);
-            let src = std::fs::read_to_string(path)
-                .unwrap_or_else(|e| panic!("reading {}: {e}", path.display()));
-            for at in songbird_join_offsets(&src) {
-                checked += 1;
-                let start = floor_boundary(&src, at.saturating_sub(WINDOW));
-                let before = &src[start..at];
-                assert!(
-                    before.contains(GATE),
-                    "{}: a songbird join at byte {at} is not preceded by \
-                     `{GATE}` within {WINDOW} bytes.\n\n\
-                     Every join must be gated, or a guild missing CONNECT or \
-                     SPEAK gets songbird's ~10s JoinError::TimedOut, which \
-                     names nothing. Add the gate rather than widening this \
-                     test.\n\n\
-                     Context:\n{}",
-                    rel.display(),
-                    &src[floor_boundary(&src, start.max(at.saturating_sub(300)))..at]
-                );
-            }
-        }
-        assert!(
-            checked >= 3,
-            "expected at least the 3 known songbird join sites, scanned \
-             {checked} across {} files -- the scan found less than it \
-             should, which means it has stopped checking rather than that \
-             the joins are gone. Fix the scan.",
-            files.len()
-        );
     }
 }

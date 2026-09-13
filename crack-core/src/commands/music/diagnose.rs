@@ -6,7 +6,7 @@
 //! configuration reason is the worst possible diagnostic, because the reason
 //! to run it is that the bot is being silent.
 
-use crate::music::perms::{resolve, MusicPermissions, VoiceCheck};
+use crate::music::perms::{resolve, MusicPermissions, TextKind, VoiceCheck};
 use crate::{Context, Error};
 use poise::serenity_prelude::all::{Mentionable, Permissions};
 
@@ -64,10 +64,16 @@ fn render(p: &MusicPermissions) -> String {
 
     let mut out = String::from("🔍 **Permission check**\n");
     out.push_str(&format!(
-        "**Text** {}  {} View  {} Send  {} Embed Links\n",
+        "**Text** {}  {} View  {} {}  {} Embed Links\n",
         p.text.channel.mention(),
         tick(p.text.view()),
         tick(p.text.send()),
+        // Name the bit that was actually checked. A thread row saying "Send"
+        // would send an admin to grant Send Messages, which does nothing here.
+        match p.text.kind {
+            TextKind::Channel => "Send",
+            TextKind::Thread => "Send in Threads",
+        },
         tick(p.text.embed()),
     ));
     match &p.voice {
@@ -124,16 +130,16 @@ pub async fn diagnose(ctx: Context<'_>) -> Result<(), Error> {
         // Fail open in the wording too: say we could not read, not that
         // something is wrong.
         //
-        // 🪤 Not "try again in a moment". The commonest way to land here is a
-        // thread: threads live in `guild.threads`, not `guild.channels`, so
-        // `resolve` finds no channel and gives up, and waiting changes
-        // nothing. A retry that can never succeed is a worse answer than no
-        // answer. Resolving threads is not a copy change -- posting in one
-        // needs SEND_MESSAGES_IN_THREADS rather than SEND_MESSAGES, so
-        // `TEXT_REQUIRED` would have to vary by channel type.
+        // 🪤 Not "try again in a moment": waiting rarely changes this, and a
+        // retry that can never succeed is a worse answer than none. Threads
+        // used to be the commonest way here; `resolve` now reads them through
+        // their parent (#498). What remains is a thread the cache has not
+        // seen (the gateway sends active threads only), a thread whose
+        // parent is not cached, or a channel we cannot see.
         None => "I couldn't read my own permissions for this channel. That \
-                 usually means it's a thread, or a channel I can't see — try \
-                 running this in a regular text channel in this server."
+                 usually means it's a channel I can't see, or an old thread \
+                 I haven't loaded — try running this in a regular text \
+                 channel in this server."
             .to_string(),
     };
     ctx.say(out).await?;
@@ -143,7 +149,7 @@ pub async fn diagnose(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::music::perms::{compute, TEXT_REQUIRED, VOICE_REQUIRED};
+    use crate::music::perms::{compute, TextPerms, TEXT_REQUIRED, VOICE_REQUIRED};
     use poise::serenity_prelude::all::{ChannelId, GenericChannelId, Permissions};
 
     fn text_ch() -> GenericChannelId {
@@ -151,6 +157,39 @@ mod tests {
     }
     fn voice_ch() -> ChannelId {
         ChannelId::new(2)
+    }
+
+    /// #498. The parent grants plain Send Messages and not the thread bit: a
+    /// bot that can post in the channel and cannot post in this thread.
+    ///
+    /// 🪤 Judged as a channel this renders "All clear", which is the
+    /// confidently wrong answer that kept threads unsupported rather than
+    /// guessed at. The table must also name the bit it checked, or the fix it
+    /// implies (grant Send Messages) is one that does nothing here.
+    #[test]
+    fn a_thread_is_judged_by_send_messages_in_threads() {
+        let p = MusicPermissions {
+            text: TextPerms {
+                channel: GenericChannelId::new(3),
+                granted: TEXT_REQUIRED,
+                kind: TextKind::Thread,
+            },
+            voice: VoiceCheck::resolved(voice_ch(), VOICE_REQUIRED),
+        };
+        let out = render(&p);
+        assert!(
+            !out.contains("All clear"),
+            "cannot post in this thread: {out}"
+        );
+        assert!(out.contains("1 problem"), "got {out}");
+        assert!(
+            out.contains("Send Messages in Threads"),
+            "name the fix: {out}"
+        );
+        assert!(
+            out.contains("Send in Threads"),
+            "label the row with the bit that was checked: {out}"
+        );
     }
 
     #[test]

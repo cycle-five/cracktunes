@@ -30,7 +30,9 @@ pub async fn repeat(
 pub async fn repeat_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let songbird = ctx.data().songbird.clone();
-    let call = songbird.get(guild_id).ok_or(CrackedError::NotConnected)?;
+    let call = crate::commands::connected_call(&songbird, guild_id, None)
+        .await
+        .ok_or(CrackedError::NotConnected)?;
 
     let handler = call.lock().await;
     let track = match handler.queue().current() {
