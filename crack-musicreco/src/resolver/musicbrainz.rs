@@ -231,14 +231,14 @@ impl SeedResolver for MusicBrainz {
         if !(200..300).contains(&status) {
             return Err(Error::UnexpectedBody {
                 provider: NAME,
-                message: format!("{status}: {body}"),
+                message: format!("{status}: {}", http::excerpt(&body)),
             });
         }
 
         let parsed: SearchResponse =
             serde_json::from_str(&body).map_err(|e| Error::UnexpectedBody {
                 provider: NAME,
-                message: format!("{e}: {body}"),
+                message: format!("{e}: {}", http::excerpt(&body)),
             })?;
 
         let want_artist = Self::normalize(&guess.artist);

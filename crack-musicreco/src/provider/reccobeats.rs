@@ -72,6 +72,13 @@ fn remaining_cooldown(now: Instant, until: Option<Instant>) -> Option<Duration> 
     until.filter(|u| now < *u).map(|u| u - now)
 }
 
+/// The deadline to store after a new `Retry-After`: whichever ends LATER.
+/// Two calls can be in flight when the limit hits; the one answered with the
+/// shorter wait must not cut short the cooldown the other already set.
+fn later_deadline(current: Option<Instant>, new: Instant) -> Instant {
+    current.map_or(new, |c| c.max(new))
+}
+
 #[derive(Debug)]
 pub struct ReccoBeats {
     base_url: String,
@@ -126,7 +133,8 @@ impl ReccoBeats {
             // overflow, but a cooldown we cannot represent is one we skip
             // rather than panic over.
             if let Some(until) = Instant::now().checked_add(*d) {
-                *self.cooldown_until.lock().expect("cooldown mutex poisoned") = Some(until);
+                let mut current = self.cooldown_until.lock().expect("cooldown mutex poisoned");
+                *current = Some(later_deadline(*current, until));
             }
         }
         result
@@ -173,13 +181,13 @@ impl ReccoBeats {
         if !(200..300).contains(&status) {
             return Err(Error::UnexpectedBody {
                 provider: NAME,
-                message: format!("{status}: {body}"),
+                message: format!("{status}: {}", http::excerpt(&body)),
             });
         }
 
         serde_json::from_str(&body).map_err(|e| Error::UnexpectedBody {
             provider: NAME,
-            message: format!("{e}: {body}"),
+            message: format!("{e}: {}", http::excerpt(&body)),
         })
     }
 }
@@ -684,6 +692,23 @@ mod tests {
         );
     }
 
+    #[test]
+    fn later_deadline_starts_a_cooldown_when_none_is_set() {
+        let new = Instant::now() + Duration::from_secs(5);
+        assert_eq!(later_deadline(None, new), new);
+    }
+
+    /// Two calls in flight when the limit hits: the one answered `Retry-After: 5`
+    /// must not cut short the 42s the other already stored.
+    #[test]
+    fn later_deadline_never_shortens_a_live_cooldown() {
+        let now = Instant::now();
+        let long = now + Duration::from_secs(42);
+        let short = now + Duration::from_secs(5);
+        assert_eq!(later_deadline(Some(long), short), long);
+        assert_eq!(later_deadline(Some(short), long), long);
+    }
+
     /// The required shape: a 429 + `Retry-After: 42`, then an immediate
     /// second `recommend` -- hit count stays 1 and the second call is itself
     /// `RateLimited`, spent on nothing.
@@ -723,11 +748,12 @@ mod tests {
 
     /// Sabotage target: cooling down on a `RateLimited` that carried no
     /// `Retry-After` at all would invent a backoff duration nothing measured.
-    /// Two 500s (no `Retry-After` header) across two separate `recommend`
-    /// calls must both reach the network.
+    /// Two 429s with no `Retry-After` header, across two separate `recommend`
+    /// calls, must both reach the network. (A 5xx takes the same arm in
+    /// `get`, so this covers an outage too.)
     #[tokio::test]
     async fn a_rate_limit_without_retry_after_does_not_start_a_cooldown() {
-        let (base, hits, _seen) = serve(vec![(500, "boom"), (500, "boom")]).await;
+        let (base, hits, _seen) = serve(vec![(429, "slow down"), (429, "slow down")]).await;
         let p = ReccoBeats::with_base_url(base).expect("client builds");
 
         let _ = p.recommend(&seed(), 5).await;

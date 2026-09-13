@@ -138,6 +138,25 @@ pub(crate) fn validate_base_url(provider: &'static str, base_url: &str) -> Resul
     Ok(())
 }
 
+/// The most of a response body an error message will carry.
+const MAX_EXCERPT_CHARS: usize = 200;
+
+/// A response body cut down for an error message. A CDN block page is
+/// kilobytes of HTML, and these messages reach the log on every track end.
+///
+/// 🪤 Cut by `char`, never by byte index: slicing a `str` mid-character
+/// panics, and a provider body is exactly the untrusted, multi-byte text that
+/// would do it (v0.9.6's autocomplete panic was this bug).
+pub(crate) fn excerpt(body: &str) -> String {
+    let mut chars = body.chars();
+    let head: String = chars.by_ref().take(MAX_EXCERPT_CHARS).collect();
+    if chars.next().is_some() {
+        format!("{head}... ({} bytes in all)", body.len())
+    } else {
+        head
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,5 +257,30 @@ mod tests {
     fn validate_base_url_rejects_a_non_http_scheme() {
         let err = validate_base_url("test", "ftp://example.com").expect_err("must be rejected");
         assert!(matches!(err, Error::Config(_)), "got {err}");
+    }
+
+    #[test]
+    fn excerpt_passes_a_short_body_through_unchanged() {
+        assert_eq!(excerpt(r#"{"error":"boom"}"#), r#"{"error":"boom"}"#);
+        let exact = "a".repeat(MAX_EXCERPT_CHARS);
+        assert_eq!(excerpt(&exact), exact, "exactly at the limit is not cut");
+    }
+
+    #[test]
+    fn excerpt_cuts_a_long_body_and_says_how_long_it_was() {
+        let page = "<html>".repeat(1000);
+        let cut = excerpt(&page);
+        assert!(cut.starts_with(&page[..MAX_EXCERPT_CHARS]));
+        assert!(cut.ends_with("... (6000 bytes in all)"), "got {cut}");
+        assert!(cut.len() < 250, "a CDN page must not reach the log whole");
+    }
+
+    /// 🪤 Byte slicing at 200 would land inside a 2-byte `é` here and panic.
+    #[test]
+    fn excerpt_never_splits_a_multi_byte_character() {
+        let body = "é".repeat(MAX_EXCERPT_CHARS + 1);
+        let cut = excerpt(&body);
+        assert!(cut.starts_with(&"é".repeat(MAX_EXCERPT_CHARS)));
+        assert!(cut.ends_with(&format!("... ({} bytes in all)", body.len())));
     }
 }

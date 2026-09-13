@@ -183,12 +183,15 @@ impl MusicReco {
                 Err(Error::InvalidKey { message, .. }) => {
                     // Ruling 23 / spec §9: log ERROR once, at the moment it
                     // trips, then never call this recommender again for the
-                    // life of the process.
-                    tracing::error!(
-                        "{} rejected our credential, disabling it for the process: {message}",
-                        r.name()
-                    );
-                    disabled.store(true, Ordering::SeqCst);
+                    // life of the process. `swap`, not `store`: two guilds'
+                    // track ends can both be mid-call when the key goes bad,
+                    // and only the one that flips the flag logs.
+                    if !disabled.swap(true, Ordering::SeqCst) {
+                        tracing::error!(
+                            "{} rejected our credential, disabling it for the process: {message}",
+                            r.name()
+                        );
+                    }
                 },
                 Err(e) => log_at(r.name(), &e),
             }
@@ -356,17 +359,17 @@ mod tests {
             .build();
         let out = r.next_tracks(&raw(), 5).await.unwrap();
         assert_eq!(out[0].source, "second");
-        assert_eq!(b.load(Ordering::SeqCst), 1);
+        assert_eq!((a.load(Ordering::SeqCst), b.load(Ordering::SeqCst)), (1, 1));
     }
 
     #[tokio::test]
     async fn an_empty_answer_also_falls_through() {
-        let b = Arc::new(AtomicUsize::new(0));
+        let (a, b) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
         let r = MusicReco::builder()
             .resolver(Box::new(TitleParseResolver::new()))
             .recommender(Box::new(FakeReco {
                 name: "first",
-                calls: Arc::new(AtomicUsize::new(0)),
+                calls: Arc::clone(&a),
                 result: empty,
             }))
             .recommender(Box::new(FakeReco {
@@ -379,6 +382,7 @@ mod tests {
             })
             .build();
         assert_eq!(r.next_tracks(&raw(), 5).await.unwrap()[0].source, "second");
+        assert_eq!((a.load(Ordering::SeqCst), b.load(Ordering::SeqCst)), (1, 1));
     }
 
     #[tokio::test]

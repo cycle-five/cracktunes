@@ -26,6 +26,14 @@ struct Response {
     error: Option<String>,
 }
 
+/// musicatlas' own refusal of a credential, as measured:
+/// `{"error":"Invalid or unconfirmed API key"}`. Typed so that a 403 which is
+/// NOT this shape -- a Cloudflare challenge page -- cannot pass for it.
+#[derive(Debug, Deserialize)]
+struct KeyRefusal {
+    error: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct Match {
     artist: String,
@@ -130,10 +138,25 @@ impl crate::provider::Recommender for MusicAtlas {
             source,
         })?;
 
+        // 🪤 Not every 403 is a bad key. musicatlas sits behind Cloudflare
+        // (measured 2026-09-12: `server: cloudflare`), and a challenge or WAF
+        // block is also a 403 -- with an HTML page, not this JSON. Since Task 6
+        // an `InvalidKey` disables the provider for the life of the process,
+        // so a CDN hiccup would silently end metered autoplay until restart.
+        // Only the provider's own refusal earns that.
         if status == 403 {
-            return Err(Error::InvalidKey {
-                provider: NAME,
-                message: body,
+            return Err(match serde_json::from_str::<KeyRefusal>(&body) {
+                Ok(refusal) => Error::InvalidKey {
+                    provider: NAME,
+                    message: refusal.error,
+                },
+                Err(_) => Error::UnexpectedBody {
+                    provider: NAME,
+                    message: format!(
+                        "403 without musicatlas' key-refusal body (a CDN or WAF block?): {}",
+                        http::excerpt(&body)
+                    ),
+                },
             });
         }
         if status == 429 {
@@ -167,7 +190,7 @@ impl crate::provider::Recommender for MusicAtlas {
 
         let parsed: Response = serde_json::from_str(&body).map_err(|e| Error::UnexpectedBody {
             provider: NAME,
-            message: format!("{e}: {body}"),
+            message: format!("{e}: {}", http::excerpt(&body)),
         })?;
 
         if !parsed.success {
@@ -340,8 +363,38 @@ mod tests {
             serve(vec![(403, r#"{"error":"Invalid or unconfirmed API key"}"#)]).await;
         let p = MusicAtlas::with_base_url("k", base).expect("client builds");
         let err = p.recommend(&seed(), 10).await.expect_err("403");
-        assert!(matches!(err, Error::InvalidKey { .. }), "got {err}");
+        match &err {
+            Error::InvalidKey { message, .. } => {
+                assert_eq!(message, "Invalid or unconfirmed API key");
+            },
+            other => panic!("expected InvalidKey, got {other}"),
+        }
         assert!(!err.is_transient());
+    }
+
+    /// 🪤 musicatlas is behind Cloudflare, whose challenge and WAF blocks are
+    /// also 403s -- with a page of HTML. An `InvalidKey` disables the provider
+    /// for the process (Ruling 23), so this must NOT read as one.
+    #[tokio::test]
+    async fn a_403_that_is_not_musicatlas_refusing_the_key_is_not_an_invalid_key() {
+        let page: &'static str = Box::leak(
+            format!(
+                "<!DOCTYPE html><title>Just a moment...</title>{}",
+                "<div class=\"cf\"></div>".repeat(200)
+            )
+            .into_boxed_str(),
+        );
+        let (base, hits, _seen) = serve(vec![(403, page)]).await;
+        let p = MusicAtlas::with_base_url("k", base).expect("client builds");
+        let err = p.recommend(&seed(), 10).await.expect_err("403");
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+        match err {
+            Error::UnexpectedBody { message, .. } => {
+                assert!(message.starts_with("403 without"), "got {message}");
+                assert!(message.len() < 400, "the page must not reach the log whole");
+            },
+            other => panic!("expected UnexpectedBody, got {other}"),
+        }
     }
 
     /// P09 (review): before the `want == 0` guard, this returned `Ok([])`
