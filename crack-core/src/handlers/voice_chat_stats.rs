@@ -194,7 +194,10 @@ async fn check_camera_status(
         match guild_id.to_guild_cached(&ctx.cache.clone()) {
             Some(guild) => (guild.voice_states.clone(), guild.name.to_string()),
             None => {
-                tracing::error!("Guild not found {guild_id}.");
+                // Not an error: `guilds` is a snapshot, and a guild can leave
+                // the cache between snapshot and poll -- or simply not have
+                // arrived yet during the warm-up after a restart.
+                tracing::debug!("Guild not found {guild_id}.");
                 return (vec![], "".to_string());
             },
         };
@@ -277,7 +280,10 @@ pub async fn cam_status_loop(
         loop {
             // We clone Context again here, because Arc is owned, so it moves to the
             // new function.
-            tracing::error!("Checking camera status for {} guilds", guilds.len());
+            // 🪤 Was ERROR. This is a heartbeat -- it fires every
+            // `video_status_poll_interval` seconds whether or not anything
+            // happened, and says only that the loop is alive (#491).
+            tracing::trace!("Checking camera status for {} guilds", guilds.len());
             // Go through all the guilds we have cached and check the camera status
             // for all the users we can see in voice channels.
             let mut output = String::from("\n");
@@ -307,9 +313,19 @@ pub async fn cam_status_loop(
                 .map(|x| Into::<i32>::into(cur_cams.insert(x.key(), **x).is_none()))
                 .sum();
 
-            tracing::warn!("{}", output);
-            tracing::warn!("num new cams: {}", res);
-            tracing::warn!(
+            // 🪤 All three were WARN. `output` is the worst of them: a single
+            // multi-line record naming every guild the bot is in -- ~140 of
+            // them -- re-emitted every 120 seconds. Measured on production at
+            // 186 of 3,410 log lines in 26 minutes (#491).
+            //
+            // ⚠️ `res` is structurally always 0 and this is not the place to
+            // fix that: the vec it counts is shadowed a few lines up, so the
+            // camera enforcement it belongs to has never run. See #515 --
+            // un-shadowing it starts deafening users, so it needs a decision
+            // rather than a patch.
+            tracing::trace!("{}", output);
+            tracing::trace!("num new cams: {}", res);
+            tracing::trace!(
                 "Sleeping for {} seconds",
                 config.get_video_status_poll_interval()
             );

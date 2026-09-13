@@ -196,7 +196,22 @@ pub async fn handle_event(
             )
         },
         FullEvent::Message { new_message } => {
-            let guild_id = new_message.guild_id.ok_or(CrackedError::NoGuildId)?;
+            // 🪤 A message with no guild id is **a DM**, which is the ordinary
+            // case, not a failure. This used to be
+            // `ok_or(CrackedError::NoGuildId)?`, and the caller in
+            // `handlers/serenity.rs` logs anything that is not
+            // `LogChannelWarning` at ERROR -- so every DM the bot received
+            // produced `Error handling event: ⚠️ No GuildId Found!` (#511).
+            //
+            // That `LogChannelWarning` carve-out exists for exactly this class
+            // ("a guild that has not configured a log channel is the ordinary
+            // case"); a DM is its second member. Answering here rather than
+            // teaching the error sink to ignore another error keeps the
+            // decision where it belongs: there is no guild, so there is no
+            // guild log channel, so there is nothing to do.
+            let Some(guild_id) = new_message.guild_id else {
+                return Ok(());
+            };
             // let my_id = ctx.get_bot_id().await.unwrap_or(UserId::new(1));
 
             if new_message.author.id == ctx.http.get_current_user().await?.id {
@@ -219,7 +234,7 @@ pub async fn handle_event(
                 guild_settings,
                 event_in,
                 new_message,
-                new_message.guild_id.unwrap(),
+                guild_id,
                 &ctx,
                 event_log,
                 event_name

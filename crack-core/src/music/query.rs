@@ -1076,7 +1076,16 @@ pub async fn query_type_from_url(
             },
         },
         Err(e) => {
-            tracing::error!("Url::parse error: {}", e);
+            // 🪤 This is the ORDINARY path, not a failure. `Url::parse` returns
+            // `RelativeUrlWithoutBase` for anything that is not a URL -- which
+            // is to say, for every `/play bohemian rhapsody`. Search keywords
+            // are what most people give this command, and the next line handles
+            // them correctly; logging ERROR first said the opposite.
+            //
+            // Observed in production filling the log alongside #511 and #512.
+            // Kept at `debug!` rather than deleted because a *different* parse
+            // failure here would still be worth seeing.
+            tracing::debug!("not a URL, treating as search keywords: {}", e);
             Some(QueryType::Keywords(url.to_string()))
         },
     };

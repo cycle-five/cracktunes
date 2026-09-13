@@ -92,12 +92,18 @@ fn get_track_states_union(track_states: TrackStates) -> TrackStatesUnion {
 #[async_trait]
 impl EventHandler for TrackEndHandler {
     async fn act(&self, event_ctx: &EventContext<'_>) -> Option<Event> {
-        tracing::error!("TrackEndHandler");
+        // 🪤 These five were ERROR (#512) -- leftover printf debugging, not
+        // failures. The rest of this function already uses `trace!` for its
+        // progress and `warn!` for real problems, which is what made them
+        // stand out. At five lines per track ending per guild, with a `/gp`
+        // game ending tracks in a loop, they were most of what a genuine
+        // ERROR had to be found among.
+        tracing::trace!("TrackEndHandler");
         // Handle track error
 
         let autoplay = self.data.get_autoplay(self.guild_id).await;
 
-        tracing::error!("Autoplay: {}", autoplay);
+        tracing::trace!("Autoplay: {}", autoplay);
 
         let (autopause, _volume) = {
             let settings = self.data.guild_settings_map.read().await.clone();
@@ -105,12 +111,12 @@ impl EventHandler for TrackEndHandler {
                 .get(&self.guild_id)
                 .map(|guild_settings| guild_settings.autopause)
                 .unwrap_or_default();
-            tracing::error!("Autopause: {}", autopause);
+            tracing::trace!("Autopause: {}", autopause);
             let volume = settings
                 .get(&self.guild_id)
                 .map(|guild_settings| guild_settings.volume)
                 .unwrap_or(crate::guild::settings::DEFAULT_VOLUME_LEVEL);
-            tracing::error!("Volume: {}", volume);
+            tracing::trace!("Volume: {}", volume);
             (autopause, volume)
         };
 
@@ -168,7 +174,10 @@ impl EventHandler for TrackEndHandler {
         }
 
         if let EventContext::Track(x) = event_ctx {
-            tracing::error!("TrackEvent: {:?}", x);
+            // `debug!` rather than `trace!`: this one is genuinely useful when
+            // debugging playback, being the whole track-state slice. It is
+            // still not an error.
+            tracing::debug!("TrackEvent: {:?}", x);
             let states = get_track_states_union(x);
             //if is_stopped(x) || is_errored(x) {
             if states.errored {
