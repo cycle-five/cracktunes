@@ -1,13 +1,17 @@
 //! The free fallback recommender. No API key and no daily quota -- limits are
-//! undisclosed, but a 429 still carries `Retry-After` -- and it never hands
-//! back a directly playable id. See [`crate::model::Playable`] for why that
-//! difference has its own type instead of being flattened into a single "url"
-//! field.
+//! undisclosed, so this owns its own reactive back-off (Ruling 24, spec §4:
+//! "each provider owns its own limit discipline"): a 429 carrying
+//! `Retry-After` starts a cooldown that refuses every call, at zero request
+//! cost, until it expires. It never hands back a directly playable id either.
+//! See [`crate::model::Playable`] for why that difference has its own type
+//! instead of being flattened into a single "url" field.
 
 use super::http;
 use crate::{Error, Playable, Recommendation, Result, Seed};
 use async_trait::async_trait;
 use serde::Deserialize;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 const NAME: &str = "reccobeats";
 pub const DEFAULT_BASE_URL: &str = "https://api.reccobeats.com/v1";
@@ -60,10 +64,25 @@ struct Artist {
     name: String,
 }
 
-#[derive(Debug, Clone)]
+/// Whether a stored cooldown deadline is still in effect, and by how much
+/// longer -- pure, so Ruling 24's expiry decision can be tested by handing it
+/// arbitrary `(now, until)` pairs instead of waiting out a real or paused
+/// clock.
+fn remaining_cooldown(now: Instant, until: Option<Instant>) -> Option<Duration> {
+    until.filter(|u| now < *u).map(|u| u - now)
+}
+
+#[derive(Debug)]
 pub struct ReccoBeats {
     base_url: String,
     http: reqwest::Client,
+    /// Ruling 24 / spec §4: set when a reply carries
+    /// `RateLimited { retry_after: Some(d), .. }`. While `Instant::now()` is
+    /// still before this deadline, `recommend` refuses every call outright --
+    /// zero requests spent waiting out a provider that already told us to.
+    /// No `Retry-After` leaves this untouched: an unqualified back-off would
+    /// be invented, not measured.
+    cooldown_until: Mutex<Option<Instant>>,
 }
 
 impl ReccoBeats {
@@ -87,7 +106,30 @@ impl ReccoBeats {
         Ok(Self {
             base_url,
             http: http::client(NAME, http::USER_AGENT)?,
+            cooldown_until: Mutex::new(None),
         })
+    }
+
+    /// [`Self::get`], plus Ruling 24's cooldown bookkeeping: a reply carrying
+    /// `RateLimited { retry_after: Some(d), .. }` starts (or extends) this
+    /// instance's cooldown before the error reaches the caller, so even the
+    /// very next call on this instance sees it.
+    async fn get_tracking_cooldown(&self, url: &str) -> Result<Page> {
+        let result = self.get(url).await;
+        if let Err(Error::RateLimited {
+            retry_after: Some(d),
+            ..
+        }) = &result
+        {
+            // `checked_add`: `d` is already clamped to an hour
+            // (`http::MAX_RETRY_AFTER`), so this cannot realistically
+            // overflow, but a cooldown we cannot represent is one we skip
+            // rather than panic over.
+            if let Some(until) = Instant::now().checked_add(*d) {
+                *self.cooldown_until.lock().expect("cooldown mutex poisoned") = Some(until);
+            }
+        }
+        result
     }
 
     /// One GET, classifying the status before parsing the body.
@@ -158,6 +200,18 @@ impl crate::provider::Recommender for ReccoBeats {
             // nothing.
             return Ok(Vec::new());
         }
+        // Ruling 24 / spec §4: checked BEFORE any request. A live cooldown
+        // costs zero calls, not one wasted probe against a provider that
+        // already told us to wait.
+        {
+            let until = *self.cooldown_until.lock().expect("cooldown mutex poisoned");
+            if let Some(retry_after) = remaining_cooldown(Instant::now(), until) {
+                return Err(Error::RateLimited {
+                    provider: NAME,
+                    retry_after: Some(retry_after),
+                });
+            }
+        }
 
         let base = self.base_url.trim_end_matches('/');
         // 🪤 TWO calls. Recommendation seeds are ReccoBeats UUIDs; Spotify ids
@@ -166,7 +220,7 @@ impl crate::provider::Recommender for ReccoBeats {
         // ReccoBeats id first.
         let q = http::encode_query(&format!("{} {}", seed.artist, seed.title));
         let found = self
-            .get(&format!("{base}/track/search?searchText={q}&size=1"))
+            .get_tracking_cooldown(&format!("{base}/track/search?searchText={q}&size=1"))
             .await?;
         // An empty `id` is as useless as no result at all -- a request with
         // `seeds=` (nothing after the `=`) cannot succeed, so it gets the
@@ -188,7 +242,7 @@ impl crate::provider::Recommender for ReccoBeats {
         // wire; clamping belongs at the orchestrator, once a real limit is
         // known.
         let page = self
-            .get(&format!(
+            .get_tracking_cooldown(&format!(
                 "{base}/track/recommendation?size={want}&seeds={seed_id}"
             ))
             .await?;
@@ -602,5 +656,87 @@ mod tests {
         assert!(!ReccoBeats::with_base_url(DEFAULT_BASE_URL)
             .expect("client builds")
             .is_metered());
+    }
+
+    // Ruling 24 / spec §4: "each provider owns its own limit discipline; the
+    // orchestrator does not generalize them." ReccoBeats' undisclosed,
+    // reactive back-off lives here, not in `MusicReco`.
+
+    #[test]
+    fn remaining_cooldown_is_none_with_no_cooldown_set() {
+        assert_eq!(remaining_cooldown(Instant::now(), None), None);
+    }
+
+    #[test]
+    fn remaining_cooldown_is_none_once_the_deadline_has_passed() {
+        let now = Instant::now();
+        let past = now - Duration::from_secs(1);
+        assert_eq!(remaining_cooldown(now, Some(past)), None);
+    }
+
+    #[test]
+    fn remaining_cooldown_is_some_while_still_active() {
+        let now = Instant::now();
+        let until = now + Duration::from_secs(10);
+        assert_eq!(
+            remaining_cooldown(now, Some(until)),
+            Some(Duration::from_secs(10))
+        );
+    }
+
+    /// The required shape: a 429 + `Retry-After: 42`, then an immediate
+    /// second `recommend` -- hit count stays 1 and the second call is itself
+    /// `RateLimited`, spent on nothing.
+    #[tokio::test]
+    async fn a_rate_limit_with_retry_after_starts_a_cooldown_that_blocks_the_next_call() {
+        let (base, hits, _seen) = serve(vec![Canned {
+            status: 429,
+            body: r#"{"error":"slow down"}"#,
+            headers: &[("Retry-After", "42")],
+        }])
+        .await;
+        let p = ReccoBeats::with_base_url(base).expect("client builds");
+
+        let first = p.recommend(&seed(), 5).await.expect_err("429");
+        assert!(matches!(first, Error::RateLimited { .. }), "got {first}");
+
+        let second = p
+            .recommend(&seed(), 5)
+            .await
+            .expect_err("still cooling down");
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "the cooldown must stop the second call before it reaches the network"
+        );
+        match second {
+            Error::RateLimited { retry_after, .. } => {
+                let retry_after = retry_after.expect("a live cooldown reports a remaining wait");
+                assert!(
+                    retry_after <= Duration::from_secs(42),
+                    "remaining wait ({retry_after:?}) must be at most the original 42s"
+                );
+            },
+            other => panic!("expected RateLimited, got {other}"),
+        }
+    }
+
+    /// Sabotage target: cooling down on a `RateLimited` that carried no
+    /// `Retry-After` at all would invent a backoff duration nothing measured.
+    /// Two 500s (no `Retry-After` header) across two separate `recommend`
+    /// calls must both reach the network.
+    #[tokio::test]
+    async fn a_rate_limit_without_retry_after_does_not_start_a_cooldown() {
+        let (base, hits, _seen) = serve(vec![(500, "boom"), (500, "boom")]).await;
+        let p = ReccoBeats::with_base_url(base).expect("client builds");
+
+        let _ = p.recommend(&seed(), 5).await;
+        let _ = p.recommend(&seed(), 5).await;
+
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            2,
+            "no Retry-After means no cooldown -- both calls must reach the network"
+        );
     }
 }
