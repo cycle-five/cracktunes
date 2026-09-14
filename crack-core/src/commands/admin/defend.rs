@@ -52,9 +52,11 @@ pub async fn defend(
         next_action: Arc::clone(&next_action),
     };
 
-    call.lock()
-        .await
-        .add_global_event(Event::Periodic(Duration::from_secs(N), None), handler);
+    crate::handlers::add_global_handler(
+        &mut *call.lock().await,
+        Event::Periodic(Duration::from_secs(N), None),
+        handler,
+    );
 
     let data = ctx.data();
     type_map.insert::<AtomicU16Key>(next_action);

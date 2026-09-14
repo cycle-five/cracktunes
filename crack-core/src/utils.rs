@@ -440,16 +440,26 @@ impl TrackData {
 //     }
 // }
 
+/// The [`TrackData`] on a queued track.
+///
+/// The crate's only read of `TrackHandle::data`, which `clippy.toml` bans
+/// everywhere else: it panics on a track built without `TrackData`, and only
+/// `queue::new_track` guarantees there is some.
+#[allow(clippy::disallowed_methods)]
+fn track_data(track: &TrackHandle) -> Arc<TrackData> {
+    track.data::<TrackData>()
+}
+
 /// Gets the requesting user from the typemap of the track handle.
 pub async fn get_requesting_user(track: &TrackHandle) -> Result<serenity::UserId, CrackedError> {
-    let data: Arc<TrackData> = track.data::<TrackData>();
+    let data = track_data(track);
     let lock = data.user_id.read().await;
     lock.ok_or(CrackedError::NoUserAutoplay)
 }
 
 /// Gets the metadata from a track.
 pub async fn get_track_handle_metadata(track: &TrackHandle) -> Result<AuxMetadata, CrackedError> {
-    let data: Arc<TrackData> = track.data::<TrackData>();
+    let data = track_data(track);
     let lock = data.aux_metadata.read().await;
     lock.clone().ok_or(CrackedError::NoMetadata)
 }
@@ -459,7 +469,7 @@ pub async fn set_track_handle_metadata(
     track: &mut TrackHandle,
     metadata: AuxMetadata,
 ) -> Result<(), CrackedError> {
-    let data: Arc<TrackData> = track.data::<TrackData>();
+    let data = track_data(track);
     let mut lock = data.aux_metadata.write().await;
     *lock = Some(metadata);
     Ok(())
@@ -470,7 +480,7 @@ pub async fn set_track_handle_requesting_user(
     track: &mut TrackHandle,
     user_id: serenity::UserId,
 ) -> Result<(), CrackedError> {
-    let data: Arc<TrackData> = track.data::<TrackData>();
+    let data = track_data(track);
     let mut lock = data.user_id.write().await;
     *lock = Some(user_id);
     Ok(())

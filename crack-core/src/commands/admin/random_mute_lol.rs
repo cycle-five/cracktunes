@@ -40,7 +40,8 @@ pub async fn random_mute(
         guild_id,
     };
 
-    call.lock().await.add_global_event(
+    crate::handlers::add_global_handler(
+        &mut *call.lock().await,
         Event::Periodic(Duration::from_secs(n.unwrap_or(2)), None),
         handler,
     );

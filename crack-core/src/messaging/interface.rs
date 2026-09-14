@@ -144,10 +144,9 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let mut description = String::new();
 
     for (i, t) in queue.enumerate() {
-        // FIXME
-        let metadata = get_track_handle_metadata(t)
-            .await
-            .expect("metadata should exist");
+        // A track can have no metadata (a pick nothing resolved a title for).
+        // It gets a blank line here, not a panic that kills `/queue`.
+        let metadata = get_track_handle_metadata(t).await.unwrap_or_default();
         let title = metadata.title.clone().unwrap_or_default();
         let url = metadata.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(metadata.duration);
@@ -172,7 +171,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
     let (description, thumbnail): (String, String) = if !tracks.is_empty() {
         let metadata = get_track_handle_metadata(tracks.first().unwrap())
             .await
-            .unwrap();
+            .unwrap_or_default();
 
         let url = metadata.thumbnail.clone().unwrap_or_default();
         let thumbnail = match url::Url::parse(&url) {
@@ -300,7 +299,9 @@ pub fn build_now_playing_embed_metadata<'a>(
 /// Creates a now playing embed for the given track.
 pub async fn create_now_playing_embed<'a>(track: TrackHandle) -> CreateEmbed<'a> {
     // let (requesting_user, duration, metadata) = track_handle_to_metadata(track).await.unwrap();
-    let metadata = get_track_handle_metadata(&track).await.expect("uhoh...");
+    // No metadata is a blank embed, not a panic: this runs inside songbird's
+    // event task too (`send_now_playing` from the track-end handler).
+    let metadata = get_track_handle_metadata(&track).await.unwrap_or_default();
     let requesting_user = get_requesting_user(&track).await.ok();
     let duration = Some(track.get_info().await.unwrap_or_default().position);
     build_now_playing_embed_metadata(requesting_user, duration, NewAuxMetadata(metadata))

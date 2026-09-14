@@ -64,8 +64,8 @@ pub async fn create_skip_response(
         Some(track) => {
             let metadata = get_track_handle_metadata(&track).await?;
             CrackedMessage::SkipTo {
-                title: metadata.title.as_ref().unwrap().to_owned(),
-                url: metadata.source_url.as_ref().unwrap().to_owned(),
+                title: metadata.title.clone().unwrap_or_default(),
+                url: metadata.source_url.clone().unwrap_or_default(),
             }
         },
         None => {
@@ -122,10 +122,14 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
     // in gp.rs), so this hold has no observable cost yet.
     let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
     let handler = call.lock().await;
-    let metadata = get_track_handle_metadata(&handler.queue().current().unwrap()).await?;
+    let current = handler
+        .queue()
+        .current()
+        .ok_or(CrackedError::NothingPlaying)?;
+    let metadata = get_track_handle_metadata(&current).await?;
 
-    let source_url = &metadata.source_url.ok_or("ASDF").unwrap();
-    let res1 = ctx.data().downvote_track(guild_id, source_url).await?;
+    let source_url = metadata.source_url.ok_or(CrackedError::NoMetadata)?;
+    let res1 = ctx.data().downvote_track(guild_id, &source_url).await?;
     let res2 = force_skip_top_track(&guard, &handler).await?;
     // Released the moment the last mutation is done, the same as `skip` above.
     // `force_skip_top_track` fires `TrackEvent::End`, and since Task 6 the

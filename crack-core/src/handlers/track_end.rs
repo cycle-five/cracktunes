@@ -7,7 +7,7 @@ use crate::{
     },
     music::autoplay,
     music::query::NewQueryType,
-    music::queue::{enqueue_input_back, pause_queue, preload_from_metadata, track_data},
+    music::queue::{enqueue_input_back, pause_queue, preload_from_metadata},
     music::PlaybackOwner,
     utils::{calculate_num_pages, forget_queue_message, get_track_handle_metadata},
     Data, //, Error,
@@ -341,11 +341,9 @@ async fn enqueue_resolved_autoplay(
     // input, which for a lazy source means spawning yt-dlp under the guard.
     // Resolution above already produced the duration.
     let preload = preload_from_metadata(metadata.as_ref());
-    // Built into the track, not written in after: see `track_data`. Autoplay
-    // has no requester.
-    let with_data = track_data(metadata, None);
     let guard = data.lock_queue(guild_id, PlaybackOwner::Free).await?;
-    Ok(enqueue_input_back(&guard, call, source, with_data, preload).await)
+    // The metadata goes into the track as it is built: see `new_track`.
+    Ok(enqueue_input_back(&guard, call, source, metadata, preload).await)
 }
 
 /// Event handler to set the volume of the playing track to the volume
@@ -362,7 +360,11 @@ impl EventHandler for ModifyQueueHandler {
             guild_settings.map(|x| x.volume)
         };
 
-        vol.map(|vol| queue.first().map(|track| track.set_volume(vol).unwrap()));
+        if let (Some(vol), Some(track)) = (vol, queue.first()) {
+            // The track can end between the snapshot above and here. That is
+            // not worth a panic on songbird's event task.
+            let _ = track.set_volume(vol);
+        }
         let cache_http = (Some(&self.cache), self.http.as_ref());
         update_queue_messages(&cache_http, self.data.clone(), &queue, self.guild_id).await;
 

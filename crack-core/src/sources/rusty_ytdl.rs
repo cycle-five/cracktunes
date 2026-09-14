@@ -536,6 +536,9 @@ mod test {
 
     #[ignore]
     #[tokio::test]
+    // Drives a bare songbird `Driver` with a raw input to test the source, not
+    // the bot's queue.
+    #[allow(clippy::disallowed_methods)]
     async fn test_rusty_ytdl_plays() {
         use crate::sources::rusty_ytdl::QueryType;
         let client = http_utils::get_client().clone();

@@ -233,27 +233,32 @@ pub async fn register_voice_handlers(
     let mut handler = call.lock().await;
 
     // allocating memory, need to drop this when y???
-    handler.add_global_event(
+    crate::handlers::add_global_handler(
+        &mut handler,
         CoreEvent::SpeakingStateUpdate.into(),
         Receiver::new(buffer.clone(), Some(ctx.clone())),
     );
 
-    handler.add_global_event(
+    crate::handlers::add_global_handler(
+        &mut handler,
         TrackEvent::End.into(),
         Receiver::new(buffer.clone(), Some(ctx.clone())),
     );
 
-    handler.add_global_event(
+    crate::handlers::add_global_handler(
+        &mut handler,
         CoreEvent::RtpPacket.into(),
         Receiver::new(buffer.clone(), Some(ctx.clone())),
     );
 
-    handler.add_global_event(
+    crate::handlers::add_global_handler(
+        &mut handler,
         CoreEvent::RtcpPacket.into(),
         Receiver::new(buffer.clone(), Some(ctx.clone())),
     );
 
-    handler.add_global_event(
+    crate::handlers::add_global_handler(
+        &mut handler,
         CoreEvent::ClientDisconnect.into(),
         Receiver::new(buffer.clone(), Some(ctx.clone())),
     );
