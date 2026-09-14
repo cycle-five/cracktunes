@@ -5774,9 +5774,9 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "small-fixed-array"
-version = "0.4.10"
+version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f47eb472ef0994fb63d68ce4851eef89fa0faaf0dc4088c941b4015ce32c083f"
+checksum = "d3cfe63eea4151da3c37e50d7424d2ee33a3c954699d0982d7032399ab460847"
 dependencies = [
  "serde",
 ]
