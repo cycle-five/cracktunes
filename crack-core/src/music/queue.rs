@@ -4,7 +4,7 @@ use crate::{
     http_utils::CacheHttpExt,
     music::{NewQueryType, PlaybackOwner, QueueGuard},
     poise_ext::ContextExt,
-    utils::{set_track_handle_metadata, set_track_handle_requesting_user, TrackData},
+    utils::TrackData,
     Context as CrackContext, Error,
 };
 use crack_testing::ResolvedTrack;
@@ -220,6 +220,28 @@ pub async fn ready_query(
     })
 }
 
+/// The [`TrackData`] a queued track must carry.
+///
+/// 🪤 `/queue`, `/nowplaying` and autoplay's refill read every queued track
+/// through `TrackHandle::data::<TrackData>()`, which panics on a track built
+/// without it: `Track::from(input)` attaches `()`. Writing the data in after
+/// enqueueing reads it first and panics the same way, so it has to go in with
+/// [`Track::new_with_data`]. Until v0.12.1 `/play mode:next` and autoplay each
+/// built their track the panicking way.
+///
+/// A track with no requester (autoplay's) is recorded as user 1, as it always
+/// has been.
+pub(crate) fn track_data(
+    metadata: Option<AuxMetadata>,
+    requester: Option<UserId>,
+) -> Arc<TrackData> {
+    let data = TrackData::new().with_user_id(requester.unwrap_or(UserId::new(1)));
+    match metadata {
+        Some(metadata) => data.with_metadata(metadata),
+        None => data,
+    }
+}
+
 /// Pushes a track to the front of the queue, after readying it.
 ///
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
@@ -231,11 +253,18 @@ pub async fn queue_track_ready_front(
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
     let _ = guard;
+    let TrackReadyData {
+        source,
+        metadata,
+        user_id,
+        ..
+    } = ready_track;
     // `enqueue_with_preload`, not `enqueue_input`: see [`preload_time`]. The
     // readied metadata is right here, so songbird never has to go and ask.
-    let preload = preload_from_metadata(Some(&ready_track.metadata.0));
+    let preload = preload_from_metadata(Some(&metadata.0));
+    let track = Track::new_with_data(source, track_data(Some(metadata.into()), user_id));
     let mut handler = call.lock().await;
-    let mut track_handle = handler.enqueue_with_preload(ready_track.source.into(), preload);
+    let _track_handle = handler.enqueue_with_preload(track, preload);
     let new_q = handler.queue().current_queue();
     // Zeroth index: Currently playing track
     // First index: Current next track
@@ -249,8 +278,6 @@ pub async fn queue_track_ready_front(
     }
 
     drop(handler);
-    set_track_handle_metadata(&mut track_handle, ready_track.metadata.into()).await?;
-    set_track_handle_requesting_user(&mut track_handle, UserId::new(1)).await?;
     Ok(new_q)
 }
 
@@ -880,6 +907,8 @@ pub async fn enqueue_track_back(
 /// [`enqueue_track_back`]: `enqueue_input` would derive it by spawning yt-dlp
 /// under the guard. The caller has the resolved metadata and can supply it.
 ///
+/// `data` is a parameter, not something to add afterwards: see [`track_data`].
+///
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
@@ -887,11 +916,12 @@ pub async fn enqueue_input_back(
     guard: &QueueGuard,
     call: &Arc<Mutex<Call>>,
     source: SongbirdInput,
+    data: Arc<TrackData>,
     preload: Option<Duration>,
 ) -> TrackHandle {
     let _ = guard;
     let mut handler = call.lock().await;
-    handler.enqueue_with_preload(source.into(), preload)
+    handler.enqueue_with_preload(Track::new_with_data(source, data), preload)
 }
 
 /// Shuffle `values` in place using the Fisher-Yates algorithm.
@@ -1008,6 +1038,89 @@ mod test {
     use crack_types::to_fixed;
 
     use super::*;
+    use crate::utils::{get_requesting_user, get_track_handle_metadata};
+    use crate::{Data, DataInner};
+    use serenity::all::GuildId;
+
+    const GUILD: GuildId = GuildId::new(1);
+
+    /// A songbird call with no gateway and no voice connection: tracks queue on
+    /// it, and nothing ever plays.
+    fn offline_call() -> Arc<Mutex<Call>> {
+        Arc::new(Mutex::new(Call::standalone(GUILD, UserId::new(2))))
+    }
+
+    fn titled(title: &str) -> AuxMetadata {
+        AuxMetadata {
+            title: Some(title.to_owned()),
+            ..Default::default()
+        }
+    }
+
+    /// `/queue` and `/nowplaying` read a queued track through
+    /// `TrackHandle::data::<TrackData>()`, which panics on a track built
+    /// without it -- as `/play mode:next` built its track until v0.12.1.
+    #[tokio::test]
+    async fn a_track_queued_next_carries_what_queue_and_nowplaying_read() {
+        let data = Data(Arc::new(DataInner::default()));
+        let guard = data.lock_queue(GUILD, PlaybackOwner::Free).await.unwrap();
+        let call = offline_call();
+        let ready = TrackReadyData {
+            source: songbird::input::File::new("/nonexistent/next.opus").into(),
+            metadata: NewAuxMetadata(titled("Hit That")),
+            user_id: Some(UserId::new(7)),
+            username: None,
+        };
+
+        let queue = queue_track_ready_front(&guard, &call, ready)
+            .await
+            .expect("queued");
+
+        let track = queue.last().expect("the queued track");
+        let meta = get_track_handle_metadata(track).await.expect("metadata");
+        assert_eq!(meta.title.as_deref(), Some("Hit That"));
+        assert_eq!(get_requesting_user(track).await.unwrap(), UserId::new(7));
+    }
+
+    /// Autoplay's own enqueue. A recommendation with metadata reads back the
+    /// way `/queue` shows it; one without reads back as "no metadata", an error
+    /// the embeds handle, rather than a panic.
+    #[tokio::test]
+    async fn an_autoplayed_track_carries_what_queue_and_nowplaying_read() {
+        let data = Data(Arc::new(DataInner::default()));
+        let guard = data.lock_queue(GUILD, PlaybackOwner::Free).await.unwrap();
+        let call = offline_call();
+
+        let titled_track = enqueue_input_back(
+            &guard,
+            &call,
+            songbird::input::File::new("/nonexistent/a.opus").into(),
+            track_data(Some(titled("Want You Bad")), None),
+            None,
+        )
+        .await;
+        let untitled_track = enqueue_input_back(
+            &guard,
+            &call,
+            songbird::input::File::new("/nonexistent/b.opus").into(),
+            track_data(None, None),
+            None,
+        )
+        .await;
+
+        let meta = get_track_handle_metadata(&titled_track)
+            .await
+            .expect("metadata");
+        assert_eq!(meta.title.as_deref(), Some("Want You Bad"));
+        assert_eq!(
+            get_requesting_user(&titled_track).await.unwrap(),
+            UserId::new(1)
+        );
+        assert!(matches!(
+            get_track_handle_metadata(&untitled_track).await,
+            Err(CrackedError::NoMetadata)
+        ));
+    }
 
     #[test]
     fn test_fisher_yates() {

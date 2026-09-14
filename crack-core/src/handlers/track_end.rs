@@ -7,13 +7,9 @@ use crate::{
     },
     music::autoplay,
     music::query::NewQueryType,
-    music::queue::{enqueue_input_back, pause_queue, preload_from_metadata},
+    music::queue::{enqueue_input_back, pause_queue, preload_from_metadata, track_data},
     music::PlaybackOwner,
-    utils::{
-        calculate_num_pages, forget_queue_message, get_track_handle_metadata,
-        set_track_handle_metadata, set_track_handle_requesting_user,
-    },
-    CrackedResult,
+    utils::{calculate_num_pages, forget_queue_message, get_track_handle_metadata},
     Data, //, Error,
 };
 use ::serenity::{
@@ -25,8 +21,7 @@ use ::serenity::{
 };
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
-use serenity::all::{CacheHttp, UserId};
-use songbird::input::AuxMetadata;
+use serenity::all::CacheHttp;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -329,20 +324,28 @@ pub async fn queue_query(
     let (source, metadata_vec): (SongbirdInput, Vec<NewAuxMetadata>) = qt
         .get_track_source_and_metadata(Some(client.clone()))
         .await?;
+    enqueue_resolved_autoplay(data, guild_id, &call, source, metadata_vec).await
+}
+
+/// The half of [`queue_query`] after resolution: queue the pick with its track
+/// data. Split off so it can be tested without the network.
+async fn enqueue_resolved_autoplay(
+    data: &Data,
+    guild_id: GuildId,
+    call: &Arc<Mutex<Call>>,
+    source: SongbirdInput,
+    metadata_vec: Vec<NewAuxMetadata>,
+) -> Result<TrackHandle, CrackedError> {
+    let metadata = metadata_vec.into_iter().next().map(|meta| meta.0);
     // Supplied rather than derived: `enqueue_input` would read it back off the
     // input, which for a lazy source means spawning yt-dlp under the guard.
     // Resolution above already produced the duration.
-    let preload = preload_from_metadata(metadata_vec.first().map(|meta| &meta.0));
-    let mut track = {
-        let guard = data.lock_queue(guild_id, PlaybackOwner::Free).await?;
-        enqueue_input_back(&guard, &call, source, preload).await
-        // The guard drops with this block. `add_metadata_to_track` below writes
-        // the track's own typemap, not the queue, so it needs no exclusion.
-    };
-    if let Some(metadata) = metadata_vec.first() {
-        add_metadata_to_track(&mut track, metadata.clone().into()).await?;
-    }
-    Ok(track)
+    let preload = preload_from_metadata(metadata.as_ref());
+    // Built into the track, not written in after: see `track_data`. Autoplay
+    // has no requester.
+    let with_data = track_data(metadata, None);
+    let guard = data.lock_queue(guild_id, PlaybackOwner::Free).await?;
+    Ok(enqueue_input_back(&guard, call, source, with_data, preload).await)
 }
 
 /// Event handler to set the volume of the playing track to the volume
@@ -365,16 +368,6 @@ impl EventHandler for ModifyQueueHandler {
 
         None
     }
-}
-
-/// Adds metadata to a track handle with a default requesting user.
-pub async fn add_metadata_to_track(
-    track: &mut TrackHandle,
-    metadata: AuxMetadata,
-) -> CrackedResult<()> {
-    set_track_handle_metadata(track, metadata).await?;
-    set_track_handle_requesting_user(track, UserId::new(1)).await?;
-    Ok(())
 }
 
 /// This function goes through all the active "queue" messages that are still
@@ -461,5 +454,34 @@ mod tests {
             autoplay_off_notice(false),
             "Autoplay needs crack-musicreco!"
         );
+    }
+
+    /// Autoplay's pick goes into the queue carrying what it resolved to, so
+    /// `/queue`, `/nowplaying` and the next refill can read it.
+    #[tokio::test]
+    async fn an_autoplay_pick_is_queued_with_the_metadata_it_resolved_to() {
+        let data = Data(Arc::new(crate::DataInner::default()));
+        let guild_id = GuildId::new(1);
+        let call = Arc::new(Mutex::new(Call::standalone(
+            guild_id,
+            serenity::all::UserId::new(2),
+        )));
+        let resolved = vec![NewAuxMetadata(songbird::input::AuxMetadata {
+            title: Some("Want You Bad".to_owned()),
+            ..Default::default()
+        })];
+
+        let track = enqueue_resolved_autoplay(
+            &data,
+            guild_id,
+            &call,
+            songbird::input::File::new("/nonexistent/pick.opus").into(),
+            resolved,
+        )
+        .await
+        .expect("queued");
+
+        let meta = get_track_handle_metadata(&track).await.expect("metadata");
+        assert_eq!(meta.title.as_deref(), Some("Want You Bad"));
     }
 }
