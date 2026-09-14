@@ -71,12 +71,6 @@ pub trait ContextExt<'ctx> {
     fn get_queue(self) -> impl Future<Output = Result<TrackQueue, CrackedError>>;
     /// Return the db pool for database operations.
     fn get_db_pool(self) -> Result<sqlx::PgPool, CrackedError>;
-    /// Add a message to the cache
-    fn add_msg_to_cache(
-        self,
-        guild_id: GuildId,
-        msg: Message,
-    ) -> impl Future<Output = Option<Message>>;
     /// Gets the channel id that the bot is currently playing in for a given guild.
     fn get_active_channel_id(
         self,
@@ -285,10 +279,6 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
         self.data().get_db_pool()
     }
 
-    async fn add_msg_to_cache(self, guild_id: GuildId, msg: Message) -> Option<Message> {
-        self.data().add_msg_to_cache(guild_id, msg).await
-    }
-
     /// Gets the channel id that the bot is currently playing in for a given guild.
     async fn get_active_channel_id(self, guild_id: GuildId) -> Option<GenericChannelId> {
         //let serenity_context = self.serenity_context();
@@ -375,7 +365,6 @@ pub trait PoiseContextExt<'ctx> {
     fn author_permissions(&'ctx self)
         -> impl Future<Output = CrackedResult<serenity::Permissions>>;
     fn is_prefix(&'ctx self) -> bool;
-    fn get_cache_id(&self) -> u64;
     fn send_reply_owned(
         self,
         message: CrackedMessage,
@@ -417,13 +406,6 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
             .voice_states
             .get(&self.author().id)
             .and_then(|vc| vc.channel_id)
-    }
-
-    /// Gets the primary id used for the message cache for that guild or user.
-    fn get_cache_id(&self) -> u64 {
-        self.guild_id()
-            .map(|x| x.get())
-            .unwrap_or_else(|| self.author().id.get())
     }
 
     /// Creates an embed from a CrackedMessage and sends it as an embed.
@@ -491,28 +473,11 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
             CreateReply::default().content(text.color(c).to_string())
         };
         let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
+        // `/clean` learns of this message from the gateway, not from here: see
+        // `guild::cache::remember_bot_message`. Remembering it here cost a
+        // `get_response` round trip per reply and missed every message the bot
+        // sent any other way.
         let handle = self.send(reply).await?;
-        let id = self.get_cache_id();
-        if params.cache_msg {
-            // 🪤 Deliberately not `?`. The message is ALREADY DELIVERED by the
-            // line above; `into_message` is a *follow-up* -- on an application
-            // context it is a fresh `get_response` HTTP call -- and its only
-            // purpose is to let `/clean` find the message later
-            // (`utility/clean.rs` reads `time_ordered_messages`).
-            //
-            // Propagating its failure told every caller that the SEND failed,
-            // after a successful send. A 429 or a transient 5xx on this GET
-            // made `music_utils::announce_join` post a duplicate reply and
-            // `summon_internal`'s `?` raise an error over a correct answer.
-            // Losing a cache entry costs one uncleanable message; reporting a
-            // successful send as a failure costs the user a wrong answer.
-            match handle.clone().into_message().await {
-                Ok(msg) => {
-                    self.data().add_msg_to_cache_int(id, msg).await;
-                },
-                Err(e) => tracing::warn!("Message sent, but caching it for /clean failed: {e:?}"),
-            }
-        }
         Ok(handle)
     }
 
@@ -540,28 +505,11 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
             CreateReply::default().content(text.color(c).to_string())
         };
         let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
+        // `/clean` learns of this message from the gateway, not from here: see
+        // `guild::cache::remember_bot_message`. Remembering it here cost a
+        // `get_response` round trip per reply and missed every message the bot
+        // sent any other way.
         let handle = self.send(reply).await?;
-        let id = self.get_cache_id();
-        if params.cache_msg {
-            // 🪤 Deliberately not `?`. The message is ALREADY DELIVERED by the
-            // line above; `into_message` is a *follow-up* -- on an application
-            // context it is a fresh `get_response` HTTP call -- and its only
-            // purpose is to let `/clean` find the message later
-            // (`utility/clean.rs` reads `time_ordered_messages`).
-            //
-            // Propagating its failure told every caller that the SEND failed,
-            // after a successful send. A 429 or a transient 5xx on this GET
-            // made `music_utils::announce_join` post a duplicate reply and
-            // `summon_internal`'s `?` raise an error over a correct answer.
-            // Losing a cache entry costs one uncleanable message; reporting a
-            // successful send as a failure costs the user a wrong answer.
-            match handle.clone().into_message().await {
-                Ok(msg) => {
-                    self.data().add_msg_to_cache_int(id, msg).await;
-                },
-                Err(e) => tracing::warn!("Message sent, but caching it for /clean failed: {e:?}"),
-            }
-        }
         Ok(handle)
     }
 

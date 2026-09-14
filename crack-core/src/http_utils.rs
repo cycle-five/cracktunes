@@ -21,7 +21,6 @@ pub struct SendMessageParams<'a> {
     pub ephemeral: bool,
     pub reply: bool,
     pub color: Color,
-    pub cache_msg: bool,
     pub msg: CrackedMessage,
     pub embed: Option<CreateEmbed<'a>>,
 }
@@ -34,7 +33,6 @@ impl PartialEq for SendMessageParams<'_> {
             && self.ephemeral == other.ephemeral
             && self.reply == other.reply
             && self.color == other.color
-            && self.cache_msg == other.cache_msg
             && self.msg == other.msg
         // Note: We don't compare `embed` here
     }
@@ -49,7 +47,6 @@ impl Default for SendMessageParams<'_> {
             ephemeral: false,
             reply: true,
             color: Color::BLUE,
-            cache_msg: true,
             msg: CrackedMessage::Other(String::new()),
             embed: None,
         }
@@ -88,10 +85,6 @@ impl<'a> SendMessageParams<'a> {
 
     pub fn with_channel(self, channel: GenericChannelId) -> Self {
         Self { channel, ..self }
-    }
-
-    pub fn with_cache_msg(self, cache_msg: bool) -> Self {
-        Self { cache_msg, ..self }
     }
 
     pub fn with_embed(self, embed: Option<CreateEmbed<'a>>) -> Self {
@@ -356,7 +349,6 @@ mod test {
             .with_ephemeral(false)
             .with_reply(true)
             .with_color(Colour::BLUE)
-            .with_cache_msg(true)
             .with_channel(channel_id)
             .with_embed(None);
 
@@ -365,7 +357,6 @@ mod test {
         assert!(!params.ephemeral);
         assert!(params.reply);
         assert_eq!(params.color, Colour::BLUE);
-        assert!(params.cache_msg);
         assert_eq!(
             params.msg,
             CrackedMessage::Other("Hello, world!".to_string())

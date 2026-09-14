@@ -2561,7 +2561,8 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
     // track is removed. Registering afterwards would race the first and find a
     // dead command channel after the second.
     for event in [TrackEvent::End, TrackEvent::Error] {
-        if let Err(e) = handle.add_event(
+        if let Err(e) = crate::handlers::add_track_handler(
+            &handle,
             Event::Track(event),
             GpTrackEndHandler {
                 pb: pb.clone(),
@@ -2591,7 +2592,8 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
         //
         // `TrackEvent::Playable`, not `Play`: `Play` explicitly does not fire when
         // a track first starts, only on a later pause -> play.
-        if let Err(e) = handle.add_event(
+        if let Err(e) = crate::handlers::add_track_handler(
+            &handle,
             Event::Track(TrackEvent::Playable),
             GpClipStartHandler {
                 pb: pb.clone(),

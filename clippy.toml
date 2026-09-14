@@ -27,4 +27,50 @@ disallowed-methods = [
     # they meant while asking one that cannot answer it. The few sites that
     # genuinely want "is a Call registered" carry an `#[allow]` saying why.
     { path = "songbird::Songbird::get", reason = "returns a Call for a join that only STARTED, before the gateway handshake; use music_utils::connected_call to ask whether we are actually connected" },
+    # 🪤 Every reader of a queued track -- `/queue`, `/nowplaying`, `/lyrics`,
+    # autoplay's refill -- downcasts its data to `TrackData`, and
+    # `TrackHandle::data` panics on a track built without it. v0.12.0's autoplay
+    # built one with `source.into()`, and the panic, inside the track-end
+    # handler, stopped that call's queue for good.
+    #
+    # `queue::new_track` is the one constructor and returns a `QueuedTrack`;
+    # `queue::enqueue` is the one thing that takes one. These close every other
+    # door: songbird's `Track` constructors, and every songbird method that
+    # queues or plays a bare `Track` or `Input`. `Track::from(input)` is a
+    # blanket `From` and cannot be banned, which is why the queueing side has
+    # to be closed completely -- a track built that way has nowhere to go.
+    { path = "songbird::tracks::Track::new", reason = "a Track without TrackData panics its first reader; use queue::new_track" },
+    { path = "songbird::tracks::Track::new_with_uuid", reason = "a Track without TrackData panics its first reader; use queue::new_track" },
+    { path = "songbird::tracks::Track::new_with_data", reason = "only queue::new_track may attach the data, so every Track carries TrackData; use queue::new_track" },
+    { path = "songbird::tracks::Track::new_with_uuid_and_data", reason = "only queue::new_track may attach the data, so every Track carries TrackData; use queue::new_track" },
+    { path = "songbird::driver::Driver::enqueue", reason = "queues a bare Track, which may carry no TrackData, and derives preload by running yt-dlp; build a queue::QueuedTrack and use the functions in music::queue" },
+    { path = "songbird::driver::Driver::enqueue_input", reason = "queues an Input with no TrackData at all; use the functions in music::queue" },
+    { path = "songbird::driver::Driver::enqueue_with_preload", reason = "queues a bare Track, which may carry no TrackData; use the functions in music::queue, which take a queue::QueuedTrack" },
+    { path = "songbird::driver::Driver::play", reason = "plays a bare Track outside the queue, which may carry no TrackData; use the functions in music::queue" },
+    { path = "songbird::driver::Driver::play_input", reason = "plays an Input with no TrackData at all; use the functions in music::queue" },
+    { path = "songbird::driver::Driver::play_only", reason = "plays a bare Track outside the queue, which may carry no TrackData; use the functions in music::queue" },
+    { path = "songbird::driver::Driver::play_only_input", reason = "plays an Input with no TrackData at all; use the functions in music::queue" },
+    { path = "songbird::tracks::TrackQueue::add", reason = "queues a bare Track, which may carry no TrackData; use the functions in music::queue" },
+    { path = "songbird::tracks::TrackQueue::add_source", reason = "queues an Input with no TrackData at all; use the functions in music::queue" },
+    { path = "songbird::tracks::TrackQueue::add_with_preload", reason = "queues a bare Track, which may carry no TrackData; use the functions in music::queue" },
+    { path = "songbird::tracks::TrackHandle::data", reason = "panics on a track without TrackData; use utils::get_track_handle_metadata or utils::get_requesting_user" },
+    # 🪤 songbird runs every event handler inline on the call's one event task,
+    # which holds the call's handlers, track event stores and track states as
+    # locals. One panicking handler unwinds it, and the queue stops advancing
+    # with nothing logged -- what the autoplay panic above actually did.
+    # `handlers::guarded` catches a handler's panic at its boundary.
+    { path = "songbird::driver::Driver::add_global_event", reason = "a panicking handler takes the call's event task, and its queue, down with it; use handlers::add_global_handler" },
+    { path = "songbird::tracks::TrackHandle::add_event", reason = "a panicking handler takes the call's event task, and its queue, down with it; use handlers::add_track_handler" },
+    { path = "songbird::events::EventStore::add_event", reason = "registers a handler with no panic guard; use handlers::add_global_handler or handlers::add_track_handler" },
+    # 🪤 rusty_ytdl finds videos but cannot play them. The googlevideo URL its
+    # stream fetches 403s (`c=ANDROID`), songbird gets an empty stream, and
+    # symphonia reports "no suitable format reader found" -- which reads like a
+    # codec problem and is not one. yt-dlp plays everything:
+    # `queue::build_track` for resolved tracks, `youtube::source_for_search_hit`
+    # for search hits. `/play`'s fallback streamed through rusty_ytdl until
+    # v0.12.1, so every play that reached it was queued and silently dropped.
+    { path = "rusty_ytdl::Video::stream", reason = "its stream comes back empty, so the track is dropped as it starts; play through songbird's YoutubeDl, as queue::build_track and youtube::source_for_search_hit do" },
+    { path = "rusty_ytdl::Video::stream_with_ffmpeg", reason = "its stream comes back empty, so the track is dropped as it starts; play through songbird's YoutubeDl, as queue::build_track and youtube::source_for_search_hit do" },
+    { path = "rusty_ytdl::blocking::Video::stream", reason = "its stream comes back empty, so the track is dropped as it starts; play through songbird's YoutubeDl, as queue::build_track and youtube::source_for_search_hit do" },
+    { path = "rusty_ytdl::blocking::Video::stream_with_ffmpeg", reason = "its stream comes back empty, so the track is dropped as it starts; play through songbird's YoutubeDl, as queue::build_track and youtube::source_for_search_hit do" },
 ]

@@ -30,7 +30,6 @@ use crack_types::{
     get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata,
 };
 use poise::{serenity_prelude as serenity, ReplyHandle};
-use songbird::tracks::Track;
 use songbird::{tracks::TrackHandle, Call};
 use std::borrow::Cow;
 use std::{cmp::Ordering, sync::Arc, time::Duration};
@@ -607,7 +606,7 @@ pub async fn resolve_query_to_tracks(
     ctx: Context<'_>,
     _call: Arc<Mutex<Call>>,
     query_type: NewQueryType,
-) -> CrackedResult<Vec<Track>> {
+) -> CrackedResult<Vec<crate::music::queue::QueuedTrack>> {
     let client = ctx.data().ct_client.clone();
     let NewQueryType(query_type) = query_type;
     let tracks = client.resolve_query_to_tracks(query_type.clone()).await?;

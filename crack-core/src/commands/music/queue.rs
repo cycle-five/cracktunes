@@ -89,8 +89,6 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
         },
     };
 
-    ctx.data().add_msg_to_cache(guild_id, message.clone()).await;
-
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
     // store this interaction to context.data for later edits
@@ -104,7 +102,8 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
         .push((message.clone(), page.clone()));
 
     // refresh the queue interaction whenever a track ends
-    call.lock().await.add_global_event(
+    crate::handlers::add_global_handler(
+        &mut *call.lock().await,
         Event::Track(TrackEvent::End),
         ModifyQueueHandler {
             http: ctx.serenity_context().http.clone(),

@@ -2,8 +2,8 @@ use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::messages::UNKNOWN;
 use crate::messaging::messages::{
-    PROGRESS, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SRC, QUEUE_NO_TITLE,
-    QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
+    PROGRESS, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC,
+    QUEUE_NO_TITLE, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
 };
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
@@ -126,36 +126,30 @@ pub fn requesting_user_to_string(user_id: UserId) -> String {
     }
 }
 
-/// Creates a page of the queue.
+/// Creates a page of the queue's "Up next": the tracks after the one playing.
 #[cfg(not(tarpaulin_include))]
 async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
-    // let queue: Vec<&TrackHandle> = tracks
-    //     .iter()
-    //     .skip(start_idx + 1)
-    //     .take(EMBED_PAGE_SIZE)
-    //     .collect();
-    let queue = tracks.iter().skip(start_idx).take(EMBED_PAGE_SIZE);
-
-    // if queue.is_empty() {
-    //     return String::from(QUEUE_NO_SONGS);
-    // }
+    // `+ 1`: the first track is the one playing, shown above as "Now playing",
+    // and `calculate_num_pages` counts only what comes after it. Without it a
+    // one-song queue listed that song twice.
+    let queue = tracks.iter().skip(start_idx + 1).take(EMBED_PAGE_SIZE);
 
     let mut description = String::new();
 
     for (i, t) in queue.enumerate() {
-        // FIXME
-        let metadata = get_track_handle_metadata(t)
-            .await
-            .expect("metadata should exist");
+        // A track can have no metadata (a pick nothing resolved a title for).
+        // It gets a blank line here, not a panic that kills `/queue`.
+        let metadata = get_track_handle_metadata(t).await.unwrap_or_default();
         let title = metadata.title.clone().unwrap_or_default();
         let url = metadata.source_url.clone().unwrap_or_default();
         let duration = get_human_readable_timestamp(metadata.duration);
         let requesting_user = get_requesting_user(t).await.unwrap_or(UserId::new(1));
 
+        // No brackets around the requester: autoplay's is already "(auto)".
         let _ = writeln!(
             description,
-            "{}. [{}]({}) • {} ({})",
+            "{}. [{}]({}) • {} • {}",
             i + start_idx + 1,
             title,
             url,
@@ -164,6 +158,10 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
         );
     }
 
+    // An empty embed field is rejected by Discord.
+    if description.is_empty() {
+        return String::from(QUEUE_NO_SONGS);
+    }
     description
 }
 
@@ -172,7 +170,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
     let (description, thumbnail): (String, String) = if !tracks.is_empty() {
         let metadata = get_track_handle_metadata(tracks.first().unwrap())
             .await
-            .unwrap();
+            .unwrap_or_default();
 
         let url = metadata.thumbnail.clone().unwrap_or_default();
         let thumbnail = match url::Url::parse(&url) {
@@ -300,7 +298,9 @@ pub fn build_now_playing_embed_metadata<'a>(
 /// Creates a now playing embed for the given track.
 pub async fn create_now_playing_embed<'a>(track: TrackHandle) -> CreateEmbed<'a> {
     // let (requesting_user, duration, metadata) = track_handle_to_metadata(track).await.unwrap();
-    let metadata = get_track_handle_metadata(&track).await.expect("uhoh...");
+    // No metadata is a blank embed, not a panic: this runs inside songbird's
+    // event task too (`send_now_playing` from the track-end handler).
+    let metadata = get_track_handle_metadata(&track).await.unwrap_or_default();
     let requesting_user = get_requesting_user(&track).await.ok();
     let duration = Some(track.get_info().await.unwrap_or_default().position);
     build_now_playing_embed_metadata(requesting_user, duration, NewAuxMetadata(metadata))
@@ -491,6 +491,88 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
 
 #[cfg(test)]
 mod test {
+
+    /// A songbird call with no connection, queued with `(title, requester)`
+    /// tracks in order; `None` is an autoplayed track. The call is returned so
+    /// it outlives the handles.
+    async fn queue_of(
+        tracks: &[(&str, Option<u64>)],
+    ) -> (
+        std::sync::Arc<tokio::sync::Mutex<songbird::Call>>,
+        Vec<songbird::tracks::TrackHandle>,
+    ) {
+        use crate::music::queue::{enqueue_track_back, new_track};
+        use crate::music::PlaybackOwner;
+        use crate::{Data, DataInner};
+        use serenity::model::id::{GuildId, UserId};
+
+        let guild = GuildId::new(1);
+        let data = Data(std::sync::Arc::new(DataInner::default()));
+        let guard = data.lock_queue(guild, PlaybackOwner::Free).await.unwrap();
+        let call = std::sync::Arc::new(tokio::sync::Mutex::new(songbird::Call::standalone(
+            guild,
+            UserId::new(2),
+        )));
+        for (title, requester) in tracks {
+            let metadata = songbird::input::AuxMetadata {
+                title: Some((*title).to_owned()),
+                ..Default::default()
+            };
+            let source = songbird::input::File::new("/nonexistent/queued.opus").into();
+            let track = new_track(source, Some(metadata), requester.map(UserId::new));
+            enqueue_track_back(&guard, &call, track, None).await;
+        }
+        let queued = call.lock().await.queue().current_queue();
+        (call, queued)
+    }
+
+    /// "Up next" is what plays after the current track. It once started from
+    /// the current track itself, so a one-song queue listed that song twice.
+    #[tokio::test]
+    async fn up_next_lists_only_the_tracks_after_the_one_playing() {
+        let (_call, tracks) =
+            queue_of(&[("I Had It All", None), ("The Old Dun Cow", Some(9))]).await;
+
+        let page = super::create_queue_page(&tracks, 0).await;
+
+        assert!(page.starts_with("1. [The Old Dun Cow]"), "{page}");
+        assert!(!page.contains("I Had It All"), "{page}");
+    }
+
+    /// `calculate_num_pages` already counts only what is up next; page two has
+    /// to carry on where page one stopped.
+    #[tokio::test]
+    async fn the_second_up_next_page_carries_on_from_the_first() {
+        let titles: Vec<String> = (0..8).map(|i| format!("Track {i}")).collect();
+        let queued: Vec<(&str, Option<u64>)> = titles.iter().map(|t| (t.as_str(), None)).collect();
+        let (_call, tracks) = queue_of(&queued).await;
+
+        let page = super::create_queue_page(&tracks, 1).await;
+
+        assert!(page.starts_with("7. [Track 7]"), "{page}");
+        assert_eq!(crate::utils::calculate_num_pages(&tracks), 2);
+    }
+
+    #[tokio::test]
+    async fn up_next_with_nothing_after_the_playing_track_says_so() {
+        let (_call, tracks) = queue_of(&[("I Had It All", None)]).await;
+
+        let page = super::create_queue_page(&tracks, 0).await;
+
+        assert_eq!(page, crate::messaging::messages::QUEUE_NO_SONGS);
+    }
+
+    /// `requesting_user_to_string` already brackets autoplay as "(auto)"; the
+    /// queue line bracketed it again.
+    #[tokio::test]
+    async fn an_autoplayed_track_is_credited_in_one_pair_of_brackets() {
+        let (_call, tracks) = queue_of(&[("I Had It All", None), ("I Had It All", None)]).await;
+
+        let page = super::create_queue_page(&tracks, 0).await;
+
+        assert!(page.contains("(auto)"), "{page}");
+        assert!(!page.contains("((auto))"), "{page}");
+    }
 
     #[test]
     fn test_requesting_user_to_string() {

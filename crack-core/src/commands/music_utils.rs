@@ -55,7 +55,8 @@ pub async fn set_global_handlers_with(
     let timeout = guild_settings.timeout;
     if timeout > 0 {
         let premium = guild_settings.premium;
-        handler.add_global_event(
+        crate::handlers::add_global_handler(
+            &mut handler,
             Event::Periodic(Duration::from_secs(60), None),
             IdleHandler {
                 serenity_ctx: Arc::new(serenity_ctx.clone()),
@@ -68,7 +69,8 @@ pub async fn set_global_handlers_with(
         );
     }
 
-    handler.add_global_event(
+    crate::handlers::add_global_handler(
+        &mut handler,
         Event::Track(TrackEvent::End),
         TrackEndHandler {
             guild_id,

@@ -2,7 +2,6 @@ use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset, queue_resolved_list_back};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
-use crate::sources::rusty_ytdl::NewSearchSource;
 use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
@@ -609,10 +608,6 @@ impl NewQueryType {
         Err(CrackedError::Other("Not implemented yet!"))
     }
 
-    pub fn get_query_source(&self, client: reqwest::Client) -> songbird::input::Input {
-        NewSearchSource(self.clone(), client).into()
-    }
-
     pub async fn get_track_metadata(
         &self,
         ytclient: YouTube,
@@ -816,7 +811,8 @@ impl NewQueryType {
                 for r in res {
                     metadata.push(NewAuxMetadata(search_result_to_aux_metadata(&r)));
                 }
-                let input = self.get_query_source(client.clone());
+                // yt-dlp plays it, never rusty_ytdl: see `source_for_search_hit`.
+                let input = YoutubeDl::new(client_old, url.clone()).into();
                 Ok((input, metadata))
             },
             QueryType::SpotifyTracks(tracks) => {
