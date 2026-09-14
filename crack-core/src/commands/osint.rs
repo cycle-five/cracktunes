@@ -41,14 +41,8 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
         .unwrap_or(FixedString::from_str("DMs").expect("wtf?"));
 
     let msg_str = format!("Osint found in {guild_name}!");
-    let msg = ctx
-        .send(CreateReply::default().content(msg_str.clone()))
-        .await?
-        .into_message()
+    ctx.send(CreateReply::default().content(msg_str.clone()))
         .await?;
-    ctx.data()
-        .add_msg_to_cache(ctx.guild_id().unwrap(), msg)
-        .await;
     tracing::warn!("{}", msg_str.clone());
 
     Ok(())

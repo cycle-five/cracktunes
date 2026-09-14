@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 /// How new the bot's latest message must be for `/clean` to undo only that one.
 const UNDO_WINDOW_SECONDS: i64 = 15;
 
-/// Delete the bot's messages, or only its latest one if sent in the last 15 seconds.
+/// Delete the bot's messages, or only its latest one if sent or edited in the last 15 seconds.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Utility",
@@ -83,8 +83,9 @@ pub async fn clean_internal(ctx: Context<'_>) -> Result<(), Error> {
 
 /// The cached messages `/clean` deletes, newest first, with their cache keys.
 ///
-/// 🔑 The latest one alone when it is at most `undo_window` old -- an undo of
-/// what the bot just said -- and every one otherwise. Until v0.12.0 a latest
+/// 🔑 The latest one alone when it was sent or last edited at most
+/// `undo_window` ago -- an undo of what the bot just said -- and every one
+/// otherwise. The keys are those times: see `guild::cache`. Until v0.12.0 a latest
 /// message that new made `/clean` delete nothing at all: it walked newest
 /// first and stopped at the first message inside the window.
 fn messages_to_clean(
@@ -167,6 +168,30 @@ mod tests {
         let cached = cache_of(now, &[(120, 1), (47, 2), (7, 3)]);
 
         assert_eq!(ids(&messages_to_clean(&cached, now, window())), vec![3]);
+    }
+
+    /// 🪤 Measured on TuneTitan: `/optplay` posted its reply at 22:16:40.56 and
+    /// edited the result in about 5s later; `/clean` at 22:16:57.41 deleted all
+    /// 15 messages instead of undoing that one. The window runs from the edit.
+    #[test]
+    fn a_reply_edited_moments_ago_is_undone_on_its_own() {
+        use crate::guild::cache::{remember_bot_message, touch_bot_message};
+        use serenity::model::id::GuildId;
+
+        let now = Utc::now();
+        let secs = |s| TimeDelta::try_seconds(s).unwrap();
+        let map = DashMap::new();
+        let guild = GuildId::new(GUILD);
+        remember_bot_message(&map, guild, message(1), now - secs(120));
+        // Posted as the command started, then the result edited in.
+        remember_bot_message(&map, guild, message(2), now - secs(17));
+        touch_bot_message(&map, guild, MessageId::new(2), now - secs(12));
+
+        let cached = map
+            .get(&GUILD)
+            .map(|cache| cache.time_ordered_messages.clone())
+            .unwrap_or_default();
+        assert_eq!(ids(&messages_to_clean(&cached, now, window())), vec![2]);
     }
 
     #[test]

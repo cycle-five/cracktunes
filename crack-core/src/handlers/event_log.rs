@@ -2,8 +2,12 @@ use std::sync::Arc;
 
 use super::event_log_impl::*;
 use crate::{
-    errors::CrackedError, guild::settings::GuildSettings, log_event, log_event2,
-    messaging::interface::send_log_embed_thumb, ArcTRwMap, Data, Error,
+    errors::CrackedError,
+    guild::cache::{forget_bot_messages, remember_bot_message, touch_bot_message},
+    guild::settings::GuildSettings,
+    log_event, log_event2,
+    messaging::interface::send_log_embed_thumb,
+    ArcTRwMap, Data, Error,
 };
 use cfg_if;
 use colored::Colorize;
@@ -214,15 +218,18 @@ pub async fn handle_event(
             };
             // let my_id = ctx.get_bot_id().await.unwrap_or(UserId::new(1));
 
-            if new_message.author.id == ctx.http.get_current_user().await?.id {
-                let now = chrono::Utc::now();
-                let _ = data_global
-                    .guild_cache_map
-                    .lock()
-                    .await
-                    .get_mut(&guild_id)
-                    .map(|x| x.time_ordered_messages.insert(now, new_message.clone()))
-                    .unwrap_or_default();
+            // 🔑 Every message the bot sends is remembered for `/clean` here, so
+            // no send path has to: see `remember_bot_message`. This once wrote
+            // to `guild_cache_map`, which `/clean` never reads, and asked
+            // Discord for the bot's own user on every message.
+            let bot_id = ctx.cache.current_user().id;
+            if new_message.author.id == bot_id {
+                remember_bot_message(
+                    &data_global.id_cache_map,
+                    guild_id,
+                    new_message.clone(),
+                    chrono::Utc::now(),
+                );
             }
 
             // Should we log bot messages?
@@ -876,6 +883,9 @@ pub async fn handle_event(
             deleted_message_id,
             guild_id,
         } => {
+            if let Some(guild_id) = guild_id {
+                forget_bot_messages(&data_global.id_cache_map, *guild_id, &[*deleted_message_id]);
+            }
             let log_data = (channel_id, deleted_message_id, guild_id);
             log_event!(
                 log_message_delete,
@@ -893,6 +903,13 @@ pub async fn handle_event(
             multiple_deleted_messages_ids,
             guild_id,
         } => {
+            if let Some(guild_id) = guild_id {
+                forget_bot_messages(
+                    &data_global.id_cache_map,
+                    *guild_id,
+                    multiple_deleted_messages_ids,
+                );
+            }
             event_log
                 .write_obj(&(channel_id, multiple_deleted_messages_ids, guild_id))
                 .await
@@ -932,6 +949,16 @@ pub async fn handle_event(
             old_if_available,
             event,
         } => {
+            // An edit restarts `/clean`'s clock on one of the bot's messages.
+            // Only those are remembered, so any other id is ignored.
+            if let Some(guild_id) = event.message.guild_id {
+                touch_bot_message(
+                    &data_global.id_cache_map,
+                    guild_id,
+                    event.message.id,
+                    chrono::Utc::now(),
+                );
+            }
             let new = Some(event.message.clone());
             if new.as_ref().map(|x| x.author.bot()).unwrap_or(false)
                 || old_if_available

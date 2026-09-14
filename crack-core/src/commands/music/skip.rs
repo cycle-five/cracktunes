@@ -47,8 +47,7 @@ pub async fn skip(
     // The guard is held only for the mutations above, not across the Discord
     // round trip in `create_skip_response` -- see lease.rs.
     drop(guard);
-    let msg = create_skip_response(ctx, &handler, tracks_to_skip).await?;
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    create_skip_response(ctx, &handler, tracks_to_skip).await?;
     Ok(())
 }
 

@@ -42,16 +42,11 @@ pub async fn vote_topgg_internal(ctx: Context<'_>) -> Result<(), Error> {
         VOTE_TOPGG_NOT_VOTED
     };
 
-    let reply_handle = ctx
-        .reply(format!(
-            "{}\n{} [{}]({})",
-            msg_str, VOTE_TOPGG_TEXT, VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_URL
-        ))
-        .await?;
-
-    let msg = reply_handle.into_message().await?;
-
-    ctx.data().add_msg_to_cache(guild_id, msg).await;
+    ctx.reply(format!(
+        "{}\n{} [{}]({})",
+        msg_str, VOTE_TOPGG_TEXT, VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_URL
+    ))
+    .await?;
 
     Ok(())
 }
