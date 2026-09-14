@@ -361,7 +361,6 @@ pub async fn queue_track_front(
     Ok(q)
 }
 
-use crack_types::TrackResolveError;
 /// Pushes a track to the front of the queue.
 ///
 /// Not itself in the guard-parameter group ([`queue_resolved_track_back`] and
@@ -388,23 +387,20 @@ pub async fn queue_track_back(
     let resolved = match ctx.data().ct_client.resolve_track(query_type.clone()).await {
         Ok(resolved) => resolved.with_user_id(user_id),
         Err(e1) => {
-            match e1.into() {
-                Some(_e) => {
-                    let ready_track = ready_query(ctx, query_type.clone()).await?;
-                    // 🪤 This branch RETURNS, so the send below never runs for
-                    // it. A play that fell back to `ready_query` is still a
-                    // play and must be logged here, or the fallback path stays
-                    // silently unlogged exactly as it was before this fix.
-                    ctx.send_track_metadata_write_msg(&ready_track);
-                    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
-                    return _queue_track_ready_back(&guard, call, ready_track).await;
-                },
-                None => {
-                    return Err(CrackedError::TrackResolveError(
-                        TrackResolveError::UnknownQueryType,
-                    ));
-                },
-            };
+            // 🪤 Say why before falling back. This once matched `e1.into()` as
+            // an `Option` -- always `Some`, since `e1` is a boxed error -- and
+            // dropped it, so a resolver failing on every play left no trace.
+            tracing::warn!(
+                "ct_client could not resolve {query_type:?}, falling back to ready_query: {e1}"
+            );
+            let ready_track = ready_query(ctx, query_type.clone()).await?;
+            // 🪤 This branch RETURNS, so the send below never runs for it. A
+            // play that fell back to `ready_query` is still a play and must be
+            // logged here, or the fallback path stays silently unlogged exactly
+            // as it was before this fix.
+            ctx.send_track_metadata_write_msg(&ready_track);
+            let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+            return _queue_track_ready_back(&guard, call, ready_track).await;
         },
     };
     let after_ready = std::time::Instant::now();
