@@ -8,7 +8,7 @@
 //! would run with no quota accounting at all (Ruling 39).
 
 use async_trait::async_trait;
-use crack_musicreco::{Error as RecoError, Recommendation, Recommender, Seed};
+use crack_musicreco::{Error as RecoError, RawTrack, Recommendation, Recommender, Seed};
 use sqlx::PgPool;
 
 /// musicatlas' free tier is 100 calls a day, and no response header reports
@@ -206,15 +206,26 @@ impl Recommender for CachedRecommender {
         self.inner.is_metered()
     }
 
+    fn needs_seed(&self) -> bool {
+        self.inner.needs_seed()
+    }
+
     /// 🪤 A hit is served truncated to `want`, but a miss caches only what the
     /// call returned for THIS `want`. A later, larger `want` for the same seed
     /// gets the shorter list until the entry expires. The orchestrator always
     /// asks for the same amount, so this does not arise today.
     async fn recommend(
         &self,
-        seed: &Seed,
+        track: &RawTrack,
+        seed: Option<&Seed>,
         want: usize,
     ) -> crack_musicreco::Result<Vec<Recommendation>> {
+        // The cache is keyed by seed. The orchestrator never reaches a
+        // seed-needing provider without one; if it somehow does, pass it
+        // through uncached rather than inventing a key.
+        let Some(seed) = seed else {
+            return self.inner.recommend(track, None, want).await;
+        };
         if want == 0 {
             // Before the budget, which would otherwise spend a call on nothing.
             return Ok(Vec::new());
@@ -252,7 +263,7 @@ impl Recommender for CachedRecommender {
             }
         }
 
-        match self.inner.recommend(seed, want).await {
+        match self.inner.recommend(track, Some(seed), want).await {
             Ok(results) => {
                 self.remember(seed, &results, !results.is_empty()).await;
                 Ok(results)
@@ -296,6 +307,15 @@ mod tests {
                 title: title.into(),
                 mbid: None,
                 confidence: 100,
+            }
+        }
+
+        fn raw() -> RawTrack {
+            RawTrack {
+                title: "Queen - Bohemian Rhapsody".into(),
+                artist: None,
+                uploader: None,
+                video_id: None,
             }
         }
 
@@ -396,7 +416,7 @@ mod tests {
             MusicRecoCache::put(&pool, "musicatlas", &s, &[], false)
                 .await
                 .unwrap();
-            assert!(MusicRecoCache::get(&pool, "reccobeats", &s)
+            assert!(MusicRecoCache::get(&pool, "deezer", &s)
                 .await
                 .unwrap()
                 .is_none());
@@ -569,7 +589,8 @@ mod tests {
             }
             async fn recommend(
                 &self,
-                _seed: &Seed,
+                _track: &RawTrack,
+                _seed: Option<&Seed>,
                 _want: usize,
             ) -> crack_musicreco::Result<Vec<Recommendation>> {
                 self.calls.fetch_add(1, Ordering::SeqCst);
@@ -622,8 +643,8 @@ mod tests {
         async fn a_repeat_seed_is_served_from_the_cache_without_a_call(pool: PgPool) {
             let (r, calls) = cached(&pool, Some(90), three);
             let s = seed("Queen", "Bohemian Rhapsody");
-            let first = r.recommend(&s, 20).await.unwrap();
-            let second = r.recommend(&s, 20).await.unwrap();
+            let first = r.recommend(&raw(), Some(&s), 20).await.unwrap();
+            let second = r.recommend(&raw(), Some(&s), 20).await.unwrap();
             assert_eq!(first, second);
             assert_eq!(calls.load(Ordering::SeqCst), 1);
             assert_eq!(budget_rows(&pool).await, 1, "the hit spent no budget");
@@ -637,8 +658,8 @@ mod tests {
         async fn a_hit_is_truncated_to_want(pool: PgPool) {
             let (r, calls) = cached(&pool, None, three);
             let s = seed("Queen", "Bohemian Rhapsody");
-            r.recommend(&s, 20).await.unwrap();
-            assert_eq!(r.recommend(&s, 2).await.unwrap().len(), 2);
+            r.recommend(&raw(), Some(&s), 20).await.unwrap();
+            assert_eq!(r.recommend(&raw(), Some(&s), 2).await.unwrap().len(), 2);
             assert_eq!(calls.load(Ordering::SeqCst), 1);
         }
 
@@ -650,8 +671,8 @@ mod tests {
         async fn an_empty_answer_is_negative_cached(pool: PgPool) {
             let (r, calls) = cached(&pool, Some(90), nothing);
             let s = seed("Lofi Radio", "Beats");
-            assert!(r.recommend(&s, 20).await.unwrap().is_empty());
-            assert!(r.recommend(&s, 20).await.unwrap().is_empty());
+            assert!(r.recommend(&raw(), Some(&s), 20).await.unwrap().is_empty());
+            assert!(r.recommend(&raw(), Some(&s), 20).await.unwrap().is_empty());
             assert_eq!(calls.load(Ordering::SeqCst), 1);
         }
 
@@ -663,9 +684,9 @@ mod tests {
         async fn not_a_track_is_negative_cached(pool: PgPool) {
             let (r, calls) = cached(&pool, Some(90), not_a_track);
             let s = seed("Lofi Radio", "Beats");
-            let first = r.recommend(&s, 20).await;
+            let first = r.recommend(&raw(), Some(&s), 20).await;
             assert!(matches!(first, Err(RecoError::NotATrack { .. })));
-            assert!(r.recommend(&s, 20).await.unwrap().is_empty());
+            assert!(r.recommend(&raw(), Some(&s), 20).await.unwrap().is_empty());
             assert_eq!(calls.load(Ordering::SeqCst), 1);
         }
 
@@ -677,8 +698,8 @@ mod tests {
         async fn a_transient_error_is_not_cached(pool: PgPool) {
             let (r, calls) = cached(&pool, Some(90), rate_limited);
             let s = seed("Queen", "Bohemian Rhapsody");
-            let _ = r.recommend(&s, 20).await;
-            let _ = r.recommend(&s, 20).await;
+            let _ = r.recommend(&raw(), Some(&s), 20).await;
+            let _ = r.recommend(&raw(), Some(&s), 20).await;
             assert_eq!(calls.load(Ordering::SeqCst), 2);
         }
 
@@ -689,10 +710,12 @@ mod tests {
         )]
         async fn an_exhausted_budget_refuses_without_calling(pool: PgPool) {
             let (r, calls) = cached(&pool, Some(1), three);
-            r.recommend(&seed("Queen", "Bohemian Rhapsody"), 20)
+            r.recommend(&raw(), Some(&seed("Queen", "Bohemian Rhapsody")), 20)
                 .await
                 .unwrap();
-            let refused = r.recommend(&seed("Queen", "Somebody to Love"), 20).await;
+            let refused = r
+                .recommend(&raw(), Some(&seed("Queen", "Somebody to Love")), 20)
+                .await;
             assert!(
                 matches!(refused, Err(RecoError::BudgetExhausted { budget: 1, .. })),
                 "got {refused:?}"
@@ -708,9 +731,9 @@ mod tests {
         async fn a_stale_entry_calls_the_provider_again(pool: PgPool) {
             let (r, calls) = cached(&pool, Some(90), three);
             let s = seed("Queen", "Bohemian Rhapsody");
-            r.recommend(&s, 20).await.unwrap();
+            r.recommend(&raw(), Some(&s), 20).await.unwrap();
             age(&pool, 31).await;
-            r.recommend(&s, 20).await.unwrap();
+            r.recommend(&raw(), Some(&s), 20).await.unwrap();
             assert_eq!(calls.load(Ordering::SeqCst), 2);
         }
 
@@ -721,7 +744,7 @@ mod tests {
         )]
         async fn an_unbudgeted_provider_never_touches_the_budget(pool: PgPool) {
             let (r, calls) = cached(&pool, None, three);
-            r.recommend(&seed("Queen", "Bohemian Rhapsody"), 20)
+            r.recommend(&raw(), Some(&seed("Queen", "Bohemian Rhapsody")), 20)
                 .await
                 .unwrap();
             assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -736,7 +759,7 @@ mod tests {
         async fn want_zero_spends_neither_budget_nor_call(pool: PgPool) {
             let (r, calls) = cached(&pool, Some(90), three);
             assert!(r
-                .recommend(&seed("Queen", "Bohemian Rhapsody"), 0)
+                .recommend(&raw(), Some(&seed("Queen", "Bohemian Rhapsody")), 0)
                 .await
                 .unwrap()
                 .is_empty());
@@ -756,7 +779,9 @@ mod tests {
                 .await
                 .unwrap();
             let (r, calls) = cached(&pool, Some(90), three);
-            let refused = r.recommend(&seed("Queen", "Bohemian Rhapsody"), 20).await;
+            let refused = r
+                .recommend(&raw(), Some(&seed("Queen", "Bohemian Rhapsody")), 20)
+                .await;
             assert!(
                 matches!(refused, Err(RecoError::BudgetExhausted { .. })),
                 "got {refused:?}"
@@ -777,7 +802,7 @@ mod tests {
                 .unwrap();
             let (r, calls) = cached(&pool, None, three);
             assert_eq!(
-                r.recommend(&seed("Queen", "Bohemian Rhapsody"), 20)
+                r.recommend(&raw(), Some(&seed("Queen", "Bohemian Rhapsody")), 20)
                     .await
                     .unwrap()
                     .len(),

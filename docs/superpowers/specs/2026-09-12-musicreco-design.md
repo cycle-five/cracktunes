@@ -35,12 +35,23 @@ reason this crate needs a real design rather than a trait with three impls.
 | other ids | spotify, apple, deezer | isrc, spotify href | MBID, isrc |
 | quota | **100/day**, no headers | **undisclosed**, 429 + `Retry-After` | 1 req/sec, hard |
 
+🔴 **Superseded 2026-09-13 (v0.12.0): ReccoBeats is removed.** On production
+v0.11.x it answered nothing on-genre for any seed. Its recommendations are
+nearest neighbours in audio-feature space (tempo, energy, danceability,
+valence), with no listening data: "Hit That" (131 BPM, energy 0.81) gave Calvin
+Harris (128, 0.88) and Banda Toro (120, 0.77), and five Offspring seeds gave
+Lambada and Gunna. More seeds made it worse. YouTube's Mix (§5.4) and Deezer's
+artist radio (§5.5) replace it; both come from listening data.
+
 ### 2.1 What each one is actually for
 
-- **musicatlas** — the primary recommender. It is the only provider that hands
-  back a directly playable YouTube id, which removes a whole resolution step.
-- **ReccoBeats** — the fallback recommender. Free and unmetered-ish, but its
-  results carry no YouTube id, so they need a search step to become playable.
+- **YouTube's Mix** — the primary recommender since v0.12.0. It works from the
+  ended video's id alone, so it needs no seed at all, and returns playable ids.
+- **Deezer** — the fallback. Artist radio from listening data; needs a seed
+  artist, and its results need a search step to become playable.
+- **musicatlas** — the metered last resort. Returns playable YouTube ids, but
+  spends a 100/day budget, so it is asked only when both free providers had
+  nothing.
 - **MusicBrainz** — **not a recommender at all.** It is a *seed canonicalizer*.
 
 ### 2.2 MusicBrainz earns its place by fixing the seed problem
@@ -115,7 +126,7 @@ pub struct Recommendation {
 pub enum Playable {
     /// musicatlas: play this video id directly, no search.
     YouTubeId(String),
-    /// ReccoBeats: no video id exists; the bot must search for this string.
+    /// Deezer: no video id exists; the bot must search for this string.
     SearchQuery(String),
 }
 ```
@@ -138,11 +149,17 @@ impl MusicReco {
 Default ordering:
 
 - resolvers: `TitleParse` (offline, free) → `MusicBrainz` (confirms/corrects it)
-- recommenders: `MusicAtlas` (playable ids, metered) → `ReccoBeats` (free, needs search)
+- recommenders (v0.12.0): `YouTubeMix` (free, no seed, playable ids) →
+  `Deezer` (free, needs a seed, needs search) → `MusicAtlas` (metered, only with
+  a key and a database)
 
-🔑 **Fallback is per-provider, not global.** A musicatlas quota exhaustion falls
-through to ReccoBeats rather than disabling autoplay. That is the entire point
-of the crate.
+🔑 **The seed is resolved lazily.** `Recommender::needs_seed` is `false` for
+YouTube's Mix, and the orchestrator runs the resolvers only when it first
+reaches a provider that needs a seed. A Mix that answers spends no MusicBrainz
+call, and a title nothing can be parsed from still gets a Mix.
+
+🔑 **Fallback is per-provider, not global.** A Mix with nothing falls through to
+Deezer rather than disabling autoplay. That is the entire point of the crate.
 
 ## 4. Per-provider policy
 
@@ -152,7 +169,9 @@ generalize them, because they are genuinely different failures.
 | provider | discipline |
 |---|---|
 | musicatlas | local daily counter (no headers exist to read). Default budget **90** of 100, leaving headroom for manual probes. Exhaustion = skip to next recommender, not an error. |
-| ReccoBeats | reactive: honor **429 + `Retry-After`**, back off for that long, skip provider meanwhile. Limits are undisclosed so nothing can be pre-computed. |
+| YouTube's Mix | one yt-dlp run per refill, killed after **30s**. No quota. A yt-dlp that fails or prints something other than a playlist is an error for that refill, never an empty Mix. |
+| Deezer | no key. Errors arrive in **HTTP 200** bodies; the documented quota error (code 4) is a rate limit, any other error body is an error. 429 and 5xx are rate limits. |
+| ReccoBeats | *(removed in v0.12.0)* reactive: honor **429 + `Retry-After`**, back off for that long, skip provider meanwhile. Limits are undisclosed so nothing can be pre-computed. |
 | MusicBrainz | proactive: **hard 1 req/sec** throttle, plus the mandatory descriptive User-Agent. Exceeding it gets the bot's IP blocked, which is not a per-guild failure but an estate-wide one. |
 
 ## 5. Measured API contracts
@@ -178,7 +197,10 @@ source_track}`; every match carried `platform_ids.youtube`.
 body as a bad key**. An explicit UA is mandatory, or a first integration looks
 exactly like a bad credential.
 
-### 5.2 ReccoBeats
+### 5.2 ReccoBeats (removed in v0.12.0)
+
+Kept for the record. See §2: its recommendations are audio-feature neighbours
+with no listening data, measured useless on production.
 
 Base `https://api.reccobeats.com/v1`, no auth.
 
@@ -215,6 +237,64 @@ from the recommendations so a repeat seed costs one call, not two.
 Query `artist:<a> AND recording:"<t>"`; take `recordings[0]`'s `score`,
 `artist-credit[0].name` and `title` as the canonical seed.
 
+### 5.4 YouTube's Mix (v0.12.0)
+
+Every video has an auto-generated Mix playlist, `watch?v=<id>&list=RD<id>`.
+
+```
+yt-dlp --flat-playlist --no-warnings -J --playlist-items 1:<want+1> \
+  'https://www.youtube.com/watch?v=<id>&list=RD<id>'
+```
+
+Measured 2026-09-13 with yt-dlp 2026.08.19 (the production container runs the
+same version): 1-2 seconds. The output is `{"_type":"playlist", "entries":[…]}`,
+each entry `{id, title, channel, uploader, duration, url}`, and **the first
+entry is the video itself**. An unplayable id exits 1 with
+`ERROR: [youtube] <id>: This video is unavailable` on stderr and `null` on
+stdout.
+
+Results, for the fan upload "The Offspring ~ Hit That": more Offspring, then
+blink-182, Sum 41, Linkin Park, Papa Roach, System Of A Down. For Queen's
+"Bohemian Rhapsody", which ReccoBeats' title search could not even find:
+Queen, Aerosmith, Kansas.
+
+🪤 The video id reaches yt-dlp inside a URL. It is validated as exactly 11 of
+`[A-Za-z0-9_-]` first, so an `&` or `#` cannot rewrite that URL.
+
+🪤 rusty_ytdl's `VideoInfo.related_videos` is empty on the pinned fork: its
+parser no longer finds YouTube's related list, so it is not an alternative.
+
+### 5.5 Deezer (v0.12.0)
+
+Base `https://api.deezer.com`, no auth.
+
+1. `GET /search/artist?q=<artist>&limit=10` → of the entries whose `name`
+   matches the seed artist (normalized), the one with the most fans (`nb_fan`);
+   never simply the first
+
+🪤 **Many artists share a name, and the order is not popularity.** Measured:
+`q=Queen` returns four exact "Queen"s with 131, 344, 7 and 12,800,469 fans, the
+band fifth overall; `q=Genesis` returns seven, the band (1,190,757 fans) eighth.
+The first exact "Queen" has a radio of one track, and it is not Queen's.
+2. `GET /artist/<id>/radio?limit=<want+1>` → `data[]`, each
+   `{id, title, title_short, duration, artist{id,name}, …}`, no ISRC
+
+Measured for The Offspring (id 882): radio plays The Offspring, Rage Against
+the Machine, blink-182, Green Day, Foo Fighters; `related` lists Green Day,
+Sum 41, Bad Religion, blink-182, Rise Against, NOFX. `limit` is honoured
+(5, 25, 100).
+
+🪤 **Errors arrive as HTTP 200**, and `code` is not always present:
+
+| request | response |
+|---|---|
+| `artist/999999999999/radio` | `200 {"error":{"type":"DataException","message":"no data","code":800}}` |
+| `artist/0/radio` | `200 {"error":{"type":"Exception","message":"An error has occured"}}` |
+| `search/artist?q=` | `200 {"error":{"type":"ParameterException","message":"empty parameter","code":500}}` |
+| `search/artist?q=<nonsense>` | `200 {"data":[],"total":0}` |
+
+The quota error, code 4 "Quota limit exceeded", is documented but not measured.
+
 ## 6. Seed derivation
 
 Order: `AuxMetadata.artist` if present → else parse the title.
@@ -233,7 +313,7 @@ relax/study to` parsed but returned `success:false` (1 call wasted);
 `Never Gonna Give You Up` was skipped for free.
 
 MusicBrainz then scores the parsed pair. `confidence < min_seed_confidence`
-(default 80) ⇒ skip metered providers; ReccoBeats may still be tried.
+(default 80) ⇒ skip metered providers; YouTube's Mix and Deezer may still be tried.
 
 ## 7. Caching
 
@@ -298,7 +378,8 @@ Every path that stops autoplay announces, via the existing
 | seed confidence below floor | skip metered providers; try free ones |
 | musicatlas `success:false` | negative-cache; next recommender |
 | musicatlas 403 | log ERROR, disable that provider for the process, next recommender |
-| ReccoBeats 429 | honor `Retry-After`, skip provider until then |
+| Deezer 429, 5xx, or quota error (code 4) | rate limited: fall through to the next provider |
+| yt-dlp missing, failing, hung, or not a playlist | error for this refill: fall through to Deezer |
 | MusicBrainz any failure | fall back to the unverified parsed seed |
 | all recommenders exhausted | autoplay off + announce |
 | result lacks a playable form | skip it, take the next from the buffer |
@@ -307,7 +388,7 @@ Every path that stops autoplay announces, via the existing
 
 - **Per provider:** taxonomy tests against a local `TcpListener` serving canned
   bodies -- including musicatlas' **HTTP 200 + `success:false`**, which is the
-  case a status-only client gets wrong, and ReccoBeats' **429 + Retry-After**.
+  case a status-only client gets wrong, and Deezer's error bodies inside **HTTP 200**.
   Assert on **request counts**, not just returned values: a cache or budget that
   silently still calls returns the right answer.
 - **Parsing:** table-driven over §6's measured titles, including the en dash and
@@ -322,7 +403,8 @@ Every path that stops autoplay announces, via the existing
 
 1. A track ends with autoplay on and a related track plays, on TuneTitan.
 2. A second track-end in the same chain plays with **no** new API call.
-3. With musicatlas' budget forced to 0, autoplay still works via ReccoBeats.
+3. With musicatlas' budget forced to 0, autoplay still works via YouTube's Mix
+   and Deezer.
 4. A no-separator title stops autoplay with a message and spends no quota.
 5. `musicreco_cache` shows both `found=true` and `found=false` rows.
 6. MusicBrainz calls never exceed 1/sec.
