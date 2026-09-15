@@ -1,6 +1,7 @@
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::status::{
-    now_playing_pointer, pointer_goes_first, reply_privately, show_now_playing,
+    now_playing_pointer, pointer_goes_first, reply_floor, reply_privately, show_now_playing,
+    show_now_playing_after,
 };
 use crate::poise_ext::{ContextExt, PoiseContextExt};
 use crate::utils::get_track_handle_metadata;
@@ -75,14 +76,21 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
     let serenity_ctx = ctx.serenity_context();
 
     if pointer_goes_first(private, music_channel, ctx.channel_id()) {
-        ctx.send(pointer_reply(now_playing_pointer(&title, None), private))
+        let reply = ctx
+            .send(pointer_reply(now_playing_pointer(&title, None), private))
             .await?;
-        show_now_playing(
+        // 🔑 The reply's gateway echo almost never reaches the cache in the
+        // few milliseconds before the status reads it, so the reply itself is
+        // the floor: without it the status is edited in place above the "↓".
+        // This branch only runs for a visible reply (`pointer_goes_first`).
+        let after = reply_floor(&reply).await;
+        show_now_playing_after(
             &data,
             serenity_ctx.http.clone(),
             serenity_ctx.cache.clone(),
             guild_id,
             &call,
+            after,
         )
         .await;
     } else {

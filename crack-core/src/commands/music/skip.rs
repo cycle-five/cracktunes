@@ -53,18 +53,23 @@ pub async fn skip(
     // The guard is held only for the mutations above, not across the Discord
     // round trip in `create_skip_response` -- see lease.rs.
     drop(guard);
-    create_skip_response(ctx, &handler, tracks_to_skip, private).await?;
+    let reply = create_skip_response(ctx, &handler, tracks_to_skip, private).await?;
     let still_playing = handler.queue().current().is_some();
     // 🔑 Released before the status update, which takes the Call lock itself.
     drop(handler);
     if still_playing {
+        // A visible reply is the floor: its gateway echo may not have reached
+        // the cache yet, and the status must still land below it. An ephemeral
+        // reply is not a channel message and must not move the status.
+        let after = (!private).then_some((reply.channel_id, reply.id));
         let serenity_ctx = ctx.serenity_context();
-        crate::messaging::status::show_now_playing(
+        crate::messaging::status::show_now_playing_after(
             &ctx.data(),
             serenity_ctx.http.clone(),
             serenity_ctx.cache.clone(),
             guild_id,
             &call,
+            after,
         )
         .await;
     }

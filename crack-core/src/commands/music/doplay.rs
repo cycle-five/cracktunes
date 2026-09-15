@@ -551,6 +551,7 @@ pub async fn play_internal(
     // after the queue embed rather than instead of it: the recovered tracks are
     // already queued and playing, and this is the footnote. Silent when the
     // listing was whole, which is the overwhelming majority of the time.
+    let mut footnote = None;
     if let Some(short) = shortfall {
         tracing::warn!(
             "spotify: partial listing served -- {} of {} seen, {} missing",
@@ -573,19 +574,29 @@ pub async fn play_internal(
             .with_embed(embed)
             .with_reply(true)
             .with_ephemeral(private);
-        ctx.send_message(params).await?;
+        footnote = Some(ctx.send_message(params).await?);
     }
 
     // A `/play` that started a song is a now-playing moment. The status follows
     // the reply, so a visible reply ends up directly above it.
     if crate::messaging::status::play_started_song(was_empty, queue.len()) {
+        // The floor is the newest visible reply -- the footnote if one was
+        // sent, else the search reply edited into the result -- because its
+        // gateway echo may not have reached the cache yet. An ephemeral reply
+        // is not a channel message and must not move the status.
+        let after = if private {
+            None
+        } else {
+            crate::messaging::status::reply_floor(footnote.as_ref().unwrap_or(&search_msg)).await
+        };
         let serenity_ctx = ctx.serenity_context();
-        crate::messaging::status::show_now_playing(
+        crate::messaging::status::show_now_playing_after(
             &ctx.data(),
             serenity_ctx.http.clone(),
             serenity_ctx.cache.clone(),
             guild_id,
             &call,
+            after,
         )
         .await;
     }

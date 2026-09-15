@@ -74,6 +74,22 @@ pub fn placement(
     }
 }
 
+/// The newest message id known in `target`: the cache's, or a reply the caller just posted
+/// there and whose gateway echo may not have arrived yet. A reply in another channel says
+/// nothing about `target`.
+pub fn newest_known(
+    cached: Option<MessageId>,
+    after: Option<(GenericChannelId, MessageId)>,
+    target: GenericChannelId,
+) -> Option<MessageId> {
+    // `None < Some`, so the max keeps whichever is known, and the newest.
+    cached.max(
+        after
+            .filter(|(channel, _)| *channel == target)
+            .map(|(_, id)| id),
+    )
+}
+
 /// Whether a Finished update has anything to change: a status must be on
 /// screen and still say something is playing. Nothing tracked (a failed
 /// join, a kick before anything played) or already Finished (the second of
@@ -142,8 +158,23 @@ pub async fn apply(
     embed: CreateEmbed<'static>,
     phase: Phase,
 ) -> Option<StatusMessage> {
+    apply_after(transport, slot, guild, target, embed, phase, None).await
+}
+
+/// [`apply`], knowing that `after` -- a visible reply the caller just posted,
+/// as `(channel, id)` -- is in the channel even if the cache has not heard of
+/// it yet (see [`newest_known`]).
+pub async fn apply_after(
+    transport: &dyn StatusTransport,
+    slot: &mut StatusSlot,
+    guild: GuildId,
+    target: GenericChannelId,
+    embed: CreateEmbed<'static>,
+    phase: Phase,
+    after: Option<(GenericChannelId, MessageId)>,
+) -> Option<StatusMessage> {
     let current = slot.message;
-    let last = transport.last_message_id(guild, target);
+    let last = newest_known(transport.last_message_id(guild, target), after, target);
     match (placement(current.as_ref(), target, last), current) {
         (Placement::Edit, Some(current)) => {
             match transport
@@ -276,6 +307,19 @@ pub async fn update(
     embed: CreateEmbed<'static>,
     phase: Phase,
 ) -> Option<StatusMessage> {
+    update_after(data, transport, guild, embed, phase, None).await
+}
+
+/// [`update`], with the visible reply the caller just posted as the floor for
+/// "has anything been posted since?" (see [`apply_after`]).
+pub async fn update_after(
+    data: &Data,
+    transport: &dyn StatusTransport,
+    guild: GuildId,
+    embed: CreateEmbed<'static>,
+    phase: Phase,
+    after: Option<(GenericChannelId, MessageId)>,
+) -> Option<StatusMessage> {
     let music = data.get_music_channel(guild).await;
     let slot = data.status_slot(guild);
     let mut slot = slot.lock().await;
@@ -284,7 +328,7 @@ pub async fn update(
     }
     let tracked = slot.message.map(|status| status.channel);
     let target = target_channel(music, slot.last_command_channel, tracked)?;
-    apply(transport, &mut slot, guild, target, embed, phase).await
+    apply_after(transport, &mut slot, guild, target, embed, phase, after).await
 }
 
 /// Show what is playing now.
@@ -298,20 +342,53 @@ pub async fn show_now_playing(
     guild: GuildId,
     call: &Arc<Mutex<Call>>,
 ) -> Option<StatusMessage> {
+    show_now_playing_after(data, http, cache, guild, call, None).await
+}
+
+/// [`show_now_playing`] below a visible reply the caller just posted, as
+/// `(channel, id)`. The reply's gateway echo usually lands after this reads
+/// the cache; without the floor the status would be edited in place *above*
+/// it. Pass `None` for an ephemeral reply: it is not a channel message.
+///
+/// 🔑 The same lock order as [`show_now_playing`]: hold no Call lock.
+pub async fn show_now_playing_after(
+    data: &Data,
+    http: Arc<Http>,
+    cache: Arc<Cache>,
+    guild: GuildId,
+    call: &Arc<Mutex<Call>>,
+    after: Option<(GenericChannelId, MessageId)>,
+) -> Option<StatusMessage> {
     // A `/gp` round is guessing the song: the status would give it away.
     if data.gp_is_active(guild) {
         return None;
     }
     let track = call.lock().await.queue().current()?;
     let embed: CreateEmbed<'static> = create_now_playing_embed(track).await;
-    update(
+    update_after(
         data,
         &DiscordTransport { http, cache },
         guild,
         embed,
         Phase::Playing,
+        after,
     )
     .await
+}
+
+/// Where a reply the caller just posted landed, as the `after` floor for
+/// [`show_now_playing_after`]. Only for a *visible* reply. None, with a
+/// warning, when poise cannot produce the message (a slash command's initial
+/// response is fetched over HTTP); the status then falls back to the cache.
+#[cfg(not(tarpaulin_include))]
+pub async fn reply_floor(reply: &poise::ReplyHandle<'_>) -> Option<(GenericChannelId, MessageId)> {
+    match reply.message().await {
+        Ok(message) => Some((message.channel_id, message.id)),
+        Err(err) => {
+            tracing::warn!("status: could not read the reply to place the status below it: {err}");
+            None
+        },
+    }
 }
 
 /// Show that playback finished. The message stays tracked, so the next
@@ -537,6 +614,57 @@ mod tests {
         assert_eq!(placement(Some(&current), ch(5), None), Placement::Replace);
     }
 
+    // ---- newest_known ----
+
+    fn reply(channel: u64, id: u64) -> Option<(GenericChannelId, MessageId)> {
+        Some((ch(channel), MessageId::new(id)))
+    }
+
+    #[test]
+    fn with_no_reply_the_cache_is_the_newest_known() {
+        assert_eq!(
+            newest_known(Some(MessageId::new(100)), None, ch(5)),
+            Some(MessageId::new(100))
+        );
+        assert_eq!(newest_known(None, None, ch(5)), None);
+    }
+
+    /// The reply's gateway echo has not arrived, and the channel is not even
+    /// cached: the reply is still known to be there.
+    #[test]
+    fn a_reply_in_the_target_is_known_before_the_cache_hears_of_it() {
+        assert_eq!(
+            newest_known(None, reply(5, 101), ch(5)),
+            Some(MessageId::new(101))
+        );
+    }
+
+    #[test]
+    fn a_reply_in_another_channel_says_nothing_about_the_target() {
+        assert_eq!(
+            newest_known(Some(MessageId::new(100)), reply(6, 101), ch(5)),
+            Some(MessageId::new(100))
+        );
+        assert_eq!(newest_known(None, reply(6, 101), ch(5)), None);
+    }
+
+    #[test]
+    fn a_reply_newer_than_the_cache_wins() {
+        assert_eq!(
+            newest_known(Some(MessageId::new(100)), reply(5, 101), ch(5)),
+            Some(MessageId::new(101))
+        );
+    }
+
+    /// Someone chatted after the reply, and the cache has already heard.
+    #[test]
+    fn a_cache_newer_than_the_reply_wins() {
+        assert_eq!(
+            newest_known(Some(MessageId::new(102)), reply(5, 101), ch(5)),
+            Some(MessageId::new(102))
+        );
+    }
+
     // ---- finish_needed ----
 
     #[test]
@@ -707,6 +835,55 @@ mod tests {
         assert_eq!(shown, Some(tracked(6, 1000, Phase::Playing)));
     }
 
+    /// 🔑 The command's visible reply (101) is below the status, but its
+    /// gateway echo has not reached the cache, which still says 100. Editing
+    /// in place would leave the status above the reply.
+    #[tokio::test]
+    async fn a_reply_not_yet_echoed_still_moves_the_status_below_it() {
+        let fake = Fake::default().with_last(100);
+        let mut slot = StatusSlot {
+            message: Some(tracked(5, 100, Phase::Playing)),
+            ..Default::default()
+        };
+
+        let shown = apply_after(
+            &fake,
+            &mut slot,
+            GUILD,
+            ch(5),
+            embed(),
+            Phase::Playing,
+            reply(5, 101),
+        )
+        .await;
+
+        assert_eq!(fake.ops(), vec![Op::Delete(5, 100), Op::Send(5)]);
+        assert_eq!(shown, Some(tracked(5, 1000, Phase::Playing)));
+    }
+
+    #[tokio::test]
+    async fn a_reply_in_another_channel_does_not_move_the_status() {
+        let fake = Fake::default().with_last(100);
+        let mut slot = StatusSlot {
+            message: Some(tracked(5, 100, Phase::Playing)),
+            ..Default::default()
+        };
+
+        let shown = apply_after(
+            &fake,
+            &mut slot,
+            GUILD,
+            ch(5),
+            embed(),
+            Phase::Playing,
+            reply(6, 101),
+        )
+        .await;
+
+        assert_eq!(fake.ops(), vec![Op::Edit(5, 100)]);
+        assert_eq!(shown, Some(tracked(5, 100, Phase::Playing)));
+    }
+
     // ---- per-guild slot ----
 
     #[tokio::test]
@@ -811,6 +988,26 @@ mod tests {
 
         assert_eq!(fake.ops(), vec![Op::Send(5), Op::Edit(5, 1000)]);
         assert_eq!(shown, Some(tracked(5, 1000, Phase::Finished)));
+    }
+
+    /// The floor has to survive the trip through channel resolution: a
+    /// command's reply (1001) not yet in the cache (still 1000) moves the
+    /// status below it.
+    #[tokio::test]
+    async fn update_carries_the_reply_floor_to_the_placement() {
+        let data = crate::Data::default();
+        note_command_channel(&data, GUILD, ch(5)).await;
+        let fake = Fake::default().with_last(1000);
+        update(&data, &fake, GUILD, embed(), Phase::Playing).await;
+
+        let shown =
+            update_after(&data, &fake, GUILD, embed(), Phase::Playing, reply(5, 1001)).await;
+
+        assert_eq!(
+            fake.ops(),
+            vec![Op::Send(5), Op::Delete(5, 1000), Op::Send(5)]
+        );
+        assert_eq!(shown, Some(tracked(5, 1001, Phase::Playing)));
     }
 
     // ---- reply rules ----
