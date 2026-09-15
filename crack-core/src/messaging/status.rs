@@ -358,6 +358,13 @@ pub fn reply_privately(setting: bool, is_prefix: bool) -> bool {
     setting && !is_prefix
 }
 
+/// Whether a `/play` started playback: the queue was empty before it and
+/// holds something now. A playlist into an idle bot counts; adding to a
+/// queue that was already playing does not.
+pub fn play_started_song(was_empty: bool, queued_now: usize) -> bool {
+    was_empty && queued_now > 0
+}
+
 /// Whether `/nowplaying` replies before updating the status. Only a visible
 /// reply in the channel the status will land in goes first; everywhere else
 /// the status is updated first so the reply can link to it.
@@ -825,6 +832,15 @@ mod tests {
         assert!(pointer_goes_first(false, Some(ch(5)), ch(5)));
         assert!(!pointer_goes_first(false, Some(ch(7)), ch(5)));
         assert!(!pointer_goes_first(true, None, ch(5)));
+    }
+
+    #[test]
+    fn a_play_into_an_empty_queue_starts_a_song() {
+        assert!(play_started_song(true, 1));
+        assert!(play_started_song(true, 12));
+        assert!(!play_started_song(true, 0));
+        assert!(!play_started_song(false, 2));
+        assert!(!play_started_song(false, 1));
     }
 
     #[test]
