@@ -2,10 +2,19 @@
 //! still the newest message in its channel and moved to the bottom otherwise.
 //! Spec: docs/superpowers/specs/2026-09-15-floating-status-message-design.md
 
+use crate::guild::operations::GuildSettingsOperations;
 use crate::http_utils::is_unknown_message;
-use serenity::all::{CreateEmbed, GenericChannelId, GuildId, MessageId};
+use crate::messaging::interface::create_now_playing_embed;
+use crate::messaging::messages::{
+    NOW_PLAYING_POINTER, STATUS_FINISHED_DESCRIPTION, STATUS_FINISHED_TITLE,
+};
+use crate::Data;
+use serenity::all::{Cache, CreateEmbed, GenericChannelId, GuildId, Http, MessageId, MessageLink};
 use serenity::async_trait;
+use serenity::builder::{CreateMessage, EditMessage};
+use songbird::Call;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 /// Whether the status says something is playing or that playback finished.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -192,6 +201,161 @@ impl crate::Data {
             .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(StatusSlot::default())))
             .clone()
     }
+}
+
+/// The real Discord behind [`StatusTransport`].
+pub struct DiscordTransport {
+    pub http: Arc<Http>,
+    pub cache: Arc<Cache>,
+}
+
+#[async_trait]
+impl StatusTransport for DiscordTransport {
+    async fn send(
+        &self,
+        channel: GenericChannelId,
+        embed: CreateEmbed<'static>,
+    ) -> Result<MessageId, TransportError> {
+        Ok(channel
+            .send_message(&self.http, CreateMessage::new().embed(embed))
+            .await?
+            .id)
+    }
+
+    async fn edit(
+        &self,
+        channel: GenericChannelId,
+        id: MessageId,
+        embed: CreateEmbed<'static>,
+    ) -> Result<(), TransportError> {
+        channel
+            .edit_message(&self.http, id, EditMessage::new().embed(embed))
+            .await?;
+        Ok(())
+    }
+
+    async fn delete(&self, channel: GenericChannelId, id: MessageId) -> Result<(), TransportError> {
+        Ok(channel.delete_message(&self.http, id, None).await?)
+    }
+
+    /// serenity sets `last_message_id` on every message-create for guild
+    /// channels and threads (`cache/event.rs`). None when the guild or channel
+    /// is not cached, which `placement` treats as "moved".
+    fn last_message_id(&self, guild: GuildId, channel: GenericChannelId) -> Option<MessageId> {
+        let guild = self.cache.guild(guild)?;
+        let (channel_id, thread_id) = channel.split();
+        match guild.channels.get(&channel_id) {
+            Some(guild_channel) => guild_channel.base.last_message_id,
+            None => guild
+                .threads
+                .get(&thread_id)
+                .and_then(|thread| thread.base.last_message_id),
+        }
+    }
+}
+
+/// Remember where the guild's latest music command was run.
+pub async fn note_command_channel(data: &Data, guild: GuildId, channel: GenericChannelId) {
+    data.status_slot(guild).lock().await.last_command_channel = Some(channel);
+}
+
+/// Resolve the target channel and apply the update, under the guild's slot
+/// lock so a `/skip` cannot race a track end.
+pub async fn update(
+    data: &Data,
+    transport: &dyn StatusTransport,
+    guild: GuildId,
+    embed: CreateEmbed<'static>,
+    phase: Phase,
+) -> Option<StatusMessage> {
+    let music = data.get_music_channel(guild).await;
+    let slot = data.status_slot(guild);
+    let mut slot = slot.lock().await;
+    let tracked = slot.message.map(|status| status.channel);
+    let target = target_channel(music, slot.last_command_channel, tracked)?;
+    apply(transport, &mut slot, guild, target, embed, phase).await
+}
+
+/// Show what is playing now.
+///
+/// 🔑 Lock order: the Call lock is taken and released here, before the slot
+/// lock in [`update`]. Callers must not hold a Call lock themselves.
+pub async fn show_now_playing(
+    data: &Data,
+    http: Arc<Http>,
+    cache: Arc<Cache>,
+    guild: GuildId,
+    call: &Arc<Mutex<Call>>,
+) -> Option<StatusMessage> {
+    // A `/gp` round is guessing the song: the status would give it away.
+    if data.gp_is_active(guild) {
+        return None;
+    }
+    let track = call.lock().await.queue().current()?;
+    let embed: CreateEmbed<'static> = create_now_playing_embed(track).await;
+    update(
+        data,
+        &DiscordTransport { http, cache },
+        guild,
+        embed,
+        Phase::Playing,
+    )
+    .await
+}
+
+/// Show that playback finished. The message stays tracked, so the next
+/// now-playing moment continues it.
+pub async fn show_finished(
+    data: &Data,
+    http: Arc<Http>,
+    cache: Arc<Cache>,
+    guild: GuildId,
+) -> Option<StatusMessage> {
+    if data.gp_is_active(guild) {
+        return None;
+    }
+    update(
+        data,
+        &DiscordTransport { http, cache },
+        guild,
+        finished_embed(),
+        Phase::Finished,
+    )
+    .await
+}
+
+/// The "Finished" status.
+pub fn finished_embed() -> CreateEmbed<'static> {
+    CreateEmbed::new()
+        .title(STATUS_FINISHED_TITLE)
+        .description(STATUS_FINISHED_DESCRIPTION)
+}
+
+/// `/nowplaying`'s one-line reply: a jump link when the status exists
+/// elsewhere, or an arrow when it is about to land directly below.
+pub fn now_playing_pointer(title: &str, link: Option<MessageLink>) -> String {
+    match link {
+        Some(link) => format!("{NOW_PLAYING_POINTER} **{title}** — {link}"),
+        None => format!("{NOW_PLAYING_POINTER} **{title}** ↓"),
+    }
+}
+
+/// Whether a status-related command replies ephemerally: the guild's
+/// `ephemeral_replies` setting, and only for slash commands -- a prefix
+/// command's reply cannot be ephemeral.
+pub fn reply_privately(setting: bool, is_prefix: bool) -> bool {
+    setting && !is_prefix
+}
+
+/// Whether `/nowplaying` replies before updating the status. Only a visible
+/// reply in the channel the status will land in goes first; everywhere else
+/// the status is updated first so the reply can link to it.
+pub fn pointer_goes_first(
+    private: bool,
+    music: Option<GenericChannelId>,
+    command_channel: GenericChannelId,
+) -> bool {
+    !private && music.is_none_or(|music| music == command_channel)
 }
 
 #[cfg(test)]
@@ -534,6 +698,100 @@ mod tests {
                 .await
                 .last_command_channel,
             None
+        );
+    }
+
+    // ---- update: channel resolution under the slot lock ----
+
+    #[tokio::test]
+    async fn with_nowhere_to_post_nothing_is_posted() {
+        let data = crate::Data::default();
+        let fake = Fake::default();
+
+        assert_eq!(
+            update(&data, &fake, GUILD, embed(), Phase::Playing).await,
+            None
+        );
+        assert!(fake.ops().is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_music_channel_beats_the_last_command_channel() {
+        let data = crate::Data::default();
+        let mut settings = crate::guild::settings::GuildSettings::new(GUILD, None, None);
+        settings.set_music_channel(7);
+        data.guild_settings_map
+            .write()
+            .await
+            .insert(GUILD, settings);
+        note_command_channel(&data, GUILD, ch(5)).await;
+        let fake = Fake::default();
+
+        update(&data, &fake, GUILD, embed(), Phase::Playing).await;
+
+        assert_eq!(fake.ops(), vec![Op::Send(7)]);
+    }
+
+    #[tokio::test]
+    async fn without_a_music_channel_the_last_command_channel_is_used() {
+        let data = crate::Data::default();
+        note_command_channel(&data, GUILD, ch(5)).await;
+        let fake = Fake::default();
+
+        update(&data, &fake, GUILD, embed(), Phase::Playing).await;
+
+        assert_eq!(fake.ops(), vec![Op::Send(5)]);
+    }
+
+    #[tokio::test]
+    async fn a_command_in_another_channel_moves_the_status_there() {
+        let data = crate::Data::default();
+        note_command_channel(&data, GUILD, ch(5)).await;
+        let fake = Fake::default().with_last(1000);
+        update(&data, &fake, GUILD, embed(), Phase::Playing).await;
+
+        note_command_channel(&data, GUILD, ch(6)).await;
+        let shown = update(&data, &fake, GUILD, embed(), Phase::Playing).await;
+
+        assert_eq!(
+            fake.ops(),
+            vec![Op::Send(5), Op::Delete(5, 1000), Op::Send(6)]
+        );
+        assert_eq!(shown, Some(tracked(6, 1001, Phase::Playing)));
+    }
+
+    // ---- reply rules ----
+
+    #[test]
+    fn replies_are_private_only_for_slash_commands_with_the_setting_on() {
+        assert!(reply_privately(true, false));
+        assert!(!reply_privately(true, true));
+        assert!(!reply_privately(false, false));
+        assert!(!reply_privately(false, true));
+    }
+
+    /// A visible `/nowplaying` reply goes first only when the status will land
+    /// directly below it -- in the command's own channel. Otherwise the status
+    /// is updated first so the reply can link to it.
+    #[test]
+    fn a_visible_pointer_goes_first_only_when_the_status_lands_below_it() {
+        assert!(pointer_goes_first(false, None, ch(5)));
+        assert!(pointer_goes_first(false, Some(ch(5)), ch(5)));
+        assert!(!pointer_goes_first(false, Some(ch(7)), ch(5)));
+        assert!(!pointer_goes_first(true, None, ch(5)));
+    }
+
+    #[test]
+    fn the_pointer_links_to_the_status_when_it_can() {
+        let link = MessageId::new(100).link(ch(5), Some(GUILD));
+
+        assert_eq!(
+            now_playing_pointer("Hit That", Some(link)),
+            "🔊 Now playing: **Hit That** — https://discord.com/channels/1/5/100"
+        );
+        assert_eq!(
+            now_playing_pointer("Hit That", None),
+            "🔊 Now playing: **Hit That** ↓"
         );
     }
 }
