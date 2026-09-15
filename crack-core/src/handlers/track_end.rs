@@ -254,7 +254,7 @@ impl EventHandler for TrackEndHandler {
             self.data.set_autoplay(self.guild_id, false).await;
             tracing::warn!("autoplay disabled for {}: no recommendation", self.guild_id);
             announce_autoplay_off(channel, self.http.clone(), self.data.musicreco.is_some()).await;
-            self.show_finished().await;
+            self.show_finished_unless_playing().await;
             return None;
         };
         tracing::debug!(
@@ -275,7 +275,7 @@ impl EventHandler for TrackEndHandler {
                 tracing::warn!("autoplay disabled for {}: {}", self.guild_id, e);
                 announce_autoplay_off(channel, self.http.clone(), self.data.musicreco.is_some())
                     .await;
-                self.show_finished().await;
+                self.show_finished_unless_playing().await;
             },
         }
         None
@@ -304,6 +304,20 @@ impl TrackEndHandler {
             self.guild_id,
         )
         .await;
+    }
+
+    /// The status says playback finished -- unless something plays after all.
+    /// A recommendation and its queueing take seconds of network time; a
+    /// `/play` in that window starts a track and shows it, and a late autoplay
+    /// failure must not then call it "Finished" while music plays.
+    ///
+    /// 🔑 The Call guard is a temporary, released at the end of the `let`,
+    /// before `show_finished` takes the slot lock.
+    async fn show_finished_unless_playing(&self) {
+        let nothing_current = self.call.lock().await.queue().current().is_none();
+        if nothing_current {
+            self.show_finished().await;
+        }
     }
 
     /// The guild's next recommendation: the front of its buffer, or a refill
