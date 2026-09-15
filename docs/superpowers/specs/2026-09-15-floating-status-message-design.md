@@ -280,12 +280,12 @@ column with a default. No new environment variables.
 
 - **Production (`bots`):** the pinned `cracktunes-migrate` one-shot applies it
   before the bot starts, once the homelab pins move to v0.13.0.
-- **TuneTitan:** has no migrate step — the bot never runs migrations. The
-  migration is applied by hand over the ssh tunnel described in
-  `homelab/tunetitan/docker-compose.yml` **before** any image that reads the
-  column is deployed; otherwise every guild's settings load fails on the
-  missing column. v0.12.1 keeps working against the migrated database (the
-  column is last and defaulted), so rolling TuneTitan back is safe.
+- **TuneTitan:** its `migrate` one-shot (homelab#81, the same service `bots/`
+  runs) applies it before the bot starts. A branch image is tried by
+  overriding both `TUNETITAN_CRACKTUNES_IMAGE` and
+  `TUNETITAN_CRACKTUNES_MIGRATE_IMAGE`; `verify` fails if their revisions
+  differ. v0.12.1 keeps working against the migrated database (the column is
+  last and defaulted), so rolling TuneTitan back is safe.
 
 ## Out of scope / follow-ups
 
