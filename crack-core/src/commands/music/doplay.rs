@@ -472,11 +472,6 @@ pub async fn play_internal(
 
     let call = get_call_or_join_author(ctx).await?;
 
-    // Read before anything below enqueues into it, so a playlist (or any
-    // multi-track result) landing in an idle bot is still recognized as
-    // having started a song -- not just a `/play` that queued exactly one.
-    let was_empty = call.lock().await.queue().is_empty();
-
     let _after_call = std::time::Instant::now();
 
     // `ephemeral_replies` decides whether this reply -- and the edit that turns
@@ -508,6 +503,14 @@ pub async fn play_internal(
     tracing::warn!("query_type: {:?}", query_type);
 
     let _after_query_type = std::time::Instant::now();
+
+    // Read before anything below enqueues into it, so a playlist (or any
+    // multi-track result) landing in an idle bot is still recognized as
+    // having started a song -- not just a `/play` that queued exactly one.
+    // And no earlier: resolving the query above takes seconds, and a track
+    // that ended in that window would leave the new song under "Finished".
+    // 🔑 The Call guard is a temporary, released at the end of the statement.
+    let was_empty = call.lock().await.queue().is_empty();
 
     // FIXME: Super hacky, fix this shit.
     // This is actually where the track gets queued into the internal queue, it's the main work function.
