@@ -160,8 +160,13 @@ the track-end event its queue stop fires both land on Finished).
   (binds 127.0.0.1:5432, held by runecast-staging; `restart: always`; carries a
   Grafana agent with production settings). No other local database is touched.
 - `GuildSettingsOperations::get_ephemeral_replies(guild)`.
-- `/toggle ephemeral` — `toggle/toggle_ephemeral.rs`, admin-only, the
-  `toggle_autopause` shape: `ensure_settings_loaded`, flip, `save`.
+- `/settings toggle ephemeral` — `settings/toggle/toggle_ephemeral.rs`,
+  admin-only, the `toggle_autopause` shape: `ensure_settings_loaded`, flip,
+  `save`. Registered in `toggle/mod.rs` (its `subcommands(...)` list and
+  `commands()`), the only place toggles are registered.
+- The migration goes into **both** `migrations/` and
+  `crack-core/test_migrations/` (the latter mirrors the former, plus a test
+  seed, and is what `#[sqlx::test(migrator = "MIGRATOR")]` applies).
 - `fn reply_privately(setting: bool, is_prefix: bool) -> bool` — pure.
 
 ## Triggers
@@ -205,8 +210,11 @@ behaviour; only the now-playing and finished posts move to the status module.
 - **Edit → UnknownMessage** (deleted by hand or `/clean`): send a new one.
 - **Delete of the old one fails:** UnknownMessage is ignored; any other error is
   logged at `warn!` and the new one is still sent.
-- **Send fails** (e.g. no Send Messages / Embed Links): `warn!`, clear
-  `message`, keep the phase. No retry loop; playback never depends on it.
+- **Edit fails with anything else** (e.g. missing permissions): `warn!` and
+  clear the tracked message; the next update sends a fresh one.
+- **Send fails** (e.g. no Send Messages / Embed Links): `warn!` and clear the
+  tracked message (the phase lives on the message, so it goes with it). No
+  retry loop; playback never depends on it.
 - **Channel not cached:** treated as moved.
 
 ## Concurrency
@@ -242,16 +250,19 @@ guards, watch it fail, restore by checksum).
 - `target_channel` — precedence music > last command > tracked > none.
 - Executor over a fake `StatusTransport`: first send records the slot; edit in
   place; edit UnknownMessage → send; Replace deletes old then sends to the new
-  channel; delete `Other` still sends; send failure clears `message` and keeps
-  the phase; Finished sets the phase and keeps tracking; a later Playing update
-  continues the same message.
+  channel; delete `Other` still sends; a send failure, and an edit failure other
+  than UnknownMessage, clear the tracked message; Finished sets the phase and
+  keeps tracking; a later Playing update continues the same message.
 - `track_end_status` — gp guard, next/none × autoplay on/off.
 - `reply_privately` — setting × prefix.
 - `now_playing_pointer` — title and link.
 - Settings — default off; `From<GuildSettingsRead>` carries the column; toggle
   flips.
-- `PlaylistQueued` — a two-track offline queue through `build_play_embed` with a
-  `KeywordList` query shows `PLAY_PLAYLIST`, not `PlaylistQueued`.
+- `PlaylistQueued` — the playlist arm's embed, extracted as
+  `playlist_queued_embed()`, serializes with `PLAY_PLAYLIST` and without
+  `PlaylistQueued`. (Not through `build_play_embed` with an offline queue: its
+  multi-track branch estimates play time with songbird's `get_info`, which
+  never answers without a voice connection.)
 - Gate: `cargo fmt --check`, `cargo clippy --workspace --all-targets --locked
   -- -D warnings`, `SQLX_OFFLINE=true cargo test --workspace`.
 
@@ -264,9 +275,17 @@ it; a command from a second channel; a `/gp` round showing no status.
 
 ## Rollout
 
-Feature → minor bump, all ten members 0.12.1 → 0.13.0. Migration adds a column
-with a default, so the `cracktunes-migrate` one-shot applies it before the bot
-starts on both stacks. No new environment variables.
+Feature → minor bump, all ten members 0.12.1 → 0.13.0. The migration adds a
+column with a default. No new environment variables.
+
+- **Production (`bots`):** the pinned `cracktunes-migrate` one-shot applies it
+  before the bot starts, once the homelab pins move to v0.13.0.
+- **TuneTitan:** has no migrate step — the bot never runs migrations. The
+  migration is applied by hand over the ssh tunnel described in
+  `homelab/tunetitan/docker-compose.yml` **before** any image that reads the
+  column is deployed; otherwise every guild's settings load fails on the
+  missing column. v0.12.1 keeps working against the migrated database (the
+  column is last and defaulted), so rolling TuneTitan back is safe.
 
 ## Out of scope / follow-ups
 
