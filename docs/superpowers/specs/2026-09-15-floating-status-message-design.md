@@ -172,10 +172,17 @@ queue stop fires, or `/leave`'s two — is a no-op.
   (binds 127.0.0.1:5432, held by runecast-staging; `restart: always`; carries a
   Grafana agent with production settings). No other local database is touched.
 - `GuildSettingsOperations::get_ephemeral_replies(guild)`.
-- `/settings toggle ephemeral` — `settings/toggle/toggle_ephemeral.rs`,
-  admin-only, the `toggle_autopause` shape: `ensure_settings_loaded`, flip,
-  `save`. Registered in `toggle/mod.rs` (its `subcommands(...)` list and
-  `commands()`), the only place toggles are registered.
+- `/ephemeral`: `commands/music/ephemeral.rs`, a top-level slash command
+  shaped like `/autopause`. It is guild-only, admin-only (both
+  `required_permissions` and `default_member_permissions`), and registered in
+  `music_commands()`. It calls
+  `GuildSettingsOperations::toggle_ephemeral_replies`, which runs
+  `ensure_settings_loaded`, flips the setting, and then `save`s it.
+  - 🪤 It was first planned as `/settings toggle ephemeral`. But the whole
+    `commands/settings` module has been compiled out since v0.4.0 (#534), so
+    that file was never built or registered.
+  - A test pins `/ephemeral` into `commands_to_register()`, the set Discord is
+    actually given.
 - The migration goes into **both** `migrations/` and
   `crack-core/test_migrations/` (the latter mirrors the former, plus a test
   seed, and is what `#[sqlx::test(migrator = "MIGRATOR")]` applies).

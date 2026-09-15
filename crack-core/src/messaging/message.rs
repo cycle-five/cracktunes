@@ -284,6 +284,8 @@ pub enum CrackedMessage {
     GpVoteFullCarried,
     GpVoteFullPassed,
     GpVoteFullAlready,
+    EphemeralRepliesOn,
+    EphemeralRepliesOff,
 }
 
 impl CrackedMessage {
@@ -608,6 +610,12 @@ impl Display for CrackedMessage {
             Self::GpVoteFullCarried => f.write_str(GP_VOTEFULL_CARRIED),
             Self::GpVoteFullPassed => f.write_str(GP_VOTEFULL_PASSED),
             Self::GpVoteFullAlready => f.write_str(GP_VOTEFULL_ALREADY),
+            Self::EphemeralRepliesOn => {
+                f.write_str(crate::messaging::messages::EPHEMERAL_REPLIES_ON)
+            },
+            Self::EphemeralRepliesOff => {
+                f.write_str(crate::messaging::messages::EPHEMERAL_REPLIES_OFF)
+            },
         }
     }
 }
@@ -723,6 +731,20 @@ impl From<CrackedMessage> for crate::CrackedHowResult<CrackedMessage> {
 mod test {
     use super::CrackedMessage;
     use poise::serenity_prelude as serenity;
+
+    #[test]
+    fn ephemeral_replies_messages_say_what_changed() {
+        use crate::messaging::messages::{EPHEMERAL_REPLIES_OFF, EPHEMERAL_REPLIES_ON};
+
+        assert_eq!(
+            CrackedMessage::EphemeralRepliesOn.to_string(),
+            EPHEMERAL_REPLIES_ON
+        );
+        assert_eq!(
+            CrackedMessage::EphemeralRepliesOff.to_string(),
+            EPHEMERAL_REPLIES_OFF
+        );
+    }
 
     #[test]
     fn test_discriminant() {

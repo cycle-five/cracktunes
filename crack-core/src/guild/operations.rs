@@ -62,6 +62,10 @@ pub trait GuildSettingsOperations {
     fn set_reply_with_embed(&self, guild_id: GuildId, as_embed: bool)
         -> impl Future<Output = bool>;
     fn get_ephemeral_replies(&self, guild_id: GuildId) -> impl Future<Output = bool>;
+    fn toggle_ephemeral_replies(
+        &self,
+        guild_id: GuildId,
+    ) -> impl Future<Output = Result<bool, CrackedError>>;
 }
 
 /// Implementation of the guild settings operations.
@@ -440,6 +444,35 @@ impl GuildSettingsOperations for Data {
             .get(&guild_id)
             .is_some_and(|settings| settings.ephemeral_replies)
     }
+
+    /// Flip whether /play, /skip and /nowplaying reply ephemerally, save it, and
+    /// return the new value.
+    ///
+    /// 🔑 The stored row is loaded before mutating: a guild whose boot load
+    /// failed holds defaults, and `save()` is a full-row upsert that would write
+    /// them over it. Without a database pool the flip is in memory only.
+    async fn toggle_ephemeral_replies(&self, guild_id: GuildId) -> Result<bool, CrackedError> {
+        self.ensure_settings_loaded(guild_id).await?;
+        let settings = self
+            .guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|settings| {
+                settings.toggle_ephemeral_replies();
+            })
+            .or_insert_with(|| {
+                let mut settings =
+                    GuildSettings::new(guild_id, Some(&self.bot_settings.get_prefix()), None);
+                settings.toggle_ephemeral_replies();
+                settings
+            })
+            .clone();
+        if let Some(pool) = self.database_pool.as_ref() {
+            settings.save(pool).await?;
+        }
+        Ok(settings.ephemeral_replies)
+    }
 }
 
 /// Get all guilds the bot is in (that are cached).
@@ -534,6 +567,37 @@ mod test {
                 ..Default::default()
             })
         );
+    }
+
+    /// `/ephemeral` flips the saved setting and answers with the new value. A
+    /// test has no database pool, so the load-before-write and the save are
+    /// skipped; the flip, and the guild it lands on, are what this pins.
+    #[tokio::test]
+    async fn toggling_ephemeral_replies_flips_it_and_reports_the_new_value() {
+        let data = crate::Data::default();
+        let guild_id = GuildId::new(123);
+
+        assert!(data
+            .toggle_ephemeral_replies(guild_id)
+            .await
+            .expect("no pool, nothing to fail"));
+        assert!(data.get_ephemeral_replies(guild_id).await);
+
+        assert!(!data
+            .toggle_ephemeral_replies(guild_id)
+            .await
+            .expect("no pool, nothing to fail"));
+        assert!(!data.get_ephemeral_replies(guild_id).await);
+
+        // Settings created by the toggle belong to this guild, not a default
+        // guild 0 that a save would write as its own row.
+        let stored = data
+            .guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .map(|settings| settings.guild_id);
+        assert_eq!(stored, Some(guild_id));
     }
 
     #[tokio::test]
