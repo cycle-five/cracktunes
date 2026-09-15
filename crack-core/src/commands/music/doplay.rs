@@ -467,6 +467,11 @@ pub async fn play_internal(
 
     let call = get_call_or_join_author(ctx).await?;
 
+    // Read before anything below enqueues into it, so a playlist (or any
+    // multi-track result) landing in an idle bot is still recognized as
+    // having started a song -- not just a `/play` that queued exactly one.
+    let was_empty = call.lock().await.queue().is_empty();
+
     let _after_call = std::time::Instant::now();
 
     // `ephemeral_replies` decides whether this reply -- and the edit that turns
@@ -558,7 +563,7 @@ pub async fn play_internal(
 
     // A `/play` that started a song is a now-playing moment. The status follows
     // the reply, so a visible reply ends up directly above it.
-    if queue.len() == 1 {
+    if crate::messaging::status::play_started_song(was_empty, queue.len()) {
         let serenity_ctx = ctx.serenity_context();
         crate::messaging::status::show_now_playing(
             &ctx.data(),
