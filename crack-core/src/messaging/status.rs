@@ -74,6 +74,14 @@ pub fn placement(
     }
 }
 
+/// Whether a Finished update has anything to change: a status must be on
+/// screen and still say something is playing. Nothing tracked (a failed
+/// join, a kick before anything played) or already Finished (the second of
+/// `/leave`'s two updates) leaves the channel alone.
+pub fn finish_needed(current: Option<&StatusMessage>) -> bool {
+    matches!(current, Some(status) if status.phase == Phase::Playing)
+}
+
 /// The guild's music channel, else the channel of its last music command,
 /// else wherever the status already is. None means post nothing.
 pub fn target_channel(
@@ -271,6 +279,9 @@ pub async fn update(
     let music = data.get_music_channel(guild).await;
     let slot = data.status_slot(guild);
     let mut slot = slot.lock().await;
+    if phase == Phase::Finished && !finish_needed(slot.message.as_ref()) {
+        return slot.message;
+    }
     let tracked = slot.message.map(|status| status.channel);
     let target = target_channel(music, slot.last_command_channel, tracked)?;
     apply(transport, &mut slot, guild, target, embed, phase).await
@@ -519,6 +530,15 @@ mod tests {
         assert_eq!(placement(Some(&current), ch(5), None), Placement::Replace);
     }
 
+    // ---- finish_needed ----
+
+    #[test]
+    fn finishing_needs_a_playing_status() {
+        assert!(!finish_needed(None));
+        assert!(finish_needed(Some(&tracked(5, 100, Phase::Playing))));
+        assert!(!finish_needed(Some(&tracked(5, 100, Phase::Finished))));
+    }
+
     // ---- target_channel ----
 
     #[test]
@@ -758,6 +778,32 @@ mod tests {
             vec![Op::Send(5), Op::Delete(5, 1000), Op::Send(6)]
         );
         assert_eq!(shown, Some(tracked(6, 1001, Phase::Playing)));
+    }
+
+    #[tokio::test]
+    async fn finished_with_nothing_on_screen_posts_nothing() {
+        let data = crate::Data::default();
+        note_command_channel(&data, GUILD, ch(5)).await;
+        let fake = Fake::default();
+
+        let shown = update(&data, &fake, GUILD, embed(), Phase::Finished).await;
+
+        assert_eq!(shown, None);
+        assert!(fake.ops().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_second_finished_changes_nothing() {
+        let data = crate::Data::default();
+        note_command_channel(&data, GUILD, ch(5)).await;
+        let fake = Fake::default().with_last(1000);
+
+        update(&data, &fake, GUILD, embed(), Phase::Playing).await;
+        update(&data, &fake, GUILD, embed(), Phase::Finished).await;
+        let shown = update(&data, &fake, GUILD, embed(), Phase::Finished).await;
+
+        assert_eq!(fake.ops(), vec![Op::Send(5), Op::Edit(5, 1000)]);
+        assert_eq!(shown, Some(tracked(5, 1000, Phase::Finished)));
     }
 
     // ---- reply rules ----
