@@ -318,6 +318,12 @@ fn degraded_delivery(text: Option<&TextPerms>) -> Option<NoticeDelivery> {
     }
 }
 
+/// The reply to a playlist `/play`: what [`CrackedMessage::PlaylistQueued`]
+/// says, not its variant name.
+fn playlist_queued_embed<'a>() -> CreateEmbed<'a> {
+    CreateEmbed::default().description(CrackedMessage::PlaylistQueued.to_string())
+}
+
 pub async fn build_play_embed<'a>(
     queue: &'a [TrackHandle],
     mode: Mode,
@@ -356,8 +362,7 @@ pub async fn build_play_embed<'a>(
                         "QueryType::PlaylistLink|QueryType::KeywordList, mode: {:?}",
                         y
                     );
-                    CreateEmbed::default()
-                        .description(format!("{:?}", CrackedMessage::PlaylistQueued))
+                    playlist_queued_embed()
                 },
                 (QueryType::File(_x_), y) => {
                     tracing::error!("QueryType::File, mode: {:?}", y);
@@ -1098,5 +1103,21 @@ mod degraded_notice_wiring_tests {
             content.contains("/diagnose"),
             "the notice must point at the diagnostic: {content}"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messaging::messages::PLAY_PLAYLIST;
+
+    /// 🪤 Seen on production v0.12.1: a playlist `/play` replied with the literal
+    /// text "PlaylistQueued", `{:?}` of the message instead of its text.
+    #[test]
+    fn a_queued_playlist_is_announced_in_words() {
+        let json = serde_json::to_string(&playlist_queued_embed()).expect("an embed serializes");
+
+        assert!(json.contains(PLAY_PLAYLIST), "{json}");
+        assert!(!json.contains("PlaylistQueued"), "{json}");
     }
 }
