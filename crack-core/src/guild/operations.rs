@@ -61,6 +61,7 @@ pub trait GuildSettingsOperations {
     fn get_reply_with_embed(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_reply_with_embed(&self, guild_id: GuildId, as_embed: bool)
         -> impl Future<Output = bool>;
+    fn get_ephemeral_replies(&self, guild_id: GuildId) -> impl Future<Output = bool>;
 }
 
 /// Implementation of the guild settings operations.
@@ -430,6 +431,15 @@ impl GuildSettingsOperations for Data {
             .get(&guild_id)
             .map_or(as_embed, |x| x.reply_with_embed)
     }
+
+    /// Whether /play, /skip and /nowplaying reply ephemerally in this guild.
+    async fn get_ephemeral_replies(&self, guild_id: GuildId) -> bool {
+        self.guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .is_some_and(|settings| settings.ephemeral_replies)
+    }
 }
 
 /// Get all guilds the bot is in (that are cached).
@@ -524,6 +534,25 @@ mod test {
                 ..Default::default()
             })
         );
+    }
+
+    #[tokio::test]
+    async fn ephemeral_replies_follow_the_guild_setting() {
+        let data = crate::Data::default();
+        let guild_id = GuildId::new(123);
+        assert!(
+            !data.get_ephemeral_replies(guild_id).await,
+            "no settings means visible"
+        );
+
+        let mut settings = GuildSettings::new(guild_id, None, None);
+        settings.ephemeral_replies = true;
+        data.guild_settings_map
+            .write()
+            .await
+            .insert(guild_id, settings);
+
+        assert!(data.get_ephemeral_replies(guild_id).await);
     }
 
     #[tokio::test]

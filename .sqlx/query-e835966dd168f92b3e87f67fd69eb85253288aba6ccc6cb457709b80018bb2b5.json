@@ -72,6 +72,11 @@
         "ordinal": 13,
         "name": "additional_prefixes",
         "type_info": "TextArray"
+      },
+      {
+        "ordinal": 14,
+        "name": "ephemeral_replies",
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -82,6 +87,7 @@
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       false,
