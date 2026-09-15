@@ -338,6 +338,16 @@ impl SerenityHandler {
                 );
             }
         }
+
+        // Kicked or disconnected: the status says playback finished.
+        crate::messaging::status::show_finished(
+            &self.data,
+            ctx.http.clone(),
+            ctx.cache.clone(),
+            guild_id,
+        )
+        .await;
+
         // Kicked or disconnected mid-game: don't leave a zombie game behind.
         if self.data.gp_remove(guild_id).is_some() {
             tracing::warn!("gp: bot left voice in {guild_id}, game discarded");

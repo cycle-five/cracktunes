@@ -35,9 +35,11 @@ pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = ctx.data().songbird.clone();
     // check if we're actually in a call
+    let mut left = false;
     let crack_msg = match manager.remove(guild_id).await {
         Ok(()) => {
             tracing::info!("Driver successfully removed.");
+            left = true;
             CrackedMessage::Leaving
         },
         Err(err) => {
@@ -50,5 +52,15 @@ pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
     };
 
     let _ = send_reply(&ctx, crack_msg, true).await?;
+    if left {
+        let serenity_ctx = ctx.serenity_context();
+        crate::messaging::status::show_finished(
+            &ctx.data(),
+            serenity_ctx.http.clone(),
+            serenity_ctx.cache.clone(),
+            guild_id,
+        )
+        .await;
+    }
     Ok(())
 }

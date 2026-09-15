@@ -70,6 +70,13 @@ impl EventHandler for IdleHandler {
         {
             match manager.remove(self.guild_id).await {
                 Ok(_) => {
+                    crate::messaging::status::show_finished(
+                        &data,
+                        self.serenity_ctx.http.clone(),
+                        self.serenity_ctx.cache.clone(),
+                        self.guild_id,
+                    )
+                    .await;
                     match self
                         .channel_id
                         .say(&self.serenity_ctx.http, IDLE_ALERT)
