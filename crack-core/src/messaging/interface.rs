@@ -423,8 +423,17 @@ pub async fn send_no_query_provided(ctx: &CrackContext<'_>) -> Result<(), Cracke
 pub async fn send_search_message<'ctx>(
     ctx: &'ctx CrackContext<'_>,
 ) -> CrackedResult<ReplyHandle<'ctx>> {
+    send_search_message_as(ctx, false).await
+}
+
+/// The "searching…" reply, ephemeral when `ephemeral` is set.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_search_message_as<'ctx>(
+    ctx: &'ctx CrackContext<'_>,
+    ephemeral: bool,
+) -> CrackedResult<ReplyHandle<'ctx>> {
     let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
-    let msg = send_embed_response_poise(*ctx, embed).await?;
+    let msg = crate::utils::send_embed_response_poise_as(*ctx, embed, ephemeral).await?;
     Ok(msg)
 }
 

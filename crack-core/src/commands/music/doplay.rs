@@ -7,6 +7,7 @@ use crate::CrackedResult;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
     errors::{verify, CrackedError},
+    guild::operations::GuildSettingsOperations,
     handlers::track_end::update_queue_messages,
     messaging::interface::create_now_playing_embed,
     messaging::{
@@ -468,7 +469,14 @@ pub async fn play_internal(
 
     let _after_call = std::time::Instant::now();
 
-    let search_msg = msg_int::send_search_message(&ctx).await?;
+    // `ephemeral_replies` decides whether this reply -- and the edit that turns
+    // it into the result -- is seen by its author alone.
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let private = crate::messaging::status::reply_privately(
+        ctx.data().get_ephemeral_replies(guild_id).await,
+        is_prefix,
+    );
+    let search_msg = msg_int::send_search_message_as(&ctx, private).await?;
     //tracing::debug!("search response msg: {:?}", search_msg.message());
 
     // determine whether this is a link or a query string
@@ -546,6 +554,20 @@ pub async fn play_internal(
             missing: short.missing,
         })
         .await?;
+    }
+
+    // A `/play` that started a song is a now-playing moment. The status follows
+    // the reply, so a visible reply ends up directly above it.
+    if queue.len() == 1 {
+        let serenity_ctx = ctx.serenity_context();
+        crate::messaging::status::show_now_playing(
+            &ctx.data(),
+            serenity_ctx.http.clone(),
+            serenity_ctx.cache.clone(),
+            guild_id,
+            &call,
+        )
+        .await;
     }
 
     // [Manage Messages]: Permissions::MANAGE_MESSAGES

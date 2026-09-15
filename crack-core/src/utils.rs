@@ -248,12 +248,20 @@ pub async fn send_embed_response_poise<'ctx>(
     ctx: CrackContext<'ctx>,
     embed: CreateEmbed<'ctx>,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-    let is_ephemeral = false;
-    let is_reply = true;
+    send_embed_response_poise_as(ctx, embed, false).await
+}
+
+/// [`send_embed_response_poise`], ephemeral when `ephemeral` is set.
+#[cfg(not(tarpaulin_include))]
+pub async fn send_embed_response_poise_as<'ctx>(
+    ctx: CrackContext<'ctx>,
+    embed: CreateEmbed<'ctx>,
+    ephemeral: bool,
+) -> Result<ReplyHandle<'ctx>, CrackedError> {
     let params = SendMessageParams::default()
-        .with_ephemeral(is_ephemeral)
+        .with_ephemeral(ephemeral)
         .with_embed(Some(embed))
-        .with_reply(is_reply);
+        .with_reply(true);
 
     ctx.send_message_owned(params).await
 }
