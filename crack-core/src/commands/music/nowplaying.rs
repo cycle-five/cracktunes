@@ -64,11 +64,15 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
         .queue()
         .current()
         .ok_or(CrackedError::NothingPlaying)?;
-    let title = get_track_handle_metadata(&track)
-        .await
-        .ok()
-        .and_then(|meta| meta.title)
-        .unwrap_or_default();
+    // A track without metadata still gets a pointer, just an untitled one --
+    // but not silently.
+    let title = match get_track_handle_metadata(&track).await {
+        Ok(meta) => meta.title.unwrap_or_default(),
+        Err(err) => {
+            tracing::warn!("nowplaying: no metadata for the current track in {guild_id}: {err}");
+            String::new()
+        },
+    };
 
     let data = ctx.data();
     let private = reply_privately(data.get_ephemeral_replies(guild_id).await, ctx.is_prefix());
