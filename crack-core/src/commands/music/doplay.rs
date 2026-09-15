@@ -553,12 +553,22 @@ pub async fn play_internal(
             short.declared,
             short.missing
         );
-        ctx.send_reply_embed(CrackedMessage::SpotifyListingShort {
+        // `send_reply_embed(msg)`, plus the guild's ephemeral choice: the
+        // footnote to an ephemeral result must not land as a visible message.
+        let msg = CrackedMessage::SpotifyListingShort {
             seen: short.seen,
             declared: short.declared,
             missing: short.missing,
-        })
-        .await?;
+        };
+        let color = crate::serenity::Colour::from(&msg);
+        let embed: Option<CreateEmbed> = <Option<CreateEmbed>>::from(&msg);
+        let params = SendMessageParams::new(msg)
+            .with_color(color)
+            .with_as_embed(true)
+            .with_embed(embed)
+            .with_reply(true)
+            .with_ephemeral(private);
+        ctx.send_message(params).await?;
     }
 
     // A `/play` that started a song is a now-playing moment. The status follows
