@@ -47,7 +47,8 @@ literal text `PlaylistQueued`, because `doplay.rs:359` formats the message with
 6. **`/nowplaying`'s reply is a one-line pointer** in both modes: the title plus a
    jump link to the status message.
 7. **Guilty Pleasure guard.** While a `/gp` game owns playback, no status
-   updates happen — the status would reveal the song being guessed.
+   updates happen — the status would reveal the song being guessed. For the
+   same reason `/nowplaying` is refused during a game (`GP_BLOCKED_COMMANDS`).
 
 ## Detection: "has anything been posted since?"
 
@@ -66,6 +67,14 @@ The status message is still at the bottom iff the channel's cached
 with time, so this also handles the race where our own send has not yet echoed
 back through the gateway (the cached id is older, so we still edit). A channel
 missing from the cache yields "unknown", which is treated as "moved".
+
+**The reply floor.** The same lag hides a command's own visible reply: its
+`MESSAGE_CREATE` usually arrives after the status update has read the cache, so
+the status would be edited in place *above* the reply. A command that has just
+posted a visible reply therefore hands its `(channel, id)` to
+`show_now_playing_after`, and `newest_known(cached, after, target)` takes the
+newer of the cached id and the reply — ignoring a reply in another channel.
+An ephemeral reply is not a channel message and passes no floor.
 
 Rejected: an own per-channel tracker from `FullEvent::Message` (duplicates
 serenity's bookkeeping across ~155 guilds) and a REST `GET messages?after=`
@@ -134,15 +143,18 @@ helper both use.
   builds the now-playing embed with the existing `create_now_playing_embed`,
   **then** takes the slot lock, resolves the target channel, and applies
   `placement` with phase Playing. Returns what is on screen afterwards (None if
-  nothing could be posted).
+  nothing could be posted). `show_now_playing_after(..., after)` is the same
+  with a visible reply as the floor (see Detection); `apply` and `update` have
+  `_after` forms likewise.
 - `show_finished(data, http, cache, guild) -> Option<StatusMessage>` — same
   rule, a "Finished" embed, phase Finished; needs no voice call.
 - `now_playing_pointer(title, link: Option<MessageLink>)` — the `/nowplaying`
   one-liner: "Now playing: *title* ↓" without a link, or with a jump link.
 
-Both `show_*` calls are **idempotent**: repeating one with nothing posted in
-between edits the same message again. `/stop` relies on this (its own call and
-the track-end event its queue stop fires both land on Finished).
+A Finished update only happens while a Playing status is tracked
+(`finish_needed`). A failed join, or a kick with nothing on screen, posts
+nothing; a second Finished — `/stop`'s own call and the track-end event its
+queue stop fires, or `/leave`'s two — is a no-op.
 
 ### Setting: `ephemeral_replies`
 
@@ -176,9 +188,9 @@ the track-end event its queue stop fires both land on Finished).
 | track end, next track exists (any autoplay state) | `show_now_playing` |
 | track end, nothing next, autoplay off | `show_finished` |
 | track end, autoplay queued a pick | `show_now_playing` (after the queue) |
-| track end, autoplay found nothing / failed | existing "autoplay off" message, then `show_finished` |
-| `/play` that starts a song (queue was empty) | `show_now_playing` after the reply |
-| `/skip` leaving a track playing | `show_now_playing` after the reply |
+| track end, autoplay found nothing / failed | existing "autoplay off" message, then `show_finished` — skipped if something is already playing (a `/play` landed while autoplay was fetching) |
+| `/play` that starts playback: the queue was empty before it (`play_started_song`), one track or a playlist | `show_now_playing_after`, below the reply |
+| `/skip` leaving a track playing | `show_now_playing_after`, below the reply |
 | `/nowplaying` | see ordering below |
 | `/stop` | `show_finished` (after the reply) |
 | `/leave`, idle disconnect (`idle.rs`), kicked/disconnected (`serenity.rs:333`) | `show_finished` |
@@ -186,10 +198,14 @@ the track-end event its queue stop fires both land on Finished).
 **`/nowplaying` ordering.** The pointer can only link to a message that exists.
 If the reply is visible **and** the status's target channel is the command's
 channel, the reply goes first as "Now playing: *title* ↓" (no link) and
-`show_now_playing` follows, moving the status directly below it. In every other
-case — ephemeral reply, or the status living in the music channel —
-`show_now_playing` runs first and the reply carries a jump link to the message
-it returned.
+`show_now_playing_after` follows with the reply as its floor, moving the status
+directly below it. In every other case — ephemeral reply, or the status living
+in the music channel — `show_now_playing` runs first and the reply carries a
+jump link to the message it returned.
+
+The pointer is message content carrying a title the uploader chose, so it is
+sent with mentions suppressed (an empty `allowed_mentions`): `@everyone` or
+`<@&role>` in a title never pings.
 
 Any `gp_is_active(guild)` → no status call. Failed-join cleanup
 (`music_utils.rs:220`) is not a playback end and calls nothing.
@@ -255,7 +271,12 @@ guards, watch it fail, restore by checksum).
   keeps tracking; a later Playing update continues the same message.
 - `track_end_status` — gp guard, next/none × autoplay on/off.
 - `reply_privately` — setting × prefix.
-- `now_playing_pointer` — title and link.
+- `now_playing_pointer` — title and link; the pointer reply suppresses mentions.
+- The reply floor — `newest_known`: cache only, reply in the target, reply in
+  another channel, either one newer; through `apply_after` and `update_after`,
+  a reply below the status that the cache has not heard of moves it, and a
+  reply in another channel does not.
+- `GP_BLOCKED_COMMANDS` contains `nowplaying`.
 - Settings — default off; `From<GuildSettingsRead>` carries the column; toggle
   flips.
 - `PlaylistQueued` — the playlist arm's embed, extracted as
@@ -296,3 +317,7 @@ column with a default. No new environment variables.
 - The ~150 s of silence before "Spotify took too long to answer" (sleevenote's
   produce budget).
 - `toggle_autopause` replies "Self-deafen is now …" (copy-paste bug).
+- `/playlist pplay` has no status wiring: the playlist commands are not compiled
+  (`commands/mod.rs` has carried `//pub mod playlist;` since 2024-12-09). A
+  pplay that starts playback needs `show_now_playing_after` below its reply
+  when they come back.
