@@ -2060,32 +2060,22 @@ gh workflow run docker.yml --repo cycle-five/cracktunes --ref feat/floating-stat
 
 Find the run (`gh run list --repo cycle-five/cracktunes --workflow docker.yml --branch feat/floating-status-message --limit 1`), confirm its `headSha` is the branch head, and wait for it in the background (`gh run watch <id> --exit-status`). The tag is the sanitized branch name, `feat-floating-status-message`.
 
-🪤 **TuneTitan does not run migrations** (no migrate service; see the comment above `postgres:` in `~/projects/homelab/tunetitan/docker-compose.yml`). The branch image loads guild settings with `SELECT *` into a struct that now has `ephemeral_replies`; without the column every guild's settings load fails. So the migration is applied **before** the deploy. It changes a durable database, so **ask the owner before running it.** The password stays out of output and argv — only the one key is read:
+🔑 **TuneTitan migrates through its `migrate` one-shot** (homelab branch `tunetitan-migrate-oneshot`, added 2026-09-15; the same service `bots/` has). The branch image loads guild settings with `SELECT *` into a struct that now has `ephemeral_replies`, so the column must exist before the bot starts — the one-shot runs first and the bot waits for it to exit 0. The docker.yml dispatch publishes `cracktunes-migrate:feat-floating-status-message` beside the bot image.
+
+🪤 **Override BOTH images.** Setting only `TUNETITAN_CRACKTUNES_IMAGE` runs v0.12.1's migrations (no new column) under the branch's queries, and the migrate container still exits 0; `verify` catches it by comparing the two revision labels. 🪤 **Pull both first:** the pull policy is `missing`, so a branch tag already on the host is not refreshed.
+
+The column is added last with a default, so TuneTitan can still be rolled back to v0.12.1 (its compiled queries read only the columns they know).
 
 ```bash
-bash <<'EOF'
-set -euo pipefail
-pw=$(grep -E '^POSTGRES_PASSWORD=' ~/projects/homelab/.env.tunetitan | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//')
-[ -n "$pw" ] || { echo "POSTGRES_PASSWORD key not found in .env.tunetitan"; exit 1; }
-ssh -f -N -o ExitOnForwardFailure=yes -L 15432:127.0.0.1:5432 root@192.168.1.116 </dev/null
-export DATABASE_URL="postgres://cracktunes:${pw}@127.0.0.1:15432/cracktunes"
-unset pw
-cd ~/projects/cracktunes
-cargo sqlx migrate run --source migrations/ </dev/null
-cargo sqlx migrate info --source migrations/ </dev/null | tail -3
-pkill -f 'ssh -f -N -o ExitOnForwardFailure=yes -L 15432:127.0.0.1:5432' || true
-EOF
-```
-
-Expected: `20260915120000/installed ephemeral replies` in the `migrate info` tail. The column is added last with a default, so TuneTitan can still be rolled back to v0.12.1 (its compiled queries read only the columns they know). Then deploy the branch image:
-
-```bash
-ssh root@192.168.1.116 'docker pull -q ghcr.io/cycle-five/cracktunes:feat-floating-status-message && docker image inspect ghcr.io/cycle-five/cracktunes:feat-floating-status-message --format "{{index .Config.Labels \"org.opencontainers.image.revision\"}}"' </dev/null
-cd ~/projects/homelab && TUNETITAN_CRACKTUNES_IMAGE=ghcr.io/cycle-five/cracktunes:feat-floating-status-message ./homelab.sh up tunetitan </dev/null
+ssh root@192.168.1.116 'for i in cracktunes cracktunes-migrate; do docker pull -q ghcr.io/cycle-five/$i:feat-floating-status-message && docker image inspect ghcr.io/cycle-five/$i:feat-floating-status-message --format "$i {{index .Config.Labels \"org.opencontainers.image.revision\"}}"; done' </dev/null
+cd ~/projects/homelab && TUNETITAN_CRACKTUNES_IMAGE=ghcr.io/cycle-five/cracktunes:feat-floating-status-message TUNETITAN_CRACKTUNES_MIGRATE_IMAGE=ghcr.io/cycle-five/cracktunes-migrate:feat-floating-status-message ./homelab.sh up tunetitan </dev/null
 cd ~/projects/homelab && ./homelab.sh verify tunetitan </dev/null
+ssh root@192.168.1.116 'docker logs tunetitan-migrate-1 2>&1 | tail -3' </dev/null
 ```
 
-Confirm the revision label is the branch head, `verify` passes, the log shows `Loaded settings for guild` lines, and there is no `ERROR`/`panicked` (`ssh root@192.168.1.116 docker logs tunetitan-cracktunes-1`).
+Run these from a homelab checkout that has the migrate service (master once the homelab PR merges). A checkout without it has no `TUNETITAN_CRACKTUNES_MIGRATE_IMAGE` and would start the branch bot against an unmigrated database.
+
+Confirm both revision labels are the branch head, `verify` passes (it now reports `23/23 migrations`), the migrate log shows `Applied 20260915120000/migrate ephemeral replies`, the bot log shows `Loaded settings for guild` lines, and there is no `ERROR`/`panicked` (`ssh root@192.168.1.116 docker logs tunetitan-cracktunes-1`).
 
 Deploying the branch image to TuneTitan is the established pre-merge test; deploying to production (`bots`) is **not** part of this plan.
 
