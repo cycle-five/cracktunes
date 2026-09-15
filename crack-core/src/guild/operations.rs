@@ -546,6 +546,15 @@ mod test {
         );
 
         let mut settings = GuildSettings::new(guild_id, None, None);
+        data.guild_settings_map
+            .write()
+            .await
+            .insert(guild_id, settings.clone());
+        assert!(
+            !data.get_ephemeral_replies(guild_id).await,
+            "settings with the flag off mean visible"
+        );
+
         settings.ephemeral_replies = true;
         data.guild_settings_map
             .write()
