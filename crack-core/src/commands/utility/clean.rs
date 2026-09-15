@@ -2,6 +2,7 @@ use crate::{
     //commands::sub_help as help,
     errors::CrackedError,
     guild::cache::GuildCache,
+    http_utils::is_unknown_message,
     messaging::message::CrackedMessage,
     utils::send_reply,
     Context,
@@ -9,7 +10,6 @@ use crate::{
 };
 use chrono::{DateTime, TimeDelta, Utc};
 use dashmap::DashMap;
-use serenity::http::{HttpError, JsonErrorCode};
 use serenity::model::channel::Message;
 use std::collections::BTreeMap;
 
@@ -117,16 +117,6 @@ fn forget_messages(cache: &DashMap<u64, GuildCache>, cache_id: u64, sent_at: &[D
             guild.time_ordered_messages.remove(at);
         }
     }
-}
-
-/// Whether Discord refused a delete because the message is already gone --
-/// deleted by hand, say. Its cache entry can go like a deleted one's.
-fn is_unknown_message(err: &serenity::Error) -> bool {
-    matches!(
-        err,
-        serenity::Error::Http(HttpError::UnsuccessfulRequest(response))
-            if response.error.code == JsonErrorCode::UnknownMessage
-    )
 }
 
 #[cfg(test)]
