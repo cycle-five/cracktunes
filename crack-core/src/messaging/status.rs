@@ -455,12 +455,16 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_send_forgets_the_message() {
-        let fake = Fake::default();
+        let fake = Fake::default().with_last(101);
         *fake.send_error.lock().unwrap() = Some(TransportError::Other("Missing Access".into()));
-        let mut slot = StatusSlot::default();
+        let mut slot = StatusSlot {
+            message: Some(tracked(5, 100, Phase::Playing)),
+            ..Default::default()
+        };
 
         let shown = apply(&fake, &mut slot, GUILD, ch(5), embed(), Phase::Playing).await;
 
+        assert_eq!(fake.ops(), vec![Op::Delete(5, 100), Op::Send(5)]);
         assert_eq!(shown, None);
         assert_eq!(slot.message, None);
     }
