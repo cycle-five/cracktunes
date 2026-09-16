@@ -67,7 +67,9 @@ pub fn music_commands() -> Vec<crate::Command> {
         vec![
             autopause(),
             autoplay(),
-            ephemeral::ephemeral(),
+            // `ephemeral::ephemeral()` is deliberately absent: the setting it
+            // toggles cannot take effect while every music command defers
+            // publicly before it replies (#535).
             clear(),
             diagnose(),
             grab(),

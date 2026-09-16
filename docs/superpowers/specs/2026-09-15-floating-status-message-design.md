@@ -44,6 +44,10 @@ literal text `PlaylistQueued`, because `doplay.rs:359` formats the message with
    - **off:** the command keeps a visible reply, and the status then moves below
      it.
    Prefix commands cannot be ephemeral and always behave as "off".
+   🪤 v0.13.0 ships this setting **unreachable**: `/ephemeral` is built but not
+   registered, because "on" does not survive the public defer that precedes
+   every music command's reply (#535). Everything below describes the code as
+   written; only the way to switch it on is gone.
 6. **`/nowplaying`'s reply is a one-line pointer** in both modes: the title plus a
    jump link to the status message.
 7. **Guilty Pleasure guard.** While a `/gp` game owns playback, no status
@@ -174,15 +178,20 @@ queue stop fires, or `/leave`'s two — is a no-op.
 - `GuildSettingsOperations::get_ephemeral_replies(guild)`.
 - `/ephemeral`: `commands/music/ephemeral.rs`, a top-level slash command
   shaped like `/autopause`. It is guild-only, admin-only (both
-  `required_permissions` and `default_member_permissions`), and registered in
-  `music_commands()`. It calls
+  `required_permissions` and `default_member_permissions`), and calls
   `GuildSettingsOperations::toggle_ephemeral_replies`, which runs
   `ensure_settings_loaded`, flips the setting, and then `save`s it.
   - 🪤 It was first planned as `/settings toggle ephemeral`. But the whole
     `commands/settings` module has been compiled out since v0.4.0 (#534), so
     that file was never built or registered.
-  - A test pins `/ephemeral` into `commands_to_register()`, the set Discord is
-    actually given.
+  - 🪤 **It ships disabled**, absent from `music_commands()`. Live testing on
+    TuneTitan showed the toggle reporting success and nothing changing: the
+    join path defers publicly (`music_utils.rs`) before any body replies, and
+    Discord fixes a response's visibility at creation, so the `ephemeral` flag
+    on the edit that follows is ignored. **#535** owns the fix; re-registering
+    is one line after it.
+  - A test pins that it is built, admin-only, and *not* in
+    `commands_to_register()`.
 - The migration goes into **both** `migrations/` and
   `crack-core/test_migrations/` (the latter mirrors the former, plus a test
   seed, and is what `#[sqlx::test(migrator = "MIGRATOR")]` applies).
@@ -301,6 +310,13 @@ between (move) and silence in between (edit); `/nowplaying` in both modes;
 `/clean` deleting the status mid-playlist; `/stop` → Finished → `/play` resumes
 it; a command from a second channel; a `/gp` round showing no status.
 
+TuneTitan ran that list against the branch image and every item passed **except
+ephemeral replies**, which cannot work at all: the toggle reports success and
+the reply arrives in the channel anyway. `/ephemeral` therefore ships disabled,
+and **#535** owns the reason and the fix. Worth keeping: the only requirement
+here that a green test suite asserted and a live bot refuted was the one whose
+seam sits a layer above the code this spec describes.
+
 ## Rollout
 
 Feature → minor bump, all ten members 0.12.1 → 0.13.0. The migration adds a
@@ -319,6 +335,9 @@ column with a default. No new environment variables.
 
 - Playback controls (buttons) on the status message — the slot owns the message
   id and phase so they can be added in this module alone.
+- Making `ephemeral_replies` take effect at all, and re-registering
+  `/ephemeral` — **#535**. The join path defers publicly before any command
+  body replies, and Discord fixes a response's visibility when it is created.
 - Applying `ephemeral_replies` to all commands — part of the larger messaging
   refactor.
 - The ~150 s of silence before "Spotify took too long to answer" (sleevenote's
