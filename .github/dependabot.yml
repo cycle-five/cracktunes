@@ -7,8 +7,20 @@ version: 2
 updates:
   - package-ecosystem: "cargo" # See documentation for possible values
     directory: "/" # Location of package manifests
+    # 🔑 Weekly and grouped, not daily and one PR per crate. Each merge of a
+    # lockfile bump invalidates the image's cached dependency layer and costs a
+    # full ~29-minute master image build instead of a ~14-minute one; five bumps
+    # merged separately on 2026-09-17 cost five of them. One grouped PR a week
+    # costs one, and is how the batch was triaged anyway.
     schedule:
-      interval: "daily"
+      interval: "weekly"
+    groups:
+      # Majors stay on their own: they are the ones that edit a Cargo.toml and
+      # may need call-site work (rand 0.10, warp 0.4), and they are judged per
+      # crate. Minor and patch bumps are the lockfile-only batch.
+      cargo-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
     allow:
       - dependency-type: "all"
     ignore:
