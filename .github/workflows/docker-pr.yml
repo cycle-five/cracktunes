@@ -1,0 +1,43 @@
+name: Docker PR Check
+
+# 🔑 Builds both images on a PR that changes how they are built, and pushes
+# nothing (#424). docker.yml used to run only on master and on tags, so a change
+# to it or to the Dockerfile was first exercised after it merged. That is how
+# #508 shipped a cache export the default buildx driver cannot perform, and
+# broke master's image build.
+#
+# Calls docker.yml itself rather than a copy of its steps: the file under test
+# has to be the file that runs on master. On a pull_request event it skips the
+# registry login, sets `push: false`, reads master's layer cache and writes none.
+#
+# Path-filtered because the build costs ~25 minutes (the full `dist` compile).
+# Ordinary source changes are covered by Build, and by master's image build
+# after merge; this is for changes to the image's own recipe.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      # The builder stage runs cargo inside the context, so this file picks the
+      # toolchain the image compiles with.
+      - rust-toolchain.toml
+      - scripts/start.sh
+      - .github/workflows/docker.yml
+      - .github/workflows/docker-pr.yml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker:
+    name: Docker (build only)
+    permissions:
+      contents: read
+      # 🪤 Not because anything is pushed. docker.yml's job declares
+      # `packages: write`, and a called job may never hold more than its caller
+      # grants: a lower grant here fails the run before any step starts. A fork
+      # PR's token is read-only regardless of what is asked for.
+      packages: write
+    uses: ./.github/workflows/docker.yml
