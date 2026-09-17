@@ -37,3 +37,22 @@ updates:
         update-types:
           - "version-update:semver-minor"
           - "version-update:semver-major"
+
+  # 🔑 Action versions. Without this entry nothing ever proposed moving them, so
+  # every workflow was still on Node 20 majors in September 2026, three months
+  # after GitHub began forcing them onto Node 24 and days before Node 20 left the
+  # runners. One grouped PR a week: a bump to docker.yml triggers the ~20-minute
+  # Docker PR Check, which is worth paying once, not once per action.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+    ignore:
+      # Deliberately held at v4 in the manual-only coverage.yml; see the note on
+      # that step. Moves with tarpaulin's replacement.
+      - dependency-name: "codecov/codecov-action"
+        update-types:
+          - "version-update:semver-major"

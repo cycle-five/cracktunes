@@ -32,7 +32,7 @@ jobs:
     #   options: --security-opt seccomp=unconfined
     steps:
       - name: Repository Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: "Install dependencies"
         run: |
@@ -95,6 +95,10 @@ jobs:
           cargo tarpaulin --ignore-tests --verbose --all --timeout 120 --out xml \
             --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests
 
+      # 🪤 Still v4, a Node 20 action, on purpose. v5 renamed its inputs, and this
+      # workflow only runs by hand, so a bump could only be checked with a full
+      # tarpaulin run -- for a tool the note at the top says to replace. Move it
+      # with that replacement.
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v4
         with:

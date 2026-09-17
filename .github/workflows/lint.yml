@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # There was an `apt-get update && dist-upgrade && autoremove` here. It
       # took 2m10s a leg -- 4m20s per CI run, ~19% of the whole thing -- to
