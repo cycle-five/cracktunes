@@ -1,5 +1,17 @@
-# STAGE1: Build the binary
-FROM rust:1.98.0-alpine3.22 AS builder
+# STAGE1: Build the binary, in three parts so the dependencies cache (#424).
+#
+# 🔑 WHY cargo-chef. A single `COPY . .` followed by `cargo build` meant every
+# commit changed the copy, so the compile layer never cached: every master build
+# was a from-scratch ~17-minute compile of all 563 crates, and mode=max then
+# exported that 1.3 GB layer to the GHA cache, where nothing ever read it again.
+#
+# Now `planner` reduces the workspace to a recipe (manifests, lockfile and
+# rust-toolchain.toml, with our own crates' versions masked, so a release bump
+# does not change it). `builder` compiles the dependencies from that recipe
+# ALONE, then copies the source and compiles only our crates. The dependency
+# layer caches until Cargo.lock, a manifest's dependencies or the toolchain file
+# changes.
+FROM rust:1.98.0-alpine3.22 AS chef
 
 # Install build dependencies
 # RUN apk add --no-cache build-base musl-dev openssl-dev openssl cmake
@@ -19,12 +31,29 @@ RUN apk add --no-cache \
 # ledger; a mismatched CLI can disagree with the library about that table.
 RUN cargo install sqlx-cli --version '~0.8' --no-default-features --features rustls,postgres
 
+# Pinned exactly, for the same reason as any build tool: a new release can change
+# the recipe format, and with it what counts as a cache hit.
+RUN cargo install cargo-chef --version '=0.1.78' --locked
+
 # Default directory
 WORKDIR /app
 
-#
-# Create a new empty shell project
-# Build and cache the dependencies
+FROM chef AS planner
+COPY . .
+# 🪤 RUSTUP_TOOLCHAIN, for this one command. rust-toolchain.toml says `stable`,
+# which is not the toolchain this image ships (it ships $RUST_VERSION), so any
+# cargo invocation here would first download the current stable. This stage
+# reruns on every commit, and `prepare` only reads metadata, so any toolchain
+# will do. The compile in `builder` still uses rust-toolchain.toml.
+RUN RUSTUP_TOOLCHAIN="$RUST_VERSION" cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
+# The dependencies only. The package and profile must match the build below
+# exactly, or cargo treats these artifacts as a different build and recompiles
+# them. This is also where rust-toolchain.toml (carried in the recipe) installs
+# the current stable, so the toolchain is cached along with the dependencies.
+RUN cargo chef cook -p cracktunes --profile=dist --recipe-path recipe.json
 
 # Copy all the files
 COPY . .
