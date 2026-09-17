@@ -48,6 +48,18 @@ COPY . .
 RUN RUSTUP_TOOLCHAIN="$RUST_VERSION" cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
+# 🪤 BEFORE the cook, and this file alone. `cargo chef cook` is a cargo
+# subcommand, so rustup resolves the toolchain when cook is INVOKED -- before
+# cook writes the recipe's copy of this file into /app. Without this line the
+# dependencies compile under the image's pinned toolchain while the build below,
+# which sees the real file, compiles under `stable`. Different rustc, so cargo
+# discards every cooked artifact: measured on the first run of this PR as a 616s
+# cook followed by a full 1328s build, slower than the single build it replaced.
+#
+# Its own layer, so it is invalidated only when the toolchain file changes. The
+# `stable` it resolves is installed inside the cook layer and reused by the build
+# below, which is what makes the two agree.
+COPY rust-toolchain.toml .
 COPY --from=planner /app/recipe.json recipe.json
 # The dependencies only. The package and profile must match the build below
 # exactly, or cargo treats these artifacts as a different build and recompiles
