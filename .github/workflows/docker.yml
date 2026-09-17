@@ -112,9 +112,7 @@ jobs:
           # A PR reads master's cache but never writes one: a PR's cache entries
           # are only visible to that PR, so exporting them (~4 minutes at
           # mode=max) would buy nothing and spend the repo's 10 GB cache quota.
-          # TEMPORARY (reverted before merge): the cargo-chef PR writes its own
-          # cache so a second run can measure the warm dependency layer.
-          cache-to: type=gha,mode=max,scope=runner
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max,scope=runner' || '' }}
       -
         name: Extract Git Metadata (migrate image)
         id: meta-migrate
