@@ -875,3 +875,6 @@ mod redaction_tests {
         );
     }
 }
+
+// TEMPORARY (reverted before merge): forces the workspace crates to recompile
+// so PR #542 can measure a warm cargo-chef build.
