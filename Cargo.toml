@@ -14,6 +14,16 @@ members = [
 resolver = "2"
 
 [workspace.package]
+# 🔑 The ONE place the version lives: every member says `version.workspace =
+# true`, so a release bump is this line (#424). It used to be ten hand-edited
+# copies, and a missed one compiled clean -- the members depend on each other by
+# `path` alone, with no version for cargo to check.
+#
+# Bump it on master before tagging, including after merging a contribution that
+# did not bump it. docker.yml refuses a tag that does not match this line, since
+# a mismatched tag would publish yesterday's code under the new image name that
+# the homelab compose files pin to.
+version = "0.13.0"
 edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]

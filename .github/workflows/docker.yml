@@ -14,6 +14,10 @@ name: Docker Workflow
 #
 # There was also a `pull_request` trigger. The job's `if` refused every such
 # event, so it did nothing except add a skipped run to every PR.
+#
+# PRs reach this file through docker-pr.yml instead, and only when they touch
+# what the image is built from. On a pull_request event nothing is pushed and no
+# cache is written: see the `push:`, `cache-to:` and login lines below.
 on:
   workflow_dispatch:
   push:
@@ -34,8 +38,10 @@ jobs:
     # nothing passes a `trigger` input. It also refused `workflow_dispatch`, so
     # the manual trigger at the top of this file silently skipped.
     #
-    # Kept as a guard rather than dropped: a PR build must never push.
-    if: github.event_name != 'pull_request'
+    # It then became `event_name != 'pull_request'`, refusing PRs outright, so
+    # this file was first exercised after it merged. PRs now build here (via
+    # docker-pr.yml) and the rule "a PR build must never push" is enforced where
+    # pushing actually happens: the two `push:` inputs below.
     permissions:
       contents: read
       packages: write
@@ -43,12 +49,29 @@ jobs:
       - name: Repository Checkout
         uses: actions/checkout@v4
       -
+        # 🔑 A tag must name the version the code declares (#424). A tag pushed
+        # before the bump would otherwise publish the previous release's code as
+        # `cracktunes:vX.Y.Z`, the exact name the homelab compose files pin to.
+        # cargo-dist's release reads the same version, but this image is built
+        # independently of it and would not wait for it to fail.
+        name: Tag matches the declared version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          declared="$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.name == "cracktunes") | .version')"
+          if [ "v${declared}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match version '${declared}' in Cargo.toml [workspace.package]. Bump it on master and tag that commit."
+            exit 1
+          fi
+          echo "tag ${GITHUB_REF_NAME} matches the declared version ${declared}"
+      -
         # 🪤 Required before any `cache-to:` below. Without it build-push-action
         # uses the default `docker` driver, which cannot export a cache and
         # fails the whole build with "Cache export is not supported for the
         # docker driver". A cache was added here without it -- which nothing
-        # could catch, because CI skips the Docker job on pull requests (#424),
-        # so this file is only ever exercised on master.
+        # could catch, because PRs never ran this file (#424, since fixed by
+        # docker-pr.yml), so it was first exercised on master.
         name: Set up Buildx
         uses: docker/setup-buildx-action@v3
       - 
@@ -58,7 +81,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
       -
+        # Nothing is pushed from a PR, and a fork PR's token cannot write
+        # packages anyway.
         name: Registry Login
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -83,7 +109,10 @@ jobs:
           # only the tag differs. A shared GHA layer cache makes the second
           # build a retag rather than a rebuild.
           cache-from: type=gha,scope=runner
-          cache-to: type=gha,mode=max,scope=runner
+          # A PR reads master's cache but never writes one: a PR's cache entries
+          # are only visible to that PR, so exporting them (~4 minutes at
+          # mode=max) would buy nothing and spend the repo's 10 GB cache quota.
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max,scope=runner' || '' }}
       -
         name: Extract Git Metadata (migrate image)
         id: meta-migrate
@@ -100,4 +129,4 @@ jobs:
           tags: ${{ steps.meta-migrate.outputs.tags }}
           labels: ${{ steps.meta-migrate.outputs.labels }}
           cache-from: type=gha,scope=migrate
-          cache-to: type=gha,mode=max,scope=migrate
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max,scope=migrate' || '' }}

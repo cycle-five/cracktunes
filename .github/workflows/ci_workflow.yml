@@ -1,13 +1,27 @@
 name: CI Workflow
 
 on:
-  # Branches only. A bare `push:` also matches tag pushes, so cutting a
-  # release re-ran this whole workflow -- build and lint on both toolchains --
-  # against a commit master had already built and tested minutes earlier.
-  # Nothing here is tag-conditional: the Docker job below requires
-  # refs/heads/master, and cargo-dist's release lives in release.yml.
+  # 🔑 master pushes and pull requests, NOT every branch push (#424). This used
+  # to be `push: branches: ['**']`, with the jobs below gated on
+  # `github.event_name == 'push' || (pull_request && github.ref ==
+  # 'refs/heads/master')`. On a pull_request event `github.ref` is
+  # `refs/pull/<n>/merge`, never master, so that second clause was dead: every
+  # PR showed Build and Lint as skipped, and only the branch push ran them. A
+  # fork PR has no push to this repo, so it got no Build and no Lint at all --
+  # #422 was merged on a local test run for exactly that reason.
+  #
+  # Now a PR runs once, against the merge result rather than the branch tip,
+  # and a fork PR runs like any other (after the usual first-contributor
+  # approval, and without secrets -- as Dependabot's runs already do, green).
+  #
+  # 🪤 The cost: a branch with no PR gets no CI. Open a draft PR for early runs.
+  #
+  # Still branches only on push. A bare `push:` also matches tag pushes, so
+  # cutting a release re-ran this whole workflow against a commit master had
+  # already built and tested minutes earlier. cargo-dist's release lives in
+  # release.yml, and the tag's image in docker.yml.
   push:
-    branches: ['**']
+    branches: [master]
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -17,7 +31,6 @@ concurrency:
 
 jobs:
   build:
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.ref == 'refs/heads/master')
     name: Build
     permissions:
       contents: read
@@ -25,7 +38,6 @@ jobs:
     secrets: inherit
 
   lint:
-    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.ref == 'refs/heads/master')
     name: Lint
     permissions:
       contents: read
