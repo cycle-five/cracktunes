@@ -2,7 +2,7 @@ use crate::{
     errors::CrackedError,
     guild::operations::GuildSettingsOperations,
     messaging::{
-        interface::{create_nav_btns, create_queue_embed, send_now_playing},
+        interface::{create_nav_btns, create_queue_embed},
         messages::{AUTOPLAY_NEEDS_MUSICRECO, AUTOPLAY_STOPPED},
     },
     music::autoplay,
@@ -80,6 +80,32 @@ fn get_track_states_union(track_states: TrackStates) -> TrackStatesUnion {
     }
 
     union
+}
+
+/// What the status message shows after a track ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrackEndStatus {
+    /// Another track is up: show it.
+    NowPlaying,
+    /// Nothing is next and autoplay is off.
+    Finished,
+    /// Nothing is next and autoplay is on: ask for a recommendation.
+    Autoplay,
+    /// A `/gp` game owns playback.
+    Nothing,
+}
+
+/// Decide [`TrackEndStatus`] from the three facts that matter.
+pub fn track_end_status(gp_active: bool, next_exists: bool, autoplay: bool) -> TrackEndStatus {
+    if gp_active {
+        TrackEndStatus::Nothing
+    } else if next_exists {
+        TrackEndStatus::NowPlaying
+    } else if autoplay {
+        TrackEndStatus::Autoplay
+    } else {
+        TrackEndStatus::Finished
+    }
 }
 
 /// Event handler to handle the end of a track.
@@ -162,31 +188,40 @@ impl EventHandler for TrackEndHandler {
         }
 
         let music_channel = self.data.get_music_channel(self.guild_id).await;
+        let mut autoplay = autoplay;
 
-        if !autoplay {
-            return None;
+        if autoplay {
+            if let EventContext::Track(x) = event_ctx {
+                // `debug!` rather than `trace!`: this one is genuinely useful when
+                // debugging playback, being the whole track-state slice. It is
+                // still not an error.
+                tracing::debug!("TrackEvent: {:?}", x);
+                if get_track_states_union(x).errored {
+                    self.data.set_autoplay(self.guild_id, false).await;
+                    tracing::warn!("autoplay disabled for {}: track errored", self.guild_id);
+                    // Speaks up only when a music channel is configured.
+                    if let Some(c) = music_channel {
+                        send_plain(c, self.http.clone(), AUTOPLAY_STOPPED).await;
+                    }
+                    // Carry on without it: the status still says what plays
+                    // next, or that playback finished.
+                    autoplay = false;
+                }
+            }
         }
 
-        if let EventContext::Track(x) = event_ctx {
-            // `debug!` rather than `trace!`: this one is genuinely useful when
-            // debugging playback, being the whole track-state slice. It is
-            // still not an error.
-            tracing::debug!("TrackEvent: {:?}", x);
-            let states = get_track_states_union(x);
-            //if is_stopped(x) || is_errored(x) {
-            if states.errored {
-                self.data.set_autoplay(self.guild_id, false).await;
-                tracing::warn!("autoplay disabled for {}: track errored", self.guild_id);
-                // `channel` is not resolved yet at this point, so this can only
-                // speak up when a music channel is configured. Better than the
-                // silence this replaced (it was a bare `// FIXME: Send error
-                // message`), and it does not justify hoisting the channel lookup
-                // above the early returns below it.
-                if let Some(c) = music_channel {
-                    send_plain(c, self.http.clone(), AUTOPLAY_STOPPED).await;
-                }
+        let next_exists = self.call.lock().await.queue().current().is_some();
+        match track_end_status(self.data.gp_is_active(self.guild_id), next_exists, autoplay) {
+            TrackEndStatus::Nothing => return None,
+            TrackEndStatus::NowPlaying => {
+                self.show_now_playing().await;
                 return None;
-            }
+            },
+            TrackEndStatus::Finished => {
+                self.show_finished().await;
+                return None;
+            },
+            TrackEndStatus::Autoplay => {},
         }
 
         // The track that just ended seeds the next recommendation. No database:
@@ -196,26 +231,18 @@ impl EventHandler for TrackEndHandler {
             _ => None,
         };
 
-        let (channel, next_track) = {
-            let handler = self.call.lock().await;
-            let fallback = handler
-                .current_channel()
-                .map(|c| GenericChannelId::new(c.get()));
-            let Some(channel) = music_channel.or(fallback) else {
-                // Not connected any more: nowhere to announce, nothing to play
-                // into. This was an `unwrap` on a tokio worker.
-                return None;
-            };
-            let track = handler.queue().current().clone();
-            (channel, track)
-        };
-
-        if next_track.is_some() {
-            send_now_playing(channel, self.http.clone(), self.call.clone())
-                .await
-                .ok();
+        // Where "autoplay off" is announced: the music channel, else the voice
+        // channel's chat. The status message resolves its own channel.
+        let fallback = self
+            .call
+            .lock()
+            .await
+            .current_channel()
+            .map(|c| GenericChannelId::new(c.get()));
+        let Some(channel) = music_channel.or(fallback) else {
+            // Not connected any more: nowhere to announce, nothing to play into.
             return None;
-        }
+        };
 
         // 🔴 This replaces a Spotify path that could never run: it needed client
         // credentials production does not have, and Spotify stopped issuing new
@@ -227,6 +254,7 @@ impl EventHandler for TrackEndHandler {
             self.data.set_autoplay(self.guild_id, false).await;
             tracing::warn!("autoplay disabled for {}: no recommendation", self.guild_id);
             announce_autoplay_off(channel, self.http.clone(), self.data.musicreco.is_some()).await;
+            self.show_finished_unless_playing().await;
             return None;
         };
         tracing::debug!(
@@ -238,28 +266,60 @@ impl EventHandler for TrackEndHandler {
         );
         let query = autoplay::to_query(&next);
 
-        let call = self.call.clone();
-        match queue_query(&self.data, self.guild_id, query, call).await {
-            Ok(_) => (),
+        match queue_query(&self.data, self.guild_id, query, self.call.clone()).await {
+            Ok(_) => {
+                self.show_now_playing().await;
+            },
             Err(e) => {
                 self.data.set_autoplay(self.guild_id, false).await;
                 tracing::warn!("autoplay disabled for {}: {}", self.guild_id, e);
                 announce_autoplay_off(channel, self.http.clone(), self.data.musicreco.is_some())
                     .await;
+                self.show_finished_unless_playing().await;
             },
         }
-
-        let chan_id = channel;
-
-        match send_now_playing(chan_id, self.http.clone(), self.call.clone()).await {
-            Ok(_) => tracing::trace!("Sent now playing message"),
-            Err(e) => tracing::warn!("Error sending now playing message: {}", e),
-        };
         None
     }
 }
 
 impl TrackEndHandler {
+    /// The status says what is playing now.
+    async fn show_now_playing(&self) {
+        crate::messaging::status::show_now_playing(
+            &self.data,
+            self.http.clone(),
+            self.cache.clone(),
+            self.guild_id,
+            &self.call,
+        )
+        .await;
+    }
+
+    /// The status says playback finished.
+    async fn show_finished(&self) {
+        crate::messaging::status::show_finished(
+            &self.data,
+            self.http.clone(),
+            self.cache.clone(),
+            self.guild_id,
+        )
+        .await;
+    }
+
+    /// The status says playback finished -- unless something plays after all.
+    /// A recommendation and its queueing take seconds of network time; a
+    /// `/play` in that window starts a track and shows it, and a late autoplay
+    /// failure must not then call it "Finished" while music plays.
+    ///
+    /// 🔑 The Call guard is a temporary, released at the end of the `let`,
+    /// before `show_finished` takes the slot lock.
+    async fn show_finished_unless_playing(&self) {
+        let nothing_current = self.call.lock().await.queue().current().is_none();
+        if nothing_current {
+            self.show_finished().await;
+        }
+    }
+
     /// The guild's next recommendation: the front of its buffer, or a refill
     /// seeded from the track that just ended.
     async fn next_autoplay_track(
@@ -485,5 +545,19 @@ mod tests {
 
         let meta = get_track_handle_metadata(&track).await.expect("metadata");
         assert_eq!(meta.title.as_deref(), Some("Want You Bad"));
+    }
+
+    /// Every track end decides what the status shows. Until v0.13.0 anything
+    /// but autoplay returned before "Now playing" was ever posted.
+    #[test]
+    fn a_track_ending_decides_what_the_status_shows() {
+        use super::{track_end_status, TrackEndStatus::*};
+
+        assert_eq!(track_end_status(true, true, true), Nothing);
+        assert_eq!(track_end_status(true, false, false), Nothing);
+        assert_eq!(track_end_status(false, true, false), NowPlaying);
+        assert_eq!(track_end_status(false, true, true), NowPlaying);
+        assert_eq!(track_end_status(false, false, true), Autoplay);
+        assert_eq!(track_end_status(false, false, false), Finished);
     }
 }

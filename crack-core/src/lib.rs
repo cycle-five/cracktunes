@@ -381,6 +381,11 @@ pub struct DataInner {
     pub playback_owners: dashmap::DashMap<serenity::GuildId, crate::music::lease::PlaybackOwner>,
     /// Per-guild queue-mutation mutex. Held for milliseconds; see `lock_queue`.
     pub queue_locks: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
+    /// Per-guild floating status message; see `messaging::status`.
+    pub status_slots: dashmap::DashMap<
+        serenity::GuildId,
+        Arc<tokio::sync::Mutex<crate::messaging::status::StatusSlot>>,
+    >,
     pub phone_data: PhoneCodeData,
     pub event_log_async: EventLogAsync,
     // Why Option instead of Arc here? Certainly it's an indirection to allow for an uninitialized state
@@ -607,6 +612,7 @@ impl Default for DataInner {
             bot_settings: Default::default(),
             playback_owners: Default::default(),
             queue_locks: Default::default(),
+            status_slots: Default::default(),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),

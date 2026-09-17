@@ -13,6 +13,19 @@ use serenity::all::{
 };
 use serenity::small_fixed_array::FixedString;
 
+/// Whether Discord refused a request because the message is already gone
+/// (JSON error 10008, Unknown Message) -- deleted by hand, say.
+///
+/// Shared by `/clean` and the status message, which both treat an
+/// already-deleted message as settled rather than as a failure.
+pub fn is_unknown_message(err: &serenity::Error) -> bool {
+    matches!(
+        err,
+        serenity::Error::Http(serenity::http::HttpError::UnsuccessfulRequest(response))
+            if response.error.code == serenity::http::JsonErrorCode::UnknownMessage
+    )
+}
+
 #[derive(Debug)]
 /// Parameter structure for functions that send messages to a channel.
 pub struct SendMessageParams<'a> {

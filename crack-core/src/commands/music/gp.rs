@@ -186,6 +186,9 @@ pub const GP_BLOCKED_COMMANDS: &[&str] = &[
     "resume",
     "summon",
     "summonchannel",
+    // Mutates nothing, but names the song a round is hiding (the floating
+    // status spec, rule 7). Matched on `qualified_name`, so `np` is covered.
+    "nowplaying",
 ];
 
 /// The subset of [`GP_BLOCKED_COMMANDS`] that would stall the game outright: the
@@ -5643,6 +5646,14 @@ mod test {
         assert_eq!(fields[1]["value"], GP_NOBODY_YET);
         assert_eq!(fields[2]["value"], "2");
         assert_eq!(fields[3]["value"], "1. <@100> — 110");
+    }
+
+    /// A round hides the song, and `/nowplaying` names it (the floating status
+    /// spec, rule 7). The check matches `qualified_name`, so this one entry
+    /// covers the `np` alias too.
+    #[test]
+    fn nowplaying_is_blocked_during_a_game() {
+        assert!(GP_BLOCKED_COMMANDS.contains(&"nowplaying"));
     }
 
     /// Every blocked name must be a real top-level music command (so the list

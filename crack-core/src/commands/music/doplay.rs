@@ -7,6 +7,7 @@ use crate::CrackedResult;
 use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
     errors::{verify, CrackedError},
+    guild::operations::GuildSettingsOperations,
     handlers::track_end::update_queue_messages,
     messaging::interface::create_now_playing_embed,
     messaging::{
@@ -317,6 +318,12 @@ fn degraded_delivery(text: Option<&TextPerms>) -> Option<NoticeDelivery> {
     }
 }
 
+/// The reply to a playlist `/play`: what [`CrackedMessage::PlaylistQueued`]
+/// says, not its variant name.
+fn playlist_queued_embed<'a>() -> CreateEmbed<'a> {
+    CreateEmbed::default().description(CrackedMessage::PlaylistQueued.to_string())
+}
+
 pub async fn build_play_embed<'a>(
     queue: &'a [TrackHandle],
     mode: Mode,
@@ -355,8 +362,7 @@ pub async fn build_play_embed<'a>(
                         "QueryType::PlaylistLink|QueryType::KeywordList, mode: {:?}",
                         y
                     );
-                    CreateEmbed::default()
-                        .description(format!("{:?}", CrackedMessage::PlaylistQueued))
+                    playlist_queued_embed()
                 },
                 (QueryType::File(_x_), y) => {
                     tracing::error!("QueryType::File, mode: {:?}", y);
@@ -468,7 +474,14 @@ pub async fn play_internal(
 
     let _after_call = std::time::Instant::now();
 
-    let search_msg = msg_int::send_search_message(&ctx).await?;
+    // `ephemeral_replies` decides whether this reply -- and the edit that turns
+    // it into the result -- is seen by its author alone.
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let private = crate::messaging::status::reply_privately(
+        ctx.data().get_ephemeral_replies(guild_id).await,
+        is_prefix,
+    );
+    let search_msg = msg_int::send_search_message_as(&ctx, private).await?;
     //tracing::debug!("search response msg: {:?}", search_msg.message());
 
     // determine whether this is a link or a query string
@@ -490,6 +503,14 @@ pub async fn play_internal(
     tracing::warn!("query_type: {:?}", query_type);
 
     let _after_query_type = std::time::Instant::now();
+
+    // Read before anything below enqueues into it, so a playlist (or any
+    // multi-track result) landing in an idle bot is still recognized as
+    // having started a song -- not just a `/play` that queued exactly one.
+    // And no earlier: resolving the query above takes seconds, and a track
+    // that ended in that window would leave the new song under "Finished".
+    // 🔑 The Call guard is a temporary, released at the end of the statement.
+    let was_empty = call.lock().await.queue().is_empty();
 
     // FIXME: Super hacky, fix this shit.
     // This is actually where the track gets queued into the internal queue, it's the main work function.
@@ -533,6 +554,7 @@ pub async fn play_internal(
     // after the queue embed rather than instead of it: the recovered tracks are
     // already queued and playing, and this is the footnote. Silent when the
     // listing was whole, which is the overwhelming majority of the time.
+    let mut footnote = None;
     if let Some(short) = shortfall {
         tracing::warn!(
             "spotify: partial listing served -- {} of {} seen, {} missing",
@@ -540,12 +562,46 @@ pub async fn play_internal(
             short.declared,
             short.missing
         );
-        ctx.send_reply_embed(CrackedMessage::SpotifyListingShort {
+        // `send_reply_embed(msg)`, plus the guild's ephemeral choice: the
+        // footnote to an ephemeral result must not land as a visible message.
+        let msg = CrackedMessage::SpotifyListingShort {
             seen: short.seen,
             declared: short.declared,
             missing: short.missing,
-        })
-        .await?;
+        };
+        let color = crate::serenity::Colour::from(&msg);
+        let embed: Option<CreateEmbed> = <Option<CreateEmbed>>::from(&msg);
+        let params = SendMessageParams::new(msg)
+            .with_color(color)
+            .with_as_embed(true)
+            .with_embed(embed)
+            .with_reply(true)
+            .with_ephemeral(private);
+        footnote = Some(ctx.send_message(params).await?);
+    }
+
+    // A `/play` that started a song is a now-playing moment. The status follows
+    // the reply, so a visible reply ends up directly above it.
+    if crate::messaging::status::play_started_song(was_empty, queue.len()) {
+        // The floor is the newest visible reply -- the footnote if one was
+        // sent, else the search reply edited into the result -- because its
+        // gateway echo may not have reached the cache yet. An ephemeral reply
+        // is not a channel message and must not move the status.
+        let after = if private {
+            None
+        } else {
+            crate::messaging::status::reply_floor(footnote.as_ref().unwrap_or(&search_msg)).await
+        };
+        let serenity_ctx = ctx.serenity_context();
+        crate::messaging::status::show_now_playing_after(
+            &ctx.data(),
+            serenity_ctx.http.clone(),
+            serenity_ctx.cache.clone(),
+            guild_id,
+            &call,
+            after,
+        )
+        .await;
     }
 
     // [Manage Messages]: Permissions::MANAGE_MESSAGES
@@ -1061,5 +1117,21 @@ mod degraded_notice_wiring_tests {
             content.contains("/diagnose"),
             "the notice must point at the diagnostic: {content}"
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messaging::messages::PLAY_PLAYLIST;
+
+    /// 🪤 Seen on production v0.12.1: a playlist `/play` replied with the literal
+    /// text "PlaylistQueued", `{:?}` of the message instead of its text.
+    #[test]
+    fn a_queued_playlist_is_announced_in_words() {
+        let json = serde_json::to_string(&playlist_queued_embed()).expect("an embed serializes");
+
+        assert!(json.contains(PLAY_PLAYLIST), "{json}");
+        assert!(!json.contains("PlaylistQueued"), "{json}");
     }
 }

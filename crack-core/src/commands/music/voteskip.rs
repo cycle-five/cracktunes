@@ -101,7 +101,7 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
         // The guard is held only for the mutation above, not across the
         // Discord round trip in `create_skip_response` -- see lease.rs.
         drop(guard);
-        create_skip_response(ctx, &handler, 1).await
+        create_skip_response(ctx, &handler, 1, false).await
     } else {
         // Never mutates the queue on this path, so the guard is dropped
         // before the Discord round trip below rather than held idle across

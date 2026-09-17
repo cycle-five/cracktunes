@@ -346,6 +346,9 @@ pub struct GuildSettings {
     pub autoplay: bool,
     #[serde(default = "default_true")]
     pub reply_with_embed: bool,
+    /// Whether /play, /skip and /nowplaying reply ephemerally.
+    #[serde(default = "default_false")]
+    pub ephemeral_replies: bool,
     #[serde(default = "allow_all_domains_default")]
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
@@ -384,6 +387,7 @@ impl PartialEq for GuildSettings {
             && self.autopause == other.autopause
             && self.autoplay == other.autoplay
             && self.reply_with_embed == other.reply_with_embed
+            && self.ephemeral_replies == other.ephemeral_replies
             && self.allow_all_domains == other.allow_all_domains
             && self.allowed_domains == other.allowed_domains
             && self.banned_domains == other.banned_domains
@@ -465,6 +469,7 @@ impl From<GuildSettingsRead> for GuildSettings {
         );
         settings.premium = settings_db.premium;
         settings.autopause = settings_db.autopause;
+        settings.ephemeral_replies = settings_db.ephemeral_replies;
         settings.autoplay = true; //settings_db.autoplay;
         settings.allow_all_domains = Some(settings_db.allow_all_domains);
         settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
@@ -515,6 +520,7 @@ impl GuildSettings {
             autopause: false,
             autoplay: true,
             reply_with_embed: true,
+            ephemeral_replies: false,
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),
@@ -610,6 +616,12 @@ impl GuildSettings {
     /// Toggle the autopause setting, mutating.
     pub fn toggle_autopause(&mut self) -> &mut Self {
         self.autopause = !self.autopause;
+        self
+    }
+
+    /// Toggle private (ephemeral) replies for the status-related commands.
+    pub fn toggle_ephemeral_replies(&mut self) -> &mut Self {
+        self.ephemeral_replies = !self.ephemeral_replies;
         self
     }
 
@@ -1241,5 +1253,52 @@ mod test {
             .with_provenance(Provenance::Database)
             .with_volume(0.8);
         assert_eq!(from_db.provenance, Provenance::Database);
+    }
+
+    #[test]
+    fn ephemeral_replies_are_off_by_default() {
+        assert!(!GuildSettings::new(GuildId::new(123), None, None).ephemeral_replies);
+    }
+
+    #[test]
+    fn toggling_ephemeral_replies_flips_them() {
+        let mut settings = GuildSettings::new(GuildId::new(123), None, None);
+
+        settings.toggle_ephemeral_replies();
+        assert!(settings.ephemeral_replies);
+        settings.toggle_ephemeral_replies();
+        assert!(!settings.ephemeral_replies);
+    }
+
+    #[test]
+    fn a_database_row_carries_ephemeral_replies() {
+        let row = crate::db::GuildSettingsRead {
+            guild_id: 123,
+            guild_name: "guild".to_string(),
+            prefix: "r!".to_string(),
+            premium: false,
+            autopause: false,
+            allow_all_domains: true,
+            allowed_domains: vec![],
+            banned_domains: vec![],
+            ignored_channels: vec![],
+            old_volume: 1.0,
+            volume: 1.0,
+            self_deafen: true,
+            timeout_seconds: Some(360),
+            additional_prefixes: vec![],
+            ephemeral_replies: true,
+        };
+
+        assert!(GuildSettings::from(row).ephemeral_replies);
+    }
+
+    #[test]
+    fn settings_differing_only_in_ephemeral_replies_are_not_equal() {
+        let visible = GuildSettings::new(GuildId::new(123), None, None);
+        let mut private = visible.clone();
+        private.ephemeral_replies = true;
+
+        assert_ne!(visible, private);
     }
 }

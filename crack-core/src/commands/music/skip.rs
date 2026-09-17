@@ -3,13 +3,15 @@ use crate::{
     commands::cmd_check_music,
     commands::get_call_or_join_author,
     errors::{verify, CrackedError},
+    guild::operations::GuildSettingsOperations,
+    http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
     music::{drain_after_current, PlaybackOwner, QueueGuard},
     poise_ext::PoiseContextExt,
     utils::get_track_handle_metadata,
     Context, Error,
 };
-use serenity::all::Message;
+use serenity::all::{Colour, CreateEmbed, Message};
 use songbird::{tracks::TrackHandle, Call};
 use std::cmp::min;
 use tokio::sync::MutexGuard;
@@ -29,6 +31,10 @@ pub async fn skip(
 ) -> Result<(), Error> {
     let (call, guild_id) = ctx.get_call_guild_id().await?;
     let to_skip = num_tracks.unwrap_or(1) as usize;
+    let private = crate::messaging::status::reply_privately(
+        ctx.data().get_ephemeral_replies(guild_id).await,
+        ctx.is_prefix(),
+    );
 
     // Ordinary music commands mutate as `Free`; a guild a game owns refuses
     // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
@@ -47,7 +53,26 @@ pub async fn skip(
     // The guard is held only for the mutations above, not across the Discord
     // round trip in `create_skip_response` -- see lease.rs.
     drop(guard);
-    create_skip_response(ctx, &handler, tracks_to_skip).await?;
+    let reply = create_skip_response(ctx, &handler, tracks_to_skip, private).await?;
+    let still_playing = handler.queue().current().is_some();
+    // 🔑 Released before the status update, which takes the Call lock itself.
+    drop(handler);
+    if still_playing {
+        // A visible reply is the floor: its gateway echo may not have reached
+        // the cache yet, and the status must still land below it. An ephemeral
+        // reply is not a channel message and must not move the status.
+        let after = (!private).then_some((reply.channel_id, reply.id));
+        let serenity_ctx = ctx.serenity_context();
+        crate::messaging::status::show_now_playing_after(
+            &ctx.data(),
+            serenity_ctx.http.clone(),
+            serenity_ctx.cache.clone(),
+            guild_id,
+            &call,
+            after,
+        )
+        .await;
+    }
     Ok(())
 }
 
@@ -58,6 +83,7 @@ pub async fn create_skip_response(
     ctx: Context<'_>,
     handler: &MutexGuard<'_, Call>,
     tracks_to_skip: usize,
+    private: bool,
 ) -> Result<Message, CrackedError> {
     let send_msg = match handler.queue().current() {
         Some(track) => {
@@ -75,7 +101,16 @@ pub async fn create_skip_response(
             }
         },
     };
-    ctx.send_reply(send_msg, true)
+    // `send_reply(send_msg, true)`, plus the guild's ephemeral choice.
+    let color = Colour::from(&send_msg);
+    let embed: Option<CreateEmbed> = <Option<CreateEmbed>>::from(&send_msg);
+    let params = SendMessageParams::new(send_msg)
+        .with_color(color)
+        .with_as_embed(true)
+        .with_embed(embed)
+        .with_reply(true)
+        .with_ephemeral(private);
+    ctx.send_message(params)
         .await?
         .into_message()
         .await

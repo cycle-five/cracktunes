@@ -5,6 +5,7 @@ pub mod collector;
 pub mod diagnose;
 pub mod doplay;
 pub mod dosearch;
+pub mod ephemeral;
 pub mod gambling;
 pub mod get_metadata;
 pub mod gp;
@@ -66,6 +67,9 @@ pub fn music_commands() -> Vec<crate::Command> {
         vec![
             autopause(),
             autoplay(),
+            // `ephemeral::ephemeral()` is deliberately absent: the setting it
+            // toggles cannot take effect while every music command defers
+            // publicly before it replies (#535).
             clear(),
             diagnose(),
             grab(),

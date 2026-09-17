@@ -26,7 +26,15 @@ pub async fn cmd_check_music(ctx: Context<'_>) -> Result<bool, Error> {
     let channel_id: GenericChannelId = ctx.channel_id();
     let member = ctx.author_member().await;
 
-    cmd_check_music_internal(member, channel_id, ctx).await
+    let allowed = cmd_check_music_internal(member, channel_id, ctx).await?;
+    // The floating status message follows the conversation: remember where
+    // this guild's latest music command was run.
+    if allowed {
+        if let Some(guild_id) = ctx.guild_id() {
+            crate::messaging::status::note_command_channel(&ctx.data(), guild_id, channel_id).await;
+        }
+    }
+    Ok(allowed)
 }
 
 /// Internal function (doesn't parse arguments).

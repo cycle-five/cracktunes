@@ -49,5 +49,16 @@ pub async fn stop_internal(ctx: Context<'_>) -> Result<Vec<TrackHandle>, Error> 
     drop(guard);
 
     send_reply(&ctx, CrackedMessage::Stop, true).await?;
+
+    // Idempotent with the track end `stop_queue` fires: both land on Finished.
+    let serenity_ctx = ctx.serenity_context();
+    crate::messaging::status::show_finished(
+        &ctx.data(),
+        serenity_ctx.http.clone(),
+        serenity_ctx.cache.clone(),
+        guild_id,
+    )
+    .await;
+
     Ok(queue)
 }
