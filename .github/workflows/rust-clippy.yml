@@ -37,15 +37,16 @@ jobs:
       actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
+      # Plain rustup, which the runner already has, as build.yml does. This was
+      # `actions-rs/toolchain`, archived in 2023: it targeted Node 12, ran only
+      # because the runner forced it onto Node 24, and used the deprecated
+      # `set-output` command. rust-toolchain.toml pins `stable`, so there is no
+      # separate override to set.
       - name: Install Rust toolchain
-        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af #@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          components: clippy
-          override: true
+        run: rustup toolchain install stable --profile minimal --component clippy --no-self-update
+        shell: bash
 
       - name: Install required cargo
         run: cargo install clippy-sarif sarif-fmt
@@ -58,7 +59,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload analysis results to GitHub
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: rust-clippy-results.sarif
           wait-for-processing: true
