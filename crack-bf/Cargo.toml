@@ -1,11 +1,11 @@
 [package]
 name = "crack-bf"
-version.workspace = true
+version = "0.1.0"
 edition = "2021"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 publish = true
 license = "MIT"
-description = "Brainfuck interpreter for cracktunes. v0.1.0"
+description = "Brainfuck interpreter for cracktunes."
 keywords = [
   "music",
   "discord",
@@ -19,9 +19,8 @@ categories = ["multimedia::audio"]
 homepage = "https://cracktun.es/"
 # The official main repo is sr.ht, this is needed for the CI/CD pipeline.
 #repository = "https://git.sr.ht/~cycle-five/cracktunes"
-repository = "https://github.com/cycle-five/cracktunes"
-workspace = "../"
+repository = "https://github.com/cycle-five/crack-bf"
 
 
 [dependencies]
-tokio = { workspace = true }
+tokio = { version = "1.34.0", features = ["full"] }
