@@ -293,9 +293,9 @@ user programs and wants a step limit, a memory cap and a timeout.
   poise wrapper belongs in crack-core regardless of where `crack-osint` lives.
 - **Turning the osint feature on.** Whether `/scan`, `/checkpass` and
   `/virustotal_result` should ship is a product question, untouched here.
-- **crack-testing.** It is in crack-core's default feature list, so a crate named
-  "testing" is compiled into the production binary. Noted as worth its own look;
-  explicitly excluded from this scope.
+- **crack-testing's name.** It ships, and it should: despite the name it holds
+  the bot's track resolution, not tests. Renaming it is #550 and is deliberately
+  kept out of this arc, which is already touching several manifests.
 - **crack-bf resource limits.** Recorded above as a note for the new repo.
 
 ## 6. Risks
@@ -327,5 +327,10 @@ user programs and wants a step limit, a memory cap and a timeout.
   code path calls: both construction sites use `PhoneCodeData::default()`.
 - **#535** — deleting crack-gpt removes `commands/chatgpt.rs:21` from the four
   `ctx.defer()` sites this issue has to reason about.
-- **New issue to file:** phlookup's Numverify credential over plain HTTP.
-- **New issue to file:** crack-testing shipping in the production binary.
+- **#549** — phlookup's Numverify credential in a query string over plain HTTP.
+  Latent, since the module does not compile; it blocks any revival.
+- **#550** — `crack-testing` is misnamed. It is not a test crate: it holds
+  `ResolvedTrack`, `CrackTrackClient`, `suggestion2` and `fetch_playlist`, 2014
+  lines of track resolution that the bot uses at runtime and correctly ships.
+  The name raised a false alarm during this very design, which is the argument
+  for renaming it.
