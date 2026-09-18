@@ -86,7 +86,6 @@ and it is covered by the crate's existing suite.
 - `crack-core/src/commands/mod.rs` — module, re-export, `all_commands()`
 - `crack-core/src/errors.rs` — error variant and its Display arm
 - `scripts/run_one_test.sh` — feature flags
-- `.gitignore` — the local override file
 
 **Created in cracktunes**
 - `docs/module-development.md` — the two-repo workflow and the path override
@@ -567,12 +566,12 @@ extraction reuses.
 **Files:**
 - Delete: `crack-bf/` (directory — its history now lives in the new repository)
 - Modify: `Cargo.toml` (member list), `crack-core/Cargo.toml` (the dependency)
-- Modify: `.gitignore`
+- (No `.gitignore` change — see Step 3; `.cargo/config.toml` is tracked)
 - Create: `docs/module-development.md`
 
 **Interfaces:**
 - Consumes: `cycle-five/crack-bf` at tag `v0.1.0` from Task 3.
-- Produces: the `.cargo/config.toml` override pattern and
+- Produces: the `--config` patch override pattern and
   `docs/module-development.md`, both reused verbatim by Task 8.
 
 - [ ] **Step 1: Repoint the dependency**
@@ -602,48 +601,67 @@ Then delete the `"crack-bf",` line from `[workspace] members` in the root
 `Cargo.toml`, and the commented `# crack-bf = { path = "../crack-bf", ... }` line
 from `[workspace.dependencies]`.
 
-- [ ] **Step 3: Ignore the local override file**
+- [ ] **Step 3: Do NOT add a `.gitignore` entry — the earlier draft was wrong**
 
-Add to `.gitignore`:
+🪤 An earlier version of this plan said to gitignore `.cargo/config.toml`. **That
+does not work: `.cargo/config.toml` is already a tracked file** (`git ls-files
+.cargo/config.toml` confirms it), holding the workspace's `rustflags` and wasm
+target settings. A `.gitignore` rule has no effect on a tracked file, so the
+entry would do nothing while reading as though it protected something — and
+writing the override into that file would edit tracked config that could then be
+committed and break every other clone.
 
-```gitignore
-# Local module development: redirects an extracted module's git dependency at a
-# sibling checkout. Never commit this -- CI and every other clone must build the
-# pinned tag. See docs/module-development.md.
-.cargo/config.toml
-```
+Make no `.gitignore` change in this task. The override moves to a command-line
+flag instead, which writes no file at all and therefore cannot be committed by
+accident.
 
 - [ ] **Step 4: Document the workflow**
 
 Create `docs/module-development.md` covering: which modules are extracted and
 where they live; that a change spanning crack-core and a module is two commits, a
-tag and a pin bump; and the override that makes local work feel like one repo:
+tag and a pin bump; and the override that makes local work feel like one repo.
+
+The override is a `--config` flag, not a file:
 
 ````markdown
-```toml
-# .cargo/config.toml -- gitignored, never committed
-[patch."https://github.com/cycle-five/crack-bf"]
-crack-bf = { path = "../crack-bf" }
+```bash
+cargo check -p crack-core --features crack-bf \
+  --config 'patch."https://github.com/cycle-five/crack-bf".crack-bf.path="../crack-bf"'
 ```
 ````
 
-State plainly that `[patch]` in `Cargo.toml` would be committed and would break
-every other clone, which is why it goes in the config file. Record the release
-sequence: commit and push in the module repo, tag it, then bump the `tag = `
-value in `crack-core/Cargo.toml` and commit that.
+Explain why it is a flag and not a file: `[patch]` in `Cargo.toml` is tracked and
+would break every other clone, and `.cargo/config.toml` is *also* tracked here —
+so both file-based routes put a local-only override into version control. The
+flag leaves nothing behind.
+
+Record the release sequence: commit and push in the module repo, tag it, then
+bump the `tag = ` value in `crack-core/Cargo.toml` and commit that.
 
 - [ ] **Step 5: Confirm the override mechanism actually works**
 
-The spec flagged this as needing confirmation on the installed toolchain. Create
-the override file pointing at a sibling checkout of crack-bf, then:
+Clone the module beside the cracktunes checkout — `crack-bf/` no longer exists
+inside the repo, and Task 3's `mktemp -d` clone is gone:
 
 ```bash
-cargo tree -p crack-core --features crack-bf -e normal | grep crack-bf
+git clone https://github.com/cycle-five/crack-bf /home/lothrop/projects/crack-bf
 ```
-Expected: shows crack-bf resolved from the local path, not the git URL. If
-`[patch]` in `.cargo/config.toml` is not honoured, fall back to the legacy
-`paths` key and document whichever works. **Delete the override file before
-continuing** — the remaining steps must verify against the real git dependency.
+
+Then, from the cracktunes checkout:
+
+```bash
+cargo tree -p crack-core --features crack-bf -e normal \
+  --config 'patch."https://github.com/cycle-five/crack-bf".crack-bf.path="/home/lothrop/projects/crack-bf"' \
+  | grep crack-bf
+```
+Expected: crack-bf resolved from the local path, not the git URL.
+
+The `--config` syntax itself is already confirmed accepted by the installed
+cargo. What this step proves is that the patch actually redirects the
+dependency. Record the exact working command in `docs/module-development.md`.
+
+No cleanup needed afterwards: the flag changes nothing on disk, so the remaining
+steps automatically verify against the real git dependency.
 
 - [ ] **Step 6: Prove the feature still builds from git**
 
@@ -705,7 +723,7 @@ and exits 1 on structurally broken input.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add Cargo.toml Cargo.lock crack-core/Cargo.toml .gitignore \
+git add Cargo.toml Cargo.lock crack-core/Cargo.toml \
   docs/module-development.md .vscode/settings.json README.md
 git commit
 ```
@@ -1092,12 +1110,12 @@ Then delete `"crack-osint",` from `[workspace] members` and the commented
 - [ ] **Step 3: Add crack-osint to the module docs**
 
 In `docs/module-development.md`, add crack-osint to the list of extracted modules
-and add its patch stanza beside crack-bf's:
+and add its `--config` invocation beside crack-bf's:
 
 ````markdown
-```toml
-[patch."https://github.com/cycle-five/crack-osint"]
-crack-osint = { path = "../crack-osint" }
+```bash
+cargo check -p crack-core --features crack-osint \
+  --config 'patch."https://github.com/cycle-five/crack-osint".crack-osint.path="/home/lothrop/projects/crack-osint"'
 ```
 ````
 
