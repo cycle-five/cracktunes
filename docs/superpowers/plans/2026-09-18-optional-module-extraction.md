@@ -96,7 +96,9 @@ and it is covered by the crate's existing suite.
 - `rust-toolchain.toml` — `stable`, matching cracktunes
 - `rustfmt.toml` — copied from the root; without it the crate fails its own fmt gate
 - `.gitignore` — the root's rules are root-anchored and do not survive the split
-- `LICENSE` — MIT, carried from the template commit the split overwrites
+- `LICENSE` — MIT. For crack-bf it preserves the template commit the split
+  overwrites; for crack-osint, whose repo is created empty, it is the only
+  licence the repository will have. Both manifests already declare `license = "MIT"`.
 - `README.md`
 
 ---
