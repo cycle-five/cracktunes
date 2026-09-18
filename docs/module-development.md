@@ -50,6 +50,25 @@ Instead, use a `--config` flag on the command line. It changes nothing on
 disk, so there is nothing to accidentally commit and nothing to clean up
 afterwards.
 
+**The flag itself leaves nothing behind, but `Cargo.lock` does.** Every
+command you run with the override updates `Cargo.lock` to record the patched
+resolution — expected, not a bug, since that is the patch actually taking
+effect. The lock now names your local path (e.g.
+`/home/you/projects/crack-bf`), which exists on exactly one machine. **Never
+commit that `Cargo.lock`.** Doing so breaks CI and every other clone the same
+way a committed `[patch]` file would, just one step removed. `--locked` does
+not protect you here — passed to a patched command it makes cargo refuse to
+resolve at all (`cannot update the lock file ... because --locked was
+passed`), since `[patch]` genuinely changes what gets resolved, so there is
+no flag that makes the update safe to leave in place. Check before every
+commit during a cross-repo session, and restore the pinned lockfile when
+you're done:
+
+```bash
+git status Cargo.lock
+git checkout -- Cargo.lock
+```
+
 Clone the module beside the cracktunes checkout:
 
 ```bash
