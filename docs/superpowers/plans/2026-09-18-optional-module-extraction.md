@@ -621,10 +621,37 @@ SQLX_OFFLINE=true cargo test --workspace
 Expected: all pass. `Cargo.lock` now carries crack-bf with a `source = "git+…"`
 line; stage it.
 
+- [ ] **Step 7b: Sweep the references the move strands**
+
+🔑 **Feature-name references stay correct and must NOT be touched.** The
+`crack-bf` cargo feature still exists and still works — that is the entire point
+of the design. So leave `#[cfg(feature = "crack-bf")]` in
+`crack-core/src/commands/mod.rs`, `--features crack-bf` in
+`scripts/run_one_test.sh`, and the feature lists in `.vscode/tasks.json` exactly
+as they are.
+
+**Path-based references break**, because the directory is gone. Fix these:
+
+- `.vscode/settings.json` — remove `"./crack-bf/Cargo.toml"` from
+  `rust-analyzer.linkedProjects` (~line 22) and `"crack-bf"` from the features
+  list only if it names a *path*; if it is a feature name, leave it. Leave every
+  `crack-osint` entry alone — Task 8 removes those.
+- `README.md:192` — this line reads `--features crack-osint,crack-bf,crack-fpt`.
+  `crack-fpt` is a typo for the now-deleted `crack-gpt`, so the documented
+  command fails on an unknown feature. Task 1's sweep missed it because it
+  searched for `crack-gpt`, not the misspelling. Remove `,crack-fpt`.
+
+Then confirm the JSON still parses, since that is the likeliest way this breaks:
+
+```bash
+python3 -c "import json,re; raw=open('.vscode/settings.json').read(); raw=re.sub(r'^\s*//.*$','',raw,flags=re.M); raw=re.sub(r',(\s*[}\]])',r'\1',raw); json.loads(raw); print('parses OK')"
+```
+
 - [ ] **Step 8: Commit**
 
 ```bash
-git add Cargo.toml Cargo.lock crack-core/Cargo.toml .gitignore docs/module-development.md
+git add Cargo.toml Cargo.lock crack-core/Cargo.toml .gitignore \
+  docs/module-development.md .vscode/settings.json README.md
 git commit
 ```
 
@@ -1040,10 +1067,42 @@ cargo tree -p cracktunes -e normal | grep -E "crack-osint|crack-bf|crack-gpt"
 Expected: no output. None of the three was ever in the binary, and none is now —
 which is why this arc takes no version bump.
 
+- [ ] **Step 7b: Sweep the references the move strands**
+
+Same rule as Task 4 Step 7b: **feature-name references stay, path-based ones go.**
+`#[cfg(feature = "crack-osint")]` in `crack-core/src/commands/mod.rs` and
+`crack-core/src/messaging/message.rs`, and `--features crack-osint` in
+`scripts/run_one_test.sh`, are all still correct — the feature survives the move.
+Leave them.
+
+Fix the path-based ones:
+
+- `.vscode/settings.json` — remove `"./crack-osint/Cargo.toml"` from
+  `rust-analyzer.linkedProjects`.
+- `.vscode/launch.json` — remove the `"Debug unit tests in library 'crack-osint'"`
+  configuration block (it passes `--package=crack-osint`, which will no longer
+  resolve in this workspace).
+- `docs/testing.md:56` — reads "Some tests in `crack-testing` and `crack-osint`
+  make live calls". crack-osint's tests leave with the crate, so drop it from
+  that sentence and note that its HIBP test moved to `cycle-five/crack-osint`.
+
+Confirm both JSON files still parse:
+
+```bash
+for f in .vscode/settings.json .vscode/launch.json; do
+  python3 -c "import json,re,sys; raw=open('$f').read(); raw=re.sub(r'^\s*//.*\$','',raw,flags=re.M); raw=re.sub(r',(\s*[}\]])',r'\1',raw); json.loads(raw); print('$f parses OK')"
+done
+```
+
+Leave `docs/callgraphs.md` alone: its `crack-bf` and `crack-osint` lines link to
+SVGs hosted on cracktun.es, which no build depends on — the same call made for
+crack-gpt's line in Task 1.
+
 - [ ] **Step 8: Commit**
 
 ```bash
-git add Cargo.toml Cargo.lock crack-core/Cargo.toml docs/module-development.md
+git add Cargo.toml Cargo.lock crack-core/Cargo.toml docs/module-development.md \
+  .vscode/settings.json .vscode/launch.json docs/testing.md
 git commit
 ```
 
