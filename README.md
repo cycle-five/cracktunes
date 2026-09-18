@@ -189,7 +189,7 @@ cargo +nightly clippy --profile=release --all-features --workspace -- -D warning
 ## Build
 
 ```shell
-cargo +nightly build --profile=release --features crack-osint,crack-bf,crack-fpt --workspace --locked
+cargo +nightly build --profile=release --features crack-osint,crack-bf --workspace --locked
 ```
 
 ## Distribution

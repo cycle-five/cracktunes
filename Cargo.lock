@@ -951,6 +951,7 @@ dependencies = [
 [[package]]
 name = "crack-bf"
 version = "0.1.0"
+source = "git+https://github.com/cycle-five/crack-bf?tag=v0.1.0#f1bd11d5d621be4c6b7dad242414d6a08fd43c9d"
 dependencies = [
  "tokio",
 ]

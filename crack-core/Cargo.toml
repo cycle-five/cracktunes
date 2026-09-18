@@ -75,7 +75,7 @@ urlencoding = "2.1"
 extract_map = "0.3"
 
 crack-osint = { path = "../crack-osint", optional = true }
-crack-bf = { path = "../crack-bf", optional = true }
+crack-bf = { git = "https://github.com/cycle-five/crack-bf", tag = "v0.1.0", optional = true }
 crack-testing = { path = "../crack-testing", optional = true }
 crack-types = { path = "../crack-types", optional = true }
 # Not optional and not feature-gated: it pulls in nothing the crate does not
