@@ -42,6 +42,17 @@ cargo workspaces, git subtree, GitHub Actions.
   cargo clippy --workspace --all-targets --locked -- -D warnings
   SQLX_OFFLINE=true cargo test --workspace
   ```
+  🪤 **Every task in this arc changes `Cargo.toml`, so `Cargo.lock` goes stale
+  and the `--locked` step fails first time with `cannot update the lock file …
+  because --locked was passed`.** That is the flag doing its job, not a problem
+  with your change. Regenerate the lock once, *read the diff to confirm it holds
+  only what your change should have caused*, then run the gate as written:
+  ```bash
+  cargo check --workspace          # regenerates Cargo.lock
+  git diff --stat Cargo.lock       # confirm the delta is yours and nothing else
+  ```
+  Never skip `--locked` on the real gate run — that step passing is what proves
+  the committed lock agrees with the committed manifests. (Found in Task 1.)
 - **Never build cracktunes Docker images locally.** Container DNS has been broken
   for months; image builds happen in CI.
 - **The tag push IS the release** for cracktunes. Not relevant to this arc — no
