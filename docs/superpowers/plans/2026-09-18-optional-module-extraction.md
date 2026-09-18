@@ -96,6 +96,7 @@ and it is covered by the crate's existing suite.
 - `.github/dependabot.yml` — weekly grouped
 - `rust-toolchain.toml` — `stable`, matching cracktunes
 - `rustfmt.toml` — copied from the root; without it the crate fails its own fmt gate
+- `.gitignore` — the root's rules are root-anchored and do not survive the split
 - `LICENSE` — MIT, carried from the template commit the split overwrites
 - `README.md`
 
@@ -383,7 +384,24 @@ songbird and rusty_ytdl paths that crack-bf does not depend on, and an
 unresolvable path there risks a lint warning that `-D warnings` would turn into
 a CI failure. Standalone clippy was verified clean without it.
 
-- [ ] **Step 6b: Add the LICENSE**
+- [ ] **Step 6b: Add a `.gitignore`**
+
+Create `crack-bf/.gitignore`:
+
+```gitignore
+/target/
+```
+
+🪤 The root `.gitignore`'s rules are `/target/` and `/*/target/` — both anchored
+to the repository root with a leading slash, so **neither survives
+`git subtree split -P crack-bf`**. Without this the new repository arrives with
+no ignore rules at all and a contributor can commit `target/`. No crate in this
+workspace has its own `.gitignore` today, so this applies to every extraction.
+
+Do not add a `Cargo.lock` rule: leaving the lock untracked is the current state
+and changing it is not this task's call.
+
+- [ ] **Step 6c: Add the LICENSE**
 
 The repository was created from `cycle-five/template`, whose only contributions
 are a `LICENSE` and a stub `README.md`. Task 3 force-pushes over that commit, so
@@ -416,7 +434,8 @@ Expected: `0.1.0` — not the workspace's `0.13.0`.
 
 ```bash
 git add crack-bf/Cargo.toml crack-bf/rust-toolchain.toml crack-bf/README.md \
-  crack-bf/LICENSE crack-bf/rustfmt.toml crack-bf/.github/workflows/ci.yml \
+  crack-bf/LICENSE crack-bf/rustfmt.toml crack-bf/.gitignore \
+  crack-bf/.github/workflows/ci.yml \
   crack-bf/.github/dependabot.yml Cargo.lock
 git commit
 ```
@@ -479,7 +498,7 @@ host-it-yourself story.
 stub `README.md`), and the split branch is rooted years earlier in unrelated
 history. A plain push is rejected; a merge would root the repository at a
 template stub. The owner chose a force-push (2026-09-18), which is why Task 2
-Step 6b copied that `LICENSE` into the crate — it survives as a real file, and
+Step 6c copied that `LICENSE` into the crate — it survives as a real file, and
 Task 2's README replaces the stub.
 
 Confirm the owner's go-ahead is still current, then:
@@ -876,7 +895,12 @@ its first CI run would fail `cargo fmt --check` on a diff no cracktunes gate can
 see. Do **not** copy `clippy.toml` — its `disallowed-methods` entries name
 songbird and rusty_ytdl paths this crate does not depend on.
 
-- [ ] **Step 5b: Add the LICENSE**
+- [ ] **Step 5b: Add a `.gitignore`**
+
+Create `crack-osint/.gitignore` with `/target/`, for the same reason as Task 2
+Step 6b: the root rules are root-anchored and do not survive the split.
+
+- [ ] **Step 5c: Add the LICENSE**
 
 crack-osint has no `LICENSE` file though its manifest declares `license = "MIT"`.
 If the owner creates the repository from `cycle-five/template` as they did for
@@ -909,7 +933,8 @@ Expected: `0.1.0`.
 
 ```bash
 git add crack-osint/Cargo.toml crack-osint/rust-toolchain.toml crack-osint/README.md \
-  crack-osint/LICENSE crack-osint/rustfmt.toml crack-osint/.github/workflows/ci.yml \
+  crack-osint/LICENSE crack-osint/rustfmt.toml crack-osint/.gitignore \
+  crack-osint/.github/workflows/ci.yml \
   crack-osint/.github/dependabot.yml Cargo.lock
 git commit
 ```
@@ -977,7 +1002,7 @@ git push https://github.com/cycle-five/crack-osint crack-osint-export:master
 ```
 
 **If it returns 1 or more** (created from the template), force-push — the same
-call the owner made for crack-bf, and the reason Step 5b copied the `LICENSE`
+call the owner made for crack-bf, and the reason Step 5c copied the `LICENSE`
 into the crate:
 
 ```bash
