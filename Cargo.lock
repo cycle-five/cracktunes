@@ -979,6 +979,7 @@ dependencies = [
 [[package]]
 name = "crack-osint"
 version = "0.1.0"
+source = "git+https://github.com/cycle-five/crack-osint?tag=v0.1.0#e665d43c403d2c63cdce6ccb7d9d7fcce12d3a80"
 dependencies = [
  "ipinfo",
  "reqwest 0.12.28",

@@ -12,6 +12,7 @@ exactly as it was.
 | Feature      | Repository                                    | Pinned tag |
 | ------------ | ---------------------------------------------- | ---------- |
 | `crack-bf`   | `https://github.com/cycle-five/crack-bf`       | `v0.1.0`   |
+| `crack-osint`| `https://github.com/cycle-five/crack-osint`    | `v0.1.0`   |
 
 More modules will be added to this table as they are extracted. Each row's
 pin is the `tag = "..."` value in that dependency's entry in
@@ -53,6 +54,7 @@ Clone the module beside the cracktunes checkout:
 
 ```bash
 git clone https://github.com/cycle-five/crack-bf /home/lothrop/projects/crack-bf
+git clone https://github.com/cycle-five/crack-osint /home/lothrop/projects/crack-osint
 ```
 
 Then, from the cracktunes checkout, point cargo at the local clone for a
@@ -61,6 +63,11 @@ single invocation:
 ```bash
 cargo check -p crack-core --features crack-bf \
   --config 'patch."https://github.com/cycle-five/crack-bf".crack-bf.path="/home/lothrop/projects/crack-bf"'
+```
+
+```bash
+cargo check -p crack-core --features crack-osint \
+  --config 'patch."https://github.com/cycle-five/crack-osint".crack-osint.path="/home/lothrop/projects/crack-osint"'
 ```
 
 This was confirmed with `cargo tree`, which shows the dependency resolved

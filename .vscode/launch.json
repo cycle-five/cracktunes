@@ -98,30 +98,6 @@
                 "DATABASE_URL": "postgres://postgres:mysecretpassword@localhost:5432/postgres",
                 "TOPGG_TOKEN": "mytopggtoken",
             }
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in library 'crack-osint'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=crack-osint"
-                ],
-                "filter": {
-                    "name": "crack-osint",
-                    "kind": "lib"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "RUST_BACKTRACE": "1",
-                "DATABASE_URL": "postgres://postgres:mysecretpassword@localhost:5432/postgres",
-                "TOPGG_TOKEN": "mytopggtoken",
-            }
         }
     ]
 }
