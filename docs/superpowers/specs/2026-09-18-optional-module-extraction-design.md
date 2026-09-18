@@ -3,7 +3,8 @@
 **Date:** 2026-09-18
 **Target version:** none — no bump in this arc (the shipped binary is unchanged;
 see Versioning)
-**Status:** approved in conversation (sections 1–3 by the owner); ready for planning
+**Status:** approved in conversation (sections 1–3 by the owner); revised
+2026-09-18 after rule 5 surfaced during planning; ready for planning
 
 ## Problem
 
@@ -97,6 +98,10 @@ A crate may live outside the workspace only if it satisfies all four rules.
    module, including any command surface `crack-voting` may grow later.
 3. **Its own version line**, not `version.workspace = true`.
 4. **Its own tests**, needing nothing from the bot to run.
+5. **No shared-schema or shared-data coupling** with the bot unless that
+   coupling is written down as an explicit contract. A crate that reads or
+   writes cracktunes' database, or compiles against its `.sqlx` cache, is joined
+   to it by something cargo cannot see.
 
 Rule 2 is the load-bearing one. Its violation is what produced `phcode.rs` and
 `phlookup.rs` — two files that cannot compile and that nobody noticed for years,
@@ -104,21 +109,31 @@ because the cycle that forbids them is an accident of the dependency graph that
 each person has to rediscover. Stating it makes the mistake structurally
 impossible rather than merely discouraged.
 
+Rule 5 was added on 2026-09-18, during planning, after the first draft of this
+spec called `crack-voting` "ready today" on the strength of its `Cargo.toml`
+alone. It is not. Its two `sqlx::query!` macros compile against the
+workspace-root `.sqlx/` cache, and `migrations/20240705083637_crack_voting.sql`
+creates `vote_webhook` with a foreign key into the `"user"` table that crack-core
+owns. Cargo sees none of that, so four rules that only read Rust manifests
+passed a crate that would not have built once moved. **Check the schema, not just
+the manifest.**
+
 ### Readiness against the contract
 
-| crate | workspace deps | Discord types | poise wrapper | ready? |
+| crate | workspace deps | Discord types | schema coupling | ready? |
 | --- | --- | --- | --- | --- |
-| crack-voting | none | none | n/a — own `main.rs` | **today** |
-| crack-bf | none | none | `commands/bf.rs` | **today** |
-| crack-osint | `crack_types::Error` ×1 | `phcode.rs`, `phlookup.rs` | `commands/osint.rs` | one line + two rotted files |
+| crack-bf | none | none | none | **today** |
+| crack-osint | `crack_types::Error` ×1 | `phcode.rs`, `phlookup.rs` | none | one line + two rotted files |
+| crack-voting | none | none | **`.sqlx` + a migration + an FK into `"user"`** | no — fails rule 5 |
 
 Verified by grep: `crack-bf/src` and `crack-voting/src` import no `crack_core`,
 no `crack_types`, no `poise` and no `serenity`. crack-osint's single workspace
 import is `crack_types::Error` at `crack-osint/src/checkpass.rs:1`, and
 `crack_types::Error` is `Box<dyn StdError + Send + Sync>` — byte-identical to the
-`Error` alias crack-osint already declares in its own `lib.rs:70`. The migration
-the owner started is therefore already finished for two of the three, and one
-line short for the third.
+`Error` alias crack-osint already declares in its own `lib.rs:70`.
+
+crack-bf is therefore ready as-is and crack-osint is one line short. crack-voting
+passes rules 1–4 and fails rule 5, which is why it leaves this arc.
 
 ## 2. Scope
 
@@ -141,10 +156,10 @@ every one behind `#[cfg(feature = "crack-gpt")]`, so nothing that ships changes:
 Two incidental gains: it removes one of the four `ctx.defer()` call sites that
 #535 is trying to reason about, and it drops `async-openai` from `Cargo.lock`.
 
-### Moves now: crack-voting, crack-bf, crack-osint
+### Moves now: crack-bf, crack-osint
 
-All three are dormant — nothing that ships depends on them — so extraction
-carries no risk of disrupting live work.
+Both are dormant — nothing that ships depends on them — so extraction carries no
+risk of disrupting live work, and neither has any coupling cargo cannot see.
 
 ### Deferred, with triggers
 
@@ -153,6 +168,19 @@ extraction scales with change rate, not with size or contract-compliance**: a
 dormant crate costs nothing to move, while a crate under active development pays
 a push-and-bump cycle on every change.
 
+- **crack-voting** (345 lines). Dropped from this arc on 2026-09-18 when rule 5
+  surfaced. It stays in the workspace, where its schema and the code that owns
+  that schema are versioned together. Facts for whoever picks it up: it is not
+  in the bot binary, it is **not deployed anywhere** (no `image:` for it in any
+  compose file — homelab's mentions are documentation citing it as a health-check
+  reference), crack-core never imports it, and crack-core already ships a
+  different top.gg path — `/vote` polls the API through `check_and_record_vote`
+  and never reads `vote_webhook`. It also already carries a
+  `crack-voting/test_migrations/` copy, which looks like an earlier attempt at
+  this same problem.
+  **Trigger:** decide webhook-versus-polling first. If webhooks win, revive and
+  deploy it and then extract with the schema contract written down; if polling
+  wins, it is dead code and the crack-gpt reasoning applies to it too.
 - **crack-musicreco** (4529 lines). The autoplay hot path, recently built, still
   carrying deferred follow-ups, and with exactly one consumer. It has no external
   contract to track, so the versioning argument barely applies.
@@ -170,7 +198,15 @@ a push-and-bump cycle on every change.
 
 ### Stays
 
-`crack-core`, `crack-types`, `crack-cli`, plus the two deferred crates.
+`crack-core`, `crack-types`, `crack-cli`, plus the three deferred crates.
+
+One cleanup rides along even though crack-voting is not being extracted:
+crack-core declares `crack-voting = ["dep:crack-voting"]` and
+`crack-voting = { path = "../crack-voting", optional = true }` while **never
+importing it** — zero matches for `crack_voting` in `crack-core/src`. That is
+dead configuration claiming a dependency that does not exist, and this arc is
+exactly the audit that should remove it. The crate stays a workspace member and
+keeps building; only crack-core's false claim on it goes.
 
 ## 3. Mechanics
 
@@ -185,12 +221,23 @@ crack-osint = { git = "https://github.com/cycle-five/crack-osint", tag = "v0.1.0
 `cargo build --features crack-osint` still works and cargo fetches the
 dependency. No submodules, and nothing extra for anyone cloning the repo.
 
-**The door this closes:** crates.io refuses a crate with git dependencies, so
-`cargo publish` of cracktunes is unavailable until the extracted crates are
-themselves published. That costs nothing today — nothing in the workspace has
-ever been published, and distribution is cargo-dist binaries plus Docker images.
-Switching a git dep to a version dep later is a one-line manifest change per
-module, so this is reversible.
+**This closes no door that is not already shut.** crates.io refuses a crate with
+git dependencies — but cracktunes already has five: `poise`, `serenity`,
+`songbird`, `rusty_ytdl` and `spotify-player`, pinned by branch or rev in
+`Cargo.lock`. `cargo publish` of cracktunes has therefore been impossible for as
+long as it has tracked serenity's `next` branch, and three more git dependencies
+change nothing. The same five prove the mechanism end to end: git dependencies
+already resolve in the Docker builder, in the cargo-chef cook layer and in CI.
+
+The house precedent pins by `branch` or `rev`; this spec pins by `tag` instead,
+because a tag is the readable form of "which version of this module" and these
+modules are versioned deliberately rather than tracked.
+
+**The extracted repositories must be public.** cracktunes is public and MIT
+licensed, and the whole point is that someone can clone it and build with
+`--features crack-osint`. A private git dependency fails authentication for
+everyone but the owner, which would silently break exactly the host-it-yourself
+story this design exists to protect.
 
 ### Local development: a gitignored path override
 
@@ -217,6 +264,23 @@ so it must live in the config file. The first extraction confirms that cargo
 honours `[patch]` from `.cargo/config.toml` on the installed toolchain and
 documents the result in `docs/`; the legacy `paths` key is the fallback if it
 does not.
+
+### Every extracted repo gets CI on day one
+
+Non-negotiable, because the failure this whole spec exists to fix is code that
+stops being compiled, linted and tested and therefore rots unseen. A module that
+leaves the workspace leaves `cargo clippy --workspace` and `cargo test
+--workspace` behind with it, so it must arrive with its own gate in the same
+commit that creates the repo — not as a follow-up.
+
+The minimum, mirroring cracktunes' own jobs on the same action majors (#539):
+`actions/checkout@v7`, rustup stable with `rustfmt` and `clippy`,
+`Swatinem/rust-cache@v2`, then `cargo fmt --all -- --check`,
+`cargo clippy --all-targets -- -D warnings` and `cargo test`. Triggered on pushes
+to the default branch and on pull requests, matching #538's shape.
+
+Each repo also gets a `.github/dependabot.yml` on the weekly grouped schedule
+cracktunes adopted in #542 — otherwise the dependencies rot instead of the code.
 
 ### History comes along
 
@@ -258,17 +322,15 @@ despite nothing shipping them, plus the 268 that crack-gpt deletes.
 
 ## 4. Order and per-module detail
 
-**1. crack-voting.** First, because crack-core never references it, making this
-the purest test of the pipeline with zero integration risk. It is already a
-standalone binary (`src/main.rs` → warp server → postgres via sqlx) that reaches
-the bot through the shared database. Remove the workspace member entry, the
-optional dep and the unused `crack-voting` feature from crack-core.
+**1. crack-bf.** First, because it is the cleanest: tiny, `tokio` its only
+dependency, no schema coupling, and `commands/bf.rs` stays in crack-core as the
+poise wrapper. Being first, it also carries the one-time scaffolding every later
+extraction reuses — the gitignored `.cargo/config.toml` override, its `.gitignore`
+entry, and the docs describing the workflow. Note for the new repo, not a blocker
+here: it runs arbitrary user programs and wants a step limit, a memory cap and a
+timeout.
 
-**2. crack-bf.** Tiny and contract-clean. `commands/bf.rs` stays in crack-core as
-the poise wrapper. Note for the new repo, not a blocker here: it runs arbitrary
-user programs and wants a step limit, a memory cap and a timeout.
-
-**3. crack-osint.** Needs work before it can go:
+**2. crack-osint.** Needs work before it can go:
 
 - Replace `use crack_types::Error;` (`checkpass.rs:1`) with the crate's own
   `Error` alias, removing the last workspace dependency.
@@ -306,8 +368,10 @@ user programs and wants a step limit, a memory cap and a timeout.
   versioning.
 - **Git availability at build time.** Cargo fetches git dependencies from GitHub
   during the build, including inside the Docker builder. A GitHub outage breaks
-  builds that a vendored crates.io registry would survive. Low impact given
-  current practice; the crates.io path remains open.
+  builds that a vendored crates.io registry would survive. This risk is already
+  borne five times over by poise, serenity, songbird, rusty_ytdl and
+  spotify-player, so three more do not change the exposure; it is recorded only
+  so that nobody reads the extraction as having introduced it.
 - **The path override leaking into a commit.** If `.cargo/config.toml` is ever
   committed, CI silently builds a local path that does not exist there. It must
   be gitignored in the same commit that introduces it.
