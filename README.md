@@ -199,7 +199,7 @@ cargo dist init --hosting github
 # make change `pr-run-mode = "upload"`
 git add .
 git commit -am "chore: cargo-dist"
-cargo dist build --profile=release --features crack-gpt,crack-bf,crack-osint
+cargo dist build --profile=release --features crack-bf,crack-osint
 ```
 
 ## Release

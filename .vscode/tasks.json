@@ -9,7 +9,7 @@
 				"--profile=release",
 				"--workspace",
 				"--features",
-				"crack-bf,crack-osint,crack-gpt",
+				"crack-bf,crack-osint",
 				"--",
 				"-D",
 				"clippy::all",
@@ -29,8 +29,6 @@
 				"--package",
 				"crack-core",
 				"--lib",
-				"--features",
-				"crack-gpt",
 				"--features",
 				"crack-osint",
 				"--features",
@@ -54,7 +52,7 @@
 			"args": [
 				"--all",
 				"--features",
-				"crack-bf,crack-osint,crack-gpt",
+				"crack-bf,crack-osint",
 				"--profile=release",
 				"--workspace"
 			],
@@ -70,7 +68,7 @@
 			"args": [
 				"--all",
 				"--features",
-				"crack-bf,crack-osint,crack-gpt",
+				"crack-bf,crack-osint",
 				"--profile=release",
 				"--workspace"
 			],
