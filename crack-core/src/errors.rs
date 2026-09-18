@@ -53,8 +53,6 @@ pub enum CrackedError {
     AuthorDisconnected(Mention),
     AuthorNotFound,
     Anyhow(anyhow::Error),
-    #[cfg(feature = "crack-gpt")]
-    CrackGPT(Error),
     CommandFailed(&'static str, ExitStatus, Cow<'static, str>),
     CommandNotFound(Cow<'static, str>),
     Control(ControlError),
@@ -166,8 +164,6 @@ impl Display for CrackedError {
                 f.write_fmt(format_args!("{} {}", FAIL_ANOTHER_CHANNEL, mention))
             },
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
-            #[cfg(feature = "crack-gpt")]
-            Self::CrackGPT(err) => f.write_str(&format!("{err}")),
             Self::CommandFailed(program, status, output) => f.write_str(&format!(
                 "Command `{program}` failed with status `{status}` and output `{output}`"
             )),

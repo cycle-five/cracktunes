@@ -1,7 +1,7 @@
 cargo test \
 	--package crack-core \
 	--lib \
-	--features crack-gpt --features crack-osint --features crack-bf \
+	--features crack-osint --features crack-bf \
 	-- db::guild::test::test_update_prefix \
 	--exact \
 	--show-output
@@ -19,7 +19,7 @@ cargo test \
 cargo test \
 	--package crack-core \
 	--lib \
-	--features crack-gpt --features crack-osint --features crack-bf \
+	--features crack-osint --features crack-bf \
 	-- sources::youtube::test::test_get_track_source_and_metadata \
 	--exact \
 	--show-output

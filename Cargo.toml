@@ -3,7 +3,6 @@ members = [
   "crack-cli",
   "crack-core",
   "crack-osint",
-  "crack-gpt",
   "crack-sleevenote",
   "crack-musicreco",
   "crack-bf",
@@ -120,7 +119,6 @@ features = ["full"]
 # crack-voting = { path = "./crack-voting", optional = true, default-features = true, version = "0.1" }
 # crack-core = { path = "./crack-core", default-features = true, version = "0.3" }
 # crack-osint = { path = "./crack-osint", default-features = true, version = "0.1" }
-# crack-gpt = { path = "../crack-gpt", default-features = true, version = "0.2" }
 # crack-bf = { path = "../crack-bf", default-features = true, version = "0.1" }
 # poise = { branch = "current", git = "https://github.com/cycle-five/poise", default-features = true }
 poise = { branch = "serenity-next", git = "https://github.com/serenity-rs/poise", default-features = true, features = [
