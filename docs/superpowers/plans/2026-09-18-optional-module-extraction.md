@@ -95,6 +95,8 @@ and it is covered by the crate's existing suite.
 - `.github/workflows/ci.yml` — fmt, clippy, test
 - `.github/dependabot.yml` — weekly grouped
 - `rust-toolchain.toml` — `stable`, matching cracktunes
+- `rustfmt.toml` — copied from the root; without it the crate fails its own fmt gate
+- `LICENSE` — MIT, carried from the template commit the split overwrites
 - `README.md`
 
 ---
@@ -356,6 +358,31 @@ Create `crack-bf/README.md`. It must say four things:
    step limit, memory cap or timeout. Carried from the spec so the next reader
    finds it rather than rediscovering it.
 
+- [ ] **Step 6a: Copy `rustfmt.toml` into the crate**
+
+```bash
+cp rustfmt.toml crack-bf/rustfmt.toml
+```
+
+🪤 **Without this the new repository's first CI run fails `cargo fmt --check`,
+and nothing in cracktunes can catch it.** The root `rustfmt.toml` sets
+`match_block_trailing_comma = true` — a *stable* option — and crack-bf's source
+is formatted to it. Inside the workspace the crate inherits that file and fmt
+passes; a standalone clone has no such file, so default rustfmt wants every
+`},` at the end of a match arm to be `}` and reports a diff in six places in
+`src/lib.rs`.
+
+Verified empirically: a standalone copy fails `cargo fmt --all -- --check`
+without this file and passes with it. The two nightly-only options in it
+(`imports_layout`, `match_arm_blocks`) print a warning under the stable
+toolchain and are ignored — exactly as they already are on cracktunes' own
+stable CI leg — which is harmless.
+
+Do **not** also copy `clippy.toml`. Its `disallowed-methods` entries name
+songbird and rusty_ytdl paths that crack-bf does not depend on, and an
+unresolvable path there risks a lint warning that `-D warnings` would turn into
+a CI failure. Standalone clippy was verified clean without it.
+
 - [ ] **Step 6b: Add the LICENSE**
 
 The repository was created from `cycle-five/template`, whose only contributions
@@ -389,7 +416,8 @@ Expected: `0.1.0` — not the workspace's `0.13.0`.
 
 ```bash
 git add crack-bf/Cargo.toml crack-bf/rust-toolchain.toml crack-bf/README.md \
-  crack-bf/LICENSE crack-bf/.github/workflows/ci.yml crack-bf/.github/dependabot.yml Cargo.lock
+  crack-bf/LICENSE crack-bf/rustfmt.toml crack-bf/.github/workflows/ci.yml \
+  crack-bf/.github/dependabot.yml Cargo.lock
 git commit
 ```
 
@@ -835,6 +863,19 @@ Create `crack-osint/README.md`. It must say four things:
    first job in this repository.
 4. That `phlookup.rs` must not be revived as written — see cracktunes#549.
 
+- [ ] **Step 5a: Copy `rustfmt.toml` into the crate**
+
+```bash
+cp rustfmt.toml crack-osint/rustfmt.toml
+```
+
+Same trap as Task 2 Step 6a, and it applies here for the same reason: crack-osint's
+source is formatted under the root `rustfmt.toml`'s
+`match_block_trailing_comma = true`, which a standalone clone would not have, so
+its first CI run would fail `cargo fmt --check` on a diff no cracktunes gate can
+see. Do **not** copy `clippy.toml` — its `disallowed-methods` entries name
+songbird and rusty_ytdl paths this crate does not depend on.
+
 - [ ] **Step 5b: Add the LICENSE**
 
 crack-osint has no `LICENSE` file though its manifest declares `license = "MIT"`.
@@ -868,7 +909,7 @@ Expected: `0.1.0`.
 
 ```bash
 git add crack-osint/Cargo.toml crack-osint/rust-toolchain.toml crack-osint/README.md \
-  crack-osint/LICENSE crack-osint/.github/workflows/ci.yml \
+  crack-osint/LICENSE crack-osint/rustfmt.toml crack-osint/.github/workflows/ci.yml \
   crack-osint/.github/dependabot.yml Cargo.lock
 git commit
 ```
