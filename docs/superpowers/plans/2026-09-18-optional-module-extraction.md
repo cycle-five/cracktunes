@@ -644,8 +644,16 @@ as they are.
 Then confirm the JSON still parses, since that is the likeliest way this breaks:
 
 ```bash
-python3 -c "import json,re; raw=open('.vscode/settings.json').read(); raw=re.sub(r'^\s*//.*$','',raw,flags=re.M); raw=re.sub(r',(\s*[}\]])',r'\1',raw); json.loads(raw); print('parses OK')"
+python3 .superpowers/sdd/2026-09-18-optional-module-extraction/check-jsonc.py .vscode/settings.json
 ```
+Expected: `parses OK`, exit 0.
+
+🪤 Use that script, not a regex that strips everything after `//`. These files are
+JSONC — comments and trailing commas are legal, so plain `json.loads` rejects a
+valid file — and `.vscode/settings.json` contains a `postgres://` URL that a
+naive comment-stripper corrupts. The script tracks string state so a `//` inside
+a quoted value survives. It has been sabotage-checked: it reports a PARSE ERROR
+and exits 1 on structurally broken input.
 
 - [ ] **Step 8: Commit**
 
@@ -1086,13 +1094,15 @@ Fix the path-based ones:
   make live calls". crack-osint's tests leave with the crate, so drop it from
   that sentence and note that its HIBP test moved to `cycle-five/crack-osint`.
 
-Confirm both JSON files still parse:
+Confirm both JSON files still parse, using the same checker Task 4 used (see the
+trap noted there — a naive `//` stripper corrupts the `postgres://` URL in
+settings.json):
 
 ```bash
-for f in .vscode/settings.json .vscode/launch.json; do
-  python3 -c "import json,re,sys; raw=open('$f').read(); raw=re.sub(r'^\s*//.*\$','',raw,flags=re.M); raw=re.sub(r',(\s*[}\]])',r'\1',raw); json.loads(raw); print('$f parses OK')"
-done
+python3 .superpowers/sdd/2026-09-18-optional-module-extraction/check-jsonc.py \
+  .vscode/settings.json .vscode/launch.json
 ```
+Expected: `parses OK` for both, exit 0.
 
 Leave `docs/callgraphs.md` alone: its `crack-bf` and `crack-osint` lines link to
 SVGs hosted on cracktun.es, which no build depends on — the same call made for
