@@ -77,7 +77,7 @@ from the local path instead of the git URL:
 cargo tree -p crack-core --features crack-bf -e normal \
   --config 'patch."https://github.com/cycle-five/crack-bf".crack-bf.path="../crack-bf"' \
   | grep crack-bf
-# crack-bf v0.1.0 (../crack-bf)
+# crack-bf v0.1.0 (/abs/path/to/crack-bf)
 ```
 
 Without the flag, the same `cargo tree` command shows the git source instead:
