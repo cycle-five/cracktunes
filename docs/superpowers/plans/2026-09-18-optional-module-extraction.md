@@ -930,9 +930,8 @@ Step 6b: the root rules are root-anchored and do not survive the split.
 - [ ] **Step 5c: Add the LICENSE**
 
 crack-osint has no `LICENSE` file though its manifest declares `license = "MIT"`.
-If the owner creates the repository from `cycle-five/template` as they did for
-crack-bf, Task 7 force-pushes over the template's commit, so the licence must
-live here or be lost:
+Task 7 creates the repository **empty, with no template** (owner decision), so
+it contributes no licence of its own — this file will be the only one it has:
 
 ```bash
 cp .superpowers/sdd/2026-09-18-optional-module-extraction/template-LICENSE.txt crack-osint/LICENSE
@@ -996,47 +995,47 @@ git ls-tree --name-only crack-osint-export
 Expected: a non-zero commit count, and `Cargo.toml`, `src`, `README.md`,
 `rust-toolchain.toml`, `.github` at the root — not nested under `crack-osint/`.
 
-- [ ] **Step 3: OWNER GATE — the repository**
+- [ ] **Step 3: Create the repository — EMPTY, no template**
 
-Stop. The owner created `cycle-five/crack-bf` themselves with
-`gh repo create cycle-five/crack-bf --public --template cycle-five/template`;
-ask whether they want to do the same here, or for you to run:
+Owner decision, 2026-09-18: unlike crack-bf, create this one with **no
+template**, so `master` starts empty and the split pushes cleanly with no
+force-push and nothing discarded.
 
 ```bash
-gh repo create cycle-five/crack-osint --public --template cycle-five/template \
+gh repo create cycle-five/crack-osint --public \
   --description "OSINT lookups for cracktunes: pwned-password checks, VirusTotal scans"
 ```
 
-`--public` is required, for the reason in Task 3. Then confirm:
+`--public` is required, for the reason in Task 3: a private git dependency fails
+authentication for everyone but the owner and silently breaks the
+host-it-yourself story. Confirm it:
 
 ```bash
 gh api repos/cycle-five/crack-osint --jq '.visibility'
 ```
 Expected: `PUBLIC`.
 
-- [ ] **Step 4: OWNER GATE — push the history**
+Because there is no template, the repository contributes no `LICENSE` of its
+own — which is why Step 5c copied one into the crate. That file is now the only
+licence this repository will have.
 
-Check whether the repository already has commits:
+- [ ] **Step 4: Push the history**
+
+Confirm the repository really is empty before pushing, so a plain push is the
+right call:
 
 ```bash
 gh api repos/cycle-five/crack-osint/commits --jq 'length' 2>/dev/null || echo 0
 ```
-
-**If it returns 0** (empty repository), a plain push works:
+Expected: `0`, or an error meaning the repository has no commits yet. **If it
+returns 1 or more, stop** — something created content and this plan's assumption
+no longer holds; ask before force-pushing over it.
 
 ```bash
 git push https://github.com/cycle-five/crack-osint crack-osint-export:master
 ```
 
-**If it returns 1 or more** (created from the template), force-push — the same
-call the owner made for crack-bf, and the reason Step 5c copied the `LICENSE`
-into the crate:
-
-```bash
-git push --force https://github.com/cycle-five/crack-osint crack-osint-export:master
-```
-
-Either way, verify the licence survived:
+Then verify the licence arrived:
 
 ```bash
 gh api repos/cycle-five/crack-osint/contents/LICENSE --jq '.content' | base64 -d | head -3
