@@ -28,7 +28,7 @@ pub use virustotal::*;
 // pub use crack_core::{
 //     messaging::message::CrackedMessage, utils::send_reply, Context, Error, Result,
 // };
-pub(crate) type Error = Box<dyn std::error::Error + Send + Sync>;
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 // /// Osint Commands
 // #[poise::command(

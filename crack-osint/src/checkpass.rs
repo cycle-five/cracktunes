@@ -1,4 +1,4 @@
-use crack_types::Error;
+use crate::Error;
 use sha1::{Digest, Sha1};
 
 pub async fn check_password_pwned(client: &reqwest::Client, password: &str) -> Result<bool, Error> {
