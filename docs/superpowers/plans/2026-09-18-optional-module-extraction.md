@@ -345,6 +345,19 @@ Create `crack-bf/README.md`. It must say four things:
    step limit, memory cap or timeout. Carried from the spec so the next reader
    finds it rather than rediscovering it.
 
+- [ ] **Step 6b: Add the LICENSE**
+
+The repository was created from `cycle-five/template`, whose only contributions
+are a `LICENSE` and a stub `README.md`. Task 3 force-pushes over that commit, so
+the licence has to survive as a file here or it is lost. Copy it verbatim:
+
+```bash
+cp .superpowers/sdd/2026-09-18-optional-module-extraction/template-LICENSE.txt crack-bf/LICENSE
+```
+
+Expected: 21 lines, MIT, `Copyright (c) 2026 Cycle Five`. The crate manifest
+already declares `license = "MIT"`, so this makes the tree agree with it.
+
 - [ ] **Step 7: Prove it still builds inside the workspace**
 
 ```bash
@@ -365,7 +378,7 @@ Expected: `0.1.0` — not the workspace's `0.13.0`.
 
 ```bash
 git add crack-bf/Cargo.toml crack-bf/rust-toolchain.toml crack-bf/README.md \
-  crack-bf/.github/workflows/ci.yml crack-bf/.github/dependabot.yml Cargo.lock
+  crack-bf/LICENSE crack-bf/.github/workflows/ci.yml crack-bf/.github/dependabot.yml Cargo.lock
 git commit
 ```
 
@@ -409,23 +422,40 @@ Expected: a non-zero commit count, and a file list showing `Cargo.toml`, `src`,
 under `crack-bf/`. If the tree still shows a `crack-bf/` directory, the split
 went wrong; stop and diagnose rather than pushing.
 
-- [ ] **Step 3: OWNER GATE — create the repository**
+- [ ] **Step 3: DONE ALREADY — the owner created the repository**
 
-Stop here. Confirm with the owner, then:
-
-```bash
-gh repo create cycle-five/crack-bf --public \
-  --description "Brainfuck interpreter for cracktunes"
-```
-
-It **must** be `--public`: a private git dependency fails authentication for
-everyone but the owner and silently breaks the host-it-yourself story.
-
-- [ ] **Step 4: OWNER GATE — push the history**
+`https://github.com/cycle-five/crack-bf` exists, is **public**, and was created
+from `cycle-five/template`. Confirm before pushing:
 
 ```bash
-git push https://github.com/cycle-five/crack-bf crack-bf-export:master
+gh api repos/cycle-five/crack-bf --jq '.visibility'
 ```
+Expected: `PUBLIC`. If it is private, stop — a private git dependency fails
+authentication for everyone but the owner and silently breaks the
+host-it-yourself story.
+
+- [ ] **Step 4: OWNER GATE — force-push the history**
+
+🪤 The template left one commit on `master` (`01eebcc8`, adding `LICENSE` and a
+stub `README.md`), and the split branch is rooted years earlier in unrelated
+history. A plain push is rejected; a merge would root the repository at a
+template stub. The owner chose a force-push (2026-09-18), which is why Task 2
+Step 6b copied that `LICENSE` into the crate — it survives as a real file, and
+Task 2's README replaces the stub.
+
+Confirm the owner's go-ahead is still current, then:
+
+```bash
+git push --force https://github.com/cycle-five/crack-bf crack-bf-export:master
+```
+
+Then verify nothing of value was lost:
+
+```bash
+gh api repos/cycle-five/crack-bf/contents/LICENSE --jq '.content' | base64 -d | head -3
+```
+Expected: `MIT License` / blank / `Copyright (c) 2026 Cycle Five` — the licence
+is present, now carried by our own history rather than the template's.
 
 - [ ] **Step 5: Tag v0.1.0 in the new repository**
 
@@ -759,6 +789,19 @@ Create `crack-osint/README.md`. It must say four things:
    first job in this repository.
 4. That `phlookup.rs` must not be revived as written — see cracktunes#549.
 
+- [ ] **Step 5b: Add the LICENSE**
+
+crack-osint has no `LICENSE` file though its manifest declares `license = "MIT"`.
+If the owner creates the repository from `cycle-five/template` as they did for
+crack-bf, Task 7 force-pushes over the template's commit, so the licence must
+live here or be lost:
+
+```bash
+cp .superpowers/sdd/2026-09-18-optional-module-extraction/template-LICENSE.txt crack-osint/LICENSE
+```
+
+Expected: 21 lines, MIT, `Copyright (c) 2026 Cycle Five`.
+
 - [ ] **Step 6: Run the gate**
 
 ```bash
@@ -779,7 +822,8 @@ Expected: `0.1.0`.
 
 ```bash
 git add crack-osint/Cargo.toml crack-osint/rust-toolchain.toml crack-osint/README.md \
-  crack-osint/.github/workflows/ci.yml crack-osint/.github/dependabot.yml Cargo.lock
+  crack-osint/LICENSE crack-osint/.github/workflows/ci.yml \
+  crack-osint/.github/dependabot.yml Cargo.lock
 git commit
 ```
 
@@ -813,22 +857,52 @@ git ls-tree --name-only crack-osint-export
 Expected: a non-zero commit count, and `Cargo.toml`, `src`, `README.md`,
 `rust-toolchain.toml`, `.github` at the root — not nested under `crack-osint/`.
 
-- [ ] **Step 3: OWNER GATE — create the repository**
+- [ ] **Step 3: OWNER GATE — the repository**
 
-Stop. Confirm with the owner, then:
+Stop. The owner created `cycle-five/crack-bf` themselves with
+`gh repo create cycle-five/crack-bf --public --template cycle-five/template`;
+ask whether they want to do the same here, or for you to run:
 
 ```bash
-gh repo create cycle-five/crack-osint --public \
+gh repo create cycle-five/crack-osint --public --template cycle-five/template \
   --description "OSINT lookups for cracktunes: pwned-password checks, VirusTotal scans"
 ```
 
-`--public` is required, for the reason in Task 3.
+`--public` is required, for the reason in Task 3. Then confirm:
+
+```bash
+gh api repos/cycle-five/crack-osint --jq '.visibility'
+```
+Expected: `PUBLIC`.
 
 - [ ] **Step 4: OWNER GATE — push the history**
+
+Check whether the repository already has commits:
+
+```bash
+gh api repos/cycle-five/crack-osint/commits --jq 'length' 2>/dev/null || echo 0
+```
+
+**If it returns 0** (empty repository), a plain push works:
 
 ```bash
 git push https://github.com/cycle-five/crack-osint crack-osint-export:master
 ```
+
+**If it returns 1 or more** (created from the template), force-push — the same
+call the owner made for crack-bf, and the reason Step 5b copied the `LICENSE`
+into the crate:
+
+```bash
+git push --force https://github.com/cycle-five/crack-osint crack-osint-export:master
+```
+
+Either way, verify the licence survived:
+
+```bash
+gh api repos/cycle-five/crack-osint/contents/LICENSE --jq '.content' | base64 -d | head -3
+```
+Expected: `MIT License` / blank / `Copyright (c) 2026 Cycle Five`.
 
 - [ ] **Step 5: Tag v0.1.0**
 
