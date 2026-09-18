@@ -239,31 +239,38 @@ licensed, and the whole point is that someone can clone it and build with
 everyone but the owner, which would silently break exactly the host-it-yourself
 story this design exists to protect.
 
-### Local development: a gitignored path override
+### Local development: a `--config` override, not a file
 
 The two-repo dance is the real cost of extraction, and this is the mitigation.
-Check the repos out side by side and add a **gitignored** `.cargo/config.toml`
-with a path override pointing at the local checkout. Development then proceeds
-exactly as it does today — one `cargo build`, edits visible immediately, no
-pushing. When finished: commit both, tag the module, bump the tag in cracktunes.
+Check the repos out side by side and pass a `--config` flag on the command
+line pointing cargo at the local checkout. Development then proceeds exactly
+as it does today — one `cargo check`/`cargo build`, edits visible immediately,
+no pushing. When finished: commit both, tag the module, bump the tag in
+cracktunes.
 
-Because the override is gitignored it never leaves the machine, so CI and every
-other clone always build the pinned version.
+A file-based override was the first design, and both routes to one are
+impossible here. `[patch]` in `Cargo.toml` is tracked, so committing the
+override there would break every other clone the moment it landed. The usual
+escape — put it in `.cargo/config.toml` instead and gitignore that file — does
+not work either: `.cargo/config.toml` is *already tracked* in this repo (it
+carries the workspace's `rustflags` and wasm target settings; `git ls-files
+.cargo/config.toml` confirms it), and `.gitignore:14`'s `.cargo/` entry cannot
+retroactively untrack a file git already tracks — an ignore rule only keeps
+untracked paths from being added, so gitignoring it is a no-op, not a fix. The
+file-based mechanism was impossible three ways over: two files that would be
+committed, and a `.gitignore` rule that cannot rescue either one.
 
-The mechanism is cargo's `[patch]` table keyed by the git URL, which is the
-documented way to redirect a git dependency:
+The mechanism instead is cargo's `[patch]` table supplied on the command line
+via `--config`, which writes nothing to disk:
 
-```toml
-# .cargo/config.toml — gitignored, never committed
-[patch."https://github.com/cycle-five/crack-osint"]
-crack-osint = { path = "../crack-osint" }
+```bash
+cargo check -p crack-core --features crack-osint \
+  --config 'patch."https://github.com/cycle-five/crack-osint".crack-osint.path="../crack-osint"'
 ```
 
-`[patch]` in `Cargo.toml` would be committed and would break every other clone,
-so it must live in the config file. The first extraction confirms that cargo
-honours `[patch]` from `.cargo/config.toml` on the installed toolchain and
-documents the result in `docs/`; the legacy `paths` key is the fallback if it
-does not.
+Because the override never touches a file, there is nothing to gitignore and
+nothing to accidentally commit — CI and every other clone build the pinned git
+tag by default, with no discipline required to keep it that way.
 
 ### Every extracted repo gets CI on day one
 
@@ -325,10 +332,9 @@ despite nothing shipping them, plus the 268 that crack-gpt deletes.
 **1. crack-bf.** First, because it is the cleanest: tiny, `tokio` its only
 dependency, no schema coupling, and `commands/bf.rs` stays in crack-core as the
 poise wrapper. Being first, it also carries the one-time scaffolding every later
-extraction reuses — the gitignored `.cargo/config.toml` override, its `.gitignore`
-entry, and the docs describing the workflow. Note for the new repo, not a blocker
-here: it runs arbitrary user programs and wants a step limit, a memory cap and a
-timeout.
+extraction reuses — the `--config` override workflow and the docs describing
+it. Note for the new repo, not a blocker here: it runs arbitrary user programs
+and wants a step limit, a memory cap and a timeout.
 
 **2. crack-osint.** Needs work before it can go:
 
@@ -372,9 +378,11 @@ timeout.
   borne five times over by poise, serenity, songbird, rusty_ytdl and
   spotify-player, so three more do not change the exposure; it is recorded only
   so that nobody reads the extraction as having introduced it.
-- **The path override leaking into a commit.** If `.cargo/config.toml` is ever
-  committed, CI silently builds a local path that does not exist there. It must
-  be gitignored in the same commit that introduces it.
+- **The path override leaking into a commit.** A file-based override risks
+  exactly this: a local-only path landing in git and breaking every clone that
+  lacks that sibling directory. The shipped mitigation is stronger than
+  gitignoring a file — the override is a `--config` flag that writes nothing
+  to disk, so there is no file that could be committed in the first place.
 - **Dead code moving rather than dying.** Extracting crack-osint relocates ~474
   uncompiled lines instead of resolving them. That is deliberate — the new repo
   is the right place to triage them — but it is a deferral, not a fix, and should

@@ -9,10 +9,10 @@ exactly as it was.
 
 ## Extracted modules
 
-| Feature      | Repository                                    | Pinned tag |
-| ------------ | ---------------------------------------------- | ---------- |
-| `crack-bf`   | `https://github.com/cycle-five/crack-bf`       | `v0.1.0`   |
-| `crack-osint`| `https://github.com/cycle-five/crack-osint`    | `v0.1.0`   |
+| Feature       | Repository                                  | Pinned tag |
+| ------------- | -------------------------------------------- | ---------- |
+| `crack-bf`    | `https://github.com/cycle-five/crack-bf`     | `v0.1.0`   |
+| `crack-osint` | `https://github.com/cycle-five/crack-osint`  | `v0.1.0`   |
 
 More modules will be added to this table as they are extracted. Each row's
 pin is the `tag = "..."` value in that dependency's entry in
@@ -40,9 +40,9 @@ else can reliably depend on) or losing edit/rebuild flicker every time you
 want to test a local change against crack-core.
 
 Cargo's `[patch]` mechanism solves this, but it must not go in a *file* here:
-`[patch]` in `Cargo.toml` is a tracked file, and so is `.cargo/config.toml` in
-this repo (it carries the workspace's `rustflags` and wasm target settings) —
-so writing the override into either one puts a local-only, machine-specific
+`Cargo.toml` is a tracked file, and so is `.cargo/config.toml` in this repo
+(it carries the workspace's `rustflags` and wasm target settings) — so
+writing the override into either one puts a local-only, machine-specific
 path into version control, ready to be committed by accident and break every
 other clone that doesn't have that sibling directory.
 
@@ -53,8 +53,8 @@ afterwards.
 Clone the module beside the cracktunes checkout:
 
 ```bash
-git clone https://github.com/cycle-five/crack-bf /home/lothrop/projects/crack-bf
-git clone https://github.com/cycle-five/crack-osint /home/lothrop/projects/crack-osint
+git clone https://github.com/cycle-five/crack-bf ../crack-bf
+git clone https://github.com/cycle-five/crack-osint ../crack-osint
 ```
 
 Then, from the cracktunes checkout, point cargo at the local clone for a
@@ -62,12 +62,12 @@ single invocation:
 
 ```bash
 cargo check -p crack-core --features crack-bf \
-  --config 'patch."https://github.com/cycle-five/crack-bf".crack-bf.path="/home/lothrop/projects/crack-bf"'
+  --config 'patch."https://github.com/cycle-five/crack-bf".crack-bf.path="../crack-bf"'
 ```
 
 ```bash
 cargo check -p crack-core --features crack-osint \
-  --config 'patch."https://github.com/cycle-five/crack-osint".crack-osint.path="/home/lothrop/projects/crack-osint"'
+  --config 'patch."https://github.com/cycle-five/crack-osint".crack-osint.path="../crack-osint"'
 ```
 
 This was confirmed with `cargo tree`, which shows the dependency resolved
@@ -75,9 +75,9 @@ from the local path instead of the git URL:
 
 ```bash
 cargo tree -p crack-core --features crack-bf -e normal \
-  --config 'patch."https://github.com/cycle-five/crack-bf".crack-bf.path="/home/lothrop/projects/crack-bf"' \
+  --config 'patch."https://github.com/cycle-five/crack-bf".crack-bf.path="../crack-bf"' \
   | grep crack-bf
-# crack-bf v0.1.0 (/home/lothrop/projects/crack-bf)
+# crack-bf v0.1.0 (../crack-bf)
 ```
 
 Without the flag, the same `cargo tree` command shows the git source instead:
