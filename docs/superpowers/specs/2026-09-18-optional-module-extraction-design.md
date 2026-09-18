@@ -88,7 +88,7 @@ exactly as strictly as a wire protocol is.
 
 ## 1. The extraction contract
 
-A crate may live outside the workspace only if it satisfies all four rules.
+A crate may live outside the workspace only if it satisfies all five rules.
 
 1. **No workspace dependencies.** Not crack-core, not crack-types. Its own error
    type via `thiserror`, as `crack-sleevenote` and `crack-musicreco` already do.
