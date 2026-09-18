@@ -899,6 +899,15 @@ Create `crack-osint/README.md`. It must say four things:
    of `lib.rs` and have not been built in years, and that triaging them is the
    first job in this repository.
 4. That `phlookup.rs` must not be revived as written — see cracktunes#549.
+5. **That two of the three features gate nothing.** `default = ["checkpass",
+   "virustotal", "scan"]`, but only `checkpass` appears in a `#[cfg(feature =
+   ...)]`: `pub mod scan;` and `pub mod virustotal;` are unconditional in
+   `lib.rs`, so turning either off changes nothing. Record it as a known defect
+   for the new repository to fix — either gate the modules or drop the feature
+   declarations. Do **not** fix it in this arc; changing feature gating is a
+   behaviour change and out of scope. Note too that the CI workflow therefore
+   only exercises one meaningful combination, and a `--no-default-features` leg
+   would be worth adding once the gating is real.
 
 - [ ] **Step 5a: Copy `rustfmt.toml` into the crate**
 
