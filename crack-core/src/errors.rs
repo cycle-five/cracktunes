@@ -64,7 +64,6 @@ pub enum CrackedError {
     FailedToSetChannelSize(&'static str, GenericChannelId, u32, Error),
     GuildOnly,
     JoinChannelError(JoinError),
-    Json(serde_json::Error),
     InvalidIP(&'static str),
     InvalidTopGGToken,
     InvalidPermissions,
@@ -209,7 +208,6 @@ impl Display for CrackedError {
                 ))
             },
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
-            Self::Json(err) => f.write_str(&format!("{err}")),
             Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
                 "No log channel set for {event_name} in {guild_id}",
             )),
@@ -509,8 +507,6 @@ pub fn verify<K, T: Verifiable<K>>(verifiable: T, err: CrackedError) -> Result<K
 
 #[cfg(test)]
 mod test {
-    use reqwest::StatusCode;
-
     use super::*;
     use std::io::Error as StdError;
 
@@ -578,17 +574,16 @@ mod test {
         let err = CrackedError::SpotifyAuth;
         assert_eq!(format!("{}", err), SPOTIFY_AUTH_FAILED);
 
-        // WTF Why the blocking client? We never use it in the code??
-        let client = reqwest::blocking::ClientBuilder::new()
-            .use_rustls_tls()
+        // #523: a `reqwest::Error` made with no I/O. An unparseable URL fails
+        // in the builder, before anything is resolved or sent. The old version
+        // sent to `http://notreallol` and asserted only `if let Err` -- so a
+        // resolver that answered for the name skipped the assertion entirely.
+        let e = reqwest::Client::new()
+            .get("not a url")
             .build()
-            .unwrap();
-
-        let response = client.get("http://notreallol").send();
-        if let Err(e) = response {
-            let err = CrackedError::Reqwest(e);
-            assert!(format!("{}", err).starts_with("error sending request for url"));
-        }
+            .expect_err("an unparseable URL cannot build a request");
+        let shown = e.to_string();
+        assert_eq!(format!("{}", CrackedError::Reqwest(e)), shown);
 
         let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
         assert_eq!(format!("{}", err), "Token is not valid");
@@ -691,28 +686,24 @@ mod test {
         let err = CrackedError::SpotifyAuth;
         assert_eq!(err, CrackedError::SpotifyAuth);
 
-        let client = reqwest::blocking::ClientBuilder::new()
-            .use_rustls_tls()
-            .build()
-            .unwrap();
+        // #523: built, not sent. The two used to be separate network calls
+        // that could disagree, which fell through to unwrapping a 403.
+        let build_error = || {
+            reqwest::Client::new()
+                .get("not a url")
+                .build()
+                .expect_err("an unparseable URL cannot build a request")
+        };
+        assert_eq!(
+            CrackedError::Reqwest(build_error()),
+            CrackedError::Reqwest(build_error())
+        );
 
-        let response1 = client.get("http://notreallol").send();
-        let response2 = client.get("http://notreallol").send();
-        match (response1, response2) {
-            (Err(e1), Err(e2)) => {
-                let err = CrackedError::Reqwest(e1);
-                assert_eq!(err, CrackedError::Reqwest(e2));
-
-                let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
-                assert_eq!(
-                    err,
-                    CrackedError::RSpotify(RSpotifyClientError::InvalidToken)
-                );
-            },
-            (response1, _) => {
-                assert_eq!(response1.unwrap().status(), StatusCode::FORBIDDEN);
-            },
-        }
+        let err = CrackedError::RSpotify(RSpotifyClientError::InvalidToken);
+        assert_eq!(
+            err,
+            CrackedError::RSpotify(RSpotifyClientError::InvalidToken)
+        );
     }
 
     #[test]

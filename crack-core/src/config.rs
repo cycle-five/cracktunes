@@ -13,7 +13,7 @@ use crate::{
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
     utils::{check_reply, count_command},
-    BotConfig, Data, DataInner, Error, EventLogAsync, PhoneCodeData,
+    BotConfig, Data, DataInner, Error, EventLogAsync,
 };
 use ::serenity::secrets::Token;
 use colored::Colorize;
@@ -308,7 +308,6 @@ pub async fn poise_framework(
 
     let cloned_map = guild_settings_map.clone();
     let data = Data(Arc::new(DataInner {
-        phone_data: PhoneCodeData::default(),
         bot_settings: config.clone(),
         guild_settings_map: Arc::new(RwLock::new(cloned_map)),
         songbird: manager.clone(),

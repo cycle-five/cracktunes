@@ -192,9 +192,46 @@ pub async fn force_skip_top_track(
     // apparently, skipping/stopping a track takes a while to remove it from the queue
     // also, manually removing tracks doesn't trigger the next track to play
     // so first, stop the top song, manually remove it and then resume playback
-    handler.queue().current().unwrap().stop().ok();
+    // #480: the caller saw something playing, but a track that ends on its own
+    // in between empties the queue first. Nothing left to stop is already
+    // skipped; everything below is safe on an empty queue.
+    if let Some(track) = handler.queue().current() {
+        track.stop().ok();
+    }
     let _ = handler.queue().dequeue(0);
     handler.queue().resume().ok();
 
     Ok(handler.queue().current_queue())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serenity::all::{GuildId, UserId};
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    /// #480. Every caller checks that something is playing before calling
+    /// this, but a track that ends on its own in between empties the queue
+    /// first. That race leaves exactly this state -- an empty queue -- so it is
+    /// reproduced here without any timing. It used to panic a tokio worker on
+    /// `current().unwrap()`, which the user never sees and the log records only
+    /// as a backtrace.
+    #[tokio::test]
+    async fn skipping_an_already_empty_queue_is_a_no_op_not_a_panic() {
+        let data = crate::Data(Arc::new(crate::DataInner::default()));
+        let guild_id = GuildId::new(1);
+        let guard = data
+            .lock_queue(guild_id, PlaybackOwner::Free)
+            .await
+            .expect("an uncontended guild grants the lease");
+        let call = Arc::new(Mutex::new(Call::standalone(guild_id, UserId::new(2))));
+        let handler = call.lock().await;
+
+        let remaining = force_skip_top_track(&guard, &handler)
+            .await
+            .expect("an empty queue is already skipped");
+
+        assert!(remaining.is_empty());
+    }
 }

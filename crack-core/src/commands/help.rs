@@ -149,12 +149,6 @@ pub async fn sub_help(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 use crate::Command;
-#[allow(dead_code)]
-enum HelpCommandMode<'a> {
-    Root,
-    Group(&'a Command),
-    Command(&'a Command),
-}
 
 /// Shows the help menu.
 #[poise::command(
@@ -206,8 +200,6 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
         )
         .await?;
         return Ok(());
-        // Mode is Root
-        // None => HelpCommandMode::Root,
     }
     let mut cmd_str: String = command.unwrap().to_owned();
     // We just checked that command is not None, so this unwrap is safe
@@ -256,12 +248,6 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
         let _ = send_reply_owned(ctx, msg, true).await?;
         return Ok(());
     }
-
-    // if command_obj.subcommands.is_empty() {
-    //     HelpCommandMode::Command(command_obj)
-    // } else {
-    //     HelpCommandMode::Group(command_obj)
-    // }
 
     builtin_help(
         ctx,

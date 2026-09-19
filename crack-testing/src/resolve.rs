@@ -20,9 +20,6 @@ pub struct ResolvedTrack<'a> {
     pub search_video: Option<rusty_ytdl::search::Video>,
     pub query: QueryType,
     pub video: Option<rusty_ytdl::Video<'a>>,
-    #[allow(dead_code)]
-    pub queued: bool,
-    #[allow(dead_code)]
     // requesting user
     pub user_id: UserId,
 }
@@ -36,7 +33,6 @@ impl Default for ResolvedTrack<'_> {
             metadata: None,
             search_video: None,
             video: None,
-            queued: false,
         }
     }
 }
@@ -71,12 +67,6 @@ impl ResolvedTrack<'_> {
     pub fn from_saved(saved: &SavedTrack) -> ResolvedTrack<'static> {
         ResolvedTrack::new(QueryType::VideoLink(saved.url.clone()))
             .with_metadata(saved.to_metadata())
-    }
-
-    /// Set the queued status of the track.
-    pub fn with_queued(mut self, queued: bool) -> Self {
-        self.queued = queued;
-        self
     }
 
     /// Set the query type of the track.

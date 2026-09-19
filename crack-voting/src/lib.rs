@@ -250,7 +250,10 @@ fn log_headers() -> impl Filter<Extract = (), Error = Infallible> + Copy {
 mod test {
     // Only referenced by the `#[sqlx::test(migrator = "MIGRATOR")]` tests below, which
     // are commented out. Kept so they still work when uncommented.
-    #[allow(dead_code)]
+    #[expect(
+        dead_code,
+        reason = "used only by the commented-out #[sqlx::test(migrator)] tests below"
+    )]
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     use super::*;

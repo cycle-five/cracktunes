@@ -291,76 +291,6 @@ impl BotConfig {
     }
 }
 
-/// Phone code data for the osint commands
-#[derive(Default, Debug, Clone)]
-pub struct PhoneCodeData {
-    #[allow(dead_code)]
-    phone_codes: HashMap<String, String>,
-    #[allow(dead_code)]
-    country_names: HashMap<String, String>,
-    country_by_phone_code: HashMap<String, Vec<String>>,
-}
-
-/// impl of PhoneCodeData
-impl PhoneCodeData {
-    /// Load the phone code data from the local file, or download it if it doesn't exist
-    pub fn load() -> Result<Self, CrackedError> {
-        let phone_codes = Self::load_data("./data/phone.json", "http://country.io/phone.json")?;
-        let country_names = Self::load_data("./data/names.json", "http://country.io/names.json")?;
-        let country_by_phone_code = phone_codes
-            .iter()
-            .map(|(k, v)| (v.clone(), k.clone()))
-            .fold(
-                HashMap::new(),
-                |mut acc: HashMap<String, Vec<String>>, (k, v)| {
-                    acc.entry(k).or_default().push(v);
-                    acc
-                },
-            );
-        Ok(Self {
-            phone_codes,
-            country_names,
-            country_by_phone_code,
-        })
-    }
-
-    /// Load the data from the local file, or download it if it doesn't exist
-    fn load_data(file_name: &str, url: &str) -> Result<HashMap<String, String>, CrackedError> {
-        match fs::read_to_string(file_name) {
-            Ok(contents) => serde_json::from_str(&contents).map_err(CrackedError::Json),
-            Err(_) => Self::download_and_parse(url, file_name),
-        }
-    }
-
-    /// Download the data from the url and parse it. Internally used.
-    fn download_and_parse(
-        url: &str,
-        file_name: &str,
-    ) -> Result<HashMap<String, String>, CrackedError> {
-        let client = reqwest::blocking::ClientBuilder::new()
-            .use_rustls_tls()
-            .cookie_store(true)
-            .build()?;
-        //let client = crate::http_utils::get_client();
-        let response = client.get(url).send().map_err(CrackedError::Reqwest)?;
-        let content = response.text().map_err(CrackedError::Reqwest)?;
-
-        // Save to local file
-        fs::create_dir_all(Path::new(file_name).parent().unwrap()).map_err(CrackedError::IO)?;
-        let mut file = fs::File::create(file_name).map_err(CrackedError::IO)?;
-        file.write_all(content.as_bytes())
-            .map_err(CrackedError::IO)?;
-
-        serde_json::from_str(&content).map_err(CrackedError::Json)
-    }
-
-    /// Get names of countries that match the given phone code.
-    /// Due to edge cases, there may be multiples.
-    pub fn get_countries_by_phone_code(&self, phone_code: &str) -> Option<Vec<String>> {
-        self.country_by_phone_code.get(phone_code).cloned()
-    }
-}
-
 /// User data, which is stored and accessible in all command invocations
 #[derive(Clone)]
 pub struct DataInner {
@@ -384,7 +314,6 @@ pub struct DataInner {
         serenity::GuildId,
         Arc<tokio::sync::Mutex<crate::messaging::status::StatusSlot>>,
     >,
-    pub phone_data: PhoneCodeData,
     pub event_log_async: EventLogAsync,
     // Why Option instead of Arc here? Certainly it's an indirection to allow for an uninitialized state
     // to exist, but why not just use a default value? If it's necessary to wrap the type is that newtype better
@@ -421,7 +350,6 @@ pub struct DataInner {
 impl std::fmt::Debug for DataInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
-        result.push_str(&format!("phone_data: {:?}\n", self.phone_data));
         result.push_str(&format!("bot_settings: {:?}\n", self.bot_settings));
         result.push_str(&format!("authorized_users: {:?}\n", self.authorized_users));
         result.push_str(&format!(
@@ -590,7 +518,6 @@ impl Default for DataInner {
             activity_user_map: Arc::new(dashmap::DashMap::new()),
             ct_client: CrackTrackClient::default(),
             songbird: Songbird::serenity(), // Initialize with an uninitialized Songbird instance
-            phone_data: PhoneCodeData::default(),
             bot_settings: Default::default(),
             playback_owners: Default::default(),
             queue_locks: Default::default(),
@@ -778,22 +705,6 @@ impl Data {
 mod lib_test {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn test_phone_code_data() {
-        let data = PhoneCodeData::load().unwrap();
-        let country_names = data.country_names;
-        let phone_codes = data.phone_codes;
-        let country_by_phone_code = data.country_by_phone_code;
-
-        assert_eq!(country_names.get("US"), Some(&"United States".to_string()));
-        assert_eq!(phone_codes.get("IS"), Some(&"354".to_string()));
-        let want = &["CA".to_string(), "UM".to_string(), "US".to_string()];
-        let got = country_by_phone_code.get("1").unwrap();
-        // This would be cheaper using a heap or tree
-        assert!(got.iter().all(|x| want.contains(x)));
-        assert!(want.iter().all(|x| got.contains(x)));
-    }
 
     /// Test the creation of a default EventLog
     #[tokio::test]

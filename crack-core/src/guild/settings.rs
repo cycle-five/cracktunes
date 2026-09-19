@@ -24,8 +24,6 @@ pub(crate) const DEFAULT_ACTIVITY: &str = "/play";
 pub(crate) const DEFAULT_LOG_PREFIX: &str = "data/logs";
 pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
 pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
-#[allow(dead_code)]
-pub(crate) const PIPED_WATCH_URL: &str = "https://piped.video/watch?v=";
 pub(crate) const YOUTUBE_WATCH_URL: &str = "https://www.youtube.com/watch?v=";
 pub(crate) const VIDEO_WATCH_URL: &str = YOUTUBE_WATCH_URL;
 pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];

@@ -252,23 +252,6 @@ fn get_current_log_layer() -> impl tracing_subscriber::Layer<Registry> {
 //     }
 // }
 
-#[tracing::instrument]
-/// Initialize logging and tracing.
-// Unused since `main` moved to `init_telemetry`; kept rather than deleted because it
-// predates this branch. `-A warnings` is what kept it invisible.
-#[allow(dead_code)]
-fn init_logging() {
-    #[cfg(feature = "crack-tracing")]
-    {
-        let final_log = get_current_log_layer();
-        tracing_subscriber::registry().with(final_log).init();
-    }
-
-    // init_telemetry("");
-
-    tracing::warn!("Hello, world!");
-}
-
 #[cfg(feature = "crack-telemetry")]
 const SERVICE_NAME: &str = "crack-tunes";
 

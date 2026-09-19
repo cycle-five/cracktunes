@@ -3140,11 +3140,27 @@ pub async fn gp_submit(
     // public error reply.
     let msg = match gp_submit_internal(ctx, query).await {
         Ok(m) => m,
-        Err(e) => CrackedMessage::CrackedError(e),
+        Err(e) => refuse_gp("submit", ctx.author().id, ctx.guild_id(), e),
     };
     ctx.send_message(SendMessageParams::new(msg).with_ephemeral(true))
         .await?;
     Ok(())
+}
+
+/// Answer a refused `/gp` command, and leave the operator a trace of it (#468).
+///
+/// The reply stays ephemeral at every call site -- a submission is secret, and
+/// a vote names the voter. What was missing is the server-side record: a
+/// refusal used to leave nothing in the log. 🔑 Logging and building the reply
+/// in one function means a new refusal site gets both or neither.
+fn refuse_gp(
+    command: &'static str,
+    user_id: UserId,
+    guild_id: Option<GuildId>,
+    err: CrackedError,
+) -> CrackedMessage {
+    tracing::warn!(command, %user_id, ?guild_id, error = %err, "gp: command refused");
+    CrackedMessage::CrackedError(err)
 }
 
 /// Resolve a Spotify link for `/gp submit`, which takes exactly one song.
@@ -3395,7 +3411,10 @@ pub async fn gp_voteskip(ctx: Context<'_>) -> Result<(), Error> {
     // surely as the vote would have.
     let answer = match gp_voteskip_internal(ctx).await {
         Ok(a) => a,
-        Err(e) => (CrackedMessage::CrackedError(e), None),
+        Err(e) => (
+            refuse_gp("voteskip", ctx.author().id, ctx.guild_id(), e),
+            None,
+        ),
     };
     gp_answer_vote(ctx, answer).await
 }
@@ -3456,7 +3475,10 @@ pub async fn gp_votefull(ctx: Context<'_>) -> Result<(), Error> {
     // Same split as `/gp voteskip`, for the same reason: one pattern, not two.
     let answer = match gp_votefull_internal(ctx).await {
         Ok(a) => a,
-        Err(e) => (CrackedMessage::CrackedError(e), None),
+        Err(e) => (
+            refuse_gp("votefull", ctx.author().id, ctx.guild_id(), e),
+            None,
+        ),
     };
     gp_answer_vote(ctx, answer).await
 }
@@ -5944,5 +5966,67 @@ mod test {
         start_a_game(&data, G);
         assert!(!data.gp_restore(G, a_game(G)));
         assert_lease_agrees(&data, G);
+    }
+
+    /// Everything the subscriber formats lands in one shared buffer the test
+    /// can read back.
+    #[derive(Clone, Default)]
+    struct Captured(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl std::io::Write for Captured {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("log buffer").extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
+        type Writer = Captured;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.clone()
+        }
+    }
+
+    /// #468. A refused `/gp` command is answered ephemerally -- correctly -- but
+    /// used to leave nothing on the server, so "players can't join" had no log
+    /// line to look at. The refusal must reach the operator as a WARN naming
+    /// the command, who ran it, where, and why.
+    #[test]
+    fn a_refused_gp_command_is_logged_as_well_as_answered() {
+        let captured = Captured::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(captured.clone())
+            .with_ansi(false)
+            .without_time()
+            .finish();
+
+        let reply = tracing::subscriber::with_default(subscriber, || {
+            refuse_gp(
+                "submit",
+                UserId::new(424_242_424_242),
+                Some(GuildId::new(909_090_909_090)),
+                CrackedError::NoGuildId,
+            )
+        });
+
+        assert!(matches!(
+            reply,
+            CrackedMessage::CrackedError(CrackedError::NoGuildId)
+        ));
+        let log = String::from_utf8(captured.0.lock().expect("log buffer").clone())
+            .expect("the formatter writes UTF-8");
+        assert!(log.contains("WARN"), "not logged at WARN: {log}");
+        assert!(log.contains("submit"), "command missing: {log}");
+        assert!(log.contains("424242424242"), "user missing: {log}");
+        assert!(log.contains("909090909090"), "guild missing: {log}");
+        assert!(
+            log.contains(&CrackedError::NoGuildId.to_string()),
+            "error missing: {log}"
+        );
     }
 }

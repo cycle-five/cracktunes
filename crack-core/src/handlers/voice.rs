@@ -1,8 +1,7 @@
 use crate::guild::settings::DEFAULT_VALID_TOKEN;
-use crate::serenity::client::{Context as SerenityContext, EventHandler};
+use crate::serenity::client::Context as SerenityContext;
 use serenity::all::{Cache, CacheHttp, Http};
 use serenity::async_trait;
-use serenity::model::event::FullEvent;
 use serenity::prelude::RwLock;
 use serenity::secrets::Token;
 use songbird::tracks::PlayMode;
@@ -17,18 +16,6 @@ use crate::errors::CrackedError;
 
 // use crate::{Context, Error};
 // use typemap_rev::TypeMap;
-
-#[allow(dead_code)]
-struct Handler;
-
-#[async_trait]
-impl EventHandler for Handler {
-    async fn dispatch(&self, _: &SerenityContext, event: &FullEvent) {
-        if let FullEvent::Ready { data_about_bot } = event {
-            println!("{} is connected!", data_about_bot.user.name);
-        }
-    }
-}
 
 // struct AudioBuffer;
 

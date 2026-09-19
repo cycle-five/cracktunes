@@ -10,24 +10,19 @@ use crate::{
     Data,
 };
 use ::serenity::{
-    all::Message,
     builder::{CreateEmbed, CreateMessage, EditMember},
     gateway::ActivityData,
 };
-use chrono::{DateTime, Utc};
 use colored::Colorize;
 // use dashmap;
-use poise::serenity_prelude::{self as serenity, Error as SerenityError, Member, Mentionable};
+use poise::serenity_prelude::{self as serenity, Member, Mentionable};
 use serenity::CacheHttp;
 use serenity::{
     async_trait,
     model::{application::Interaction, gateway::Ready, id::GuildId, prelude::VoiceState},
     GenericChannelId, {Context as SerenityContext, EventHandler, FullEvent},
 };
-use std::{
-    sync::{atomic::Ordering, Arc},
-    time::SystemTime,
-};
+use std::sync::{atomic::Ordering, Arc};
 
 pub struct SerenityHandler {
     pub data: Data,
@@ -544,7 +539,10 @@ impl SerenityHandler {
 // `on_cache_ready`, so it has not run for as long as that has been there; removing
 // the surrounding block to move `cam_status_loop` off `CacheReady` is what made the
 // deadness visible to the compiler. Kept so re-enabling it stays a one-line change.
-#[allow(dead_code)]
+#[expect(
+    dead_code,
+    reason = "parked: its only caller sat behind `if false` in on_cache_ready; kept so re-enabling is one line"
+)]
 async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     let cpu_load = sys_info::loadavg().unwrap();
     let mem_use = sys_info::mem_info().unwrap();
@@ -581,41 +579,6 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     } else {
         tracing::error!("No system log channel set");
     }
-}
-
-/// Checks the guilds' message cache for messages that are older than the timeout interval.
-#[allow(dead_code)]
-async fn check_delete_old_messages(
-    ctx: Arc<SerenityContext>,
-    data: &Data,
-    guild_ids: Vec<GuildId>,
-    msg_timeout_interval: chrono::Duration,
-) -> Result<(), SerenityError> {
-    let mut to_delete = Vec::<Message>::new();
-    for guild_id in guild_ids.iter() {
-        tracing::warn!("Checking guild {}", guild_id);
-        data.id_cache_map.get_mut(&(*guild_id).into());
-        if let Some(guild_cache) = data.id_cache_map.get_mut(&(*guild_id).into()) {
-            let now = DateTime::<Utc>::from(SystemTime::now());
-            for (creat_time, msg) in guild_cache.time_ordered_messages.iter() {
-                let delta = now.signed_duration_since(*creat_time);
-                if delta.cmp(&msg_timeout_interval) == std::cmp::Ordering::Greater {
-                    tracing::warn!("Adding old message to delete queue");
-                    to_delete.push(msg.clone());
-                }
-            }
-        }
-    }
-    for msg in to_delete {
-        tracing::error!("Deleting old message: {:#?}", msg);
-        match msg.delete(ctx.http(), Some("delete old messages")).await {
-            Ok(_) => {},
-            Err(err) => {
-                tracing::error!("Error deleting message: {}", err);
-            },
-        }
-    }
-    Ok(())
 }
 
 /// Returns a string describing the difference between two voice states.
