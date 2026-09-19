@@ -149,12 +149,6 @@ pub async fn sub_help(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 use crate::Command;
-#[allow(dead_code)]
-enum HelpCommandMode<'a> {
-    Root,
-    Group(&'a Command),
-    Command(&'a Command),
-}
 
 /// Shows the help menu.
 #[poise::command(

@@ -55,82 +55,12 @@ pub fn create_application_commands_cracked<U, E>(
 ///
 /// Thin wrapper around [`create_application_commands`] that funnels the returned builder into
 /// [`serenity::Command::set_global_commands`].
-#[allow(dead_code)]
 pub async fn register_globally_cracked<U, E>(
     http: impl AsRef<serenity::Http>,
     commands: &[poise::Command<U, E>],
 ) -> Result<(), serenity::Error> {
     let builder = create_application_commands_cracked(commands);
     serenity::Command::set_global_commands(http.as_ref(), builder.as_slice()).await?;
-    Ok(())
-}
-
-/// Registers the given list of application commands to Discord as guild-specific commands.
-///
-/// Thin wrapper around [`create_application_commands`] that funnels the returned builder into
-/// [`serenity::GuildId::set_commands`].
-#[allow(dead_code)]
-pub async fn register_in_guild_cracked<U, E>(
-    http: impl AsRef<serenity::Http>,
-    commands: &[poise::Command<U, E>],
-    guild_id: serenity::GuildId,
-) -> Result<(), serenity::Error> {
-    let builder = create_application_commands_cracked(commands);
-    guild_id
-        .set_commands(http.as_ref(), builder.as_slice())
-        .await?;
-    Ok(())
-}
-
-/// _Note: you probably want [`register_application_commands_buttons`] instead; it's easier and more
-/// powerful_
-///
-/// Wraps [`create_application_commands`] and adds a bot owner permission check and status messages.
-///
-/// This function is supposed to be a ready-to-use implementation for a `~register` command of your
-/// bot. So if you want, you can copy paste this help message for the command:
-///
-/// ```text
-/// Registers application commands in this guild or globally
-///
-/// Run with no arguments to register in guild, run with argument "global" to register globally.
-/// ```
-#[allow(dead_code)]
-pub async fn register_application_commands_cracked<U: Sync + Send + 'static, E>(
-    ctx: poise::Context<'_, U, E>,
-    global: bool,
-) -> Result<(), serenity::Error> {
-    let is_bot_owner = ctx.framework().options().owners.contains(&ctx.author().id);
-    if !is_bot_owner {
-        ctx.say("Can only be used by bot owner").await?;
-        return Ok(());
-    }
-
-    let commands_builder = create_application_commands_cracked(&ctx.framework().options().commands);
-    let num_commands = commands_builder.len();
-
-    if global {
-        ctx.say(format!("Registering {num_commands} commands...",))
-            .await?;
-        serenity::Command::set_global_commands(ctx.http(), commands_builder.as_slice()).await?;
-    } else {
-        let guild_id = match ctx.guild_id() {
-            Some(x) => x,
-            None => {
-                ctx.say("Must be called in guild").await?;
-                return Ok(());
-            },
-        };
-
-        ctx.say(format!("Registering {num_commands} commands..."))
-            .await?;
-        guild_id
-            .set_commands(ctx.http(), commands_builder.as_slice())
-            .await?;
-    }
-
-    ctx.say("Done!").await?;
-
     Ok(())
 }
 
