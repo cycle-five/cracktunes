@@ -340,13 +340,58 @@ pub fn check_banned_domains(
 #[cfg(test)]
 mod test {
     use crate::http_utils::resolve_final_url;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
+    /// Serve `/start` as a 302 to `/final`, and anything else as a 200.
+    /// Returns the server's base URL.
+    async fn redirecting_server() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let base = format!("http://{}", listener.local_addr().expect("local_addr"));
+        let location = format!("{base}/final");
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                // 🪤 Read to the end of the request head, not once: a single
+                // read is not guaranteed to deliver it all, and that it does
+                // over loopback is a property of the test machine, not TCP.
+                let mut head = Vec::new();
+                let mut buf = [0u8; 1024];
+                while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match stream.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => head.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let reply = if head.starts_with(b"GET /start ") {
+                    format!(
+                        "HTTP/1.1 302 Found\r\nLocation: {location}\r\n\
+                         Content-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                } else {
+                    "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()
+                };
+                let _ = stream.write_all(reply.as_bytes()).await;
+            }
+        });
+        base
+    }
+
+    /// #523. `resolve_final_url` reports where a link lands, not where it
+    /// started -- which is all a short link like `spotify.link` is. Against a
+    /// loopback server, because asserting on a live redirect service tests that
+    /// service, and fails whenever the network or its output changes.
     #[tokio::test]
-    async fn test_resolve_final_url() {
-        let url = "https://example.com";
+    async fn resolve_final_url_reports_where_a_redirect_lands() {
+        let base = redirecting_server().await;
 
-        let final_url = resolve_final_url(url).await.unwrap();
-        assert_eq!(final_url, "https://example.com/");
+        let landed = resolve_final_url(&format!("{base}/start"))
+            .await
+            .expect("a loopback redirect resolves");
+
+        assert_eq!(landed, format!("{base}/final"));
     }
 
     #[test]
