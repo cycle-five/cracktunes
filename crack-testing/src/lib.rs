@@ -93,12 +93,10 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
 }
 
 /// Client for resolving tracks, mostly holds other clients like reqwest and rusty_ytdl.
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct CrackTrackClient<'a> {
     pub req_client: reqwest::Client,
     yt_client: rusty_ytdl::search::YouTube,
-    video_opts: VideoOptions,
     q: Arc<DashMap<GuildId, CrackTrackQueue<'a>>>,
 }
 
@@ -107,18 +105,9 @@ impl Default for CrackTrackClient<'_> {
     fn default() -> Self {
         let req_client = REQ_CLIENT.clone();
         let yt_client = YOUTUBE_CLIENT.clone();
-        let req_options = RequestOptions {
-            client: Some(req_client.clone()),
-            ..Default::default()
-        };
-        let video_opts = VideoOptions {
-            request_options: req_options.clone(),
-            ..Default::default()
-        };
         CrackTrackClient {
             req_client,
             yt_client,
-            video_opts,
             q: Arc::new(DashMap::new()),
         }
     }
@@ -141,18 +130,9 @@ impl<'a> CrackTrackClient<'a> {
         req_client: reqwest::Client,
         yt_client: rusty_ytdl::search::YouTube,
     ) -> Self {
-        let req_options = RequestOptions {
-            client: Some(req_client.clone()),
-            ..Default::default()
-        };
-        let video_opts = VideoOptions {
-            request_options: req_options.clone(),
-            ..Default::default()
-        };
         CrackTrackClient {
             req_client,
             yt_client,
-            video_opts,
             q: Arc::new(DashMap::new()),
         }
     }
@@ -163,16 +143,11 @@ impl<'a> CrackTrackClient<'a> {
             client: Some(req_client.clone()),
             ..Default::default()
         };
-        let video_opts = VideoOptions {
-            request_options: opts.clone(),
-            ..Default::default()
-        };
         let yt_client = rusty_ytdl::search::YouTube::new_with_options(&opts).expect(NEW_FAILED);
 
         CrackTrackClient {
             req_client,
             yt_client,
-            video_opts,
             q: Arc::new(DashMap::new()),
         }
     }
