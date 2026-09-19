@@ -3,6 +3,7 @@ use std::fmt::Formatter;
 use crate::commands::cmd_check_music;
 use crate::http_utils;
 use crate::messaging::interface as msg_int;
+use crate::messaging::placeholder::{discard_on_err, Placeholder};
 use crate::music::query::query_type_from_url;
 use crate::Arc;
 use crate::CrackedMessage;
@@ -10,6 +11,7 @@ use crate::{
     errors::{verify, CrackedError},
     Context, Error,
 };
+use poise::ReplyHandle;
 use rusty_ytdl::{search::YouTube, RequestOptions};
 use serenity::all::CacheHttp;
 use std::fmt::{self, Debug};
@@ -33,18 +35,17 @@ impl Debug for CopyableContext {
     }
 }
 
-#[cfg(not(tarpaulin_include))]
-#[poise::command(
-    category = "Music",
-    slash_command,
-    guild_only,
-    check = "cmd_check_music"
-)]
-pub async fn get_metadata(ctx: Context<'_>, query_or_url: String) -> Result<(), Error> {
-    let search_msg = msg_int::send_search_message(&ctx).await?;
+/// Everything fallible between sending the placeholder and editing it into the
+/// result (#494). The edit's own failure is logged there, not returned, so
+/// this ends with the edit.
+async fn fill_metadata_reply(
+    ctx: Context<'_>,
+    query_or_url: &str,
+    search_msg: &ReplyHandle<'_>,
+) -> Result<(), Error> {
     // tracing::debug!("search response msg: {search_msg:?}");
 
-    let query_type = query_type_from_url(ctx, &query_or_url, None).await?;
+    let query_type = query_type_from_url(ctx, query_or_url, None).await?;
 
     // Metadata lookup reports nothing to a channel, so a listing shortfall has
     // no audience here; `/play` is where it gets said.
@@ -80,4 +81,24 @@ pub async fn get_metadata(ctx: Context<'_>, query_or_url: String) -> Result<(), 
     };
 
     Ok(())
+}
+
+#[cfg(not(tarpaulin_include))]
+#[poise::command(
+    category = "Music",
+    slash_command,
+    guild_only,
+    check = "cmd_check_music"
+)]
+pub async fn get_metadata(ctx: Context<'_>, query_or_url: String) -> Result<(), Error> {
+    let search_msg = msg_int::send_search_message(&ctx).await?;
+    // 🔑 #494: see `/play` -- nothing fallible between the send and this call.
+    discard_on_err(
+        &Placeholder {
+            ctx,
+            handle: &search_msg,
+        },
+        fill_metadata_reply(ctx, &query_or_url, &search_msg).await,
+    )
+    .await
 }

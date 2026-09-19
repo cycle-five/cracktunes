@@ -10,12 +10,14 @@ use crate::{
     guild::operations::GuildSettingsOperations,
     handlers::track_end::update_queue_messages,
     messaging::interface::create_now_playing_embed,
+    messaging::placeholder::{discard_on_err, Placeholder},
     messaging::{
         message::CrackedMessage,
         messages::{
             PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, TRACK_DURATION, TRACK_TIME_TO_PLAY,
         },
     },
+    music::query::ListingShortfall,
     poise_ext::ContextExt,
     sources::youtube::build_query_aux_metadata,
     utils::get_track_handle_metadata,
@@ -423,6 +425,105 @@ pub async fn build_play_reply<'a>(
     Ok((embed, content))
 }
 
+/// What `/play` knows once its placeholder has become the reply.
+struct FilledReply {
+    shortfall: Option<ListingShortfall>,
+    was_empty: bool,
+    queue_len: usize,
+    after_query_type: std::time::Instant,
+    after_move_on: std::time::Instant,
+    after_refetch_queue: std::time::Instant,
+    after_embed: std::time::Instant,
+}
+
+/// Everything fallible between sending `/play`'s placeholder and editing it
+/// into the reply (#494). 🔑 It ends AT the edit: once that succeeds the
+/// placeholder is the reply, and nothing after it may take it down.
+async fn fill_search_reply(
+    ctx: Context<'_>,
+    url: &str,
+    file: Option<serenity::Attachment>,
+    call: Arc<Mutex<Call>>,
+    mode: Mode,
+    search_msg: &ReplyHandle<'_>,
+) -> Result<FilledReply, Error> {
+    // determine whether this is a link or a query string
+    let query_type = query_type_from_url(ctx, url, file).await?;
+
+    // FIXME: Decide whether we're using this everywhere, or not.
+    // Don't like the inconsistency.
+    let resolved = verify(
+        query_type,
+        CrackedError::Other("Something went wrong while parsing your query!"),
+    )?;
+    // The shortfall travels beside the query so it can be reported *after* the
+    // queue reply, once there is something to report it against.
+    let ResolvedQuery {
+        query: query_type,
+        shortfall,
+    } = resolved;
+
+    tracing::warn!("query_type: {:?}", query_type);
+
+    let after_query_type = std::time::Instant::now();
+
+    // Read before anything below enqueues into it, so a playlist (or any
+    // multi-track result) landing in an idle bot is still recognized as
+    // having started a song -- not just a `/play` that queued exactly one.
+    // And no earlier: resolving the query above takes seconds, and a track
+    // that ended in that window would leave the new song under "Finished".
+    // 🔑 The Call guard is a temporary, released at the end of the statement.
+    let was_empty = call.lock().await.queue().is_empty();
+
+    // FIXME: Super hacky, fix this shit.
+    // This is actually where the track gets queued into the internal queue, it's the main work function.
+    match_mode(
+        ctx,
+        call.clone(),
+        mode,
+        query_type.clone(),
+        search_msg.clone(),
+    )
+    .await?;
+
+    let after_move_on = std::time::Instant::now();
+
+    // refetch the queue after modification
+    // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
+    // let handler = call.lock().await;
+    // let queue = handler.queue().current_queue();
+    // drop(handler);
+    let queue = call.lock().await.queue().current_queue();
+
+    let after_refetch_queue = std::time::Instant::now();
+
+    // This makes sense, we're getting the final response to the user based on whether
+    // the song / playlist was queued first, last, or is now playing.
+    // Ah! Also, sometimes after a long queue process the now playing message says that it's already
+    // X seconds into the song, so this is definitely after the section of the code that
+    // takes a long time.
+    let text_perms = ctx.guild_id().and_then(|gid| {
+        crate::music::perms::resolve(ctx.cache(), gid, ctx.channel_id(), ctx.author().id)
+            .map(|p| p.text)
+    });
+    let (embed, notice_content) =
+        build_play_reply(&queue, mode, query_type, text_perms.as_ref()).await?;
+
+    let after_embed = std::time::Instant::now();
+
+    edit_embed_response2(ctx, embed, search_msg.clone(), notice_content).await?;
+
+    Ok(FilledReply {
+        shortfall,
+        was_empty,
+        queue_len: queue.len(),
+        after_query_type,
+        after_move_on,
+        after_refetch_queue,
+        after_embed,
+    })
+}
+
 /// Does the actual playing of the song, all the other commands use this.
 //#[tracing::instrument(skip(ctx))]
 #[cfg(not(tarpaulin_include))]
@@ -484,71 +585,25 @@ pub async fn play_internal(
     let search_msg = msg_int::send_search_message_as(&ctx, private).await?;
     //tracing::debug!("search response msg: {:?}", search_msg.message());
 
-    // determine whether this is a link or a query string
-    let query_type = query_type_from_url(ctx, url, file).await?;
-
-    // FIXME: Decide whether we're using this everywhere, or not.
-    // Don't like the inconsistency.
-    let resolved = verify(
-        query_type,
-        CrackedError::Other("Something went wrong while parsing your query!"),
-    )?;
-    // The shortfall travels beside the query so it can be reported *after* the
-    // queue reply, once there is something to report it against.
-    let ResolvedQuery {
-        query: query_type,
+    // 🔑 #494: nothing fallible between this send and `discard_on_err`.
+    // Everything that can fail before the placeholder becomes the reply lives
+    // in `fill_search_reply`, and its error takes the placeholder down with it.
+    let FilledReply {
         shortfall,
-    } = resolved;
-
-    tracing::warn!("query_type: {:?}", query_type);
-
-    let _after_query_type = std::time::Instant::now();
-
-    // Read before anything below enqueues into it, so a playlist (or any
-    // multi-track result) landing in an idle bot is still recognized as
-    // having started a song -- not just a `/play` that queued exactly one.
-    // And no earlier: resolving the query above takes seconds, and a track
-    // that ended in that window would leave the new song under "Finished".
-    // 🔑 The Call guard is a temporary, released at the end of the statement.
-    let was_empty = call.lock().await.queue().is_empty();
-
-    // FIXME: Super hacky, fix this shit.
-    // This is actually where the track gets queued into the internal queue, it's the main work function.
-    match_mode(
-        ctx,
-        call.clone(),
-        mode,
-        query_type.clone(),
-        search_msg.clone(),
+        was_empty,
+        queue_len,
+        after_query_type: _after_query_type,
+        after_move_on: _after_move_on,
+        after_refetch_queue: _after_refetch_queue,
+        after_embed: _after_embed,
+    } = discard_on_err(
+        &Placeholder {
+            ctx,
+            handle: &search_msg,
+        },
+        fill_search_reply(ctx, url, file, call.clone(), mode, &search_msg).await,
     )
     .await?;
-
-    let _after_move_on = std::time::Instant::now();
-
-    // refetch the queue after modification
-    // FIXME: I'm beginning to think that this walking of the queue is what's causing the performance issues.
-    // let handler = call.lock().await;
-    // let queue = handler.queue().current_queue();
-    // drop(handler);
-    let queue = call.lock().await.queue().current_queue();
-
-    let _after_refetch_queue = std::time::Instant::now();
-
-    // This makes sense, we're getting the final response to the user based on whether
-    // the song / playlist was queued first, last, or is now playing.
-    // Ah! Also, sometimes after a long queue process the now playing message says that it's already
-    // X seconds into the song, so this is definitely after the section of the code that
-    // takes a long time.
-    let text_perms = ctx.guild_id().and_then(|gid| {
-        crate::music::perms::resolve(ctx.cache(), gid, ctx.channel_id(), ctx.author().id)
-            .map(|p| p.text)
-    });
-    let (embed, notice_content) =
-        build_play_reply(&queue, mode, query_type, text_perms.as_ref()).await?;
-
-    let _after_embed = std::time::Instant::now();
-
-    edit_embed_response2(ctx, embed, search_msg.clone(), notice_content).await?;
 
     // A partial listing is a success with something missing, so it is said
     // after the queue embed rather than instead of it: the recovered tracks are
@@ -582,7 +637,7 @@ pub async fn play_internal(
 
     // A `/play` that started a song is a now-playing moment. The status follows
     // the reply, so a visible reply ends up directly above it.
-    if crate::messaging::status::play_started_song(was_empty, queue.len()) {
+    if crate::messaging::status::play_started_song(was_empty, queue_len) {
         // The floor is the newest visible reply -- the footnote if one was
         // sent, else the search reply edited into the result -- because its
         // gateway echo may not have reached the cache yet. An ephemeral reply
