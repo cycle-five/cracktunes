@@ -64,7 +64,6 @@ pub enum CrackedError {
     FailedToSetChannelSize(&'static str, GenericChannelId, u32, Error),
     GuildOnly,
     JoinChannelError(JoinError),
-    Json(serde_json::Error),
     InvalidIP(&'static str),
     InvalidTopGGToken,
     InvalidPermissions,
@@ -209,7 +208,6 @@ impl Display for CrackedError {
                 ))
             },
             Self::JoinChannelError(err) => f.write_str(&format!("{err}")),
-            Self::Json(err) => f.write_str(&format!("{err}")),
             Self::LogChannelWarning(event_name, guild_id) => f.write_str(&format!(
                 "No log channel set for {event_name} in {guild_id}",
             )),
