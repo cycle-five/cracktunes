@@ -12,7 +12,6 @@
         }
     ],
     "rust-analyzer.cargo.features": [
-        "crack-gpt",
         "crack-osint",
         "crack-bf",
         "crack-activity",
@@ -20,9 +19,6 @@
     ],
     "rust-analyzer.linkedProjects": [
         "./crack-core/Cargo.toml",
-        "./crack-bf/Cargo.toml",
-        "./crack-gpt/Cargo.toml",
-        "./crack-osint/Cargo.toml",
         "./crack-voting/Cargo.toml",
         "./crack-types/Cargo.toml",
         "./crack-testing/Cargo.toml"

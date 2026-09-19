@@ -189,7 +189,7 @@ cargo +nightly clippy --profile=release --all-features --workspace -- -D warning
 ## Build
 
 ```shell
-cargo +nightly build --profile=release --features crack-osint,crack-bf,crack-fpt --workspace --locked
+cargo +nightly build --profile=release --features crack-osint,crack-bf --workspace --locked
 ```
 
 ## Distribution
@@ -199,7 +199,7 @@ cargo dist init --hosting github
 # make change `pr-run-mode = "upload"`
 git add .
 git commit -am "chore: cargo-dist"
-cargo dist build --profile=release --features crack-gpt,crack-bf,crack-osint
+cargo dist build --profile=release --features crack-bf,crack-osint
 ```
 
 ## Release

@@ -1,8 +1,6 @@
 pub mod admin;
 #[cfg(feature = "crack-bf")]
 pub mod bf;
-#[cfg(feature = "crack-gpt")]
-pub mod chatgpt;
 pub mod help;
 pub mod music;
 pub mod music_utils;
@@ -17,8 +15,6 @@ pub mod utility;
 //pub use admin::commands;
 #[cfg(feature = "crack-bf")]
 pub use bf::*;
-#[cfg(feature = "crack-gpt")]
-pub use chatgpt::*;
 pub use help::sub_help;
 pub use music::*;
 pub use music_utils::*;
@@ -57,8 +53,6 @@ pub fn all_commands() -> Vec<crate::Command> {
         bf(),
         #[cfg(feature = "crack-osint")]
         osint(),
-        #[cfg(feature = "crack-gpt")]
-        chat(),
     ]
     .into_iter()
     //.chain(help::help_commands())

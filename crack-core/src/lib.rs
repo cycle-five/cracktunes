@@ -23,8 +23,6 @@ use crate::handlers::event_log::LogEntry;
 #[cfg(feature = "crack-activity")]
 use ::serenity::all::Activity;
 use chrono::{DateTime, Utc};
-#[cfg(feature = "crack-gpt")]
-use crack_gpt::GptContext;
 use crack_testing::CrackTrackClient;
 use db::worker_pool::MetadataMsg;
 use db::{PlayLog, TrackReaction};
@@ -406,9 +404,6 @@ pub struct DataInner {
     /// the game in memory only. See `commands::music::gp_persist`.
     pub gp_persist:
         Option<tokio::sync::mpsc::UnboundedSender<commands::music::gp_persist::GpPersist>>,
-    // Option inside?
-    #[cfg(feature = "crack-gpt")]
-    pub gpt_ctx: Arc<RwLock<Option<GptContext>>>,
     // No arc, but we need a lifetime?
     // What fundemental limitation comes up that must be solved by this?
     pub ct_client: CrackTrackClient<'static>,
@@ -437,8 +432,6 @@ impl std::fmt::Debug for DataInner {
         result.push_str(&format!("guild_cache_map: {:?}\n", self.guild_cache_map));
         result.push_str(&format!("event_log: {:?}\n", self.event_log_async));
         result.push_str(&format!("database_pool: {:?}\n", self.database_pool));
-        #[cfg(feature = "crack-gpt")]
-        result.push_str(&format!("gpt_context: {:?}\n", self.gpt_ctx));
         result.push_str(&format!("http_client: {:?}\n", self.http_client));
         result.push_str("topgg_client: <skipped>\n");
         write!(f, "{}", result)
@@ -466,15 +459,6 @@ impl DataInner {
     pub fn with_db_channel(&self, db_channel: Sender<MetadataMsg>) -> Self {
         Self {
             db_channel: Some(db_channel),
-            ..self.clone()
-        }
-    }
-
-    /// Set the GPT context for the data.
-    #[cfg(feature = "crack-gpt")]
-    pub fn with_gpt_ctx(&self, gpt_ctx: GptContext) -> Self {
-        Self {
-            gpt_ctx: Arc::new(RwLock::new(Some(gpt_ctx))),
             ..self.clone()
         }
     }
@@ -604,8 +588,6 @@ impl Default for DataInner {
             user_activity_map: Arc::new(dashmap::DashMap::new()),
             #[cfg(feature = "crack-activity")]
             activity_user_map: Arc::new(dashmap::DashMap::new()),
-            #[cfg(feature = "crack-gpt")]
-            gpt_ctx: Arc::new(RwLock::new(None)),
             ct_client: CrackTrackClient::default(),
             songbird: Songbird::serenity(), // Initialize with an uninitialized Songbird instance
             phone_data: PhoneCodeData::default(),

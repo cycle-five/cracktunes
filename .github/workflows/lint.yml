@@ -57,3 +57,18 @@ jobs:
       - name: Run clippy
         if: success() || failure()
         run: cargo clippy --all -- -D clippy::all -D warnings --allow clippy::needless_return
+
+      # 🔑 The only job that compiles the optional-module seam. crack-bf and
+      # crack-osint now live in their own repositories, so their crates are
+      # gated by their own CI -- but `commands/osint.rs`, `commands/bf.rs` and
+      # the osint arms in `messaging/message.rs` are the seam BETWEEN them, and
+      # nothing else here builds it: this workflow's clippy passes no features,
+      # build.yml passes only the db-tests ones, and rust-clippy.yml's
+      # --all-features run is continue-on-error and never runs on a PR.
+      #
+      # Without this, a new crack-osint release that reshuffles its default
+      # features breaks `--features crack-osint` here and no job reports it --
+      # the exact rot this extraction was done to stop.
+      - name: Check the optional module seam
+        if: success() || failure()
+        run: cargo check -p crack-core --features crack-bf,crack-osint --locked

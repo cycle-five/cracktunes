@@ -53,7 +53,8 @@ schema without someone noticing at build time.
 
 ## Tests that reach the network
 
-Some tests in `crack-testing` and `crack-osint` make live calls (YouTube,
-various OSINT endpoints). Those are marked `#[ignore]` on their own and are not
-covered by `db-tests`. They fail for reasons unrelated to whatever you changed;
-run them deliberately, by name.
+Some tests in `crack-testing` make live calls (YouTube). Those are marked
+`#[ignore]` on their own and are not covered by `db-tests`. They fail for
+reasons unrelated to whatever you changed; run them deliberately, by name.
+crack-osint's own HIBP live-call test moved with it to
+`cycle-five/crack-osint` and is no longer part of this repository.

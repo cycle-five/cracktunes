@@ -8,7 +8,6 @@ These are callgraphs I generated to aide in documenting CrackTunes.
 ![crack-core-messaging](https://cracktun.es/CallGraphs/callgraph-mod-crack-core-messaging.svg)
 ![crack-core-sources](https://cracktun.es/CallGraphs/callgraph-mod-crack-core-sources.svg)
 ![crack-core-test](https://cracktun.es/CallGraphs/callgraph-mod-crack-core-test.svg)
-![crack-gpt](https://cracktun.es/CallGraphs/callgraph-mod-crack-gpt.svg)
 ![crack-osint](https://cracktun.es/CallGraphs/callgraph-mod-crack-osint.svg)
 ![crack-voting](https://cracktun.es/CallGraphs/callgraph-mod-crack-voting.svg)
 ![cracktunes](https://cracktun.es/CallGraphs/callgraph-mod-cracktunes.svg)
