@@ -200,8 +200,6 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
         )
         .await?;
         return Ok(());
-        // Mode is Root
-        // None => HelpCommandMode::Root,
     }
     let mut cmd_str: String = command.unwrap().to_owned();
     // We just checked that command is not None, so this unwrap is safe
@@ -250,12 +248,6 @@ pub async fn command_func(ctx: Context<'_>, command: Option<&str>) -> Result<(),
         let _ = send_reply_owned(ctx, msg, true).await?;
         return Ok(());
     }
-
-    // if command_obj.subcommands.is_empty() {
-    //     HelpCommandMode::Command(command_obj)
-    // } else {
-    //     HelpCommandMode::Group(command_obj)
-    // }
 
     builtin_help(
         ctx,
