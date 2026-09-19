@@ -539,7 +539,10 @@ impl SerenityHandler {
 // `on_cache_ready`, so it has not run for as long as that has been there; removing
 // the surrounding block to move `cam_status_loop` off `CacheReady` is what made the
 // deadness visible to the compiler. Kept so re-enabling it stays a one-line change.
-#[allow(dead_code)]
+#[expect(
+    dead_code,
+    reason = "parked: its only caller sat behind `if false` in on_cache_ready; kept so re-enabling is one line"
+)]
 async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     let cpu_load = sys_info::loadavg().unwrap();
     let mem_use = sys_info::mem_info().unwrap();
