@@ -44,6 +44,11 @@ jobs:
           password: mysecretpassword
           database: postgres
           port: 5432
+          # 🪤 PIN THIS. v4 used the runner's preinstalled server, which is
+          # 16.15; v8 installs from PGDG and defaults to 18. Both stacks run
+          # postgres:16-alpine, so an unpinned major would test the bot
+          # against a server it never runs on.
+          postgres-version: "16"
         id: postgres
 
       - uses: Swatinem/rust-cache@v2
