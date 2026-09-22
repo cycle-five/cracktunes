@@ -9,7 +9,8 @@
 //! | 400  | `invalid_id`            | the id failed the pattern; nothing was fetched   |
 //! | 404  | `not_found`             | the entity does not exist (negative-cached)      |
 //! | 502  | `extraction_silent`     | navigated fine, nothing on the page matched     |
-//! | 502  | `extraction_empty`      | navigated fine, zero tracks -- extraction broke  |
+//! | 502  | `extraction_empty`      | Spotify declared items we parsed none of        |
+//! | 502  | `listing_empty`         | the listing is real and has nothing we can see  |
 //! | 502  | `extraction_incomplete` | recovered fewer items than Spotify declared      |
 //! | 504  | `timeout`               | exceeded the whole-call budget                   |
 //! | 502  | `internal`              | anything else                                    |
@@ -59,8 +60,16 @@ pub enum ErrorCode {
     /// Measured as transient rather than a shape change -- see the module
     /// docs. [`crate::Client`] retries this code once by default.
     ExtractionSilent,
-    /// HTTP 502. Navigation succeeded but yielded zero tracks: extraction broke.
+    /// HTTP 502. Spotify declared items extraction recognised none of, which
+    /// means extraction broke. Since sleevenote 0.6.0 this is ONLY that --
+    /// a listing Spotify itself serves empty is [`ErrorCode::ListingEmpty`].
     ExtractionEmpty,
+    /// HTTP 502. The listing is real and has nothing in it we can see.
+    ///
+    /// Not a fault. Spotify declared no items, so there were none to extract:
+    /// a personalised listing (a daylist, a private or a regional one) looks
+    /// exactly like this to a signed-out scraper.
+    ListingEmpty,
     /// HTTP 502. Fewer items recovered than Spotify declared.
     ExtractionIncomplete,
     /// HTTP 504. The service exceeded its own whole-call budget.
@@ -135,6 +144,23 @@ pub enum Error {
     /// the service is fixed.
     #[error("extraction returned nothing for `{}`: {} (HTTP {})", .0.id, .0.message, .0.status)]
     ExtractionEmpty(ErrorDetail),
+
+    /// HTTP 502 `listing_empty`: the listing has nothing in it we can see.
+    ///
+    /// 🔑 **Not a failure of ours, and not worth alarming the user about.**
+    /// Spotify declared no items at all, so there were none to extract. The
+    /// common case is a personalised listing -- a "daylist", a private or a
+    /// regional one -- which a signed-out scraper cannot read. Spotify's own
+    /// oEmbed serves those a `trackList` of zero entries too.
+    ///
+    /// Distinct from [`Error::ExtractionEmpty`], which is our bug. Reporting
+    /// this one as that is what told a user "Spotify lookup is broken right
+    /// now" for a link that was simply not public.
+    ///
+    /// Retrying will not help; a *different* link to the same listing (the
+    /// shareable `?si=` form of a daylist) usually will.
+    #[error("nothing visible in `{}`: {} (HTTP {})", .0.id, .0.message, .0.status)]
+    ListingEmpty(ErrorDetail),
 
     /// HTTP 502 `extraction_incomplete`: fewer items recovered than declared.
     ///
@@ -229,6 +255,7 @@ impl Error {
             ErrorCode::NotFound => Error::NotFound(detail),
             ErrorCode::ExtractionSilent => Error::ExtractionSilent(detail),
             ErrorCode::ExtractionEmpty => Error::ExtractionEmpty(detail),
+            ErrorCode::ListingEmpty => Error::ListingEmpty(detail),
             ErrorCode::ExtractionIncomplete => Error::ExtractionIncomplete(detail),
             ErrorCode::Timeout => Error::Timeout(detail),
             ErrorCode::Internal => Error::Internal(detail),
@@ -246,6 +273,7 @@ impl Error {
             Error::NotFound(_) => Some(ErrorCode::NotFound),
             Error::ExtractionSilent(_) => Some(ErrorCode::ExtractionSilent),
             Error::ExtractionEmpty(_) => Some(ErrorCode::ExtractionEmpty),
+            Error::ListingEmpty(_) => Some(ErrorCode::ListingEmpty),
             Error::ExtractionIncomplete(_) => Some(ErrorCode::ExtractionIncomplete),
             Error::Timeout(_) => Some(ErrorCode::Timeout),
             Error::Internal(_) => Some(ErrorCode::Internal),
@@ -262,6 +290,7 @@ impl Error {
             | Error::NotFound(detail)
             | Error::ExtractionSilent(detail)
             | Error::ExtractionEmpty(detail)
+            | Error::ListingEmpty(detail)
             | Error::ExtractionIncomplete(detail)
             | Error::Timeout(detail)
             | Error::Internal(detail)

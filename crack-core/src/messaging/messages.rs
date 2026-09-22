@@ -224,6 +224,16 @@ pub const SPOTIFY_TIMEOUT: &str = "⏳ **Spotify took too long to answer.**\nTry
 // Deliberately offers no retry: the lookup service stopped matching Spotify's
 // page, so retrying the same link fails identically until it is fixed.
 pub const SPOTIFY_LOOKUP_BROKEN: &str = "⚠️ **Spotify lookup is broken right now.**\nThis has been logged. Search for the track by name and I'll play it.";
+/// `listing_empty`: the listing is real and has nothing in it we can see.
+///
+/// Deliberately NOT [`SPOTIFY_LOOKUP_BROKEN`]. The two used to be the same
+/// arm, so a daylist -- which Spotify serves empty to anyone who is not its
+/// signed-in owner -- told the reader the whole integration was down. It
+/// offers no retry, because retrying the same link cannot work, and names the
+/// one thing that does: the share link, measured to resolve normally when the
+/// personalised link does not.
+pub const SPOTIFY_LISTING_EMPTY: &str = "⚠️ **That link looks empty from here.**
+Spotify only shows its contents to you — personalized lists like your daylist look empty to anyone else, including me. Open it on Spotify, tap share, and paste *that* link: it usually works.";
 /// `extraction_silent` that survived the client's retry. Unlike
 /// [`SPOTIFY_LOOKUP_BROKEN`] this one IS worth retrying -- measured at ~14%
 /// per attempt with every failing id succeeding later -- so the message says
