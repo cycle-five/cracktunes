@@ -52,7 +52,7 @@ audiopus = "0.3.0-rc.0"
 async-trait = "0.1"
 anyhow = "1.0"
 bytes = "1.7"
-colored = "2.1"
+colored = "3.1"
 const-random = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1.5"
