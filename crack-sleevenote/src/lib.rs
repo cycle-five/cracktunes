@@ -29,10 +29,11 @@
 //!             playlist.total_items(),
 //!         );
 //!     },
-//!     // The distinctions below are the reason the service exists. Three of
+//!     // The distinctions below are the reason the service exists. Four of
 //!     // these arms are HTTP 502 and they mean different things.
 //!     Err(Error::NotFound(d)) => println!("no such playlist: {}", d.id),
 //!     Err(Error::ExtractionEmpty(d)) => println!("our scraper broke: {}", d.message),
+//!     Err(Error::ListingEmpty(d)) => println!("nothing public in it: {}", d.message),
 //!     Err(Error::ExtractionIncomplete(d)) => println!("partial: {}", d.message),
 //!     Err(Error::Timeout(d)) => println!("retry later: {}", d.message),
 //!     Err(other) => return Err(other),

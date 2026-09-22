@@ -262,6 +262,7 @@ fn the_three_bad_gateways_and_the_gateway_timeout_stay_distinct() {
         (ErrorCode::InvalidId, 400),
         (ErrorCode::NotFound, 404),
         (ErrorCode::ExtractionEmpty, 502),
+        (ErrorCode::ListingEmpty, 502),
         (ErrorCode::ExtractionIncomplete, 502),
         (ErrorCode::Timeout, 504),
         (ErrorCode::Internal, 502),
@@ -401,4 +402,21 @@ fn a_listing_without_the_completeness_fields_fails_to_deserialize() {
         None,
         "no declared total means no claim of a shortfall"
     );
+}
+
+#[test]
+fn listing_empty_is_not_extraction_empty() {
+    // sleevenote 0.6.0 split these. They share HTTP 502 and both mean "zero
+    // tracks", and collapsing them is what told a user "Spotify lookup is
+    // broken" because their daylist is invisible to a signed-out scraper.
+    // `extraction_empty` is our bug; `listing_empty` is a fact about the id.
+    let listing = error_response(ErrorCode::ListingEmpty, 502);
+    let extraction = error_response(ErrorCode::ExtractionEmpty, 502);
+
+    assert!(matches!(listing, Error::ListingEmpty(_)), "{listing}");
+    assert!(
+        !matches!(listing, Error::Unrecognized { .. }),
+        "a known code must never land in Unrecognized: {listing}"
+    );
+    assert_ne!(listing.code(), extraction.code());
 }

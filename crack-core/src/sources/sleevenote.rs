@@ -21,9 +21,9 @@
 use crate::errors::CrackedError;
 use crate::http_utils;
 use crate::messaging::messages::{
-    SPOTIFY_INVALID_QUERY, SPOTIFY_LOOKUP_BROKEN, SPOTIFY_LOOKUP_FAILED, SPOTIFY_LOOKUP_FLAKY,
-    SPOTIFY_NOTHING_PLAYABLE, SPOTIFY_NOT_CONFIGURED, SPOTIFY_NOT_FOUND, SPOTIFY_PARTIAL_LISTING,
-    SPOTIFY_TIMEOUT, SPOTIFY_UNREACHABLE,
+    SPOTIFY_INVALID_QUERY, SPOTIFY_LISTING_EMPTY, SPOTIFY_LOOKUP_BROKEN, SPOTIFY_LOOKUP_FAILED,
+    SPOTIFY_LOOKUP_FLAKY, SPOTIFY_NOTHING_PLAYABLE, SPOTIFY_NOT_CONFIGURED, SPOTIFY_NOT_FOUND,
+    SPOTIFY_PARTIAL_LISTING, SPOTIFY_TIMEOUT, SPOTIFY_UNREACHABLE,
 };
 use crack_sleevenote::{
     Client as Sleevenote, ClientBuilder as SleevenoteBuilder, Error as SleevenoteError, Track,
@@ -444,6 +444,14 @@ pub fn user_message(err: &SleevenoteError) -> &'static str {
             tracing::warn!("sleevenote extraction silent after retry: {err}");
             SPOTIFY_LOOKUP_FLAKY
         },
+        // Not our failure at all: Spotify declared no items, so there were
+        // none to extract. Logged at info -- knowing how often this happens
+        // is useful, but it is a fact about one id, not a defect. sleevenote
+        // counts it separately and keeps it off the redesign canary.
+        SleevenoteError::ListingEmpty(_) => {
+            tracing::info!("sleevenote listing has nothing visible: {err}");
+            SPOTIFY_LISTING_EMPTY
+        },
         // Not the caller's fault and not retryable by them: the service
         // stopped matching Spotify's page. Offering a retry would be a lie.
         //
@@ -483,6 +491,44 @@ pub fn user_message(err: &SleevenoteError) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn detail(status: u16) -> crack_sleevenote::ErrorDetail {
+        crack_sleevenote::ErrorDetail {
+            status,
+            id: "37i9dQZF1EP6YuccBxUcC1".to_string(),
+            message: "no items Spotify will show us".to_string(),
+        }
+    }
+
+    #[test]
+    fn an_invisible_listing_does_not_claim_the_lookup_is_broken() {
+        // The regression this arm exists for. A daylist answered
+        // `extraction_empty`, which maps to SPOTIFY_LOOKUP_BROKEN, so the bot
+        // announced that Spotify lookup was down because one link was not
+        // public. sleevenote 0.6.0 reports `listing_empty` for that, and the
+        // user has to hear something true and actionable instead.
+        let msg = user_message(&SleevenoteError::ListingEmpty(detail(502)));
+
+        assert_eq!(msg, SPOTIFY_LISTING_EMPTY);
+        assert_ne!(
+            msg, SPOTIFY_LOOKUP_BROKEN,
+            "an unreadable link must not be reported as a broken integration"
+        );
+        // Whatever the wording becomes, it must not tell the reader we are
+        // broken, and it must point at the thing that does work.
+        assert!(!msg.contains("broken"), "{msg}");
+        assert!(msg.contains("share"), "{msg}");
+    }
+
+    #[test]
+    fn a_real_extraction_break_still_says_so() {
+        // The other half: narrowing extraction_empty must not cost us the
+        // loud message for the case it was written for.
+        assert_eq!(
+            user_message(&SleevenoteError::ExtractionEmpty(detail(502))),
+            SPOTIFY_LOOKUP_BROKEN
+        );
+    }
 
     #[test]
     fn parses_canonical_links() {
