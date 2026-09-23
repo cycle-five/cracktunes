@@ -11,7 +11,7 @@
 use crate::{
     commands::cmd_check_music,
     commands::get_call_or_join_author,
-    commands::music::gp_prompts::{draw_prompts, GpCategory},
+    commands::music::gp_prompts::{draw_prompts, GpCategories, GpCategory, GpPrompt},
     commands::music::skip::force_skip_top_track,
     db::GpOutcome,
     errors::CrackedError,
@@ -21,15 +21,16 @@ use crate::{
         GP_ABORTED, GP_FOOLED_EVERYONE, GP_FULL_SONG, GP_FULL_SONG_NOTE, GP_GAME_OVER,
         GP_GUESSED_RIGHT, GP_GUESS_CHANGED, GP_GUESS_RECORDED, GP_HOW_TO, GP_HOW_TO_TITLE,
         GP_LIKED, GP_LIKES, GP_LIKE_HINT, GP_LIKE_LABEL, GP_NOBODY_GUESSED, GP_NOBODY_YET,
-        GP_PROMPT_CLOSES_EARLY, GP_PROMPT_CLOSES_TITLE, GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE,
-        GP_RESULTS_GUESSED_BY, GP_RESULTS_GUESSED_COUNT, GP_RESULTS_NOBODY_SCORED,
-        GP_RESULTS_THIS_ROUND, GP_RESULTS_TITLE, GP_REVEAL, GP_REVEAL_HELD, GP_ROUND_HINT,
-        GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE,
-        GP_STATUS_CLOSES, GP_STATUS_GUESSED, GP_STATUS_LIKES, GP_STATUS_PLAYING, GP_STATUS_PROMPT,
-        GP_STATUS_SCORES, GP_STATUS_SUBMITTED, GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED,
-        GP_TRACK_FAILED_NOTE, GP_UNLIKED, GP_WINDOW_CLOSED, GP_WINDOW_CLOSED_SONGS,
-        GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN, SPOTIFY_GP_ONE_SONG,
-        SPOTIFY_NOTHING_PLAYABLE,
+        GP_PICK_CANCEL, GP_PICK_CANCELLED, GP_PICK_CHOSEN, GP_PICK_NOT_HOST, GP_PICK_PLACEHOLDER,
+        GP_PICK_START, GP_PICK_TEXT, GP_PICK_TIMED_OUT, GP_PICK_TITLE, GP_PROMPT_CLOSES_EARLY,
+        GP_PROMPT_CLOSES_TITLE, GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE, GP_RESULTS_GUESSED_BY,
+        GP_RESULTS_GUESSED_COUNT, GP_RESULTS_NOBODY_SCORED, GP_RESULTS_THIS_ROUND,
+        GP_RESULTS_TITLE, GP_REVEAL, GP_REVEAL_HELD, GP_ROUND_HINT, GP_ROUND_TITLE, GP_RULES_TEXT,
+        GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE, GP_STATUS_CLOSES, GP_STATUS_GUESSED,
+        GP_STATUS_LIKES, GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SCORES,
+        GP_STATUS_SUBMITTED, GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE,
+        GP_UNLIKED, GP_WINDOW_CLOSED, GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING,
+        GP_WINDOW_WARNING_IN, SPOTIFY_GP_ONE_SONG, SPOTIFY_NOTHING_PLAYABLE,
     },
     music::queue::{build_track, enqueue_track_back, preload_time, stop_queue},
     music::PlaybackOwner,
@@ -52,7 +53,8 @@ use ::serenity::{
 };
 use crack_testing::ResolvedTrack;
 use crack_types::QueryType;
-use poise::serenity_prelude::Context as SerenityContext;
+use poise::serenity_prelude::{CollectComponentInteractions, Context as SerenityContext};
+use poise::CreateReply;
 use rand::{seq::SliceRandom, Rng};
 use songbird::tracks::{PlayMode, TrackHandle, TrackState};
 use songbird::{Call, Event, EventContext, EventHandler, TrackEvent};
@@ -138,6 +140,14 @@ pub fn gp_min_played(intended: Option<Duration>) -> Duration {
 }
 /// Component custom ids look like `gp:<g|l>:<guild_id>:<round_idx>:<track_idx>`.
 pub const GP_CUSTOM_ID_PREFIX: &str = "gp:";
+/// Custom ids on `/gp start`'s category picker. Deliberately not under
+/// [`GP_CUSTOM_ID_PREFIX`]: the picker's own collector answers them, and the
+/// global handler, finding no game, would answer them first.
+pub const GP_PICK_MENU_ID: &str = "gppick:menu";
+pub const GP_PICK_START_ID: &str = "gppick:start";
+pub const GP_PICK_CANCEL_ID: &str = "gppick:cancel";
+/// How long the category picker waits on the host's next click.
+pub const GP_PICK_TIMEOUT_SECS: u64 = 120;
 /// Music commands refused while a game owns playback, because each would leave
 /// playback in a state the game's own state machine never produced: injecting or
 /// reordering tracks (`play`, `shuffle`, `remove`, ...), advancing or stalling the
@@ -420,6 +430,9 @@ impl GpTrack {
 #[derive(Clone, Debug)]
 pub struct GpRound {
     pub prompt: String,
+    /// The category the prompt was drawn from. `None` only on a round saved,
+    /// in a game of several categories, before rounds had one.
+    pub category: Option<GpCategory>,
     /// One song per player while the window is open; resubmitting replaces.
     pub submissions: HashMap<UserId, ResolvedTrack<'static>>,
     /// Filled (shuffled) when the window closes.
@@ -438,9 +451,10 @@ pub struct GpRound {
 }
 
 impl GpRound {
-    fn new(prompt: String) -> Self {
+    fn new(prompt: GpPrompt) -> Self {
         Self {
-            prompt,
+            prompt: prompt.text,
+            category: Some(prompt.category),
             submissions: HashMap::new(),
             tracks: Vec::new(),
             prompt_message: None,
@@ -494,7 +508,7 @@ pub struct GpGame {
     pub voice_channel: ChannelId,
     pub text_channel: GenericChannelId,
     pub phase: GpPhase,
-    pub category: GpCategory,
+    pub categories: GpCategories,
     /// Pre-drawn, one per prompt.
     pub rounds: Vec<GpRound>,
     pub current_round: usize,
@@ -533,8 +547,8 @@ impl GpGame {
         host: UserId,
         voice_channel: ChannelId,
         text_channel: GenericChannelId,
-        category: GpCategory,
-        prompts: Vec<String>,
+        categories: GpCategories,
+        prompts: Vec<GpPrompt>,
         timer_secs: u64,
         clip: Option<GpClip>,
         reveal: GpReveal,
@@ -548,7 +562,7 @@ impl GpGame {
             voice_channel,
             text_channel,
             phase: GpPhase::Submitting,
-            category,
+            categories,
             rounds: prompts.into_iter().map(GpRound::new).collect(),
             current_round: 0,
             current_track: 0,
@@ -703,6 +717,17 @@ impl GpGame {
         }
     }
 
+    /// The category to show with round `idx`'s prompt: only in a game of
+    /// several, where it changes from round to round. A game of one said which
+    /// when it started.
+    fn shown_category(&self, idx: usize) -> Option<GpCategory> {
+        if self.categories.as_slice().len() > 1 {
+            self.rounds[idx].category
+        } else {
+            None
+        }
+    }
+
     fn open_window(&mut self, now: i64) -> GpWindowOpened {
         self.phase = GpPhase::Submitting;
         self.current_track = 0;
@@ -710,12 +735,14 @@ impl GpGame {
         let closes_at = now + self.timer_secs as i64;
         let idx = self.current_round;
         let total_rounds = self.rounds.len();
+        let category = self.shown_category(idx);
         let round = &mut self.rounds[idx];
         round.closes_at = Some(closes_at);
         GpWindowOpened {
             round_idx: idx,
             total_rounds,
             prompt: round.prompt.clone(),
+            category,
             closes_at,
             timer_secs: self.timer_secs,
             generation: self.generation,
@@ -738,6 +765,7 @@ impl GpGame {
             .find(|r| !r.tracks.is_empty())
             .map(|r| r.tracks.iter().map(|t| t.submitter).collect())
             .unwrap_or_default();
+        let category = self.shown_category(idx);
         let round = &mut self.rounds[idx];
         // Sort before shuffling so a seeded rng gives the same order regardless
         // of HashMap iteration order.
@@ -763,6 +791,7 @@ impl GpGame {
             round_idx: idx,
             total_rounds,
             prompt,
+            category,
             prompt_message,
             count,
             text_channel: self.text_channel,
@@ -807,6 +836,9 @@ pub struct GpWindowOpened {
     pub round_idx: usize,
     pub total_rounds: usize,
     pub prompt: String,
+    /// The prompt's category, to show above it; `None` when there is nothing to
+    /// show (see `GpGame::shown_category`).
+    pub category: Option<GpCategory>,
     pub closes_at: i64,
     pub timer_secs: u64,
     pub generation: u64,
@@ -847,6 +879,8 @@ pub struct GpWindowClosed {
     pub round_idx: usize,
     pub total_rounds: usize,
     pub prompt: String,
+    /// As on [`GpWindowOpened`]: the closed embed replaces the open one.
+    pub category: Option<GpCategory>,
     pub prompt_message: Option<(GenericChannelId, MessageId)>,
     pub count: usize,
     pub text_channel: GenericChannelId,
@@ -1013,8 +1047,8 @@ impl Data {
         host_name: String,
         voice_channel: ChannelId,
         text_channel: GenericChannelId,
-        category: GpCategory,
-        prompts: Vec<String>,
+        categories: GpCategories,
+        prompts: Vec<GpPrompt>,
         timer_secs: u64,
         clip: Option<GpClip>,
         reveal: GpReveal,
@@ -1034,7 +1068,7 @@ impl Data {
             host,
             voice_channel,
             text_channel,
-            category,
+            categories,
             prompts,
             timer_secs,
             clip,
@@ -1864,6 +1898,55 @@ pub fn gp_components(
     rows
 }
 
+/// `/gp start`'s category picker: a menu of every category with `picked`
+/// ticked, then Start -- greyed out until something is -- and Cancel.
+pub fn gp_pick_components(picked: &[GpCategory]) -> Vec<CreateComponent<'static>> {
+    let options: Vec<CreateSelectMenuOption<'static>> = GpCategory::CATEGORIES
+        .iter()
+        .filter_map(|c| {
+            let key = c.key()?;
+            Some(
+                CreateSelectMenuOption::new(c.display(), key).default_selection(picked.contains(c)),
+            )
+        })
+        .collect();
+    let menu = CreateSelectMenu::new(
+        GP_PICK_MENU_ID,
+        CreateSelectMenuKind::String {
+            options: Cow::Owned(options),
+        },
+    )
+    .placeholder(GP_PICK_PLACEHOLDER)
+    .min_values(1)
+    .max_values(GpCategory::CATEGORIES.len() as u8);
+    let start = CreateButton::new(GP_PICK_START_ID)
+        .label(GP_PICK_START)
+        .style(ButtonStyle::Success)
+        .disabled(picked.is_empty());
+    let cancel = CreateButton::new(GP_PICK_CANCEL_ID)
+        .label(GP_PICK_CANCEL)
+        .style(ButtonStyle::Secondary);
+    vec![
+        CreateComponent::ActionRow(CreateActionRow::SelectMenu(menu)),
+        CreateComponent::ActionRow(CreateActionRow::Buttons(Cow::Owned(vec![start, cancel]))),
+    ]
+}
+
+/// The categories ticked in the picker's menu, from its option values.
+pub fn gp_picked<'a>(values: impl IntoIterator<Item = &'a str>) -> Vec<GpCategory> {
+    values
+        .into_iter()
+        .filter_map(GpCategory::from_key)
+        .collect()
+}
+
+fn gp_pick_embed(text: &str) -> CreateEmbed<'static> {
+    CreateEmbed::new()
+        .title(GP_PICK_TITLE)
+        .description(text.to_string())
+        .colour(Colour::FOOYOO)
+}
+
 fn scores_lines(scores: &[(UserId, u32)]) -> String {
     if scores.is_empty() {
         return "-".to_string();
@@ -1901,10 +1984,18 @@ pub fn gp_rules_embed() -> CreateEmbed<'static> {
         .colour(Colour::FOOYOO)
 }
 
+/// The prompt in bold, under its category when there is one to show.
+fn prompt_text(prompt: &str, category: Option<GpCategory>) -> String {
+    match category {
+        Some(c) => format!("{}\n**{prompt}**", c.display()),
+        None => format!("**{prompt}**"),
+    }
+}
+
 pub fn gp_prompt_embed(w: &GpWindowOpened) -> CreateEmbed<'static> {
     CreateEmbed::new()
         .title(round_title(w.round_idx, w.total_rounds))
-        .description(format!("**{}**", w.prompt))
+        .description(prompt_text(&w.prompt, w.category))
         .field(GP_PROMPT_HOW_TO_TITLE, GP_PROMPT_HOW_TO, false)
         .field(
             GP_PROMPT_CLOSES_TITLE,
@@ -1922,7 +2013,10 @@ pub fn gp_prompt_closed_embed(c: &GpWindowClosed) -> CreateEmbed<'static> {
     };
     CreateEmbed::new()
         .title(round_title(c.round_idx, c.total_rounds))
-        .description(format!("**{}**\n\n{status}", c.prompt))
+        .description(format!(
+            "{}\n\n{status}",
+            prompt_text(&c.prompt, c.category)
+        ))
         .colour(Colour::DARKER_GREY)
 }
 
@@ -2983,6 +3077,94 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Ask the host which categories to play: a menu to tick them, and Start. The
+/// clicks are answered here, not by [`handle_gp_component`] -- there is no game
+/// yet for it to find. `None` when the host cancels or walks away, which the
+/// picker has already said.
+#[cfg(not(tarpaulin_include))]
+async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Error> {
+    let host = ctx.author().id;
+    let mut picked: Vec<GpCategory> = Vec::new();
+    let reply = ctx
+        .send(
+            CreateReply::default()
+                .embed(gp_pick_embed(GP_PICK_TEXT))
+                .components(Cow::Owned(gp_pick_components(&picked)))
+                .ephemeral(true),
+        )
+        .await?;
+    let message_id = reply.message().await?.id;
+    loop {
+        // A collector per click, so the timeout is how long the host has sat
+        // idle rather than how long the whole pick has taken.
+        let Some(mci) = message_id
+            .collect_component_interactions(ctx.serenity_context())
+            .timeout(Duration::from_secs(GP_PICK_TIMEOUT_SECS))
+            .next()
+            .await
+        else {
+            reply
+                .edit(
+                    ctx,
+                    CreateReply::default()
+                        .embed(gp_pick_embed(GP_PICK_TIMED_OUT))
+                        .components(Cow::Owned(vec![])),
+                )
+                .await?;
+            return Ok(None);
+        };
+        // Only a prefix command's picker is public; from a slash command nobody
+        // else can see it.
+        if mci.user.id != host {
+            mci.create_response(
+                ctx.http(),
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .content(GP_PICK_NOT_HOST)
+                        .ephemeral(true),
+                ),
+            )
+            .await?;
+            continue;
+        }
+        let id = mci.data.custom_id.as_str();
+        if id == GP_PICK_CANCEL_ID {
+            gp_pick_update(ctx, &mci, GP_PICK_CANCELLED, vec![]).await?;
+            return Ok(None);
+        }
+        if id == GP_PICK_START_ID {
+            if let Some(categories) = GpCategories::new(picked.iter().copied()) {
+                let chosen = format!("{GP_PICK_CHOSEN} {}", categories.display());
+                gp_pick_update(ctx, &mci, &chosen, vec![]).await?;
+                return Ok(Some(categories));
+            }
+        } else if let ComponentInteractionDataKind::StringSelect { values } = &mci.data.kind {
+            picked = gp_picked(values.iter().map(String::as_str));
+        }
+        gp_pick_update(ctx, &mci, GP_PICK_TEXT, gp_pick_components(&picked)).await?;
+    }
+}
+
+/// Answer a picker click by redrawing the picker.
+#[cfg(not(tarpaulin_include))]
+async fn gp_pick_update(
+    ctx: Context<'_>,
+    mci: &ComponentInteraction,
+    text: &str,
+    components: Vec<CreateComponent<'static>>,
+) -> Result<(), Error> {
+    mci.create_response(
+        ctx.http(),
+        CreateInteractionResponse::UpdateMessage(
+            CreateInteractionResponseMessage::new()
+                .add_embed(gp_pick_embed(text))
+                .components(Cow::Owned(components)),
+        ),
+    )
+    .await?;
+    Ok(())
+}
+
 /// Start a game in your voice channel: pick a category, rounds, and the submission timer.
 #[cfg(not(tarpaulin_include))]
 #[allow(clippy::too_many_arguments)]
@@ -2996,7 +3178,8 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
 )]
 pub async fn gp_start(
     ctx: Context<'_>,
-    #[description = "Prompt category (or Mixed)."] category: GpCategory,
+    #[description = "Prompt category: 🎲 Random (default), just one, or ☑️ Pick several."]
+    category: Option<GpCategory>,
     #[description = "Number of rounds (default 5)."]
     #[min = 1]
     #[max = 20]
@@ -3026,6 +3209,15 @@ pub async fn gp_start(
     if data.gp_is_active(guild_id) {
         return Err(CrackedError::GameAlreadyRunning.into());
     }
+    ctx.author_vc().ok_or(CrackedError::NotConnected)?;
+    let categories = match GpCategories::from_choice(category.unwrap_or(GpCategory::Random)) {
+        Some(categories) => categories,
+        None => match gp_pick_categories(ctx).await? {
+            Some(categories) => categories,
+            None => return Ok(()),
+        },
+    };
+    // Looked up again: picking can take long enough to have left the channel.
     let vc = ctx.author_vc().ok_or(CrackedError::NotConnected)?;
     let host = ctx.author().id;
     let host_name = author_display_name(ctx).await;
@@ -3065,7 +3257,7 @@ pub async fn gp_start(
     });
     let reveal = reveal.unwrap_or_default();
     let round_results = results.unwrap_or(true) || reveal == GpReveal::Round;
-    let prompts = draw_prompts(category, rounds, &mut rand::rng());
+    let prompts = draw_prompts(&categories, rounds, &mut rand::rng());
 
     // Create the game first so the global TrackEndHandler ignores the End
     // event that stopping an existing queue fires.
@@ -3075,7 +3267,7 @@ pub async fn gp_start(
         host_name,
         vc,
         ctx.channel_id(),
-        category,
+        categories.clone(),
         prompts,
         timer_secs,
         clip,
@@ -3106,7 +3298,7 @@ pub async fn gp_start(
 
     ctx.send_reply(
         CrackedMessage::GpStarted {
-            category: category.display(),
+            category: categories.display(),
             rounds: opened.total_rounds,
             timer_secs,
             clip,
@@ -3636,8 +3828,18 @@ mod test {
         StdRng::seed_from_u64(0)
     }
 
-    fn prompts(names: &[&str]) -> Vec<String> {
-        names.iter().map(|s| s.to_string()).collect()
+    fn prompts(names: &[&str]) -> Vec<GpPrompt> {
+        names
+            .iter()
+            .map(|s| GpPrompt {
+                category: GpCategory::Nostalgia,
+                text: s.to_string(),
+            })
+            .collect()
+    }
+
+    fn nostalgia() -> GpCategories {
+        GpCategories::from_choice(GpCategory::Nostalgia).unwrap()
     }
 
     /// A clip that never fires in the pure-state tests, but proves the setting is
@@ -3686,7 +3888,7 @@ mod test {
             "alice".into(),
             VC,
             TC,
-            GpCategory::Nostalgia,
+            nostalgia(),
             prompts(prompt_list),
             TIMER,
             clip,
@@ -3734,7 +3936,7 @@ mod test {
                 "bob".into(),
                 VC,
                 TC,
-                GpCategory::Mixed,
+                GpCategories::all(),
                 prompts(&["x"]),
                 TIMER,
                 None,
@@ -3752,7 +3954,7 @@ mod test {
                 "bob".into(),
                 VC,
                 TC,
-                GpCategory::Mixed,
+                GpCategories::all(),
                 vec![],
                 TIMER,
                 None,
@@ -3763,6 +3965,53 @@ mod test {
             .unwrap_err(),
             CrackedError::Other("That category has no prompts.")
         );
+    }
+
+    #[test]
+    fn a_game_of_several_categories_shows_each_rounds() {
+        let several = data();
+        let opened = several
+            .gp_start(
+                G,
+                A,
+                "alice".into(),
+                VC,
+                TC,
+                GpCategories::new([GpCategory::Car, GpCategory::Chill]).unwrap(),
+                vec![
+                    GpPrompt {
+                        category: GpCategory::Car,
+                        text: "p1".into(),
+                    },
+                    GpPrompt {
+                        category: GpCategory::Chill,
+                        text: "p2".into(),
+                    },
+                ],
+                TIMER,
+                None,
+                GpReveal::default(),
+                true,
+                NOW,
+            )
+            .unwrap();
+        assert_eq!(opened.category, Some(GpCategory::Car));
+        let closed = several.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+        assert_eq!(
+            closed.category,
+            Some(GpCategory::Car),
+            "the closed embed keeps it"
+        );
+        let GpNext::Window(next) = &closed.next else {
+            panic!("an empty round moves straight on");
+        };
+        assert_eq!(next.category, Some(GpCategory::Chill));
+        let v = serde_json::to_value(gp_prompt_embed(next)).unwrap();
+        assert_eq!(v["description"], "🌿 Altered-State / Chill\n**p2**");
+
+        // A game of one category said which when it started.
+        let one = data();
+        assert_eq!(game_with(&one, &["p1"]).category, None);
     }
 
     #[test]
@@ -5458,11 +5707,58 @@ mod test {
     }
 
     #[test]
+    fn category_picker_json() {
+        let v = serde_json::to_value(gp_pick_components(&[])).unwrap();
+        let menu = &v[0]["components"][0];
+        assert_eq!(menu["custom_id"], GP_PICK_MENU_ID);
+        for id in [GP_PICK_MENU_ID, GP_PICK_START_ID, GP_PICK_CANCEL_ID] {
+            assert!(
+                !id.starts_with(GP_CUSTOM_ID_PREFIX),
+                "the global gp handler must leave {id} to the picker"
+            );
+        }
+        let options = menu["options"].as_array().unwrap();
+        assert_eq!(options.len(), GpCategory::CATEGORIES.len());
+        assert_eq!(menu["max_values"], GpCategory::CATEGORIES.len());
+        assert!(options.iter().all(|o| o["default"] != true));
+        let values: Vec<&str> = options
+            .iter()
+            .map(|o| o["value"].as_str().unwrap())
+            .collect();
+        assert_eq!(gp_picked(values), GpCategory::CATEGORIES.to_vec());
+        let buttons = &v[1]["components"];
+        assert_eq!(buttons[0]["custom_id"], GP_PICK_START_ID);
+        assert_eq!(
+            buttons[0]["disabled"], true,
+            "nothing picked, nothing to start"
+        );
+        assert_eq!(buttons[1]["custom_id"], GP_PICK_CANCEL_ID);
+
+        let v = serde_json::to_value(gp_pick_components(&[GpCategory::Car, GpCategory::Chill]))
+            .unwrap();
+        let ticked: Vec<&str> = v[0]["components"][0]["options"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|o| o["default"] == true)
+            .map(|o| o["value"].as_str().unwrap())
+            .collect();
+        assert_eq!(ticked, vec!["car", "chill"]);
+        assert_ne!(v[1]["components"][0]["disabled"], true);
+
+        assert_eq!(
+            gp_picked(["chill", "nope", "mixed"]),
+            vec![GpCategory::Chill]
+        );
+    }
+
+    #[test]
     fn prompt_embeds_json() {
         let opened = GpWindowOpened {
             round_idx: 1,
             total_rounds: 3,
             prompt: "What song do you cry to?".into(),
+            category: None,
             closes_at: NOW,
             timer_secs: TIMER,
             generation: 4,
@@ -5483,6 +5779,7 @@ mod test {
             round_idx: 1,
             total_rounds: 3,
             prompt: "p".into(),
+            category: None,
             prompt_message: None,
             count: 4,
             text_channel: TC,
@@ -5497,6 +5794,26 @@ mod test {
         let empty = GpWindowClosed { count: 0, ..closed };
         let v = serde_json::to_value(gp_prompt_closed_embed(&empty)).unwrap();
         assert!(v["description"].as_str().unwrap().contains(GP_WINDOW_EMPTY));
+
+        // With a category to show, it sits above the prompt, open and closed.
+        let tagged = GpWindowOpened {
+            category: Some(GpCategory::Car),
+            ..opened
+        };
+        let v = serde_json::to_value(gp_prompt_embed(&tagged)).unwrap();
+        assert_eq!(
+            v["description"],
+            "🚗 Car / Driving\n**What song do you cry to?**"
+        );
+        let tagged = GpWindowClosed {
+            category: Some(GpCategory::Car),
+            ..empty
+        };
+        let v = serde_json::to_value(gp_prompt_closed_embed(&tagged)).unwrap();
+        assert!(v["description"]
+            .as_str()
+            .unwrap()
+            .starts_with("🚗 Car / Driving\n**p**\n\n"));
 
         let w = GpWindowWarning {
             round_idx: 0,
@@ -5826,16 +6143,16 @@ mod test {
                         "results"
                     ]
                 );
-                assert!(sub.parameters[0].required);
+                assert!(!sub.parameters[0].required, "no category is Random");
                 let reveal = sub.parameters.iter().find(|p| p.name == "reveal").unwrap();
                 assert_eq!(reveal.choices.len(), 2, "after each song, or at the end");
                 assert_eq!(
                     sub.parameters[0].choices.len(),
-                    crate::commands::music::gp_prompts::GP_PROMPTS.len() + 1,
-                    "every category + Mixed"
+                    crate::commands::music::gp_prompts::GP_PROMPTS.len() + 2,
+                    "every category + Random + Pick several"
                 );
-                // Only the category is required; everything else has a default.
-                assert!(sub.parameters[1..].iter().all(|p| !p.required));
+                // Nothing is required; everything has a default.
+                assert!(sub.parameters.iter().all(|p| !p.required));
             }
         }
     }
@@ -5867,7 +6184,7 @@ mod test {
             A,
             VC,
             TC,
-            GpCategory::Nostalgia,
+            nostalgia(),
             prompts(&["p1"]),
             TIMER,
             None,
@@ -5886,7 +6203,7 @@ mod test {
             "alice".into(),
             VC,
             TC,
-            GpCategory::Nostalgia,
+            nostalgia(),
             prompts(&["p1"]),
             TIMER,
             None,

@@ -244,7 +244,7 @@ pub enum CrackedMessage {
         of: usize,
     },
     GpStarted {
-        category: &'static str,
+        category: String,
         rounds: usize,
         timer_secs: u64,
         clip: Option<crate::commands::music::gp::GpClip>,
@@ -794,7 +794,7 @@ mod test {
         assert!(s.ends_with("(1 in)"), "{s}");
 
         let msg = CrackedMessage::GpStarted {
-            category: "🥹 Nostalgia",
+            category: "🥹 Nostalgia".into(),
             rounds: 5,
             timer_secs: 180,
             clip: None,
@@ -807,7 +807,7 @@ mod test {
         assert!(s.contains("🥹 Nostalgia"), "{s}");
         assert!(!s.contains(GP_QUEUE_CLEARED), "{s}");
         let msg = CrackedMessage::GpStarted {
-            category: "🎲 Mixed",
+            category: "🎲 Random".into(),
             rounds: 3,
             timer_secs: 60,
             clip: None,
@@ -822,7 +822,7 @@ mod test {
             "the default says nothing: {s}"
         );
         let msg = CrackedMessage::GpStarted {
-            category: "🎲 Mixed",
+            category: "🎲 Random".into(),
             rounds: 3,
             timer_secs: 60,
             clip: None,
@@ -834,7 +834,7 @@ mod test {
         assert!(s.ends_with(GP_STARTED_REVEAL_SONG), "{s}");
         assert!(!s.contains(GP_STARTED_NO_RESULTS), "{s}");
         let msg = CrackedMessage::GpStarted {
-            category: "🎲 Mixed",
+            category: "🎲 Random".into(),
             rounds: 3,
             timer_secs: 60,
             clip: None,

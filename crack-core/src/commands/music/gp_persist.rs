@@ -49,7 +49,7 @@ use super::gp::{
     gp_spawn_window_timer_secs, now, GpClip, GpGame, GpPhase, GpPlayback, GpReveal, GpRound,
     GpTrack, GP_RESUME_WINDOW_SECS,
 };
-use super::gp_prompts::GpCategory;
+use super::gp_prompts::{GpCategories, GpCategory};
 use crate::commands::music_utils::set_global_handlers_with;
 use crate::db::{
     gp_mark_finished, gp_touch_live, GpGameRow, GpOutcome, GpPlayerRow, GpRoundRow, GpSaved,
@@ -250,6 +250,7 @@ impl GpGame {
                 prompt_channel_id: r.prompt_message.map(|(c, _)| c.get() as i64),
                 prompt_message_id: r.prompt_message.map(|(_, m)| m.get() as i64),
                 results_posted: r.results_posted,
+                category: r.category.and_then(GpCategory::key).map(str::to_string),
             })
             .collect();
 
@@ -312,7 +313,7 @@ impl GpGame {
                 host_id: game_user(self.host),
                 voice_channel_id: self.voice_channel.get() as i64,
                 text_channel_id: self.text_channel.get() as i64,
-                category: self.category.slug().to_string(),
+                category: self.categories.slug(),
                 phase: phase.to_string(),
                 current_round: self.current_round as i32,
                 current_track: self.current_track as i32,
@@ -334,7 +335,7 @@ impl GpGame {
     /// the end of its round.
     pub fn from_saved(saved: &GpSaved) -> Result<GpGame, GpLoadError> {
         let g = &saved.game;
-        let category = GpCategory::from_slug(&g.category)
+        let categories = GpCategories::from_slug(&g.category)
             .ok_or_else(|| GpLoadError(format!("unknown category {:?}", g.category)))?;
         let phase = match g.phase.as_str() {
             PHASE_SUBMITTING => GpPhase::Submitting,
@@ -362,8 +363,23 @@ impl GpGame {
                     r.round_idx
                 )));
             }
+            let category = match r.category.as_deref() {
+                Some(key) => Some(GpCategory::from_key(key).ok_or_else(|| {
+                    GpLoadError(format!(
+                        "round {} has unknown category {key:?}",
+                        r.round_idx
+                    ))
+                })?),
+                // Saved before rounds had their own: a game of one category
+                // still says which, a Random one cannot.
+                None => match categories.as_slice() {
+                    [only] => Some(*only),
+                    _ => None,
+                },
+            };
             rounds.push(GpRound {
                 prompt: r.prompt.clone(),
+                category,
                 submissions: HashMap::new(),
                 tracks: Vec::new(),
                 prompt_message: message(r.prompt_channel_id, r.prompt_message_id),
@@ -451,7 +467,7 @@ impl GpGame {
             voice_channel: ChannelId::new(g.voice_channel_id as u64),
             text_channel: chan(g.text_channel_id),
             phase,
-            category,
+            categories,
             rounds,
             current_round,
             current_track,
@@ -797,6 +813,7 @@ async fn announce(pb: &GpPlayback, text_channel: GenericChannelId, what: &str) {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::commands::music::gp_prompts::GpPrompt;
     use crate::DataInner;
     use crack_types::{AuxMetadata, QueryType};
     use rand::{rngs::StdRng, SeedableRng};
@@ -839,8 +856,14 @@ mod test {
             "alice".into(),
             VC,
             TC,
-            GpCategory::Nostalgia,
-            prompts.iter().map(|s| s.to_string()).collect(),
+            GpCategories::from_choice(GpCategory::Nostalgia).unwrap(),
+            prompts
+                .iter()
+                .map(|s| GpPrompt {
+                    category: GpCategory::Nostalgia,
+                    text: s.to_string(),
+                })
+                .collect(),
             120,
             Some(GpClip {
                 start: Duration::from_secs(30),
@@ -1184,8 +1207,11 @@ mod test {
             "alice".into(),
             VC,
             TC,
-            GpCategory::Nostalgia,
-            vec!["p0".into()],
+            GpCategories::from_choice(GpCategory::Nostalgia).unwrap(),
+            vec![GpPrompt {
+                category: GpCategory::Nostalgia,
+                text: "p0".into(),
+            }],
             120,
             None,
             GpReveal::Round,
@@ -1267,6 +1293,71 @@ mod test {
         assert_eq!(back.to_saved(), *posted);
     }
 
+    /// A game of several categories comes back with the set and each round's
+    /// category, which its prompts show; rows from before rounds had one still
+    /// load.
+    #[test]
+    fn the_categories_round_trip() {
+        let (data, _rx) = recording();
+        let picked = GpCategories::new([GpCategory::Chill, GpCategory::Car]).unwrap();
+        data.gp_start(
+            G,
+            A,
+            "alice".into(),
+            VC,
+            TC,
+            picked.clone(),
+            vec![
+                GpPrompt {
+                    category: GpCategory::Car,
+                    text: "p0".into(),
+                },
+                GpPrompt {
+                    category: GpCategory::Chill,
+                    text: "p1".into(),
+                },
+            ],
+            120,
+            None,
+            GpReveal::Round,
+            true,
+            NOW,
+        )
+        .unwrap();
+        let saved = data.gp_games.get(&G).unwrap().to_saved();
+        assert_eq!(saved.game.category, "car,chill");
+        assert_eq!(saved.rounds[0].category.as_deref(), Some("car"));
+        assert_eq!(saved.rounds[1].category.as_deref(), Some("chill"));
+        let back = GpGame::from_saved(&saved).unwrap();
+        assert_eq!(back.to_saved(), saved);
+        assert_eq!(back.categories, picked);
+        assert_eq!(back.rounds[1].category, Some(GpCategory::Chill));
+
+        // Rows from before: a Mixed game cannot say what each round was, a
+        // game of one category can.
+        let mut old = saved.clone();
+        old.game.category = "mixed".into();
+        for r in &mut old.rounds {
+            r.category = None;
+        }
+        let back = GpGame::from_saved(&old).unwrap();
+        assert!(back.categories.is_all());
+        assert_eq!(back.rounds[0].category, None);
+        old.game.category = "nostalgia".into();
+        let back = GpGame::from_saved(&old).unwrap();
+        assert_eq!(back.rounds[0].category, Some(GpCategory::Nostalgia));
+
+        let mut bad = saved.clone();
+        bad.rounds[0].category = Some("🚗 Car / Driving".into());
+        assert!(
+            GpGame::from_saved(&bad).is_err(),
+            "display name is not the key"
+        );
+        let mut bad = saved;
+        bad.game.category = "car,🎲 Random".into();
+        assert!(GpGame::from_saved(&bad).is_err());
+    }
+
     #[test]
     fn a_submitting_game_round_trips_with_its_open_window() {
         let (data, _rx) = recording();
@@ -1298,7 +1389,7 @@ mod test {
         let good = data.gp_games.get(&G).unwrap().to_saved();
 
         let mut s = good.clone();
-        s.game.category = "🎲 Mixed".into();
+        s.game.category = "🎲 Random".into();
         assert!(
             GpGame::from_saved(&s).is_err(),
             "display name is not the slug"

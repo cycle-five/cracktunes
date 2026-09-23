@@ -4,6 +4,17 @@
 
 ### Added
 
+- **`/gp start` no longer needs a category, and can take several.** Left out,
+  the game is 🎲 Random -- what was 🎲 Mixed, now at the top of the dropdown:
+  each round's prompt comes from a different category, every category comes up
+  once before any comes up again, and none twice in a row. Mixed drew from all
+  the prompts at once, so a category with twenty prompts came up nearly three
+  times as often as one with seven. `category:☑️ Pick several…` posts a menu to
+  tick the categories to draw from, then **Start**; only the host can use it,
+  and it gives up after two idle minutes. In a game of more than one category,
+  each round's category is shown above its prompt, and survives a restart with
+  the game. From a prefix command, `!gp start 5` is five Random rounds and
+  `!gp start pick` opens the menu.
 - **Every `/gp` round ends with its results.** Once a round's last song has been
   revealed, and before the next prompt goes up, a round-results embed sums the
   round up at the bottom of the channel: each song with who submitted it, who
