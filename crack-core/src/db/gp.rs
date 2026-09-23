@@ -84,6 +84,9 @@ pub struct GpRoundRow {
     /// is posted, so a resume knows whether the round still owes the room its
     /// results (the reveal, when it is held to the round's end).
     pub results_posted: bool,
+    /// The category the prompt was drawn from (`GpCategory::key`). `None` on a
+    /// round saved before rounds had their own.
+    pub category: Option<String>,
 }
 
 /// A song in a round, with everything the room did to it. `position` is `None`
@@ -248,13 +251,16 @@ impl GpSaved {
         let chans: Vec<Option<i64>> = self.rounds.iter().map(|r| r.prompt_channel_id).collect();
         let msgs: Vec<Option<i64>> = self.rounds.iter().map(|r| r.prompt_message_id).collect();
         let posted: Vec<bool> = self.rounds.iter().map(|r| r.results_posted).collect();
+        let categories: Vec<Option<String>> =
+            self.rounds.iter().map(|r| r.category.clone()).collect();
         sqlx::query!(
             r#"INSERT INTO gp_round (
                    game_id, round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id,
-                   results_posted
+                   results_posted, category
                )
                SELECT $1, * FROM UNNEST(
-                   $2::int[], $3::text[], $4::bigint[], $5::bigint[], $6::bigint[], $7::bool[]
+                   $2::int[], $3::text[], $4::bigint[], $5::bigint[], $6::bigint[], $7::bool[],
+                   $8::text[]
                )
                ON CONFLICT (game_id, round_idx) DO UPDATE SET
                    closes_at = EXCLUDED.closes_at,
@@ -268,6 +274,7 @@ impl GpSaved {
             &chans as &[Option<i64>],
             &msgs as &[Option<i64>],
             &posted,
+            &categories as &[Option<String>],
         )
         .execute(&mut **tx)
         .await?;
@@ -472,7 +479,7 @@ impl GpSaved {
 
         let rounds = sqlx::query!(
             r#"SELECT round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id,
-                      results_posted
+                      results_posted, category
                FROM gp_round WHERE game_id = $1 ORDER BY round_idx"#,
             id
         )
@@ -486,6 +493,7 @@ impl GpSaved {
             prompt_channel_id: r.prompt_channel_id,
             prompt_message_id: r.prompt_message_id,
             results_posted: r.results_posted,
+            category: r.category,
         })
         .collect();
 
@@ -722,6 +730,7 @@ mod tests {
                     prompt_channel_id: Some(20),
                     prompt_message_id: Some(1),
                     results_posted: false,
+                    category: Some("car".into()),
                 },
                 GpRoundRow {
                     round_idx: 1,
@@ -730,6 +739,7 @@ mod tests {
                     prompt_channel_id: None,
                     prompt_message_id: None,
                     results_posted: false,
+                    category: None,
                 },
             ],
             tracks: vec![track(0, 100, None)],
@@ -876,6 +886,7 @@ mod tests {
             prompt_channel_id: None,
             prompt_message_id: None,
             results_posted: false,
+            category: Some("chill".into()),
         });
         s.game.phase = "submitting".into();
         s.game.current_round = 1;
