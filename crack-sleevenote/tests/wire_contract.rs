@@ -420,3 +420,30 @@ fn listing_empty_is_not_extraction_empty() {
     );
     assert_ne!(listing.code(), extraction.code());
 }
+
+#[test]
+fn the_two_503s_are_their_own_codes_and_not_retryable_as_extraction() {
+    // sleevenote 0.5.0 added these and this client never learned them, so they
+    // arrived as Unrecognized and cracktunes told the user "Spotify lookup
+    // failed" -- logged at ERROR -- for a service that was merely busy or
+    // restarting its browser. Neither says anything about Spotify's page.
+    let overloaded = error_response(ErrorCode::Overloaded, 503);
+    let unavailable = error_response(ErrorCode::BrowserUnavailable, 503);
+
+    assert!(matches!(overloaded, Error::Overloaded(_)), "{overloaded}");
+    assert!(
+        matches!(unavailable, Error::BrowserUnavailable(_)),
+        "{unavailable}"
+    );
+    for e in [&overloaded, &unavailable] {
+        assert!(
+            !matches!(e, Error::Unrecognized { .. }),
+            "a known code must never land in Unrecognized: {e}"
+        );
+        assert_eq!(
+            e.detail().expect("service errors carry a detail").status,
+            503
+        );
+    }
+    assert_ne!(overloaded.code(), unavailable.code());
+}

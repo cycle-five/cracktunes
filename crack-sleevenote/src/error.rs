@@ -11,6 +11,8 @@
 //! | 502  | `extraction_silent`     | navigated fine, nothing on the page matched     |
 //! | 502  | `extraction_empty`      | Spotify declared items we parsed none of        |
 //! | 502  | `listing_empty`         | the listing is real and has nothing we can see  |
+//! | 503  | `overloaded`            | every browser context busy; nothing attempted   |
+//! | 503  | `browser_unavailable`   | the browser died or is being relaunched         |
 //! | 502  | `extraction_incomplete` | recovered fewer items than Spotify declared      |
 //! | 504  | `timeout`               | exceeded the whole-call budget                   |
 //! | 502  | `internal`              | anything else                                    |
@@ -48,8 +50,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// [`ErrorCode::Unrecognized`] catches a code added by a newer service than
 /// this client knows about: forward compatibility without ever silently
 /// mapping an unknown failure onto a known one.
+///
+/// `#[non_exhaustive]`: sleevenote gains codes (three since 0.4.1), and the
+/// whole point of [`ErrorCode::Unrecognized`] is that a newer service must not
+/// break an older client. Without this, adding a variant here breaks any
+/// downstream `match` instead.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum ErrorCode {
     /// HTTP 400. The id failed `^[A-Za-z0-9]{1,64}$`; nothing was fetched.
     InvalidId,
@@ -74,6 +82,14 @@ pub enum ErrorCode {
     ExtractionIncomplete,
     /// HTTP 504. The service exceeded its own whole-call budget.
     Timeout,
+    /// HTTP 503, `Retry-After: 5`. Every browser context stayed busy for the
+    /// service's wait cap, so the lookup was shed rather than queued.
+    ///
+    /// Nothing was attempted, so this says nothing about Spotify's page.
+    Overloaded,
+    /// HTTP 503, `Retry-After: 5`. The browser died mid-lookup or is being
+    /// relaunched. Also says nothing about Spotify's page.
+    BrowserUnavailable,
     /// HTTP 502. Anything else.
     Internal,
     /// A code this client version does not know. Preserved verbatim.
@@ -177,6 +193,24 @@ pub enum Error {
     #[error("sleevenote timed out on `{}`: {} (HTTP {})", .0.id, .0.message, .0.status)]
     Timeout(ErrorDetail),
 
+    /// HTTP 503 `overloaded`: every browser context was busy, so the service
+    /// shed the lookup rather than queue it past its wait cap.
+    ///
+    /// Transient and cheap to retry -- **nothing was attempted**. Distinct
+    /// from [`Error::Timeout`], which means the work started and ran out of
+    /// budget, and from the extraction failures, which say something about
+    /// Spotify's page. This one says only that the service was busy.
+    #[error("sleevenote is at capacity for `{}`: {} (HTTP {})", .0.id, .0.message, .0.status)]
+    Overloaded(ErrorDetail),
+
+    /// HTTP 503 `browser_unavailable`: the browser died mid-lookup, or is
+    /// being relaunched.
+    ///
+    /// Transient. Says nothing about Spotify's page, which is why it must not
+    /// read as an extraction failure.
+    #[error("sleevenote has no browser for `{}`: {} (HTTP {})", .0.id, .0.message, .0.status)]
+    BrowserUnavailable(ErrorDetail),
+
     /// HTTP 502 `internal`: anything else the service classified itself.
     #[error("sleevenote internal error on `{}`: {} (HTTP {})", .0.id, .0.message, .0.status)]
     Internal(ErrorDetail),
@@ -258,6 +292,8 @@ impl Error {
             ErrorCode::ListingEmpty => Error::ListingEmpty(detail),
             ErrorCode::ExtractionIncomplete => Error::ExtractionIncomplete(detail),
             ErrorCode::Timeout => Error::Timeout(detail),
+            ErrorCode::Overloaded => Error::Overloaded(detail),
+            ErrorCode::BrowserUnavailable => Error::BrowserUnavailable(detail),
             ErrorCode::Internal => Error::Internal(detail),
             ErrorCode::Unrecognized(code) => Error::Unrecognized { code, detail },
         }
@@ -276,6 +312,8 @@ impl Error {
             Error::ListingEmpty(_) => Some(ErrorCode::ListingEmpty),
             Error::ExtractionIncomplete(_) => Some(ErrorCode::ExtractionIncomplete),
             Error::Timeout(_) => Some(ErrorCode::Timeout),
+            Error::Overloaded(_) => Some(ErrorCode::Overloaded),
+            Error::BrowserUnavailable(_) => Some(ErrorCode::BrowserUnavailable),
             Error::Internal(_) => Some(ErrorCode::Internal),
             Error::Unrecognized { code, .. } => Some(ErrorCode::Unrecognized(code.clone())),
             _ => None,
@@ -293,6 +331,8 @@ impl Error {
             | Error::ListingEmpty(detail)
             | Error::ExtractionIncomplete(detail)
             | Error::Timeout(detail)
+            | Error::Overloaded(detail)
+            | Error::BrowserUnavailable(detail)
             | Error::Internal(detail)
             | Error::Unrecognized { detail, .. } => Some(detail),
             _ => None,

@@ -21,9 +21,10 @@
 use crate::errors::CrackedError;
 use crate::http_utils;
 use crate::messaging::messages::{
-    SPOTIFY_INVALID_QUERY, SPOTIFY_LISTING_EMPTY, SPOTIFY_LOOKUP_BROKEN, SPOTIFY_LOOKUP_FAILED,
-    SPOTIFY_LOOKUP_FLAKY, SPOTIFY_NOTHING_PLAYABLE, SPOTIFY_NOT_CONFIGURED, SPOTIFY_NOT_FOUND,
-    SPOTIFY_PARTIAL_LISTING, SPOTIFY_TIMEOUT, SPOTIFY_UNREACHABLE,
+    SPOTIFY_INVALID_QUERY, SPOTIFY_LISTING_EMPTY, SPOTIFY_LOOKUP_BROKEN, SPOTIFY_LOOKUP_BUSY,
+    SPOTIFY_LOOKUP_FAILED, SPOTIFY_LOOKUP_FLAKY, SPOTIFY_LOOKUP_RESTARTING,
+    SPOTIFY_NOTHING_PLAYABLE, SPOTIFY_NOT_CONFIGURED, SPOTIFY_NOT_FOUND, SPOTIFY_PARTIAL_LISTING,
+    SPOTIFY_TIMEOUT, SPOTIFY_UNREACHABLE,
 };
 use crack_sleevenote::{
     Client as Sleevenote, ClientBuilder as SleevenoteBuilder, Error as SleevenoteError, Track,
@@ -444,6 +445,19 @@ pub fn user_message(err: &SleevenoteError) -> &'static str {
             tracing::warn!("sleevenote extraction silent after retry: {err}");
             SPOTIFY_LOOKUP_FLAKY
         },
+        // 🔑 Neither of these says anything about Spotify's page, so neither
+        // may reach the extraction arms below. Both are transient and clear
+        // without the user doing anything differently -- shed load and a
+        // browser relaunch -- so both are logged at warn, not error: they are
+        // the service working as designed under pressure, not a defect.
+        SleevenoteError::Overloaded(_) => {
+            tracing::warn!("sleevenote shed the lookup: {err}");
+            SPOTIFY_LOOKUP_BUSY
+        },
+        SleevenoteError::BrowserUnavailable(_) => {
+            tracing::warn!("sleevenote has no browser right now: {err}");
+            SPOTIFY_LOOKUP_RESTARTING
+        },
         // Not our failure at all: Spotify declared no items, so there were
         // none to extract. Logged at info -- knowing how often this happens
         // is useful, but it is a fact about one id, not a defect. sleevenote
@@ -518,6 +532,24 @@ mod tests {
         // broken, and it must point at the thing that does work.
         assert!(!msg.contains("broken"), "{msg}");
         assert!(msg.contains("share"), "{msg}");
+    }
+
+    #[test]
+    fn a_busy_service_is_not_a_broken_one() {
+        // Both are transient and neither says anything about Spotify's page,
+        // so neither may reach the arms that blame the integration or send the
+        // reader off to search by name as though retrying were pointless.
+        let overloaded = user_message(&SleevenoteError::Overloaded(detail(503)));
+        let unavailable = user_message(&SleevenoteError::BrowserUnavailable(detail(503)));
+
+        assert_eq!(overloaded, SPOTIFY_LOOKUP_BUSY);
+        assert_eq!(unavailable, SPOTIFY_LOOKUP_RESTARTING);
+        for msg in [overloaded, unavailable] {
+            assert_ne!(msg, SPOTIFY_LOOKUP_FAILED, "{msg}");
+            assert_ne!(msg, SPOTIFY_LOOKUP_BROKEN, "{msg}");
+            // Both clear on their own, so both must say to try again.
+            assert!(msg.contains("again"), "{msg}");
+        }
     }
 
     #[test]
