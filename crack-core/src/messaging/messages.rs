@@ -224,6 +224,18 @@ pub const SPOTIFY_TIMEOUT: &str = "⏳ **Spotify took too long to answer.**\nTry
 // Deliberately offers no retry: the lookup service stopped matching Spotify's
 // page, so retrying the same link fails identically until it is fixed.
 pub const SPOTIFY_LOOKUP_BROKEN: &str = "⚠️ **Spotify lookup is broken right now.**\nThis has been logged. Search for the track by name and I'll play it.";
+/// `overloaded`: every browser context was busy, so the lookup was shed.
+///
+/// Nothing was attempted, so this must not read as a failure of the link or of
+/// Spotify. It clears on its own in seconds, which is why it says to retry
+/// rather than sending the reader off to search by name.
+pub const SPOTIFY_LOOKUP_BUSY: &str = "⏳ **Spotify lookup is at capacity right now.**\nNothing was lost — send the same link again in a few seconds.";
+/// `browser_unavailable`: the lookup service is restarting its browser.
+///
+/// Transient like [`SPOTIFY_LOOKUP_BUSY`] and kept separate for the same
+/// reason sleevenote keeps the codes apart: busy and restarting are different
+/// facts, and only one of them means the service is coming back up.
+pub const SPOTIFY_LOOKUP_RESTARTING: &str = "⏳ **Spotify lookup is restarting.**\nIt'll be back in a few seconds — send the same link again then.";
 /// `listing_empty`: the listing is real and has nothing in it we can see.
 ///
 /// Deliberately NOT [`SPOTIFY_LOOKUP_BROKEN`]. The two used to be the same

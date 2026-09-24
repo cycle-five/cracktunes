@@ -5,7 +5,8 @@
       "Bash(cargo clippy *)",
       "Bash(cargo tree *)",
       "Bash(cargo fmt --all --check)",
-      "Bash(cargo fmt --all -- --check)"
+      "Bash(cargo fmt --all -- --check)",
+      "Bash(cargo test *)"
     ]
   }
 }
