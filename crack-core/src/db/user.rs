@@ -179,15 +179,44 @@ mod test {
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
-    // /// Make sure the DATABASE_URL is set before running tests.
+    /// Where the db-tests look when the environment names no database. It is
+    /// also what `.github/workflows/build.yml` sets its postgres up as, which
+    /// is why CI has always worked.
+    pub(crate) const TEST_DATABASE_URL: &str =
+        "postgresql://postgres:mysecretpassword@localhost:5432/postgres";
+
+    /// The fallback to install, or `None` to leave the environment alone.
+    ///
+    /// 🪤 This used to be unconditional, so **an exported `DATABASE_URL` was
+    /// ignored**: every `#[sqlx::test]` talked to localhost:5432 as `postgres`
+    /// whatever you set, and sqlx reported the mismatch as a flat 30-second
+    /// `PoolTimedOut` naming neither the host it tried nor the variable it
+    /// read. Each test's own `ignore` message says "needs a postgres at
+    /// DATABASE_URL", which was the opposite of what the code did.
+    pub(crate) fn test_database_url(existing: Option<&str>) -> Option<&'static str> {
+        match existing {
+            Some(url) if !url.trim().is_empty() => None,
+            _ => Some(TEST_DATABASE_URL),
+        }
+    }
+
+    /// Point the db-tests at a database when nothing else has.
     #[ctor::ctor(unsafe)]
     fn set_env() {
         use std::env;
 
-        env::set_var(
-            "DATABASE_URL",
-            "postgresql://postgres:mysecretpassword@localhost:5432/postgres",
-        );
+        if let Some(url) = test_database_url(env::var("DATABASE_URL").ok().as_deref()) {
+            env::set_var("DATABASE_URL", url);
+        }
+    }
+
+    #[test]
+    fn an_exported_database_url_wins_over_the_test_default() {
+        assert_eq!(test_database_url(Some("postgres://me@elsewhere/db")), None);
+        // Nothing set, or set to nothing useful, still needs a default.
+        assert_eq!(test_database_url(None), Some(TEST_DATABASE_URL));
+        assert_eq!(test_database_url(Some("")), Some(TEST_DATABASE_URL));
+        assert_eq!(test_database_url(Some("   ")), Some(TEST_DATABASE_URL));
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]

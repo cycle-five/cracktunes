@@ -61,6 +61,9 @@ tracing = { workspace = true }
 # This is needed for the tests to run in the IDE
 [dev-dependencies]
 sqlx = { workspace = true }
+# For the db-test `DATABASE_URL` fallback, which must run before any test
+# thread does -- see src/test/playlist.rs.
+ctor = "1.0"
 
 [build-dependencies]
 # All features enabled

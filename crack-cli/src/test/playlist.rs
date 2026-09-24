@@ -6,12 +6,23 @@ mod test {
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
-    #[test]
+    /// Point the db-tests at a database when nothing else has.
+    ///
+    /// 🪤 This was a `#[test]`, which made it a race rather than setup: the
+    /// test harness runs tests on threads in no guaranteed order, so whether
+    /// `DATABASE_URL` was set before another test read it was luck, and
+    /// `set_var` alongside concurrent readers is unsound besides. A ctor runs
+    /// once, before `main`, before any test thread exists.
+    #[ctor::ctor(unsafe)]
     fn set_env() {
-        env::set_var(
-            "DATABASE_URL",
-            "postgresql://postgres:mysecretpassword@localhost:5432/postgres",
-        );
+        // Kept in step with crack-core's copy by hand: the helper there lives
+        // in a `#[cfg(test)]` module, which does not exist for other crates.
+        const TEST_DATABASE_URL: &str =
+            "postgresql://postgres:mysecretpassword@localhost:5432/postgres";
+        match env::var("DATABASE_URL") {
+            Ok(url) if !url.trim().is_empty() => {},
+            _ => env::set_var("DATABASE_URL", TEST_DATABASE_URL),
+        }
     }
 
     //#[tokio::test]
