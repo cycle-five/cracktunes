@@ -331,9 +331,20 @@ async fn security_headers(mut resp: Response) -> Response {
     resp
 }
 
-/// The whole dashboard: pages, the stream, moves, assets, and catacombs at
-/// `/auth`. Every request has a timeout on its response; a stream's body is
-/// not covered by it.
+/// `GET /health`'s body: fixed and specific to this origin, so a Cloudflare or
+/// Caddy error page can never pass for the dashboard, and carrying the version
+/// so a check can tell which build answered.
+const HEALTH: &str = concat!("cracktunes dashboard ok ", env!("CARGO_PKG_VERSION"));
+
+/// Unauthenticated and reads nothing: it says the web server is answering,
+/// not that the bot is on the gateway, which the bot's own log reports.
+async fn health() -> &'static str {
+    HEALTH
+}
+
+/// The whole dashboard: pages, the stream, moves, assets, `/health`, and
+/// catacombs at `/auth`. Every request has a timeout on its response; a
+/// stream's body is not covered by it.
 pub fn router<B: Backend>(state: WebState<B>) -> Router {
     let timeout = TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, REQUEST_TIMEOUT);
     let per_user = Router::new()
@@ -344,6 +355,7 @@ pub fn router<B: Backend>(state: WebState<B>) -> Router {
     let timed = Router::new()
         .merge(per_user)
         .route("/assets/{name}", get(asset))
+        .route("/health", get(health))
         // The timeout bounds the opening reads only; tower-http never touches
         // the body, so the stream itself stays open.
         .route("/g/{guild}/events", get(events::<B>))
@@ -399,6 +411,20 @@ mod test {
         assert_eq!(
             r.headers()[header::LOCATION],
             "/auth/login?return_to=%2Fg%2F5"
+        );
+    }
+
+    #[tokio::test]
+    async fn health_answers_signed_out_with_this_builds_version() {
+        let r = get(member_viewing(), "/health", None).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(r.headers()[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/plain"));
+        assert_eq!(
+            body(r).await,
+            concat!("cracktunes dashboard ok ", env!("CARGO_PKG_VERSION"))
         );
     }
 
