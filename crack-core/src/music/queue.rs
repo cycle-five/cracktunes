@@ -850,7 +850,7 @@ pub fn move_track_by_id(
             return Err(MoveRefused::NowPlaying);
         }
         // `at >= 1` means at least two tracks, so the range is never empty.
-        let to = (to_upcoming + 1).clamp(1, queue.len() - 1);
+        let to = to_upcoming.saturating_add(1).clamp(1, queue.len() - 1);
         let track = queue.remove(at).expect("the position came from this queue");
         queue.insert(to, track);
         Ok(to - 1)
@@ -1161,6 +1161,13 @@ mod test {
     async fn a_target_past_the_end_lands_last() {
         let (data, call, ids) = queue_of(4).await;
         assert_eq!(move_in(&data, &call, ids[1], 99).await, Ok(2));
+        assert_eq!(order(&call).await, vec![ids[0], ids[2], ids[3], ids[1]]);
+    }
+
+    #[tokio::test]
+    async fn a_target_of_usize_max_lands_last() {
+        let (data, call, ids) = queue_of(4).await;
+        assert_eq!(move_in(&data, &call, ids[1], usize::MAX).await, Ok(2));
         assert_eq!(order(&call).await, vec![ids[0], ids[2], ids[3], ids[1]]);
     }
 
