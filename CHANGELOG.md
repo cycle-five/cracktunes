@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Security
+
+- **A YouTube playlist link could make yt-dlp read files and post them to the
+  channel.** The `list=` value of a `www.youtube.com` link went to yt-dlp as its
+  first argument unchecked, and songbird puts no `--` before it, so
+  `/optplay mode:all` with `list=--batch-file%3D/proc/self/environ` had yt-dlp
+  read the bot's environment and echo every line back as "not a valid URL" --
+  and the error reply posted yt-dlp's stderr, `DISCORD_TOKEN` and
+  `DATABASE_URL` included, for any member to read. A playlist id must now look
+  like one, and a playlist link is rebuilt from it before anything fetches it;
+  `yt-dlp` gets `--` before the URL where the bot runs it itself; and no
+  subprocess output reaches a user-facing error any more -- it is logged, and
+  the reply says the audio couldn't be loaded. **If you run a public instance,
+  rotate the bot token and the database password.**
+- **Links could point the bot at private addresses.** A link to any site
+  without special handling goes to yt-dlp's generic extractor, and
+  `/playytplaylist` fetched whatever it was given with no timeout. Links whose
+  host is, or resolves to, a loopback, private, link-local, CGNAT or other
+  non-public address (`127.0.0.1` where sleevenote listens, the LAN, cloud
+  metadata) are now refused, and `/playytplaylist` fetches only a validated
+  YouTube playlist link, with timeouts. yt-dlp still follows redirects itself,
+  so a public page redirecting inward is not covered.
+- **crack-voting no longer starts without a real webhook secret.** It fell back
+  to `test_secret`, and the compose file defaulted to the same value on a port
+  published to every interface, so anyone could post votes for any user.
+  `WEBHOOK_SECRET` unset, blank, `test_secret` or `XXXXXX` now stops it at
+  startup. The secret is compared in constant time, the `authorization` header
+  is no longer printed with the rest of every request's headers, a header that
+  is not ASCII no longer panics the request, and bodies over 16 KiB are
+  refused. **Set `WEBHOOK_SECRET` in your `.env` before upgrading**, to the
+  value on top.gg's webhook page.
+
 ### Added
 
 - **Every `/gp` round ends with its results.** Once a round's last song has been

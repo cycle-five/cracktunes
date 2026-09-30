@@ -241,6 +241,9 @@ pub async fn playytplaylist(
     query: String,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    // Refused before joining voice: only a YouTube playlist link is fetched.
+    let query =
+        crack_types::canonical_youtube_playlist_url(&query).ok_or(CrackedError::InvalidPlaylist)?;
     let mut crack_client = ctx.data().ct_client.clone();
     // This retrieves the call that the bot is connected to or joins the author's channel.
     // We error hear if the bot can't join the channel, or if the author isn't in a channel,

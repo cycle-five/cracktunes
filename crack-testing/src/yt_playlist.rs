@@ -29,6 +29,10 @@ const FALLBACK_CLIENT_VERSION: &str = "2.20240814.00.00";
 /// spin forever.
 const MAX_CONTINUATIONS: usize = 20;
 
+/// Per-request ceiling for the playlist page and each continuation. Set here
+/// rather than on the client, which rusty_ytdl shares for other work.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// One entry of a YouTube playlist, as listed on the playlist page.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlaylistEntry {
@@ -51,13 +55,21 @@ impl PlaylistEntry {
 ///
 /// Makes one request for the first page and then one per continuation, so a
 /// 200-track playlist costs 2-3 requests total rather than one per track.
+///
+/// 🔒 `url` is user input (`/playytplaylist`), so only a YouTube playlist link
+/// is fetched, and only as the URL rebuilt from its validated id. This used to
+/// `GET` whatever it was given, loopback and LAN addresses included, and read
+/// the whole body.
 pub async fn fetch_playlist(
     client: &reqwest::Client,
     url: &str,
     limit: usize,
 ) -> Result<Vec<PlaylistEntry>, Error> {
+    let url = crack_types::canonical_youtube_playlist_url(url)
+        .ok_or_else(|| -> Error { "not a YouTube playlist link".into() })?;
     let body = client
         .get(url)
+        .timeout(REQUEST_TIMEOUT)
         .header(reqwest::header::USER_AGENT, USER_AGENT)
         // Ask for English so duration/label parsing stays predictable.
         .header(reqwest::header::ACCEPT_LANGUAGE, "en-US,en;q=0.9")
@@ -133,6 +145,7 @@ async fn fetch_continuation(
         .header(reqwest::header::USER_AGENT, USER_AGENT)
         .header("X-Youtube-Client-Name", "1")
         .header("X-Youtube-Client-Version", client_version)
+        .timeout(REQUEST_TIMEOUT)
         .json(&body)
         .send()
         .await?

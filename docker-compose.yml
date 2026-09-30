@@ -27,9 +27,12 @@ services:
     # wrong the moment the stack is driven through a remote context.
     env_file:
       - ${ENV_FILE:-.env}
+    # 🔒 WEBHOOK_SECRET comes from the env_file above, and has no default:
+    # crack-voting refuses to start without a real one. The `test_secret`
+    # default this line used to carry was the same secret the binary fell back
+    # to, so an unset secret meant anyone could post votes to :3030.
     environment:
       - DATABASE_URL=postgresql://postgres:mysecretpassword@crack-postgres:5432/postgres
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-test_secret}
     links:
       - crack-postgres
     ports:
