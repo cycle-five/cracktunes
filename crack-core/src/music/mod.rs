@@ -6,6 +6,7 @@ pub mod lease;
 pub mod perms;
 pub(crate) mod query;
 pub(crate) mod queue;
+pub mod remote;
 
 pub use context::QueryContext;
 pub use lease::{PlaybackOwner, QueueGuard};
