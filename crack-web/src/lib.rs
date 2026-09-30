@@ -59,7 +59,7 @@ impl Backend for LiveBackend {
     }
 
     async fn move_track(&self, g: GuildId, id: Uuid, to: usize) -> Result<usize, MoveRefused> {
-        remote::move_by_id(self.deps.data.clone(), &self.deps.http, g, id, to).await
+        remote::move_by_id(self.deps.data.clone(), self.deps.http.clone(), g, id, to).await
     }
 
     async fn guilds_for(&self, u: UserId) -> Vec<GuildEntry> {

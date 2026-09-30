@@ -14,7 +14,7 @@ use crate::{
 };
 use serenity::all::{ChannelId, GuildId, Http, UserId};
 use songbird::{tracks::TrackHandle, Call};
-use std::{sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -52,13 +52,31 @@ pub enum QueueState {
 
 /// The queue in `guild_id`. A game hides it before the call is even looked up.
 pub async fn queue_state(data: &Data, guild_id: GuildId) -> QueueState {
+    unless_a_game(data, guild_id, async {
+        match connected_call(&data.songbird, guild_id, None).await {
+            Some(call) => state_of_call(&call).await,
+            None => QueueState::Idle,
+        }
+    })
+    .await
+}
+
+/// `read`, unless a game owns playback before it starts or by the time it
+/// ends: a game that claims and enqueues mid-read must not have its first
+/// title published.
+async fn unless_a_game(
+    data: &Data,
+    guild_id: GuildId,
+    read: impl Future<Output = QueueState>,
+) -> QueueState {
     if data.playback_owner(guild_id) != PlaybackOwner::Free {
         return QueueState::Hidden;
     }
-    match connected_call(&data.songbird, guild_id, None).await {
-        Some(call) => state_of_call(&call).await,
-        None => QueueState::Idle,
+    let state = read.await;
+    if data.playback_owner(guild_id) != PlaybackOwner::Free {
+        return QueueState::Hidden;
     }
+    state
 }
 
 /// The queue on one call. The call lock is held only to clone the handles;
@@ -137,11 +155,13 @@ pub enum MoveRefused {
     NowPlaying,
 }
 
-/// Move a track by id, then refresh the queue messages in Discord. Posts no
+/// Move a track by id. The queue messages in Discord are refreshed in the
+/// background: they are edited one by one under Discord's per-channel rate
+/// limit, and the move is done whether or not they have caught up. Posts no
 /// reply: a drag is silent in the channel (owner's decision).
 pub async fn move_by_id(
     data: Arc<Data>,
-    http: &Http,
+    http: Arc<Http>,
     guild_id: GuildId,
     id: Uuid,
     to_upcoming: usize,
@@ -167,7 +187,9 @@ pub async fn move_by_id(
     let queue = handler.queue().current_queue();
     drop(handler);
     if moved.is_ok() {
-        update_queue_messages(http, data.clone(), &queue, guild_id).await;
+        tokio::spawn(async move {
+            update_queue_messages(&*http, data, &queue, guild_id).await;
+        });
     }
     moved
 }
@@ -194,6 +216,31 @@ mod test {
     }
 
     #[tokio::test]
+    async fn a_game_is_checked_before_the_read_starts() {
+        let d = data();
+        d.claim_playback(G, crate::music::PlaybackOwner::Game)
+            .unwrap();
+        let got = unless_a_game(&d, G, async { panic!("the call was read") }).await;
+        assert!(matches!(got, QueueState::Hidden));
+    }
+
+    #[tokio::test]
+    async fn a_game_that_starts_during_the_read_hides_what_it_read() {
+        let d = data();
+        let got = unless_a_game(&d, G, async {
+            // A game claims playback and enqueues while the call is summarized.
+            d.claim_playback(G, crate::music::PlaybackOwner::Game)
+                .unwrap();
+            QueueState::Playing {
+                bot_channel: ChannelId::new(2),
+                tracks: vec![],
+            }
+        })
+        .await;
+        assert!(matches!(got, QueueState::Hidden));
+    }
+
+    #[tokio::test]
     async fn no_call_is_idle() {
         assert!(matches!(queue_state(&data(), G).await, QueueState::Idle));
         assert_eq!(bot_channel(&data(), G).await, None);
@@ -205,15 +252,15 @@ mod test {
         let d = Arc::new(data());
         d.claim_playback(G, crate::music::PlaybackOwner::Game)
             .unwrap();
-        let http = Http::new(crack_types::get_valid_token());
-        let got = move_by_id(d, &http, G, uuid::Uuid::from_u128(1), 0).await;
+        let http = Arc::new(Http::new(crack_types::get_valid_token()));
+        let got = move_by_id(d, http, G, uuid::Uuid::from_u128(1), 0).await;
         assert_eq!(got, Err(MoveRefused::GameInProgress));
     }
 
     #[tokio::test]
     async fn a_move_with_no_call_is_not_playing() {
-        let http = Http::new(crack_types::get_valid_token());
-        let got = move_by_id(Arc::new(data()), &http, G, uuid::Uuid::from_u128(1), 0).await;
+        let http = Arc::new(Http::new(crack_types::get_valid_token()));
+        let got = move_by_id(Arc::new(data()), http, G, uuid::Uuid::from_u128(1), 0).await;
         assert_eq!(got, Err(MoveRefused::NotPlaying));
     }
 }
