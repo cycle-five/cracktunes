@@ -15,8 +15,7 @@ crack-core = { path = "../crack-core" }
 # The website login flow (v0.1.0). Memory storage: nothing about web users is
 # persisted in this arc, and SqlxStorage would migrate into our own
 # `_sqlx_migrations` table.
-# TEMPORARY: path until catacombs v0.1.0 is tagged; then git = "https://github.com/cycle-five/catacombs", tag = "v0.1.0"
-catacombs = { path = "../../catacombs", default-features = false, features = ["memory-storage", "rustls-tls"] }
+catacombs = { git = "https://github.com/cycle-five/catacombs", tag = "v0.1.0", default-features = false, features = ["memory-storage", "rustls-tls"] }
 axum = { version = "0.8", features = ["macros"] }
 tower-http = { version = "0.6", features = ["timeout"] }
 tokio = { workspace = true }

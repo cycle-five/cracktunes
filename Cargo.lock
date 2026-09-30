@@ -686,6 +686,7 @@ dependencies = [
 [[package]]
 name = "catacombs"
 version = "0.1.0"
+source = "git+https://github.com/cycle-five/catacombs?tag=v0.1.0#d9dad774e39877deb6141a83ec2157930b8ff030"
 dependencies = [
  "aes-gcm",
  "anyhow",
