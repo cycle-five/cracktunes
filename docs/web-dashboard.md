@@ -21,6 +21,18 @@ and the bot runs on.
 
 ## What it holds
 
-A user id and username in a signed, HttpOnly cookie (24 h). Nothing is written
-to the database. Restarting the bot invalidates nothing: sessions are JWTs
-signed with `WEB_JWT_SECRET`; rotate that to sign everyone out.
+**In the browser:** a user id and username in a signed, HttpOnly cookie
+(24 h).
+
+**In the bot's memory:** for each user who has signed in since the bot
+started, what Discord returned at sign-in (scope `identify` only): the user
+id, username, global (display) name, avatar URL, and the Discord OAuth
+refresh token with its expiry. catacombs' `MemoryStorage` keeps these in
+plaintext: it ignores the encryption key it is handed. Logging out clears the
+refresh token; the profile stays. All of it goes when the process restarts.
+
+**In the log:** each move is logged with the mover's user id; catacombs logs
+the username and user id at sign-in and log-out.
+
+Nothing is written to the database. Restarting the bot invalidates no session: sessions are JWTs signed with `WEB_JWT_SECRET`; rotate that to sign
+everyone out.
