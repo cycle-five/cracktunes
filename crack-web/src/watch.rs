@@ -2,11 +2,16 @@
 //! Its task asks the source for the view every tick and publishes only when
 //! it changed. Polling, deliberately: the queue changes from a dozen places,
 //! and "remember to notify" at each is the bug class #434 removed.
+//!
+//! Every read and every send happens in that one task, in order. A caller
+//! that knows the queue just changed asks for an early read ([`Hub::refresh`])
+//! rather than sending a view itself: a poll that began before the change
+//! could otherwise land after it and put the old order back.
 
 use crate::view::QueueView;
 use serenity::all::GuildId;
 use std::{collections::HashMap, future::Future, sync::Arc, time::Duration};
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{watch, Mutex, Notify};
 
 /// How often a watched guild's queue is read.
 pub const TICK: Duration = Duration::from_secs(1);
@@ -20,9 +25,15 @@ pub trait ViewSource: Send + Sync + 'static {
 
 pub struct Hub<S: ViewSource> {
     source: Arc<S>,
-    guilds: Mutex<HashMap<GuildId, watch::Sender<Arc<QueueView>>>>,
+    guilds: Mutex<HashMap<GuildId, Watched>>,
     tick: Duration,
     linger: Duration,
+}
+
+/// A watched guild: its channel, and the bell that wakes its poller early.
+struct Watched {
+    tx: watch::Sender<Arc<QueueView>>,
+    wake: Arc<Notify>,
 }
 
 impl<S: ViewSource> Hub<S> {
@@ -37,36 +48,54 @@ impl<S: ViewSource> Hub<S> {
 
     /// Watch a guild. The first watcher starts its poller.
     pub async fn subscribe(self: &Arc<Self>, guild_id: GuildId) -> watch::Receiver<Arc<QueueView>> {
-        if let Some(tx) = self.guilds.lock().await.get(&guild_id) {
-            return tx.subscribe();
+        if let Some(w) = self.guilds.lock().await.get(&guild_id) {
+            return w.tx.subscribe();
         }
         // Read outside the map lock: a slow read must not stall other guilds.
         let initial = Arc::new(self.source.view(guild_id).await);
         let mut guilds = self.guilds.lock().await;
-        if let Some(tx) = guilds.get(&guild_id) {
-            return tx.subscribe(); // another watcher raced us here
+        if let Some(w) = guilds.get(&guild_id) {
+            return w.tx.subscribe(); // another watcher raced us here
         }
         let (tx, rx) = watch::channel(initial);
-        guilds.insert(guild_id, tx.clone());
+        let wake = Arc::new(Notify::new());
+        guilds.insert(
+            guild_id,
+            Watched {
+                tx: tx.clone(),
+                wake: wake.clone(),
+            },
+        );
         drop(guilds);
-        tokio::spawn(self.clone().run(guild_id, tx));
+        tokio::spawn(self.clone().run(guild_id, tx, wake));
         rx
     }
 
-    /// Push a view now -- after a move, so every open tab follows at once.
-    pub async fn publish(&self, guild_id: GuildId, view: QueueView) {
-        if let Some(tx) = self.guilds.lock().await.get(&guild_id) {
-            tx.send_if_modified(|cur| replace_if_changed(cur, view));
+    /// Read the guild's view now rather than at the next tick -- after a
+    /// move, so every open tab follows at once. A no-op with nobody watching.
+    pub async fn refresh(&self, guild_id: GuildId) {
+        if let Some(w) = self.guilds.lock().await.get(&guild_id) {
+            // Stores a permit if the poller is mid-read, so the read that
+            // answers this one starts after the call.
+            w.wake.notify_one();
         }
     }
 
-    async fn run(self: Arc<Self>, guild_id: GuildId, tx: watch::Sender<Arc<QueueView>>) {
+    async fn run(
+        self: Arc<Self>,
+        guild_id: GuildId,
+        tx: watch::Sender<Arc<QueueView>>,
+        wake: Arc<Notify>,
+    ) {
         let mut interval = tokio::time::interval(self.tick);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         interval.tick().await; // the first tick is immediate; the view is fresh
         let mut idle_since: Option<tokio::time::Instant> = None;
         loop {
-            interval.tick().await;
+            tokio::select! {
+                _ = interval.tick() => {},
+                () = wake.notified() => {},
+            }
             if tx.receiver_count() == 0 {
                 let since = *idle_since.get_or_insert_with(tokio::time::Instant::now);
                 if since.elapsed() < self.linger {
@@ -109,7 +138,7 @@ mod test {
     use super::*;
     use crate::view::{QueueView, TrackView};
     use std::sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Mutex,
     };
     use uuid::Uuid;
@@ -121,6 +150,8 @@ mod test {
         calls: AtomicUsize,
         /// The call number (1-based) that panics; 0 for never.
         panic_on: AtomicUsize,
+        /// Take a fifth of a tick to return what was read at the start.
+        slow: AtomicBool,
     }
 
     impl ViewSource for Fake {
@@ -131,7 +162,11 @@ mod test {
                 self.panic_on.load(Ordering::SeqCst),
                 "the source panicked"
             );
-            self.view.lock().unwrap().clone()
+            let view = self.view.lock().unwrap().clone();
+            if self.slow.load(Ordering::SeqCst) {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            view
         }
     }
 
@@ -155,6 +190,7 @@ mod test {
             view: Mutex::new(view),
             calls: AtomicUsize::new(0),
             panic_on: AtomicUsize::new(0),
+            slow: AtomicBool::new(false),
         });
         let hub = Hub::new(
             fake.clone(),
@@ -227,13 +263,47 @@ mod test {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn publish_reaches_watchers_at_once() {
-        let (_fake, hub) = hub(playing(1));
+    async fn a_refresh_reads_and_publishes_without_waiting_for_the_tick() {
+        let (fake, hub) = hub(playing(1));
         let mut rx = hub.subscribe(G).await;
         rx.borrow_and_update();
-        hub.publish(G, playing(3)).await;
-        assert!(rx.has_changed().unwrap());
+        let before = fake.calls.load(Ordering::SeqCst);
+        *fake.view.lock().unwrap() = playing(3);
+        let asked = tokio::time::Instant::now();
+        hub.refresh(G).await;
+        // The paused clock jumps to the next timer only once every task is
+        // idle: a poller that waited for its tick would arrive a tick later.
+        rx.changed().await.unwrap();
+        assert!(asked.elapsed() < Duration::from_secs(1), "before the tick");
         assert_eq!(**rx.borrow(), playing(3));
+        assert_eq!(fake.calls.load(Ordering::SeqCst), before + 1, "one read");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_refresh_during_a_read_reads_again_after_it() {
+        let (fake, hub) = hub(playing(1));
+        let mut rx = hub.subscribe(G).await;
+        rx.borrow_and_update();
+        // A read in flight when the queue changes and the refresh is asked:
+        // its old view must not be the last word.
+        fake.slow.store(true, Ordering::SeqCst);
+        let before = fake.calls.load(Ordering::SeqCst);
+        while fake.calls.load(Ordering::SeqCst) == before {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        // The poller is now inside a slow read of playing(1).
+        *fake.view.lock().unwrap() = playing(2);
+        hub.refresh(G).await;
+        fake.slow.store(false, Ordering::SeqCst);
+        let asked = tokio::time::Instant::now();
+        tokio::time::timeout(Duration::from_millis(900), async {
+            while **rx.borrow_and_update() != playing(2) {
+                rx.changed().await.unwrap();
+            }
+        })
+        .await
+        .expect("the refreshed view, before the next tick");
+        assert!(asked.elapsed() < Duration::from_secs(1));
     }
 
     #[tokio::test(start_paused = true)]

@@ -25,6 +25,8 @@ pub struct FakeBackend {
     pub user_channel: Mutex<Option<ChannelId>>,
     pub view: Mutex<QueueView>,
     pub move_result: Mutex<Result<usize, MoveRefused>>,
+    /// What `view` becomes once a move succeeds; `None` leaves it as it was.
+    pub view_after_move: Mutex<Option<QueueView>>,
     /// Every move the routes asked for: (guild, track, to).
     pub moves: Mutex<Vec<(GuildId, Uuid, usize)>>,
     pub guilds: Vec<GuildEntry>,
@@ -46,6 +48,7 @@ impl FakeBackend {
             user_channel: Mutex::new(user_channel),
             view: Mutex::new(view),
             move_result: Mutex::new(Ok(0)),
+            view_after_move: Mutex::new(None),
             moves: Mutex::new(Vec::new()),
             presence_calls: AtomicUsize::new(0),
             view_calls: AtomicUsize::new(0),
@@ -85,7 +88,16 @@ impl Backend for FakeBackend {
 
     async fn move_track(&self, g: GuildId, id: Uuid, to: usize) -> Result<usize, MoveRefused> {
         self.moves.lock().unwrap().push((g, id, to));
-        *self.move_result.lock().unwrap()
+        // A real move takes a moment (the queue lease, the call lock): long
+        // enough for anything the routes set going early to run first.
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        let result = *self.move_result.lock().unwrap();
+        if result.is_ok() {
+            if let Some(v) = self.view_after_move.lock().unwrap().take() {
+                *self.view.lock().unwrap() = v;
+            }
+        }
+        result
     }
 
     async fn guilds_for(&self, _u: UserId) -> Vec<GuildEntry> {

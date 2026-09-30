@@ -194,8 +194,10 @@ async fn move_track<B: Backend>(
     match s.backend.move_track(g, req.id, req.to).await {
         Ok(to) => {
             tracing::info!(guild = %g, user = %user, track = %req.id, to, "dashboard move");
+            // Open tabs follow through the poller, which reads after this;
+            // the mover gets a read of its own.
+            s.hub.refresh(g).await;
             let view = s.backend.view(g).await;
-            s.hub.publish(g, view.clone()).await;
             answer(StatusCode::OK, MoveResult::Moved { view })
         },
         Err(MoveRefused::Absent | MoveRefused::NowPlaying) => {
@@ -304,6 +306,14 @@ async fn asset(Path(name): Path<String>) -> Response {
         .into_response()
 }
 
+/// Pages and answers drawn for one user: no cache, shared or back-button,
+/// may keep them.
+async fn no_store(mut resp: Response) -> Response {
+    resp.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    resp
+}
+
 async fn security_headers(mut resp: Response) -> Response {
     let h = resp.headers_mut();
     h.insert(
@@ -326,11 +336,14 @@ async fn security_headers(mut resp: Response) -> Response {
 /// not covered by it.
 pub fn router<B: Backend>(state: WebState<B>) -> Router {
     let timeout = TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, REQUEST_TIMEOUT);
-    let timed = Router::new()
+    let per_user = Router::new()
         .route("/", get(picker::<B>))
         .route("/g/{guild}", get(guild_page::<B>))
-        .route("/assets/{name}", get(asset))
         .route("/g/{guild}/move", post(move_track::<B>))
+        .route_layer(axum::middleware::map_response(no_store));
+    let timed = Router::new()
+        .merge(per_user)
+        .route("/assets/{name}", get(asset))
         // The timeout bounds the opening reads only; tower-http never touches
         // the body, so the stream itself stays open.
         .route("/g/{guild}/events", get(events::<B>))
@@ -707,26 +720,106 @@ mod test {
         }
     }
 
-    #[tokio::test]
-    async fn a_move_reaches_open_watchers_at_once() {
-        let fake = controller();
-        let st = state(fake.clone());
-        let mut rx = st.hub.subscribe(GuildId::new(5)).await;
-        rx.borrow_and_update();
-        *fake.view.lock().unwrap() = QueueView::Idle; // what the backend reads after the move
-        let req = Request::post("/g/5/move")
+    /// `playing()` after track 3 moved to the front of what is up next.
+    fn reordered() -> QueueView {
+        let QueueView::Playing { now, upcoming, .. } = playing() else {
+            unreachable!()
+        };
+        QueueView::Playing {
+            now,
+            upcoming: upcoming.into_iter().rev().collect(),
+            rev: 8,
+        }
+    }
+
+    fn move_request() -> Request<Body> {
+        Request::post("/g/5/move")
             .header(header::COOKIE, session(9))
             .header(header::CONTENT_TYPE, "application/json")
             .header(header::ORIGIN, ORIGIN)
             .body(Body::from(MOVE))
+            .unwrap()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_move_reaches_open_watchers_at_once() {
+        use crate::watch::TICK;
+        let fake = controller();
+        *fake.view_after_move.lock().unwrap() = Some(reordered());
+        let st = state(fake.clone());
+        let mut rx = st.hub.subscribe(GuildId::new(5)).await;
+        rx.borrow_and_update();
+        let r = crate::routes::router(st)
+            .oneshot(move_request())
+            .await
             .unwrap();
-        let r = crate::routes::router(st).oneshot(req).await.unwrap();
         assert_eq!(r.status(), StatusCode::OK);
-        assert!(
-            rx.has_changed().unwrap(),
-            "published without waiting for a tick"
+        let a: Answer = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(
+            a.view,
+            Some(reordered()),
+            "the answer is read after the move"
         );
-        assert_eq!(**rx.borrow(), QueueView::Idle);
+        // Half a tick: the poller's own tick must not be what delivers it.
+        tokio::time::timeout(TICK / 2, rx.changed())
+            .await
+            .expect("published without waiting for a tick")
+            .unwrap();
+        assert_eq!(**rx.borrow(), reordered(), "watchers see the moved queue");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_refused_move_publishes_nothing_and_answers_with_the_queue_as_it_is() {
+        use crate::watch::TICK;
+        use std::sync::atomic::Ordering::SeqCst;
+        let fake = controller();
+        *fake.move_result.lock().unwrap() = Err(MoveRefused::Absent);
+        let st = state(fake.clone());
+        let mut rx = st.hub.subscribe(GuildId::new(5)).await;
+        rx.borrow_and_update();
+        // The queue changed since the hub's last read; its next tick is not due.
+        *fake.view.lock().unwrap() = reordered();
+        let reads = fake.view_calls.load(SeqCst);
+        let r = crate::routes::router(st)
+            .oneshot(move_request())
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::CONFLICT);
+        let a: Answer = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(a.result, "conflict");
+        assert_eq!(
+            a.view,
+            Some(reordered()),
+            "a fresh read, not the hub's last"
+        );
+        tokio::time::sleep(TICK / 2).await;
+        assert_eq!(
+            fake.view_calls.load(SeqCst),
+            reads + 1,
+            "only the answer's read"
+        );
+        assert!(!rx.has_changed().unwrap(), "nothing published");
+    }
+
+    #[tokio::test]
+    async fn per_user_answers_are_never_stored_and_assets_still_are() {
+        for uri in ["/", "/g/5"] {
+            let r = get(member_viewing(), uri, Some(&session(9))).await;
+            assert_eq!(r.status(), StatusCode::OK, "{uri}");
+            assert_eq!(r.headers()[header::CACHE_CONTROL], "no-store", "{uri}");
+        }
+        let r = post_move(
+            controller(),
+            Some(&session(9)),
+            Some("application/json"),
+            Some(ORIGIN),
+            MOVE,
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.headers()[header::CACHE_CONTROL], "no-store");
+        let r = get(member_viewing(), "/assets/app.js", None).await;
+        assert_eq!(r.headers()[header::CACHE_CONTROL], "no-cache");
     }
 
     async fn first_event(resp: axum::response::Response) -> String {
