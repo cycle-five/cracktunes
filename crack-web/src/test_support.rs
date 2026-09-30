@@ -47,10 +47,6 @@ impl FakeBackend {
         })
     }
 
-    #[expect(
-        dead_code,
-        reason = "used by the POST move tests in the next task; remove this then"
-    )]
     pub fn move_count(&self) -> usize {
         self.moves.lock().unwrap().len()
     }
