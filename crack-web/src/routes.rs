@@ -35,6 +35,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 pub const RECHECK: Duration = Duration::from_secs(5);
 /// SSE comment interval, so proxies do not idle the stream out.
 pub const KEEPALIVE: Duration = Duration::from_secs(15);
+/// How long a recheck waits on Discord before it keeps what it had.
+pub const PRESENCE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct WebState<B: Backend> {
     pub auth: Arc<catacombs::AppState>,
@@ -234,6 +236,7 @@ async fn events<B: Backend>(
             return;
         }
         let mut recheck = tokio::time::interval(RECHECK);
+        recheck.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         recheck.tick().await;
         loop {
             tokio::select! {
@@ -246,7 +249,10 @@ async fn events<B: Backend>(
                         return;
                     }
                 },
-                _ = recheck.tick() => match decide(&backend.presence(g, user).await) {
+                _ = recheck.tick() => match tokio::time::timeout(PRESENCE_TIMEOUT, backend.presence(g, user))
+                    .await
+                    .map_or(Access::Unavailable, |p| decide(&p))
+                {
                     // Left the guild: close the stream.
                     Access::Hidden => return,
                     // Cannot tell right now: keep what we had.
@@ -312,7 +318,8 @@ async fn security_headers(mut resp: Response) -> Response {
 }
 
 /// The whole dashboard: pages, the stream, moves, assets, and catacombs at
-/// `/auth`. Everything but the event stream has a timeout.
+/// `/auth`. Every request has a timeout on its response; a stream's body is
+/// not covered by it.
 pub fn router<B: Backend>(state: WebState<B>) -> Router {
     let timeout = TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, REQUEST_TIMEOUT);
     let timed = Router::new()
@@ -320,11 +327,12 @@ pub fn router<B: Backend>(state: WebState<B>) -> Router {
         .route("/g/{guild}", get(guild_page::<B>))
         .route("/assets/{name}", get(asset))
         .route("/g/{guild}/move", post(move_track::<B>))
+        // The timeout bounds the opening reads only; tower-http never touches
+        // the body, so the stream itself stays open.
+        .route("/g/{guild}/events", get(events::<B>))
         .layer(timeout);
     Router::new()
         .merge(timed)
-        // Outside the timeout: a stream is meant to stay open.
-        .route("/g/{guild}/events", get(events::<B>))
         .nest(
             "/auth",
             // /auth/callback and /auth/exchange call Discord through a client
@@ -822,5 +830,94 @@ mod test {
         // Still open: the next frame is the keep-alive, not an end or an error.
         let frame = body.frame().await.expect("stream still open").unwrap();
         assert!(frame.into_data().is_ok());
+    }
+
+    /// The next `data:` payload, skipping keep-alive comments.
+    async fn next_data(body: &mut Body) -> String {
+        use http_body_util::BodyExt;
+        tokio::time::timeout(std::time::Duration::from_secs(60), async {
+            loop {
+                let frame = body.frame().await.expect("stream open").unwrap();
+                if let Ok(data) = frame.into_data() {
+                    let text = std::str::from_utf8(&data).unwrap().to_owned();
+                    if let Some(d) = text.lines().find_map(|l| l.strip_prefix("data: ")) {
+                        return d.to_owned();
+                    }
+                }
+            }
+        })
+        .await
+        .expect("a data event")
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Pushed {
+        view: QueueView,
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_queue_change_reaches_an_open_stream() {
+        let fake = controller();
+        let r = get(fake.clone(), "/g/5/events", Some(&session(9))).await;
+        let mut body = r.into_body();
+        let first: Pushed = serde_json::from_str(&next_data(&mut body).await).unwrap();
+        assert_eq!(first.view, playing());
+        *fake.view.lock().unwrap() = QueueView::Idle;
+        let next: Pushed = serde_json::from_str(&next_data(&mut body).await).unwrap();
+        assert_eq!(next.view, QueueView::Idle);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_closed_stream_stops_reading_the_backend() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let fake = controller();
+        let r = get(fake.clone(), "/g/5/events", Some(&session(9))).await;
+        let mut body = r.into_body();
+        let _ = next_data(&mut body).await;
+        drop(body);
+        let quiet = RECHECK + crate::watch::LINGER + std::time::Duration::from_secs(10);
+        tokio::time::sleep(quiet).await;
+        let (p, v) = (
+            fake.presence_calls.load(SeqCst),
+            fake.view_calls.load(SeqCst),
+        );
+        tokio::time::sleep(quiet).await;
+        assert_eq!(
+            fake.presence_calls.load(SeqCst),
+            p,
+            "no more presence reads"
+        );
+        assert_eq!(fake.view_calls.load(SeqCst), v, "no more view reads");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_hung_presence_recheck_does_not_stall_the_stream() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let fake = controller();
+        let r = get(fake.clone(), "/g/5/events", Some(&session(9))).await;
+        let mut body = r.into_body();
+        let _ = next_data(&mut body).await;
+        fake.presence_hangs.store(true, SeqCst);
+        tokio::time::sleep(RECHECK + std::time::Duration::from_secs(1)).await; // recheck now hangs
+        *fake.view.lock().unwrap() = QueueView::Idle;
+        let next: Pushed = serde_json::from_str(&next_data(&mut body).await).unwrap();
+        assert_eq!(next.view, QueueView::Idle);
+    }
+
+    #[tokio::test]
+    async fn an_unknown_membership_is_503_for_the_stream_and_the_move() {
+        let fake = FakeBackend::new(Membership::Unknown, Some(BOT_CHANNEL), playing());
+        let r = get(fake.clone(), "/g/5/events", Some(&session(9))).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let r = post_move(
+            fake.clone(),
+            Some(&session(9)),
+            Some("application/json"),
+            Some(ORIGIN),
+            MOVE,
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(fake.move_count(), 0);
     }
 }

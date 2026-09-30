@@ -10,7 +10,10 @@ use crate::{
 };
 use axum::Router;
 use serenity::all::{ChannelId, GuildId, UserId};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
+    Arc, Mutex,
+};
 use uuid::Uuid;
 
 pub const ORIGIN: &str = "https://dash.test";
@@ -25,6 +28,11 @@ pub struct FakeBackend {
     /// Every move the routes asked for: (guild, track, to).
     pub moves: Mutex<Vec<(GuildId, Uuid, usize)>>,
     pub guilds: Vec<GuildEntry>,
+    /// How many times the routes and the hub read presence and the view.
+    pub presence_calls: AtomicUsize,
+    pub view_calls: AtomicUsize,
+    /// Make `presence` never answer, as a stalled Discord call would.
+    pub presence_hangs: AtomicBool,
 }
 
 impl FakeBackend {
@@ -39,6 +47,9 @@ impl FakeBackend {
             view: Mutex::new(view),
             move_result: Mutex::new(Ok(0)),
             moves: Mutex::new(Vec::new()),
+            presence_calls: AtomicUsize::new(0),
+            view_calls: AtomicUsize::new(0),
+            presence_hangs: AtomicBool::new(false),
             guilds: vec![GuildEntry {
                 id: GuildId::new(5),
                 name: "Five".into(),
@@ -54,12 +65,17 @@ impl FakeBackend {
 
 impl ViewSource for FakeBackend {
     async fn view(&self, _g: GuildId) -> QueueView {
+        self.view_calls.fetch_add(1, SeqCst);
         self.view.lock().unwrap().clone()
     }
 }
 
 impl Backend for FakeBackend {
     async fn presence(&self, _g: GuildId, _u: UserId) -> Presence {
+        self.presence_calls.fetch_add(1, SeqCst);
+        if self.presence_hangs.load(SeqCst) {
+            std::future::pending::<()>().await;
+        }
         Presence {
             membership: *self.membership.lock().unwrap(),
             user_channel: *self.user_channel.lock().unwrap(),
