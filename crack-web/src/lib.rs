@@ -3,6 +3,11 @@
 //! docs/superpowers/specs/2026-09-30-web-dashboard-queue-design.md.
 
 pub mod access;
+pub mod backend;
 pub mod config;
+pub mod page;
+pub mod routes;
+#[cfg(test)]
+mod test_support;
 pub mod view;
 pub mod watch;
