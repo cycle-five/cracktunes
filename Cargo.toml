@@ -5,6 +5,7 @@ members = [
   "crack-sleevenote",
   "crack-musicreco",
   "crack-voting",
+  "crack-web",
   "crack-testing",
   "crack-types",
 ]
