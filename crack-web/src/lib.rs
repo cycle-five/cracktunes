@@ -5,3 +5,4 @@
 pub mod access;
 pub mod config;
 pub mod view;
+pub mod watch;
