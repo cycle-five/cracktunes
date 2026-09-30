@@ -1,1 +1,35 @@
-/* written in Task 7 */
+:root {
+  --bg: #fafafa; --fg: #1b1b1f; --muted: #6b6b76; --card: #ffffff;
+  --line: #e4e4ea; --accent: #6d28d9; --note: #fff7d6;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111114; --fg: #ececf1; --muted: #9a9aa6; --card: #1b1b21;
+          --line: #2c2c35; --accent: #a78bfa; --note: #3a3218; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg);
+       font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; justify-content: space-between; align-items: center;
+         padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.brand { color: var(--fg); font-weight: 700; text-decoration: none; }
+header button { background: none; border: 1px solid var(--line); color: var(--muted);
+                border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+main { max-width: 720px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.4rem; margin: 8px 0 16px; overflow-wrap: anywhere; }
+h2 { font-size: 1rem; color: var(--muted); margin: 24px 0 8px; }
+ul.guilds, ol#upcoming { list-style: none; padding: 0; margin: 0; }
+ul.guilds li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+ul.guilds a { color: var(--accent); font-weight: 600; }
+.chan { color: var(--muted); margin-left: 8px; }
+.track { display: flex; align-items: baseline; gap: 10px; padding: 10px 12px;
+         background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+         margin-bottom: 6px; min-width: 0; }
+.track.now { border-color: var(--accent); }
+.title { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--fg); text-decoration: none; }
+a.title:hover { text-decoration: underline; }
+.meta { color: var(--muted); font-size: 0.85rem; white-space: nowrap; }
+.handle { cursor: grab; color: var(--muted); user-select: none; touch-action: none; padding: 0 4px; }
+.sortable-ghost { opacity: 0.4; }
+.empty { color: var(--muted); }
+#badge, #note { background: var(--note); padding: 8px 12px; border-radius: 6px; }
+@media (max-width: 480px) { .track { flex-wrap: wrap; } .meta { width: 100%; } }
