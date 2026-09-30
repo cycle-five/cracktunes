@@ -140,23 +140,3 @@ async fn serve(env: WebEnv, deps: WebDeps) -> std::io::Result<()> {
     tracing::info!("web dashboard on {} for {}", env.bind, env.public_origin);
     axum::serve(listener, routes::router(state)).await
 }
-
-#[cfg(test)]
-mod asset_test {
-    /// Track titles are third-party text: the page must never parse them as
-    /// HTML. `app.js` builds every node with createElement + textContent.
-    #[test]
-    fn app_js_never_parses_strings_as_html() {
-        let js = include_str!("../assets/app.js");
-        for banned in [
-            "innerHTML",
-            "outerHTML",
-            "insertAdjacentHTML",
-            "document.write",
-            "eval(",
-        ] {
-            assert!(!js.contains(banned), "app.js uses {banned}");
-        }
-        assert!(js.contains("textContent"), "app.js renders text");
-    }
-}

@@ -24,9 +24,13 @@ use std::{convert::Infallible, num::NonZeroU64, sync::Arc, time::Duration};
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tower_http::timeout::TimeoutLayer;
 
-/// Everything but the stylesheet and two scripts is off; no framing.
+/// Everything but the stylesheet and two scripts is off; no framing. Trusted
+/// Types with no policy makes a supporting browser throw on any string
+/// assigned to an HTML sink (innerHTML, document.write, eval...), so track
+/// titles can never be parsed as markup.
 pub const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; \
-img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; \
+require-trusted-types-for 'script'; trusted-types 'none'";
 
 /// How long any non-streaming request may take.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
@@ -447,6 +451,13 @@ mod test {
     #[test]
     fn the_csp_allows_nothing_unsafe() {
         assert!(!crate::routes::CSP.contains("unsafe-"));
+    }
+
+    #[test]
+    fn the_csp_forbids_string_to_html_sinks() {
+        let csp = crate::routes::CSP;
+        assert!(csp.contains("require-trusted-types-for 'script'"));
+        assert!(csp.contains("trusted-types 'none'"));
     }
 
     #[tokio::test]

@@ -71,11 +71,18 @@ pub fn rev_of(tracks: &[TrackSummary]) -> u64 {
     h.finish() & REV_MASK
 }
 
+/// Only http(s) links reach the page: the url is yt-dlp metadata, and an
+/// `href` accepts any scheme (`javascript:`, `data:`).
+fn is_web_url(u: &str) -> bool {
+    let lower = u.get(..8).unwrap_or(u).to_ascii_lowercase();
+    lower.starts_with("http://") || lower.starts_with("https://")
+}
+
 fn track_view(t: TrackSummary, name_of: &impl Fn(UserId) -> Option<String>) -> TrackView {
     TrackView {
         id: t.id,
         title: t.title.unwrap_or_else(|| "Unknown title".to_owned()),
-        url: t.url,
+        url: t.url.filter(|u| is_web_url(u)),
         duration_secs: t.duration.map(|d| d.as_secs()),
         requester: match t.requester {
             Some(Requester::Auto) => Some("(auto)".to_owned()),
@@ -120,6 +127,26 @@ mod test {
             duration: Some(Duration::from_secs(61)),
             requester,
         }
+    }
+
+    #[test]
+    fn only_http_urls_reach_the_page() {
+        let view = |url: &str| {
+            let mut track = t(1, Some("x"), None);
+            track.url = Some(url.to_owned());
+            track_view(track, &names).url
+        };
+        assert_eq!(view("javascript:alert(1)"), None);
+        assert_eq!(view("data:text/html,x"), None);
+        assert_eq!(view(""), None);
+        assert_eq!(
+            view("HTTPS://example.com/x").as_deref(),
+            Some("HTTPS://example.com/x")
+        );
+        assert_eq!(
+            view("http://example.com").as_deref(),
+            Some("http://example.com")
+        );
     }
 
     fn playing(tracks: Vec<TrackSummary>) -> QueueState {
