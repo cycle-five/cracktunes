@@ -47,9 +47,9 @@ the bot still builds and runs without it.
 | Unit | Does | Depends on |
 |---|---|---|
 | `config` | Reads the web env vars into a typed config, or reports which are missing | env |
-| `access` | `can_view(user, guild)`: member in the cache. `can_control(user, guild)`: the user's cached voice state is in the bot's voice channel for that guild | serenity `Cache` (or a two-method trait over it, see Testing) |
-| `snapshot` | Builds a typed `QueueView` for a guild from its songbird queue; `Hidden` while `/gp` owns playback | songbird `Call`, `Data::playback_owner` |
-| `watch` | One `tokio::sync::watch` channel per guild, alive only while subscribed; snapshots about once a second, publishes only on change | `snapshot` |
+| `access` | `can_view(user, guild)`: a member (see Auth and access). `can_control(user, guild)`: the user's cached voice state is in the bot's voice channel for that guild | serenity `Cache` + `Http`, through a pure decision function |
+| `view` | The wire types below, `rev`, and the conversion from crack-core's `QueueState` | `crack_core::music::remote` |
+| `watch` | One `tokio::sync::watch` channel per guild, alive only while subscribed; snapshots about once a second, publishes only on change | `crack_core::music::remote` |
 | `routes` | Pages, `GET /g/{id}/events` (SSE), `POST /g/{id}/move` | all of the above |
 | `assets` | HTML templates, CSS, SortableJS, our JS — compiled in with `include_str!` | — |
 
@@ -58,9 +58,24 @@ the bot still builds and runs without it.
 calling `Config::from_env`, whose variable names do not match cracktunes'
 (`DISCORD_BOT_TOKEN` vs `DISCORD_TOKEN`).
 
-### One addition to `crack-core`
+### One addition to `crack-core`: `music::remote`
 
-`move_track_by_id(guard: &QueueGuard, handler: &Call, id: Uuid, to: usize) ->
+`music::queue` and `connected_call` are `pub(crate)`, and every songbird access
+in crack-core sits behind `clippy.toml` bans (`Songbird::get`,
+`TrackHandle::data`). So the queue operations the dashboard needs live in
+crack-core, in a new public module `music::remote` — "queue operations for
+callers with no poise `Context`" — and crack-web never touches songbird:
+
+- `queue_state(&Data, GuildId) -> QueueState` — `Idle` | `Hidden` (a game owns
+  playback; checked before the call is touched) | `Playing { bot_channel,
+  tracks: Vec<TrackSummary> }`, where `tracks[0]` is now playing. Reads through
+  `connected_call`, `get_track_handle_metadata` and `get_requesting_user`.
+- `active_guilds(&Data) -> Vec<(GuildId, ChannelId)>` — guilds with a connected
+  call and the channel it is in.
+- `move_by_id(&Data, &Http, GuildId, Uuid, to) -> Result<(), MoveRefused>` —
+  takes the lease, moves, drops the lease, refreshes the queue messages.
+
+Underneath it, `move_track_by_id(guard: &QueueGuard, handler: &Call, id: Uuid, to: usize) ->
 Result<(), MoveRefused>` beside `move_track` in `music/queue.rs`. It locates the
 track by `TrackHandle::uuid()`, refuses if the id is absent or is the
 now-playing entry (index 0), and clamps `to` into the upcoming range (queue
@@ -135,6 +150,9 @@ Additions, all additive — the existing SDK flow keeps working unchanged:
   header, then the query parameter.
 - **`POST /logout`** also clears the session cookie; **`GET /logout`** is not
   added (a GET must not change state).
+- `DiscordConfig.api_base` (default `https://discord.com/api/v10`) so tests
+  can point the token and user calls at a local mock that records what was
+  sent.
 - New `WebConfig` (public origin / redirect URI, scopes, cookie name,
   `Secure` flag for local development) — optional, so existing consumers
   compile.
@@ -146,8 +164,19 @@ migrates into the default `_sqlx_migrations` table, which would collide with
 cracktunes' own migration history; neither matters with memory storage, and no
 user needs persisting in this arc.
 
-Released as catacombs **v0.1.0** (tag push; check its workflows for which case
-of the release rule applies).
+**Baseline first.** catacombs' only CI run on master is red (rustfmt, clippy
+on dead `StoredEntitlement` fields under `memory-storage`, an MSRV of 1.75 its
+dependencies cannot meet — they need 1.88 — and the audit job, which lacks
+`checks: write` and reports an advisory). The PR makes it green first, and
+drops dependencies nothing uses (`oauth2`, `dotenvy`, `tower`, `tower-http`,
+`tracing-subscriber`, axum's `ws`) so cracktunes does not compile them.
+
+**Release.** `release.yml` runs `cargo publish` on every tag, and the repo has
+no `CRATES_IO_TOKEN`, so a tag today fails and the GitHub-release job (which
+`needs: publish`) is skipped. The publish step becomes conditional on the
+token being present: a tag then produces a GitHub release and no crates.io
+publish, which keeps publishing the owner's later decision. Released as
+catacombs **v0.1.0** by that tag push (case A of the release rule).
 
 ## Auth and access
 
@@ -159,8 +188,16 @@ bot's cache, which is fresher and asks less.
 **Every request re-checks against the cache**; nothing about guilds or voice is
 stored in the session.
 
+- **Membership** is: in the cached member list, **or** has a cached voice state
+  in the guild, **or** `Http::get_member` succeeds. The bot never requests
+  member chunks, so for large guilds `GUILD_CREATE` leaves the cached member
+  list partial and a cache-only check would 404 real members. The HTTP answer
+  is remembered for 5 minutes: a 404 as "not a member", success as "member";
+  any other error is not remembered and the request answers 503 ("Discord did
+  not answer, try again"). Controllers never reach the HTTP path — being in
+  voice puts them in the cache.
 - **Guild picker (`GET /`):** guilds where the bot is in a voice channel right
-  now **and** the user is a cached member. A stranger therefore cannot list the
+  now **and** the user is a member. A stranger therefore cannot list the
   bot's guilds.
 - **`can_view` fails → 404**, not 403, so probing a guild id does not confirm the
   bot is there.
@@ -180,10 +217,15 @@ cookie. The cracktun.es Privacy Policy gets a paragraph saying so.
 
 ## Data flow
 
-**Page load.** `GET /g/{id}` renders HTML from a `QueueView` directly, so the
-queue appears on first paint.
+**Page load.** `GET /g/{id}` returns the page with the current `QueueView`
+inlined as JSON (`<script type="application/json">`, with every `<` written as
+`\u003c` so a track title containing `</script>` cannot end the element). One
+renderer — the page's JS — draws both the inlined view and every SSE event, so
+the first paint and the live updates cannot disagree, and there is no extra
+round trip. Titles are inserted with `textContent`, never `innerHTML`: track
+titles are arbitrary third-party text.
 
-**Snapshot.** Lock the `Call`, clone the `current_queue()` handles, release the
+**Snapshot** (`remote::queue_state`). Lock the `Call`, clone the `current_queue()` handles, release the
 lock, then read each handle's metadata (the same typemap read `/queue` does).
 No formatting under the lock. Playback position is deliberately absent — it
 changes every second and this arc does not need it.
@@ -242,10 +284,13 @@ what is sent** and on request counts.
   asserts on basic auth, `redirect_uri`, `grant_type` and `code`.
 - **`move_track_by_id`:** moves by id; refuses an absent id and the now-playing
   id, leaving the queue untouched; clamps `to` at both ends.
-- **`access`:** member / non-member; in the bot's channel / another channel /
-  not in voice / bot not in voice. If a serenity `Cache` cannot practically be
-  populated in tests, `access` goes through a small trait over its two lookups
-  and the cache implementation is a thin adapter.
+- **`access`:** the decision is a pure function over a `Presence` (membership,
+  user's channel, bot's channel), the pattern `music::perms` already uses —
+  member / non-member / unknown; in the bot's channel / another / not in voice /
+  bot not in voice. The membership memo: a 404 is remembered, a 500 is not,
+  entries expire.
+- **The page:** a title containing `</script>` does not terminate the inlined
+  JSON.
 - **`snapshot` / `rev`:** order change changes `rev`; identical queue keeps it;
   game → `Hidden`.
 - **routes** (`tower::ServiceExt::oneshot`): unauthenticated → redirect to login;
