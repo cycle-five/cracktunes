@@ -822,6 +822,41 @@ pub fn move_track(guard: &QueueGuard, handler: &Call, at: usize, to: usize) {
     });
 }
 
+/// Move a track, named by its id, to a position among the upcoming tracks.
+/// Used by the web dashboard, whose view of the queue can be seconds old:
+/// an index would move whichever track now sits there, an id cannot.
+///
+/// `to_upcoming` is 0-based among the tracks after the one playing and is
+/// clamped into range; the position actually used is returned. The playing
+/// track never moves, and an id no longer queued moves nothing.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+pub fn move_track_by_id(
+    guard: &QueueGuard,
+    handler: &Call,
+    id: uuid::Uuid,
+    to_upcoming: usize,
+) -> Result<usize, crate::music::remote::MoveRefused> {
+    use crate::music::remote::MoveRefused;
+    let _ = guard;
+    handler.queue().modify_queue(|queue| {
+        let at = queue
+            .iter()
+            .position(|q| q.uuid() == id)
+            .ok_or(MoveRefused::Absent)?;
+        if at == 0 {
+            return Err(MoveRefused::NowPlaying);
+        }
+        // `at >= 1` means at least two tracks, so the range is never empty.
+        let to = (to_upcoming + 1).clamp(1, queue.len() - 1);
+        let track = queue.remove(at).expect("the position came from this queue");
+        queue.insert(to, track);
+        Ok(to - 1)
+    })
+}
+
 /// Remove one track by queue index. Used by `/remove`.
 ///
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
@@ -1070,6 +1105,140 @@ mod test {
             title: Some(title.to_owned()),
             ..Default::default()
         }
+    }
+
+    async fn queue_of(n: usize) -> (Data, Arc<Mutex<Call>>, Vec<uuid::Uuid>) {
+        let data = Data(Arc::new(DataInner::default()));
+        let call = offline_call();
+        let mut ids = Vec::new();
+        {
+            let guard = data.lock_queue(GUILD, PlaybackOwner::Free).await.unwrap();
+            for i in 0..n {
+                let file = format!("/nonexistent/{i}.opus");
+                let h = enqueue_input_back(
+                    &guard,
+                    &call,
+                    songbird::input::File::new(file).into(),
+                    Some(titled(&format!("t{i}"))),
+                    None,
+                )
+                .await;
+                ids.push(h.uuid());
+            }
+        }
+        (data, call, ids)
+    }
+
+    async fn order(call: &Arc<Mutex<Call>>) -> Vec<uuid::Uuid> {
+        call.lock()
+            .await
+            .queue()
+            .current_queue()
+            .iter()
+            .map(|h| h.uuid())
+            .collect()
+    }
+
+    async fn move_in(
+        data: &Data,
+        call: &Arc<Mutex<Call>>,
+        id: uuid::Uuid,
+        to: usize,
+    ) -> Result<usize, crate::music::remote::MoveRefused> {
+        let guard = data.lock_queue(GUILD, PlaybackOwner::Free).await.unwrap();
+        let handler = call.lock().await;
+        move_track_by_id(&guard, &handler, id, to)
+    }
+
+    #[tokio::test]
+    async fn a_track_moves_by_id_to_an_upcoming_position() {
+        let (data, call, ids) = queue_of(4).await;
+        assert_eq!(move_in(&data, &call, ids[3], 0).await, Ok(0));
+        assert_eq!(order(&call).await, vec![ids[0], ids[3], ids[1], ids[2]]);
+    }
+
+    #[tokio::test]
+    async fn a_target_past_the_end_lands_last() {
+        let (data, call, ids) = queue_of(4).await;
+        assert_eq!(move_in(&data, &call, ids[1], 99).await, Ok(2));
+        assert_eq!(order(&call).await, vec![ids[0], ids[2], ids[3], ids[1]]);
+    }
+
+    #[tokio::test]
+    async fn the_playing_track_does_not_move() {
+        use crate::music::remote::MoveRefused;
+        let (data, call, ids) = queue_of(3).await;
+        assert_eq!(
+            move_in(&data, &call, ids[0], 1).await,
+            Err(MoveRefused::NowPlaying)
+        );
+        assert_eq!(order(&call).await, ids);
+    }
+
+    #[tokio::test]
+    async fn an_id_no_longer_queued_moves_nothing() {
+        use crate::music::remote::MoveRefused;
+        let (data, call, ids) = queue_of(3).await;
+        let gone = uuid::Uuid::from_u128(42);
+        assert_eq!(
+            move_in(&data, &call, gone, 0).await,
+            Err(MoveRefused::Absent)
+        );
+        assert_eq!(order(&call).await, ids);
+    }
+
+    #[tokio::test]
+    async fn a_summary_carries_the_id_title_and_who_asked() {
+        use crate::music::remote::{summarize, Requester};
+        let data = Data(Arc::new(DataInner::default()));
+        let call = offline_call();
+        let guard = data.lock_queue(GUILD, PlaybackOwner::Free).await.unwrap();
+        let auto = enqueue_input_back(
+            &guard,
+            &call,
+            songbird::input::File::new("/nonexistent/a.opus").into(),
+            Some(titled("Auto Pick")),
+            None,
+        )
+        .await;
+        let asked = queue_track_ready_front(
+            &guard,
+            &call,
+            TrackReadyData {
+                source: songbird::input::File::new("/nonexistent/b.opus").into(),
+                metadata: NewAuxMetadata(titled("Asked For")),
+                user_id: Some(UserId::new(7)),
+                username: None,
+            },
+        )
+        .await
+        .unwrap();
+        drop(guard);
+
+        let handles = call.lock().await.queue().current_queue();
+        let s = summarize(&handles).await;
+
+        let by_id = |id| s.iter().find(|t| t.id == id).expect("summarized");
+        assert_eq!(by_id(auto.uuid()).title.as_deref(), Some("Auto Pick"));
+        assert!(matches!(
+            by_id(auto.uuid()).requester,
+            Some(Requester::Auto)
+        ));
+        let asked = asked.last().unwrap();
+        assert_eq!(by_id(asked.uuid()).title.as_deref(), Some("Asked For"));
+        assert!(matches!(
+            by_id(asked.uuid()).requester,
+            Some(Requester::User(u)) if u == UserId::new(7)
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_offline_call_with_tracks_is_idle_not_playing() {
+        use crate::music::remote::{state_of_call, QueueState};
+        let (_data, call, _ids) = queue_of(2).await;
+        // No voice connection means no channel, and a dashboard cannot say
+        // who may control a queue with no channel.
+        assert!(matches!(state_of_call(&call).await, QueueState::Idle));
     }
 
     /// `/queue` and `/nowplaying` read a queued track through

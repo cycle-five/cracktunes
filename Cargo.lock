@@ -981,6 +981,7 @@ dependencies = [
  "typemap_rev",
  "url",
  "urlencoding",
+ "uuid",
 ]
 
 [[package]]

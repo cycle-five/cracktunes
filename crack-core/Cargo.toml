@@ -57,6 +57,7 @@ const-random = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1.5"
 rand = "0.10"
+uuid = "1"
 regex = "1.11"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_derive = "1.0"
