@@ -791,18 +791,23 @@ mod test {
         *fake.membership.lock().unwrap() = Membership::NotMember;
         tokio::time::sleep(RECHECK + std::time::Duration::from_secs(1)).await;
         // Keep-alive comments may arrive first; the stream must end.
-        loop {
-            match body.frame().await {
-                None => break,
-                Some(Ok(f)) => assert!(
-                    !f.into_data()
-                        .map(|d| d.starts_with(b"data:"))
-                        .unwrap_or(false),
-                    "no more events"
-                ),
-                Some(Err(e)) => panic!("{e}"),
+        // Bounded: a stream that never ends would otherwise spin on the paused clock.
+        let drained = tokio::time::timeout(std::time::Duration::from_secs(60), async {
+            loop {
+                match body.frame().await {
+                    None => break,
+                    Some(Ok(f)) => assert!(
+                        !f.into_data()
+                            .map(|d| d.starts_with(b"data:"))
+                            .unwrap_or(false),
+                        "no more events"
+                    ),
+                    Some(Err(e)) => panic!("{e}"),
+                }
             }
-        }
+        })
+        .await;
+        assert!(drained.is_ok(), "the stream ended");
     }
 
     #[tokio::test(start_paused = true)]
