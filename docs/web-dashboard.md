@@ -19,6 +19,10 @@ Register `<WEB_PUBLIC_ORIGIN>/auth/callback` under the application's OAuth2
 redirects. A missing variable logs `web dashboard off; missing or unusable: …`
 and the bot runs on.
 
+`GET /health` answers `cracktunes dashboard ok <version>` with no sign-in. It
+reads nothing, so it proves the web server is answering, not that the bot is
+on the gateway. The bot's log reports that.
+
 ## What it holds
 
 **In the browser:** a user id and username in a signed, HttpOnly cookie
