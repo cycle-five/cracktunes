@@ -23,6 +23,9 @@ use tower_http::timeout::TimeoutLayer;
 pub const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self'; \
 img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
+/// How long any non-streaming request may take.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
+
 pub struct WebState<B: Backend> {
     pub auth: Arc<catacombs::AppState>,
     pub backend: Arc<B>,
@@ -169,19 +172,21 @@ async fn security_headers(mut resp: Response) -> Response {
 /// The whole dashboard: pages, the stream, moves, assets, and catacombs at
 /// `/auth`. Everything but the event stream has a timeout.
 pub fn router<B: Backend>(state: WebState<B>) -> Router {
+    let timeout = TimeoutLayer::with_status_code(StatusCode::SERVICE_UNAVAILABLE, REQUEST_TIMEOUT);
     let timed = Router::new()
         .route("/", get(picker::<B>))
         .route("/g/{guild}", get(guild_page::<B>))
         .route("/assets/{name}", get(asset))
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::SERVICE_UNAVAILABLE,
-            Duration::from_secs(15),
-        ));
+        .layer(timeout);
     Router::new()
         .merge(timed)
         .nest(
             "/auth",
-            catacombs::routes::auth_router().with_state(state.auth.clone()),
+            // /auth/callback and /auth/exchange call Discord through a client
+            // with no timeout of its own, so this layer is the only bound.
+            catacombs::routes::auth_router()
+                .with_state(state.auth.clone())
+                .layer(timeout),
         )
         .with_state(state)
         .layer(axum::middleware::map_response(security_headers))
@@ -286,12 +291,24 @@ mod test {
         assert!(controller.can_control);
     }
 
+    #[test]
+    fn the_csp_allows_nothing_unsafe() {
+        assert!(!crate::routes::CSP.contains("unsafe-"));
+    }
+
     #[tokio::test]
     async fn every_response_carries_the_security_headers() {
-        let r = get(member_viewing(), "/g/5", Some(&session(9))).await;
-        let csp = r.headers()["content-security-policy"].to_str().unwrap();
-        assert!(csp.contains("script-src 'self'") && csp.contains("frame-ancestors 'none'"));
-        assert_eq!(r.headers()["x-content-type-options"], "nosniff");
+        // A page, a catacombs route, and a path nothing matches (the fallback 404).
+        for uri in ["/g/5", "/auth/login", "/nowhere"] {
+            let r = get(member_viewing(), uri, Some(&session(9))).await;
+            assert_eq!(
+                r.headers()["content-security-policy"],
+                crate::routes::CSP,
+                "{uri}"
+            );
+            assert_eq!(r.headers()["x-content-type-options"], "nosniff", "{uri}");
+            assert_eq!(r.headers()["referrer-policy"], "same-origin", "{uri}");
+        }
     }
 
     #[tokio::test]
