@@ -5,10 +5,29 @@
 (() => {
   "use strict";
 
+  // The note under the heading; pages without one get it added above
+  // their content.
+  function say(text) {
+    let note = document.getElementById("note");
+    if (!note) {
+      note = document.createElement("p");
+      note.id = "note";
+      document.querySelector("main").prepend(note);
+    }
+    note.textContent = text || "";
+    note.hidden = !text;
+  }
+
   const logout = document.getElementById("logout");
   if (logout) {
     logout.addEventListener("click", async () => {
-      await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+      try {
+        const res = await fetch("/auth/logout", { method: "POST", credentials: "same-origin" });
+        if (!res.ok) throw new Error(String(res.status));
+      } catch (_) {
+        say("Could not log out. Try again in a moment.");
+        return;
+      }
       window.location.assign("/");
     });
   }
@@ -19,10 +38,11 @@
   const nowEl = document.getElementById("now");
   const listEl = document.getElementById("upcoming");
   const badge = document.getElementById("badge");
-  const note = document.getElementById("note");
 
   let state = JSON.parse(document.getElementById("initial").textContent);
   let dragging = false;
+  // The newest state the stream sent while it could not be drawn. It is kept
+  // until drawn: the stream sends a view once, on change, and never again.
   let pending = null;
 
   function el(tag, cls, text) {
@@ -52,11 +72,6 @@
     li.appendChild(title);
     li.appendChild(el("span", "meta", [duration(t.duration_secs), t.requester].filter(Boolean).join(" · ")));
     return li;
-  }
-
-  function say(text) {
-    note.textContent = text || "";
-    note.hidden = !text;
   }
 
   function render() {
@@ -100,8 +115,15 @@
     else if (result === "game_in_progress") say("A Guilty Pleasure game is on — the queue is locked.");
     else if (result === "not_playing") say("Nothing is playing.");
     else if (status) say(`That did not work (${status}).`);
-    if (body && body.view) state = { ...state, view: body.view };
-    render(); // never keep an order the server did not accept
+    // The answer's view is read after the move; without one, the newest view
+    // the stream sent, else the one on screen. Never keep an order the server
+    // did not accept.
+    const base = pending || state;
+    const next = body && body.view ? { ...base, view: body.view } : base;
+    if (dragging) { pending = next; return; } // another drag began meanwhile
+    pending = null;
+    state = next;
+    render();
   }
 
   const sortable = Sortable.create(listEl, {
@@ -115,8 +137,7 @@
         if (pending) { state = pending; pending = null; render(); }
         return;
       }
-      pending = null;
-      move(ev.item.dataset.id, ev.newIndex);
+      move(ev.item.dataset.id, ev.newIndex); // `pending` waits for its answer
     },
   });
 
@@ -125,6 +146,7 @@
     const next = JSON.parse(e.data);
     badge.hidden = true;
     if (dragging) { pending = next; return; } // do not yank a row from under the cursor
+    pending = null; // superseded
     state = next;
     render();
   };
