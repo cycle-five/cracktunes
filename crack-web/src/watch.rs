@@ -82,8 +82,16 @@ impl<S: ViewSource> Hub<S> {
                 }
             }
             idle_since = None;
-            let view = self.source.view(guild_id).await;
-            tx.send_if_modified(|cur| replace_if_changed(cur, view));
+            // Each read runs in its own task: a panic in the source must not
+            // kill this poller and leave the map holding a dead sender.
+            let source = self.source.clone();
+            match tokio::spawn(async move { source.view(guild_id).await }).await {
+                Ok(view) => {
+                    tx.send_if_modified(|cur| replace_if_changed(cur, view));
+                },
+                // Keep the last view and keep polling.
+                Err(e) => tracing::error!(guild = %guild_id, "dashboard view read failed: {e}"),
+            }
         }
     }
 }
@@ -111,11 +119,18 @@ mod test {
     struct Fake {
         view: Mutex<QueueView>,
         calls: AtomicUsize,
+        /// The call number (1-based) that panics; 0 for never.
+        panic_on: AtomicUsize,
     }
 
     impl ViewSource for Fake {
         async fn view(&self, _g: GuildId) -> QueueView {
-            self.calls.fetch_add(1, Ordering::SeqCst);
+            let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            assert_ne!(
+                n,
+                self.panic_on.load(Ordering::SeqCst),
+                "the source panicked"
+            );
             self.view.lock().unwrap().clone()
         }
     }
@@ -139,6 +154,7 @@ mod test {
         let fake = Arc::new(Fake {
             view: Mutex::new(view),
             calls: AtomicUsize::new(0),
+            panic_on: AtomicUsize::new(0),
         });
         let hub = Hub::new(
             fake.clone(),
@@ -218,5 +234,26 @@ mod test {
         hub.publish(G, playing(3)).await;
         assert!(rx.has_changed().unwrap());
         assert_eq!(**rx.borrow(), playing(3));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_panicking_read_keeps_the_last_view_and_polling_continues() {
+        let (fake, hub) = hub(playing(1));
+        let mut rx = hub.subscribe(G).await; // call 1
+        rx.borrow_and_update();
+        fake.panic_on.store(3, Ordering::SeqCst); // the second poll
+        ticks(5).await;
+        assert!(
+            fake.calls.load(Ordering::SeqCst) >= 5,
+            "polling went on past the panic"
+        );
+        assert_eq!(**rx.borrow(), playing(1), "the last view is kept");
+        *fake.view.lock().unwrap() = playing(2);
+        ticks(2).await;
+        assert_eq!(
+            **rx.borrow_and_update(),
+            playing(2),
+            "later changes still publish"
+        );
     }
 }
