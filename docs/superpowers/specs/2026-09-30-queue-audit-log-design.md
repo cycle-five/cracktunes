@@ -58,7 +58,9 @@ pub enum BotReason { Autopause, Autoplay, Game, IdleTimeout, Kicked, JoinCleanup
   `Actor` by hand.
 - `Data::lock_queue(guild, owner, actor)` gains the parameter, and the `QueueGuard`
   stores the actor. All ~35 call sites pass one, and the compiler finds any that don't.
-  - `/gp`'s queue work passes `Actor::bot(BotReason::Game)`.
+  - `/gp`'s queue work passes `Actor::bot(BotReason::Game)`, except the member-issued
+    `/gp start`, `/gp skip`, `/gp voteskip` and `/gp end`, which are the member's
+    (`Actor::from_ctx`).
   - `track_end`'s autopause passes `Actor::bot(BotReason::Autopause)`, and its autoplay
     refill passes `Actor::bot(BotReason::Autoplay)`.
   - `remote::move_by_id` passes `Actor::web(user)`.
@@ -66,8 +68,8 @@ pub enum BotReason { Autopause, Autoplay, Game, IdleTimeout, Kicked, JoinCleanup
   `/leave`, the idle timeout (`handlers/idle.rs`), the bot being kicked
   (`handlers/serenity.rs`), and a failed join's cleanup (`music_utils.rs`).
   - They all move behind one new function, `music::disconnect(data, manager, guild, actor)`.
-    It counts the tracks it is about to discard, records `Leave`, then calls
-    `Songbird::remove` with today's error handling kept at each site.
+    It counts the tracks it is about to discard, calls `Songbird::remove`, and records
+    `Leave` only if that succeeded, with today's error handling kept at each site.
   - It does **not** take the lease, so `/leave` still works during a `/gp` game, as today.
   - A failed join's cleanup discards nothing observable. It is recorded only if the
     `Call` held tracks.

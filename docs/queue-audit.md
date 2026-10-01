@@ -11,8 +11,14 @@ seek, repeat and the autoplay settings. Without a database, events go to the bot
 log at `info` as `queue audit (no database)`. A full writer channel drops an event
 with a `warn`; commands never wait on the log.
 
-⚠️ `/gp` rows (`command = 'gp'`) carry the round's song titles. Any reader shown to
-players must hide a guild's game rows while its game is running.
+`/skip N` writes two rows: a `clear` for the N-1 dropped upcoming tracks, then the
+`skip`. A long playlist add is one `add` row per batch (the first track alone, then up
+to 24 per batch), not one row for the whole playlist.
+
+⚠️ Game rows are those with `command LIKE 'gp%'`: bot-driven ones have
+`command = 'gp'`, member-issued ones carry the qualified name (e.g. `gp start`). They
+carry the round's song titles, so any reader shown to players must hide them while the
+guild's game is running.
 
 ## Example queries
 
