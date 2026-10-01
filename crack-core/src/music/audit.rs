@@ -266,6 +266,16 @@ pub fn emit(tx: Option<&mpsc::Sender<AuditEvent>>, event: AuditEvent) {
 mod test {
     use super::*;
 
+    /// `as_str` is what the database stores; serde is what the wire says. They
+    /// are written twice, so this is what keeps them one spelling.
+    #[test]
+    fn source_as_str_is_the_serde_name() {
+        for source in [Source::Slash, Source::Prefix, Source::Web, Source::Bot] {
+            let json = serde_json::to_string(&source).unwrap();
+            assert_eq!(json.trim_matches('"'), source.as_str());
+        }
+    }
+
     #[test]
     fn the_constructors_set_source_user_and_command() {
         let slash = Actor::for_command(
