@@ -12,7 +12,6 @@ use crate::{
     commands::cmd_check_music,
     commands::get_call_or_join_author,
     commands::music::gp_prompts::{draw_prompts, GpCategory},
-    commands::music::skip::force_skip_top_track,
     db::GpOutcome,
     errors::CrackedError,
     http_utils::SendMessageParams,
@@ -31,7 +30,9 @@ use crate::{
         GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN, SPOTIFY_GP_ONE_SONG,
         SPOTIFY_NOTHING_PLAYABLE,
     },
-    music::queue::{build_track, enqueue_track_back, preload_time, stop_queue},
+    music::queue::{
+        build_track, enqueue_track_back, force_skip_top_track, preload_time, stop_queue,
+    },
     music::PlaybackOwner,
     poise_ext::PoiseContextExt,
     sources::sleevenote,

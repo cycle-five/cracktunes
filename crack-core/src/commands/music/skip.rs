@@ -6,13 +6,13 @@ use crate::{
     guild::operations::GuildSettingsOperations,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
-    music::{drain_after_current, PlaybackOwner, QueueGuard},
+    music::{drain_after_current, force_skip_top_track, PlaybackOwner},
     poise_ext::PoiseContextExt,
     utils::get_track_handle_metadata,
     Context, Error,
 };
 use serenity::all::{Colour, CreateEmbed, Message};
-use songbird::{tracks::TrackHandle, Call};
+use songbird::Call;
 use std::cmp::min;
 use tokio::sync::MutexGuard;
 
@@ -189,67 +189,4 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("refetched queue: {:#?}", res2);
 
     Ok(())
-}
-
-/// Do the actual skipping of the top track.
-///
-/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
-/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
-/// error message rather than a corrupted `/gp` round.
-#[cfg(not(tarpaulin_include))]
-pub async fn force_skip_top_track(
-    guard: &QueueGuard,
-    handler: &MutexGuard<'_, Call>,
-) -> Result<Vec<TrackHandle>, CrackedError> {
-    let _ = guard;
-    // this is an odd sequence of commands to ensure the queue is properly updated
-    // apparently, skipping/stopping a track takes a while to remove it from the queue
-    // also, manually removing tracks doesn't trigger the next track to play
-    // so first, stop the top song, manually remove it and then resume playback
-    // #480: the caller saw something playing, but a track that ends on its own
-    // in between empties the queue first. Nothing left to stop is already
-    // skipped; everything below is safe on an empty queue.
-    if let Some(track) = handler.queue().current() {
-        track.stop().ok();
-    }
-    let _ = handler.queue().dequeue(0);
-    handler.queue().resume().ok();
-
-    Ok(handler.queue().current_queue())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serenity::all::{GuildId, UserId};
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-
-    /// #480. Every caller checks that something is playing before calling
-    /// this, but a track that ends on its own in between empties the queue
-    /// first. That race leaves exactly this state -- an empty queue -- so it is
-    /// reproduced here without any timing. It used to panic a tokio worker on
-    /// `current().unwrap()`, which the user never sees and the log records only
-    /// as a backtrace.
-    #[tokio::test]
-    async fn skipping_an_already_empty_queue_is_a_no_op_not_a_panic() {
-        let data = crate::Data(Arc::new(crate::DataInner::default()));
-        let guild_id = GuildId::new(1);
-        let guard = data
-            .lock_queue(
-                guild_id,
-                PlaybackOwner::Free,
-                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
-            )
-            .await
-            .expect("an uncontended guild grants the lease");
-        let call = Arc::new(Mutex::new(Call::standalone(guild_id, UserId::new(2))));
-        let handler = call.lock().await;
-
-        let remaining = force_skip_top_track(&guard, &handler)
-            .await
-            .expect("an empty queue is already skipped");
-
-        assert!(remaining.is_empty());
-    }
 }

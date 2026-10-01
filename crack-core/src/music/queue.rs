@@ -2,7 +2,10 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
-    music::{NewQueryType, PlaybackOwner, QueueGuard},
+    music::{
+        audit::{track_ref, Action, Actor, AddAt},
+        NewQueryType, PlaybackOwner, QueueGuard,
+    },
     poise_ext::ContextExt,
     utils::TrackData,
     Context as CrackContext, Error,
@@ -22,7 +25,7 @@ use songbird::{
 use std::str::FromStr;
 use std::time::Duration;
 use std::{collections::VecDeque, sync::Arc};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 
 /// Takes a resolved track and queues it to the back of the queue.
 /// Returns a snapshot of th new queue as a [`Vec<TrackHandle>`].
@@ -40,13 +43,13 @@ pub async fn queue_resolved_track_back(
     track_resolved: ResolvedTrack<'static>,
     http_client: reqwest::Client,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    let _ = guard;
     // Through `build_track`, not a second copy of it. This function used to
     // construct its own `RustyYoutubeSearch` inline, which is why fixing the
     // source in `build_track` fixed `/gp` and left `/play` still silent.
     let track = build_track(&track_resolved, &http_client)?;
     let mut handler = call.lock().await;
-    let _track_handle = enqueue(&mut handler, track, preload_time(&track_resolved));
+    let track_handle = enqueue(&mut handler, track, preload_time(&track_resolved));
+    record_add(guard, &handler, &[track_handle], AddAt::Back);
     // .enqueue_input(Into::<SongbirdInput>::into(track))
     let new_q = handler.queue().current_queue();
     drop(handler);
@@ -166,7 +169,6 @@ pub async fn enqueue_resolved_tracks_back(
     tracks: Vec<ResolvedTrack<'static>>,
     http_client: reqwest::Client,
 ) -> Result<Inserted, CrackedError> {
-    let _ = guard;
     let mut handler = call.lock().await;
     let mut handles = Vec::with_capacity(tracks.len());
     for resolved in &tracks {
@@ -178,6 +180,7 @@ pub async fn enqueue_resolved_tracks_back(
             Err(e) => tracing::warn!("Failed to enqueue {}: {e}", resolved.get_url()),
         }
     }
+    record_add(guard, &handler, &handles, AddAt::Back);
     Ok(Inserted { handles })
 }
 
@@ -265,6 +268,21 @@ fn enqueue(call: &mut Call, track: QueuedTrack, preload: Option<Duration>) -> Tr
     call.enqueue_with_preload(track.0, preload)
 }
 
+/// Record one `Add` for everything a single entry-point call queued. Nothing
+/// queued, nothing recorded.
+fn record_add(guard: &QueueGuard, handler: &Call, handles: &[TrackHandle], at: AddAt) {
+    if handles.is_empty() {
+        return;
+    }
+    guard.record(
+        handler.current_channel(),
+        Action::Add {
+            tracks: handles.iter().map(track_ref).collect(),
+            at,
+        },
+    );
+}
+
 /// Pushes a track to the front of the queue, after readying it.
 ///
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
@@ -275,7 +293,6 @@ pub async fn queue_track_ready_front(
     call: &Arc<Mutex<Call>>,
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    let _ = guard;
     let TrackReadyData {
         source,
         metadata,
@@ -287,7 +304,7 @@ pub async fn queue_track_ready_front(
     let preload = preload_from_metadata(Some(&metadata.0));
     let track = new_track(source, Some(metadata.into()), user_id);
     let mut handler = call.lock().await;
-    let _track_handle = enqueue(&mut handler, track, preload);
+    let track_handle = enqueue(&mut handler, track, preload);
     let new_q = handler.queue().current_queue();
     // Zeroth index: Currently playing track
     // First index: Current next track
@@ -300,6 +317,7 @@ pub async fn queue_track_ready_front(
         });
     }
 
+    record_add(guard, &handler, &[track_handle], AddAt::Front);
     drop(handler);
     Ok(new_q)
 }
@@ -314,7 +332,6 @@ pub async fn _queue_track_ready_back(
     call: &Arc<Mutex<Call>>,
     ready_track: TrackReadyData,
 ) -> Result<Vec<TrackHandle>, CrackedError> {
-    let _ = guard;
     let mut handler = call.lock().await;
 
     let TrackReadyData {
@@ -327,7 +344,8 @@ pub async fn _queue_track_ready_back(
     // Computed before `metadata` is moved into the track below.
     let preload = preload_from_metadata(Some(&metadata.0));
     let track = new_track(source, Some(metadata.into()), user_id);
-    let _track_handle = enqueue(&mut handler, track, preload);
+    let track_handle = enqueue(&mut handler, track, preload);
+    record_add(guard, &handler, &[track_handle], AddAt::Back);
     let new_q = handler.queue().current_queue();
     drop(handler);
 
@@ -358,11 +376,7 @@ pub async fn queue_track_front(
     ctx.send_track_metadata_write_msg(&ready_track);
     let guard = ctx
         .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
+        .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
         .await?;
     let q = queue_track_ready_front(&guard, call, ready_track).await?;
     Ok(q)
@@ -408,11 +422,7 @@ pub async fn queue_track_back(
             ctx.send_track_metadata_write_msg(&ready_track);
             let guard = ctx
                 .data()
-                .lock_queue(
-                    guild_id,
-                    PlaybackOwner::Free,
-                    crate::music::audit::Actor::from_ctx(&ctx),
-                )
+                .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
                 .await?;
             return _queue_track_ready_back(&guard, call, ready_track).await;
         },
@@ -428,11 +438,7 @@ pub async fn queue_track_back(
     //let queue = queue_track_ready_back(call, ready_track).await;
     let guard = ctx
         .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
+        .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
         .await?;
     let queue =
         queue_resolved_track_back(&guard, call, resolved, http_utils::get_client_old().clone())
@@ -578,11 +584,7 @@ pub async fn queue_resolved_list_back(
     // slow operation. See #333.
     let guard = ctx
         .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
+        .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
         .await?;
     enqueue_resolved_tracks_back(&guard, &call, tracks, client.clone()).await?;
     let snapshot = call.lock().await.queue().current_queue();
@@ -603,11 +605,7 @@ pub async fn queue_resolved_list_back(
         // message edit below. See #333.
         let guard = ctx
             .data()
-            .lock_queue(
-                guild_id,
-                PlaybackOwner::Free,
-                crate::music::audit::Actor::from_ctx(&ctx),
-            )
+            .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
             .await?;
         let inserted =
             enqueue_resolved_tracks_back(&guard, &call, chunk.to_vec(), client.clone()).await?;
@@ -710,11 +708,7 @@ pub async fn queue_vec_query_type(
 
     let guard = ctx
         .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
+        .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
         .await?;
     let snapshot = enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await?;
     drop(guard);
@@ -758,11 +752,7 @@ pub async fn queue_query_list_offset(
 
     let guard = ctx
         .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
+        .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
         .await?;
     let queue_size = {
         let handler = call.lock().await;
@@ -792,6 +782,7 @@ pub async fn queue_query_list_offset(
     let client = http_utils::get_client_old().clone();
     let cur_q = {
         let mut handler = call.lock().await;
+        let mut queued = Vec::new();
         for (idx, resolved) in tracks.into_iter().enumerate() {
             let track = match build_track(&resolved, &client) {
                 Ok(track) => track,
@@ -800,13 +791,14 @@ pub async fn queue_query_list_offset(
                     continue;
                 },
             };
-            let _ = enqueue(&mut handler, track, preload_time(&resolved));
+            queued.push(enqueue(&mut handler, track, preload_time(&resolved)));
             handler.queue().modify_queue(|q| {
                 if let Some(back) = q.pop_back() {
                     q.insert((idx + offset).min(q.len()), back);
                 }
             });
         }
+        record_add(&guard, &handler, &queued, AddAt::Index(offset));
         handler.queue().current_queue()
     };
     drop(guard);
@@ -822,13 +814,18 @@ pub async fn queue_query_list_offset(
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
 pub fn clear_from(guard: &QueueGuard, handler: &Call, from: usize) {
-    let _ = guard;
-    handler.queue().modify_queue(|v| {
+    let removed = handler.queue().modify_queue(|v| {
+        let mut removed = 0;
         v.drain(from..).for_each(|x| {
             let _ = x.stop();
             drop(x);
+            removed += 1;
         });
+        removed
     });
+    if removed > 0 {
+        guard.record(handler.current_channel(), Action::Clear { removed });
+    }
 }
 
 /// Drop `count` tracks after the currently-playing one. Used by `/skip`.
@@ -837,11 +834,16 @@ pub fn clear_from(guard: &QueueGuard, handler: &Call, from: usize) {
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
 pub fn drain_after_current(guard: &QueueGuard, handler: &Call, count: usize) {
-    let _ = guard;
-    handler.queue().modify_queue(|v| {
+    let removed = handler.queue().modify_queue(|v| {
         let end = (1 + count).min(v.len());
-        v.drain(1..end);
+        if end <= 1 {
+            return 0;
+        }
+        v.drain(1..end).count()
     });
+    if removed > 0 {
+        guard.record(handler.current_channel(), Action::Clear { removed });
+    }
 }
 
 /// Reorder the queue behind the currently-playing track. Used by `/shuffle`.
@@ -850,11 +852,19 @@ pub fn drain_after_current(guard: &QueueGuard, handler: &Call, count: usize) {
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
 pub fn shuffle_behind_current(guard: &QueueGuard, handler: &Call) {
-    let _ = guard;
-    handler.queue().modify_queue(|queue| {
+    let count = handler.queue().modify_queue(|queue| {
+        // Fewer than two upcoming tracks cannot be reordered.
+        let upcoming = queue.len().saturating_sub(1);
+        if upcoming < 2 {
+            return 0;
+        }
         // skip the first track on queue because it's being played
-        fisher_yates(queue.make_contiguous()[1..].as_mut(), &mut rand::rng())
+        fisher_yates(queue.make_contiguous()[1..].as_mut(), &mut rand::rng());
+        upcoming
     });
+    if count >= 2 {
+        guard.record(handler.current_channel(), Action::Shuffle { count });
+    }
 }
 
 /// Move a track from one queue index to another. Used by `/movesong`.
@@ -863,12 +873,24 @@ pub fn shuffle_behind_current(guard: &QueueGuard, handler: &Call) {
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
 pub fn move_track(guard: &QueueGuard, handler: &Call, at: usize, to: usize) {
-    let _ = guard;
-    handler.queue().modify_queue(|queue| {
+    if at == to {
+        return;
+    }
+    let track = handler.queue().modify_queue(|queue| {
         // The caller verifies both indices are in range before calling.
         let song = queue.remove(at).expect("index out of bounds");
+        let moved = track_ref(&song.handle());
         queue.insert(to, song);
+        moved
     });
+    guard.record(
+        handler.current_channel(),
+        Action::Move {
+            track,
+            from: at,
+            to,
+        },
+    );
 }
 
 /// Move a track, named by its id, to a position among the upcoming tracks.
@@ -889,8 +911,7 @@ pub fn move_track_by_id(
     to_upcoming: usize,
 ) -> Result<usize, crate::music::remote::MoveRefused> {
     use crate::music::remote::MoveRefused;
-    let _ = guard;
-    handler.queue().modify_queue(|queue| {
+    let (at, to, track) = handler.queue().modify_queue(|queue| {
         let at = queue
             .iter()
             .position(|q| q.uuid() == id)
@@ -901,9 +922,21 @@ pub fn move_track_by_id(
         // `at >= 1` means at least two tracks, so the range is never empty.
         let to = to_upcoming.saturating_add(1).clamp(1, queue.len() - 1);
         let track = queue.remove(at).expect("the position came from this queue");
+        let moved = track_ref(&track.handle());
         queue.insert(to, track);
-        Ok(to - 1)
-    })
+        Ok((at, to, moved))
+    })?;
+    if at != to {
+        guard.record(
+            handler.current_channel(),
+            Action::Move {
+                track,
+                from: at - 1,
+                to: to - 1,
+            },
+        );
+    }
+    Ok(to - 1)
 }
 
 /// Remove one track by queue index. Used by `/remove`.
@@ -912,12 +945,16 @@ pub fn move_track_by_id(
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
 pub fn remove_at(guard: &QueueGuard, handler: &Call, index: usize) {
-    let _ = guard;
-    handler.queue().modify_queue(|v| {
-        if let Some(track) = v.remove(index) {
+    let removed = handler.queue().modify_queue(|v| {
+        v.remove(index).map(|track| {
+            let gone = track_ref(&track.handle());
             let _ = track.stop();
-        }
+            gone
+        })
     });
+    if let Some(track) = removed {
+        guard.record(handler.current_channel(), Action::Remove { track, index });
+    }
 }
 
 /// Stop everything in the queue. Used by `/gp start`, `/gp end` and the abort
@@ -939,8 +976,11 @@ pub fn remove_at(guard: &QueueGuard, handler: &Call, index: usize) {
 /// that task until this caller's guard drops -- release it before anything slow
 /// (Discord HTTP, resolution, the database), never after.
 pub fn stop_queue(guard: &QueueGuard, handler: &Call) {
-    let _ = guard;
+    let removed = handler.queue().len();
     handler.queue().stop();
+    if removed > 0 {
+        guard.record(handler.current_channel(), Action::Stop { removed });
+    }
 }
 
 /// Pause the queue. Used by `/pause` and by autopause in the global track-end
@@ -954,8 +994,9 @@ pub fn stop_queue(guard: &QueueGuard, handler: &Call) {
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
 pub fn pause_queue(guard: &QueueGuard, handler: &Call) -> TrackResult<()> {
-    let _ = guard;
-    handler.queue().pause()
+    handler.queue().pause()?;
+    guard.record(handler.current_channel(), Action::Pause);
+    Ok(())
 }
 
 /// Resume the queue. Used by `/resume`.
@@ -968,8 +1009,9 @@ pub fn pause_queue(guard: &QueueGuard, handler: &Call) -> TrackResult<()> {
 /// user could still land on a running `/gp` round. The guard is what closes it;
 /// the blocklist entry added alongside only makes the refusal arrive earlier.
 pub fn resume_queue(guard: &QueueGuard, handler: &Call) -> TrackResult<()> {
-    let _ = guard;
-    handler.queue().resume()
+    handler.queue().resume()?;
+    guard.record(handler.current_channel(), Action::Resume);
+    Ok(())
 }
 
 /// Enqueue an already-built [`QueuedTrack`] at the back of the queue, returning
@@ -992,9 +1034,10 @@ pub async fn enqueue_track_back(
     track: QueuedTrack,
     preload: Option<Duration>,
 ) -> TrackHandle {
-    let _ = guard;
     let mut handler = call.lock().await;
-    enqueue(&mut handler, track, preload)
+    let handle = enqueue(&mut handler, track, preload);
+    record_add(guard, &handler, std::slice::from_ref(&handle), AddAt::Back);
+    handle
 }
 
 /// Enqueue an already-resolved songbird [`Input`](SongbirdInput) at the back of
@@ -1018,9 +1061,45 @@ pub async fn enqueue_input_back(
     metadata: Option<AuxMetadata>,
     preload: Option<Duration>,
 ) -> TrackHandle {
-    let _ = guard;
     let mut handler = call.lock().await;
-    enqueue(&mut handler, new_track(source, metadata, None), preload)
+    let handle = enqueue(&mut handler, new_track(source, metadata, None), preload);
+    record_add(guard, &handler, std::slice::from_ref(&handle), AddAt::Back);
+    handle
+}
+
+/// Do the actual skipping of the top track.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
+/// error message rather than a corrupted `/gp` round.
+#[cfg(not(tarpaulin_include))]
+pub async fn force_skip_top_track(
+    guard: &QueueGuard,
+    handler: &MutexGuard<'_, Call>,
+) -> Result<Vec<TrackHandle>, CrackedError> {
+    // this is an odd sequence of commands to ensure the queue is properly updated
+    // apparently, skipping/stopping a track takes a while to remove it from the queue
+    // also, manually removing tracks doesn't trigger the next track to play
+    // so first, stop the top song, manually remove it and then resume playback
+    // #480: the caller saw something playing, but a track that ends on its own
+    // in between empties the queue first. Nothing left to stop is already
+    // skipped; everything below is safe on an empty queue.
+    let skipped = handler.queue().current().map(|track| {
+        // Named before the stop and the dequeue: it is the track that was playing.
+        let named = track_ref(&track);
+        track.stop().ok();
+        named
+    });
+    let _ = handler.queue().dequeue(0);
+    handler.queue().resume().ok();
+    if let Some(track) = skipped {
+        guard.record(
+            handler.current_channel(),
+            Action::Skip { track: Some(track) },
+        );
+    }
+
+    Ok(handler.queue().current_queue())
 }
 
 /// Shuffle `values` in place using the Fisher-Yates algorithm.
@@ -1137,6 +1216,7 @@ mod test {
     use crack_types::to_fixed;
 
     use super::*;
+    use crate::music::audit::{AuditEvent, BotReason, TrackRef};
     use crate::utils::{get_requesting_user, get_track_handle_metadata};
     use crate::{Data, DataInner};
     use serenity::all::GuildId;
@@ -1156,17 +1236,24 @@ mod test {
         }
     }
 
-    async fn queue_of(n: usize) -> (Data, Arc<Mutex<Call>>, Vec<uuid::Uuid>) {
-        let data = Data(Arc::new(DataInner::default()));
+    async fn queue_of(
+        n: usize,
+    ) -> (
+        Data,
+        Arc<Mutex<Call>>,
+        Vec<uuid::Uuid>,
+        tokio::sync::mpsc::Receiver<AuditEvent>,
+    ) {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(256);
+        let data = Data(Arc::new(DataInner {
+            audit_tx: Some(tx),
+            ..Default::default()
+        }));
         let call = offline_call();
         let mut ids = Vec::new();
         {
             let guard = data
-                .lock_queue(
-                    GUILD,
-                    PlaybackOwner::Free,
-                    crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
-                )
+                .lock_queue(GUILD, PlaybackOwner::Free, actor())
                 .await
                 .unwrap();
             for i in 0..n {
@@ -1182,7 +1269,182 @@ mod test {
                 ids.push(h.uuid());
             }
         }
-        (data, call, ids)
+        while rx.try_recv().is_ok() {}
+        (data, call, ids, rx)
+    }
+
+    fn actor() -> Actor {
+        Actor::bot(BotReason::Autopause)
+    }
+
+    fn next(rx: &mut tokio::sync::mpsc::Receiver<AuditEvent>) -> Action {
+        rx.try_recv().expect("one record").action
+    }
+
+    fn t(i: usize) -> TrackRef {
+        TrackRef {
+            title: Some(format!("t{i}")),
+            url: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn each_primitive_records_exactly_what_it_did() {
+        let (data, call, ids, mut rx) = queue_of(5).await;
+        let guard = data
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
+            .await
+            .unwrap();
+        {
+            let h = call.lock().await;
+            move_track(&guard, &h, 3, 1);
+            assert_eq!(
+                next(&mut rx),
+                Action::Move {
+                    track: t(3),
+                    from: 3,
+                    to: 1
+                }
+            );
+            remove_at(&guard, &h, 1);
+            assert_eq!(
+                next(&mut rx),
+                Action::Remove {
+                    track: t(3),
+                    index: 1
+                }
+            );
+            shuffle_behind_current(&guard, &h);
+            assert_eq!(next(&mut rx), Action::Shuffle { count: 3 });
+            pause_queue(&guard, &h).ok();
+            assert_eq!(next(&mut rx), Action::Pause);
+            resume_queue(&guard, &h).ok();
+            assert_eq!(next(&mut rx), Action::Resume);
+            clear_from(&guard, &h, 2);
+            assert_eq!(next(&mut rx), Action::Clear { removed: 2 });
+            stop_queue(&guard, &h);
+            assert_eq!(next(&mut rx), Action::Stop { removed: 2 });
+        }
+        let _ = ids;
+        assert!(rx.try_recv().is_err(), "nothing extra");
+    }
+
+    #[tokio::test]
+    async fn draining_after_the_current_track_records_a_clear() {
+        let (data, call, _ids, mut rx) = queue_of(4).await;
+        let guard = data
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
+            .await
+            .unwrap();
+        let h = call.lock().await;
+        drain_after_current(&guard, &h, 2);
+        assert_eq!(next(&mut rx), Action::Clear { removed: 2 });
+    }
+
+    #[tokio::test]
+    async fn a_dashboard_move_records_upcoming_positions() {
+        let (data, call, ids, mut rx) = queue_of(4).await;
+        assert_eq!(move_in(&data, &call, ids[3], 0).await, Ok(0));
+        assert_eq!(
+            next(&mut rx),
+            Action::Move {
+                track: t(3),
+                from: 2,
+                to: 0
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn a_batch_add_is_one_record_listing_every_track() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        let data = Data(Arc::new(DataInner {
+            audit_tx: Some(tx),
+            ..Default::default()
+        }));
+        let call = offline_call();
+        let guard = data
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
+            .await
+            .unwrap();
+        let tracks = (0..3)
+            .map(|i| {
+                ResolvedTrack::new(QueryType::VideoLink(
+                    "http://127.0.0.1:9/unreachable".to_owned(),
+                ))
+                .with_metadata(titled(&format!("t{i}")))
+            })
+            .collect::<Vec<_>>();
+        let inserted = enqueue_resolved_tracks_back(&guard, &call, tracks, reqwest::Client::new())
+            .await
+            .expect("queued");
+        assert_eq!(inserted.handles.len(), 3);
+        assert_eq!(
+            next(&mut rx),
+            Action::Add {
+                tracks: vec![t(0), t(1), t(2)],
+                at: AddAt::Back
+            }
+        );
+        assert!(rx.try_recv().is_err(), "one record, not three");
+    }
+
+    #[tokio::test]
+    async fn no_ops_record_nothing() {
+        let (data, call, _ids, mut rx) = queue_of(1).await;
+        let guard = data
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
+            .await
+            .unwrap();
+        {
+            let h = call.lock().await;
+            move_track(&guard, &h, 0, 0);
+            clear_from(&guard, &h, 1);
+            drain_after_current(&guard, &h, 3);
+            shuffle_behind_current(&guard, &h);
+            remove_at(&guard, &h, 7);
+        }
+        assert!(rx.try_recv().is_err());
+        let empty = offline_call();
+        let h = empty.lock().await;
+        stop_queue(&guard, &h);
+        force_skip_top_track(&guard, &h).await.unwrap();
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn skipping_records_the_track_that_was_playing() {
+        let (data, call, _ids, mut rx) = queue_of(2).await;
+        let guard = data
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
+            .await
+            .unwrap();
+        let h = call.lock().await;
+        force_skip_top_track(&guard, &h).await.unwrap();
+        assert_eq!(next(&mut rx), Action::Skip { track: Some(t(0)) });
+    }
+
+    /// #480. Every caller checks that something is playing before calling
+    /// this, but a track that ends on its own in between empties the queue
+    /// first. That race leaves exactly this state -- an empty queue -- so it is
+    /// reproduced here without any timing. It used to panic a tokio worker on
+    /// `current().unwrap()`, which the user never sees and the log records only
+    /// as a backtrace.
+    #[tokio::test]
+    async fn skipping_an_already_empty_queue_is_a_no_op_not_a_panic() {
+        let data = Data(Arc::new(DataInner::default()));
+        let guard = data
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
+            .await
+            .expect("an uncontended guild grants the lease");
+        let call = offline_call();
+        let handler = call.lock().await;
+
+        let remaining = force_skip_top_track(&guard, &handler)
+            .await
+            .expect("an empty queue is already skipped");
+
+        assert!(remaining.is_empty());
     }
 
     async fn order(call: &Arc<Mutex<Call>>) -> Vec<uuid::Uuid> {
@@ -1202,11 +1464,7 @@ mod test {
         to: usize,
     ) -> Result<usize, crate::music::remote::MoveRefused> {
         let guard = data
-            .lock_queue(
-                GUILD,
-                PlaybackOwner::Free,
-                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
-            )
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
             .await
             .unwrap();
         let handler = call.lock().await;
@@ -1215,21 +1473,21 @@ mod test {
 
     #[tokio::test]
     async fn a_track_moves_by_id_to_an_upcoming_position() {
-        let (data, call, ids) = queue_of(4).await;
+        let (data, call, ids, _rx) = queue_of(4).await;
         assert_eq!(move_in(&data, &call, ids[3], 0).await, Ok(0));
         assert_eq!(order(&call).await, vec![ids[0], ids[3], ids[1], ids[2]]);
     }
 
     #[tokio::test]
     async fn a_target_past_the_end_lands_last() {
-        let (data, call, ids) = queue_of(4).await;
+        let (data, call, ids, _rx) = queue_of(4).await;
         assert_eq!(move_in(&data, &call, ids[1], 99).await, Ok(2));
         assert_eq!(order(&call).await, vec![ids[0], ids[2], ids[3], ids[1]]);
     }
 
     #[tokio::test]
     async fn a_target_of_usize_max_lands_last() {
-        let (data, call, ids) = queue_of(4).await;
+        let (data, call, ids, _rx) = queue_of(4).await;
         assert_eq!(move_in(&data, &call, ids[1], usize::MAX).await, Ok(2));
         assert_eq!(order(&call).await, vec![ids[0], ids[2], ids[3], ids[1]]);
     }
@@ -1237,7 +1495,7 @@ mod test {
     #[tokio::test]
     async fn the_playing_track_does_not_move() {
         use crate::music::remote::MoveRefused;
-        let (data, call, ids) = queue_of(3).await;
+        let (data, call, ids, _rx) = queue_of(3).await;
         assert_eq!(
             move_in(&data, &call, ids[0], 1).await,
             Err(MoveRefused::NowPlaying)
@@ -1248,7 +1506,7 @@ mod test {
     #[tokio::test]
     async fn an_id_no_longer_queued_moves_nothing() {
         use crate::music::remote::MoveRefused;
-        let (data, call, ids) = queue_of(3).await;
+        let (data, call, ids, _rx) = queue_of(3).await;
         let gone = uuid::Uuid::from_u128(42);
         assert_eq!(
             move_in(&data, &call, gone, 0).await,
@@ -1263,11 +1521,7 @@ mod test {
         let data = Data(Arc::new(DataInner::default()));
         let call = offline_call();
         let guard = data
-            .lock_queue(
-                GUILD,
-                PlaybackOwner::Free,
-                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
-            )
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
             .await
             .unwrap();
         let auto = enqueue_input_back(
@@ -1312,7 +1566,7 @@ mod test {
     #[tokio::test]
     async fn an_offline_call_with_tracks_is_idle_not_playing() {
         use crate::music::remote::{state_of_call, QueueState};
-        let (_data, call, _ids) = queue_of(2).await;
+        let (_data, call, _ids, _rx) = queue_of(2).await;
         // No voice connection means no channel, and a dashboard cannot say
         // who may control a queue with no channel.
         assert!(matches!(state_of_call(&call).await, QueueState::Idle));
@@ -1325,11 +1579,7 @@ mod test {
     async fn a_track_queued_next_carries_what_queue_and_nowplaying_read() {
         let data = Data(Arc::new(DataInner::default()));
         let guard = data
-            .lock_queue(
-                GUILD,
-                PlaybackOwner::Free,
-                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
-            )
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
             .await
             .unwrap();
         let call = offline_call();
@@ -1357,11 +1607,7 @@ mod test {
     async fn an_autoplayed_track_carries_what_queue_and_nowplaying_read() {
         let data = Data(Arc::new(DataInner::default()));
         let guard = data
-            .lock_queue(
-                GUILD,
-                PlaybackOwner::Free,
-                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
-            )
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
             .await
             .unwrap();
         let call = offline_call();
@@ -1407,11 +1653,7 @@ mod test {
 
         let data = Data(Arc::new(DataInner::default()));
         let guard = data
-            .lock_queue(
-                GUILD,
-                PlaybackOwner::Free,
-                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
-            )
+            .lock_queue(GUILD, PlaybackOwner::Free, actor())
             .await
             .unwrap();
         let call = offline_call();
