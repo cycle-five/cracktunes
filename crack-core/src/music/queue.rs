@@ -288,6 +288,8 @@ fn record_add(guard: &QueueGuard, handler: &Call, handles: &[TrackHandle], at: A
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub async fn queue_track_ready_front(
     guard: &QueueGuard,
     call: &Arc<Mutex<Call>>,
@@ -464,6 +466,8 @@ pub async fn queue_track_back(
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub async fn _append_queue(
     guard: &QueueGuard,
     call: Arc<Mutex<Call>>,
@@ -727,6 +731,8 @@ use crate::http_utils;
 /// insert -- it used to be read before resolving and acted on afterward,
 /// against whatever the queue had become in between.
 #[cfg(not(tarpaulin_include))]
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub async fn queue_query_list_offset(
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
@@ -813,6 +819,8 @@ pub async fn queue_query_list_offset(
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub fn clear_from(guard: &QueueGuard, handler: &Call, from: usize) {
     let removed = handler.queue().modify_queue(|v| {
         let mut removed = 0;
@@ -833,6 +841,8 @@ pub fn clear_from(guard: &QueueGuard, handler: &Call, from: usize) {
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub fn drain_after_current(guard: &QueueGuard, handler: &Call, count: usize) {
     let removed = handler.queue().modify_queue(|v| {
         let end = (1 + count).min(v.len());
@@ -851,6 +861,8 @@ pub fn drain_after_current(guard: &QueueGuard, handler: &Call, count: usize) {
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub fn shuffle_behind_current(guard: &QueueGuard, handler: &Call) {
     let count = handler.queue().modify_queue(|queue| {
         // Fewer than two upcoming tracks cannot be reordered.
@@ -872,6 +884,8 @@ pub fn shuffle_behind_current(guard: &QueueGuard, handler: &Call) {
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub fn move_track(guard: &QueueGuard, handler: &Call, at: usize, to: usize) {
     if at == to {
         return;
@@ -904,6 +918,8 @@ pub fn move_track(guard: &QueueGuard, handler: &Call, at: usize, to: usize) {
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub fn move_track_by_id(
     guard: &QueueGuard,
     handler: &Call,
@@ -944,6 +960,8 @@ pub fn move_track_by_id(
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub fn remove_at(guard: &QueueGuard, handler: &Call, index: usize) {
     let removed = handler.queue().modify_queue(|v| {
         v.remove(index).map(|track| {
@@ -975,6 +993,8 @@ pub fn remove_at(guard: &QueueGuard, handler: &Call, index: usize) {
 /// task dispatches handlers inline. So a handler that awaits `lock_queue` parks
 /// that task until this caller's guard drops -- release it before anything slow
 /// (Discord HTTP, resolution, the database), never after.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub fn stop_queue(guard: &QueueGuard, handler: &Call) {
     let removed = handler.queue().len();
     handler.queue().stop();
@@ -993,6 +1013,8 @@ pub fn stop_queue(guard: &QueueGuard, handler: &Call) {
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub fn pause_queue(guard: &QueueGuard, handler: &Call) -> TrackResult<()> {
     handler.queue().pause()?;
     guard.record(handler.current_channel(), Action::Pause);
@@ -1008,6 +1030,8 @@ pub fn pause_queue(guard: &QueueGuard, handler: &Call) -> TrackResult<()> {
 /// `GP_BLOCKED_COMMANDS` nor the funnel, so it was the one queue mutation a
 /// user could still land on a running `/gp` round. The guard is what closes it;
 /// the blocklist entry added alongside only makes the refusal arrive earlier.
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub fn resume_queue(guard: &QueueGuard, handler: &Call) -> TrackResult<()> {
     handler.queue().resume()?;
     guard.record(handler.current_channel(), Action::Resume);
@@ -1073,6 +1097,8 @@ pub async fn enqueue_input_back(
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
 #[cfg(not(tarpaulin_include))]
+// An audited primitive: records below. See clippy.toml.
+#[allow(clippy::disallowed_methods)]
 pub async fn force_skip_top_track(
     guard: &QueueGuard,
     handler: &MutexGuard<'_, Call>,
