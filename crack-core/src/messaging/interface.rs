@@ -517,7 +517,14 @@ mod test {
 
         let guild = GuildId::new(1);
         let data = Data(std::sync::Arc::new(DataInner::default()));
-        let guard = data.lock_queue(guild, PlaybackOwner::Free).await.unwrap();
+        let guard = data
+            .lock_queue(
+                guild,
+                PlaybackOwner::Free,
+                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+            )
+            .await
+            .unwrap();
         let call = std::sync::Arc::new(tokio::sync::Mutex::new(songbird::Call::standalone(
             guild,
             UserId::new(2),

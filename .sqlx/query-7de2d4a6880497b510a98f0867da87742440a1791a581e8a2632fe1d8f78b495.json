@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT guild_id, actor_user_id, origin_channel_id, source, command, action,\n                      detail AS \"detail!: sqlx::types::Json<Action>\"\n               FROM queue_audit",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "guild_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "actor_user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "origin_channel_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "source",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "command",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "action",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "detail!: sqlx::types::Json<Action>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "7de2d4a6880497b510a98f0867da87742440a1791a581e8a2632fe1d8f78b495"
+}

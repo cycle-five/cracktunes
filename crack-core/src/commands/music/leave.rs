@@ -36,7 +36,14 @@ pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
     let manager = ctx.data().songbird.clone();
     // check if we're actually in a call
     let mut left = false;
-    let crack_msg = match manager.remove(guild_id).await {
+    let crack_msg = match crate::music::disconnect::disconnect(
+        &ctx.data(),
+        &manager,
+        guild_id,
+        crate::music::audit::Actor::from_ctx(&ctx),
+    )
+    .await
+    {
         Ok(()) => {
             tracing::info!("Driver successfully removed.");
             left = true;

@@ -29,6 +29,8 @@ pub struct FakeBackend {
     pub view_after_move: Mutex<Option<QueueView>>,
     /// Every move the routes asked for: (guild, track, to).
     pub moves: Mutex<Vec<(GuildId, Uuid, usize)>>,
+    /// The user the last move was made for.
+    pub mover: Mutex<Option<UserId>>,
     pub guilds: Vec<GuildEntry>,
     /// How many times the routes and the hub read presence and the view.
     pub presence_calls: AtomicUsize,
@@ -50,6 +52,7 @@ impl FakeBackend {
             move_result: Mutex::new(Ok(0)),
             view_after_move: Mutex::new(None),
             moves: Mutex::new(Vec::new()),
+            mover: Mutex::new(None),
             presence_calls: AtomicUsize::new(0),
             view_calls: AtomicUsize::new(0),
             presence_hangs: AtomicBool::new(false),
@@ -59,6 +62,10 @@ impl FakeBackend {
                 channel: Some("Music".into()),
             }],
         })
+    }
+
+    pub fn last_mover(&self) -> Option<UserId> {
+        *self.mover.lock().unwrap()
     }
 
     pub fn move_count(&self) -> usize {
@@ -86,7 +93,14 @@ impl Backend for FakeBackend {
         }
     }
 
-    async fn move_track(&self, g: GuildId, id: Uuid, to: usize) -> Result<usize, MoveRefused> {
+    async fn move_track(
+        &self,
+        user: UserId,
+        g: GuildId,
+        id: Uuid,
+        to: usize,
+    ) -> Result<usize, MoveRefused> {
+        *self.mover.lock().unwrap() = Some(user);
         self.moves.lock().unwrap().push((g, id, to));
         // A real move takes a moment (the queue lease, the call lock): long
         // enough for anything the routes set going early to run first.

@@ -68,7 +68,14 @@ impl EventHandler for IdleHandler {
             && self.limit > 0
             && self.count.fetch_add(60, Ordering::Relaxed) >= self.limit
         {
-            match manager.remove(self.guild_id).await {
+            match crate::music::disconnect::disconnect(
+                &data,
+                manager,
+                self.guild_id,
+                crate::music::audit::Actor::bot(crate::music::audit::BotReason::IdleTimeout),
+            )
+            .await
+            {
                 Ok(_) => {
                     crate::messaging::status::show_finished(
                         &data,

@@ -1,12 +1,9 @@
 use crate::{
-    commands::{
-        cmd_check_music,
-        music::{create_skip_response, force_skip_top_track},
-    },
+    commands::{cmd_check_music, music::create_skip_response},
     connection::get_voice_channel_for_user,
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    music::PlaybackOwner,
+    music::{force_skip_top_track, PlaybackOwner},
     poise_ext::{ContextExt, PoiseContextExt},
     Context, Error,
 };
@@ -60,7 +57,14 @@ async fn voteskip_internal(ctx: Context<'_>) -> Result<(), Error> {
     // Ordinary music commands mutate as `Free`; a guild a game owns refuses
     // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
     // more kindly. This one cannot be forgotten.
-    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+    let guard = ctx
+        .data()
+        .lock_queue(
+            guild_id,
+            PlaybackOwner::Free,
+            crate::music::audit::Actor::from_ctx(&ctx),
+        )
+        .await?;
     let handler = call.lock().await;
     let queue = handler.queue();
 

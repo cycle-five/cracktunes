@@ -5,6 +5,7 @@
 //! `Songbird::get`, no `TrackHandle::data`). crack-web only sees the plain
 //! types below.
 
+use crate::music::audit::Actor;
 use crate::{
     commands::music_utils::connected_call,
     handlers::track_end::update_queue_messages,
@@ -163,12 +164,13 @@ pub async fn move_by_id(
     data: Arc<Data>,
     http: Arc<Http>,
     guild_id: GuildId,
+    mover: UserId,
     id: Uuid,
     to_upcoming: usize,
 ) -> Result<usize, MoveRefused> {
     // The lease first: a game refuses at once, before the call is touched.
     let guard = data
-        .lock_queue(guild_id, PlaybackOwner::Free)
+        .lock_queue(guild_id, PlaybackOwner::Free, Actor::web(mover))
         .await
         .map_err(|e| match e {
             CrackedError::GameInProgress => MoveRefused::GameInProgress,
@@ -253,14 +255,22 @@ mod test {
         d.claim_playback(G, crate::music::PlaybackOwner::Game)
             .unwrap();
         let http = Arc::new(Http::new(crack_types::get_valid_token()));
-        let got = move_by_id(d, http, G, uuid::Uuid::from_u128(1), 0).await;
+        let got = move_by_id(d, http, G, UserId::new(9), uuid::Uuid::from_u128(1), 0).await;
         assert_eq!(got, Err(MoveRefused::GameInProgress));
     }
 
     #[tokio::test]
     async fn a_move_with_no_call_is_not_playing() {
         let http = Arc::new(Http::new(crack_types::get_valid_token()));
-        let got = move_by_id(Arc::new(data()), http, G, uuid::Uuid::from_u128(1), 0).await;
+        let got = move_by_id(
+            Arc::new(data()),
+            http,
+            G,
+            UserId::new(9),
+            uuid::Uuid::from_u128(1),
+            0,
+        )
+        .await;
         assert_eq!(got, Err(MoveRefused::NotPlaying));
     }
 }

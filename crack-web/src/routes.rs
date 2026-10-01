@@ -191,7 +191,7 @@ async fn move_track<B: Backend>(
         Access::View => return answer(StatusCode::FORBIDDEN, MoveResult::NotAllowed),
         Access::Control => {},
     }
-    match s.backend.move_track(g, req.id, req.to).await {
+    match s.backend.move_track(user, g, req.id, req.to).await {
         Ok(to) => {
             tracing::info!(guild = %g, user = %user, track = %req.id, to, "dashboard move");
             // Open tabs follow through the poller, which reads after this;
@@ -765,6 +765,17 @@ mod test {
             .header(header::ORIGIN, ORIGIN)
             .body(Body::from(MOVE))
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_dashboard_move_is_recorded_as_the_mover() {
+        let fake = controller();
+        let r = crate::routes::router(state(fake.clone()))
+            .oneshot(move_request())
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(fake.last_mover(), Some(serenity::all::UserId::new(9)));
     }
 
     #[tokio::test(start_paused = true)]
