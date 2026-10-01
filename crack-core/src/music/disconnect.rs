@@ -7,11 +7,13 @@ use crate::Data;
 use serenity::all::{ChannelId, GuildId};
 use songbird::Songbird;
 
-/// Record what leaving will discard, then leave. Returns `manager.remove`'s
+/// Leave, then record what it discarded (only if the leave succeeded). Returns `manager.remove`'s
 /// result unchanged, so each caller keeps its own handling.
-// The one audited caller of `Songbird::get` and `Songbird::remove`; see clippy.toml.
-// (Attributes on expressions are not stable, so the allow sits on the fn.)
-#[allow(clippy::disallowed_methods)]
+// (Attributes on expressions are not stable, so the exemption sits on the fn.)
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the one audited caller of `Songbird::get` and `Songbird::remove`; see clippy.toml"
+)]
 pub async fn disconnect(
     data: &Data,
     manager: &Songbird,
@@ -19,26 +21,34 @@ pub async fn disconnect(
     actor: Actor,
 ) -> Result<(), songbird::error::JoinError> {
     // Raw `get` on purpose: what is registered is what `remove` will discard,
-    // connected or not.
-    if let Some(call) = manager.get(guild_id) {
-        let (discarded, voice) = {
+    // connected or not. Read it first; `remove` drops the Call.
+    let seen = match manager.get(guild_id) {
+        Some(call) => {
             let h = call.lock().await;
-            (h.queue().len(), h.current_channel())
-        };
-        if discarded > 0 {
-            emit(
-                data.audit_tx.as_ref(),
-                AuditEvent {
-                    at: chrono::Utc::now(),
-                    guild_id,
-                    voice_channel: voice.map(|c| ChannelId::new(c.get())),
-                    actor,
-                    action: Action::Leave { discarded },
-                },
-            );
+            Some((h.queue().len(), h.current_channel()))
+        },
+        None => None,
+    };
+    let result = manager.remove(guild_id).await;
+    // Only a leave that happened is recorded: a failed one (gateway down) leaves
+    // the Call and its queue in place.
+    if result.is_ok() {
+        if let Some((discarded, voice)) = seen {
+            if discarded > 0 {
+                emit(
+                    data.audit_tx.as_ref(),
+                    AuditEvent {
+                        at: chrono::Utc::now(),
+                        guild_id,
+                        voice_channel: voice.map(|c| ChannelId::new(c.get())),
+                        actor,
+                        action: Action::Leave { discarded },
+                    },
+                );
+            }
         }
     }
-    manager.remove(guild_id).await
+    result
 }
 
 #[cfg(test)]
@@ -96,7 +106,9 @@ mod test {
         let manager = manager();
         register(&data, &manager, 2).await;
         while rx.try_recv().is_ok() {}
-        let _ = disconnect(&data, &manager, G, Actor::bot(BotReason::IdleTimeout)).await;
+        disconnect(&data, &manager, G, Actor::bot(BotReason::IdleTimeout))
+            .await
+            .expect("an unconnected Call leaves Ok");
         let e = rx.try_recv().expect("recorded");
         assert_eq!(e.action, Action::Leave { discarded: 2 });
         assert_eq!(e.actor, Actor::bot(BotReason::IdleTimeout));

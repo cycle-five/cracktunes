@@ -86,5 +86,8 @@ disallowed-methods = [
     { path = "songbird::Songbird::remove", reason = "discards the queue without an audit record; use music::disconnect::disconnect" },
     { path = "songbird::Songbird::leave", reason = "discards the queue without an audit record; use music::disconnect::disconnect" },
     { path = "songbird::Call::leave", reason = "discards the queue without an audit record; use music::disconnect::disconnect" },
+    { path = "songbird::tracks::TrackHandle::stop", reason = "stopping the current track is a skip, made without an audit record; use music::queue::force_skip_top_track" },
+    { path = "songbird::tracks::TrackHandle::pause", reason = "pausing the current track is a pause, made without an audit record; use music::queue::pause_queue" },
+    { path = "songbird::tracks::TrackHandle::play", reason = "playing the current track is a resume, made without an audit record; use music::queue::resume_queue" },
     { path = "songbird::driver::Driver::stop", reason = "stops the whole queue without an audit record; use music::queue::stop_queue" },
 ]

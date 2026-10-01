@@ -2658,6 +2658,10 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
 /// started under, the same way the submission-window timer is, so a timer left
 /// over from an abandoned round cannot cut a later song short. Stands down if the
 /// room has voted the song up to its full length in the meantime.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the game ending its own clip; a track ending is not recorded"
+)]
 fn gp_spawn_clip_timer(
     pb: GpPlayback,
     handle: TrackHandle,
@@ -3112,7 +3116,7 @@ pub async fn gp_start(
         .lock_queue(
             guild_id,
             PlaybackOwner::Game,
-            crate::music::audit::Actor::bot(crate::music::audit::BotReason::Game),
+            crate::music::audit::Actor::from_ctx(&ctx),
         )
         .await?;
     let cleared_queue = {
@@ -3346,7 +3350,7 @@ pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
             .lock_queue(
                 guild_id,
                 PlaybackOwner::Game,
-                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Game),
+                crate::music::audit::Actor::from_ctx(&ctx),
             )
             .await?;
         let handler = call.lock().await;
@@ -3482,7 +3486,7 @@ async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
             .lock_queue(
                 guild_id,
                 PlaybackOwner::Game,
-                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Game),
+                crate::music::audit::Actor::from_ctx(&ctx),
             )
             .await?;
         let handler = call.lock().await;
@@ -3599,7 +3603,7 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
                 .lock_queue(
                     guild_id,
                     PlaybackOwner::Game,
-                    crate::music::audit::Actor::bot(crate::music::audit::BotReason::Game),
+                    crate::music::audit::Actor::from_ctx(&ctx),
                 )
                 .await?;
             let handler = call.lock().await;
