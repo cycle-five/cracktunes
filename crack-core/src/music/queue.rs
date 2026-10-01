@@ -19,12 +19,12 @@ use serenity::{
 };
 use songbird::{
     input::{AuxMetadata, Input as SongbirdInput, YoutubeDl},
-    tracks::{Queued, Track, TrackHandle, TrackResult},
+    tracks::{Track, TrackHandle, TrackResult},
     Call,
 };
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
-use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::{Mutex, MutexGuard};
 
 /// Takes a resolved track and queues it to the back of the queue.
@@ -459,26 +459,6 @@ pub async fn queue_track_back(
         after_queue.duration_since(begin)
     );
     queue
-}
-
-/// Append a list of tracks to the end of the queue.
-///
-/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
-/// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
-/// error message rather than a corrupted `/gp` round.
-// An audited primitive: records below. See clippy.toml.
-#[allow(clippy::disallowed_methods)]
-pub async fn _append_queue(
-    guard: &QueueGuard,
-    call: Arc<Mutex<Call>>,
-    mut tracks: VecDeque<Queued>,
-) -> Result<Vec<TrackHandle>, Error> {
-    let _ = guard;
-    let handler = call.lock().await;
-    handler.queue().modify_queue(|queue| {
-        queue.append(&mut tracks);
-    });
-    Ok(handler.queue().current_queue())
 }
 
 /// How many queries to resolve and enqueue per progress step.
