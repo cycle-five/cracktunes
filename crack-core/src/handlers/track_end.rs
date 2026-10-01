@@ -171,7 +171,11 @@ impl EventHandler for TrackEndHandler {
             // every ordinary guild -- which is to say, always.
             match self
                 .data
-                .lock_queue(self.guild_id, PlaybackOwner::Free)
+                .lock_queue(
+                    self.guild_id,
+                    PlaybackOwner::Free,
+                    crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+                )
                 .await
             {
                 Ok(guard) => {
@@ -401,7 +405,13 @@ async fn enqueue_resolved_autoplay(
     // input, which for a lazy source means spawning yt-dlp under the guard.
     // Resolution above already produced the duration.
     let preload = preload_from_metadata(metadata.as_ref());
-    let guard = data.lock_queue(guild_id, PlaybackOwner::Free).await?;
+    let guard = data
+        .lock_queue(
+            guild_id,
+            PlaybackOwner::Free,
+            crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autoplay),
+        )
+        .await?;
     // The metadata goes into the track as it is built: see `new_track`.
     Ok(enqueue_input_back(&guard, call, source, metadata, preload).await)
 }

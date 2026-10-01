@@ -36,7 +36,14 @@ pub async fn resume_internal(ctx: Context<'_>) -> Result<(), Error> {
     // line existed: it was on neither the blocklist nor the funnel. The
     // blocklist entry added alongside is the friendlier of the two refusals;
     // this is the one that cannot be forgotten.
-    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+    let guard = ctx
+        .data()
+        .lock_queue(
+            guild_id,
+            PlaybackOwner::Free,
+            crate::music::audit::Actor::from_ctx(&ctx),
+        )
+        .await?;
     {
         let handler = call.lock().await;
 

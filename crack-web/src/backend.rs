@@ -21,6 +21,7 @@ pub trait Backend: ViewSource {
     fn presence(&self, g: GuildId, u: UserId) -> impl Future<Output = Presence> + Send;
     fn move_track(
         &self,
+        user: UserId,
         g: GuildId,
         id: Uuid,
         to: usize,

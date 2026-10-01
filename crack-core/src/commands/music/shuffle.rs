@@ -35,7 +35,14 @@ pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result
     // Ordinary music commands mutate as `Free`; a guild a game owns refuses
     // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
     // more kindly. This one cannot be forgotten.
-    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+    let guard = ctx
+        .data()
+        .lock_queue(
+            guild_id,
+            PlaybackOwner::Free,
+            crate::music::audit::Actor::from_ctx(&ctx),
+        )
+        .await?;
     let handler = call.lock().await;
     let len = handler.queue().current_queue().len();
     verify(
@@ -77,7 +84,14 @@ pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     // Ordinary music commands mutate as `Free`; a guild a game owns refuses
     // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
     // more kindly. This one cannot be forgotten.
-    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+    let guard = ctx
+        .data()
+        .lock_queue(
+            guild_id,
+            PlaybackOwner::Free,
+            crate::music::audit::Actor::from_ctx(&ctx),
+        )
+        .await?;
     let handler = call.lock().await;
     shuffle_behind_current(&guard, &handler);
     // The guard is held only for the mutation, not across the Discord round

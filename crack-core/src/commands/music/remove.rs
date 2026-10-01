@@ -59,7 +59,14 @@ pub async fn remove_internal(
     // Ordinary music commands mutate as `Free`; a guild a game owns refuses
     // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
     // more kindly. This one cannot be forgotten.
-    let guard = ctx.data().lock_queue(guild_id, PlaybackOwner::Free).await?;
+    let guard = ctx
+        .data()
+        .lock_queue(
+            guild_id,
+            PlaybackOwner::Free,
+            crate::music::audit::Actor::from_ctx(&ctx),
+        )
+        .await?;
     let handler = call.lock().await;
     let queue = handler.queue().current_queue();
 

@@ -58,8 +58,22 @@ impl Backend for LiveBackend {
         access::presence(&self.deps.cache, &self.deps.http, &self.memo, g, u, bot).await
     }
 
-    async fn move_track(&self, g: GuildId, id: Uuid, to: usize) -> Result<usize, MoveRefused> {
-        remote::move_by_id(self.deps.data.clone(), self.deps.http.clone(), g, id, to).await
+    async fn move_track(
+        &self,
+        user: UserId,
+        g: GuildId,
+        id: Uuid,
+        to: usize,
+    ) -> Result<usize, MoveRefused> {
+        remote::move_by_id(
+            self.deps.data.clone(),
+            self.deps.http.clone(),
+            g,
+            user,
+            id,
+            to,
+        )
+        .await
     }
 
     async fn guilds_for(&self, u: UserId) -> Vec<GuildEntry> {
