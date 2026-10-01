@@ -1,3 +1,4 @@
+pub mod audit;
 pub mod autoplay;
 #[cfg(test)]
 mod autoplay_probe;

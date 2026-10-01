@@ -454,7 +454,7 @@ impl TrackData {
 /// everywhere else: it panics on a track built without `TrackData`, and only
 /// `queue::new_track` guarantees there is some.
 #[allow(clippy::disallowed_methods)]
-fn track_data(track: &TrackHandle) -> Arc<TrackData> {
+pub(crate) fn track_data(track: &TrackHandle) -> Arc<TrackData> {
     track.data::<TrackData>()
 }
 
