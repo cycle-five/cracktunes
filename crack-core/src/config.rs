@@ -298,6 +298,11 @@ pub async fn poise_framework(
         .clone()
         .map(crate::commands::music::gp_persist::spawn_gp_writer);
 
+    // The queue audit log's writer. Without a database, events go to the log.
+    let audit_tx = database_pool
+        .clone()
+        .map(crate::db::queue_audit::spawn_audit_writer);
+
     // Autoplay recommendations, built once for the process (Ruling 42). See
     // `music::autoplay::build_musicreco` for which providers a deployment gets.
     let musicreco = crate::music::autoplay::build_musicreco(
@@ -315,6 +320,7 @@ pub async fn poise_framework(
         database_pool,
         db_channel,
         gp_persist,
+        audit_tx,
         musicreco,
         ..Default::default()
     }));

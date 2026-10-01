@@ -333,6 +333,9 @@ pub struct DataInner {
     /// the game in memory only. See `commands::music::gp_persist`.
     pub gp_persist:
         Option<tokio::sync::mpsc::UnboundedSender<commands::music::gp_persist::GpPersist>>,
+    /// Where queue audit events go (see `music::audit`). `None` without a
+    /// database, and then `emit` logs them instead.
+    pub audit_tx: Option<tokio::sync::mpsc::Sender<crate::music::audit::AuditEvent>>,
     // No arc, but we need a lifetime?
     // What fundemental limitation comes up that must be solved by this?
     pub ct_client: CrackTrackClient<'static>,
@@ -530,6 +533,7 @@ impl Default for DataInner {
             guild_cnt_map: Default::default(),
             gp_games: Default::default(),
             gp_persist: None,
+            audit_tx: None,
             http_client: http_utils::get_client().clone(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
