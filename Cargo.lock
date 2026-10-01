@@ -1045,7 +1045,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1100,7 +1100,7 @@ dependencies = [
 
 [[package]]
 name = "crack-musicreco"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "async-trait",
  "reqwest 0.12.28",
@@ -1127,7 +1127,7 @@ dependencies = [
 
 [[package]]
 name = "crack-sleevenote"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -1140,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "crack-testing"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "crack-types"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "humantime",
  "poise",
@@ -1180,7 +1180,7 @@ dependencies = [
 
 [[package]]
 name = "crack-voting"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "chrono",
  "dbl-rs",
@@ -1195,7 +1195,7 @@ dependencies = [
 
 [[package]]
 name = "crack-web"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "axum",
  "catacombs",
@@ -1217,7 +1217,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.15.1"
+version = "0.16.0"
 dependencies = [
  "config-file",
  "crack-core",
