@@ -184,6 +184,7 @@ pub(crate) async fn connected_call(
 /// entry survived exactly as if nothing had been done -- and the `/gp`
 /// restart-resume did neither.
 pub(crate) async fn join_permitted(
+    data: &crate::Data,
     manager: &songbird::Songbird,
     permit: JoinPermit,
 ) -> Result<Arc<Mutex<Call>>, JoinError> {
@@ -217,7 +218,16 @@ pub(crate) async fn join_permitted(
                 // for -- and `remove` is `leave` then drop, so removing here
                 // would disconnect that live session and bin its queue.
                 if connected_call(manager, guild_id, None).await.is_none() {
-                    if let Err(e) = manager.remove(guild_id).await {
+                    if let Err(e) = crate::music::disconnect::disconnect(
+                        data,
+                        manager,
+                        guild_id,
+                        crate::music::audit::Actor::bot(
+                            crate::music::audit::BotReason::JoinCleanup,
+                        ),
+                    )
+                    .await
+                    {
                         tracing::warn!(
                             "Could not remove the connectionless Call for {guild_id:?}: {e:?}. \
                              A later join may find it and skip the permission gate."
@@ -355,7 +365,7 @@ pub async fn do_join(
         .map_err(|e| -> Error { Box::new(e) })?;
     // See this function's doc comment for why the defer sits exactly here.
     ctx.defer().await?;
-    let call = join_permitted(manager, permit)
+    let call = join_permitted(&ctx.data(), manager, permit)
         .await
         .map_err(|err| -> Error { Box::new(CrackedError::JoinChannelError(err)) })?;
     set_global_handlers(ctx, call.clone(), guild_id, channel_id.widen()).await;

@@ -325,7 +325,14 @@ impl SerenityHandler {
         // the ordinary case for a disconnect we were never party to. The
         // `manager.get` guard that used to stand in for this test is gone --
         // it asked songbird the same question twice.
-        if let Err(e) = manager.remove(guild_id).await {
+        if let Err(e) = crate::music::disconnect::disconnect(
+            &self.data,
+            &manager,
+            guild_id,
+            crate::music::audit::Actor::bot(crate::music::audit::BotReason::Kicked),
+        )
+        .await
+        {
             if !matches!(e, songbird::error::JoinError::NoCall) {
                 tracing::warn!(
                     "Could not remove the Call for {guild_id:?} after being disconnected: \

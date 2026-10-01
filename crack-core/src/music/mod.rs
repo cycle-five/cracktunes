@@ -3,6 +3,7 @@ pub mod autoplay;
 #[cfg(test)]
 mod autoplay_probe;
 pub mod context;
+pub mod disconnect;
 pub mod lease;
 pub mod perms;
 pub(crate) mod query;
