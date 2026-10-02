@@ -39,7 +39,9 @@ async fn do_yt_search_internal(
 ) -> Result<ReplyHandle<'_>, CrackedError> {
     use crate::http_utils;
 
-    let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), search_query);
+    // 🔒 `new_search`, never `new`: `new` hands yt-dlp the raw text as a
+    // positional argument, where a leading `-` makes it an option.
+    let mut ytdl = YoutubeDl::new_search(http_utils::get_client_old().clone(), search_query);
     let results = ytdl.search(None).await?;
 
     let embeds = results

@@ -226,13 +226,18 @@ async fn get_webhook(
     warp::post()
         .and(path!("dbl" / "webhook"))
         .and(header(secret))
-        .and(warp::body::content_length_limit(MAX_BODY_BYTES))
-        .and(warp::body::json())
+        .and(webhook_body())
         .and(context)
         .and_then(
             |hook: Webhook, ctx: VotingContext| async move { process_webhook(ctx, hook).await },
         )
         .recover(custom_error)
+}
+
+/// A vote's body: refused past [`MAX_BODY_BYTES`], then parsed as top.gg's
+/// [`Webhook`]. One filter, so the route and its test share the limit.
+fn webhook_body() -> impl Filter<Extract = (Webhook,), Error = Rejection> + Clone {
+    warp::body::content_length_limit(MAX_BODY_BYTES).and(warp::body::json())
 }
 
 /// Get the routes for the server.
@@ -432,10 +437,11 @@ mod test {
 
     #[tokio::test]
     async fn oversized_bodies_are_refused() {
+        // The route's own body filter, so dropping the limit from it fails here.
         let app = warp::post()
-            .and(warp::body::content_length_limit(MAX_BODY_BYTES))
-            .and(warp::body::json())
-            .map(|_: serde_json::Value| warp::reply());
+            .and(webhook_body())
+            .map(|_: Webhook| warp::reply())
+            .recover(custom_error);
         let big = format!("\"{}\"", "a".repeat(MAX_BODY_BYTES as usize + 1));
         let res = warp::test::request()
             .method("POST")

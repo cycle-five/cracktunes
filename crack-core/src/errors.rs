@@ -301,7 +301,7 @@ impl Display for CrackedError {
 /// `/optplay` whose playlist id was `--batch-file=/proc/self/environ` made
 /// yt-dlp read the bot's environment and complain about every line of it, and
 /// this `Display` used to post that complaint -- `DISCORD_TOKEN` included -- to
-/// the channel. The id is validated now (`yt_playlist::canonical_playlist_url`),
+/// the channel. The id is validated now (`crack_types::canonical_youtube_playlist_url`),
 /// but no subprocess output reaches Discord either way: it is logged, and the
 /// user gets [`FAIL_AUDIO_SOURCE`].
 ///

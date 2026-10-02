@@ -716,8 +716,11 @@ impl NewQueryType {
                 let ytdl = YoutubeDl::new(client_old, url.clone());
                 Ok(ytdl.into())
             },
+            // 🔒 `new_search`, never `new`: songbird passes `new`'s string to
+            // yt-dlp as a bare positional argument, so keywords starting with
+            // `-` would be read as an option (see `canonical_youtube_playlist_url`).
             QueryType::Keywords(query) => {
-                let ytdl = YoutubeDl::new(client_old, query.clone());
+                let ytdl = YoutubeDl::new_search(client_old, query.clone());
                 Ok(ytdl.into())
             },
             QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_string()).into()),
