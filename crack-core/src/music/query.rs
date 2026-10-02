@@ -716,8 +716,11 @@ impl NewQueryType {
                 let ytdl = YoutubeDl::new(client_old, url.clone());
                 Ok(ytdl.into())
             },
+            // 🔒 `new_search`, never `new`: songbird passes `new`'s string to
+            // yt-dlp as a bare positional argument, so keywords starting with
+            // `-` would be read as an option (see `canonical_youtube_playlist_url`).
             QueryType::Keywords(query) => {
-                let ytdl = YoutubeDl::new(client_old, query.clone());
+                let ytdl = YoutubeDl::new_search(client_old, query.clone());
                 Ok(ytdl.into())
             },
             QueryType::File(file) => Ok(HttpRequest::new(client_old, file.url.to_string()).into()),
@@ -864,6 +867,8 @@ async fn download_file_ytdlp_mp3(url: &str) -> Result<(Output, AuxMetadata), Err
         "mp3",
         "--audio-quality",
         "0",
+        // `--` so the URL can never be read as an option.
+        "--",
         url,
     ];
     let child = Command::new("yt-dlp")
@@ -889,7 +894,9 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
         .aux_metadata()
         .await?;
 
+    // `--` so the URL can never be read as an option.
     let child = Command::new("yt-dlp")
+        .arg("--")
         .arg(url)
         .stdin(Stdio::null())
         .stderr(Stdio::null())
@@ -1011,24 +1018,31 @@ pub async fn query_type_from_url(
                 Some(QueryType::File(file.unwrap()))
             },
             Some("www.youtube.com") => {
-                // Handle youtube playlist
-                let opt_query = url_data
+                let has_list = url_data
                     .query_pairs()
-                    .filter_map(|(key, value)| {
-                        if key == "list" || key == "playlist" {
-                            tracing::warn!(
-                                "{}: {}",
-                                "youtube playlist".blue(),
-                                url.underline().blue()
-                            );
-                            Some(QueryType::PlaylistLink(value.to_string()))
-                        } else {
-                            None
-                        }
-                    })
-                    .next();
-                match opt_query {
-                    Some(query) => Some(query),
+                    .any(|(key, _)| key == "list" || key == "playlist");
+                let has_video = url_data.query_pairs().any(|(key, _)| key == "v");
+                // 🔒 A playlist link is carried on as a URL rebuilt from its
+                // validated id, never as the raw `list=` value. That value used
+                // to be passed along as-is and reach yt-dlp as its first
+                // positional argument, where `list=--batch-file%3D…` made it an
+                // option. See `canonical_youtube_playlist_url`.
+                match crack_types::canonical_youtube_playlist_url(url) {
+                    Some(playlist) => {
+                        tracing::warn!(
+                            "{}: {}",
+                            "youtube playlist".blue(),
+                            playlist.underline().blue()
+                        );
+                        Some(QueryType::PlaylistLink(playlist))
+                    },
+                    // Nothing but a bad `list=` to go on.
+                    None if has_list && !has_video => {
+                        return Err(CrackedError::InvalidPlaylist.into());
+                    },
+                    // A video link, perhaps with a `list=` we don't accept.
+                    // The whole URL goes on, and it starts with `https://`, so
+                    // yt-dlp cannot take it for an option.
                     None => {
                         tracing::warn!("{}: {}", "youtube video".blue(), url.underline().blue());
                         Some(QueryType::VideoLink(url.to_string()))
@@ -1037,6 +1051,13 @@ pub async fn query_type_from_url(
             },
             // For all other domains fall back to yt-dlp.
             Some(other) => {
+                // 🔒 yt-dlp's generic extractor fetches whatever it is handed,
+                // so a link to 127.0.0.1, the LAN or a metadata endpoint is
+                // refused before it gets there.
+                if !crack_types::is_public_http_url(&url_data).await {
+                    tracing::warn!("refusing non-public link: {}", url);
+                    return Err(CrackedError::UrlNotAllowed.into());
+                }
                 tracing::warn!("query_type_from_url: domain: {other}, using yt-dlp");
                 tracing::warn!(
                     "query_type_from_use: {}: {}",

@@ -5,16 +5,27 @@ use std::sync::Arc;
 use std::{convert::Infallible, env};
 use warp::{
     body::BodyDeserializeError,
-    http::{HeaderMap, StatusCode},
+    http::{
+        header::{HeaderName, HeaderValue, AUTHORIZATION},
+        HeaderMap, StatusCode,
+    },
     path, reject, Filter, Rejection, Reply,
 };
 
-const WEBHOOK_SECRET_DEFAULT: &str = "test_secret";
 const DATABASE_URL_DEFAULT: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
 
+/// Largest webhook body accepted. A top.gg vote is well under 1 KiB.
+const MAX_BODY_BYTES: u64 = 16 * 1024;
+
+/// 🔒 Secrets that are published in this repo, and so are no secret at all.
+/// `test_secret` was the built-in fallback *and* the compose default, which
+/// meant a deployment that never set `WEBHOOK_SECRET` accepted forged votes
+/// from anyone who read the README.
+const PLACEHOLDER_SECRETS: &[&str] = &["test_secret", "XXXXXX"];
+
 lazy_static! {
-    static ref WEBHOOK_SECRET: String =
-        env::var("WEBHOOK_SECRET").unwrap_or(WEBHOOK_SECRET_DEFAULT.to_string());
+    static ref WEBHOOK_SECRET: String = check_secret(env::var("WEBHOOK_SECRET").ok())
+        .unwrap_or_else(|why| panic!("refusing to start: {why}"));
     static ref DATABASE_URL: String =
         env::var("DATABASE_URL").unwrap_or(DATABASE_URL_DEFAULT.to_string());
 }
@@ -85,8 +96,38 @@ impl std::fmt::Display for Sqlx {
 
 impl std::error::Error for Sqlx {}
 /// Get the webhook secret from the environment.
+///
+/// # Panics
+/// If `WEBHOOK_SECRET` is unset, blank, or a placeholder: see [`check_secret`].
 fn get_secret() -> &'static str {
     &WEBHOOK_SECRET
+}
+
+/// The webhook secret to require, or why there isn't a usable one. There is no
+/// fallback: without a secret the service does not start, rather than start
+/// with one everybody knows.
+fn check_secret(raw: Option<String>) -> Result<String, &'static str> {
+    let secret = raw.ok_or("WEBHOOK_SECRET is not set")?;
+    if secret.trim().is_empty() {
+        return Err("WEBHOOK_SECRET is empty");
+    }
+    if PLACEHOLDER_SECRETS.contains(&secret.as_str()) {
+        return Err("WEBHOOK_SECRET is a placeholder from this repo; set a real one");
+    }
+    Ok(secret)
+}
+
+/// Compares `given` with `secret` in time that depends only on their lengths,
+/// so response timing says nothing about how much of a guess was right.
+fn secrets_match(given: &[u8], secret: &[u8]) -> bool {
+    if given.len() != secret.len() {
+        return false;
+    }
+    let diff = given
+        .iter()
+        .zip(secret)
+        .fold(0u8, |acc, (a, b)| acc | (a ^ b));
+    std::hint::black_box(diff) == 0
 }
 
 /// Convert the webhook type to a string.
@@ -147,7 +188,7 @@ async fn write_webhook_to_db(ctx: VotingContext, webhook: Webhook) -> Result<(),
 fn header(secret: &str) -> impl Filter<Extract = (), Error = Rejection> + Clone + '_ {
     warp::header::<String>("authorization")
         .and_then(move |val: String| async move {
-            if val == secret {
+            if secrets_match(val.as_bytes(), secret.as_bytes()) {
                 println!("Authorized");
                 Ok(())
             } else {
@@ -185,12 +226,18 @@ async fn get_webhook(
     warp::post()
         .and(path!("dbl" / "webhook"))
         .and(header(secret))
-        .and(warp::body::json())
+        .and(webhook_body())
         .and(context)
         .and_then(
             |hook: Webhook, ctx: VotingContext| async move { process_webhook(ctx, hook).await },
         )
         .recover(custom_error)
+}
+
+/// A vote's body: refused past [`MAX_BODY_BYTES`], then parsed as top.gg's
+/// [`Webhook`]. One filter, so the route and its test share the limit.
+fn webhook_body() -> impl Filter<Extract = (Webhook,), Error = Rejection> + Clone {
+    warp::body::content_length_limit(MAX_BODY_BYTES).and(warp::body::json())
 }
 
 /// Get the routes for the server.
@@ -207,6 +254,12 @@ async fn get_app(
 /// Run the server.
 pub async fn run() {
     //-> Result<(), Box<dyn std::error::Error>> {
+    // Checked before anything else, so a missing secret stops the service with
+    // a clear reason instead of it serving (or waiting on the database) first.
+    if let Err(why) = check_secret(env::var("WEBHOOK_SECRET").ok()) {
+        eprintln!("crack-voting: refusing to start: {why}");
+        std::process::exit(1);
+    }
     let ctx = VotingContext::new().await; //Box::leak(Box::new(VotingContext::new().await));
     let app = get_app(ctx).await;
 
@@ -235,15 +288,21 @@ fn log_headers() -> impl Filter<Extract = (), Error = Infallible> + Copy {
     warp::header::headers_cloned()
         .map(|headers: HeaderMap| {
             for (k, v) in &headers {
-                // Error from `to_str` should be handled properly
-                println!(
-                    "{}: {}",
-                    k,
-                    v.to_str().expect("Failed to print header value")
-                );
+                println!("{}", header_log_line(k, v));
             }
         })
         .untuple_one()
+}
+
+/// One header as it is logged. 🔒 `authorization` carries the webhook secret
+/// itself, so its value is never printed. A value that is not visible ASCII is
+/// logged lossily; `to_str().expect(..)` used to panic the request on one.
+fn header_log_line(name: &HeaderName, value: &HeaderValue) -> String {
+    if name == AUTHORIZATION {
+        format!("{name}: <redacted>")
+    } else {
+        format!("{name}: {}", String::from_utf8_lossy(value.as_bytes()))
+    }
 }
 
 #[cfg(test)]
@@ -320,6 +379,77 @@ mod test {
     //     assert_eq!(res.status(), StatusCode::OK);
     //     Ok(())
     // }
+
+    #[test]
+    fn check_secret_refuses_missing_blank_and_published_secrets() {
+        assert!(check_secret(None).is_err());
+        assert!(check_secret(Some(String::new())).is_err());
+        assert!(check_secret(Some("   ".into())).is_err());
+        assert!(check_secret(Some("test_secret".into())).is_err());
+        assert!(check_secret(Some("XXXXXX".into())).is_err());
+        assert_eq!(
+            check_secret(Some("a-real-secret".into())),
+            Ok("a-real-secret".to_string())
+        );
+    }
+
+    #[test]
+    fn secrets_match_is_exact() {
+        assert!(secrets_match(b"s3cret", b"s3cret"));
+        assert!(!secrets_match(b"s3creT", b"s3cret"));
+        assert!(!secrets_match(b"s3cre", b"s3cret"));
+        assert!(!secrets_match(b"", b"s3cret"));
+    }
+
+    #[test]
+    fn authorization_is_never_logged() {
+        let line = header_log_line(&AUTHORIZATION, &HeaderValue::from_static("s3cret"));
+        assert!(!line.contains("s3cret"), "{line}");
+        let other = HeaderName::from_static("user-agent");
+        assert_eq!(
+            header_log_line(&other, &HeaderValue::from_static("top.gg")),
+            "user-agent: top.gg"
+        );
+        // Not visible ASCII: logged lossily rather than panicking.
+        let odd = HeaderValue::from_bytes(b"caf\xe9").unwrap();
+        assert!(header_log_line(&other, &odd).starts_with("user-agent: caf"));
+    }
+
+    #[tokio::test]
+    async fn header_filter_rejects_a_wrong_secret() {
+        let app = warp::post()
+            .and(header("s3cret"))
+            .map(warp::reply)
+            .recover(custom_error);
+        for (given, want) in [
+            ("s3cret", StatusCode::OK),
+            ("test_secret", StatusCode::UNAUTHORIZED),
+            ("s3cre", StatusCode::UNAUTHORIZED),
+        ] {
+            let res = warp::test::request()
+                .method("POST")
+                .header("authorization", given)
+                .reply(&app)
+                .await;
+            assert_eq!(res.status(), want, "{given}");
+        }
+    }
+
+    #[tokio::test]
+    async fn oversized_bodies_are_refused() {
+        // The route's own body filter, so dropping the limit from it fails here.
+        let app = warp::post()
+            .and(webhook_body())
+            .map(|_: Webhook| warp::reply())
+            .recover(custom_error);
+        let big = format!("\"{}\"", "a".repeat(MAX_BODY_BYTES as usize + 1));
+        let res = warp::test::request()
+            .method("POST")
+            .body(big)
+            .reply(&app)
+            .await;
+        assert_eq!(res.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
 
     #[sqlx::test]
     #[cfg_attr(

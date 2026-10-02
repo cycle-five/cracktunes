@@ -88,6 +88,7 @@ pub fn build_configured_reqwest_client() -> reqwest::Client {
     reqwest::ClientBuilder::new()
         .use_rustls_tls()
         .cookie_store(true)
+        .connect_timeout(std::time::Duration::from_secs(10))
         .build()
         .unwrap_or_else(|_| panic!("{} {}", NEW_FAILED, REQ_CLIENT_STR))
 }
@@ -391,6 +392,12 @@ impl<'a> CrackTrackClient<'a> {
             ..Default::default()
         };
         let search_options = Some(&search_options);
+        // 🔒 Both readers below fetch what they are given, and `url` comes
+        // straight from `/playytplaylist`; only a validated YouTube playlist
+        // link goes further. See `crack_types::canonical_youtube_playlist_url`.
+        let url = crack_types::canonical_youtube_playlist_url(url)
+            .ok_or_else(|| -> Error { "not a YouTube playlist link".into() })?;
+        let url = url.as_str();
         // Read the playlist page ourselves first. `rusty_ytdl` 0.7.4 only knows
         // the retired `playlistVideoRenderer` shape and fails with
         // `PlaylistBodyCannotParsed` against what YouTube serves today; see

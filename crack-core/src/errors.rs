@@ -1,14 +1,15 @@
 use crate::messaging::messages::{
-    EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA,
-    FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND, FAIL_EMPTY_VECTOR, FAIL_GP_ALREADY_RUNNING,
-    FAIL_GP_ALREADY_VOTED, FAIL_GP_ALREADY_VOTED_FULL, FAIL_GP_NOT_A_GAME_PLAYER,
-    FAIL_GP_NOT_A_PLAYER, FAIL_GP_NOT_CLIPS, FAIL_GP_NOT_GUESSABLE, FAIL_GP_NOT_HOST,
-    FAIL_GP_NOT_IN_GAME_VC, FAIL_GP_NOT_PLAYING, FAIL_GP_NO_GAME, FAIL_GP_OWNS_PLAYBACK,
-    FAIL_GP_OWN_SONG, FAIL_GP_OWN_SONG_FULL, FAIL_GP_STALE_ROUND, FAIL_GP_TOO_MANY,
-    FAIL_GP_WINDOW_CLOSED, FAIL_INSERT, FAIL_INVALID_PERMS, FAIL_INVALID_TOPGG_TOKEN,
-    FAIL_MISSING_TEXT_PERMS, FAIL_MISSING_VOICE_PERMS, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED,
-    FAIL_NO_QUERY_PROVIDED, FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION,
-    FAIL_PARSE_TIME, FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE,
+    EMPTY_SEARCH_RESULT, FAIL_ANOTHER_CHANNEL, FAIL_AUDIO_SOURCE,
+    FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA, FAIL_AUTHOR_DISCONNECTED, FAIL_AUTHOR_NOT_FOUND,
+    FAIL_EMPTY_VECTOR, FAIL_GP_ALREADY_RUNNING, FAIL_GP_ALREADY_VOTED, FAIL_GP_ALREADY_VOTED_FULL,
+    FAIL_GP_NOT_A_GAME_PLAYER, FAIL_GP_NOT_A_PLAYER, FAIL_GP_NOT_CLIPS, FAIL_GP_NOT_GUESSABLE,
+    FAIL_GP_NOT_HOST, FAIL_GP_NOT_IN_GAME_VC, FAIL_GP_NOT_PLAYING, FAIL_GP_NO_GAME,
+    FAIL_GP_OWNS_PLAYBACK, FAIL_GP_OWN_SONG, FAIL_GP_OWN_SONG_FULL, FAIL_GP_STALE_ROUND,
+    FAIL_GP_TOO_MANY, FAIL_GP_WINDOW_CLOSED, FAIL_INSERT, FAIL_INVALID_PERMS,
+    FAIL_INVALID_PLAYLIST, FAIL_INVALID_TOPGG_TOKEN, FAIL_MISSING_TEXT_PERMS,
+    FAIL_MISSING_VOICE_PERMS, FAIL_NOTHING_PLAYING, FAIL_NOT_IMPLEMENTED, FAIL_NO_QUERY_PROVIDED,
+    FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
+    FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE, FAIL_URL_NOT_ALLOWED,
     FAIL_WRONG_CHANNEL, GUILD_ONLY, MISSING_PERMS_FIX, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID,
     NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA,
     NO_USER_AUTOPLAY, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
@@ -65,6 +66,7 @@ pub enum CrackedError {
     GuildOnly,
     JoinChannelError(JoinError),
     InvalidIP(&'static str),
+    InvalidPlaylist,
     InvalidTopGGToken,
     InvalidPermissions,
     MissingBotPermissions {
@@ -110,6 +112,7 @@ pub enum CrackedError {
     TrackResolveError(crack_types::TrackResolveError),
     TrackFail(Error),
     UrlParse(url::ParseError),
+    UrlNotAllowed,
     UnauthorizedUser,
     UnimplementedEvent(GenericChannelId, &'static str),
     VideoError(VideoError),
@@ -150,11 +153,11 @@ unsafe impl Sync for CrackedError {}
 impl Display for CrackedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::AudioStream(err) => f.write_str(&format!("{err}")),
+            Self::AudioStream(err) => write_audio_stream(f, err),
             Self::AudioStreamRustyYtdlMetadata => {
                 f.write_str(FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA)
             },
-            Self::AuxMetadataError(err) => f.write_str(&format!("{err}")),
+            Self::AuxMetadataError(err) => write_aux_metadata(f, err),
             Self::AuthorDisconnected(mention) => {
                 f.write_fmt(format_args!("{} {}", FAIL_AUTHOR_DISCONNECTED, mention))
             },
@@ -163,8 +166,10 @@ impl Display for CrackedError {
                 f.write_fmt(format_args!("{} {}", FAIL_ANOTHER_CHANNEL, mention))
             },
             Self::Anyhow(err) => f.write_str(&format!("{err}")),
-            Self::CommandFailed(program, status, output) => f.write_str(&format!(
-                "Command `{program}` failed with status `{status}` and output `{output}`"
+            // 🔒 The captured output stays in `Debug` (the logs) and out of
+            // `Display` (the channel): see `write_audio_stream`.
+            Self::CommandFailed(program, status, _output) => f.write_str(&format!(
+                "Command `{program}` failed with status `{status}`"
             )),
             Self::CommandNotFound(command) => {
                 f.write_fmt(format_args!("Command does not exist: {}", command))
@@ -183,6 +188,7 @@ impl Display for CrackedError {
             Self::GuildOnly => f.write_str(GUILD_ONLY),
             Self::IO(err) => f.write_str(&format!("{err}")),
             Self::InvalidIP(ip) => f.write_str(&format!("Invalid ip {}", ip)),
+            Self::InvalidPlaylist => f.write_str(FAIL_INVALID_PLAYLIST),
             Self::InvalidTopGGToken => f.write_str(FAIL_INVALID_TOPGG_TOKEN),
             Self::InvalidPermissions => f.write_str(FAIL_INVALID_PERMS),
             Self::MissingBotPermissions {
@@ -241,7 +247,7 @@ impl Display for CrackedError {
 
             Self::PlayListFail => f.write_str(FAIL_PLAYLIST_FETCH),
             Self::ParseTimeFail => f.write_str(FAIL_PARSE_TIME),
-            Self::Poise(err) => f.write_str(&format!("{err}")),
+            Self::Poise(err) => write_boxed(f, err.as_ref()),
             Self::PoisonError(err) => f.write_str(&format!("{err}")),
             Self::QueueEmpty => f.write_str(QUEUE_IS_EMPTY),
             Self::Reqwest(err) => f.write_str(&format!("{err}")),
@@ -253,14 +259,15 @@ impl Display for CrackedError {
             Self::RSpotifyLockError(_) => todo!(),
             Self::Serde(err) => f.write_str(&format!("{err}")),
             // Self::SerdeStream(err) => f.write_str(&format!("{err}")),
-            Self::Songbird(err) => f.write_str(&format!("{err}")),
+            Self::Songbird(err) => write_boxed(f, err.as_ref()),
             Self::Serenity(err) => f.write_str(&format!("{err}")),
             Self::SpotifyAuth => f.write_str(SPOTIFY_AUTH_FAILED),
             Self::SQLX(err) => f.write_str(&format!("{err}")),
             Self::TrackResolveError(err) => f.write_str(&format!("{err}")),
-            Self::TrackFail(err) => f.write_str(&format!("{err}")),
+            Self::TrackFail(err) => write_boxed(f, err.as_ref()),
             Self::UnauthorizedUser => f.write_str(UNAUTHORIZED_USER),
             Self::UrlParse(err) => f.write_str(&format!("{err}")),
+            Self::UrlNotAllowed => f.write_str(FAIL_URL_NOT_ALLOWED),
             Self::UnimplementedEvent(channel, value) => f.write_str(&format!(
                 "Unimplemented event {value} for channel {channel}",
             )),
@@ -284,6 +291,59 @@ impl Display for CrackedError {
             Self::CannotVoteOwnSongFull => f.write_str(FAIL_GP_OWN_SONG_FULL),
             Self::NotPlayingClips => f.write_str(FAIL_GP_NOT_CLIPS),
         }
+    }
+}
+
+/// 🔒 Writes an [`AudioStreamError`] for a user to read.
+///
+/// songbird's yt-dlp source puts the child's entire stderr into
+/// `AudioStreamError::Fail`, and yt-dlp repeats back whatever it was fed. A
+/// `/optplay` whose playlist id was `--batch-file=/proc/self/environ` made
+/// yt-dlp read the bot's environment and complain about every line of it, and
+/// this `Display` used to post that complaint -- `DISCORD_TOKEN` included -- to
+/// the channel. The id is validated now (`crack_types::canonical_youtube_playlist_url`),
+/// but no subprocess output reaches Discord either way: it is logged, and the
+/// user gets [`FAIL_AUDIO_SOURCE`].
+///
+/// A [`CrackedError`] we boxed into `Fail` ourselves (`From<CrackedError> for
+/// AudioStreamError`) is still shown, since its text is ours.
+fn write_audio_stream(f: &mut fmt::Formatter<'_>, err: &AudioStreamError) -> fmt::Result {
+    match err {
+        AudioStreamError::Fail(inner) => match inner.downcast_ref::<CrackedError>() {
+            Some(ours) => Display::fmt(ours, f),
+            None => {
+                tracing::error!("audio source failed: {inner}");
+                f.write_str(FAIL_AUDIO_SOURCE)
+            },
+        },
+        // `RetryIn` and `Unsupported` carry no text of their own.
+        _ => f.write_str(&format!("{err}")),
+    }
+}
+
+/// [`write_audio_stream`] for the error songbird's `aux_metadata` wraps it in.
+fn write_aux_metadata(f: &mut fmt::Formatter<'_>, err: &AuxMetadataError) -> fmt::Result {
+    match err {
+        AuxMetadataError::Retrieve(inner) => write_audio_stream(f, inner),
+        _ => f.write_str(&format!("{err}")),
+    }
+}
+
+/// Writes a boxed error for a user to read. A songbird source error that
+/// travelled through `?` into a plain [`Error`] would otherwise skip
+/// [`write_audio_stream`] and print its stderr after all.
+fn write_boxed(
+    f: &mut fmt::Formatter<'_>,
+    err: &(dyn StdError + Send + Sync + 'static),
+) -> fmt::Result {
+    if let Some(e) = err.downcast_ref::<AudioStreamError>() {
+        write_audio_stream(f, e)
+    } else if let Some(e) = err.downcast_ref::<AuxMetadataError>() {
+        write_aux_metadata(f, e)
+    } else if let Some(e) = err.downcast_ref::<CrackedError>() {
+        Display::fmt(e, f)
+    } else {
+        f.write_str(&format!("{err}"))
     }
 }
 
@@ -765,5 +825,52 @@ mod test {
             text.contains(FAIL_MISSING_TEXT_PERMS),
             "text refusal must contain the text lead: {text}"
         );
+    }
+
+    /// 🔒 What yt-dlp printed when its playlist id was
+    /// `--batch-file=/proc/self/environ`: the environment, one "not a valid
+    /// URL" per line. None of it may reach a user-facing `Display`.
+    fn leaky_stream_error() -> AudioStreamError {
+        AudioStreamError::Fail(
+            "yt-dlp failed with non-zero status code: ERROR: [generic] \
+             'DISCORD_TOKEN=leaked' is not a valid URL"
+                .into(),
+        )
+    }
+
+    #[test]
+    fn subprocess_stderr_never_reaches_display() {
+        let shown = [
+            CrackedError::AudioStream(leaky_stream_error()).to_string(),
+            CrackedError::AuxMetadataError(AuxMetadataError::Retrieve(leaky_stream_error()))
+                .to_string(),
+            CrackedError::Poise(Box::new(leaky_stream_error())).to_string(),
+            CrackedError::Poise(Box::new(AuxMetadataError::Retrieve(leaky_stream_error())))
+                .to_string(),
+            CrackedError::Poise(Box::new(CrackedError::AudioStream(leaky_stream_error())))
+                .to_string(),
+            CrackedError::TrackFail(Box::new(leaky_stream_error())).to_string(),
+        ];
+        for text in shown {
+            assert!(!text.contains("leaked"), "stderr leaked into: {text}");
+            assert_eq!(text, FAIL_AUDIO_SOURCE);
+        }
+    }
+
+    #[test]
+    fn our_own_error_inside_a_stream_error_is_still_shown() {
+        let err = CrackedError::AudioStream(CrackedError::NoQuery.into());
+        assert_eq!(err.to_string(), CrackedError::NoQuery.to_string());
+    }
+
+    #[test]
+    fn command_failed_display_omits_output() {
+        use std::os::unix::process::ExitStatusExt;
+        let err = CrackedError::CommandFailed(
+            "yt-dlp",
+            ExitStatus::from_raw(256),
+            "DISCORD_TOKEN=leaked".into(),
+        );
+        assert!(!err.to_string().contains("leaked"));
     }
 }

@@ -61,6 +61,7 @@ pub const FAIL_ALREADY_HERE: &str = "⚠️ I'm already here!";
 pub const FAIL_ANOTHER_CHANNEL: &str = "⚠️ I'm already connected to";
 pub const FAIL_AUDIO_STREAM_RUSTY_YTDL_METADATA: &str =
     "⚠️ Failed to fetch metadata from rusty_ytdl!";
+pub const FAIL_AUDIO_SOURCE: &str = "⚠️ Couldn't load audio from that link or search!";
 pub const FAIL_AUTHOR_DISCONNECTED: &str = "⚠️ You are not connected to";
 ///?
 pub const FAIL_AUTHOR_NOT_FOUND: &str = "⚠️ Could not find you in any voice channel!";
@@ -89,6 +90,9 @@ pub const FAIL_WRONG_CHANNEL: &str = "⚠️ We are not in the same voice channe
 pub const FAIL_PARSE_TIME: &str = "⚠️ Failed to parse time, speak English much?";
 pub const FAIL_PLAYLIST_FETCH: &str = "⚠️ Failed to fetch playlist!";
 pub const FAIL_INVALID_IP: &str = "⚠️ Invalid IP address!";
+pub const FAIL_INVALID_PLAYLIST: &str = "⚠️ That isn't a YouTube playlist link!";
+pub const FAIL_URL_NOT_ALLOWED: &str =
+    "⚠️ I can only play links to public http(s) sites, not local or private addresses!";
 
 pub const GUILD_ONLY: &str = "⚠️ This command can only be used in a server!";
 pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while so I'm going to hop off, set the idle timeout to change this! Also support my development and I won't have to premium-gate features!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
