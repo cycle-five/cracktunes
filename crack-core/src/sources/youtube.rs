@@ -6,8 +6,9 @@ use crack_types::QueryType;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crack_types::metadata::search_result_to_aux_metadata;
 use crack_types::NewAuxMetadata;
+use crack_types::{or_ask_ytdlp, ytdl_for_url};
 use rusty_ytdl::RequestOptions;
-use songbird::input::{AuxMetadata, Compose, Input as SongbirdInput, YoutubeDl};
+use songbird::input::{AuxMetadata, Input as SongbirdInput, YoutubeDl};
 
 /// Search youtube for a query and return the source (playable)
 /// and metadata.
@@ -17,40 +18,37 @@ pub async fn search_query_to_source_and_metadata(
 ) -> Result<(SongbirdInput, Vec<NewAuxMetadata>), CrackedError> {
     tracing::warn!("search_query_to_source_and_metadata: {:?}", query);
 
-    let metadata = {
-        let req_options = RequestOptions {
-            client: Some(client.clone()),
-            ..Default::default()
-        };
-        let rytdl = rusty_ytdl::search::YouTube::new_with_options(&req_options)?;
+    // let query = format!("{} {}", query, MUSIC_SEARCH_SUFFIX);
+    let query = query.replace("\\", "").replace("\"", "");
+    let rusty = rusty_search_hit(client, &query).await;
+    let metadata = or_ask_ytdlp(&query, rusty, || ytdlp_search_hit(&query)).await?;
+    source_for_search_hit(metadata)
+}
 
-        tracing::warn!("search_query_to_source_and_metadata: {:?}", rytdl);
-
-        // let query = format!("{} {}", query, MUSIC_SEARCH_SUFFIX);
-        let query = query.replace("\\", "").replace("\"", "");
-        tracing::error!("ACTUALLY SEARCHING FOR THIS: {:?}", query);
-        let results = rytdl.search_one(query.clone(), None).await?;
-
-        tracing::warn!("search_query_to_source_and_metadata: {:?}", results);
-        // FIXME: Fallback to yt-dlp
-        let result = match results {
-            Some(r) => r,
-            None => {
-                return search_query_to_source_and_metadata_ytdl(client, query.to_string()).await
-            },
-        };
-        let metadata = &search_result_to_aux_metadata(&result);
-        metadata.clone()
+/// rusty_ytdl's top hit for `query`, as metadata.
+async fn rusty_search_hit(
+    client: reqwest::Client,
+    query: &str,
+) -> Result<Option<AuxMetadata>, CrackedError> {
+    let req_options = RequestOptions {
+        client: Some(client),
+        ..Default::default()
     };
+    let rytdl = rusty_ytdl::search::YouTube::new_with_options(&req_options)?;
+    let result = rytdl.search_one(query, None).await?;
+    Ok(result.as_ref().map(search_result_to_aux_metadata))
+}
 
-    let source_url = match metadata.clone().source_url {
-        Some(url) => url.clone(),
-        None => "".to_string(),
-    };
-    let ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), source_url);
-    let my_metadata = NewAuxMetadata(metadata);
-
-    Ok((ytdl.into(), vec![my_metadata]))
+/// yt-dlp's top hit for `query`, as metadata.
+///
+/// 🔒 `new_search`, never `YoutubeDl::new`: its `ytsearch1:` prefix keeps the
+/// text from ever reaching yt-dlp as an option.
+async fn ytdlp_search_hit(query: &str) -> Result<AuxMetadata, CrackedError> {
+    let mut ytdl = YoutubeDl::new_search(http_utils::get_client_old().clone(), query.to_string());
+    ytdl.search(Some(1))
+        .await?
+        .next()
+        .ok_or(CrackedError::EmptySearchResult)
 }
 
 /// Search youtube for a query and return the source (playable)
@@ -100,26 +98,8 @@ pub(crate) fn source_for_search_hit(
     let url = metadata.source_url.clone().ok_or(CrackedError::Other(
         "a search hit with no URL has nothing to play",
     ))?;
-    let source = YoutubeDl::new(http_utils::get_client_old().clone(), url);
+    let source = ytdl_for_url(http_utils::get_client_old().clone(), &url)?;
     Ok((source.into(), vec![NewAuxMetadata(metadata)]))
-}
-
-/// Search youtube for a query and return the source (playable)
-/// and metadata using the yt-dlp command line tool.
-pub async fn search_query_to_source_and_metadata_ytdl(
-    _client: reqwest::Client,
-    query: String,
-) -> Result<(SongbirdInput, Vec<NewAuxMetadata>), CrackedError> {
-    let query = if query.starts_with("ytsearch:") {
-        query
-    } else {
-        format!("ytsearch:{}", query)
-    };
-    let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), query);
-    let metadata = ytdl.aux_metadata().await?;
-    let my_metadata = NewAuxMetadata(metadata);
-
-    Ok((ytdl.into(), vec![my_metadata]))
 }
 
 /// Build a query from AuxMetadata.

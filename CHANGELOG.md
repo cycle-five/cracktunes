@@ -24,6 +24,12 @@
   metadata) are now refused, and `/playytplaylist` fetches only a validated
   YouTube playlist link, with timeouts. yt-dlp still follows redirects itself,
   so a public page redirecting inward is not covered.
+- **Nothing but an http(s) link reaches yt-dlp as a link any more.** songbird's
+  `YoutubeDl::new` passes its string to yt-dlp with no `--` in front, which is
+  how the playlist id above became an option. Every link now goes through
+  `crack_types::ytdl_for_url`, which accepts only http(s) URLs, and clippy
+  refuses `YoutubeDl::new` everywhere else. Search text goes through
+  `YoutubeDl::new_search` instead of six hand-built `ytsearch:` strings.
 - **crack-voting no longer starts without a real webhook secret.** It fell back
   to `test_secret`, and the compose file defaulted to the same value on a port
   published to every interface, so anyone could post votes for any user.
@@ -120,6 +126,13 @@
   degrades with a message saying so.
 
 ### Fixed
+
+- **A keyword `/play` now asks yt-dlp whenever rusty_ytdl can't answer.** It
+  fell back only when rusty_ytdl found nothing; an error from it returned
+  straight away, and the next fallback (`ready_query`) searched with rusty_ytdl
+  again, so a rusty_ytdl outage failed every keyword play. Playlists, Spotify
+  lists, `/gp` and autoplay resolve through the same path and get the same
+  fallback. yt-dlp is slower, but it is kept up to date with YouTube.
 
 - **A `/gp` round could play its songs in the same order as the round before.**
   Each round's order was an independent uniform shuffle, which with three

@@ -18,7 +18,7 @@ use serenity::{
     small_fixed_array::FixedString,
 };
 use songbird::{
-    input::{AuxMetadata, Input as SongbirdInput, YoutubeDl},
+    input::{AuxMetadata, Input as SongbirdInput},
     tracks::{Track, TrackHandle, TrackResult},
     Call,
 };
@@ -85,7 +85,7 @@ pub(crate) fn build_track(
     //
     // Needs `yt-dlp` on PATH -- see the Dockerfile, and note it must be the musl
     // build on this Alpine base.
-    let ytdl = YoutubeDl::new(http_client.clone(), resolved.get_url());
+    let ytdl = crack_types::ytdl_for_url(http_client.clone(), &resolved.get_url())?;
     Ok(new_track(
         ytdl.into(),
         resolved.metadata.clone(),

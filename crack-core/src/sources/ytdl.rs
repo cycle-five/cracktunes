@@ -64,6 +64,8 @@ impl MyYoutubeDl {
             "--flat-playlist",
             //"--get-title",
             "--get-id",
+            // 🔒 Everything after `--` is a URL, never an option.
+            "--",
             &self.query.to_string(),
         ];
         let output = Command::new(self.program).args(ytdl_args).output().await?;

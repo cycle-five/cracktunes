@@ -10,8 +10,8 @@ pub use yt_playlist::{fetch_playlist, PlaylistEntry};
 //------------------------------------
 use crack_types::SpotifyTrackTrait;
 use crack_types::TrackResolveError;
+use crack_types::{or_ask_ytdlp, Error, QueryType, SearchResult, YoutubeDl};
 use crack_types::{parse_url, video_info_to_aux_metadata};
-use crack_types::{Error, QueryType, SearchResult};
 //------------------------------------
 // External library imports
 //------------------------------------
@@ -247,27 +247,54 @@ impl<'a> CrackTrackClient<'a> {
         match query {
             QueryType::VideoLink(ref url) => self.resolve_url(url).await,
             QueryType::Keywords(ref keywords) => {
-                let search_results = self.yt_client.search_one(keywords, None).await?;
-                let video = match search_results {
-                    Some(SearchResult::Video(result)) => result,
-                    _ => return Err(TrackResolveError::NotFound.into()),
-                };
-                // The search hit already carries title, duration, thumbnail and
-                // url. Following it with a `get_info` round trip doubled the
-                // cost of every keyword resolution (i.e. of every track in a
-                // Spotify playlist) to buy metadata we already had. The stream
-                // itself is still resolved lazily at playback time.
-                let metadata = crack_types::metadata::search_video_to_aux_metadata(&video);
-                Ok(ResolvedTrack::default()
-                    .with_query(QueryType::VideoLink(video.url.clone()))
-                    .with_metadata(metadata)
-                    .with_search_video(video))
+                let rusty = self.rusty_search_track(keywords).await;
+                or_ask_ytdlp(keywords, rusty, || self.ytdlp_search_track(keywords)).await
             },
             _ => {
                 tracing::error!("Query type not implemented: {query:?}");
                 Err(TrackResolveError::UnknownQueryType.into())
             },
         }
+    }
+
+    /// rusty_ytdl's top hit for `keywords`, or `None` if it found no video.
+    async fn rusty_search_track(&self, keywords: &str) -> Result<Option<ResolvedTrack<'a>>, Error> {
+        let video = match self.yt_client.search_one(keywords, None).await? {
+            Some(SearchResult::Video(video)) => video,
+            _ => return Ok(None),
+        };
+        // The search hit already carries title, duration, thumbnail and
+        // url. Following it with a `get_info` round trip doubled the
+        // cost of every keyword resolution (i.e. of every track in a
+        // Spotify playlist) to buy metadata we already had. The stream
+        // itself is still resolved lazily at playback time.
+        let metadata = crack_types::metadata::search_video_to_aux_metadata(&video);
+        Ok(Some(
+            ResolvedTrack::default()
+                .with_query(QueryType::VideoLink(video.url.clone()))
+                .with_metadata(metadata)
+                .with_search_video(video),
+        ))
+    }
+
+    /// yt-dlp's top hit for `keywords`, for when rusty_ytdl has none.
+    ///
+    /// 🔒 `new_search`, never `YoutubeDl::new`: its `ytsearch1:` prefix keeps the
+    /// text from ever reaching yt-dlp as an option.
+    async fn ytdlp_search_track(&self, keywords: &str) -> Result<ResolvedTrack<'a>, Error> {
+        let mut ytdl = YoutubeDl::new_search(self.req_client.clone(), keywords.to_string());
+        let metadata = ytdl
+            .search(Some(1))
+            .await?
+            .next()
+            .ok_or(TrackResolveError::NotFound)?;
+        let url = metadata
+            .source_url
+            .clone()
+            .ok_or(TrackResolveError::NotFound)?;
+        Ok(ResolvedTrack::default()
+            .with_query(QueryType::VideoLink(url))
+            .with_metadata(metadata))
     }
 
     /// Resolve a URL and return a single track.
@@ -715,6 +742,22 @@ mod tests {
         ));
         assert_eq!(track.metadata, None);
         assert_eq!(track.video, None);
+    }
+
+    /// The fallback a keyword `/play` takes when rusty_ytdl can't answer: the
+    /// hit's link must be one `build_track` will hand yt-dlp.
+    #[ignore = "hits live YouTube"]
+    #[tokio::test]
+    async fn ytdlp_search_track_finds_a_playable_link() {
+        let client = CrackTrackClient::new();
+        let track = client
+            .ytdlp_search_track("Rick Astley Never Gonna Give You Up")
+            .await
+            .expect("yt-dlp finds it");
+        let url = track.get_url();
+        assert!(url.starts_with("https://www.youtube.com/watch?v="), "{url}");
+        assert!(crack_types::ytdl_url(&url).is_ok(), "{url}");
+        assert!(!track.get_title().is_empty());
     }
 
     #[ignore = "hits live YouTube"]

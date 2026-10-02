@@ -50,6 +50,45 @@ pub fn canonical_youtube_playlist_url(link: &str) -> Option<String> {
     is_youtube_playlist_id(&id).then(|| format!("https://www.youtube.com/playlist?list={id}"))
 }
 
+/// A string that is not an http(s) link, so it must not reach yt-dlp as one.
+#[derive(crate::ThisError, Debug, Clone, Copy, PartialEq, Eq)]
+#[error("not an http(s) link")]
+pub struct NotAYtdlUrl;
+
+/// `url` as yt-dlp should be given it: parsed, http(s) only, and re-serialized,
+/// so the string always starts with the scheme and never with `-`.
+pub fn ytdl_url(url: &str) -> Result<String, NotAYtdlUrl> {
+    let url = Url::parse(url).map_err(|_| NotAYtdlUrl)?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(NotAYtdlUrl);
+    }
+    Ok(url.into())
+}
+
+/// 🔒 The one way to hand yt-dlp a link: songbird's [`YoutubeDl`] for `url`,
+/// once [`ytdl_url`] accepts it.
+///
+/// songbird passes `YoutubeDl::new`'s string to yt-dlp as a bare positional
+/// argument with no `--` in front of it, so a string starting with `-` is read
+/// as an option. That is how a playlist id of `--batch-file=/proc/self/environ`
+/// leaked the bot's environment (v0.17.2). `clippy.toml` bans `YoutubeDl::new`
+/// everywhere else. Search text goes through `YoutubeDl::new_search`, whose
+/// `ytsearchN:` prefix keeps it from ever starting with `-`.
+///
+/// [`YoutubeDl`]: songbird::input::YoutubeDl
+pub fn ytdl_for_url(
+    client: Client,
+    url: &str,
+) -> Result<songbird::input::YoutubeDl<'static>, NotAYtdlUrl> {
+    let url = ytdl_url(url)?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the one sanctioned call: `url` passed ytdl_url, so it starts with http(s)"
+    )]
+    let ytdl = songbird::input::YoutubeDl::new(client, url);
+    Ok(ytdl)
+}
+
 /// 🔒 Whether `url` is an http(s) URL whose host is, and resolves only to,
 /// public internet addresses.
 ///
@@ -156,6 +195,40 @@ pub async fn resolve_final_url2(client: Client, url: Url) -> Result<Url, Error> 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn ytdl_url_takes_http_links() {
+        assert_eq!(
+            ytdl_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ").as_deref(),
+            Ok("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        );
+        assert_eq!(
+            ytdl_url("http://soundcloud.com/a/b").as_deref(),
+            Ok("http://soundcloud.com/a/b")
+        );
+        // `Url::parse` trims surrounding whitespace; the re-serialized form
+        // is what yt-dlp gets, so it starts with the scheme.
+        assert_eq!(
+            ytdl_url("  https://youtu.be/dQw4w9WgXcQ\n").as_deref(),
+            Ok("https://youtu.be/dQw4w9WgXcQ")
+        );
+    }
+
+    #[test]
+    fn ytdl_url_refuses_everything_else() {
+        for bad in [
+            "--batch-file=/proc/self/environ",
+            "-o /tmp/x",
+            "",
+            "dQw4w9WgXcQ",
+            "ytsearch:never gonna give you up",
+            "ytsearch5:x",
+            "file:///proc/self/environ",
+            "ftp://example.com/a.mp3",
+        ] {
+            assert_eq!(ytdl_url(bad), Err(NotAYtdlUrl), "{bad:?} must be refused");
+        }
+    }
 
     #[test]
     fn playlist_id_shape() {
