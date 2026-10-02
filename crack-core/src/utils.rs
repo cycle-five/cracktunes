@@ -611,6 +611,7 @@ pub async fn create_paged_embed(
     title: String,
     content: String,
     page_size: usize,
+    ephemeral: bool,
 ) -> CrackedResult<()> {
     let page_getter = create_page_getter_newline(&content, page_size);
     let num_pages = content.len() / page_size + 1;
@@ -627,7 +628,8 @@ pub async fn create_paged_embed(
                             .description(page_getter(0))
                             .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
                     )
-                    .components(create_nav_btns(0, num_pages)),
+                    .components(create_nav_btns(0, num_pages))
+                    .ephemeral(ephemeral),
             )
             .await?
         };

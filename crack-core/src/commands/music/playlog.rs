@@ -28,6 +28,7 @@ pub async fn playlog_internal(ctx: Context<'_>) -> Result<(), Error> {
         "Playlog".to_string(),
         last_played_str,
         756,
+        false,
     )
     .await?;
     // let _ = send_reply(&ctx, CrackedMessage::PlayLog(last_played), true).await?;

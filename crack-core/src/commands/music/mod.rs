@@ -1,3 +1,4 @@
+pub mod auditlog;
 pub mod autopause;
 pub mod autoplay;
 pub mod clear;
@@ -32,6 +33,7 @@ pub mod volume;
 pub mod vote;
 pub mod voteskip;
 
+pub use auditlog::*;
 pub use autopause::*;
 pub use autoplay::*;
 pub use clear::*;
@@ -81,6 +83,7 @@ pub fn music_commands() -> Vec<crate::Command> {
             play(),
             playfile(),
             playlog(),
+            auditlog(),
             playnext(),
             playytplaylist(),
             queue(),

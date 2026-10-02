@@ -35,3 +35,12 @@ guild's game is running.
     SELECT at, command, action, detail FROM queue_audit
     WHERE guild_id = $1 AND source = 'bot' AND at > now() - interval '1 day'
     ORDER BY at;
+
+## Reading it in Discord
+
+`/auditlog [user] [action] [source] [since]` shows a server's queue history, newest
+first, as a paged reply only the caller sees. By default only members with
+**Manage Server** can run it; server admins can grant or remove it per role or
+member in Server Settings → Integrations. `since` takes `90m`, `6h`, `2d` or `1w`
+(at most 52w). It shows at most 200 entries; a running `/gp` game's entries are
+hidden until the game ends.

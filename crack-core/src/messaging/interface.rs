@@ -352,6 +352,7 @@ pub async fn create_lyrics_embed(
         track,
         lyric,
         DEFAULT_LYRICS_PAGE_SIZE,
+        false,
     )
     .await
 }
