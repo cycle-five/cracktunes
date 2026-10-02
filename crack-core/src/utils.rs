@@ -611,10 +611,11 @@ pub async fn create_paged_embed(
     title: String,
     content: String,
     page_size: usize,
-    ephemeral: bool,
+    style: PagedStyle,
 ) -> CrackedResult<()> {
-    let page_getter = create_page_getter_newline(&content, page_size);
-    let num_pages = content.len() / page_size + 1;
+    let pages = build_pages(&content, page_size, style.fenced);
+    let num_pages = pages.len();
+    let page_getter = |i: usize| pages[i % num_pages].clone();
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
     let _x: Result<(), CrackedError> = {
@@ -629,7 +630,7 @@ pub async fn create_paged_embed(
                             .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
                     )
                     .components(create_nav_btns(0, num_pages))
-                    .ephemeral(ephemeral),
+                    .ephemeral(style.ephemeral),
             )
             .await?
         };
@@ -680,14 +681,16 @@ pub async fn create_paged_embed(
             .await?;
         }
 
-        reply_handle
+        if let Err(e) = reply_handle
             .edit(
                 ctx,
                 CreateReply::default()
                     .embed(CreateEmbed::default().description(CrackedMessage::PaginationComplete)),
             )
             .await
-            .unwrap();
+        {
+            tracing::warn!("could not mark pagination complete (message dismissed?): {e}");
+        }
         Ok(())
     };
 
@@ -711,6 +714,16 @@ pub fn split_string_into_chunks_newline(string: &str, chunk_size: usize) -> Vec<
     let mut cur: usize = 0;
     while cur < end {
         let mut next = min(cur + chunk_size, end);
+        // Never slice inside a multi-byte char: snap down, or up if that stalls.
+        while !string.is_char_boundary(next) {
+            next -= 1;
+        }
+        if next <= cur {
+            next = cur + 1;
+            while !string.is_char_boundary(next) {
+                next += 1;
+            }
+        }
         let chunk = &string[cur..next];
         let newline_index = chunk.rfind('\n');
         let chunk = match newline_index {
@@ -737,17 +750,38 @@ pub fn create_page_getter(string: &str, chunk_size: usize) -> impl Fn(usize) -> 
     }
 }
 
-/// Creates a closure that returns a page of a chunked string, but tries to split on a newline if possible.
-pub fn create_page_getter_newline(
-    string: &str,
-    chunk_size: usize,
-    //) -> impl Fn(usize) -> String + '_ {
-) -> impl Fn(usize) -> String + '_ {
-    let chunks = split_string_into_chunks_newline(string, chunk_size);
-    //let n = chunks.len();
-    move |page| {
-        let page = page % chunks.len();
-        format!("```md\n{}\n```", chunks[page].clone())
+/// How a paged embed is sent and rendered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PagedStyle {
+    /// Send the reply so only the caller sees it.
+    pub ephemeral: bool,
+    /// Wrap each page in a ```md code fence (turns off mentions/timestamps rendering).
+    pub fenced: bool,
+}
+
+impl Default for PagedStyle {
+    fn default() -> Self {
+        Self {
+            ephemeral: false,
+            fenced: true,
+        }
+    }
+}
+
+/// Splits `string` into pages on newlines where possible, optionally fenced.
+/// Always returns at least one page; the page count is `pages.len()`.
+pub fn build_pages(string: &str, chunk_size: usize, fenced: bool) -> Vec<String> {
+    let mut chunks = split_string_into_chunks_newline(string, chunk_size);
+    if chunks.is_empty() {
+        chunks.push(String::new());
+    }
+    if fenced {
+        chunks
+            .into_iter()
+            .map(|c| format!("```md\n{}\n```", c))
+            .collect()
+    } else {
+        chunks
     }
 }
 
@@ -908,6 +942,50 @@ mod test {
     use crack_types::to_fixed;
 
     use super::*;
+
+    #[test]
+    fn newline_splitter_never_slices_inside_a_multibyte_char() {
+        let content = "a·—\n".repeat(40);
+        for size in 1..20 {
+            let chunks = split_string_into_chunks_newline(&content, size);
+            assert_eq!(
+                chunks.concat().replace('\n', ""),
+                content.replace('\n', ""),
+                "size {size}"
+            );
+        }
+        // No newline in the window at all, boundary mid-char.
+        let flat = "·—".repeat(30);
+        for size in 1..10 {
+            let chunks = split_string_into_chunks_newline(&flat, size);
+            assert_eq!(chunks.concat(), flat, "size {size}");
+        }
+    }
+
+    #[test]
+    fn unfenced_pages_are_verbatim_and_fenced_pages_are_wrapped() {
+        let line = "<t:1:R> · <@1> — x";
+        let plain = build_pages(line, 900, false);
+        assert_eq!(plain, vec![line.to_string()]);
+        assert!(!plain[0].contains("```"));
+        let fenced = build_pages(line, 900, true);
+        assert_eq!(fenced, vec![format!("```md\n{line}\n```")]);
+        assert_eq!(
+            PagedStyle::default(),
+            PagedStyle {
+                ephemeral: false,
+                fenced: true
+            }
+        );
+    }
+
+    #[test]
+    fn page_count_is_the_chunk_count() {
+        let content = "aaaaaa\n".repeat(10);
+        assert_eq!(content.len() / 10 + 1, 8);
+        assert_eq!(build_pages(&content, 10, false).len(), 10);
+        assert_eq!(build_pages("", 10, true).len(), 1);
+    }
 
     #[test]
     fn test_get_human_readable_timestamp() {

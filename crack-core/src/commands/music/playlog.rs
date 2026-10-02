@@ -1,6 +1,6 @@
 use crate::commands::cmd_check_music;
 use crate::messaging::message::CrackedMessage;
-use crate::utils::{create_paged_embed, send_reply};
+use crate::utils::{create_paged_embed, send_reply, PagedStyle};
 use crate::{poise_ext::ContextExt, Context, Error};
 
 /// Get recently played tracks form the guild.
@@ -28,7 +28,7 @@ pub async fn playlog_internal(ctx: Context<'_>) -> Result<(), Error> {
         "Playlog".to_string(),
         last_played_str,
         756,
-        false,
+        PagedStyle::default(),
     )
     .await?;
     // let _ = send_reply(&ctx, CrackedMessage::PlayLog(last_played), true).await?;

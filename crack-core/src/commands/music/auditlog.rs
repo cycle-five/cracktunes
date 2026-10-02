@@ -9,7 +9,7 @@ use crate::messaging::messages::{
 use crate::music::audit_view::{
     audit_line, hide_running_game, parse_since, ActionChoice, SourceChoice, AUDITLOG_LIMIT,
 };
-use crate::utils::create_paged_embed;
+use crate::utils::{create_paged_embed, PagedStyle};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
@@ -83,7 +83,10 @@ pub async fn auditlog(
         AUDITLOG_TITLE.to_owned(),
         lines.join("\n"),
         900,
-        true,
+        PagedStyle {
+            ephemeral: true,
+            fenced: false,
+        },
     )
     .await?;
     Ok(())
