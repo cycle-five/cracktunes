@@ -28,26 +28,39 @@ pub async fn auditlog(
     #[description = "Only this kind of change"] action: Option<ActionChoice>,
     #[description = "Only changes made this way"] source: Option<SourceChoice>,
     #[description = "Only changes this recent: 90m, 6h, 2d, 1w"] since: Option<String>,
+    #[description = "Post it in the channel for everyone (default: only you see it)"]
+    public: Option<bool>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(crate::CrackedError::NoGuildId)?;
-    let say = |text: &'static str| ctx.send(CreateReply::default().content(text).ephemeral(true));
+    let ephemeral = !public.unwrap_or(false);
+    // Mistakes in the request are answered privately whatever `public` says:
+    // nobody else needs to see a typo. Both are checked before the defer, while
+    // the interaction has no response yet.
+    let tell_caller =
+        |text: &'static str| ctx.send(CreateReply::default().content(text).ephemeral(true));
 
     let Some(pool) = ctx.data().database_pool.clone() else {
-        say(AUDITLOG_NO_DATABASE).await?;
+        tell_caller(AUDITLOG_NO_DATABASE).await?;
         return Ok(());
     };
-    // The query can outlast Discord's 3-second window. After an ephemeral defer,
-    // poise's `ctx.send` follows up with `create_followup`, which keeps the
-    // ephemeral flag, so every reply below stays private.
-    ctx.defer_ephemeral().await?;
     let since = match since.as_deref().map(parse_since) {
         None => None,
         Some(Some(d)) => Some(chrono::Utc::now() - d),
         Some(None) => {
-            say(AUDITLOG_BAD_SINCE).await?;
+            tell_caller(AUDITLOG_BAD_SINCE).await?;
             return Ok(());
         },
     };
+    // The query can outlast Discord's 3-second window. The defer fixes where the
+    // answer appears: privately unless `public` was asked for, and every reply
+    // below follows it.
+    if ephemeral {
+        ctx.defer_ephemeral().await?;
+    } else {
+        ctx.defer().await?;
+    }
+    let say =
+        |text: &'static str| ctx.send(CreateReply::default().content(text).ephemeral(ephemeral));
     let source_str = source.map(|s| s.source().as_str());
     let filter = AuditFilter {
         user: user.map(|u| u.id),
@@ -90,7 +103,7 @@ pub async fn auditlog(
         lines.join("\n"),
         900,
         PagedStyle {
-            ephemeral: true,
+            ephemeral,
             fenced: false,
         },
     )
