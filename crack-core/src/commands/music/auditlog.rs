@@ -3,11 +3,11 @@
 
 use crate::db::queue_audit::{recent_audit, AuditFilter};
 use crate::messaging::messages::{
-    AUDITLOG_BAD_SINCE, AUDITLOG_EMPTY, AUDITLOG_GP_HIDDEN, AUDITLOG_NO_DATABASE, AUDITLOG_TITLE,
-    AUDITLOG_TRUNCATED,
+    AUDITLOG_BAD_SINCE, AUDITLOG_EMPTY, AUDITLOG_FAILED, AUDITLOG_GP_HIDDEN, AUDITLOG_NO_DATABASE,
+    AUDITLOG_TITLE,
 };
 use crate::music::audit_view::{
-    audit_line, hide_running_game, parse_since, ActionChoice, SourceChoice, AUDITLOG_LIMIT,
+    compose_auditlog, parse_since, ActionChoice, AuditlogReply, SourceChoice, AUDITLOG_LIMIT,
 };
 use crate::utils::{create_paged_embed, PagedStyle};
 use crate::{Context, Error};
@@ -36,6 +36,10 @@ pub async fn auditlog(
         say(AUDITLOG_NO_DATABASE).await?;
         return Ok(());
     };
+    // The query can outlast Discord's 3-second window. After an ephemeral defer,
+    // poise's `ctx.send` follows up with `create_followup`, which keeps the
+    // ephemeral flag, so every reply below stays private.
+    ctx.defer_ephemeral().await?;
     let since = match since.as_deref().map(parse_since) {
         None => None,
         Some(Some(d)) => Some(chrono::Utc::now() - d),
@@ -51,9 +55,14 @@ pub async fn auditlog(
         source: source_str,
         since,
     };
-    let mut rows = recent_audit(&pool, guild_id, &filter, AUDITLOG_LIMIT as i64 + 1).await?;
-    let truncated = rows.len() > AUDITLOG_LIMIT;
-    rows.truncate(AUDITLOG_LIMIT);
+    let rows = match recent_audit(&pool, guild_id, &filter, AUDITLOG_LIMIT as i64 + 1).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!("/auditlog: reading the queue history failed: {e}");
+            say(AUDITLOG_FAILED).await?;
+            return Ok(());
+        },
+    };
 
     // Copy the start time out so the DashMap ref is dropped before any await.
     let running_since = ctx
@@ -62,20 +71,17 @@ pub async fn auditlog(
         .get(&guild_id)
         .map(|g| g.started_at)
         .and_then(|t| chrono::DateTime::from_timestamp(t, 0));
-    let (rows, hid) = hide_running_game(rows, running_since);
-
-    if rows.is_empty() {
-        say(AUDITLOG_EMPTY).await?;
-        return Ok(());
-    }
-    let mut lines = Vec::new();
-    if hid {
-        lines.push(AUDITLOG_GP_HIDDEN.to_owned());
-    }
-    if truncated {
-        lines.push(AUDITLOG_TRUNCATED.to_owned());
-    }
-    lines.extend(rows.iter().map(audit_line));
+    let lines = match compose_auditlog(rows, running_since) {
+        AuditlogReply::Empty => {
+            say(AUDITLOG_EMPTY).await?;
+            return Ok(());
+        },
+        AuditlogReply::AllHidden => {
+            say(AUDITLOG_GP_HIDDEN).await?;
+            return Ok(());
+        },
+        AuditlogReply::Lines(lines) => lines,
+    };
 
     create_paged_embed(
         ctx,
