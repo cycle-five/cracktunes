@@ -2,7 +2,7 @@ use super::queue::{queue_track_back, queue_track_front};
 use super::{queue_keyword_list_back, queue_query_list_offset, queue_resolved_list_back};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::interface::create_search_response;
-use crate::sources::youtube::search_query_to_source_and_metadata_rusty;
+use crate::sources::youtube::search_query_to_source_and_metadata;
 use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
     errors::CrackedError,
@@ -20,7 +20,7 @@ use crate::{
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
 use colored::Colorize;
 use crack_types::metadata::{search_result_to_aux_metadata, video_info_to_aux_metadata};
-use crack_types::{NewAuxMetadata, QueryType, SpotifyTrack};
+use crack_types::{ytdl_for_url, NewAuxMetadata, QueryType, SpotifyTrack};
 use futures::future;
 use itertools::Itertools;
 use poise::ReplyHandle;
@@ -257,12 +257,10 @@ impl NewQueryType {
             },
             QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
-                let mut ytdl = YoutubeDl::new(
-                    http_utils::get_client_old().clone(),
-                    format!("ytsearch:{}", query),
-                );
-                let metadata = ytdl.aux_metadata().await.unwrap();
-                let url = metadata.source_url.unwrap();
+                let mut ytdl =
+                    YoutubeDl::new_search(http_utils::get_client_old().clone(), query.clone());
+                let metadata = ytdl.aux_metadata().await?;
+                let url = metadata.source_url.ok_or(CrackedError::EmptySearchResult)?;
                 let (output, metadata) = download_file_ytdlp(&url, mp3).await?;
 
                 let file_name = format!(
@@ -298,9 +296,17 @@ impl NewQueryType {
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                let url = format!("ytsearch:{}", keywords_list.first().unwrap());
-                let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), url.clone());
-                let metadata = ytdl.aux_metadata().await.unwrap();
+                let search = keywords_list
+                    .first()
+                    .ok_or(CrackedError::EmptySearchResult)?
+                    .clone();
+                let mut ytdl = YoutubeDl::new_search(http_utils::get_client_old().clone(), search);
+                let metadata = ytdl.aux_metadata().await?;
+                // Download the hit, not the search: `download_file_ytdlp` takes a link.
+                let url = metadata
+                    .source_url
+                    .clone()
+                    .ok_or(CrackedError::EmptySearchResult)?;
                 let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
                 let file_name = format!(
                     "{}/{} [{}].{}",
@@ -314,10 +320,17 @@ impl NewQueryType {
             },
             QueryType::KeywordList(keywords_list) => {
                 tracing::warn!("In KeywordList");
-                let url = format!("ytsearch:{}", keywords_list.join(" "));
-                let mut ytdl = YoutubeDl::new(http_utils::get_client_old().clone(), url.clone());
+                let mut ytdl = YoutubeDl::new_search(
+                    http_utils::get_client_old().clone(),
+                    keywords_list.join(" "),
+                );
                 tracing::warn!("ytdl: {:?}", ytdl);
-                let metadata = ytdl.aux_metadata().await.unwrap();
+                let metadata = ytdl.aux_metadata().await?;
+                // Download the hit, not the search: `download_file_ytdlp` takes a link.
+                let url = metadata
+                    .source_url
+                    .clone()
+                    .ok_or(CrackedError::EmptySearchResult)?;
                 let (output, _metadata) = download_file_ytdlp(&url, mp3).await?;
                 let file_name = format!(
                     "{}/{} [{}].{}",
@@ -571,7 +584,7 @@ impl NewQueryType {
         match qt {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 // FIXME
-                let mut src = YoutubeDl::new(http_utils::get_client_old().clone(), url.clone());
+                let mut src = ytdl_for_url(http_utils::get_client_old().clone(), url)?;
                 let metadata = src.aux_metadata().await?;
                 queue_track_back(ctx, &call, &QueryType::NewYoutubeDl((src, metadata))).await?;
                 Ok(true)
@@ -713,7 +726,7 @@ impl NewQueryType {
             },
             QueryType::VideoLink(url) => {
                 tracing::warn!("In VideoLink");
-                let ytdl = YoutubeDl::new(client_old, url.clone());
+                let ytdl = ytdl_for_url(client_old, url)?;
                 Ok(ytdl.into())
             },
             // 🔒 `new_search`, never `new`: songbird passes `new`'s string to
@@ -757,7 +770,7 @@ impl NewQueryType {
             },
             QueryType::VideoLink(url) => {
                 tracing::warn!("In VideoLink");
-                let mut ytdl = YoutubeDl::new(client_old, url.clone());
+                let mut ytdl = ytdl_for_url(client_old, url)?;
                 let metadata = ytdl.aux_metadata().await?;
                 let input = ytdl.into();
                 // let client = crate::http_utils::get_client();
@@ -774,11 +787,14 @@ impl NewQueryType {
                 let my_metadata = NewAuxMetadata(metadata);
                 Ok((input, vec![my_metadata]))
             },
-            QueryType::Keywords(_query) => {
+            QueryType::Keywords(query) => {
                 tracing::warn!("In Keywords");
-                //get_rusty_search(client.clone(), query.clone()).await
+                // 🪤 This is `ready_query`'s fallback for when `ct_client` fails, so it
+                // must not depend on rusty_ytdl alone: it asks yt-dlp when rusty_ytdl
+                // can't answer. It once searched with rusty_ytdl only, and a rusty_ytdl
+                // failure failed both paths.
                 let (input, metadata) =
-                    search_query_to_source_and_metadata_rusty(client.clone(), qt.clone()).await?;
+                    search_query_to_source_and_metadata(client.clone(), query.clone()).await?;
                 Ok((input, metadata))
                 // let mut ytdl = YoutubeDl::new_search(client, query.clone());
                 // let metadata = ytdl.aux_metadata().await?;
@@ -815,7 +831,7 @@ impl NewQueryType {
                     metadata.push(NewAuxMetadata(search_result_to_aux_metadata(&r)));
                 }
                 // yt-dlp plays it, never rusty_ytdl: see `source_for_search_hit`.
-                let input = YoutubeDl::new(client_old, url.clone()).into();
+                let input = ytdl_for_url(client_old, url)?.into();
                 Ok((input, metadata))
             },
             QueryType::SpotifyTracks(tracks) => {
@@ -824,10 +840,11 @@ impl NewQueryType {
                     .iter()
                     .map(|x| x.build_query())
                     .collect::<Vec<String>>();
-                let mut ytdl = YoutubeDl::new(
-                    client_old.clone(),
-                    format!("ytsearch:{}", keywords_list.first().unwrap()),
-                );
+                let search = keywords_list
+                    .first()
+                    .ok_or(CrackedError::EmptySearchResult)?
+                    .clone();
+                let mut ytdl = YoutubeDl::new_search(client_old.clone(), search);
                 tracing::warn!("ytdl: {:?}", ytdl);
                 let metdata = ytdl.aux_metadata().await.unwrap();
                 let my_metadata = NewAuxMetadata(metdata);
@@ -835,10 +852,7 @@ impl NewQueryType {
             },
             QueryType::KeywordList(keywords_list) => {
                 tracing::warn!("In KeywordList");
-                let mut ytdl = YoutubeDl::new(
-                    client_old.clone(),
-                    format!("ytsearch:{}", keywords_list.join(" ")),
-                );
+                let mut ytdl = YoutubeDl::new_search(client_old.clone(), keywords_list.join(" "));
                 tracing::warn!("ytdl: {:?}", ytdl);
                 let metdata = match ytdl.aux_metadata().await {
                     Ok(metadata) => metadata,
@@ -857,7 +871,7 @@ impl NewQueryType {
 
 /// Download a file and upload it as an mp3.
 async fn download_file_ytdlp_mp3(url: &str) -> Result<(Output, AuxMetadata), Error> {
-    let metadata = YoutubeDl::new(http_utils::get_client_old().clone(), url.to_string())
+    let metadata = ytdl_for_url(http_utils::get_client_old().clone(), url)?
         .aux_metadata()
         .await?;
 
@@ -890,7 +904,7 @@ async fn download_file_ytdlp(url: &str, mp3: bool) -> Result<(Output, AuxMetadat
         return download_file_ytdlp_mp3(url).await;
     }
 
-    let metadata = YoutubeDl::new(http_utils::get_client_old().clone(), url.to_string())
+    let metadata = ytdl_for_url(http_utils::get_client_old().clone(), url)?
         .aux_metadata()
         .await?;
 
@@ -1064,8 +1078,7 @@ pub async fn query_type_from_url(
                     "LINK".blue(),
                     url.underline().blue()
                 );
-                let mut ytdl =
-                    YoutubeDl::new(http_utils::get_client_old().clone(), url.to_string());
+                let mut ytdl = ytdl_for_url(http_utils::get_client_old().clone(), url)?;
                 // This can fail whenever yt-dlp cannot parse a track from the URL.
                 let metadata = match ytdl.aux_metadata().await {
                     Ok(metadata) => metadata,

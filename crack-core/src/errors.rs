@@ -487,6 +487,13 @@ impl From<url::ParseError> for CrackedError {
     }
 }
 
+/// A string `crack_types::ytdl_for_url` would not hand to yt-dlp as a link.
+impl From<crack_types::NotAYtdlUrl> for CrackedError {
+    fn from(_: crack_types::NotAYtdlUrl) -> Self {
+        Self::UrlNotAllowed
+    }
+}
+
 /// Provides an implementation to convert a rspotify [`RSpotifyClientError`] to a [`CrackedError`].
 impl From<RSpotifyClientError> for CrackedError {
     fn from(err: RSpotifyClientError) -> CrackedError {

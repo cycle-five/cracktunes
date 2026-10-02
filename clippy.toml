@@ -90,4 +90,12 @@ disallowed-methods = [
     { path = "songbird::tracks::TrackHandle::pause", reason = "pausing the current track is a pause, made without an audit record; use music::queue::pause_queue" },
     { path = "songbird::tracks::TrackHandle::play", reason = "playing the current track is a resume, made without an audit record; use music::queue::resume_queue" },
     { path = "songbird::driver::Driver::stop", reason = "stops the whole queue without an audit record; use music::queue::stop_queue" },
+    # 🔒 songbird hands `YoutubeDl::new`'s string to yt-dlp as a bare positional
+    # argument, with no `--` in front of it, so a string starting with `-` is read
+    # as an option. A playlist id of `--batch-file=/proc/self/environ` leaked the
+    # bot's environment to Discord this way (v0.17.2). Links go through
+    # `crack_types::ytdl_for_url`, which only accepts http(s) URLs; search text goes
+    # through `YoutubeDl::new_search`, whose `ytsearchN:` prefix it cannot escape.
+    { path = "songbird::input::YoutubeDl::new", reason = "yt-dlp reads a string starting with `-` as an option; use crack_types::ytdl_for_url for links or YoutubeDl::new_search for search text" },
+    { path = "songbird::input::YoutubeDl::new_ytdl_like", reason = "yt-dlp reads a string starting with `-` as an option; use crack_types::ytdl_for_url for links or YoutubeDl::new_search for search text" },
 ]
