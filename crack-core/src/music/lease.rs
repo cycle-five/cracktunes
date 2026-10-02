@@ -104,6 +104,10 @@ pub enum PlaybackOwner {
 #[derive(Debug)]
 pub struct QueueGuard {
     guild_id: GuildId,
+    /// Who holds this guard; every change made under it is recorded as them.
+    actor: crate::music::audit::Actor,
+    /// A clone of `Data::audit_tx`.
+    audit_tx: Option<tokio::sync::mpsc::Sender<crate::music::audit::AuditEvent>>,
     /// Dropping this releases the per-guild mutex. Never read.
     _exclusion: OwnedMutexGuard<()>,
 }
@@ -113,6 +117,31 @@ impl QueueGuard {
     #[must_use]
     pub fn guild_id(&self) -> GuildId {
         self.guild_id
+    }
+
+    /// Who this guard acts for.
+    #[must_use]
+    pub fn actor(&self) -> &crate::music::audit::Actor {
+        &self.actor
+    }
+
+    /// Record a change made under this guard. Call it only after the change
+    /// succeeded. Never waits and never fails: see `audit::emit`.
+    pub fn record(
+        &self,
+        voice: Option<songbird::id::ChannelId>,
+        action: crate::music::audit::Action,
+    ) {
+        crate::music::audit::emit(
+            self.audit_tx.as_ref(),
+            crate::music::audit::AuditEvent {
+                at: chrono::Utc::now(),
+                guild_id: self.guild_id,
+                voice_channel: voice.map(|c| serenity::all::ChannelId::new(c.get())),
+                actor: self.actor.clone(),
+                action,
+            },
+        );
     }
 }
 
@@ -168,10 +197,13 @@ impl Data {
     ///
     /// [`CrackedError::GameInProgress`] -- immediately, without touching the
     /// mutex -- when a game owns playback and `as_` is not that owner.
+    ///
+    /// `actor` is who every change made under the guard is recorded as.
     pub async fn lock_queue(
         &self,
         guild_id: GuildId,
         as_: PlaybackOwner,
+        actor: crate::music::audit::Actor,
     ) -> Result<QueueGuard, CrackedError> {
         // Ownership is checked BEFORE the mutex, deliberately. A caller refused
         // on ownership must not first wait out whoever holds the mutex.
@@ -191,6 +223,8 @@ impl Data {
 
         Ok(QueueGuard {
             guild_id,
+            actor,
+            audit_tx: self.audit_tx.clone(),
             _exclusion: lock.lock_owned().await,
         })
     }
@@ -256,7 +290,11 @@ mod test {
     async fn a_free_guild_hands_out_a_guard() {
         let d = data();
         let guard = d
-            .lock_queue(G, PlaybackOwner::Free)
+            .lock_queue(
+                G,
+                PlaybackOwner::Free,
+                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+            )
             .await
             .expect("free guild locks");
         assert_eq!(guard.guild_id(), G);
@@ -266,7 +304,14 @@ mod test {
     async fn a_game_owned_guild_refuses_a_non_owner_immediately() {
         let d = data();
         d.claim_playback(G, PlaybackOwner::Game).unwrap();
-        let err = d.lock_queue(G, PlaybackOwner::Free).await.unwrap_err();
+        let err = d
+            .lock_queue(
+                G,
+                PlaybackOwner::Free,
+                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+            )
+            .await
+            .unwrap_err();
         assert!(matches!(err, CrackedError::GameInProgress));
     }
 
@@ -276,9 +321,13 @@ mod test {
         // owner out of the thing it owns.
         let d = data();
         d.claim_playback(G, PlaybackOwner::Game).unwrap();
-        d.lock_queue(G, PlaybackOwner::Game)
-            .await
-            .expect("the owner may lock");
+        d.lock_queue(
+            G,
+            PlaybackOwner::Game,
+            crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+        )
+        .await
+        .expect("the owner may lock");
     }
 
     #[tokio::test]
@@ -287,10 +336,21 @@ mod test {
         // ownership check happened after the mutex, this would block forever.
         let d = data();
         d.claim_playback(G, PlaybackOwner::Game).unwrap();
-        let _held = d.lock_queue(G, PlaybackOwner::Game).await.unwrap();
+        let _held = d
+            .lock_queue(
+                G,
+                PlaybackOwner::Game,
+                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+            )
+            .await
+            .unwrap();
         let refused = tokio::time::timeout(
             std::time::Duration::from_millis(200),
-            d.lock_queue(G, PlaybackOwner::Free),
+            d.lock_queue(
+                G,
+                PlaybackOwner::Free,
+                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+            ),
         )
         .await
         .expect("must refuse without waiting on the mutex");
@@ -300,16 +360,51 @@ mod test {
     #[tokio::test]
     async fn two_lockers_of_a_free_guild_serialise() {
         let d = data();
-        let first = d.lock_queue(G, PlaybackOwner::Free).await.unwrap();
+        let first = d
+            .lock_queue(
+                G,
+                PlaybackOwner::Free,
+                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+            )
+            .await
+            .unwrap();
         let blocked = tokio::time::timeout(
             std::time::Duration::from_millis(100),
-            d.lock_queue(G, PlaybackOwner::Free),
+            d.lock_queue(
+                G,
+                PlaybackOwner::Free,
+                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+            ),
         )
         .await;
         assert!(blocked.is_err(), "the second locker must wait");
         drop(first);
-        d.lock_queue(G, PlaybackOwner::Free)
+        d.lock_queue(
+            G,
+            PlaybackOwner::Free,
+            crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+        )
+        .await
+        .expect("the lock is released on drop");
+    }
+
+    #[tokio::test]
+    async fn a_guard_records_as_its_actor_into_the_audit_channel() {
+        use crate::music::audit::{Action, Actor, BotReason};
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let d = Data(Arc::new(DataInner {
+            audit_tx: Some(tx),
+            ..Default::default()
+        }));
+        let guard = d
+            .lock_queue(G, PlaybackOwner::Free, Actor::bot(BotReason::Autopause))
             .await
-            .expect("the lock is released on drop");
+            .unwrap();
+        guard.record(None, Action::Pause);
+        let e = rx.try_recv().expect("recorded");
+        assert_eq!(
+            (e.guild_id, e.action, e.actor),
+            (G, Action::Pause, Actor::bot(BotReason::Autopause))
+        );
     }
 }

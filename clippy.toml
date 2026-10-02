@@ -73,4 +73,21 @@ disallowed-methods = [
     { path = "rusty_ytdl::Video::stream_with_ffmpeg", reason = "its stream comes back empty, so the track is dropped as it starts; play through songbird's YoutubeDl, as queue::build_track and youtube::source_for_search_hit do" },
     { path = "rusty_ytdl::blocking::Video::stream", reason = "its stream comes back empty, so the track is dropped as it starts; play through songbird's YoutubeDl, as queue::build_track and youtube::source_for_search_hit do" },
     { path = "rusty_ytdl::blocking::Video::stream_with_ffmpeg", reason = "its stream comes back empty, so the track is dropped as it starts; play through songbird's YoutubeDl, as queue::build_track and youtube::source_for_search_hit do" },
+    # 🪤 The queue audit log (docs/superpowers/specs/2026-09-30-queue-audit-log-design.md)
+    # is recorded by the primitives in `music::queue` and by `music::disconnect`.
+    # A change made anywhere else is a change nobody can account for, so these
+    # close every other door, as the Songbird::get ban above does for joins.
+    { path = "songbird::tracks::TrackQueue::skip", reason = "changes the queue without an audit record; use the primitives in music::queue" },
+    { path = "songbird::tracks::TrackQueue::stop", reason = "changes the queue without an audit record; use music::queue::stop_queue" },
+    { path = "songbird::tracks::TrackQueue::dequeue", reason = "changes the queue without an audit record; use the primitives in music::queue" },
+    { path = "songbird::tracks::TrackQueue::modify_queue", reason = "changes the queue without an audit record; use the primitives in music::queue" },
+    { path = "songbird::tracks::TrackQueue::pause", reason = "changes the queue without an audit record; use music::queue::pause_queue" },
+    { path = "songbird::tracks::TrackQueue::resume", reason = "changes the queue without an audit record; use music::queue::resume_queue" },
+    { path = "songbird::Songbird::remove", reason = "discards the queue without an audit record; use music::disconnect::disconnect" },
+    { path = "songbird::Songbird::leave", reason = "discards the queue without an audit record; use music::disconnect::disconnect" },
+    { path = "songbird::Call::leave", reason = "discards the queue without an audit record; use music::disconnect::disconnect" },
+    { path = "songbird::tracks::TrackHandle::stop", reason = "stopping the current track is a skip, made without an audit record; use music::queue::force_skip_top_track" },
+    { path = "songbird::tracks::TrackHandle::pause", reason = "pausing the current track is a pause, made without an audit record; use music::queue::pause_queue" },
+    { path = "songbird::tracks::TrackHandle::play", reason = "playing the current track is a resume, made without an audit record; use music::queue::resume_queue" },
+    { path = "songbird::driver::Driver::stop", reason = "stops the whole queue without an audit record; use music::queue::stop_queue" },
 ]

@@ -8,7 +8,10 @@ use crate::messaging::messages::{
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
 use crate::CrackedResult;
-use crate::{guild::settings::DEFAULT_LYRICS_PAGE_SIZE, utils::create_paged_embed};
+use crate::{
+    guild::settings::DEFAULT_LYRICS_PAGE_SIZE,
+    utils::{create_paged_embed, PagedStyle},
+};
 use crate::{
     messaging::message::CrackedMessage,
     utils::{build_footer_info, get_requesting_user, get_track_handle_metadata},
@@ -352,6 +355,7 @@ pub async fn create_lyrics_embed(
         track,
         lyric,
         DEFAULT_LYRICS_PAGE_SIZE,
+        PagedStyle::default(),
     )
     .await
 }
@@ -517,7 +521,14 @@ mod test {
 
         let guild = GuildId::new(1);
         let data = Data(std::sync::Arc::new(DataInner::default()));
-        let guard = data.lock_queue(guild, PlaybackOwner::Free).await.unwrap();
+        let guard = data
+            .lock_queue(
+                guild,
+                PlaybackOwner::Free,
+                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Autopause),
+            )
+            .await
+            .unwrap();
         let call = std::sync::Arc::new(tokio::sync::Mutex::new(songbird::Call::standalone(
             guild,
             UserId::new(2),

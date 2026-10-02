@@ -1,0 +1,57 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT at, actor_user_id, source, command, action,\n                  detail AS \"detail!: Json<Action>\"\n           FROM queue_audit\n           WHERE guild_id = $1\n             AND ($2::bigint      IS NULL OR actor_user_id = $2)\n             AND ($3::text        IS NULL OR action = $3)\n             AND ($4::text        IS NULL OR source = $4)\n             AND ($5::timestamptz IS NULL OR at >= $5)\n           ORDER BY at DESC\n           LIMIT $6",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 1,
+        "name": "actor_user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "source",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "command",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "action",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "detail!: Json<Action>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Text",
+        "Text",
+        "Timestamptz",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8a9b410a3081b4162234b2671741803d5c1411c631b3af948e0e5f15a5b01eff"
+}

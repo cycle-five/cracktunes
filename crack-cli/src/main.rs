@@ -79,6 +79,16 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 
     // let client = framework.client();
     let data_arc = client.data::<crack_core::Data>().clone();
+
+    // The dashboard shares the bot's Data, cache and HTTP client. It starts
+    // only if its environment is complete, and its failures are logged, never
+    // propagated: the dashboard must not be able to take the bot down.
+    #[cfg(feature = "web")]
+    let _web = crack_web::spawn_if_configured(crack_web::WebDeps {
+        data: data_arc.clone(),
+        cache: client.cache.clone(),
+        http: client.http.clone(),
+    });
     let guild_settings_map = data_arc.guild_settings_map.read().await.clone();
 
     for (guild_id, guild_settings) in guild_settings_map.iter() {

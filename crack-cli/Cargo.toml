@@ -22,7 +22,7 @@ license = true
 eula = false
 
 [features]
-default = ["crack-tracing"]
+default = ["crack-tracing", "web"]
 
 crack-tracing = ["tracing-subscriber"]
 # Forwards to crack-core, which owns the prometheus registry. This was an empty
@@ -31,6 +31,9 @@ crack-metrics = ["crack-core/crack-metrics"]
 # Structured JSON logs. Implies crack-tracing: `init_telemetry` is gated on it, so
 # crack-telemetry on its own would silently do nothing.
 crack-telemetry = ["crack-tracing", "tracing-bunyan-formatter"]
+# The web dashboard (crack-web). On by default; it stays dormant until its
+# environment is set -- see docs/web-dashboard.md.
+web = ["dep:crack-web"]
 
 # Tests that need a live postgres at DATABASE_URL. Off by default: the bot runs
 # without a database, so its test suite has to as well -- otherwise every
@@ -42,6 +45,7 @@ db-tests = []
 [dependencies]
 crack-core = { path = "../crack-core/" }
 crack-types = { path = "../crack-types/" }
+crack-web = { path = "../crack-web/", optional = true }
 
 config-file = { version = "0.2", features = ["json"] }
 dotenvy = "0.15"

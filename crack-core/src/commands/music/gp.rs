@@ -12,7 +12,6 @@ use crate::{
     commands::cmd_check_music,
     commands::get_call_or_join_author,
     commands::music::gp_prompts::{draw_prompts, GpCategory},
-    commands::music::skip::force_skip_top_track,
     db::GpOutcome,
     errors::CrackedError,
     http_utils::SendMessageParams,
@@ -31,7 +30,9 @@ use crate::{
         GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN, SPOTIFY_GP_ONE_SONG,
         SPOTIFY_NOTHING_PLAYABLE,
     },
-    music::queue::{build_track, enqueue_track_back, preload_time, stop_queue},
+    music::queue::{
+        build_track, enqueue_track_back, force_skip_top_track, preload_time, stop_queue,
+    },
     music::PlaybackOwner,
     poise_ext::PoiseContextExt,
     sources::sleevenote,
@@ -2296,7 +2297,15 @@ async fn gp_abort(pb: &GpPlayback, text_channel: GenericChannelId, reason: &str)
     // by the time we get here and `Free` is what must be passed. Locking as
     // `Game` would be refused, and a refusal is silent -- the queue would
     // simply play on under a game that no longer exists.
-    match pb.data.lock_queue(pb.guild_id, PlaybackOwner::Free).await {
+    match pb
+        .data
+        .lock_queue(
+            pb.guild_id,
+            PlaybackOwner::Free,
+            crate::music::audit::Actor::bot(crate::music::audit::BotReason::Game),
+        )
+        .await
+    {
         Ok(guard) => {
             let handler = pb.call.lock().await;
             stop_queue(&guard, &handler);
@@ -2532,7 +2541,15 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
         // nothing on this path has released it, so lock as `Game`. `Free` would
         // be refused and the song would silently never be enqueued -- no `End`
         // would ever arrive and the round would hang forever.
-        let guard = match pb.data.lock_queue(guild_id, PlaybackOwner::Game).await {
+        let guard = match pb
+            .data
+            .lock_queue(
+                guild_id,
+                PlaybackOwner::Game,
+                crate::music::audit::Actor::bot(crate::music::audit::BotReason::Game),
+            )
+            .await
+        {
             Ok(guard) => guard,
             Err(e) => {
                 // Unreachable while `PlaybackOwner` has only `Free` and `Game`
@@ -2641,6 +2658,10 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
 /// started under, the same way the submission-window timer is, so a timer left
 /// over from an abandoned round cannot cut a later song short. Stands down if the
 /// room has voted the song up to its full length in the meantime.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the game ending its own clip; a track ending is not recorded"
+)]
 fn gp_spawn_clip_timer(
     pb: GpPlayback,
     handle: TrackHandle,
@@ -3091,7 +3112,13 @@ pub async fn gp_start(
     // above `data.gp_start` gives. Locking as `Game` cannot be refused (`as_`
     // matches both `Free` and `Game`), so this `?` cannot orphan the game that
     // was just created.
-    let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
+    let guard = data
+        .lock_queue(
+            guild_id,
+            PlaybackOwner::Game,
+            crate::music::audit::Actor::from_ctx(&ctx),
+        )
+        .await?;
     let cleared_queue = {
         let handler = call.lock().await;
         let non_empty = !handler.queue().is_empty();
@@ -3319,7 +3346,13 @@ pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
         // owns playback and has not released it (see
         // `the_owner_can_still_lock_its_own_queue` in lease.rs); `Free` would
         // be refused and the skip would silently do nothing.
-        let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
+        let guard = data
+            .lock_queue(
+                guild_id,
+                PlaybackOwner::Game,
+                crate::music::audit::Actor::from_ctx(&ctx),
+            )
+            .await?;
         let handler = call.lock().await;
         if handler.queue().is_empty() {
             return Err(CrackedError::NothingPlaying.into());
@@ -3449,7 +3482,13 @@ async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
         // owns playback and has not released it (see
         // `the_owner_can_still_lock_its_own_queue` in lease.rs); `Free` would
         // be refused and the skip would silently do nothing.
-        let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
+        let guard = data
+            .lock_queue(
+                guild_id,
+                PlaybackOwner::Game,
+                crate::music::audit::Actor::from_ctx(&ctx),
+            )
+            .await?;
         let handler = call.lock().await;
         if handler.queue().is_empty() {
             return Err(CrackedError::NothingPlaying);
@@ -3560,7 +3599,13 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
             // the track-end handler. So the game still owns playback here and
             // this locks as `Game`; `Free` would be refused and the queue would
             // never stop, leaving the parked game with no `End` to collect it.
-            let guard = data.lock_queue(guild_id, PlaybackOwner::Game).await?;
+            let guard = data
+                .lock_queue(
+                    guild_id,
+                    PlaybackOwner::Game,
+                    crate::music::audit::Actor::from_ctx(&ctx),
+                )
+                .await?;
             let handler = call.lock().await;
             let playing = !handler.queue().is_empty();
             stop_queue(&guard, &handler);

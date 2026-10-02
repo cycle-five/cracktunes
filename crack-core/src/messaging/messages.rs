@@ -428,3 +428,15 @@ pub const FAIL_GP_NOT_CLIPS: &str =
     "🎭 This game is playing whole songs already, so there's nothing to vote up.";
 pub const FAIL_GP_NOT_A_GAME_PLAYER: &str =
     "🎭 You're not in this game — `/gp submit <song>` on the next prompt to join in.";
+
+pub const AUDITLOG_TITLE: &str = "📜 Queue history";
+pub const AUDITLOG_NO_DATABASE: &str =
+    "📜 The queue history needs a database, and this bot is running without one.";
+pub const AUDITLOG_BAD_SINCE: &str =
+    "⚠️ `since` takes a number and a unit: `90m`, `6h`, `2d` or `1w` (at most 52w).";
+pub const AUDITLOG_FAILED: &str =
+    "⚠️ Couldn't read the queue history just now. Try again in a moment.";
+pub const AUDITLOG_EMPTY: &str = "📜 Nothing in the queue history matches that.";
+pub const AUDITLOG_TRUNCATED: &str = "_Showing the newest 200. Narrow it with `since` or `user`._";
+pub const AUDITLOG_GP_HIDDEN: &str =
+    "_Entries from the `/gp` game in progress are hidden until it ends._";

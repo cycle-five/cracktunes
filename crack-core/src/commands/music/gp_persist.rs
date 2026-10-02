@@ -655,21 +655,22 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     // leaves registered survived and the next join found it and skipped the
     // permission gate (#502). There is now one implementation of "join and tidy
     // up if it fails", and this is the same one `do_join` uses.
-    let call = match crate::commands::music_utils::join_permitted(&data.songbird, permit).await {
-        Ok(call) => call,
-        Err(e) => {
-            tracing::warn!("gp: rejoining {voice_channel} in {guild_id} to resume: {e}");
-            // Through the method, not the map: `gp_remove` is the one place a
-            // game ends, and it is what releases the playback lease. A raw
-            // remove here would leave the guild owned by a game that no longer
-            // exists, and /play refused forever. Its own bookkeeping write
-            // is superseded by `abandon_resume`, which owns the authoritative
-            // database write for this path, since `gp_remove`'s in-memory
-            // `game` reflects the pre-rejoin-failure state.
-            abandon_resume(data, pool, guild_id, started_at, text_channel, &ctx.http).await;
-            return;
-        },
-    };
+    let call =
+        match crate::commands::music_utils::join_permitted(data, &data.songbird, permit).await {
+            Ok(call) => call,
+            Err(e) => {
+                tracing::warn!("gp: rejoining {voice_channel} in {guild_id} to resume: {e}");
+                // Through the method, not the map: `gp_remove` is the one place a
+                // game ends, and it is what releases the playback lease. A raw
+                // remove here would leave the guild owned by a game that no longer
+                // exists, and /play refused forever. Its own bookkeeping write
+                // is superseded by `abandon_resume`, which owns the authoritative
+                // database write for this path, since `gp_remove`'s in-memory
+                // `game` reflects the pre-rejoin-failure state.
+                abandon_resume(data, pool, guild_id, started_at, text_channel, &ctx.http).await;
+                return;
+            },
+        };
     set_global_handlers_with(
         ctx,
         Arc::new(data.clone()),
