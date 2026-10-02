@@ -9,7 +9,7 @@
 use crate::commands::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::EXTRA_TEXT_AT_BOTTOM;
-use crate::utils::{create_paged_embed, send_reply_owned};
+use crate::utils::{create_paged_embed, send_reply_owned, PagedStyle};
 use crate::{require, Context, Data, Error};
 use ::serenity::all::{AutocompleteChoice, CreateAutocompleteResponse};
 use itertools::Itertools;
@@ -473,7 +473,15 @@ async fn help_single_command(
 
     if reply.len() > 1000 {
         let bot_name = ctx.cache().current_user().name.clone();
-        create_paged_embed(ctx, bot_name, "Help".to_string(), reply, 900).await?;
+        create_paged_embed(
+            ctx,
+            bot_name,
+            "Help".to_string(),
+            reply,
+            900,
+            PagedStyle::default(),
+        )
+        .await?;
     } else {
         let create_reply = CreateReply::default()
             .content(reply)
@@ -608,6 +616,14 @@ async fn help_all_commands(
 
     // ctx.send(reply).await?;
     let bot_name = ctx.cache().current_user().name.clone();
-    create_paged_embed(ctx, bot_name, "Help".to_string(), menu, 900).await?;
+    create_paged_embed(
+        ctx,
+        bot_name,
+        "Help".to_string(),
+        menu,
+        900,
+        PagedStyle::default(),
+    )
+    .await?;
     Ok(())
 }
