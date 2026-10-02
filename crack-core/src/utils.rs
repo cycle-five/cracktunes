@@ -725,7 +725,8 @@ pub fn split_string_into_chunks_newline(string: &str, chunk_size: usize) -> Vec<
             }
         }
         let chunk = &string[cur..next];
-        let newline_index = chunk.rfind('\n');
+        // The final window is taken whole; only a window cut short looks for a line end.
+        let newline_index = if next < end { chunk.rfind('\n') } else { None };
         let chunk = match newline_index {
             Some(index) => {
                 next = index + cur + 1;
@@ -960,6 +961,20 @@ mod test {
             let chunks = split_string_into_chunks_newline(&flat, size);
             assert_eq!(chunks.concat(), flat, "size {size}");
         }
+    }
+
+    #[test]
+    fn the_final_window_is_not_cut_at_its_last_newline() {
+        // Everything fits: one page holding both lines.
+        let pages = build_pages("a\nb", 900, false);
+        assert_eq!(pages, vec!["a\nb".to_string()]);
+        // Several pages: the last one keeps every line that fits, not just one.
+        let lines: Vec<String> = (0..9).map(|i| format!("line{i}")).collect();
+        let pages = build_pages(&lines.join("\n"), 20, false);
+        let last = pages.last().unwrap();
+        assert!(pages.len() > 1, "{pages:?}");
+        assert!(last.contains("line7\nline8"), "{pages:?}");
+        assert_eq!(pages.join("\n"), lines.join("\n"));
     }
 
     #[test]
