@@ -1,6 +1,7 @@
 //! Reading the queue audit log back: what `/auditlog` shows, and what it hides.
 //! Spec: docs/superpowers/specs/2026-10-02-auditlog-command-design.md
 
+use crate::messaging::messages::{AUDITLOG_GP_HIDDEN, AUDITLOG_TRUNCATED};
 use crate::music::audit::{Action, Source, TrackRef};
 use chrono::{DateTime, Duration, Utc};
 
@@ -24,16 +25,20 @@ pub struct AuditRow {
     pub detail: Action,
 }
 
-/// `90m`, `6h`, `2d`, `1w`: a positive whole number and one unit, at most 52 weeks.
+/// `90m`, `6h`, `2d`, `1w` (any case): a positive whole number and one unit,
+/// at most 52 weeks. A leading `+` is rejected.
 #[must_use]
 pub fn parse_since(s: &str) -> Option<Duration> {
     let s = s.trim();
+    if s.starts_with('+') {
+        return None;
+    }
     let unit = s.chars().last()?;
     let n: i64 = s[..s.len() - unit.len_utf8()].parse().ok()?;
     if n < 1 {
         return None;
     }
-    let d = match unit {
+    let d = match unit.to_ascii_lowercase() {
         'm' => Duration::try_minutes(n)?,
         'h' => Duration::try_hours(n)?,
         'd' => Duration::try_days(n)?,
@@ -43,14 +48,21 @@ pub fn parse_since(s: &str) -> Option<Duration> {
     (d <= Duration::weeks(MAX_SINCE_WEEKS)).then_some(d)
 }
 
-/// Escape Discord markdown in text we did not write.
+/// Escape Discord markdown, links and mentions in text we did not write, and
+/// flatten line breaks.
 fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
-        if matches!(c, '*' | '_' | '`' | '~' | '|' | '>' | '\\') {
-            out.push('\\');
+        match c {
+            // A newline would split the one-line entry, and could split a page.
+            '\n' | '\r' => out.push(' '),
+            // `[`/`]` make masked links; `<` starts mentions and timestamps.
+            '*' | '_' | '`' | '~' | '|' | '>' | '<' | '[' | ']' | '\\' => {
+                out.push('\\');
+                out.push(c);
+            },
+            _ => out.push(c),
         }
-        out.push(c);
     }
     out
 }
@@ -122,6 +134,12 @@ pub fn audit_line(row: &AuditRow) -> String {
     )
 }
 
+/// `gp` itself or one of its subcommands (`gp skip`), not a command that
+/// merely starts with those letters.
+fn is_gp(command: &str) -> bool {
+    command == "gp" || command.starts_with("gp ")
+}
+
 /// Drop a running `/gp` game's rows: their titles are the answers. Rows from
 /// before the game started, and rows of other commands, are kept. Returns
 /// whether anything was dropped, so the reply can say so.
@@ -136,10 +154,49 @@ pub fn hide_running_game(
     let before = rows.len();
     let kept: Vec<AuditRow> = rows
         .into_iter()
-        .filter(|r| !(r.command.starts_with("gp") && r.at >= start))
+        .filter(|r| !(is_gp(&r.command) && r.at >= start))
         .collect();
     let hid = kept.len() != before;
     (kept, hid)
+}
+
+/// What `/auditlog` has to say, before paging.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AuditlogReply {
+    /// No row matched the filter.
+    Empty,
+    /// Rows matched, but all belong to the running `/gp` game.
+    AllHidden,
+    /// The lines to page, leading notice lines included.
+    Lines(Vec<String>),
+}
+
+/// Decide the reply from the rows fetched (newest first, at most
+/// `AUDITLOG_LIMIT + 1`): cut to the limit, hide a running game's rows, and
+/// prepend the notices. Pure; the notice texts come from `messages.rs`.
+#[must_use]
+pub fn compose_auditlog(
+    mut rows: Vec<AuditRow>,
+    running_since: Option<DateTime<Utc>>,
+) -> AuditlogReply {
+    if rows.is_empty() {
+        return AuditlogReply::Empty;
+    }
+    let truncated = rows.len() > AUDITLOG_LIMIT;
+    rows.truncate(AUDITLOG_LIMIT);
+    let (rows, hid) = hide_running_game(rows, running_since);
+    if rows.is_empty() {
+        return AuditlogReply::AllHidden;
+    }
+    let mut lines = Vec::with_capacity(rows.len() + 2);
+    if hid {
+        lines.push(AUDITLOG_GP_HIDDEN.to_owned());
+    }
+    if truncated {
+        lines.push(AUDITLOG_TRUNCATED.to_owned());
+    }
+    lines.extend(rows.iter().map(audit_line));
+    AuditlogReply::Lines(lines)
 }
 
 /// The `action` option's choices: exactly the names the recorder writes.
@@ -226,6 +283,10 @@ mod test {
         assert_eq!(parse_since("2d"), Some(Duration::days(2)));
         assert_eq!(parse_since("52w"), Some(Duration::weeks(52)));
         assert_eq!(parse_since(" 1w "), Some(Duration::weeks(1)));
+        assert_eq!(parse_since("6H"), Some(Duration::hours(6)));
+        assert_eq!(parse_since("90M"), Some(Duration::minutes(90)));
+        assert_eq!(parse_since("2D"), Some(Duration::days(2)));
+        assert_eq!(parse_since("1W"), Some(Duration::weeks(1)));
     }
 
     #[test]
@@ -234,6 +295,7 @@ mod test {
             "",
             "0h",
             "-1h",
+            "+5h",
             "5",
             "h",
             "5y",
@@ -374,6 +436,20 @@ mod test {
             "remove",
             Some(1),
             Action::Remove {
+                track: t("[x](u) <@5> <t:1:R>\r\nnext\nline"),
+                index: 1,
+            },
+        ));
+        assert!(
+            line.contains(r"\[x\](u) \<@5\> \<t:1:R\>  next line"),
+            "{line}"
+        );
+        assert_eq!(line.lines().count(), 1, "{line}");
+        let line = audit_line(&row(
+            "slash",
+            "remove",
+            Some(1),
+            Action::Remove {
                 track: TrackRef {
                     title: None,
                     url: None,
@@ -433,6 +509,73 @@ mod test {
         let (kept, hid) = hide_running_game(rows, None);
         assert!(!hid);
         assert_eq!(kept.len(), 4);
+    }
+
+    #[test]
+    fn only_gp_and_its_subcommands_are_hidden() {
+        let start = Utc.timestamp_opt(1_790_843_000, 0).unwrap();
+        let rows = vec![
+            row("slash", "gpx", Some(7), Action::Pause),
+            row("slash", "gp", Some(7), Action::Pause),
+            row("slash", "gp skip", Some(7), Action::Pause),
+        ];
+        let (kept, hid) = hide_running_game(rows, Some(start));
+        assert!(hid);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].command, "gpx");
+    }
+
+    fn many(n: usize) -> Vec<AuditRow> {
+        (0..n)
+            .map(|_| row("slash", "pause", Some(7), Action::Pause))
+            .collect()
+    }
+
+    #[test]
+    fn compose_no_rows_is_empty() {
+        assert_eq!(compose_auditlog(vec![], None), AuditlogReply::Empty);
+    }
+
+    #[test]
+    fn compose_all_rows_hidden_is_not_empty() {
+        let start = Utc.timestamp_opt(1_790_843_000, 0).unwrap();
+        let rows = vec![
+            row("bot", "gp", None, Action::Pause),
+            row("slash", "gp skip", Some(7), Action::Pause),
+        ];
+        assert_eq!(
+            compose_auditlog(rows, Some(start)),
+            AuditlogReply::AllHidden
+        );
+    }
+
+    #[test]
+    fn compose_over_the_limit_cuts_and_says_so() {
+        let AuditlogReply::Lines(lines) = compose_auditlog(many(AUDITLOG_LIMIT + 1), None) else {
+            panic!("expected lines");
+        };
+        assert_eq!(lines.len(), AUDITLOG_LIMIT + 1);
+        assert_eq!(lines[0], AUDITLOG_TRUNCATED);
+        let AuditlogReply::Lines(lines) = compose_auditlog(many(AUDITLOG_LIMIT), None) else {
+            panic!("expected lines");
+        };
+        assert_eq!(lines.len(), AUDITLOG_LIMIT);
+        assert!(!lines.contains(&AUDITLOG_TRUNCATED.to_owned()));
+    }
+
+    #[test]
+    fn compose_a_hidden_row_adds_the_notice_first() {
+        let start = Utc.timestamp_opt(1_790_843_000, 0).unwrap();
+        let rows = vec![
+            row("bot", "gp", None, Action::Pause),
+            row("slash", "pause", Some(7), Action::Pause),
+        ];
+        let AuditlogReply::Lines(lines) = compose_auditlog(rows, Some(start)) else {
+            panic!("expected lines");
+        };
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], AUDITLOG_GP_HIDDEN);
+        assert!(lines[1].contains("/pause"), "{lines:?}");
     }
 
     #[test]
