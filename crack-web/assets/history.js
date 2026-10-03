@@ -34,6 +34,9 @@
   // Bumped on every refetch, so a poll or "load older" that began before a
   // filter changed can never mix its rows into the new list.
   let seq = 0;
+  // An older page has been added below the first. Until then the list is one
+  // first page plus polled rows, and a reload can stand in for a poll.
+  let loadedOlder = false;
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -129,8 +132,10 @@
       rows = data.rows;
       older = data.older;
       gameHidden = data.game_hidden;
+      loadedOlder = false;
       badge.hidden = true;
       dirty = false;
+      say("");
       render();
     } catch (_) {
       if (mine === seq) {
@@ -157,16 +162,26 @@
     if (more) poll();
   }
 
+  // A member the server had no name for yet. An after-poll only brings new
+  // rows, so while the list is still the first page, the next poll reloads it
+  // to fill names in.
+  function nameMissing() {
+    return !loadedOlder && rows.some((r) => r.who.kind === "member" && r.who.name === null);
+  }
+
   // Resolves true when a full page came back, so more may be waiting.
   async function pollOnce() {
-    if (dirty || rows.length === 0) {
+    if (dirty || rows.length === 0 || nameMissing()) {
       await reload();
       return false;
     }
     const mine = seq;
+    // A reload may already be in flight (seq was bumped before this read):
+    // apply only if the row this asked "after" is still the newest.
+    const top = rows[0].id;
     try {
-      const data = await fetchPage({ after: rows[0].id });
-      if (!data || mine !== seq) return false;
+      const data = await fetchPage({ after: top });
+      if (!data || mine !== seq || rows.length === 0 || rows[0].id !== top) return false;
       badge.hidden = true;
       if (gameHidden && !data.game_hidden) {
         // The game ended: its rows can be shown now.
@@ -187,12 +202,16 @@
     if (dirty) return reload();
     if (rows.length === 0) return;
     const mine = seq;
+    // As for a poll: apply only if the row this asked "before" is still last.
+    const last = rows[rows.length - 1].id;
     olderBtn.disabled = true;
     try {
-      const data = await fetchPage({ before: rows[rows.length - 1].id });
-      if (!data || mine !== seq) return;
+      const data = await fetchPage({ before: last });
+      if (!data || mine !== seq || rows.length === 0 || rows[rows.length - 1].id !== last) return;
       rows = rows.concat(data.rows);
       older = data.older;
+      loadedOlder = true;
+      say("");
       render();
     } catch (_) {
       say("Could not load older entries. Try again in a moment.");
