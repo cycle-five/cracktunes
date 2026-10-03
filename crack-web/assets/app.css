@@ -33,3 +33,22 @@ a.title:hover { text-decoration: underline; }
 .empty { color: var(--muted); }
 #badge, #note { background: var(--note); padding: 8px 12px; border-radius: 6px; }
 @media (max-width: 480px) { .track { flex-wrap: wrap; } .meta { width: 100%; } }
+
+.links { margin: 0 0 1rem; }
+.links a { color: var(--accent); }
+#filters { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; margin: 0 0 1rem; }
+#filters select { margin-left: 0.25rem; }
+.chip { display: inline-flex; gap: 0.25rem; align-items: center; padding: 0.1rem 0.5rem;
+        border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
+.chip button { border: 0; background: none; color: var(--muted); cursor: pointer; font: inherit; }
+#rows { list-style: none; padding: 0; margin: 0; }
+#rows .row { display: flex; flex-wrap: wrap; gap: 0.25rem 0.6rem; padding: 0.5rem 0;
+             border-bottom: 1px solid var(--line); }
+#rows .when { color: var(--muted); min-width: 6.5rem; }
+#rows .who { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; font: inherit; }
+#rows .who.bot { color: var(--muted); cursor: default; }
+#rows .how { color: var(--muted); }
+#rows .what { flex-basis: 100%; overflow-wrap: anywhere; }
+#rows .empty { color: var(--muted); padding: 1rem 0; }
+#older { margin: 1rem 0; }
+[hidden] { display: none !important; }

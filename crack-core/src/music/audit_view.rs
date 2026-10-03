@@ -67,17 +67,18 @@ fn escape(s: &str) -> String {
     out
 }
 
-fn title(t: &TrackRef) -> String {
+/// A track's title for display: cut at `TITLE_MAX` characters with `…`, or
+/// `(untitled)`. Not escaped: `/auditlog` escapes the whole line's wording.
+fn title_text(t: &TrackRef) -> String {
     let Some(raw) = t.title.as_deref() else {
         return "(untitled)".to_owned();
     };
     let cut: String = raw.chars().take(TITLE_MAX).collect();
-    let cut = if raw.chars().count() > TITLE_MAX {
+    if raw.chars().count() > TITLE_MAX {
         format!("{cut}…")
     } else {
         cut
-    };
-    escape(&cut)
+    }
 }
 
 fn who(row: &AuditRow) -> String {
@@ -87,7 +88,10 @@ fn who(row: &AuditRow) -> String {
     }
 }
 
-fn how(row: &AuditRow) -> String {
+/// How the change was asked for: `/play`, `@skip`, `dashboard`, or the bot's
+/// reason. Command names are ours, so nothing here needs escaping.
+#[must_use]
+pub fn how_text(row: &AuditRow) -> String {
     match row.source.as_str() {
         "slash" => format!("/{}", row.command),
         "prefix" => format!("@{}", row.command),
@@ -96,11 +100,16 @@ fn how(row: &AuditRow) -> String {
     }
 }
 
-fn what(a: &Action) -> String {
+/// What changed, in plain text. The dashboard inserts it as text; `/auditlog`
+/// escapes it (see [`what`]). One source of words for both.
+#[must_use]
+pub fn what_text(a: &Action) -> String {
     match a {
-        Action::Add { tracks, .. } if tracks.len() == 1 => format!("added {}", title(&tracks[0])),
+        Action::Add { tracks, .. } if tracks.len() == 1 => {
+            format!("added {}", title_text(&tracks[0]))
+        },
         Action::Add { tracks, .. } => {
-            let names: Vec<String> = tracks.iter().take(ADD_NAMES).map(title).collect();
+            let names: Vec<String> = tracks.iter().take(ADD_NAMES).map(title_text).collect();
             let more = tracks.len().saturating_sub(ADD_NAMES);
             let tail = if more > 0 {
                 format!(" (+{more})")
@@ -109,9 +118,11 @@ fn what(a: &Action) -> String {
             };
             format!("added {} tracks: {}{tail}", tracks.len(), names.join(", "))
         },
-        Action::Remove { track, index } => format!("removed {} from #{index}", title(track)),
-        Action::Move { track, from, to } => format!("moved {} {from} → {to}", title(track)),
-        Action::Skip { track: Some(t) } => format!("skipped {}", title(t)),
+        Action::Remove { track, index } => {
+            format!("removed {} from #{index}", title_text(track))
+        },
+        Action::Move { track, from, to } => format!("moved {} {from} → {to}", title_text(track)),
+        Action::Skip { track: Some(t) } => format!("skipped {}", title_text(t)),
         Action::Skip { track: None } => "skipped".to_owned(),
         Action::Clear { removed } => format!("cleared {removed} tracks"),
         Action::Shuffle { count } => format!("shuffled {count} tracks"),
@@ -122,6 +133,12 @@ fn what(a: &Action) -> String {
     }
 }
 
+/// [`what_text`] escaped for Discord. Escaping the whole text equals escaping
+/// each title: the fixed words contain none of the characters `escape` touches.
+fn what(a: &Action) -> String {
+    escape(&what_text(a))
+}
+
 /// `<t:UNIX:R> WHO · HOW — WHAT`.
 #[must_use]
 pub fn audit_line(row: &AuditRow) -> String {
@@ -129,7 +146,7 @@ pub fn audit_line(row: &AuditRow) -> String {
         "<t:{}:R> {} · {} — {}",
         row.at.timestamp(),
         who(row),
-        how(row),
+        how_text(row),
         what(&row.detail)
     )
 }
@@ -138,6 +155,13 @@ pub fn audit_line(row: &AuditRow) -> String {
 /// merely starts with those letters.
 fn is_gp(command: &str) -> bool {
     command == "gp" || command.starts_with("gp ")
+}
+
+/// Whether a running `/gp` game hides this row: a `gp`/`gp …` command recorded
+/// at or after the game's start. Titles in those rows are the answers.
+#[must_use]
+pub fn hidden_by_game(row: &AuditRow, running_since: Option<DateTime<Utc>>) -> bool {
+    running_since.is_some_and(|start| is_gp(&row.command) && row.at >= start)
 }
 
 /// Drop a running `/gp` game's rows: their titles are the answers. Rows from
@@ -154,7 +178,7 @@ pub fn hide_running_game(
     let before = rows.len();
     let kept: Vec<AuditRow> = rows
         .into_iter()
-        .filter(|r| !(is_gp(&r.command) && r.at >= start))
+        .filter(|r| !hidden_by_game(r, Some(start)))
         .collect();
     let hid = kept.len() != before;
     (kept, hid)
@@ -231,6 +255,24 @@ impl ActionChoice {
             ActionChoice::Leave => "leave",
         }
     }
+
+    /// The choice whose stored name is `s` (lowercase, as recorded).
+    #[must_use]
+    pub fn from_name(s: &str) -> Option<ActionChoice> {
+        Some(match s {
+            "add" => ActionChoice::Add,
+            "remove" => ActionChoice::Remove,
+            "move" => ActionChoice::Move,
+            "skip" => ActionChoice::Skip,
+            "clear" => ActionChoice::Clear,
+            "shuffle" => ActionChoice::Shuffle,
+            "stop" => ActionChoice::Stop,
+            "pause" => ActionChoice::Pause,
+            "resume" => ActionChoice::Resume,
+            "leave" => ActionChoice::Leave,
+            _ => return None,
+        })
+    }
 }
 
 /// The `source` option's choices.
@@ -251,6 +293,18 @@ impl SourceChoice {
             SourceChoice::Web => Source::Web,
             SourceChoice::Bot => Source::Bot,
         }
+    }
+
+    /// The choice whose stored spelling is `s`: `slash`, `prefix`, `web`, `bot`.
+    #[must_use]
+    pub fn from_name(s: &str) -> Option<SourceChoice> {
+        Some(match s {
+            "slash" => SourceChoice::Slash,
+            "prefix" => SourceChoice::Prefix,
+            "web" => SourceChoice::Web,
+            "bot" => SourceChoice::Bot,
+            _ => return None,
+        })
     }
 }
 
@@ -627,5 +681,80 @@ mod test {
         ] {
             assert_eq!(c.source(), s);
         }
+    }
+
+    #[test]
+    fn web_wording_is_the_discord_wording_unescaped() {
+        let a = Action::Move {
+            track: t("*Bold* [x](y) <@1>"),
+            from: 5,
+            to: 2,
+        };
+        assert_eq!(what_text(&a), "moved *Bold* [x](y) <@1> 5 → 2");
+        let r = row("slash", "move", Some(7), a);
+        assert!(
+            audit_line(&r).ends_with(r"<@7> · /move — moved \*Bold\* \[x\](y) \<@1\> 5 → 2"),
+            "{}",
+            audit_line(&r)
+        );
+        assert_eq!(how_text(&r), "/move");
+    }
+
+    #[test]
+    fn web_wording_still_cuts_long_titles() {
+        let long = "x".repeat(50);
+        assert_eq!(
+            what_text(&Action::Skip {
+                track: Some(t(&long))
+            }),
+            format!("skipped {}…", "x".repeat(40))
+        );
+    }
+
+    #[test]
+    fn hidden_by_game_needs_a_running_game_a_gp_command_and_a_late_enough_row() {
+        let start = Utc.with_ymd_and_hms(2026, 10, 1, 12, 0, 0).unwrap();
+        let mut r = row("bot", "gp", None, Action::Pause);
+        r.at = start;
+        assert!(hidden_by_game(&r, Some(start)));
+        assert!(!hidden_by_game(&r, None));
+        r.at = start - chrono::Duration::seconds(1);
+        assert!(!hidden_by_game(&r, Some(start)));
+        let mut other = row("slash", "gpx", Some(1), Action::Pause);
+        other.at = start;
+        assert!(!hidden_by_game(&other, Some(start)));
+    }
+
+    #[test]
+    fn choices_round_trip_through_their_names() {
+        for c in [
+            ActionChoice::Add,
+            ActionChoice::Remove,
+            ActionChoice::Move,
+            ActionChoice::Skip,
+            ActionChoice::Clear,
+            ActionChoice::Shuffle,
+            ActionChoice::Stop,
+            ActionChoice::Pause,
+            ActionChoice::Resume,
+            ActionChoice::Leave,
+        ] {
+            assert_eq!(ActionChoice::from_name(c.name()), Some(c));
+        }
+        assert_eq!(ActionChoice::from_name("dance"), None);
+        assert_eq!(
+            ActionChoice::from_name("Move"),
+            None,
+            "stored names are lowercase"
+        );
+        for c in [
+            SourceChoice::Slash,
+            SourceChoice::Prefix,
+            SourceChoice::Web,
+            SourceChoice::Bot,
+        ] {
+            assert_eq!(SourceChoice::from_name(c.source().as_str()), Some(c));
+        }
+        assert_eq!(SourceChoice::from_name("email"), None);
     }
 }
