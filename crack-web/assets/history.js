@@ -28,6 +28,9 @@
   let gameHidden = first.game_hidden;
   let user = null; // { id, label }
   let stopped = false;
+  // Set when a reload failed: the controls show a filter that `rows` does not
+  // match, so polls and "load older" must reload instead of extending rows.
+  let dirty = false;
   // Bumped on every refetch, so a poll or "load older" that began before a
   // filter changed can never mix its rows into the new list.
   let seq = 0;
@@ -118,6 +121,7 @@
   }
 
   async function reload() {
+    if (stopped) return;
     const mine = ++seq;
     try {
       const data = await fetchPage({});
@@ -126,9 +130,13 @@
       older = data.older;
       gameHidden = data.game_hidden;
       badge.hidden = true;
+      dirty = false;
       render();
     } catch (_) {
-      if (mine === seq) badge.hidden = false;
+      if (mine === seq) {
+        dirty = true;
+        badge.hidden = false;
+      }
     }
   }
 
@@ -151,7 +159,7 @@
 
   // Resolves true when a full page came back, so more may be waiting.
   async function pollOnce() {
-    if (rows.length === 0) {
+    if (dirty || rows.length === 0) {
       await reload();
       return false;
     }
@@ -176,6 +184,7 @@
   }
 
   async function loadOlder() {
+    if (dirty) return reload();
     if (rows.length === 0) return;
     const mine = seq;
     olderBtn.disabled = true;
