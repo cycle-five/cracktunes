@@ -23,6 +23,18 @@ and the bot runs on.
 reads nothing, so it proves the web server is answering, not that the bot is
 on the gateway. The bot's log reports that.
 
+## Queue history
+
+`/g/<id>/history` shows the server's queue history (the `queue_audit` table):
+who changed the queue, how, when and what. It is for members with **Manage
+Server** (owner, Administrator, or the permission on a role or `@everyone`);
+others get 403, and the queue page shows them no link. It needs the database.
+
+The page polls `/g/<id>/history.json` every 10 s for new rows and pages older
+ones with `before=<id>`. Rows are ordered by id, which is insertion order.
+While a `/gp` game runs, its rows are hidden: their titles are the answers.
+Design: `docs/superpowers/specs/2026-10-02-dashboard-history-design.md`.
+
 ## What it holds
 
 **In the browser:** a user id and username in a signed, HttpOnly cookie
@@ -34,9 +46,12 @@ id, username, global (display) name, avatar URL, and the Discord OAuth
 refresh token with its expiry. catacombs' `MemoryStorage` keeps these in
 plaintext: it ignores the encryption key it is handed. Logging out clears the
 refresh token; the profile stays. All of it goes when the process restarts.
+Additionally:
+- each viewer's role ids, read from Discord when the member isn't cached, kept for 5 minutes;
+- the display names of members shown in a history page, kept for 1 hour.
 
 **In the log:** each move is logged with the mover's user id; catacombs logs
 the username and user id at sign-in and log-out.
 
-Nothing is written to the database. Restarting the bot invalidates no session: sessions are JWTs signed with `WEB_JWT_SECRET`; rotate that to sign
+Nothing is written to the database; the history page reads `queue_audit`. Restarting the bot invalidates no session: sessions are JWTs signed with `WEB_JWT_SECRET`; rotate that to sign
 everyone out.

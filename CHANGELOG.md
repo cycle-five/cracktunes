@@ -42,6 +42,12 @@
 
 ### Added
 
+- **The dashboard has a queue history page.** Members with Manage Server see a
+  "History" link on a server's queue page. It lists who changed the queue, how
+  and when, filters by member, action, source and time, loads older entries, and
+  shows new ones within 10 seconds. A running `/gp` game's entries stay hidden
+  until it ends.
+
 - **Every `/gp` round ends with its results.** Once a round's last song has been
   revealed, and before the next prompt goes up, a round-results embed sums the
   round up at the bottom of the channel: each song with who submitted it, who
