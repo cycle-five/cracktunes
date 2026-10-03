@@ -82,6 +82,120 @@ pub async fn recent_audit(
         .collect())
 }
 
+/// Where a history page starts. Ids are insertion order: the audit writer is
+/// one FIFO task, so "after id X" can never miss a row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AuditCursor {
+    /// The newest rows.
+    #[default]
+    Newest,
+    /// Rows older than this id.
+    Before(i64),
+    /// Rows newer than this id: the oldest of them first in line, so a burst
+    /// bigger than one page is read across polls, never skipped.
+    After(i64),
+}
+
+/// A row with its id, for paging.
+#[derive(Debug, Clone)]
+pub struct AuditPageRow {
+    pub id: i64,
+    pub row: AuditRow,
+}
+
+/// A page of a guild's audit rows, newest first: see [`AuditCursor`] for
+/// which `limit` rows.
+pub async fn audit_page(
+    pool: &PgPool,
+    guild_id: GuildId,
+    f: &AuditFilter<'_>,
+    cursor: AuditCursor,
+    limit: i64,
+) -> sqlx::Result<Vec<AuditPageRow>> {
+    let guild = guild_id.get() as i64;
+    let user = f.user.map(|u| u.get() as i64);
+    if let AuditCursor::After(after) = cursor {
+        let rows = sqlx::query!(
+            r#"SELECT id, at, actor_user_id, source, command, action,
+                      detail AS "detail!: Json<Action>"
+               FROM queue_audit
+               WHERE guild_id = $1
+                 AND ($2::bigint      IS NULL OR actor_user_id = $2)
+                 AND ($3::text        IS NULL OR action = $3)
+                 AND ($4::text        IS NULL OR source = $4)
+                 AND ($5::timestamptz IS NULL OR at >= $5)
+                 AND id > $6
+               ORDER BY id ASC
+               LIMIT $7"#,
+            guild,
+            user,
+            f.action,
+            f.source,
+            f.since,
+            after,
+            limit,
+        )
+        .fetch_all(pool)
+        .await?;
+        let mut out: Vec<AuditPageRow> = rows
+            .into_iter()
+            .map(|r| AuditPageRow {
+                id: r.id,
+                row: AuditRow {
+                    at: r.at,
+                    actor_user_id: r.actor_user_id,
+                    source: r.source,
+                    command: r.command,
+                    action: r.action,
+                    detail: r.detail.0,
+                },
+            })
+            .collect();
+        out.reverse();
+        return Ok(out);
+    }
+    let before = match cursor {
+        AuditCursor::Before(id) => Some(id),
+        _ => None,
+    };
+    let rows = sqlx::query!(
+        r#"SELECT id, at, actor_user_id, source, command, action,
+                  detail AS "detail!: Json<Action>"
+           FROM queue_audit
+           WHERE guild_id = $1
+             AND ($2::bigint      IS NULL OR actor_user_id = $2)
+             AND ($3::text        IS NULL OR action = $3)
+             AND ($4::text        IS NULL OR source = $4)
+             AND ($5::timestamptz IS NULL OR at >= $5)
+             AND ($6::bigint      IS NULL OR id < $6)
+           ORDER BY id DESC
+           LIMIT $7"#,
+        guild,
+        user,
+        f.action,
+        f.source,
+        f.since,
+        before,
+        limit,
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| AuditPageRow {
+            id: r.id,
+            row: AuditRow {
+                at: r.at,
+                actor_user_id: r.actor_user_id,
+                source: r.source,
+                command: r.command,
+                action: r.action,
+                detail: r.detail.0,
+            },
+        })
+        .collect())
+}
+
 /// Start the writer and return its sender. An insert that fails is logged and
 /// the writer carries on: the log is best-effort, never a reason to stop.
 pub fn spawn_audit_writer(pool: PgPool) -> mpsc::Sender<AuditEvent> {
@@ -266,5 +380,88 @@ mod test {
             .unwrap();
         assert_eq!(capped.len(), 2);
         assert_eq!(capped[0].detail, Action::Pause);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn audit_page_pages_by_id_both_ways(pool: PgPool) {
+        let g = GuildId::new(1);
+        let other = GuildId::new(2);
+        let now = chrono::Utc::now();
+        let actor = Actor::web(UserId::new(20));
+        // Ten rows in guild 1, inserted in order; one in guild 2 between them.
+        for i in 0..10 {
+            let e = AuditEvent {
+                at: now,
+                guild_id: g,
+                voice_channel: None,
+                actor: actor.clone(),
+                action: Action::Shuffle { count: i },
+            };
+            insert_audit_event(&pool, &e).await.unwrap();
+            if i == 4 {
+                let e = AuditEvent {
+                    guild_id: other,
+                    ..e
+                };
+                insert_audit_event(&pool, &e).await.unwrap();
+            }
+        }
+        let count_of = |rows: &[AuditPageRow]| -> Vec<usize> {
+            rows.iter()
+                .map(|r| match r.row.detail {
+                    Action::Shuffle { count } => count,
+                    _ => unreachable!(),
+                })
+                .collect()
+        };
+        let all = AuditFilter::default();
+
+        let newest = audit_page(&pool, g, &all, AuditCursor::Newest, 3)
+            .await
+            .unwrap();
+        assert_eq!(
+            count_of(&newest),
+            vec![9, 8, 7],
+            "newest first, guild 1 only"
+        );
+        assert!(newest.windows(2).all(|w| w[0].id > w[1].id));
+
+        let before = audit_page(&pool, g, &all, AuditCursor::Before(newest[2].id), 3)
+            .await
+            .unwrap();
+        assert_eq!(count_of(&before), vec![6, 5, 4]);
+
+        // After the 3rd-oldest row: the OLDEST three above it, newest first.
+        let oldest = audit_page(&pool, g, &all, AuditCursor::Newest, 10)
+            .await
+            .unwrap();
+        let third_oldest = oldest[7].id;
+        let after = audit_page(&pool, g, &all, AuditCursor::After(third_oldest), 3)
+            .await
+            .unwrap();
+        assert_eq!(
+            count_of(&after),
+            vec![5, 4, 3],
+            "the window right above the cursor"
+        );
+
+        let nothing_newer = audit_page(&pool, g, &all, AuditCursor::After(newest[0].id), 3)
+            .await
+            .unwrap();
+        assert!(nothing_newer.is_empty());
+
+        // Filters apply with a cursor too.
+        let by_action = AuditFilter {
+            action: Some("pause"),
+            ..AuditFilter::default()
+        };
+        assert!(audit_page(&pool, g, &by_action, AuditCursor::Newest, 10)
+            .await
+            .unwrap()
+            .is_empty());
     }
 }
