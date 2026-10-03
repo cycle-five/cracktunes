@@ -23,12 +23,12 @@ use crate::{
     watch::{Hub, ViewSource, LINGER, TICK},
 };
 use crack_core::{
-    db::queue_audit::{audit_page, AuditFilter, AuditPageRow},
+    db::queue_audit::{audit_page, AuditFilter},
     music::remote,
     Data,
 };
 use serenity::all::{Cache, GuildId, Http, Permissions, RoleId, UserId};
-use std::{collections::HashMap, num::NonZeroU64, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
 /// What the bot hands the dashboard.
@@ -81,21 +81,13 @@ impl LiveBackend {
         }
     }
 
-    /// Names for the members in `rows`: the cache, the name memo, then at most
-    /// `NAME_LOOKUPS` Discord lookups. Anyone left out shows as their id.
-    async fn names_for(&self, g: GuildId, rows: &[AuditPageRow]) -> HashMap<UserId, String> {
+    /// Names for `members` (see [`history::shown_members`]): the cache, the
+    /// name memo, then at most `NAME_LOOKUPS` Discord lookups. Anyone left
+    /// out shows as their id.
+    async fn names_for(&self, g: GuildId, members: &[UserId]) -> HashMap<UserId, String> {
         let mut out = HashMap::new();
         let mut lookups = 0;
-        let ids = rows
-            .iter()
-            .filter_map(|r| r.row.actor_user_id)
-            .filter_map(|id| u64::try_from(id).ok())
-            .filter_map(NonZeroU64::new)
-            .map(|n| UserId::new(n.get()));
-        for u in ids {
-            if out.contains_key(&u) {
-                continue;
-            }
+        for &u in members {
             if let Some(name) = self.member_name(g, u) {
                 out.insert(u, name);
                 continue;
@@ -109,10 +101,13 @@ impl LiveBackend {
                 continue;
             }
             lookups += 1;
-            if let Ok(user) = self.deps.http.get_user(u).await {
-                let name = user.display_name().to_owned();
-                self.names.record(u, name.clone(), now);
-                out.insert(u, name);
+            match self.deps.http.get_user(u).await {
+                Ok(user) => {
+                    let name = user.display_name().to_owned();
+                    self.names.record(u, name.clone(), now);
+                    out.insert(u, name);
+                },
+                Err(e) => tracing::warn!("history: could not look up {u}'s name: {e}"),
             }
         }
         out
@@ -232,12 +227,6 @@ impl Backend for LiveBackend {
             source: q.source.map(|s| s.source().as_str()),
             since: q.since.map(|d| chrono::Utc::now() - d),
         };
-        let rows = audit_page(&pool, g, &filter, q.cursor, history::fetch_limit(q.cursor))
-            .await
-            .map_err(|e| {
-                tracing::warn!("history: query failed in {g}: {e}");
-                HistoryError::Failed
-            })?;
         // Copy the start time out so the DashMap ref is dropped before any await.
         let running_since = self
             .deps
@@ -246,7 +235,24 @@ impl Backend for LiveBackend {
             .get(&g)
             .map(|game| game.started_at)
             .and_then(|t| chrono::DateTime::from_timestamp(t, 0));
-        let names = self.names_for(g, &rows).await;
+        // The game's rows are left out in SQL, so the cursors the page pages
+        // by are ids it shows; `compose_page` checks again by the same rule.
+        let rows = audit_page(
+            &pool,
+            g,
+            &filter,
+            q.cursor,
+            history::fetch_limit(q.cursor),
+            running_since,
+        )
+        .await
+        .map_err(|e| {
+            tracing::warn!("history: query failed in {g}: {e}");
+            HistoryError::Failed
+        })?;
+        let names = self
+            .names_for(g, &history::shown_members(&rows, running_since))
+            .await;
         Ok(history::compose_page(rows, q.cursor, running_since, |u| {
             names.get(&u).cloned()
         }))

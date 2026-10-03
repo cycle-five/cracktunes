@@ -104,13 +104,17 @@ pub struct AuditPageRow {
 }
 
 /// A page of a guild's audit rows, newest first: see [`AuditCursor`] for
-/// which `limit` rows.
+/// which `limit` rows. With `hide_gp_since`, the rows a `/gp` game started then
+/// hides are left out in the query (the rule is
+/// [`crate::music::audit_view::hidden_by_game`]), so every row returned is one
+/// the page shows and its id is a cursor the page can page by.
 pub async fn audit_page(
     pool: &PgPool,
     guild_id: GuildId,
     f: &AuditFilter<'_>,
     cursor: AuditCursor,
     limit: i64,
+    hide_gp_since: Option<DateTime<Utc>>,
 ) -> sqlx::Result<Vec<AuditPageRow>> {
     let guild = guild_id.get() as i64;
     let user = f.user.map(|u| u.get() as i64);
@@ -125,6 +129,9 @@ pub async fn audit_page(
                  AND ($4::text        IS NULL OR source = $4)
                  AND ($5::timestamptz IS NULL OR at >= $5)
                  AND id > $6
+                 AND NOT ($8::timestamptz IS NOT NULL
+                          AND (command = 'gp' OR command LIKE 'gp %')
+                          AND at >= $8)
                ORDER BY id ASC
                LIMIT $7"#,
             guild,
@@ -134,6 +141,7 @@ pub async fn audit_page(
             f.since,
             after,
             limit,
+            hide_gp_since,
         )
         .fetch_all(pool)
         .await?;
@@ -168,6 +176,9 @@ pub async fn audit_page(
              AND ($4::text        IS NULL OR source = $4)
              AND ($5::timestamptz IS NULL OR at >= $5)
              AND ($6::bigint      IS NULL OR id < $6)
+             AND NOT ($8::timestamptz IS NOT NULL
+                      AND (command = 'gp' OR command LIKE 'gp %')
+                      AND at >= $8)
            ORDER BY id DESC
            LIMIT $7"#,
         guild,
@@ -177,6 +188,7 @@ pub async fn audit_page(
         f.since,
         before,
         limit,
+        hide_gp_since,
     )
     .fetch_all(pool)
     .await?;
@@ -420,7 +432,7 @@ mod test {
         };
         let all = AuditFilter::default();
 
-        let newest = audit_page(&pool, g, &all, AuditCursor::Newest, 3)
+        let newest = audit_page(&pool, g, &all, AuditCursor::Newest, 3, None)
             .await
             .unwrap();
         assert_eq!(
@@ -430,17 +442,17 @@ mod test {
         );
         assert!(newest.windows(2).all(|w| w[0].id > w[1].id));
 
-        let before = audit_page(&pool, g, &all, AuditCursor::Before(newest[2].id), 3)
+        let before = audit_page(&pool, g, &all, AuditCursor::Before(newest[2].id), 3, None)
             .await
             .unwrap();
         assert_eq!(count_of(&before), vec![6, 5, 4]);
 
         // After the 3rd-oldest row: the OLDEST three above it, newest first.
-        let oldest = audit_page(&pool, g, &all, AuditCursor::Newest, 10)
+        let oldest = audit_page(&pool, g, &all, AuditCursor::Newest, 10, None)
             .await
             .unwrap();
         let third_oldest = oldest[7].id;
-        let after = audit_page(&pool, g, &all, AuditCursor::After(third_oldest), 3)
+        let after = audit_page(&pool, g, &all, AuditCursor::After(third_oldest), 3, None)
             .await
             .unwrap();
         assert_eq!(
@@ -449,7 +461,7 @@ mod test {
             "the window right above the cursor"
         );
 
-        let nothing_newer = audit_page(&pool, g, &all, AuditCursor::After(newest[0].id), 3)
+        let nothing_newer = audit_page(&pool, g, &all, AuditCursor::After(newest[0].id), 3, None)
             .await
             .unwrap();
         assert!(nothing_newer.is_empty());
@@ -459,9 +471,84 @@ mod test {
             action: Some("pause"),
             ..AuditFilter::default()
         };
-        assert!(audit_page(&pool, g, &by_action, AuditCursor::Newest, 10)
+        assert!(
+            audit_page(&pool, g, &by_action, AuditCursor::Newest, 10, None)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn audit_page_hides_a_running_games_rows_as_hidden_by_game_does(pool: PgPool) {
+        use crate::music::audit_view::hidden_by_game;
+        let g = GuildId::new(1);
+        // Whole seconds, as a game's start is: Postgres keeps microseconds, so
+        // a nanosecond start would compare differently in SQL and in Rust.
+        let start = chrono::DateTime::from_timestamp(chrono::Utc::now().timestamp(), 0).unwrap();
+        let secs = chrono::Duration::seconds;
+        // (command, at): hidden are gp commands at or after the start.
+        let rows = [
+            ("gp", start - secs(60)), // before the game: kept
+            ("play", start + secs(1)),
+            ("gp", start),                // hidden
+            ("gp skip", start + secs(2)), // hidden
+            ("gpx", start + secs(3)),     // not a gp command: kept
+            ("gp", start + secs(4)),      // hidden
+            ("skip", start + secs(5)),
+        ];
+        for (i, (command, at)) in rows.into_iter().enumerate() {
+            let e = AuditEvent {
+                at,
+                guild_id: g,
+                voice_channel: None,
+                actor: Actor::for_command(UserId::new(20), false, command, None),
+                action: Action::Shuffle { count: i },
+            };
+            insert_audit_event(&pool, &e).await.unwrap();
+        }
+        let all = AuditFilter::default();
+        let ids = |rows: &[AuditPageRow]| rows.iter().map(|r| r.id).collect::<Vec<_>>();
+        let unhidden = audit_page(&pool, g, &all, AuditCursor::Newest, 50, None)
             .await
-            .unwrap()
-            .is_empty());
+            .unwrap();
+        let want: Vec<i64> = unhidden
+            .iter()
+            .filter(|r| !hidden_by_game(&r.row, Some(start)))
+            .map(|r| r.id)
+            .collect();
+        assert_eq!((unhidden.len(), want.len()), (7, 4), "three rows to hide");
+
+        let newest = audit_page(&pool, g, &all, AuditCursor::Newest, 50, Some(start))
+            .await
+            .unwrap();
+        assert_eq!(ids(&newest), want, "newest");
+
+        let oldest = *ids(&unhidden).last().unwrap();
+        let after = audit_page(&pool, g, &all, AuditCursor::After(oldest), 50, Some(start))
+            .await
+            .unwrap();
+        assert_eq!(ids(&after), want[..want.len() - 1], "after the oldest");
+
+        // A page of two comes back full: the hidden rows do not use up the limit.
+        let two = audit_page(&pool, g, &all, AuditCursor::Newest, 2, Some(start))
+            .await
+            .unwrap();
+        assert_eq!(ids(&two), want[..2]);
+        let next = audit_page(
+            &pool,
+            g,
+            &all,
+            AuditCursor::Before(two[1].id),
+            2,
+            Some(start),
+        )
+        .await
+        .unwrap();
+        assert_eq!(ids(&next), want[2..]);
     }
 }

@@ -150,6 +150,35 @@ pub fn fetch_limit(cursor: AuditCursor) -> i64 {
     }
 }
 
+/// A stored actor id as a user, if it is a snowflake. `UserId::new(0)` panics.
+fn snowflake(id: i64) -> Option<UserId> {
+    u64::try_from(id)
+        .ok()
+        .and_then(NonZeroU64::new)
+        .map(|n| UserId::new(n.get()))
+}
+
+/// The members `compose_page` will name, each once, in page order. Only the
+/// rows it keeps count, so the name lookups are never spent on the extra row
+/// fetched to learn `older`, nor on a row a running game hides.
+pub fn shown_members(
+    rows: &[AuditPageRow],
+    running_since: Option<chrono::DateTime<chrono::Utc>>,
+) -> Vec<UserId> {
+    let mut out = Vec::new();
+    for u in rows
+        .iter()
+        .take(PAGE_SIZE)
+        .filter(|r| !hidden_by_game(&r.row, running_since))
+        .filter_map(|r| r.row.actor_user_id.and_then(snowflake))
+    {
+        if !out.contains(&u) {
+            out.push(u);
+        }
+    }
+    out
+}
+
 /// The page for `rows` (newest first, as `audit_page` returns them, fetched
 /// with [`fetch_limit`]): cut to a page, a running game's rows dropped, names
 /// filled in where `name_of` knows them.
@@ -171,10 +200,7 @@ pub fn compose_page(
                 None => Who::Bot,
                 Some(id) => Who::Member {
                     id: id.to_string(),
-                    name: u64::try_from(id)
-                        .ok()
-                        .and_then(NonZeroU64::new)
-                        .and_then(|n| name_of(UserId::new(n.get()))),
+                    name: snowflake(id).and_then(&name_of),
                 },
             },
             how: how_text(&r.row),
@@ -379,6 +405,31 @@ mod test {
                 id: "0".into(),
                 name: None
             }
+        );
+    }
+
+    #[test]
+    fn names_are_looked_up_only_for_the_rows_shown() {
+        let start = Utc.timestamp_opt(1_000, 0).unwrap();
+        // A full page plus the extra row; the extra row's member is no one else.
+        let mut rows: Vec<AuditPageRow> = (0..PAGE_SIZE as i64)
+            .rev()
+            .map(|i| page_row(i + 10, "skip", Some(7 + i % 2), 500))
+            .collect();
+        rows[1] = page_row(58, "gp", Some(9), 1_500); // hidden by the game
+        rows[2] = page_row(57, "skip", Some(0), 500); // not a snowflake
+        rows.push(page_row(1, "skip", Some(99), 400)); // the 51st
+        assert_eq!(rows.len(), PAGE_SIZE + 1);
+        let got = shown_members(&rows, Some(start));
+        assert_eq!(
+            got,
+            vec![UserId::new(8), UserId::new(7)],
+            "each once, in page order; not the hidden row's, not the 51st's"
+        );
+        assert_eq!(
+            shown_members(&rows, None),
+            vec![UserId::new(8), UserId::new(9), UserId::new(7)],
+            "no game, nothing hidden"
         );
     }
 
