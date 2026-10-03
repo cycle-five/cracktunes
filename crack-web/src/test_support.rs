@@ -38,6 +38,8 @@ pub struct FakeBackend {
     /// Make `presence` never answer, as a stalled Discord call would.
     pub presence_hangs: AtomicBool,
     pub history_access: Mutex<crate::access::HistoryAccess>,
+    /// Make `history_access` never answer, as a stalled Discord call would.
+    pub history_access_hangs: AtomicBool,
     pub history_result: Mutex<Result<crate::history::HistoryPage, crate::backend::HistoryError>>,
     /// Every history query the routes made.
     pub history_queries: Mutex<Vec<crate::history::HistoryQuery>>,
@@ -61,6 +63,7 @@ impl FakeBackend {
             view_calls: AtomicUsize::new(0),
             presence_hangs: AtomicBool::new(false),
             history_access: Mutex::new(crate::access::HistoryAccess::Forbidden),
+            history_access_hangs: AtomicBool::new(false),
             history_result: Mutex::new(Ok(crate::history::HistoryPage::default())),
             history_queries: Mutex::new(Vec::new()),
             guilds: vec![GuildEntry {
@@ -130,6 +133,9 @@ impl Backend for FakeBackend {
     }
 
     async fn history_access(&self, _g: GuildId, _u: UserId) -> crate::access::HistoryAccess {
+        if self.history_access_hangs.load(SeqCst) {
+            std::future::pending::<()>().await;
+        }
         *self.history_access.lock().unwrap()
     }
 

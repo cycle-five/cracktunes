@@ -44,6 +44,9 @@ pub const RECHECK: Duration = Duration::from_secs(5);
 pub const KEEPALIVE: Duration = Duration::from_secs(15);
 /// How long a recheck waits on Discord before it keeps what it had.
 pub const PRESENCE_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long the queue page waits to learn whether to link the history. The
+/// link is optional: past this, the page is drawn without it.
+pub const HISTORY_LINK_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub struct WebState<B: Backend> {
     pub auth: Arc<catacombs::AppState>,
@@ -143,7 +146,10 @@ async fn guild_page<B: Backend>(
                 view: &view,
                 can_control: access == Access::Control,
             };
-            let history_link = s.backend.history_access(g, user).await == HistoryAccess::Allowed;
+            let history_link =
+                tokio::time::timeout(HISTORY_LINK_TIMEOUT, s.backend.history_access(g, user))
+                    .await
+                    .is_ok_and(|a| a == HistoryAccess::Allowed);
             Html(page::queue_page(&name, g, &state, history_link)).into_response()
         },
     }
@@ -1303,6 +1309,37 @@ mod test {
             let html = body(get(history_fake(access), "/g/5", Some(&session(9))).await).await;
             assert!(!html.contains("/history"), "{access:?}");
         }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_stalled_history_check_leaves_the_queue_page_without_the_link() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let fake = history_fake(HistoryAccess::Allowed);
+        fake.history_access_hangs.store(true, SeqCst);
+        // Well under the request timeout, so only the link's own bound can
+        // answer in time.
+        let r = tokio::time::timeout(
+            super::HISTORY_LINK_TIMEOUT + std::time::Duration::from_secs(1),
+            get(fake, "/g/5", Some(&session(9))),
+        )
+        .await
+        .expect("the queue page waited on the history check");
+        assert_eq!(r.status(), StatusCode::OK);
+        let html = body(r).await;
+        assert!(html.contains("id=\"initial\""), "the queue page itself");
+        assert!(!html.contains("/history"), "{html}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_history_read_is_503_with_its_reason() {
+        let fake = history_fake(HistoryAccess::Allowed);
+        *fake.history_result.lock().unwrap() = Err(HistoryError::Failed);
+        let r = get(fake.clone(), "/g/5/history.json", Some(&session(9))).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let got = body(r).await;
+        assert!(got.contains(crate::history::HISTORY_FAILED), "{got}");
+        let r = get(fake, "/g/5/history", Some(&session(9))).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]

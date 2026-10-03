@@ -172,6 +172,30 @@ impl MemberMemo {
     }
 }
 
+/// Record one HTTP member lookup: the membership answer in `members` and, when
+/// Discord returned the member, its role ids in `roles` at the same instant.
+/// The history check that follows then reads the roles from the memo instead
+/// of making a second call (spec: dashboard history design §1).
+pub fn record_member_lookup(
+    members: &MemberMemo,
+    roles: &RoleMemo,
+    g: GuildId,
+    u: UserId,
+    result: Result<Vec<RoleId>, Option<u16>>,
+    now: Instant,
+) -> Lookup {
+    let (status, member_roles) = match result {
+        Ok(r) => (Ok(()), Some(r)),
+        Err(e) => (Err(e), None),
+    };
+    let lookup = lookup_from_status(status);
+    members.record(g, u, &lookup, now);
+    if let Some(r) = member_roles {
+        roles.record(g, u, r, now);
+    }
+    lookup
+}
+
 /// What the cache alone can say.
 #[derive(Debug, Clone, Copy)]
 pub struct CachedPresence {
@@ -200,11 +224,13 @@ pub fn cached_presence(cache: &Cache, g: GuildId, u: UserId) -> CachedPresence {
     }
 }
 
-/// Build a [`Presence`]: the cache, then the memo, then one HTTP lookup.
+/// Build a [`Presence`]: the cache, then the memo, then one HTTP lookup, whose
+/// member's roles go into `roles` for the history check.
 pub async fn presence(
     cache: &Cache,
     http: &Http,
     memo: &MemberMemo,
+    roles: &RoleMemo,
     g: GuildId,
     u: UserId,
     bot_channel: Option<ChannelId>,
@@ -221,14 +247,12 @@ pub async fn presence(
             Membership::NotMember
         }
     } else {
-        let status = match http.get_member(g, u).await {
-            Ok(_) => Ok(()),
+        let result = match http.get_member(g, u).await {
+            Ok(m) => Ok(m.roles.iter().copied().collect()),
             Err(serenity::Error::Http(e)) => Err(e.status_code().map(|s| s.as_u16())),
             Err(_) => Err(None),
         };
-        let lookup = lookup_from_status(status);
-        memo.record(g, u, &lookup, Instant::now());
-        match lookup {
+        match record_member_lookup(memo, roles, g, u, result, Instant::now()) {
             Lookup::Member => Membership::Member,
             Lookup::NotMember => Membership::NotMember,
             Lookup::Failed => Membership::Unknown,
@@ -304,6 +328,41 @@ mod test {
     }
 
     #[test]
+    fn one_member_lookup_fills_both_memos_at_once() {
+        let members = MemberMemo::new(MEMBER_TTL);
+        let roles = RoleMemo::new(MEMBER_TTL);
+        let t0 = Instant::now();
+        let got = record_member_lookup(&members, &roles, G, U, Ok(vec![RoleId::new(5)]), t0);
+        assert_eq!(got, Lookup::Member);
+        assert_eq!(members.get(G, U, t0), Some(true));
+        assert_eq!(
+            roles.get(G, U, t0),
+            Some(vec![RoleId::new(5)]),
+            "the history check needs no second call"
+        );
+        let late = t0 + MEMBER_TTL;
+        assert_eq!(
+            (roles.get(G, U, late), members.get(G, U, late)),
+            (None, None),
+            "recorded at the same instant, so both expire together"
+        );
+
+        let other = UserId::new(3);
+        let got = record_member_lookup(&members, &roles, G, other, Err(Some(404)), t0);
+        assert_eq!(got, Lookup::NotMember);
+        assert_eq!(members.get(G, other, t0), Some(false));
+        assert_eq!(roles.get(G, other, t0), None, "no member, no roles");
+
+        let third = UserId::new(4);
+        let got = record_member_lookup(&members, &roles, G, third, Err(Some(503)), t0);
+        assert_eq!(got, Lookup::Failed);
+        assert_eq!(
+            (members.get(G, third, t0), roles.get(G, third, t0)),
+            (None, None)
+        );
+    }
+
+    #[test]
     fn an_uncached_guild_is_not_known() {
         let cache = serenity::all::Cache::new();
         let c = cached_presence(&cache, G, U);
@@ -319,7 +378,8 @@ mod test {
         let cache = serenity::all::Cache::new();
         let http = serenity::all::Http::new(crack_types::get_valid_token());
         let memo = MemberMemo::new(MEMBER_TTL);
-        let got = presence(&cache, &http, &memo, G, U, Some(A)).await;
+        let roles = RoleMemo::new(MEMBER_TTL);
+        let got = presence(&cache, &http, &memo, &roles, G, U, Some(A)).await;
         assert_eq!(got.membership, Membership::NotMember);
     }
 

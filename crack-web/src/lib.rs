@@ -52,7 +52,8 @@ impl LiveBackend {
         guild.members.get(&u).map(|m| m.display_name().to_owned())
     }
 
-    /// A member's role ids: the cache, then the role memo, then Discord.
+    /// A member's role ids: the cache, then the role memo (which the
+    /// membership lookup in `presence` fills), then Discord.
     /// `None` when Discord did not answer.
     async fn member_roles(&self, g: GuildId, u: UserId) -> Option<Vec<RoleId>> {
         if let Some(roles) = self.deps.cache.guild(g).and_then(|guild| {
@@ -128,7 +129,16 @@ impl ViewSource for LiveBackend {
 impl Backend for LiveBackend {
     async fn presence(&self, g: GuildId, u: UserId) -> Presence {
         let bot = remote::bot_channel(&self.deps.data, g).await;
-        access::presence(&self.deps.cache, &self.deps.http, &self.memo, g, u, bot).await
+        access::presence(
+            &self.deps.cache,
+            &self.deps.http,
+            &self.memo,
+            &self.roles,
+            g,
+            u,
+            bot,
+        )
+        .await
     }
 
     async fn move_track(
@@ -156,6 +166,7 @@ impl Backend for LiveBackend {
                 &self.deps.cache,
                 &self.deps.http,
                 &self.memo,
+                &self.roles,
                 g,
                 u,
                 Some(channel),
