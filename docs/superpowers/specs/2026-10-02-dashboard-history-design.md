@@ -83,7 +83,9 @@ entries appear while the page is open. It's a convenience feature, so it's kept 
   `/auditlog` escapes their output for Discord; the web sends it as is, and the
   browser inserts it as text. One source of words, so the two can't drift.
 - **A running `/gp` game's rows are hidden** with `hide_running_game`, using the start
-  time from `Data::gp_games`, as in `/auditlog`. `game_hidden` reports it.
+  time from `Data::gp_games`, as in `/auditlog`. `game_hidden` is true whenever a game is
+  running, whether or not this page had rows to drop. The page shows the note while it
+  is true, and reloads when it turns false, so the game's rows appear once it ends.
 - **Names:**
   - A member's name comes from the cache, then from a 1-hour name memo, then from at most 10
     `get_user` calls per request.
