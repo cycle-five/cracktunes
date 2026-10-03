@@ -33,13 +33,18 @@ others get 403, and the queue page shows them no link. It needs the database.
 The page polls `/g/<id>/history.json` every 10 s for new rows and pages older
 ones with `before=<id>`. Rows are ordered by id, which is insertion order.
 While a `/gp` game runs, its rows are hidden: their titles are the answers.
-Design: `docs/superpowers/specs/2026-10-02-dashboard-history-design.md`.
 
 Free servers see the last 24 hours of history, and premium servers
 (`guild_settings.premium`) see all of it. When older rows exist, the page says older
 history is a premium feature, with the Patreon link, in place of "Load older".
-`/auditlog` applies the same window. Design:
-`docs/superpowers/specs/2026-10-03-premium-history-window-design.md`.
+`/auditlog` applies the same window.
+
+Premium is granted with `/set premium true`, run in that server by a bot owner. It
+takes effect at once. Don't edit `guild_settings.premium` in the database while the bot
+runs: the bot reads premium from its in-memory settings, so the edit is ignored, and
+the bot writes its settings back on shutdown, which replaces the edit.
+
+Design: `docs/superpowers/specs/2026-10-02-dashboard-history-design.md` and `docs/superpowers/specs/2026-10-03-premium-history-window-design.md`.
 
 ## What it holds
 
