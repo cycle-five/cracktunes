@@ -35,6 +35,12 @@ ones with `before=<id>`. Rows are ordered by id, which is insertion order.
 While a `/gp` game runs, its rows are hidden: their titles are the answers.
 Design: `docs/superpowers/specs/2026-10-02-dashboard-history-design.md`.
 
+Free servers see the last 24 hours of history, and premium servers
+(`guild_settings.premium`) see all of it. When older rows exist, the page says older
+history is a premium feature, with the Patreon link, in place of "Load older".
+`/auditlog` applies the same window. Design:
+`docs/superpowers/specs/2026-10-03-premium-history-window-design.md`.
+
 ## What it holds
 
 **In the browser:** a user id and username in a signed, HttpOnly cookie

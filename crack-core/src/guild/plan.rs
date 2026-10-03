@@ -69,6 +69,9 @@ mod test {
     #[test]
     fn free_gets_the_plug_and_premium_gets_thanks() {
         assert!(matches!(Plan::Free.plug(), CrackedMessage::PremiumPlug));
-        assert!(matches!(Plan::Premium.plug(), CrackedMessage::PremiumThanks));
+        assert!(matches!(
+            Plan::Premium.plug(),
+            CrackedMessage::PremiumThanks
+        ));
     }
 }
