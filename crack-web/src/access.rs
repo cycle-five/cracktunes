@@ -5,7 +5,7 @@
 //! glue, and every branch of the decision is tested without either.
 
 use dashmap::DashMap;
-use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
+use serenity::all::{Cache, ChannelId, GuildId, Http, Permissions, RoleId, UserId};
 use std::time::{Duration, Instant};
 
 /// How long an HTTP membership answer is trusted.
@@ -48,6 +48,76 @@ pub fn decide(p: &Presence) -> Access {
             (Some(user), Some(bot)) if user == bot => Access::Control,
             _ => Access::View,
         },
+    }
+}
+
+/// Who may see a guild's queue history (spec: dashboard history design §1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HistoryAccess {
+    /// Not a member: 404, as for the queue.
+    Hidden,
+    /// Discord did not answer: 503.
+    Unavailable,
+    /// A member without Manage Server: 403.
+    Forbidden,
+    Allowed,
+}
+
+/// Manage Server, as Discord computes it at the guild level: the owner always;
+/// otherwise `@everyone`'s permissions plus each of the member's roles',
+/// with Administrator implying everything. Roles the guild does not have
+/// count for nothing. Channel overrides do not apply to a guild permission.
+pub fn has_manage_guild(
+    owner: UserId,
+    user: UserId,
+    everyone: Permissions,
+    roles: &[RoleId],
+    role_permissions: impl Fn(RoleId) -> Option<Permissions>,
+) -> bool {
+    if user == owner {
+        return true;
+    }
+    let perms = roles
+        .iter()
+        .filter_map(|r| role_permissions(*r))
+        .fold(everyone, |acc, p| acc | p);
+    perms.intersects(Permissions::ADMINISTRATOR | Permissions::MANAGE_GUILD)
+}
+
+/// The history rule. `manages` is `None` when the member's roles could not be
+/// read.
+pub fn decide_history(membership: Membership, manages: Option<bool>) -> HistoryAccess {
+    match (membership, manages) {
+        (Membership::NotMember, _) => HistoryAccess::Hidden,
+        (Membership::Unknown, _) | (Membership::Member, None) => HistoryAccess::Unavailable,
+        (Membership::Member, Some(false)) => HistoryAccess::Forbidden,
+        (Membership::Member, Some(true)) => HistoryAccess::Allowed,
+    }
+}
+
+/// Remembered role lists of members fetched over HTTP, so a history page
+/// polling every 10 s asks Discord at most once per TTL.
+pub struct RoleMemo {
+    ttl: Duration,
+    entries: DashMap<(GuildId, UserId), (Vec<RoleId>, Instant)>,
+}
+
+impl RoleMemo {
+    pub fn new(ttl: Duration) -> Self {
+        Self {
+            ttl,
+            entries: DashMap::new(),
+        }
+    }
+
+    pub fn get(&self, g: GuildId, u: UserId, now: Instant) -> Option<Vec<RoleId>> {
+        let entry = self.entries.get(&(g, u))?;
+        let (roles, at) = &*entry;
+        (now.saturating_duration_since(*at) < self.ttl).then(|| roles.clone())
+    }
+
+    pub fn record(&self, g: GuildId, u: UserId, roles: Vec<RoleId>, now: Instant) {
+        self.entries.insert((g, u), (roles, now));
     }
 }
 
@@ -251,5 +321,77 @@ mod test {
         let memo = MemberMemo::new(MEMBER_TTL);
         let got = presence(&cache, &http, &memo, G, U, Some(A)).await;
         assert_eq!(got.membership, Membership::NotMember);
+    }
+
+    use serenity::all::{Permissions, RoleId};
+
+    #[test]
+    fn manage_guild_comes_from_owner_admin_or_the_permission() {
+        let owner = UserId::new(1);
+        let me = UserId::new(2);
+        let admin = RoleId::new(10);
+        let manager = RoleId::new(11);
+        let dj = RoleId::new(12);
+        let perms = |r: RoleId| match r.get() {
+            10 => Some(Permissions::ADMINISTRATOR),
+            11 => Some(Permissions::MANAGE_GUILD),
+            12 => Some(Permissions::CONNECT | Permissions::SPEAK),
+            _ => None,
+        };
+        let none = Permissions::empty();
+        assert!(
+            has_manage_guild(owner, owner, none, &[], perms),
+            "the owner"
+        );
+        assert!(
+            has_manage_guild(owner, me, none, &[admin], perms),
+            "Administrator"
+        );
+        assert!(
+            has_manage_guild(owner, me, none, &[dj, manager], perms),
+            "Manage Server on a role"
+        );
+        assert!(
+            has_manage_guild(owner, me, Permissions::MANAGE_GUILD, &[], perms),
+            "Manage Server on @everyone"
+        );
+        assert!(
+            !has_manage_guild(owner, me, none, &[dj], perms),
+            "no permission"
+        );
+        assert!(
+            !has_manage_guild(owner, me, none, &[RoleId::new(99)], perms),
+            "a role the guild does not have counts for nothing"
+        );
+    }
+
+    #[test]
+    fn the_history_decision_table() {
+        use Membership::*;
+        assert_eq!(decide_history(NotMember, Some(true)), HistoryAccess::Hidden);
+        assert_eq!(
+            decide_history(Unknown, Some(true)),
+            HistoryAccess::Unavailable
+        );
+        assert_eq!(decide_history(Member, None), HistoryAccess::Unavailable);
+        assert_eq!(
+            decide_history(Member, Some(false)),
+            HistoryAccess::Forbidden
+        );
+        assert_eq!(decide_history(Member, Some(true)), HistoryAccess::Allowed);
+    }
+
+    #[test]
+    fn the_role_memo_remembers_roles_and_forgets_in_time() {
+        let memo = RoleMemo::new(Duration::from_secs(300));
+        let (g, u) = (GuildId::new(1), UserId::new(2));
+        let t0 = Instant::now();
+        assert_eq!(memo.get(g, u, t0), None);
+        memo.record(g, u, vec![RoleId::new(5)], t0);
+        assert_eq!(
+            memo.get(g, u, t0 + Duration::from_secs(299)),
+            Some(vec![RoleId::new(5)])
+        );
+        assert_eq!(memo.get(g, u, t0 + Duration::from_secs(300)), None);
     }
 }
