@@ -23,6 +23,7 @@ next (add, skip, like, pause…). Free servers keep viewing and re-ordering the 
 | What premium gates here | **How far back history goes:** 24 hours for free, everything for premium. |
 | Does `/auditlog` get the limit too | **Yes.** One rule everywhere. Otherwise `/auditlog since: 4w` would go around it. |
 | Where the note points | **patreon.com/CrackTunes.** Premium is granted by hand until Patreon is linked. |
+| The two Patreon plugs | **Reworded**, with a thank-you for premium servers in place of the plug. The idle alert never shows on premium. The plug stays unsent for now. |
 
 ## 1. The rule (crack-core)
 
@@ -92,6 +93,31 @@ next (add, skip, like, pause…). Free servers keep viewing and re-ordering the 
   `crack-core/src/messaging/messages.rs`. The
   dashboard reuses the sentence from there, so the two can't drift.
 
+## 4. The Patreon plugs (crack-core)
+
+Both say premium doesn't gate anything, which stops being true with this release.
+
+- **`PREMIUM_PLUG`**, for free servers: "👑 Like the bot? Support my development and
+  unlock premium features by subscribing to my Patreon!" plus the
+  `[CrackTunes Patreon](https://patreon.com/CrackTunes)` link.
+- **`PREMIUM_THANKS`**, new, for premium servers: "👑 Thanks for supporting
+  CrackTunes! Your server has premium."
+  - It's a new `CrackedMessage::PremiumThanks` beside `PremiumPlug`.
+  - `Plan::plug(self) -> CrackedMessage` returns `PremiumPlug` for Free and
+    `PremiumThanks` for Premium.
+  - **Nothing sends either one yet.** `PremiumPlug` has never been sent; this
+    release keeps that. The dashboard controls arc is where it's expected to appear.
+- **`IDLE_ALERT`:** "⚠️ I've been idle for a while so I'm going to hop off, set the
+  idle timeout to change this! Also support my development and keep the bot idle in
+  vc as long as you like!" plus the same link.
+  - It already never shows on a premium server. `IdleHandler` gets
+    `no_timeout = premium` when the bot joins (`commands/music_utils.rs`), so a
+    premium server is never timed out. This release keeps that.
+  - The decision moves into a pure function,
+    `IdleHandler`'s `times_out(no_timeout, limit, count) -> bool`, so a test can pin it.
+  - Known and accepted: premium is read when the bot joins voice, so granting it
+    mid-session takes effect at the next join.
+
 ## Testing
 
 - **The rule, in pure functions:**
@@ -111,6 +137,10 @@ next (add, skip, like, pause…). Free servers keep viewing and re-ordering the 
   - `capped` and the trimmed rows in the JSON;
   - the premium line and link in the first page, only when capped;
   - `after` polls never report `capped`.
+- **The plugs:**
+  - `Plan::plug` picks the plug for Free and the thanks for Premium;
+  - `times_out` is never true with `no_timeout` set, whatever the count, and is
+    true for a free server once the count reaches the limit.
 - **Every new test is seen to fail under a deliberate sabotage** of the code it guards.
 - **On TuneTitan before production:** the owner checks history on a free server and on a
   server set premium by hand. A free server needs rows older than 24 hours; TuneTitan has
@@ -128,12 +158,4 @@ next (add, skip, like, pause…). Free servers keep viewing and re-ordering the 
   candidate. It's its own project.
 - **The premium dashboard controls** (add, skip, like, pause…), the next arc.
 - **Decay retention.** Premium's "everything" means everything the retention keeps.
-- **Rewording the existing Patreon plugs.** `PREMIUM_PLUG` says "keep it premium-free
-  for everyone", and `IDLE_ALERT` says "I won't have to premium-gate features". Both
-  stop being true with this release. The owner decides their new wording; see the
-  open question below.
-
-## Open question for the owner
-
-- **The two plugs:** should `PREMIUM_PLUG` and `IDLE_ALERT` (`messages.rs:144`, `:98`)
-  change in this release, now that premium gates something? If so, what should they say?
+- **Sending the plug anywhere.** That waits for the dashboard controls arc.
