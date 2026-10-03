@@ -3,6 +3,7 @@
 //! it is inlined as JSON and drawn by `app.js`, the one renderer.
 
 use crate::{backend::GuildEntry, history::HistoryPage, view::PageState};
+use crack_core::messaging::messages::{PATREON_URL, PREMIUM_HISTORY};
 use serde::Serialize;
 use serenity::all::GuildId;
 
@@ -137,9 +138,13 @@ pub fn history_page(guild_name: &str, guild_id: GuildId, page: &HistoryPage) -> 
 <span id=\"f-user\" class=\"chip\" hidden><span id=\"f-user-name\"></span>\
 <button type=\"button\" id=\"f-user-clear\" aria-label=\"Clear the member filter\">×</button></span>\
 </div><ol id=\"rows\"></ol>\
-<button type=\"button\" id=\"older\" hidden>Load older</button></section>\
+<button type=\"button\" id=\"older\" hidden>Load older</button>\
+<p id=\"premium-note\"{premium_hidden}>{premium} <a href=\"{patreon}\">CrackTunes Patreon</a></p></section>\
 <script type=\"application/json\" id=\"initial\">{json}</script>",
             name = esc(guild_name),
+            premium_hidden = if page.capped { "" } else { " hidden" },
+            premium = esc(PREMIUM_HISTORY),
+            patreon = esc(PATREON_URL),
             json = inline_json(page),
         ),
         HISTORY_SCRIPTS,
@@ -221,5 +226,24 @@ mod test {
         );
         assert!(!html.contains("<b>me") && !html.contains("<i>G") && !html.contains("<u>c"));
         assert!(html.contains("href=\"/g/5\""));
+    }
+
+    #[test]
+    fn the_premium_note_is_shown_only_when_capped() {
+        let note = format!(
+            "<p id=\"premium-note\">{} <a href=\"{}\">CrackTunes Patreon</a></p>",
+            esc(PREMIUM_HISTORY),
+            esc(PATREON_URL)
+        );
+        let capped = HistoryPage {
+            capped: true,
+            ..HistoryPage::default()
+        };
+        let html = history_page("S", GuildId::new(5), &capped);
+        assert!(html.contains(&note), "{html}");
+
+        let open = HistoryPage::default();
+        let html = history_page("S", GuildId::new(5), &open);
+        assert!(html.contains("<p id=\"premium-note\" hidden>"), "{html}");
     }
 }

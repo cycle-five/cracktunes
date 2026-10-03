@@ -4,7 +4,7 @@
 
 use crack_core::db::queue_audit::{AuditCursor, AuditPageRow};
 use crack_core::music::audit_view::{
-    hidden_by_game, how_text, parse_since, what_text, ActionChoice, SourceChoice,
+    hidden_by_game, how_text, older_than_floor, parse_since, what_text, ActionChoice, SourceChoice,
 };
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
@@ -62,6 +62,9 @@ pub struct HistoryPage {
     pub older: bool,
     /// A `/gp` game is running, so its rows are being left out.
     pub game_hidden: bool,
+    /// The plan's history floor hid older rows: the page says older history is
+    /// premium, instead of offering "Load older". Always false for an `after` poll.
+    pub capped: bool,
 }
 
 /// What the page asked for, checked.
@@ -164,12 +167,14 @@ fn snowflake(id: i64) -> Option<UserId> {
 pub fn shown_members(
     rows: &[AuditPageRow],
     running_since: Option<chrono::DateTime<chrono::Utc>>,
+    floor: Option<chrono::DateTime<chrono::Utc>>,
 ) -> Vec<UserId> {
     let mut out = Vec::new();
     for u in rows
         .iter()
         .take(PAGE_SIZE)
         .filter(|r| !hidden_by_game(&r.row, running_since))
+        .filter(|r| !older_than_floor(&r.row, floor))
         .filter_map(|r| r.row.actor_user_id.and_then(snowflake))
     {
         if !out.contains(&u) {
@@ -186,13 +191,19 @@ pub fn compose_page(
     mut rows: Vec<AuditPageRow>,
     cursor: AuditCursor,
     running_since: Option<chrono::DateTime<chrono::Utc>>,
+    floor: Option<chrono::DateTime<chrono::Utc>>,
     name_of: impl Fn(UserId) -> Option<String>,
 ) -> HistoryPage {
-    let older = !matches!(cursor, AuditCursor::After(_)) && rows.len() > PAGE_SIZE;
+    let poll = matches!(cursor, AuditCursor::After(_));
+    // The extra row counts: if even it is past the floor, there is older
+    // history, and "Load older" would only find rows the plan hides.
+    let capped = !poll && rows.iter().any(|r| older_than_floor(&r.row, floor));
+    let older = !poll && !capped && rows.len() > PAGE_SIZE;
     rows.truncate(PAGE_SIZE);
     let rows = rows
         .into_iter()
         .filter(|r| !hidden_by_game(&r.row, running_since))
+        .filter(|r| !older_than_floor(&r.row, floor))
         .map(|r| HistoryRow {
             id: r.id,
             at: r.row.at.to_rfc3339(),
@@ -211,6 +222,7 @@ pub fn compose_page(
         rows,
         older,
         game_hidden: running_since.is_some(),
+        capped,
     }
 }
 
@@ -321,6 +333,7 @@ mod test {
             ],
             AuditCursor::Newest,
             None,
+            None,
             |u| (u.get() == big as u64).then(|| "Alice".to_owned()),
         );
         assert_eq!(
@@ -349,11 +362,11 @@ mod test {
             .map(|i| page_row(i + 1, "skip", None, i))
             .collect();
         assert_eq!(rows.len(), PAGE_SIZE + 1);
-        let newest = compose_page(rows.clone(), AuditCursor::Newest, None, |_| None);
+        let newest = compose_page(rows.clone(), AuditCursor::Newest, None, None, |_| None);
         assert!(newest.older);
         assert_eq!(newest.rows.len(), PAGE_SIZE);
         assert_eq!(newest.rows[0].id, PAGE_SIZE as i64 + 1, "kept the newest");
-        let after = compose_page(rows.clone(), AuditCursor::After(0), None, |_| None);
+        let after = compose_page(rows.clone(), AuditCursor::After(0), None, None, |_| None);
         assert!(
             !after.older,
             "an after poll never claims older rows, even handed an extra"
@@ -374,6 +387,7 @@ mod test {
             ],
             AuditCursor::Newest,
             Some(start),
+            None,
             |_| None,
         );
         assert_eq!(
@@ -384,6 +398,7 @@ mod test {
         let idle = compose_page(
             vec![page_row(1, "gp", None, 1_500)],
             AuditCursor::Newest,
+            None,
             None,
             |_| None,
         );
@@ -396,6 +411,7 @@ mod test {
         let page = compose_page(
             vec![page_row(1, "skip", Some(0), 1)],
             AuditCursor::Newest,
+            None,
             None,
             |_| panic!("UserId::new(0) would panic; never look it up"),
         );
@@ -420,17 +436,91 @@ mod test {
         rows[2] = page_row(57, "skip", Some(0), 500); // not a snowflake
         rows.push(page_row(1, "skip", Some(99), 400)); // the 51st
         assert_eq!(rows.len(), PAGE_SIZE + 1);
-        let got = shown_members(&rows, Some(start));
+        let got = shown_members(&rows, Some(start), None);
         assert_eq!(
             got,
             vec![UserId::new(8), UserId::new(7)],
             "each once, in page order; not the hidden row's, not the 51st's"
         );
         assert_eq!(
-            shown_members(&rows, None),
+            shown_members(&rows, None, None),
             vec![UserId::new(8), UserId::new(9), UserId::new(7)],
             "no game, nothing hidden"
         );
+    }
+
+    /// The floor for these tests: `page_row`'s `at_secs` below 1000 are older.
+    fn floor() -> Option<chrono::DateTime<chrono::Utc>> {
+        chrono::DateTime::from_timestamp(1000, 0)
+    }
+
+    #[test]
+    fn rows_past_the_floor_are_dropped_and_the_page_is_capped() {
+        let rows = vec![
+            page_row(3, "skip", Some(7), 1002),
+            page_row(2, "skip", Some(7), 1000),
+            page_row(1, "skip", Some(7), 999),
+        ];
+        let page = compose_page(rows, AuditCursor::Newest, None, floor(), |_| None);
+        assert_eq!(
+            page.rows.iter().map(|r| r.id).collect::<Vec<_>>(),
+            vec![3, 2]
+        );
+        assert!(page.capped);
+        assert!(!page.older);
+    }
+
+    #[test]
+    fn the_extra_row_past_the_floor_caps_the_page() {
+        // 50 rows inside the window plus the 51st fetched to learn `older`,
+        // which is too old: no "Load older", the note instead.
+        let mut rows: Vec<AuditPageRow> = (0..50)
+            .map(|i| page_row(100 - i, "skip", Some(7), 2000 - i))
+            .collect();
+        rows.push(page_row(1, "skip", Some(7), 10));
+        let page = compose_page(rows, AuditCursor::Newest, None, floor(), |_| None);
+        assert_eq!(page.rows.len(), 50);
+        assert!(page.capped);
+        assert!(!page.older);
+    }
+
+    #[test]
+    fn a_before_page_past_the_floor_is_empty_and_capped() {
+        let rows = vec![
+            page_row(2, "skip", Some(7), 500),
+            page_row(1, "skip", Some(7), 400),
+        ];
+        let page = compose_page(rows, AuditCursor::Before(3), None, floor(), |_| None);
+        assert!(page.rows.is_empty());
+        assert!(page.capped);
+        assert!(!page.older);
+    }
+
+    #[test]
+    fn after_polls_never_report_capped() {
+        let rows = vec![page_row(5, "skip", Some(7), 999)];
+        let page = compose_page(rows, AuditCursor::After(4), None, floor(), |_| None);
+        assert!(!page.capped);
+    }
+
+    #[test]
+    fn premium_has_no_floor() {
+        let rows = vec![
+            page_row(2, "skip", Some(7), 5),
+            page_row(1, "skip", Some(7), 4),
+        ];
+        let page = compose_page(rows, AuditCursor::Newest, None, None, |_| None);
+        assert_eq!(page.rows.len(), 2);
+        assert!(!page.capped);
+    }
+
+    #[test]
+    fn names_are_not_looked_up_for_rows_past_the_floor() {
+        let rows = vec![
+            page_row(2, "skip", Some(7), 1001),
+            page_row(1, "skip", Some(8), 999),
+        ];
+        assert_eq!(shown_members(&rows, None, floor()), vec![UserId::new(7)]);
     }
 
     #[test]

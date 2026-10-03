@@ -1248,10 +1248,13 @@ mod test {
             }],
             older: true,
             game_hidden: true,
+            capped: true,
         };
         *fake.history_result.lock().unwrap() = Ok(page.clone());
         let r = get(fake, "/g/5/history.json", Some(&session(9))).await;
-        let got: HistoryPage = serde_json::from_str(&body(r).await).unwrap();
+        let text = body(r).await;
+        assert!(text.contains("\"capped\":true"), "{text}");
+        let got: HistoryPage = serde_json::from_str(&text).unwrap();
         assert_eq!(got, page);
     }
 
@@ -1282,6 +1285,7 @@ mod test {
             }],
             older: false,
             game_hidden: false,
+            capped: false,
         };
         *fake.history_result.lock().unwrap() = Ok(page.clone());
         let html = body(get(fake, "/g/5/history", Some(&session(9))).await).await;

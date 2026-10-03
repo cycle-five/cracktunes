@@ -15,6 +15,7 @@
   const badge = document.getElementById("badge");
   const note = document.getElementById("note");
   const gpNote = document.getElementById("gp-note");
+  const premiumNote = document.getElementById("premium-note");
   const fAction = document.getElementById("f-action");
   const fSource = document.getElementById("f-source");
   const fSince = document.getElementById("f-since");
@@ -26,6 +27,7 @@
   let rows = first.rows;
   let older = first.older;
   let gameHidden = first.game_hidden;
+  let capped = first.capped;
   let user = null; // { id, label }
   let stopped = false;
   // Set when a reload failed: the controls show a filter that `rows` does not
@@ -82,12 +84,13 @@
 
   function render() {
     if (rows.length === 0) {
-      rowsEl.replaceChildren(el("li", "empty", "Nothing matches."));
+      rowsEl.replaceChildren(el("li", "empty", capped ? "Nothing matches in the last 24 hours." : "Nothing matches."));
     } else {
       rowsEl.replaceChildren(...rows.map(rowEl));
     }
     olderBtn.hidden = !older;
     gpNote.hidden = !gameHidden;
+    premiumNote.hidden = !capped;
     chip.hidden = !user;
     chipName.textContent = user ? user.label : "";
   }
@@ -132,6 +135,7 @@
       rows = data.rows;
       older = data.older;
       gameHidden = data.game_hidden;
+      capped = data.capped;
       loadedOlder = false;
       badge.hidden = true;
       dirty = false;
@@ -189,6 +193,7 @@
         return false;
       }
       gameHidden = data.game_hidden;
+      // `capped` is left alone: a poll only brings new rows, which the floor never hides.
       if (data.rows.length > 0) rows = data.rows.concat(rows);
       render();
       return data.rows.length >= PAGE_SIZE;
@@ -210,6 +215,7 @@
       if (!data || mine !== seq || rows.length === 0 || rows[rows.length - 1].id !== last) return;
       rows = rows.concat(data.rows);
       older = data.older;
+      capped = data.capped;
       loadedOlder = true;
       say("");
       render();
