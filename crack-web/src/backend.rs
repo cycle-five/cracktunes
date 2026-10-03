@@ -2,7 +2,11 @@
 //! [`Backend`], so their logic is tested against a fake; `LiveBackend`
 //! (lib.rs) is the thin glue over crack-core, the cache and Discord.
 
-use crate::{access::Presence, watch::ViewSource};
+use crate::{
+    access::{HistoryAccess, Presence},
+    history::{HistoryPage, HistoryQuery},
+    watch::ViewSource,
+};
 pub use crack_core::music::remote::MoveRefused;
 use serenity::all::{GuildId, UserId};
 use std::future::Future;
@@ -17,6 +21,15 @@ pub struct GuildEntry {
     pub channel: Option<String>,
 }
 
+/// Why a history page could not be read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HistoryError {
+    /// The bot runs without a database: there is no history to read.
+    NoDatabase,
+    /// The query failed; logged where it happened.
+    Failed,
+}
+
 pub trait Backend: ViewSource {
     fn presence(&self, g: GuildId, u: UserId) -> impl Future<Output = Presence> + Send;
     fn move_track(
@@ -28,4 +41,10 @@ pub trait Backend: ViewSource {
     ) -> impl Future<Output = Result<usize, MoveRefused>> + Send;
     fn guilds_for(&self, u: UserId) -> impl Future<Output = Vec<GuildEntry>> + Send;
     fn guild_name(&self, g: GuildId) -> Option<String>;
+    fn history_access(&self, g: GuildId, u: UserId) -> impl Future<Output = HistoryAccess> + Send;
+    fn history(
+        &self,
+        g: GuildId,
+        q: &HistoryQuery,
+    ) -> impl Future<Output = Result<HistoryPage, HistoryError>> + Send;
 }

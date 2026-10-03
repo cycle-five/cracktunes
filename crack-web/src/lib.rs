@@ -14,16 +14,21 @@ pub mod view;
 pub mod watch;
 
 use crate::{
-    access::{MemberMemo, Membership, Presence, MEMBER_TTL},
-    backend::{Backend, GuildEntry, MoveRefused},
+    access::{HistoryAccess, MemberMemo, Membership, Presence, MEMBER_TTL},
+    backend::{Backend, GuildEntry, HistoryError, MoveRefused},
     config::WebEnv,
+    history::{HistoryPage, HistoryQuery},
     routes::WebState,
     view::{view_from_state, QueueView},
     watch::{Hub, ViewSource, LINGER, TICK},
 };
-use crack_core::{music::remote, Data};
-use serenity::all::{Cache, GuildId, Http, UserId};
-use std::sync::Arc;
+use crack_core::{
+    db::queue_audit::{audit_page, AuditFilter, AuditPageRow},
+    music::remote,
+    Data,
+};
+use serenity::all::{Cache, GuildId, Http, Permissions, RoleId, UserId};
+use std::{collections::HashMap, num::NonZeroU64, sync::Arc};
 use uuid::Uuid;
 
 /// What the bot hands the dashboard.
@@ -37,12 +42,79 @@ pub struct WebDeps {
 pub struct LiveBackend {
     deps: WebDeps,
     memo: MemberMemo,
+    roles: access::RoleMemo,
+    names: history::NameMemo,
 }
 
 impl LiveBackend {
     fn member_name(&self, g: GuildId, u: UserId) -> Option<String> {
         let guild = self.deps.cache.guild(g)?;
         guild.members.get(&u).map(|m| m.display_name().to_owned())
+    }
+
+    /// A member's role ids: the cache, then the role memo, then Discord.
+    /// `None` when Discord did not answer.
+    async fn member_roles(&self, g: GuildId, u: UserId) -> Option<Vec<RoleId>> {
+        if let Some(roles) = self.deps.cache.guild(g).and_then(|guild| {
+            guild
+                .members
+                .get(&u)
+                .map(|m| m.roles.iter().copied().collect::<Vec<_>>())
+        }) {
+            return Some(roles);
+        }
+        let now = std::time::Instant::now();
+        if let Some(roles) = self.roles.get(g, u, now) {
+            return Some(roles);
+        }
+        match self.deps.http.get_member(g, u).await {
+            Ok(m) => {
+                let roles: Vec<RoleId> = m.roles.iter().copied().collect();
+                self.roles.record(g, u, roles.clone(), now);
+                Some(roles)
+            },
+            Err(e) => {
+                tracing::warn!("history: could not read {u}'s roles in {g}: {e}");
+                None
+            },
+        }
+    }
+
+    /// Names for the members in `rows`: the cache, the name memo, then at most
+    /// `NAME_LOOKUPS` Discord lookups. Anyone left out shows as their id.
+    async fn names_for(&self, g: GuildId, rows: &[AuditPageRow]) -> HashMap<UserId, String> {
+        let mut out = HashMap::new();
+        let mut lookups = 0;
+        let ids = rows
+            .iter()
+            .filter_map(|r| r.row.actor_user_id)
+            .filter_map(|id| u64::try_from(id).ok())
+            .filter_map(NonZeroU64::new)
+            .map(|n| UserId::new(n.get()));
+        for u in ids {
+            if out.contains_key(&u) {
+                continue;
+            }
+            if let Some(name) = self.member_name(g, u) {
+                out.insert(u, name);
+                continue;
+            }
+            let now = std::time::Instant::now();
+            if let Some(name) = self.names.get(u, now) {
+                out.insert(u, name);
+                continue;
+            }
+            if lookups >= history::NAME_LOOKUPS {
+                continue;
+            }
+            lookups += 1;
+            if let Ok(user) = self.deps.http.get_user(u).await {
+                let name = user.display_name().to_owned();
+                self.names.record(u, name.clone(), now);
+                out.insert(u, name);
+            }
+        }
+        out
     }
 }
 
@@ -114,6 +186,60 @@ impl Backend for LiveBackend {
     fn guild_name(&self, g: GuildId) -> Option<String> {
         self.deps.cache.guild(g).map(|guild| guild.name.to_string())
     }
+
+    async fn history_access(&self, g: GuildId, u: UserId) -> HistoryAccess {
+        let membership = self.presence(g, u).await.membership;
+        if membership != Membership::Member {
+            return access::decide_history(membership, None);
+        }
+        let roles = self.member_roles(g, u).await;
+        let manages = roles.and_then(|roles| {
+            let guild = self.deps.cache.guild(g)?;
+            let everyone = guild
+                .roles
+                .get(&RoleId::new(g.get()))
+                .map(|r| r.permissions)
+                .unwrap_or_else(Permissions::empty);
+            Some(access::has_manage_guild(
+                guild.owner_id,
+                u,
+                everyone,
+                &roles,
+                |r| guild.roles.get(&r).map(|role| role.permissions),
+            ))
+        });
+        access::decide_history(membership, manages)
+    }
+
+    async fn history(&self, g: GuildId, q: &HistoryQuery) -> Result<HistoryPage, HistoryError> {
+        let Some(pool) = self.deps.data.database_pool.clone() else {
+            return Err(HistoryError::NoDatabase);
+        };
+        let filter = AuditFilter {
+            user: q.user,
+            action: q.action.map(|a| a.name()),
+            source: q.source.map(|s| s.source().as_str()),
+            since: q.since.map(|d| chrono::Utc::now() - d),
+        };
+        let rows = audit_page(&pool, g, &filter, q.cursor, history::fetch_limit(q.cursor))
+            .await
+            .map_err(|e| {
+                tracing::warn!("history: query failed in {g}: {e}");
+                HistoryError::Failed
+            })?;
+        // Copy the start time out so the DashMap ref is dropped before any await.
+        let running_since = self
+            .deps
+            .data
+            .gp_games
+            .get(&g)
+            .map(|game| game.started_at)
+            .and_then(|t| chrono::DateTime::from_timestamp(t, 0));
+        let names = self.names_for(g, &rows).await;
+        Ok(history::compose_page(rows, q.cursor, running_since, |u| {
+            names.get(&u).cloned()
+        }))
+    }
 }
 
 /// Start the dashboard if its environment is complete. Missing keys are
@@ -144,6 +270,8 @@ async fn serve(env: WebEnv, deps: WebDeps) -> std::io::Result<()> {
     let backend = Arc::new(LiveBackend {
         deps,
         memo: MemberMemo::new(MEMBER_TTL),
+        roles: access::RoleMemo::new(history::ROLE_TTL),
+        names: history::NameMemo::new(history::NAME_TTL),
     });
     let state = WebState {
         auth,

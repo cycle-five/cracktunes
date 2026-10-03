@@ -2,7 +2,7 @@
 //! string goes through [`esc`], and the queue itself is not HTML at all --
 //! it is inlined as JSON and drawn by `app.js`, the one renderer.
 
-use crate::{backend::GuildEntry, view::PageState};
+use crate::{backend::GuildEntry, history::HistoryPage, view::PageState};
 use serde::Serialize;
 use serenity::all::GuildId;
 
@@ -31,15 +31,23 @@ pub fn inline_json<T: Serialize>(v: &T) -> String {
         .replace('<', "\\u003c")
 }
 
-fn layout(title: &str, body: &str) -> String {
+/// Scripts every page but the history page loads.
+const QUEUE_SCRIPTS: &[&str] = &["sortable.min.js", "app.js"];
+/// The history page: `app.js` for the logout button, `history.js` for the rest.
+const HISTORY_SCRIPTS: &[&str] = &["app.js", "history.js"];
+
+fn layout(title: &str, body: &str, scripts: &[&str]) -> String {
+    let scripts: String = scripts
+        .iter()
+        .map(|s| format!("<script src=\"/assets/{s}\"></script>"))
+        .collect();
     format!(
         "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
 <title>{title}</title><link rel=\"stylesheet\" href=\"/assets/app.css\"></head>\
 <body><header><a class=\"brand\" href=\"/\">Crack Tunes</a>\
 <button type=\"button\" id=\"logout\">Log out</button></header>\
-<main>{body}</main><script src=\"/assets/sortable.min.js\"></script>\
-<script src=\"/assets/app.js\"></script></body></html>",
+<main>{body}</main>{scripts}</body></html>",
         title = esc(title),
     )
 }
@@ -69,21 +77,72 @@ pub fn picker_page(username: &str, guilds: &[GuildEntry]) -> String {
     layout(
         "Crack Tunes",
         &format!("<h1>Hi, {}</h1>{items}", esc(username)),
+        QUEUE_SCRIPTS,
     )
 }
 
 /// `GET /g/{id}`: the queue page. The state is inlined; `app.js` draws it.
-pub fn queue_page(guild_name: &str, guild_id: GuildId, state: &PageState) -> String {
+/// `history_link` is for managers (Manage Server).
+pub fn queue_page(
+    guild_name: &str,
+    guild_id: GuildId,
+    state: &PageState,
+    history_link: bool,
+) -> String {
+    let links = if history_link {
+        format!("<p class=\"links\"><a href=\"/g/{guild_id}/history\">History</a></p>")
+    } else {
+        String::new()
+    };
     layout(
         guild_name,
         &format!(
             "<section id=\"dash\" data-guild=\"{guild_id}\">\
-<h1>{name}</h1><p id=\"badge\" hidden>Reconnecting…</p><p id=\"note\" hidden></p>\
+<h1>{name}</h1>{links}<p id=\"badge\" hidden>Reconnecting…</p><p id=\"note\" hidden></p>\
 <div id=\"now\"></div><h2>Up next</h2><ol id=\"upcoming\"></ol></section>\
 <script type=\"application/json\" id=\"initial\">{json}</script>",
             name = esc(guild_name),
             json = inline_json(state),
         ),
+        QUEUE_SCRIPTS,
+    )
+}
+
+/// `GET /g/{id}/history`: the first page inlined; `history.js` draws it,
+/// filters it, polls for new rows and loads older ones.
+pub fn history_page(guild_name: &str, guild_id: GuildId, page: &HistoryPage) -> String {
+    const ACTIONS: [&str; 10] = [
+        "add", "remove", "move", "skip", "clear", "shuffle", "stop", "pause", "resume", "leave",
+    ];
+    let actions: String = ACTIONS
+        .iter()
+        .map(|a| format!("<option value=\"{a}\">{a}</option>"))
+        .collect();
+    layout(
+        &format!("History · {guild_name}"),
+        &format!(
+            "<section id=\"history\" data-guild=\"{guild_id}\">\
+<h1>History · {name}</h1>\
+<p class=\"links\"><a href=\"/g/{guild_id}\">← Queue</a></p>\
+<p id=\"badge\" hidden>Reconnecting…</p><p id=\"note\" hidden></p>\
+<p id=\"gp-note\" hidden>Entries from the running /gp game are hidden until it ends.</p>\
+<div id=\"filters\">\
+<label>Action <select id=\"f-action\"><option value=\"\">all</option>{actions}</select></label>\
+<label>Source <select id=\"f-source\"><option value=\"\">all</option>\
+<option value=\"slash\">slash</option><option value=\"prefix\">prefix</option>\
+<option value=\"web\">dashboard</option><option value=\"bot\">bot</option></select></label>\
+<label>Since <select id=\"f-since\"><option value=\"\">all</option>\
+<option value=\"1h\">1 h</option><option value=\"6h\">6 h</option>\
+<option value=\"1d\">1 d</option><option value=\"1w\">1 w</option></select></label>\
+<span id=\"f-user\" class=\"chip\" hidden><span id=\"f-user-name\"></span>\
+<button type=\"button\" id=\"f-user-clear\" aria-label=\"Clear the member filter\">×</button></span>\
+</div><ol id=\"rows\"></ol>\
+<button type=\"button\" id=\"older\" hidden>Load older</button></section>\
+<script type=\"application/json\" id=\"initial\">{json}</script>",
+            name = esc(guild_name),
+            json = inline_json(page),
+        ),
+        HISTORY_SCRIPTS,
     )
 }
 
@@ -92,6 +151,7 @@ pub fn message_page(title: &str, text: &str) -> String {
     layout(
         title,
         &format!("<h1>{}</h1><p>{}</p>", esc(title), esc(text)),
+        QUEUE_SCRIPTS,
     )
 }
 
@@ -130,6 +190,7 @@ mod test {
                 view: &view,
                 can_control: false,
             },
+            false,
         );
         assert_eq!(
             html.matches("</script>").count(),

@@ -1,15 +1,18 @@
 //! The dashboard's HTTP surface.
 
 use crate::{
-    access::{decide, Access},
-    backend::{Backend, MoveRefused},
+    access::{decide, Access, HistoryAccess},
+    backend::{Backend, HistoryError, MoveRefused},
+    history::{
+        parse_history_query, ErrorBody, HistoryQuery, HISTORY_FAILED, NEEDS_MANAGE, NO_DATABASE,
+    },
     page,
     view::{MoveRequest, MoveResult, PageState, QueueView},
     watch::Hub,
 };
 use axum::{
     body::Bytes,
-    extract::{FromRef, Path, State},
+    extract::{FromRef, Path, RawQuery, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -140,8 +143,84 @@ async fn guild_page<B: Backend>(
                 view: &view,
                 can_control: access == Access::Control,
             };
-            Html(page::queue_page(&name, g, &state)).into_response()
+            let history_link = s.backend.history_access(g, user).await == HistoryAccess::Allowed;
+            Html(page::queue_page(&name, g, &state, history_link)).into_response()
         },
+    }
+}
+
+fn forbidden_page() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        Html(page::message_page("Needs Manage Server", NEEDS_MANAGE)),
+    )
+        .into_response()
+}
+
+fn error_json(status: StatusCode, error: &'static str) -> Response {
+    (status, Json(ErrorBody { error })).into_response()
+}
+
+async fn history_page<B: Backend>(
+    State(s): State<WebState<B>>,
+    session: Session,
+    Path(raw): Path<String>,
+) -> Response {
+    let Some(g) = parse_guild(&raw) else {
+        return not_found();
+    };
+    let Some((user, _)) = user_id(session) else {
+        return login_redirect(&format!("/g/{g}/history"));
+    };
+    match s.backend.history_access(g, user).await {
+        HistoryAccess::Hidden => return not_found(),
+        HistoryAccess::Unavailable => return unavailable(),
+        HistoryAccess::Forbidden => return forbidden_page(),
+        HistoryAccess::Allowed => {},
+    }
+    match s.backend.history(g, &HistoryQuery::default()).await {
+        Ok(first) => {
+            let name = s
+                .backend
+                .guild_name(g)
+                .unwrap_or_else(|| "Server".to_owned());
+            Html(page::history_page(&name, g, &first)).into_response()
+        },
+        Err(HistoryError::NoDatabase) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Html(page::message_page("No history", NO_DATABASE)),
+        )
+            .into_response(),
+        Err(HistoryError::Failed) => unavailable(),
+    }
+}
+
+async fn history_json<B: Backend>(
+    State(s): State<WebState<B>>,
+    session: Session,
+    Path(raw): Path<String>,
+    RawQuery(query): RawQuery,
+) -> Response {
+    let Some(g) = parse_guild(&raw) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some((user, _)) = user_id(session) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    match s.backend.history_access(g, user).await {
+        HistoryAccess::Hidden => return StatusCode::NOT_FOUND.into_response(),
+        HistoryAccess::Unavailable => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        HistoryAccess::Forbidden => return error_json(StatusCode::FORBIDDEN, NEEDS_MANAGE),
+        HistoryAccess::Allowed => {},
+    }
+    let q = match parse_history_query(query.as_deref()) {
+        Ok(q) => q,
+        Err(bad) => return error_json(StatusCode::BAD_REQUEST, bad.0),
+    };
+    match s.backend.history(g, &q).await {
+        Ok(page) => Json(page).into_response(),
+        Err(HistoryError::NoDatabase) => error_json(StatusCode::SERVICE_UNAVAILABLE, NO_DATABASE),
+        Err(HistoryError::Failed) => error_json(StatusCode::SERVICE_UNAVAILABLE, HISTORY_FAILED),
     }
 }
 
@@ -293,6 +372,10 @@ async fn asset(Path(name): Path<String>) -> Response {
             include_str!("../assets/sortable.min.js"),
             "text/javascript; charset=utf-8",
         ),
+        "history.js" => (
+            include_str!("../assets/history.js"),
+            "text/javascript; charset=utf-8",
+        ),
         "app.css" => (include_str!("../assets/app.css"), "text/css; charset=utf-8"),
         _ => return not_found(),
     };
@@ -351,6 +434,8 @@ pub fn router<B: Backend>(state: WebState<B>) -> Router {
         .route("/", get(picker::<B>))
         .route("/g/{guild}", get(guild_page::<B>))
         .route("/g/{guild}/move", post(move_track::<B>))
+        .route("/g/{guild}/history", get(history_page::<B>))
+        .route("/g/{guild}/history.json", get(history_json::<B>))
         .route_layer(axum::middleware::map_response(no_store));
     let timed = Router::new()
         .merge(per_user)
@@ -1060,5 +1145,173 @@ mod test {
         .await;
         assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(fake.move_count(), 0);
+    }
+
+    use crate::{
+        access::HistoryAccess,
+        backend::HistoryError,
+        history::{HistoryPage, HistoryRow, Who},
+    };
+
+    fn history_fake(access: HistoryAccess) -> std::sync::Arc<FakeBackend> {
+        let fake = member_viewing();
+        *fake.history_access.lock().unwrap() = access;
+        fake
+    }
+
+    #[tokio::test]
+    async fn signed_out_history_goes_to_login_and_its_json_is_401() {
+        let r = get(member_viewing(), "/g/5/history", None).await;
+        assert_eq!(r.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            r.headers()[header::LOCATION],
+            "/auth/login?return_to=%2Fg%2F5%2Fhistory"
+        );
+        let r = get(member_viewing(), "/g/5/history.json", None).await;
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn history_access_maps_to_its_answers() {
+        for (access, status) in [
+            (HistoryAccess::Hidden, StatusCode::NOT_FOUND),
+            (HistoryAccess::Unavailable, StatusCode::SERVICE_UNAVAILABLE),
+            (HistoryAccess::Forbidden, StatusCode::FORBIDDEN),
+            (HistoryAccess::Allowed, StatusCode::OK),
+        ] {
+            for uri in ["/g/5/history", "/g/5/history.json"] {
+                let r = get(history_fake(access), uri, Some(&session(9))).await;
+                assert_eq!(r.status(), status, "{access:?} {uri}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn bad_history_queries_are_400_and_never_reach_the_backend() {
+        for q in [
+            "user=abc",
+            "action=dance",
+            "source=email",
+            "since=3y",
+            "before=x",
+            "before=1&after=2",
+        ] {
+            let fake = history_fake(HistoryAccess::Allowed);
+            let r = get(
+                fake.clone(),
+                &format!("/g/5/history.json?{q}"),
+                Some(&session(9)),
+            )
+            .await;
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{q}");
+            assert!(body(r).await.contains("\"error\""), "{q}");
+            assert!(fake.history_queries.lock().unwrap().is_empty(), "{q}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_backend_gets_exactly_the_query_sent() {
+        let fake = history_fake(HistoryAccess::Allowed);
+        let r = get(
+            fake.clone(),
+            "/g/5/history.json?user=7&action=move&source=web&since=6h&after=40",
+            Some(&session(9)),
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let got = fake.history_queries.lock().unwrap().clone();
+        assert_eq!(
+            got,
+            vec![crate::history::parse_history_query(Some(
+                "user=7&action=move&source=web&since=6h&after=40"
+            ))
+            .unwrap()]
+        );
+    }
+
+    #[tokio::test]
+    async fn history_json_carries_the_backends_page() {
+        let fake = history_fake(HistoryAccess::Allowed);
+        let page = HistoryPage {
+            rows: vec![HistoryRow {
+                id: 3,
+                at: "2026-10-02T12:00:00+00:00".into(),
+                who: Who::Bot,
+                how: "idle timeout".into(),
+                what: "left voice, 2 tracks discarded".into(),
+            }],
+            older: true,
+            game_hidden: true,
+        };
+        *fake.history_result.lock().unwrap() = Ok(page.clone());
+        let r = get(fake, "/g/5/history.json", Some(&session(9))).await;
+        let got: HistoryPage = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(got, page);
+    }
+
+    #[tokio::test]
+    async fn a_missing_database_is_503_with_its_reason() {
+        let fake = history_fake(HistoryAccess::Allowed);
+        *fake.history_result.lock().unwrap() = Err(HistoryError::NoDatabase);
+        let r = get(fake.clone(), "/g/5/history.json", Some(&session(9))).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert!(body(r).await.contains(crate::history::NO_DATABASE));
+        let r = get(fake, "/g/5/history", Some(&session(9))).await;
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn the_history_page_inlines_the_first_page() {
+        let fake = history_fake(HistoryAccess::Allowed);
+        let page = HistoryPage {
+            rows: vec![HistoryRow {
+                id: 1,
+                at: "2026-10-02T12:00:00+00:00".into(),
+                who: Who::Member {
+                    id: "7".into(),
+                    name: Some("</script><img src=x>".into()),
+                },
+                how: "/play".into(),
+                what: "added </script>".into(),
+            }],
+            older: false,
+            game_hidden: false,
+        };
+        *fake.history_result.lock().unwrap() = Ok(page.clone());
+        let html = body(get(fake, "/g/5/history", Some(&session(9))).await).await;
+        assert!(!html.contains("<img"), "{html}");
+        let start = html.find("id=\"initial\">").unwrap() + "id=\"initial\">".len();
+        let end = start + html[start..].find("</script>").unwrap();
+        let got: HistoryPage = serde_json::from_str(&html[start..end]).unwrap();
+        assert_eq!(got, page);
+        assert!(html.contains("src=\"/assets/history.js\""));
+    }
+
+    #[tokio::test]
+    async fn the_queue_page_links_history_for_managers_only() {
+        let html = body(
+            get(
+                history_fake(HistoryAccess::Allowed),
+                "/g/5",
+                Some(&session(9)),
+            )
+            .await,
+        )
+        .await;
+        assert!(html.contains("href=\"/g/5/history\""));
+        for access in [HistoryAccess::Forbidden, HistoryAccess::Unavailable] {
+            let html = body(get(history_fake(access), "/g/5", Some(&session(9))).await).await;
+            assert!(!html.contains("/history"), "{access:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn history_js_is_served() {
+        let r = get(member_viewing(), "/assets/history.js", None).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(r.headers()[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/javascript"));
     }
 }
