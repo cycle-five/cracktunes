@@ -1,7 +1,9 @@
 //! Reading the queue audit log back: what `/auditlog` shows, and what it hides.
 //! Spec: docs/superpowers/specs/2026-10-02-auditlog-command-design.md
 
-use crate::messaging::messages::{AUDITLOG_GP_HIDDEN, AUDITLOG_TRUNCATED};
+use crate::messaging::messages::{
+    AUDITLOG_GP_HIDDEN, AUDITLOG_TRUNCATED, PATREON_URL, PREMIUM_HISTORY,
+};
 use crate::music::audit::{Action, Source, TrackRef};
 use chrono::{DateTime, Duration, Utc};
 
@@ -184,6 +186,39 @@ pub fn hide_running_game(
     (kept, hid)
 }
 
+/// Whether the plan's history floor hides this row: it is older than `floor`.
+/// A row exactly at the floor is shown. No floor hides nothing.
+#[must_use]
+pub fn older_than_floor(row: &AuditRow, floor: Option<DateTime<Utc>>) -> bool {
+    floor.is_some_and(|f| row.at < f)
+}
+
+/// Drop the rows older than the plan's history floor. Returns whether anything
+/// was dropped: older history exists, and the reply says it's premium.
+///
+/// This runs on what the query returned, not in SQL, so "nothing older" and
+/// "older is premium" can be told apart without another query. Rows come
+/// newest first, so this drops a tail.
+#[must_use]
+pub fn trim_to_floor(rows: Vec<AuditRow>, floor: Option<DateTime<Utc>>) -> (Vec<AuditRow>, bool) {
+    if floor.is_none() {
+        return (rows, false);
+    }
+    let before = rows.len();
+    let kept: Vec<AuditRow> = rows
+        .into_iter()
+        .filter(|r| !older_than_floor(r, floor))
+        .collect();
+    let capped = kept.len() != before;
+    (kept, capped)
+}
+
+/// The notice for history the free window hid, with the Patreon link.
+#[must_use]
+pub fn premium_history_line() -> String {
+    format!("_{PREMIUM_HISTORY}_ [CrackTunes Patreon]({PATREON_URL})")
+}
+
 /// What `/auditlog` has to say, before paging.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuditlogReply {
@@ -191,20 +226,29 @@ pub enum AuditlogReply {
     Empty,
     /// Rows matched, but all belong to the running `/gp` game.
     AllHidden,
+    /// Rows matched, but all are older than the plan's history floor.
+    OnlyOlder,
     /// The lines to page, leading notice lines included.
     Lines(Vec<String>),
 }
 
 /// Decide the reply from the rows fetched (newest first, at most
-/// `AUDITLOG_LIMIT + 1`): cut to the limit, hide a running game's rows, and
-/// prepend the notices. Pure; the notice texts come from `messages.rs`.
+/// `AUDITLOG_LIMIT + 1`): cut to the plan's history floor, then to the limit,
+/// hide a running game's rows, and prepend the notices. Pure; the notice texts come from `messages.rs`.
 #[must_use]
 pub fn compose_auditlog(
-    mut rows: Vec<AuditRow>,
+    rows: Vec<AuditRow>,
     running_since: Option<DateTime<Utc>>,
+    floor: Option<DateTime<Utc>>,
 ) -> AuditlogReply {
     if rows.is_empty() {
         return AuditlogReply::Empty;
+    }
+    // The floor first: the 200-row cut and its notice speak only of rows this
+    // server's plan shows.
+    let (mut rows, capped) = trim_to_floor(rows, floor);
+    if rows.is_empty() {
+        return AuditlogReply::OnlyOlder;
     }
     let truncated = rows.len() > AUDITLOG_LIMIT;
     rows.truncate(AUDITLOG_LIMIT);
@@ -212,12 +256,15 @@ pub fn compose_auditlog(
     if rows.is_empty() {
         return AuditlogReply::AllHidden;
     }
-    let mut lines = Vec::with_capacity(rows.len() + 2);
+    let mut lines = Vec::with_capacity(rows.len() + 3);
     if hid {
         lines.push(AUDITLOG_GP_HIDDEN.to_owned());
     }
     if truncated {
         lines.push(AUDITLOG_TRUNCATED.to_owned());
+    }
+    if capped {
+        lines.push(premium_history_line());
     }
     lines.extend(rows.iter().map(audit_line));
     AuditlogReply::Lines(lines)
@@ -328,6 +375,99 @@ mod test {
             action: action.name().into(),
             detail: action,
         }
+    }
+
+    /// A plain `pause` by a member, recorded at `at`.
+    fn row_at(at: DateTime<Utc>) -> AuditRow {
+        AuditRow {
+            at,
+            ..row("slash", "pause", Some(7), Action::Pause)
+        }
+    }
+
+    fn ts(secs: i64) -> DateTime<Utc> {
+        DateTime::from_timestamp(1_800_000_000 + secs, 0).unwrap()
+    }
+
+    #[test]
+    fn a_row_exactly_at_the_floor_is_kept() {
+        let floor = Some(ts(0));
+        assert!(!older_than_floor(&row_at(ts(0)), floor));
+        assert!(older_than_floor(&row_at(ts(-1)), floor));
+        assert!(!older_than_floor(&row_at(ts(-1_000_000)), None));
+    }
+
+    #[test]
+    fn the_trim_drops_older_rows_and_says_so() {
+        let rows = vec![row_at(ts(10)), row_at(ts(0)), row_at(ts(-1))];
+        let (kept, capped) = trim_to_floor(rows.clone(), Some(ts(0)));
+        assert_eq!(kept.len(), 2);
+        assert!(capped);
+        let (kept, capped) = trim_to_floor(rows[..2].to_vec(), Some(ts(0)));
+        assert_eq!(kept.len(), 2);
+        assert!(!capped);
+        let (kept, capped) = trim_to_floor(rows, None);
+        assert_eq!(kept.len(), 3);
+        assert!(!capped);
+    }
+
+    #[test]
+    fn the_premium_notice_follows_the_others_only_when_rows_were_dropped() {
+        let AuditlogReply::Lines(lines) =
+            compose_auditlog(vec![row_at(ts(10)), row_at(ts(-10))], None, Some(ts(0)))
+        else {
+            panic!("expected lines");
+        };
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], premium_history_line());
+        assert!(premium_history_line().contains(PREMIUM_HISTORY));
+        assert!(premium_history_line().contains(PATREON_URL));
+
+        let AuditlogReply::Lines(lines) = compose_auditlog(vec![row_at(ts(10))], None, Some(ts(0)))
+        else {
+            panic!("expected lines");
+        };
+        assert_eq!(lines.len(), 1);
+        assert_ne!(lines[0], premium_history_line());
+    }
+
+    #[test]
+    fn only_older_rows_are_only_older() {
+        assert_eq!(
+            compose_auditlog(vec![row_at(ts(-10))], None, Some(ts(0))),
+            AuditlogReply::OnlyOlder
+        );
+        assert_eq!(
+            compose_auditlog(vec![], None, Some(ts(0))),
+            AuditlogReply::Empty
+        );
+    }
+
+    #[test]
+    fn the_trim_runs_before_the_200_row_cut() {
+        // 150 visible rows and 100 too old: 250 fetched, but only 150 may be
+        // seen, so nothing was cut at 200.
+        let mut rows: Vec<AuditRow> = (0..150).map(|i| row_at(ts(1000 - i))).collect();
+        rows.extend((0..100).map(|i| row_at(ts(-1 - i))));
+        let AuditlogReply::Lines(lines) = compose_auditlog(rows, None, Some(ts(0))) else {
+            panic!("expected lines");
+        };
+        assert!(!lines.contains(&AUDITLOG_TRUNCATED.to_owned()));
+        assert_eq!(lines.len(), 150 + 1);
+        assert_eq!(lines[0], premium_history_line());
+    }
+
+    #[test]
+    fn the_premium_notice_comes_after_the_game_notice() {
+        let mut gp = row_at(ts(20));
+        gp.command = "gp".to_owned();
+        let rows = vec![gp, row_at(ts(10)), row_at(ts(-10))];
+        let AuditlogReply::Lines(lines) = compose_auditlog(rows, Some(ts(5)), Some(ts(0))) else {
+            panic!("expected lines");
+        };
+        assert_eq!(lines[0], AUDITLOG_GP_HIDDEN);
+        assert_eq!(lines[1], premium_history_line());
+        assert_eq!(lines.len(), 3);
     }
 
     #[test]
@@ -587,7 +727,7 @@ mod test {
 
     #[test]
     fn compose_no_rows_is_empty() {
-        assert_eq!(compose_auditlog(vec![], None), AuditlogReply::Empty);
+        assert_eq!(compose_auditlog(vec![], None, None), AuditlogReply::Empty);
     }
 
     #[test]
@@ -598,19 +738,20 @@ mod test {
             row("slash", "gp skip", Some(7), Action::Pause),
         ];
         assert_eq!(
-            compose_auditlog(rows, Some(start)),
+            compose_auditlog(rows, Some(start), None),
             AuditlogReply::AllHidden
         );
     }
 
     #[test]
     fn compose_over_the_limit_cuts_and_says_so() {
-        let AuditlogReply::Lines(lines) = compose_auditlog(many(AUDITLOG_LIMIT + 1), None) else {
+        let AuditlogReply::Lines(lines) = compose_auditlog(many(AUDITLOG_LIMIT + 1), None, None)
+        else {
             panic!("expected lines");
         };
         assert_eq!(lines.len(), AUDITLOG_LIMIT + 1);
         assert_eq!(lines[0], AUDITLOG_TRUNCATED);
-        let AuditlogReply::Lines(lines) = compose_auditlog(many(AUDITLOG_LIMIT), None) else {
+        let AuditlogReply::Lines(lines) = compose_auditlog(many(AUDITLOG_LIMIT), None, None) else {
             panic!("expected lines");
         };
         assert_eq!(lines.len(), AUDITLOG_LIMIT);
@@ -624,7 +765,7 @@ mod test {
             row("bot", "gp", None, Action::Pause),
             row("slash", "pause", Some(7), Action::Pause),
         ];
-        let AuditlogReply::Lines(lines) = compose_auditlog(rows, Some(start)) else {
+        let AuditlogReply::Lines(lines) = compose_auditlog(rows, Some(start), None) else {
             panic!("expected lines");
         };
         assert_eq!(lines.len(), 2);
