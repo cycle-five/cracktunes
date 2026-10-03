@@ -95,7 +95,8 @@ pub const FAIL_URL_NOT_ALLOWED: &str =
     "⚠️ I can only play links to public http(s) sites, not local or private addresses!";
 
 pub const GUILD_ONLY: &str = "⚠️ This command can only be used in a server!";
-pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while so I'm going to hop off, set the idle timeout to change this! Also support my development and I won't have to premium-gate features!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
+pub const IDLE_ALERT: &str = "⚠️ I've been idle for a while so I'm going to hop off, set the idle timeout to change this! Also support my development and keep the bot idle in vc as long as you like!
+[CrackTunes Patreon](https://patreon.com/CrackTunes)";
 pub const IP_DETAILS: &str = "🌐 IP details for";
 pub const JOINING: &str = "Joining";
 /// 🪤 Distinct from [`JOINING`] on purpose. `/summon` into the channel the bot
@@ -141,7 +142,9 @@ pub const PLAY_TOP: &str = "📃 Added to top!";
 pub const PLAY_LOG: &str = "🎵 Last Played Songs";
 pub const PREFIXES: &str = "Prefixes";
 pub const PREMIUM: &str = "👑 Premium status:";
-pub const PREMIUM_PLUG: &str = "👑 Like the bot? Support my development and keep it premium-free for everyone!\n[CrackTunes Patreon](https://patreon.com/CrackTunes)";
+pub const PREMIUM_PLUG: &str = "👑 Like the bot? Support my development and unlock premium features by subscribing to my Patreon!
+[CrackTunes Patreon](https://patreon.com/CrackTunes)";
+pub const PREMIUM_THANKS: &str = "👑 Thanks for supporting CrackTunes! Your server has premium.";
 pub const PROGRESS: &str = "Progress";
 pub const PHONE_NUMBER_INFO_ERROR: &str = "⚠️ Failed to fetch phone number info!";
 pub const QUEUE_EXPIRED: &str = "This command has expired.\nPlease feel free to reinvoke it!";
@@ -440,3 +443,9 @@ pub const AUDITLOG_EMPTY: &str = "📜 Nothing in the queue history matches that
 pub const AUDITLOG_TRUNCATED: &str = "_Showing the newest 200. Narrow it with `since` or `user`._";
 pub const AUDITLOG_GP_HIDDEN: &str =
     "_Entries from the `/gp` game in progress are hidden until it ends._";
+pub const AUDITLOG_ONLY_OLDER: &str =
+    "📜 Nothing in the queue history matches that in the last 24 hours.";
+/// Shown where the free 24-hour window hid older history: in `/auditlog`
+/// and on the dashboard's history page.
+pub const PREMIUM_HISTORY: &str = "Older history is a premium feature.";
+pub const PATREON_URL: &str = "https://patreon.com/CrackTunes";

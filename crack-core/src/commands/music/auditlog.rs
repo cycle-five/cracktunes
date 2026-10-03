@@ -2,12 +2,15 @@
 //! Spec: docs/superpowers/specs/2026-10-02-auditlog-command-design.md
 
 use crate::db::queue_audit::{recent_audit, AuditFilter};
+use crate::guild::operations::GuildSettingsOperations;
+use crate::guild::plan::Plan;
 use crate::messaging::messages::{
     AUDITLOG_BAD_SINCE, AUDITLOG_EMPTY, AUDITLOG_FAILED, AUDITLOG_GP_HIDDEN, AUDITLOG_NO_DATABASE,
-    AUDITLOG_TITLE,
+    AUDITLOG_ONLY_OLDER, AUDITLOG_TITLE,
 };
 use crate::music::audit_view::{
-    compose_auditlog, parse_since, ActionChoice, AuditlogReply, SourceChoice, AUDITLOG_LIMIT,
+    compose_auditlog, parse_since, premium_history_line, ActionChoice, AuditlogReply, SourceChoice,
+    AUDITLOG_LIMIT,
 };
 use crate::utils::{create_paged_embed, PagedStyle};
 use crate::{Context, Error};
@@ -84,13 +87,20 @@ pub async fn auditlog(
         .get(&guild_id)
         .map(|g| g.started_at)
         .and_then(|t| chrono::DateTime::from_timestamp(t, 0));
-    let lines = match compose_auditlog(rows, running_since) {
+    let floor = Plan::of(ctx.data().get_premium(guild_id).await).history_floor(chrono::Utc::now());
+    let lines = match compose_auditlog(rows, running_since, floor) {
         AuditlogReply::Empty => {
             say(AUDITLOG_EMPTY).await?;
             return Ok(());
         },
         AuditlogReply::AllHidden => {
             say(AUDITLOG_GP_HIDDEN).await?;
+            return Ok(());
+        },
+        AuditlogReply::OnlyOlder => {
+            let text = format!("{AUDITLOG_ONLY_OLDER}\n{}", premium_history_line());
+            ctx.send(CreateReply::default().content(text).ephemeral(ephemeral))
+                .await?;
             return Ok(());
         },
         AuditlogReply::Lines(lines) => lines,

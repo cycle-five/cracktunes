@@ -24,6 +24,7 @@ use crate::{
 };
 use crack_core::{
     db::queue_audit::{audit_page, AuditFilter},
+    guild::{operations::GuildSettingsOperations, plan::Plan},
     music::remote,
     Data,
 };
@@ -235,6 +236,8 @@ impl Backend for LiveBackend {
             .get(&g)
             .map(|game| game.started_at)
             .and_then(|t| chrono::DateTime::from_timestamp(t, 0));
+        // Read on every request: granting or removing premium applies at once.
+        let floor = Plan::of(self.deps.data.get_premium(g).await).history_floor(chrono::Utc::now());
         // The game's rows are left out in SQL, so the cursors the page pages
         // by are ids it shows; `compose_page` checks again by the same rule.
         let rows = audit_page(
@@ -251,11 +254,15 @@ impl Backend for LiveBackend {
             HistoryError::Failed
         })?;
         let names = self
-            .names_for(g, &history::shown_members(&rows, running_since))
+            .names_for(g, &history::shown_members(&rows, running_since, floor))
             .await;
-        Ok(history::compose_page(rows, q.cursor, running_since, |u| {
-            names.get(&u).cloned()
-        }))
+        Ok(history::compose_page(
+            rows,
+            q.cursor,
+            running_since,
+            floor,
+            |u| names.get(&u).cloned(),
+        ))
     }
 }
 

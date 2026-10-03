@@ -42,6 +42,8 @@
 
 ### Added
 
+- **A thank-you message for premium servers** (`CrackedMessage::PremiumThanks`), which
+  `Plan::plug` picks in place of the Patreon plug. Nothing sends either yet.
 - **The dashboard has a queue history page.** Members with Manage Server see a
   "History" link on a server's queue page. It lists who changed the queue, how
   and when, filters by member, action, source and time, loads older entries, and
@@ -106,6 +108,13 @@
 
 ### Changed
 
+- **Free servers now see 24 hours of queue history.** The dashboard's history page and
+  `/auditlog` show free servers the last 24 hours, and premium servers everything. When
+  older entries exist, both say older history is a premium feature and link the
+  Patreon. A server whose settings haven't loaded counts as free.
+- **The Patreon plugs are reworded.** They no longer say premium gates nothing. The idle
+  alert, which premium servers never see, now says premium keeps the bot in the voice
+  channel as long as you like.
 - **`/gp voteskip` and `/gp votefull` no longer say who voted.** Both answered
   in public as a slash-command reply, which Discord renders under "*name* used
   `/gp voteskip`" -- so the room saw exactly who wanted the song gone, in a game
