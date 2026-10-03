@@ -5,6 +5,7 @@
 pub mod access;
 pub mod backend;
 pub mod config;
+pub mod history;
 pub mod page;
 pub mod routes;
 #[cfg(test)]
