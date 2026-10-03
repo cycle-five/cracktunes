@@ -19,6 +19,14 @@ pub struct IdleHandler {
 }
 use songbird::error::JoinError;
 
+/// Whether an idle bot leaves now. `count` is the idle seconds counted before
+/// this tick. A premium server (`no_timeout`) never times out, so it never sees
+/// `IDLE_ALERT`; a `limit` of 0 means the timeout is off.
+#[must_use]
+pub fn times_out(no_timeout: bool, limit: usize, count: usize) -> bool {
+    !no_timeout && limit > 0 && count >= limit
+}
+
 /// TODO: Add metrics
 /// Implement handler for the idle event.
 #[cfg(not(tarpaulin_include))]
@@ -64,10 +72,15 @@ impl EventHandler for IdleHandler {
         //     self.count.load(Ordering::Relaxed)
         // );
 
-        if !self.no_timeout.load(Ordering::Relaxed)
-            && self.limit > 0
-            && self.count.fetch_add(60, Ordering::Relaxed) >= self.limit
-        {
+        let no_timeout = self.no_timeout.load(Ordering::Relaxed);
+        // Count only while a timeout can happen, as before: premium and a zero
+        // limit leave the counter alone.
+        let count = if no_timeout || self.limit == 0 {
+            0
+        } else {
+            self.count.fetch_add(60, Ordering::Relaxed)
+        };
+        if times_out(no_timeout, self.limit, count) {
             match crate::music::disconnect::disconnect(
                 &data,
                 manager,
@@ -107,5 +120,29 @@ impl EventHandler for IdleHandler {
             };
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::times_out;
+
+    #[test]
+    fn premium_never_times_out() {
+        assert!(!times_out(true, 600, 0));
+        assert!(!times_out(true, 600, 600));
+        assert!(!times_out(true, 600, usize::MAX));
+    }
+
+    #[test]
+    fn free_times_out_once_idle_reaches_the_limit() {
+        assert!(!times_out(false, 600, 540));
+        assert!(times_out(false, 600, 600));
+        assert!(times_out(false, 600, 660));
+    }
+
+    #[test]
+    fn a_zero_limit_never_times_out() {
+        assert!(!times_out(false, 0, 10_000));
     }
 }

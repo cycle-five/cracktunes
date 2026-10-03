@@ -82,6 +82,7 @@ pub enum CrackedMessage {
     Prefixes(Vec<String>),
     Premium(bool),
     PremiumPlug,
+    PremiumThanks,
     RemoveMultiple,
     Resume,
     RoleCreated {
@@ -381,6 +382,7 @@ impl Display for CrackedMessage {
             },
             Self::Premium(premium) => f.write_str(&format!("{} {}", PREMIUM, premium)),
             Self::PremiumPlug => f.write_str(PREMIUM_PLUG),
+            Self::PremiumThanks => f.write_str(PREMIUM_THANKS),
             #[cfg(feature = "crack-osint")]
             Self::ScanResult { result } => {
                 f.write_str(&format!("{}", result.data.attributes.stats))
@@ -731,6 +733,13 @@ impl From<CrackedMessage> for crate::CrackedHowResult<CrackedMessage> {
 mod test {
     use super::CrackedMessage;
     use poise::serenity_prelude as serenity;
+
+    #[test]
+    fn premium_thanks_displays_the_thanks() {
+        use crate::messaging::messages::PREMIUM_THANKS;
+
+        assert_eq!(CrackedMessage::PremiumThanks.to_string(), PREMIUM_THANKS);
+    }
 
     #[test]
     fn ephemeral_replies_messages_say_what_changed() {
