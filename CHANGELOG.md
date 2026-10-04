@@ -155,6 +155,16 @@
 
 ### Fixed
 
+- **Joining voice reset a server's settings in memory to defaults, until the next
+  restart.** `get_or_create_guild_settings` built its defaults in the argument to an
+  eager `unwrap_or`, so it ran on every call and stored the defaults over the settings
+  loaded from the database, while returning the old copy. Every voice join (and
+  `/volume`) did this: premium switched off, and volume, idle timeout, autopause and
+  prefix fell back to defaults. The stored settings were never touched, because the
+  defaults are marked as not loaded from the database and the shutdown save skips
+  them. `/premium grant` on such a server then reloaded the stored row with the
+  defaults' empty name, which blanked the server's stored name; the next restart
+  writes it back from Discord. Present since v0.3.16.
 - **A keyword `/play` now asks yt-dlp whenever rusty_ytdl can't answer.** It
   fell back only when rusty_ytdl found nothing; an error from it returned
   straight away, and the next fallback (`ready_query`) searched with rusty_ytdl
