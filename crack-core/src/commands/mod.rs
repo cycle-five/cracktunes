@@ -8,6 +8,7 @@ pub mod music_utils;
 pub mod osint;
 pub mod permissions;
 //pub mod playlist;
+pub mod premium;
 pub mod register;
 //pub mod settings;
 pub mod utility;
@@ -49,6 +50,7 @@ impl ConvertToEmptyResult for MessageResult {
 pub fn all_commands() -> Vec<crate::Command> {
     vec![
         register(),
+        premium::premium(),
         #[cfg(feature = "crack-bf")]
         bf(),
         #[cfg(feature = "crack-osint")]

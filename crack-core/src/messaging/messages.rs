@@ -142,6 +142,13 @@ pub const PLAY_TOP: &str = "📃 Added to top!";
 pub const PLAY_LOG: &str = "🎵 Last Played Songs";
 pub const PREFIXES: &str = "Prefixes";
 pub const PREMIUM: &str = "👑 Premium status:";
+pub const PREMIUM_GRANTED: &str = "👑 Premium is on for";
+pub const PREMIUM_REVOKED: &str = "Premium is off for";
+pub const PREMIUM_BAD_SERVER_ID: &str =
+    "⚠️ That isn't a server id: it's a long number, like `1267282599064244255`.";
+pub const PREMIUM_NOT_IN_SERVER: &str = "⚠️ I'm not in a server with that id.";
+pub const PREMIUM_FAILED: &str =
+    "⚠️ Couldn't change premium just now. Nothing was changed; try again in a moment.";
 pub const PREMIUM_PLUG: &str = "👑 Like the bot? Support my development and unlock premium features by subscribing to my Patreon!
 [CrackTunes Patreon](https://patreon.com/CrackTunes)";
 pub const PREMIUM_THANKS: &str = "👑 Thanks for supporting CrackTunes! Your server has premium.";

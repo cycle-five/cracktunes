@@ -42,6 +42,12 @@
 
 ### Added
 
+- **`/premium grant` and `/premium revoke`** (bot owners only) turn premium on or off
+  for any server the bot is in, by server id, from wherever the owner runs it. Before
+  this there was no working way to grant premium: `/set premium` is not registered,
+  because the whole `/set` command is switched off, and a database edit made while the
+  bot runs is overwritten at shutdown. The v0.19.0 docs wrongly pointed at
+  `/set premium true`; they now describe `/premium`.
 - **A thank-you message for premium servers** (`CrackedMessage::PremiumThanks`), which
   `Plan::plug` picks in place of the Patreon plug. Nothing sends either yet.
 - **The dashboard has a queue history page.** Members with Manage Server see a

@@ -39,10 +39,13 @@ Free servers see the last 24 hours of history, and premium servers
 history is a premium feature, with the Patreon link, in place of "Load older".
 `/auditlog` applies the same window.
 
-Premium is granted with `/set premium true`, run in that server by a bot owner. It
-takes effect at once. Don't edit `guild_settings.premium` in the database while the bot
-runs: the bot reads premium from its in-memory settings, so the edit is ignored, and
-the bot writes its settings back on shutdown, which replaces the edit.
+A bot owner grants premium with `/premium grant <server_id>` and removes it with
+`/premium revoke <server_id>`, run from any server the bot shares with them (Discord
+lists the command only for administrators; only bot owners can run it). It takes effect
+at once. Don't edit `guild_settings.premium` in the database while the bot runs: the bot
+reads premium from its in-memory settings, so the edit is ignored, and the bot writes
+its settings back on shutdown, which replaces the edit. (`/set premium` is not
+registered: the whole `/set` command is switched off.)
 
 Design: `docs/superpowers/specs/2026-10-02-dashboard-history-design.md` and `docs/superpowers/specs/2026-10-03-premium-history-window-design.md`.
 
