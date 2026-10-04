@@ -77,12 +77,16 @@ impl GuildSettingsOperations for Data {
         name: Option<String>,
         prefix: Option<&str>,
     ) -> GuildSettings {
+        // 🪤 Not `unwrap_or({ .. })`: its argument is evaluated before the
+        // call, so the defaults were built and stored over the loaded settings
+        // on every call, returning the old copy so nothing looked wrong.
+        if let Some(settings) = self.get_guild_settings(guild_id).await {
+            return settings;
+        }
         let name = name.map(|x| FixedString::from_str(x.as_str()).expect("wtf?"));
-        self.get_guild_settings(guild_id).await.unwrap_or({
-            let settings = GuildSettings::new(guild_id, prefix, name);
-            self.set_guild_settings(guild_id, settings.clone()).await;
-            settings
-        })
+        let settings = GuildSettings::new(guild_id, prefix, name);
+        self.set_guild_settings(guild_id, settings.clone()).await;
+        settings
     }
 
     /// Get the guild settings for a guild.
@@ -535,6 +539,45 @@ mod test {
                 guild_id,
                 ..Default::default()
             }
+        );
+    }
+
+    /// 🪤 Settings a guild already has must survive the call untouched. Until
+    /// v0.19.4 the default-building block ran on every call (it was the
+    /// argument to an eager `unwrap_or`), so every voice join replaced the
+    /// guild's loaded settings in memory with defaults: premium off, and marked
+    /// not-from-the-database. `/premium grant` then re-loaded the row with the
+    /// defaults' empty name and blanked the stored one.
+    #[tokio::test]
+    async fn get_or_create_keeps_the_settings_a_guild_already_has() {
+        use crate::guild::settings::Provenance;
+        let guild_id = GuildId::new(1);
+        let loaded = crate::GuildSettings::new(
+            guild_id,
+            Some("r!"),
+            Some(FixedString::from_str("KYSCORD").unwrap()),
+        )
+        .with_premium(true)
+        .with_provenance(Provenance::Database);
+        let data = Data(Arc::new(DataInner {
+            guild_settings_map: Arc::new(RwLock::new(HashMap::from([(guild_id, loaded.clone())]))),
+            ..Default::default()
+        }));
+
+        let got = data
+            .get_or_create_guild_settings(guild_id, None, None)
+            .await;
+        assert_eq!(got, loaded);
+
+        let kept = data
+            .get_guild_settings(guild_id)
+            .await
+            .expect("still there");
+        assert_eq!(kept, loaded);
+        assert!(kept.premium);
+        assert!(
+            kept.is_persistable(),
+            "the settings lost their database provenance"
         );
     }
 
