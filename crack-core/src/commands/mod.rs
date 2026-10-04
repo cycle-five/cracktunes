@@ -10,6 +10,7 @@ pub mod permissions;
 //pub mod playlist;
 pub mod premium;
 pub mod register;
+pub mod status;
 //pub mod settings;
 pub mod utility;
 
@@ -51,6 +52,7 @@ pub fn all_commands() -> Vec<crate::Command> {
     vec![
         register(),
         premium::premium(),
+        status::status(),
         #[cfg(feature = "crack-bf")]
         bf(),
         #[cfg(feature = "crack-osint")]
