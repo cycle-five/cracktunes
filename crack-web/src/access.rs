@@ -84,9 +84,13 @@ pub fn has_manage_guild(
     perms.intersects(Permissions::ADMINISTRATOR | Permissions::MANAGE_GUILD)
 }
 
-/// The history rule. `manages` is `None` when the member's roles could not be
-/// read.
-pub fn decide_history(membership: Membership, manages: Option<bool>) -> HistoryAccess {
+/// The history rule. A bot owner sees every server's history, member or not,
+/// for debugging and support. `manages` is `None` when the member's roles
+/// could not be read.
+pub fn decide_history(owner: bool, membership: Membership, manages: Option<bool>) -> HistoryAccess {
+    if owner {
+        return HistoryAccess::Allowed;
+    }
     match (membership, manages) {
         (Membership::NotMember, _) => HistoryAccess::Hidden,
         (Membership::Unknown, _) | (Membership::Member, None) => HistoryAccess::Unavailable,
@@ -428,17 +432,42 @@ mod test {
     #[test]
     fn the_history_decision_table() {
         use Membership::*;
-        assert_eq!(decide_history(NotMember, Some(true)), HistoryAccess::Hidden);
         assert_eq!(
-            decide_history(Unknown, Some(true)),
+            decide_history(false, NotMember, Some(true)),
+            HistoryAccess::Hidden
+        );
+        assert_eq!(
+            decide_history(false, Unknown, Some(true)),
             HistoryAccess::Unavailable
         );
-        assert_eq!(decide_history(Member, None), HistoryAccess::Unavailable);
         assert_eq!(
-            decide_history(Member, Some(false)),
+            decide_history(false, Member, None),
+            HistoryAccess::Unavailable
+        );
+        assert_eq!(
+            decide_history(false, Member, Some(false)),
             HistoryAccess::Forbidden
         );
-        assert_eq!(decide_history(Member, Some(true)), HistoryAccess::Allowed);
+        assert_eq!(
+            decide_history(false, Member, Some(true)),
+            HistoryAccess::Allowed
+        );
+    }
+
+    /// Bot owners see any server's history, for debugging and support:
+    /// whether or not they are members, have Manage Server, or Discord answered.
+    #[test]
+    fn a_bot_owner_sees_every_servers_history() {
+        use Membership::*;
+        for membership in [NotMember, Unknown, Member] {
+            for manages in [None, Some(false), Some(true)] {
+                assert_eq!(
+                    decide_history(true, membership, manages),
+                    HistoryAccess::Allowed,
+                    "{membership:?} {manages:?}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -26,10 +26,13 @@ use crack_core::{
     db::queue_audit::{audit_page, AuditFilter},
     guild::{operations::GuildSettingsOperations, plan::Plan},
     music::remote,
-    Data,
+    owners, Data,
 };
 use serenity::all::{Cache, GuildId, Http, Permissions, RoleId, UserId};
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use uuid::Uuid;
 
 /// What the bot hands the dashboard.
@@ -45,9 +48,19 @@ pub struct LiveBackend {
     memo: MemberMemo,
     roles: access::RoleMemo,
     names: history::NameMemo,
+    /// The bot owners, read once: the application's owners come from Discord.
+    owners: tokio::sync::OnceCell<HashSet<UserId>>,
 }
 
 impl LiveBackend {
+    /// Whether `u` is a bot owner, as `owners_only` commands see it.
+    async fn is_owner(&self, u: UserId) -> bool {
+        self.owners
+            .get_or_init(|| owners::bot_owners(&self.deps.data.bot_settings, &self.deps.http))
+            .await
+            .contains(&u)
+    }
+
     fn member_name(&self, g: GuildId, u: UserId) -> Option<String> {
         let guild = self.deps.cache.guild(g)?;
         guild.members.get(&u).map(|m| m.display_name().to_owned())
@@ -195,9 +208,13 @@ impl Backend for LiveBackend {
     }
 
     async fn history_access(&self, g: GuildId, u: UserId) -> HistoryAccess {
+        // Before any Discord call: an owner needs none.
+        if self.is_owner(u).await {
+            return access::decide_history(true, Membership::Unknown, None);
+        }
         let membership = self.presence(g, u).await.membership;
         if membership != Membership::Member {
-            return access::decide_history(membership, None);
+            return access::decide_history(false, membership, None);
         }
         let roles = self.member_roles(g, u).await;
         let manages = roles.and_then(|roles| {
@@ -215,7 +232,7 @@ impl Backend for LiveBackend {
                 |r| guild.roles.get(&r).map(|role| role.permissions),
             ))
         });
-        access::decide_history(membership, manages)
+        access::decide_history(false, membership, manages)
     }
 
     async fn history(&self, g: GuildId, q: &HistoryQuery) -> Result<HistoryPage, HistoryError> {
@@ -296,6 +313,7 @@ async fn serve(env: WebEnv, deps: WebDeps) -> std::io::Result<()> {
         memo: MemberMemo::new(MEMBER_TTL),
         roles: access::RoleMemo::new(history::ROLE_TTL),
         names: history::NameMemo::new(history::NAME_TTL),
+        owners: tokio::sync::OnceCell::new(),
     });
     let state = WebState {
         auth,

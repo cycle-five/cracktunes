@@ -12,6 +12,7 @@ pub mod messaging;
 pub mod metrics;
 #[cfg(feature = "crack-music")]
 pub mod music;
+pub mod owners;
 pub mod poise_ext;
 pub mod sources;
 #[cfg(test)]

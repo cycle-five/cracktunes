@@ -17,7 +17,7 @@ use crate::{
 };
 use ::serenity::secrets::Token;
 use colored::Colorize;
-use poise::serenity_prelude::{Client, GatewayIntents, GuildId, UserId};
+use poise::serenity_prelude::{Client, GatewayIntents, GuildId};
 use songbird::driver::DecodeMode;
 use songbird::Songbird;
 use std::borrow::Cow;
@@ -119,13 +119,8 @@ pub async fn poise_framework(
 
     let options = poise::FrameworkOptions::<_, Error> {
         commands,
-        owners: config
-            .owners
-            .as_ref()
-            .unwrap_or(&vec![285219649921220608])
-            .iter()
-            .map(|id| UserId::new(*id))
-            .collect(),
+        // The dashboard builds the same set: see `crate::owners`.
+        owners: crate::owners::configured_owners(&config),
         prefix_options: poise::PrefixFrameworkOptions {
             case_insensitive_commands: true,
             prefix: Some(Cow::Owned(config.get_prefix())),

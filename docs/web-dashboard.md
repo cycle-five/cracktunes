@@ -28,7 +28,11 @@ on the gateway. The bot's log reports that.
 `/g/<id>/history` shows the server's queue history (the `queue_audit` table):
 who changed the queue, how, when and what. It is for members with **Manage
 Server** (owner, Administrator, or the permission on a role or `@everyone`);
-others get 403, and the queue page shows them no link. It needs the database.
+others get 403, and the queue page shows them no link. Bot owners (the same set
+`owners_only` commands use: the configured owners, or the default, plus the
+application's owner and team) see every server's history, member or not, for
+debugging and support; in a server they're not in, they open
+`/g/<id>/history` directly. It needs the database.
 
 The page polls `/g/<id>/history.json` every 10 s for new rows and pages older
 ones with `before=<id>`. Rows are ordered by id, which is insertion order.
