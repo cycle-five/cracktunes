@@ -42,6 +42,9 @@
 
 ### Added
 
+- **Bot owners can see any server's queue history on the dashboard**, for debugging
+  and support, whether or not they're a member or have Manage Server there. The owner
+  set is the one `owners_only` commands use, built by one function for both.
 - **`/premium status`** shows members with Manage Server whether their server has
   premium, privately: a thank-you for premium servers, and for free ones what free means
   (24 hours of queue history) with the Patreon plug. `/premium` is now listed to members
