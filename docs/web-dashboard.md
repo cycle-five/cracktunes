@@ -40,9 +40,9 @@ history is a premium feature, with the Patreon link, in place of "Load older".
 `/auditlog` applies the same window.
 
 A bot owner grants premium with `/premium grant <server_id>` and removes it with
-`/premium revoke <server_id>`, run from any server the bot shares with them (Discord
-lists the command only for administrators; only bot owners can run it). It takes effect
-at once. Don't edit `guild_settings.premium` in the database while the bot runs: the bot
+`/premium revoke <server_id>`, run from any server the bot shares with them; only bot
+owners can run those two. Members with Manage Server can run `/premium status` in their
+server to see its plan. It takes effect at once. Don't edit `guild_settings.premium` in the database while the bot runs: the bot
 reads premium from its in-memory settings, so the edit is ignored, and the bot writes
 its settings back on shutdown, which replaces the edit. (`/set premium` is not
 registered: the whole `/set` command is switched off.)

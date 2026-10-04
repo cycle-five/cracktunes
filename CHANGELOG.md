@@ -42,6 +42,10 @@
 
 ### Added
 
+- **`/premium status`** shows members with Manage Server whether their server has
+  premium, privately: a thank-you for premium servers, and for free ones what free means
+  (24 hours of queue history) with the Patreon plug. `/premium` is now listed to members
+  with Manage Server instead of administrators; `grant` and `revoke` stay owner-only.
 - **`/premium grant` and `/premium revoke`** (bot owners only) turn premium on or off
   for any server the bot is in, by server id, from wherever the owner runs it. Before
   this there was no working way to grant premium: `/set premium` is not registered,
