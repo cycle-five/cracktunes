@@ -52,7 +52,7 @@ pub fn parse_since(s: &str) -> Option<Duration> {
 
 /// Escape Discord markdown, links and mentions in text we did not write, and
 /// flatten line breaks.
-fn escape(s: &str) -> String {
+pub(crate) fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {

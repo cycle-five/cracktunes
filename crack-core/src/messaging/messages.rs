@@ -146,6 +146,25 @@ pub const PREMIUM_GRANTED: &str = "👑 Premium is on for";
 pub const PREMIUM_REVOKED: &str = "Premium is off for";
 pub const PREMIUM_FREE_PLAN: &str =
     "This server is on the free plan: queue history goes back 24 hours.";
+
+pub const STATUS_TITLE: &str = "📊 Status";
+pub const STATUS_SERVER: &str = "Server";
+pub const STATUS_BOT: &str = "Bot";
+pub const STATUS_PLAYBACK: &str = "Playback";
+pub const STATUS_SETTINGS: &str = "Settings";
+pub const STATUS_PREMIUM: &str = "👑 Premium";
+pub const STATUS_FREE: &str = "Free: queue history goes back 24 hours.";
+pub const STATUS_IDLE: &str = "Idle: not playing here.";
+pub const STATUS_GAME: &str = "🎭 A /gp game is on.";
+pub const STATUS_UNTITLED: &str = "(untitled)";
+pub const STATUS_MORE_QUEUED: &str = "more in the queue.";
+pub const STATUS_IDLE_TIMEOUT: &str = "Idle timeout";
+pub const STATUS_VOLUME: &str = "Volume";
+pub const STATUS_AUTOPAUSE: &str = "Autopause";
+pub const STATUS_AUTOPLAY: &str = "Autoplay";
+pub const STATUS_NEVER_PREMIUM: &str = "never (premium)";
+pub const STATUS_ON: &str = "on";
+pub const STATUS_OFF: &str = "off";
 pub const PREMIUM_BAD_SERVER_ID: &str =
     "⚠️ That isn't a server id: it's a long number, like `1267282599064244255`.";
 pub const PREMIUM_NOT_IN_SERVER: &str = "⚠️ I'm not in a server with that id.";

@@ -42,6 +42,12 @@
 
 ### Added
 
+- **`/status`**, for anyone in a server, shows privately: the server's plan
+  (premium, or free with its 24 hours of queue history); the bot's version and uptime;
+  what's playing here (channel, title, length and how many more are queued, or idle,
+  or just that a `/gp` game is on, since its titles are the answers); and the settings
+  in effect (idle timeout, which premium servers never hit, volume, autopause, and this
+  session's autoplay).
 - **Bot owners can see any server's queue history on the dashboard**, for debugging
   and support, whether or not they're a member or have Manage Server there. The owner
   set is the one `owners_only` commands use, built by one function for both.
