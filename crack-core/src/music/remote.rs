@@ -10,8 +10,8 @@ use crate::messaging::messages::{
     ECHO_SHUFFLED, ECHO_SKIPPED,
 };
 use crate::messaging::status::{self, DiscordTransport};
-use crate::music::audit_view::escape;
-use crate::music::{audit::Actor, ops, PlaybackOwner};
+use crate::music::audit_view::{cap, escape, TITLE_MAX};
+use crate::music::{audit::Actor, ops, PlaybackOwner, QueueGuard};
 use crate::{
     commands::music_utils::connected_call,
     utils::{get_requesting_user, get_track_handle_metadata},
@@ -298,7 +298,7 @@ pub enum Echo {
 
 impl Echo {
     /// The one line posted in Discord. Titles are third-party text, so they
-    /// are escaped.
+    /// are cut to `TITLE_MAX` characters, then escaped.
     #[must_use]
     pub fn line(&self, user: UserId) -> String {
         let (what, title) = match self {
@@ -311,7 +311,10 @@ impl Echo {
             Self::Shuffled => (ECHO_SHUFFLED, None),
         };
         match title {
-            Some(t) => format!("{what} **{}** {ECHO_FROM_DASHBOARD} — <@{user}>", escape(t)),
+            Some(t) => format!(
+                "{what} **{}** {ECHO_FROM_DASHBOARD} — <@{user}>",
+                escape(&cap(t, TITLE_MAX))
+            ),
             None => format!("{what} {ECHO_FROM_DASHBOARD} — <@{user}>"),
         }
     }
@@ -323,8 +326,8 @@ fn echo_embed(echo: &Echo, user: UserId) -> CreateEmbed<'static> {
 }
 
 /// Run a control for `user`. On success the echo is returned at once; posting
-/// it and settling the queue messages (anchored after the echo, so now-playing
-/// lands below it) happen in the background.
+/// it and settling happen in the background. The settle is anchored after the
+/// echo, so after a skip the new now-playing message lands below it.
 pub async fn control(
     data: Arc<Data>,
     http: Arc<Http>,
@@ -348,62 +351,14 @@ pub async fn control(
         guild_id,
         actor: Actor::web(user, op),
     };
-    let (echo, settle, call) = match c {
-        Control::Skip { expect } => {
-            let (s, settle, call) = ops::skip(&cx, 1, Some(expect))
-                .await
-                .map_err(|r| ControlRefused::from(&r))?
-                .into_parts();
-            (
-                Echo::Skipped {
-                    title: s.skipped.and_then(|t| t.title),
-                },
-                settle,
-                call,
-            )
-        },
-        Control::Pause => {
-            let (_, settle, call) = ops::pause(&cx)
-                .await
-                .map_err(|r| ControlRefused::from(&r))?
-                .into_parts();
-            (Echo::Paused, settle, call)
-        },
-        Control::Resume => {
-            let (_, settle, call) = ops::resume(&cx)
-                .await
-                .map_err(|r| ControlRefused::from(&r))?
-                .into_parts();
-            (Echo::Resumed, settle, call)
-        },
-        Control::Repeat { on } => {
-            let (_, settle, call) = ops::repeat(&cx, Some(on))
-                .await
-                .map_err(|r| ControlRefused::from(&r))?
-                .into_parts();
-            (Echo::Repeat { on }, settle, call)
-        },
-        Control::Remove { id } => {
-            let (r, settle, call) = ops::remove(&cx, ops::Target::Id(id))
-                .await
-                .map_err(|r| ControlRefused::from(&r))?
-                .into_parts();
-            (
-                Echo::Removed {
-                    title: r.first.title,
-                },
-                settle,
-                call,
-            )
-        },
-        Control::Shuffle => {
-            let (_, settle, call) = ops::shuffle(&cx)
-                .await
-                .map_err(|r| ControlRefused::from(&r))?
-                .into_parts();
-            (Echo::Shuffled, settle, call)
-        },
-    };
+    let (guard, call) = ops::begin(&cx)
+        .await
+        .map_err(|r| ControlRefused::from(&r))?;
+    let (echo, settle) = run_control(&guard, &call, c)
+        .await
+        .map_err(|r| ControlRefused::from(&r))?;
+    // The lease covers the op only; announcing and settling run without it.
+    drop(guard);
     let posted = echo.clone();
     tokio::spawn(async move {
         let transport = DiscordTransport {
@@ -412,9 +367,57 @@ pub async fn control(
         };
         let anchor =
             status::announce(&cx.data, &transport, guild_id, echo_embed(&posted, user)).await;
-        settle.after(&cx, call.as_ref(), anchor).await;
+        settle.after(&cx, Some(&call), anchor).await;
     });
     Ok(echo)
+}
+
+/// Run `c` under `guard` on `call`: the op, and what to echo. No Discord.
+pub(crate) async fn run_control(
+    guard: &QueueGuard,
+    call: &Arc<Mutex<Call>>,
+    c: Control,
+) -> Result<(Echo, ops::Settle), ops::OpRefused> {
+    Ok(match c {
+        Control::Skip { expect } => {
+            let (s, settle, _) = ops::skip_on(guard, call, 1, Some(expect))
+                .await?
+                .into_parts();
+            (
+                Echo::Skipped {
+                    title: s.skipped.and_then(|t| t.title),
+                },
+                settle,
+            )
+        },
+        Control::Pause => {
+            let (_, settle, _) = ops::pause_on(guard, call).await?.into_parts();
+            (Echo::Paused, settle)
+        },
+        Control::Resume => {
+            let (_, settle, _) = ops::resume_on(guard, call).await?.into_parts();
+            (Echo::Resumed, settle)
+        },
+        Control::Repeat { on } => {
+            let (_, settle, _) = ops::repeat_on(guard, call, Some(on)).await?.into_parts();
+            (Echo::Repeat { on }, settle)
+        },
+        Control::Remove { id } => {
+            let (r, settle, _) = ops::remove_on(guard, call, ops::Target::Id(id))
+                .await?
+                .into_parts();
+            (
+                Echo::Removed {
+                    title: r.first.title,
+                },
+                settle,
+            )
+        },
+        Control::Shuffle => {
+            let (_, settle, _) = ops::shuffle_on(guard, call).await?.into_parts();
+            (Echo::Shuffled, settle)
+        },
+    })
 }
 
 #[cfg(test)]
@@ -636,5 +639,136 @@ mod test {
         )
         .await;
         assert_eq!(got, Err(ControlRefused::NotPlaying));
+    }
+
+    /// 🔑 A title of any length still fits a Discord embed description.
+    #[test]
+    fn a_long_title_is_cut_before_it_is_escaped() {
+        let u = UserId::new(42);
+        let l = Echo::Removed {
+            title: Some("a".repeat(5000)),
+        }
+        .line(u);
+        assert!(l.chars().count() <= 4096, "{} chars", l.chars().count());
+        assert!(
+            l.contains(&format!("**{}…**", "a".repeat(TITLE_MAX))),
+            "{l}"
+        );
+        assert!(l.ends_with("<@42>"), "{l}");
+    }
+
+    mod dispatch {
+        use super::super::{run_control, Control, Echo};
+        use crate::music::{
+            audit::Action,
+            ops::{test_support::*, OpRefused, Settle},
+        };
+
+        #[tokio::test]
+        async fn pause_pauses_and_echoes_paused() {
+            let (data, call, _, mut rx) = queue_of(2).await;
+            let g = guard(&data).await;
+            let (echo, settle) = run_control(&g, &call, Control::Pause).await.unwrap();
+            assert_eq!(echo, Echo::Paused);
+            assert_eq!(settle, Settle::Nothing);
+            assert_eq!(recorded(&mut rx), vec![Action::Pause]);
+        }
+
+        #[tokio::test]
+        async fn resume_resumes_and_echoes_resumed() {
+            let (data, call, _, mut rx) = queue_of(2).await;
+            let g = guard(&data).await;
+            let (echo, settle) = run_control(&g, &call, Control::Resume).await.unwrap();
+            assert_eq!(echo, Echo::Resumed);
+            assert_eq!(settle, Settle::Nothing);
+            assert_eq!(recorded(&mut rx), vec![Action::Resume]);
+        }
+
+        /// Sets, never toggles: a toggle reads `get_info`, which an offline
+        /// call never answers, so it would fail (the outer timeout guards a hang).
+        #[tokio::test]
+        async fn repeat_sets_what_was_asked_and_echoes_it() {
+            let (data, call, _, mut rx) = queue_of(1).await;
+            let g = guard(&data).await;
+            let (echo, settle) = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                run_control(&g, &call, Control::Repeat { on: true }),
+            )
+            .await
+            .expect("repeat hung")
+            .unwrap();
+            assert_eq!(echo, Echo::Repeat { on: true });
+            assert_eq!(settle, Settle::Nothing);
+            assert_eq!(recorded(&mut rx), vec![Action::Repeat { on: true }]);
+            let (echo, _) = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                run_control(&g, &call, Control::Repeat { on: false }),
+            )
+            .await
+            .expect("repeat hung")
+            .unwrap();
+            assert_eq!(echo, Echo::Repeat { on: false });
+            assert_eq!(recorded(&mut rx), vec![Action::Repeat { on: false }]);
+        }
+
+        #[tokio::test]
+        async fn remove_takes_out_that_track_and_names_it() {
+            let (data, call, ids, _) = queue_of(4).await;
+            let g = guard(&data).await;
+            let (echo, settle) = run_control(&g, &call, Control::Remove { id: ids[2] })
+                .await
+                .unwrap();
+            assert_eq!(
+                echo,
+                Echo::Removed {
+                    title: Some("t2".into())
+                }
+            );
+            assert_eq!(settle, Settle::QueueMessages);
+            assert_eq!(ids_of(&call).await, vec![ids[0], ids[1], ids[3]]);
+        }
+
+        #[tokio::test]
+        async fn skip_advances_and_names_what_it_skipped() {
+            let (data, call, ids, _) = queue_of(3).await;
+            let g = guard(&data).await;
+            let (echo, settle) = run_control(&g, &call, Control::Skip { expect: ids[0] })
+                .await
+                .unwrap();
+            assert_eq!(
+                echo,
+                Echo::Skipped {
+                    title: Some("t0".into())
+                }
+            );
+            assert_eq!(settle, Settle::NowPlaying);
+            assert_eq!(ids_of(&call).await, ids[1..].to_vec());
+        }
+
+        #[tokio::test]
+        async fn a_stale_skip_is_refused_and_changes_nothing() {
+            let (data, call, ids, mut rx) = queue_of(3).await;
+            let g = guard(&data).await;
+            let got = run_control(&g, &call, Control::Skip { expect: ids[1] }).await;
+            assert!(matches!(got, Err(OpRefused::Stale)), "{got:?}");
+            assert_eq!(ids_of(&call).await, ids);
+            assert!(recorded(&mut rx).is_empty());
+        }
+
+        #[tokio::test]
+        async fn shuffle_keeps_the_playing_track_first() {
+            let (data, call, ids, _) = queue_of(6).await;
+            let g = guard(&data).await;
+            let (echo, settle) = run_control(&g, &call, Control::Shuffle).await.unwrap();
+            assert_eq!(echo, Echo::Shuffled);
+            assert_eq!(settle, Settle::QueueMessages);
+            let after = ids_of(&call).await;
+            assert_eq!(after[0], ids[0]);
+            let mut sorted = after.clone();
+            sorted.sort();
+            let mut want = ids.clone();
+            want.sort();
+            assert_eq!(sorted, want);
+        }
     }
 }
