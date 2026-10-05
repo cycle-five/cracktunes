@@ -182,6 +182,8 @@ mod test {
             now: t(n),
             upcoming: vec![],
             rev: n as u64,
+            paused: false,
+            looping: false,
         }
     }
 

@@ -32,6 +32,8 @@ pub enum QueueView {
         now: TrackView,
         upcoming: Vec<TrackView>,
         rev: u64,
+        paused: bool,
+        looping: bool,
     },
 }
 
@@ -97,7 +99,12 @@ pub fn view_from_state(state: QueueState, name_of: impl Fn(UserId) -> Option<Str
     match state {
         QueueState::Idle => QueueView::Idle,
         QueueState::Hidden => QueueView::Hidden,
-        QueueState::Playing { tracks, .. } => {
+        QueueState::Playing {
+            tracks,
+            paused,
+            looping,
+            ..
+        } => {
             let rev = rev_of(&tracks);
             let mut tracks = tracks.into_iter().map(|t| track_view(t, &name_of));
             match tracks.next() {
@@ -106,6 +113,8 @@ pub fn view_from_state(state: QueueState, name_of: impl Fn(UserId) -> Option<Str
                     now,
                     upcoming: tracks.collect(),
                     rev,
+                    paused,
+                    looping,
                 },
             }
         },
@@ -153,6 +162,8 @@ mod test {
         QueueState::Playing {
             bot_channel: ChannelId::new(9),
             tracks,
+            paused: false,
+            looping: false,
         }
     }
 
@@ -230,5 +241,30 @@ mod test {
             serde_json::from_str(r#"{"id":"00000000-0000-0000-0000-000000000005","to":3}"#)
                 .unwrap();
         assert_eq!((req.id, req.to), (Uuid::from_u128(5), 3));
+    }
+
+    #[test]
+    fn the_view_carries_the_flags_through_and_serializes_them() {
+        let v = view_from_state(
+            QueueState::Playing {
+                bot_channel: ChannelId::new(9),
+                tracks: vec![t(1, Some("A"), None)],
+                paused: true,
+                looping: false,
+            },
+            names,
+        );
+        let QueueView::Playing {
+            paused, looping, ..
+        } = &v
+        else {
+            panic!("not playing: {v:?}")
+        };
+        assert_eq!((*paused, *looping), (true, false));
+        let json = serde_json::to_string(&v).unwrap();
+        assert!(
+            json.contains("\"paused\":true") && json.contains("\"looping\":false"),
+            "{json}"
+        );
     }
 }

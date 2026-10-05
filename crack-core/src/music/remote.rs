@@ -11,14 +11,18 @@ use crate::messaging::messages::{
 };
 use crate::messaging::status::{self, DiscordTransport};
 use crate::music::audit_view::escape;
-use crate::music::{PlaybackOwner, audit::Actor, ops};
+use crate::music::{audit::Actor, ops, PlaybackOwner};
 use crate::{
-    Data,
     commands::music_utils::connected_call,
     utils::{get_requesting_user, get_track_handle_metadata},
+    Data,
 };
 use serenity::all::{Cache, ChannelId, CreateEmbed, GuildId, Http, UserId};
-use songbird::{Call, input::AuxMetadata, tracks::TrackHandle};
+use songbird::{
+    input::AuxMetadata,
+    tracks::{LoopState, PlayMode, TrackHandle, TrackState},
+    Call,
+};
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -52,6 +56,10 @@ pub enum QueueState {
     Playing {
         bot_channel: ChannelId,
         tracks: Vec<TrackSummary>,
+        /// `tracks[0]` is paused.
+        paused: bool,
+        /// `tracks[0]` repeats forever.
+        looping: bool,
     },
 }
 
@@ -92,12 +100,38 @@ pub(crate) async fn state_of_call(call: &Arc<Mutex<Call>>) -> QueueState {
         (handler.current_channel(), handler.queue().current_queue())
     };
     match channel {
-        Some(channel) if !handles.is_empty() => QueueState::Playing {
-            bot_channel: ChannelId::new(channel.get()),
-            tracks: summarize(&handles).await,
+        Some(channel) if !handles.is_empty() => {
+            let (paused, looping) = read_flags(&handles).await;
+            QueueState::Playing {
+                bot_channel: ChannelId::new(channel.get()),
+                tracks: summarize(&handles).await,
+                paused,
+                looping,
+            }
         },
         _ => QueueState::Idle,
     }
+}
+
+/// `(paused, looping)` for a track's state; `None` (unknown) is `(false, false)`.
+pub(crate) fn playback_flags(info: Option<&TrackState>) -> (bool, bool) {
+    match info {
+        Some(i) => (i.playing == PlayMode::Pause, i.loops == LoopState::Infinite),
+        None => (false, false),
+    }
+}
+
+/// The flags of the first handle. A stalled driver never answers `get_info`,
+/// so the read is bounded and reads as `(false, false)`.
+pub(crate) async fn read_flags(handles: &[TrackHandle]) -> (bool, bool) {
+    let info = match handles.first() {
+        Some(h) => tokio::time::timeout(ops::TRACK_INFO_TIMEOUT, h.get_info())
+            .await
+            .ok()
+            .and_then(Result::ok),
+        None => None,
+    };
+    playback_flags(info.as_ref())
 }
 
 /// Read what the dashboard shows from each handle.
@@ -423,10 +457,38 @@ mod test {
             QueueState::Playing {
                 bot_channel: ChannelId::new(2),
                 tracks: vec![],
+                paused: false,
+                looping: false,
             }
         })
         .await;
         assert!(matches!(got, QueueState::Hidden));
+    }
+
+    #[test]
+    fn flags_read_pause_and_infinite_loop_and_default_to_false() {
+        use songbird::tracks::{LoopState, PlayMode, TrackState};
+        let mut s = TrackState::default();
+        assert_eq!(playback_flags(None), (false, false));
+        s.playing = PlayMode::Pause;
+        s.loops = LoopState::Infinite;
+        assert_eq!(playback_flags(Some(&s)), (true, true));
+        s.playing = PlayMode::Play;
+        s.loops = LoopState::Finite(Default::default());
+        assert_eq!(playback_flags(Some(&s)), (false, false));
+    }
+
+    #[tokio::test]
+    async fn a_stalled_driver_reads_as_neither_paused_nor_looping() {
+        // An offline Call::standalone never answers get_info. The outer guard
+        // makes a missing timeout fail the test instead of hanging it.
+        let (_data, call, _ids, _rx) = crate::music::ops::test_support::queue_of(1).await;
+        let handles = call.lock().await.queue().current_queue();
+        let got = tokio::time::timeout(Duration::from_secs(5), read_flags(&handles))
+            .await
+            .expect("read_flags outlived TRACK_INFO_TIMEOUT");
+        assert_eq!(got, (false, false));
+        assert_eq!(read_flags(&[]).await, (false, false));
     }
 
     #[tokio::test]

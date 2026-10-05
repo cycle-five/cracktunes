@@ -188,6 +188,8 @@ mod test {
             },
             upcoming: vec![],
             rev: 1,
+            paused: false,
+            looping: false,
         };
         let html = queue_page(
             "G",

@@ -642,6 +642,8 @@ mod test {
             now: t(1),
             upcoming: vec![t(2), t(3)],
             rev: 7,
+            paused: false,
+            looping: false,
         }
     }
 
@@ -846,6 +848,8 @@ mod test {
             now,
             upcoming: upcoming.into_iter().rev().collect(),
             rev: 8,
+            paused: false,
+            looping: false,
         }
     }
 
