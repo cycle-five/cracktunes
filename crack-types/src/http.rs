@@ -80,13 +80,42 @@ pub fn ytdl_for_url(
     client: Client,
     url: &str,
 ) -> Result<songbird::input::YoutubeDl<'static>, NotAYtdlUrl> {
+    let parsed = Url::parse(url).map_err(|_| NotAYtdlUrl)?;
+    let args = ytdl_args_for(&parsed);
     let url = ytdl_url(url)?;
     #[expect(
         clippy::disallowed_methods,
         reason = "the one sanctioned call: `url` passed ytdl_url, so it starts with http(s)"
     )]
-    let ytdl = songbird::input::YoutubeDl::new(client, url);
+    let ytdl = songbird::input::YoutubeDl::new(client, url).user_args(args);
     Ok(ytdl)
+}
+
+/// SoundCloud's format sort: MP3 first.
+///
+/// 🪤 SoundCloud's best audio is AAC over HLS (`hls_aac_160k`), and symphonia
+/// rejects it ("adts: only 1 aac frame per adts packet is supported"). The
+/// track errors as it starts and the queue empties without a word. Every
+/// SoundCloud track also offers MP3 (`http_mp3_*`, `hls_mp3_*`), which plays.
+///
+/// songbird appends its own `-f ba[abr>0][vcodec=none]/best` after these
+/// args, and a later `-f` wins, so the choice is steered with `-S` instead:
+/// "best audio" then means best MP3. Not applied to YouTube, where it would
+/// trade the opus stream for AAC.
+pub const SOUNDCLOUD_FORMAT_SORT: &str = "acodec:mp3";
+
+/// Extra yt-dlp arguments for `url`, ahead of songbird's own.
+#[must_use]
+pub fn ytdl_args_for(url: &Url) -> Vec<String> {
+    let soundcloud = url.host_str().is_some_and(|host| {
+        let host = host.to_ascii_lowercase();
+        host == "soundcloud.com" || host.ends_with(".soundcloud.com")
+    });
+    if soundcloud {
+        vec!["-S".to_owned(), SOUNDCLOUD_FORMAT_SORT.to_owned()]
+    } else {
+        Vec::new()
+    }
 }
 
 /// 🔒 Whether `url` is an http(s) URL whose host is, and resolves only to,
@@ -195,6 +224,48 @@ pub async fn resolve_final_url2(client: Client, url: Url) -> Result<Url, Error> 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn soundcloud_links_ask_yt_dlp_for_mp3() {
+        for link in [
+            "https://soundcloud.com/realtimechris/t-sne-the-whole-thing-into-oblivion",
+            "https://m.soundcloud.com/a/b",
+            "https://on.soundcloud.com/AbCd",
+            "http://SoundCloud.com/a/b",
+        ] {
+            let url = Url::parse(link).unwrap();
+            assert_eq!(
+                ytdl_args_for(&url),
+                ["-S", SOUNDCLOUD_FORMAT_SORT],
+                "{link}"
+            );
+        }
+    }
+
+    #[test]
+    fn other_links_keep_yt_dlps_own_choice() {
+        for link in [
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "https://notsoundcloud.com/a/b",
+            "https://soundcloud.com.example.net/a/b",
+            "https://example.com/soundcloud.com/a",
+        ] {
+            let url = Url::parse(link).unwrap();
+            assert!(ytdl_args_for(&url).is_empty(), "{link}");
+        }
+    }
+
+    #[test]
+    fn ytdl_for_url_passes_the_args_on() {
+        let client = Client::new();
+        let sc = ytdl_for_url(client.clone(), "https://soundcloud.com/a/b").unwrap();
+        assert!(format!("{sc:?}").contains(SOUNDCLOUD_FORMAT_SORT), "{sc:?}");
+        let yt = ytdl_for_url(client, "https://www.youtube.com/watch?v=dQw4w9WgXcQ").unwrap();
+        assert!(
+            !format!("{yt:?}").contains(SOUNDCLOUD_FORMAT_SORT),
+            "{yt:?}"
+        );
+    }
 
     #[test]
     fn ytdl_url_takes_http_links() {
