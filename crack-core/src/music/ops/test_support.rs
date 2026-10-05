@@ -1,8 +1,4 @@
 //! Offline queues for op tests: tracks queue on a `Call::standalone`, nothing plays.
-#![expect(
-    dead_code,
-    reason = "fixtures for the op tasks that follow; drop this once every one is used"
-)]
 use crate::music::{
     audit::{Action, Actor, AuditEvent, BotReason},
     queue::enqueue_input_back,

@@ -8,6 +8,7 @@ mod end;
 mod playback;
 mod skip;
 pub use playback::*;
+pub use skip::*;
 #[cfg(test)]
 pub(crate) mod test_support;
 
