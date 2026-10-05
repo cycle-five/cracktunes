@@ -2,12 +2,15 @@
 
 use crate::{
     access::{decide, Access, HistoryAccess},
-    backend::{Backend, HistoryError, MoveRefused},
+    backend::{Backend, ControlRefused, HistoryError, MoveRefused},
     history::{
         parse_history_query, ErrorBody, HistoryQuery, HISTORY_FAILED, NEEDS_MANAGE, NO_DATABASE,
     },
+    limit::RateLimit,
     page,
-    view::{MoveRequest, MoveResult, PageState, PlanView, QueueView},
+    view::{
+        ControlRequest, ControlResult, MoveRequest, MoveResult, PageState, PlanView, QueueView,
+    },
     watch::Hub,
 };
 use axum::{
@@ -23,7 +26,12 @@ use axum::{
 };
 use catacombs::auth::AuthenticatedUser;
 use serenity::all::{GuildId, UserId};
-use std::{convert::Infallible, num::NonZeroU64, sync::Arc, time::Duration};
+use std::{
+    convert::Infallible,
+    num::NonZeroU64,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tower_http::timeout::TimeoutLayer;
 
@@ -54,6 +62,8 @@ pub struct WebState<B: Backend> {
     pub hub: Arc<Hub<B>>,
     /// The only `Origin` a move is accepted from.
     pub origin: Arc<str>,
+    /// Dashboard controls, per user.
+    pub limiter: Arc<RateLimit>,
 }
 
 impl<B: Backend> Clone for WebState<B> {
@@ -63,6 +73,7 @@ impl<B: Backend> Clone for WebState<B> {
             backend: self.backend.clone(),
             hub: self.hub.clone(),
             origin: self.origin.clone(),
+            limiter: self.limiter.clone(),
         }
     }
 }
@@ -295,6 +306,68 @@ async fn move_track<B: Backend>(
     }
 }
 
+fn control_answer(status: StatusCode, result: ControlResult) -> Response {
+    (status, Json(result)).into_response()
+}
+
+/// The same gates as a move, then the rate limit, then the plan.
+async fn control<B: Backend>(
+    State(s): State<WebState<B>>,
+    session: Session,
+    Path(raw): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let Some(g) = parse_guild(&raw) else {
+        return not_found();
+    };
+    let Some((user, _)) = user_id(session) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if !is_json(&headers) {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+    if headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) != Some(&*s.origin) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let Ok(req) = serde_json::from_slice::<ControlRequest>(&body) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    match decide(&s.backend.presence(g, user).await) {
+        Access::Hidden => return not_found(),
+        Access::Unavailable => return unavailable(),
+        Access::View => return control_answer(StatusCode::FORBIDDEN, ControlResult::NotAllowed),
+        Access::Control => {},
+    }
+    if !s.limiter.allow(user, Instant::now()) {
+        return control_answer(StatusCode::TOO_MANY_REQUESTS, ControlResult::TooMany);
+    }
+    if s.backend.plan(g).await != PlanView::Premium {
+        return control_answer(StatusCode::FORBIDDEN, ControlResult::PremiumRequired);
+    }
+    match s.backend.control(user, g, req.into()).await {
+        Ok(()) => {
+            tracing::info!(guild = %g, user = %user, control = ?req, "dashboard control");
+            s.hub.refresh(g).await;
+            let view = s.backend.view(g).await;
+            control_answer(StatusCode::OK, ControlResult::Done { view })
+        },
+        Err(ControlRefused::Conflict) => {
+            let view = s.backend.view(g).await;
+            control_answer(StatusCode::CONFLICT, ControlResult::Conflict { view })
+        },
+        Err(ControlRefused::GameInProgress) => {
+            control_answer(StatusCode::LOCKED, ControlResult::GameInProgress)
+        },
+        Err(ControlRefused::NotPlaying) => {
+            control_answer(StatusCode::CONFLICT, ControlResult::NotPlaying)
+        },
+        Err(ControlRefused::Failed) => {
+            control_answer(StatusCode::INTERNAL_SERVER_ERROR, ControlResult::Failed)
+        },
+    }
+}
+
 fn event(view: &QueueView, can_control: bool) -> Event {
     Event::default().data(
         serde_json::to_string(&PageState {
@@ -447,6 +520,7 @@ pub fn router<B: Backend>(state: WebState<B>) -> Router {
         .route("/", get(picker::<B>))
         .route("/g/{guild}", get(guild_page::<B>))
         .route("/g/{guild}/move", post(move_track::<B>))
+        .route("/g/{guild}/control", post(control::<B>))
         .route("/g/{guild}/history", get(history_page::<B>))
         .route("/g/{guild}/history.json", get(history_json::<B>))
         .route_layer(axum::middleware::map_response(no_store));
@@ -878,6 +952,320 @@ mod test {
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
         assert_eq!(fake.last_mover(), Some(serenity::all::UserId::new(9)));
+    }
+
+    const SKIP: &str = r#"{"type":"skip","id":"00000000-0000-0000-0000-000000000001"}"#;
+
+    fn control_request(
+        cookie: Option<&str>,
+        ctype: Option<&str>,
+        origin: Option<&str>,
+        text: &str,
+    ) -> Request<Body> {
+        let mut req = Request::post("/g/5/control");
+        if let Some(c) = cookie {
+            req = req.header(header::COOKIE, c);
+        }
+        if let Some(c) = ctype {
+            req = req.header(header::CONTENT_TYPE, c);
+        }
+        if let Some(o) = origin {
+            req = req.header(header::ORIGIN, o);
+        }
+        req.body(Body::from(text.to_owned())).unwrap()
+    }
+
+    async fn post_control(
+        fake: std::sync::Arc<FakeBackend>,
+        cookie: Option<&str>,
+        ctype: Option<&str>,
+        origin: Option<&str>,
+        text: &str,
+    ) -> axum::response::Response {
+        app(fake)
+            .oneshot(control_request(cookie, ctype, origin, text))
+            .await
+            .unwrap()
+    }
+
+    async fn post_skip(fake: std::sync::Arc<FakeBackend>) -> axum::response::Response {
+        post_control(
+            fake,
+            Some(&session(9)),
+            Some("application/json"),
+            Some(ORIGIN),
+            SKIP,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn a_premium_controller_skips_and_the_backend_gets_exactly_that() {
+        use crate::backend::Control;
+        let fake = controller();
+        let r = post_skip(fake.clone()).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let a: Answer = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(a.result, "done");
+        assert_eq!(
+            *fake.controls.lock().unwrap(),
+            vec![(
+                GuildId::new(5),
+                serenity::all::UserId::new(9),
+                Control::Skip {
+                    expect: Uuid::from_u128(1)
+                }
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn control_refusals_before_the_backend_control_nothing() {
+        type Case = (
+            Option<String>,
+            Option<&'static str>,
+            Option<&'static str>,
+            &'static str,
+            Membership,
+            StatusCode,
+        );
+        let json = Some("application/json");
+        let cases: Vec<Case> = vec![
+            (
+                None,
+                json,
+                Some(ORIGIN),
+                SKIP,
+                Membership::Member,
+                StatusCode::UNAUTHORIZED,
+            ),
+            (
+                Some(session(9)),
+                Some("text/plain"),
+                Some(ORIGIN),
+                SKIP,
+                Membership::Member,
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            ),
+            (
+                Some(session(9)),
+                None,
+                Some(ORIGIN),
+                SKIP,
+                Membership::Member,
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            ),
+            (
+                Some(session(9)),
+                json,
+                Some("https://evil.example"),
+                SKIP,
+                Membership::Member,
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                Some(session(9)),
+                json,
+                None,
+                SKIP,
+                Membership::Member,
+                StatusCode::FORBIDDEN,
+            ),
+            (
+                Some(session(9)),
+                json,
+                Some(ORIGIN),
+                r#"{"type":"stop"}"#,
+                Membership::Member,
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                Some(session(9)),
+                json,
+                Some(ORIGIN),
+                "{not json",
+                Membership::Member,
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                Some(session(9)),
+                json,
+                Some(ORIGIN),
+                SKIP,
+                Membership::NotMember,
+                StatusCode::NOT_FOUND,
+            ),
+            (
+                Some(session(9)),
+                json,
+                Some(ORIGIN),
+                SKIP,
+                Membership::Unknown,
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+        ];
+        for (cookie, ctype, origin, text, membership, want) in cases {
+            let fake = FakeBackend::new(membership, Some(BOT_CHANNEL), playing());
+            let r = post_control(fake.clone(), cookie.as_deref(), ctype, origin, text).await;
+            assert_eq!(
+                r.status(),
+                want,
+                "{ctype:?} {origin:?} {text} {membership:?}"
+            );
+            assert_eq!(fake.control_count(), 0, "nothing ran for {want}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_member_not_in_voice_is_not_allowed_to_control() {
+        for channel in [None, Some(serenity::all::ChannelId::new(1))] {
+            let fake = FakeBackend::new(Membership::Member, channel, playing());
+            let r = post_skip(fake.clone()).await;
+            assert_eq!(r.status(), StatusCode::FORBIDDEN);
+            let a: Answer = serde_json::from_str(&body(r).await).unwrap();
+            assert_eq!(a.result, "not_allowed");
+            assert_eq!(fake.control_count(), 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_free_server_is_premium_required_and_never_reaches_the_backend() {
+        let fake = controller();
+        *fake.plan.lock().unwrap() = crate::view::PlanView::Free;
+        let r = post_skip(fake.clone()).await;
+        assert_eq!(r.status(), StatusCode::FORBIDDEN);
+        let a: Answer = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(a.result, "premium_required");
+        assert_eq!(fake.control_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn the_sixth_control_in_ten_seconds_is_too_many_and_runs_nothing() {
+        let fake = controller();
+        let router = app(fake.clone()); // one router, so one limiter
+        for i in 0..5 {
+            let r = router
+                .clone()
+                .oneshot(control_request(
+                    Some(&session(9)),
+                    Some("application/json"),
+                    Some(ORIGIN),
+                    SKIP,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::OK, "control {i}");
+        }
+        let r = router
+            .clone()
+            .oneshot(control_request(
+                Some(&session(9)),
+                Some("application/json"),
+                Some(ORIGIN),
+                SKIP,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+        let a: Answer = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(a.result, "too_many");
+        assert_eq!(fake.control_count(), 5);
+        // Another user is not held up by it.
+        let r = router
+            .oneshot(control_request(
+                Some(&session(10)),
+                Some("application/json"),
+                Some(ORIGIN),
+                SKIP,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn a_stale_skip_is_a_conflict_with_the_fresh_view() {
+        use crate::backend::ControlRefused;
+        let fake = controller();
+        *fake.control_result.lock().unwrap() = Err(ControlRefused::Conflict);
+        let r = post_skip(fake).await;
+        assert_eq!(r.status(), StatusCode::CONFLICT);
+        let a: Answer = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(a.result, "conflict");
+        assert_eq!(a.view, Some(playing()));
+    }
+
+    #[tokio::test]
+    async fn control_refusals_map_to_their_answers() {
+        use crate::backend::ControlRefused;
+        let cases = [
+            (
+                ControlRefused::GameInProgress,
+                StatusCode::LOCKED,
+                "game_in_progress",
+            ),
+            (
+                ControlRefused::NotPlaying,
+                StatusCode::CONFLICT,
+                "not_playing",
+            ),
+            (
+                ControlRefused::Failed,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "failed",
+            ),
+        ];
+        for (refusal, status, result) in cases {
+            let fake = controller();
+            *fake.control_result.lock().unwrap() = Err(refusal);
+            let r = post_skip(fake).await;
+            assert_eq!(r.status(), status, "{refusal:?}");
+            let a: Answer = serde_json::from_str(&body(r).await).unwrap();
+            assert_eq!(a.result, result);
+            assert!(a.view.is_none(), "{refusal:?}");
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_control_reaches_open_watchers_at_once() {
+        use crate::watch::TICK;
+        let fake = controller();
+        *fake.view_after_control.lock().unwrap() = Some(reordered());
+        let st = state(fake.clone());
+        let mut rx = st.hub.subscribe(GuildId::new(5)).await;
+        rx.borrow_and_update();
+        let r = crate::routes::router(st)
+            .oneshot(control_request(
+                Some(&session(9)),
+                Some("application/json"),
+                Some(ORIGIN),
+                SKIP,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        let a: Answer = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(
+            a.view,
+            Some(reordered()),
+            "the answer is read after the control"
+        );
+        tokio::time::timeout(TICK / 2, rx.changed())
+            .await
+            .expect("published without waiting for a tick")
+            .unwrap();
+        assert_eq!(**rx.borrow(), reordered(), "watchers see the new queue");
+    }
+
+    #[tokio::test]
+    async fn a_move_is_not_rate_limited() {
+        let fake = controller();
+        let router = app(fake.clone());
+        for i in 0..6 {
+            let r = router.clone().oneshot(move_request()).await.unwrap();
+            assert_eq!(r.status(), StatusCode::OK, "move {i}");
+        }
+        assert_eq!(fake.move_count(), 6);
     }
 
     #[tokio::test(start_paused = true)]

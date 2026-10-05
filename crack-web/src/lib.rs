@@ -6,6 +6,7 @@ pub mod access;
 pub mod backend;
 pub mod config;
 pub mod history;
+pub mod limit;
 pub mod page;
 pub mod routes;
 #[cfg(test)]
@@ -339,6 +340,10 @@ async fn serve(env: WebEnv, deps: WebDeps) -> std::io::Result<()> {
         hub: Hub::new(backend.clone(), TICK, LINGER),
         backend,
         origin: env.public_origin.clone().into(),
+        limiter: Arc::new(limit::RateLimit::new(
+            limit::CONTROLS_PER_WINDOW,
+            limit::CONTROL_WINDOW,
+        )),
     };
     let listener = tokio::net::TcpListener::bind(&env.bind).await?;
     tracing::info!("web dashboard on {} for {}", env.bind, env.public_origin);

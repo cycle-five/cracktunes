@@ -91,7 +91,6 @@ impl FakeBackend {
         *self.mover.lock().unwrap()
     }
 
-    #[expect(dead_code, reason = "the /control route tests (Task 4) call it")]
     pub fn control_count(&self) -> usize {
         self.controls.lock().unwrap().len()
     }
@@ -203,6 +202,10 @@ pub fn state(fake: Arc<FakeBackend>) -> WebState<FakeBackend> {
         hub: crate::watch::Hub::new(fake.clone(), crate::watch::TICK, crate::watch::LINGER),
         backend: fake,
         origin: ORIGIN.into(),
+        limiter: Arc::new(crate::limit::RateLimit::new(
+            crate::limit::CONTROLS_PER_WINDOW,
+            crate::limit::CONTROL_WINDOW,
+        )),
     }
 }
 
