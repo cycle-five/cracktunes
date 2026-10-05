@@ -40,6 +40,7 @@
   const badge = document.getElementById("badge");
   const controlsEl = document.getElementById("controls");
   const premiumEl = document.getElementById("premium-controls");
+  const voiceEl = document.getElementById("voice-controls");
   const pauseBtn = document.getElementById("c-pause");
   const skipBtn = document.getElementById("c-skip");
   const shuffleBtn = document.getElementById("c-shuffle");
@@ -103,6 +104,8 @@
     const live = playing && premium && !!state.can_control && !busy;
     controlsEl.hidden = !playing;
     premiumEl.hidden = !playing || premium;
+    // Premium, but not in the bot's voice channel: say why they are disabled.
+    voiceEl.hidden = !(playing && premium && !state.can_control);
     for (const b of [pauseBtn, skipBtn, shuffleBtn, repeatBtn]) b.disabled = !live;
     if (playing) {
       pauseBtn.textContent = v.paused ? "▶ Resume" : "⏸ Pause";
@@ -171,30 +174,35 @@
     busy = true;
     for (const b of root.querySelectorAll("#controls button, .remove")) b.disabled = true;
     let body = null;
-    let status = 0;
+    // Whatever throws in here, the buttons come back: `busy` is cleared before
+    // the answer (or the view on screen) is drawn.
     try {
-      const res = await fetch(`/g/${guild}/control`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(req),
-      });
-      status = res.status;
-      body = await res.json().catch(() => null);
-    } catch (_) {
-      say("Could not reach the server. Nothing changed.");
+      let status = 0;
+      try {
+        const res = await fetch(`/g/${guild}/control`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(req),
+        });
+        status = res.status;
+        body = await res.json().catch(() => null);
+      } catch (_) {
+        say("Could not reach the server. Nothing changed.");
+      }
+      const result = body && body.result;
+      if (result === "done") say("");
+      else if (result === "conflict") say("The queue changed — here it is now.");
+      else if (result === "not_allowed") say("Join the bot's voice channel to use the controls.");
+      else if (result === "premium_required") say("Dashboard controls are a premium feature.");
+      else if (result === "game_in_progress") say("A Guilty Pleasure game is on — the queue is locked.");
+      else if (result === "not_playing") say("Nothing is playing.");
+      else if (result === "too_many") say("Slow down a little.");
+      else if (result === "failed") say("That did not work.");
+      else if (status) say(`That did not work (${status}).`);
+    } finally {
+      busy = false;
     }
-    const result = body && body.result;
-    if (result === "done") say("");
-    else if (result === "conflict") say("The queue changed — here it is now.");
-    else if (result === "not_allowed") say("Join the bot's voice channel to use the controls.");
-    else if (result === "premium_required") say("Dashboard controls are a premium feature.");
-    else if (result === "game_in_progress") say("A Guilty Pleasure game is on — the queue is locked.");
-    else if (result === "not_playing") say("Nothing is playing.");
-    else if (result === "too_many") say("Slow down a little.");
-    else if (result === "failed") say("That did not work.");
-    else if (status) say(`That did not work (${status}).`);
-    busy = false;
     settle(body);
   }
 

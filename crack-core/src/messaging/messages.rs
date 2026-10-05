@@ -499,4 +499,7 @@ pub const PREMIUM_HISTORY: &str = "Older history is a premium feature.";
 /// Shown on the dashboard's queue page to free servers, under the disabled
 /// controls.
 pub const PREMIUM_CONTROLS: &str = "Dashboard controls are a premium feature.";
+/// Shown on the dashboard's queue page to a premium server's member who is
+/// not in the bot's voice channel, under the disabled controls.
+pub const JOIN_VOICE_FOR_CONTROLS: &str = "Join the bot's voice channel to use the controls.";
 pub const PATREON_URL: &str = "https://patreon.com/CrackTunes";

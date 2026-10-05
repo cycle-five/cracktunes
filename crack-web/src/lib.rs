@@ -185,7 +185,7 @@ impl Backend for LiveBackend {
     }
 
     async fn plan(&self, g: GuildId) -> PlanView {
-        Plan::of(self.deps.data.get_premium(g).await).into()
+        crate::view::plan_view(self.deps.data.get_premium(g).await)
     }
 
     async fn guilds_for(&self, u: UserId) -> Vec<GuildEntry> {

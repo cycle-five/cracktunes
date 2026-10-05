@@ -3,7 +3,9 @@
 //! it is inlined as JSON and drawn by `app.js`, the one renderer.
 
 use crate::{backend::GuildEntry, history::HistoryPage, view::PageState};
-use crack_core::messaging::messages::{PATREON_URL, PREMIUM_CONTROLS, PREMIUM_HISTORY};
+use crack_core::messaging::messages::{
+    JOIN_VOICE_FOR_CONTROLS, PATREON_URL, PREMIUM_CONTROLS, PREMIUM_HISTORY,
+};
 use serde::Serialize;
 use serenity::all::GuildId;
 
@@ -107,11 +109,13 @@ pub fn queue_page(
 <button type=\"button\" id=\"c-repeat\" aria-pressed=\"false\">🔁 Repeat</button>\
 </div>\
 <p id=\"premium-controls\" hidden>{premium} <a href=\"{patreon}\">CrackTunes Patreon</a></p>\
+<p id=\"voice-controls\" hidden>{voice}</p>\
 <div id=\"now\"></div><h2>Up next</h2><ol id=\"upcoming\"></ol></section>\
 <script type=\"application/json\" id=\"initial\">{json}</script>",
             name = esc(guild_name),
             premium = esc(PREMIUM_CONTROLS),
             patreon = esc(PATREON_URL),
+            voice = esc(JOIN_VOICE_FOR_CONTROLS),
             json = inline_json(state),
         ),
         QUEUE_SCRIPTS,
@@ -286,9 +290,15 @@ mod test {
             esc(PATREON_URL)
         );
         assert!(html.contains(&note), "{html}");
+        let voice = format!(
+            "<p id=\"voice-controls\" hidden>{}</p>",
+            esc(JOIN_VOICE_FOR_CONTROLS)
+        );
+        assert!(html.contains(&voice), "{html}");
         // Between the note and the now-playing card.
         let at = |needle: &str| html.find(needle).unwrap();
         assert!(at("id=\"note\"") < at("id=\"controls\""));
         assert!(at("id=\"premium-controls\"") < at("id=\"now\""));
+        assert!(at("id=\"voice-controls\"") < at("id=\"now\""));
     }
 }

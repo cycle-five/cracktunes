@@ -39,6 +39,8 @@ pub struct FakeBackend {
     pub view_after_control: Mutex<Option<QueueView>>,
     /// How many times the routes read the plan.
     pub plan_calls: AtomicUsize,
+    /// Make `plan` never answer, as a stalled settings read would.
+    pub plan_hangs: AtomicBool,
     pub guilds: Vec<GuildEntry>,
     /// How many times the routes and the hub read presence and the view.
     pub presence_calls: AtomicUsize,
@@ -79,6 +81,7 @@ impl FakeBackend {
             controls: Mutex::new(Vec::new()),
             view_after_control: Mutex::new(None),
             plan_calls: AtomicUsize::new(0),
+            plan_hangs: AtomicBool::new(false),
             guilds: vec![GuildEntry {
                 id: GuildId::new(5),
                 name: "Five".into(),
@@ -155,6 +158,9 @@ impl Backend for FakeBackend {
 
     async fn plan(&self, _g: GuildId) -> PlanView {
         self.plan_calls.fetch_add(1, SeqCst);
+        if self.plan_hangs.load(SeqCst) {
+            std::future::pending::<()>().await;
+        }
         *self.plan.lock().unwrap()
     }
 

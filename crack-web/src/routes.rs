@@ -156,7 +156,7 @@ async fn guild_page<B: Backend>(
             let state = PageState {
                 view: &view,
                 can_control: access == Access::Control,
-                plan: s.backend.plan(g).await,
+                plan: plan_or_free(s.backend.as_ref(), g).await,
             };
             let history_link =
                 tokio::time::timeout(HISTORY_LINK_TIMEOUT, s.backend.history_access(g, user))
@@ -368,6 +368,15 @@ async fn control<B: Backend>(
     }
 }
 
+/// The plan, or `Free` if it is not read within [`PRESENCE_TIMEOUT`]: the page
+/// and a stream's first event are drawn regardless, and the stream's next
+/// recheck corrects it.
+async fn plan_or_free<B: Backend>(backend: &B, g: GuildId) -> PlanView {
+    tokio::time::timeout(PRESENCE_TIMEOUT, backend.plan(g))
+        .await
+        .unwrap_or(PlanView::Free)
+}
+
 fn event(view: &QueueView, can_control: bool, plan: PlanView) -> Event {
     Event::default().data(
         serde_json::to_string(&PageState {
@@ -402,7 +411,7 @@ async fn events<B: Backend>(
     let backend = s.backend.clone();
     tokio::spawn(async move {
         let mut can_control = access == Access::Control;
-        let mut plan = backend.plan(g).await;
+        let mut plan = plan_or_free(backend.as_ref(), g).await;
         let mut last = rx.borrow_and_update().clone();
         if tx.send(event(&last, can_control, plan)).await.is_err() {
             return;
@@ -685,6 +694,38 @@ mod test {
             let first: State = serde_json::from_str(&first_event(r).await).unwrap();
             assert_eq!(first.plan, plan, "first event");
         }
+    }
+
+    /// The page and the first event are drawn even if the plan never comes:
+    /// as free, and within the bound. The outer timeout turns a hang into a failure.
+    #[tokio::test(start_paused = true)]
+    async fn a_hung_plan_read_draws_the_page_and_first_event_as_free() {
+        use crate::view::PlanView;
+        use std::sync::atomic::Ordering::SeqCst;
+        #[derive(serde::Deserialize)]
+        struct State {
+            plan: PlanView,
+        }
+        let fake = controller();
+        fake.plan_hangs.store(true, SeqCst);
+        let bound = crate::routes::PRESENCE_TIMEOUT + std::time::Duration::from_secs(1);
+        let r = tokio::time::timeout(bound, get(fake.clone(), "/g/5", Some(&session(9))))
+            .await
+            .expect("the page waited on the plan");
+        assert_eq!(r.status(), StatusCode::OK);
+        let html = body(r).await;
+        let start = html.find("id=\"initial\">").unwrap() + "id=\"initial\">".len();
+        let end = start + html[start..].find("</script>").unwrap();
+        let page: State = serde_json::from_str(&html[start..end]).unwrap();
+        assert_eq!(page.plan, PlanView::Free, "page");
+        let first = tokio::time::timeout(bound, async {
+            let r = get(fake.clone(), "/g/5/events", Some(&session(9))).await;
+            next_data(&mut r.into_body()).await
+        })
+        .await
+        .expect("the first event waited on the plan");
+        let first: State = serde_json::from_str(&first).unwrap();
+        assert_eq!(first.plan, PlanView::Free, "first event");
     }
 
     #[tokio::test(start_paused = true)]
@@ -1196,6 +1237,38 @@ mod test {
         let a: Answer = serde_json::from_str(&body(r).await).unwrap();
         assert_eq!(a.result, "premium_required");
         assert_eq!(fake.control_count(), 0);
+    }
+
+    /// 🔑 The plan is read on every request, never kept: a revoke applies to
+    /// the very next control.
+    #[tokio::test]
+    async fn every_control_reads_the_plan_afresh() {
+        use std::sync::atomic::Ordering::SeqCst;
+        let fake = controller();
+        let router = app(fake.clone()); // one router, so one state
+        let send = || {
+            router.clone().oneshot(control_request(
+                Some(&session(9)),
+                Some("application/json"),
+                Some(ORIGIN),
+                SKIP,
+            ))
+        };
+        for i in 0..2 {
+            assert_eq!(
+                send().await.unwrap().status(),
+                StatusCode::OK,
+                "control {i}"
+            );
+        }
+        assert_eq!(fake.plan_calls.load(SeqCst), 2);
+        *fake.plan.lock().unwrap() = crate::view::PlanView::Free;
+        let r = send().await.unwrap();
+        assert_eq!(r.status(), StatusCode::FORBIDDEN);
+        let a: Answer = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(a.result, "premium_required");
+        assert_eq!(fake.plan_calls.load(SeqCst), 3);
+        assert_eq!(fake.control_count(), 2);
     }
 
     #[tokio::test]

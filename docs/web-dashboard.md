@@ -36,13 +36,16 @@ Free servers see the controls disabled, with "Dashboard controls are a premium
 feature" and the Patreon link under them. Reordering stays free.
 
 The same rule as reordering decides who may use them: members in the bot's voice
-channel. Anyone else sees them disabled and gets 403 (`not_allowed`). Each
+channel. Anyone else sees them disabled and gets 403 (`not_allowed`); on a
+premium server the page tells them to join the bot's voice channel. Each
 member may send 5 controls per 10 s, across every server; the sixth gets 429
 (`too_many`). Moves are not limited.
 
 Each control posts one line in Discord, where the now-playing message goes,
-such as "⏸ Paused from the dashboard — @member", and the now-playing message
-lands below it. It is an embed, so the mention never pings. A refused control posts
+such as "⏸ Paused from the dashboard — @member". After a skip, the new
+now-playing message lands below that line; the other controls leave the
+now-playing message where it is. The line is an embed, so the mention never
+pings, and a title in it is cut to 40 characters. A refused control posts
 nothing, and a move stays silent, as it always has.
 
 Each one is recorded in `queue_audit` with source `web` and command

@@ -64,6 +64,12 @@ impl From<Plan> for PlanView {
     }
 }
 
+/// The dashboard plan for a server's premium setting.
+#[must_use]
+pub fn plan_view(premium: Option<bool>) -> PlanView {
+    Plan::of(premium).into()
+}
+
 /// `POST /g/{id}/control`: one control. `Skip` names the track the member saw
 /// playing, so a skip that lands after the song changed is refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -186,6 +192,15 @@ mod test {
     use crack_core::music::remote::{QueueState, Requester, TrackSummary};
     use serenity::all::{ChannelId, UserId};
     use std::time::Duration;
+
+    /// 🔑 Only a server whose premium is set on gets the controls; an unset
+    /// setting is free.
+    #[test]
+    fn only_premium_set_on_is_premium() {
+        assert_eq!(plan_view(Some(true)), PlanView::Premium);
+        assert_eq!(plan_view(Some(false)), PlanView::Free);
+        assert_eq!(plan_view(None), PlanView::Free);
+    }
 
     fn t(n: u128, title: Option<&str>, requester: Option<Requester>) -> TrackSummary {
         TrackSummary {
