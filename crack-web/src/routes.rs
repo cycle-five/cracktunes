@@ -156,7 +156,7 @@ async fn guild_page<B: Backend>(
             let state = PageState {
                 view: &view,
                 can_control: access == Access::Control,
-                plan: PlanView::Free, // Task 5 reads the real plan
+                plan: s.backend.plan(g).await,
             };
             let history_link =
                 tokio::time::timeout(HISTORY_LINK_TIMEOUT, s.backend.history_access(g, user))
@@ -368,12 +368,12 @@ async fn control<B: Backend>(
     }
 }
 
-fn event(view: &QueueView, can_control: bool) -> Event {
+fn event(view: &QueueView, can_control: bool, plan: PlanView) -> Event {
     Event::default().data(
         serde_json::to_string(&PageState {
             view,
             can_control,
-            plan: PlanView::Free, // Task 5 reads the real plan
+            plan,
         })
         .expect("the view serializes"),
     )
@@ -402,8 +402,9 @@ async fn events<B: Backend>(
     let backend = s.backend.clone();
     tokio::spawn(async move {
         let mut can_control = access == Access::Control;
+        let mut plan = backend.plan(g).await;
         let mut last = rx.borrow_and_update().clone();
-        if tx.send(event(&last, can_control)).await.is_err() {
+        if tx.send(event(&last, can_control, plan)).await.is_err() {
             return;
         }
         let mut recheck = tokio::time::interval(RECHECK);
@@ -416,27 +417,33 @@ async fn events<B: Backend>(
                         return;
                     }
                     last = rx.borrow_and_update().clone();
-                    if tx.send(event(&last, can_control)).await.is_err() {
+                    if tx.send(event(&last, can_control, plan)).await.is_err() {
                         return;
                     }
                 },
-                _ = recheck.tick() => match tokio::time::timeout(PRESENCE_TIMEOUT, backend.presence(g, user))
-                    .await
-                    .map_or(Access::Unavailable, |p| decide(&p))
-                {
+                _ = recheck.tick() => {
+                    let (presence, now_plan) = tokio::join!(
+                        tokio::time::timeout(PRESENCE_TIMEOUT, backend.presence(g, user)),
+                        tokio::time::timeout(PRESENCE_TIMEOUT, backend.plan(g)),
+                    );
+                    let access = presence.map_or(Access::Unavailable, |p| decide(&p));
                     // Left the guild: close the stream.
-                    Access::Hidden => return,
+                    if access == Access::Hidden {
+                        return;
+                    }
                     // Cannot tell right now: keep what we had.
-                    Access::Unavailable => {},
-                    now => {
-                        let now = now == Access::Control;
-                        if now != can_control {
-                            can_control = now;
-                            if tx.send(event(&last, can_control)).await.is_err() {
-                                return;
-                            }
+                    let now_control = match access {
+                        Access::Unavailable => can_control,
+                        a => a == Access::Control,
+                    };
+                    let now_plan = now_plan.unwrap_or(plan);
+                    if now_control != can_control || now_plan != plan {
+                        can_control = now_control;
+                        plan = now_plan;
+                        if tx.send(event(&last, can_control, plan)).await.is_err() {
+                            return;
                         }
-                    },
+                    }
                 },
                 () = tx.closed() => return,
             }
@@ -657,6 +664,58 @@ mod test {
         ))
         .await;
         assert!(controller.can_control);
+    }
+
+    #[tokio::test]
+    async fn the_page_and_the_first_event_carry_the_plan() {
+        use crate::view::PlanView;
+        #[derive(serde::Deserialize)]
+        struct State {
+            plan: PlanView,
+        }
+        for plan in [PlanView::Free, PlanView::Premium] {
+            let fake = controller();
+            *fake.plan.lock().unwrap() = plan;
+            let html = body(get(fake.clone(), "/g/5", Some(&session(9))).await).await;
+            let start = html.find("id=\"initial\">").unwrap() + "id=\"initial\">".len();
+            let end = start + html[start..].find("</script>").unwrap();
+            let page: State = serde_json::from_str(&html[start..end]).unwrap();
+            assert_eq!(page.plan, plan, "page");
+            let r = get(fake, "/g/5/events", Some(&session(9))).await;
+            let first: State = serde_json::from_str(&first_event(r).await).unwrap();
+            assert_eq!(first.plan, plan, "first event");
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_premium_grant_reaches_an_open_stream_at_the_next_recheck() {
+        use crate::view::PlanView;
+        use http_body_util::BodyExt;
+        #[derive(serde::Deserialize)]
+        struct State {
+            plan: PlanView,
+            can_control: bool,
+        }
+        let fake = controller();
+        *fake.plan.lock().unwrap() = PlanView::Free;
+        let r = get(fake.clone(), "/g/5/events", Some(&session(9))).await;
+        let mut body = r.into_body();
+        let first = body.frame().await.unwrap().unwrap().into_data().unwrap();
+        let first = std::str::from_utf8(&first).unwrap();
+        let first = first
+            .lines()
+            .find_map(|l| l.strip_prefix("data: "))
+            .unwrap();
+        let first: State = serde_json::from_str(first).unwrap();
+        assert_eq!(first.plan, PlanView::Free);
+        *fake.plan.lock().unwrap() = PlanView::Premium;
+        tokio::time::sleep(RECHECK + std::time::Duration::from_secs(1)).await;
+        let frame = body.frame().await.unwrap().unwrap().into_data().unwrap();
+        let text = std::str::from_utf8(&frame).unwrap();
+        let data = text.lines().find_map(|l| l.strip_prefix("data: ")).unwrap();
+        let s: State = serde_json::from_str(data).unwrap();
+        assert_eq!(s.plan, PlanView::Premium);
+        assert!(s.can_control);
     }
 
     #[test]
