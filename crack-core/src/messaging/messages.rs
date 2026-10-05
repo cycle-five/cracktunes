@@ -71,6 +71,16 @@ pub const FAIL_SEEK_OP: &str = "Failed to seek";
 /// The driver did not confirm a seek within `ops::SEEK_TIMEOUT`.
 pub const FAIL_SEEK_TIMED_OUT: &str = "The seek did not finish in time";
 pub const FAIL_SKIP: &str = "Failed to skip";
+
+// The one-line echo the dashboard posts in Discord after a control.
+pub const ECHO_SKIPPED: &str = "⏭ Skipped";
+pub const ECHO_PAUSED: &str = "⏸ Paused";
+pub const ECHO_RESUMED: &str = "▶ Resumed";
+pub const ECHO_REPEAT_ON: &str = "🔁 Repeat on";
+pub const ECHO_REPEAT_OFF: &str = "🔁 Repeat off";
+pub const ECHO_REMOVED: &str = "🗑 Removed";
+pub const ECHO_SHUFFLED: &str = "🔀 Shuffled the queue";
+pub const ECHO_FROM_DASHBOARD: &str = "from the dashboard";
 /// `/seek`'s own words for an empty queue (not `FAIL_NOTHING_PLAYING`).
 pub const FAIL_NO_TRACK_PLAYING: &str = "No track playing";
 pub const OP_TRACK_ABSENT: &str = "That track is no longer queued";
@@ -486,4 +496,10 @@ pub const AUDITLOG_ONLY_OLDER: &str =
 /// Shown where the free 24-hour window hid older history: in `/auditlog`
 /// and on the dashboard's history page.
 pub const PREMIUM_HISTORY: &str = "Older history is a premium feature.";
+/// Shown on the dashboard's queue page to free servers, under the disabled
+/// controls.
+pub const PREMIUM_CONTROLS: &str = "Dashboard controls are a premium feature.";
+/// Shown on the dashboard's queue page to a premium server's member who is
+/// not in the bot's voice channel, under the disabled controls.
+pub const JOIN_VOICE_FOR_CONTROLS: &str = "Join the bot's voice channel to use the controls.";
 pub const PATREON_URL: &str = "https://patreon.com/CrackTunes";

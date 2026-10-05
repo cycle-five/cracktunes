@@ -1,11 +1,12 @@
 //! Skips: what plays changes, so they settle `NowPlaying`.
 use super::*;
+use crate::utils::get_track_handle_metadata;
 use crate::{
     connection::get_voice_channel_for_user,
     messaging::message::CrackedMessage,
     music::{
         queue::{drain_after_current, force_skip_top_track},
-        remote::{summarize, TrackSummary},
+        remote::{summarize, summary_of, TrackSummary},
     },
 };
 use serenity::all::{GuildId, UserId};
@@ -13,6 +14,8 @@ use serenity::all::{GuildId, UserId};
 /// What a skip did: what plays now, and how many tracks went.
 #[derive(Debug)]
 pub struct Skipped {
+    /// The track that was playing when the skip ran.
+    pub skipped: Option<TrackSummary>,
     pub now: Option<TrackSummary>,
     pub count: usize,
 }
@@ -63,6 +66,7 @@ pub(crate) async fn skip_on(
         let handler = call.lock().await;
         let queue = handler.queue();
         let current = queue.current().ok_or(OpRefused::NothingPlaying)?;
+        let was = current.clone();
         if expect.is_some_and(|id| id != current.uuid()) {
             return Err(OpRefused::Stale);
         }
@@ -73,16 +77,27 @@ pub(crate) async fn skip_on(
         force_skip_top_track(g, &handler)
             .await
             .map_err(|_| OpRefused::Failed(Failure::Skip))?;
-        (handler.queue().current(), count)
+        (was, handler.queue().current(), count)
     };
     // 🔑 The Call lock is released: `summarize` reads track metadata.
-    let (next, count) = next;
+    let (was, next, count) = next;
+    let skipped = Some(
+        summary_of(
+            &was,
+            get_track_handle_metadata(&was).await.unwrap_or_default(),
+        )
+        .await,
+    );
     let now = match next {
         Some(h) => summarize(std::slice::from_ref(&h)).await.pop(),
         None => None,
     };
     Ok(Done {
-        outcome: Skipped { now, count },
+        outcome: Skipped {
+            skipped,
+            now,
+            count,
+        },
         settle: Settle::NowPlaying,
         call: Some(call.clone()),
     })
@@ -231,6 +246,7 @@ mod test {
         };
         assert!(matches!(
             Skipped {
+                skipped: None,
                 now: Some(next),
                 count: 1
             }
@@ -239,6 +255,7 @@ mod test {
         ));
         assert!(matches!(
             Skipped {
+                skipped: None,
                 now: None,
                 count: 1
             }
@@ -247,12 +264,26 @@ mod test {
         ));
         assert!(matches!(
             Skipped {
+                skipped: None,
                 now: None,
                 count: 2
             }
             .message(),
             CrackedMessage::SkipAll
         ));
+    }
+
+    #[tokio::test]
+    async fn skip_names_the_track_it_skipped() {
+        let (data, call, ids, _) = queue_of(3).await;
+        let g = guard(&data).await;
+        let done = skip_on(&g, &call, 1, Some(ids[0])).await.unwrap();
+        let s = done.outcome();
+        assert_eq!(s.skipped.as_ref().map(|t| t.id), Some(ids[0]));
+        assert_eq!(
+            s.skipped.as_ref().and_then(|t| t.title.as_deref()),
+            Some("t0")
+        );
     }
 
     #[tokio::test]

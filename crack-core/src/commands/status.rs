@@ -34,6 +34,7 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
         QueueState::Playing {
             bot_channel,
             tracks,
+            ..
         } => {
             let now = tracks.first();
             Playback::Playing {

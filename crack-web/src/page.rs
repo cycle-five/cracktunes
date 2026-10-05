@@ -3,7 +3,9 @@
 //! it is inlined as JSON and drawn by `app.js`, the one renderer.
 
 use crate::{backend::GuildEntry, history::HistoryPage, view::PageState};
-use crack_core::messaging::messages::{PATREON_URL, PREMIUM_HISTORY};
+use crack_core::messaging::messages::{
+    JOIN_VOICE_FOR_CONTROLS, PATREON_URL, PREMIUM_CONTROLS, PREMIUM_HISTORY,
+};
 use serde::Serialize;
 use serenity::all::GuildId;
 
@@ -100,9 +102,20 @@ pub fn queue_page(
         &format!(
             "<section id=\"dash\" data-guild=\"{guild_id}\">\
 <h1>{name}</h1>{links}<p id=\"badge\" hidden>Reconnecting…</p><p id=\"note\" hidden></p>\
+<div id=\"controls\" hidden>\
+<button type=\"button\" id=\"c-pause\"></button>\
+<button type=\"button\" id=\"c-skip\">⏭ Skip</button>\
+<button type=\"button\" id=\"c-shuffle\">🔀 Shuffle</button>\
+<button type=\"button\" id=\"c-repeat\" aria-pressed=\"false\">🔁 Repeat</button>\
+</div>\
+<p id=\"premium-controls\" hidden>{premium} <a href=\"{patreon}\">CrackTunes Patreon</a></p>\
+<p id=\"voice-controls\" hidden>{voice}</p>\
 <div id=\"now\"></div><h2>Up next</h2><ol id=\"upcoming\"></ol></section>\
 <script type=\"application/json\" id=\"initial\">{json}</script>",
             name = esc(guild_name),
+            premium = esc(PREMIUM_CONTROLS),
+            patreon = esc(PATREON_URL),
+            voice = esc(JOIN_VOICE_FOR_CONTROLS),
             json = inline_json(state),
         ),
         QUEUE_SCRIPTS,
@@ -188,6 +201,8 @@ mod test {
             },
             upcoming: vec![],
             rev: 1,
+            paused: false,
+            looping: false,
         };
         let html = queue_page(
             "G",
@@ -195,6 +210,7 @@ mod test {
             &PageState {
                 view: &view,
                 can_control: false,
+                plan: crate::view::PlanView::Free,
             },
             false,
         );
@@ -246,5 +262,43 @@ mod test {
         let open = HistoryPage::default();
         let html = history_page("S", GuildId::new(5), &open);
         assert!(html.contains("<p id=\"premium-note\" hidden>"), "{html}");
+    }
+
+    #[test]
+    fn the_queue_page_carries_the_controls_and_their_premium_note() {
+        let view = QueueView::Idle;
+        let html = queue_page(
+            "G",
+            GuildId::new(5),
+            &PageState {
+                view: &view,
+                can_control: false,
+                plan: crate::view::PlanView::Free,
+            },
+            false,
+        );
+        for id in ["c-pause", "c-skip", "c-shuffle", "c-repeat"] {
+            assert!(
+                html.contains(&format!("<button type=\"button\" id=\"{id}\"")),
+                "{id}: {html}"
+            );
+        }
+        assert!(html.contains("<div id=\"controls\" hidden>"), "{html}");
+        let note = format!(
+            "<p id=\"premium-controls\" hidden>{} <a href=\"{}\">CrackTunes Patreon</a></p>",
+            esc(PREMIUM_CONTROLS),
+            esc(PATREON_URL)
+        );
+        assert!(html.contains(&note), "{html}");
+        let voice = format!(
+            "<p id=\"voice-controls\" hidden>{}</p>",
+            esc(JOIN_VOICE_FOR_CONTROLS)
+        );
+        assert!(html.contains(&voice), "{html}");
+        // Between the note and the now-playing card.
+        let at = |needle: &str| html.find(needle).unwrap();
+        assert!(at("id=\"note\"") < at("id=\"controls\""));
+        assert!(at("id=\"premium-controls\"") < at("id=\"now\""));
+        assert!(at("id=\"voice-controls\"") < at("id=\"now\""));
     }
 }

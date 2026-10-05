@@ -3,9 +3,9 @@
 
 use crate::{
     access::{Membership, Presence},
-    backend::{Backend, GuildEntry, MoveRefused},
+    backend::{Backend, Control, ControlRefused, GuildEntry, MoveRefused},
     routes::{router, WebState},
-    view::QueueView,
+    view::{PlanView, QueueView},
     watch::ViewSource,
 };
 use axum::Router;
@@ -31,6 +31,16 @@ pub struct FakeBackend {
     pub moves: Mutex<Vec<(GuildId, Uuid, usize)>>,
     /// The user the last move was made for.
     pub mover: Mutex<Option<UserId>>,
+    pub plan: Mutex<PlanView>,
+    pub control_result: Mutex<Result<(), ControlRefused>>,
+    /// Every control the routes asked for.
+    pub controls: Mutex<Vec<(GuildId, UserId, Control)>>,
+    /// What `view` becomes once a control succeeds; `None` leaves it as it was.
+    pub view_after_control: Mutex<Option<QueueView>>,
+    /// How many times the routes read the plan.
+    pub plan_calls: AtomicUsize,
+    /// Make `plan` never answer, as a stalled settings read would.
+    pub plan_hangs: AtomicBool,
     pub guilds: Vec<GuildEntry>,
     /// How many times the routes and the hub read presence and the view.
     pub presence_calls: AtomicUsize,
@@ -66,6 +76,12 @@ impl FakeBackend {
             history_access_hangs: AtomicBool::new(false),
             history_result: Mutex::new(Ok(crate::history::HistoryPage::default())),
             history_queries: Mutex::new(Vec::new()),
+            plan: Mutex::new(PlanView::Premium),
+            control_result: Mutex::new(Ok(())),
+            controls: Mutex::new(Vec::new()),
+            view_after_control: Mutex::new(None),
+            plan_calls: AtomicUsize::new(0),
+            plan_hangs: AtomicBool::new(false),
             guilds: vec![GuildEntry {
                 id: GuildId::new(5),
                 name: "Five".into(),
@@ -76,6 +92,10 @@ impl FakeBackend {
 
     pub fn last_mover(&self) -> Option<UserId> {
         *self.mover.lock().unwrap()
+    }
+
+    pub fn control_count(&self) -> usize {
+        self.controls.lock().unwrap().len()
     }
 
     pub fn move_count(&self) -> usize {
@@ -124,6 +144,26 @@ impl Backend for FakeBackend {
         result
     }
 
+    async fn control(&self, user: UserId, g: GuildId, c: Control) -> Result<(), ControlRefused> {
+        self.controls.lock().unwrap().push((g, user, c));
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        let result = *self.control_result.lock().unwrap();
+        if result.is_ok() {
+            if let Some(v) = self.view_after_control.lock().unwrap().take() {
+                *self.view.lock().unwrap() = v;
+            }
+        }
+        result
+    }
+
+    async fn plan(&self, _g: GuildId) -> PlanView {
+        self.plan_calls.fetch_add(1, SeqCst);
+        if self.plan_hangs.load(SeqCst) {
+            std::future::pending::<()>().await;
+        }
+        *self.plan.lock().unwrap()
+    }
+
     async fn guilds_for(&self, _u: UserId) -> Vec<GuildEntry> {
         self.guilds.clone()
     }
@@ -168,6 +208,10 @@ pub fn state(fake: Arc<FakeBackend>) -> WebState<FakeBackend> {
         hub: crate::watch::Hub::new(fake.clone(), crate::watch::TICK, crate::watch::LINGER),
         backend: fake,
         origin: ORIGIN.into(),
+        limiter: Arc::new(crate::limit::RateLimit::new(
+            crate::limit::CONTROLS_PER_WINDOW,
+            crate::limit::CONTROL_WINDOW,
+        )),
     }
 }
 

@@ -5,9 +5,10 @@
 use crate::{
     access::{HistoryAccess, Presence},
     history::{HistoryPage, HistoryQuery},
+    view::PlanView,
     watch::ViewSource,
 };
-pub use crack_core::music::remote::MoveRefused;
+pub use crack_core::music::remote::{Control, ControlRefused, MoveRefused};
 use serenity::all::{GuildId, UserId};
 use std::future::Future;
 use uuid::Uuid;
@@ -39,6 +40,13 @@ pub trait Backend: ViewSource {
         id: Uuid,
         to: usize,
     ) -> impl Future<Output = Result<usize, MoveRefused>> + Send;
+    fn control(
+        &self,
+        user: UserId,
+        g: GuildId,
+        c: Control,
+    ) -> impl Future<Output = Result<(), ControlRefused>> + Send;
+    fn plan(&self, g: GuildId) -> impl Future<Output = PlanView> + Send;
     fn guilds_for(&self, u: UserId) -> impl Future<Output = Vec<GuildEntry>> + Send;
     fn guild_name(&self, g: GuildId) -> Option<String>;
     fn history_access(&self, g: GuildId, u: UserId) -> impl Future<Output = HistoryAccess> + Send;

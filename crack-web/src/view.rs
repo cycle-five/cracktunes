@@ -1,7 +1,8 @@
 //! The dashboard's wire types -- typed serde, one enum per direction -- and
 //! the conversion from crack-core's `QueueState`.
 
-use crack_core::music::remote::{QueueState, Requester, TrackSummary};
+use crack_core::guild::plan::Plan;
+use crack_core::music::remote::{Control, QueueState, Requester, TrackSummary};
 use serde::{Deserialize, Serialize};
 use serenity::all::UserId;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -32,6 +33,8 @@ pub enum QueueView {
         now: TrackView,
         upcoming: Vec<TrackView>,
         rev: u64,
+        paused: bool,
+        looping: bool,
     },
 }
 
@@ -41,6 +44,70 @@ pub enum QueueView {
 pub struct PageState<'a> {
     pub view: &'a QueueView,
     pub can_control: bool,
+    pub plan: PlanView,
+}
+
+/// A server's plan as the page knows it: premium unlocks the controls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanView {
+    Free,
+    Premium,
+}
+
+impl From<Plan> for PlanView {
+    fn from(p: Plan) -> Self {
+        match p {
+            Plan::Free => PlanView::Free,
+            Plan::Premium => PlanView::Premium,
+        }
+    }
+}
+
+/// The dashboard plan for a server's premium setting.
+#[must_use]
+pub fn plan_view(premium: Option<bool>) -> PlanView {
+    Plan::of(premium).into()
+}
+
+/// `POST /g/{id}/control`: one control. `Skip` names the track the member saw
+/// playing, so a skip that lands after the song changed is refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ControlRequest {
+    Skip { id: Uuid },
+    Pause,
+    Resume,
+    Repeat { on: bool },
+    Remove { id: Uuid },
+    Shuffle,
+}
+
+impl From<ControlRequest> for Control {
+    fn from(r: ControlRequest) -> Self {
+        match r {
+            ControlRequest::Skip { id } => Control::Skip { expect: id },
+            ControlRequest::Pause => Control::Pause,
+            ControlRequest::Resume => Control::Resume,
+            ControlRequest::Repeat { on } => Control::Repeat { on },
+            ControlRequest::Remove { id } => Control::Remove { id },
+            ControlRequest::Shuffle => Control::Shuffle,
+        }
+    }
+}
+
+/// The answer to a control. `Done` and `Conflict` carry the view to render.
+#[derive(Debug, Serialize)]
+#[serde(tag = "result", rename_all = "snake_case")]
+pub enum ControlResult {
+    Done { view: QueueView },
+    Conflict { view: QueueView },
+    NotAllowed,
+    PremiumRequired,
+    GameInProgress,
+    NotPlaying,
+    Failed,
+    TooMany,
 }
 
 /// `POST /g/{id}/move`: move track `id` to position `to` among the upcoming
@@ -97,7 +164,12 @@ pub fn view_from_state(state: QueueState, name_of: impl Fn(UserId) -> Option<Str
     match state {
         QueueState::Idle => QueueView::Idle,
         QueueState::Hidden => QueueView::Hidden,
-        QueueState::Playing { tracks, .. } => {
+        QueueState::Playing {
+            tracks,
+            paused,
+            looping,
+            ..
+        } => {
             let rev = rev_of(&tracks);
             let mut tracks = tracks.into_iter().map(|t| track_view(t, &name_of));
             match tracks.next() {
@@ -106,6 +178,8 @@ pub fn view_from_state(state: QueueState, name_of: impl Fn(UserId) -> Option<Str
                     now,
                     upcoming: tracks.collect(),
                     rev,
+                    paused,
+                    looping,
                 },
             }
         },
@@ -118,6 +192,15 @@ mod test {
     use crack_core::music::remote::{QueueState, Requester, TrackSummary};
     use serenity::all::{ChannelId, UserId};
     use std::time::Duration;
+
+    /// 🔑 Only a server whose premium is set on gets the controls; an unset
+    /// setting is free.
+    #[test]
+    fn only_premium_set_on_is_premium() {
+        assert_eq!(plan_view(Some(true)), PlanView::Premium);
+        assert_eq!(plan_view(Some(false)), PlanView::Free);
+        assert_eq!(plan_view(None), PlanView::Free);
+    }
 
     fn t(n: u128, title: Option<&str>, requester: Option<Requester>) -> TrackSummary {
         TrackSummary {
@@ -153,6 +236,8 @@ mod test {
         QueueState::Playing {
             bot_channel: ChannelId::new(9),
             tracks,
+            paused: false,
+            looping: false,
         }
     }
 
@@ -230,5 +315,94 @@ mod test {
             serde_json::from_str(r#"{"id":"00000000-0000-0000-0000-000000000005","to":3}"#)
                 .unwrap();
         assert_eq!((req.id, req.to), (Uuid::from_u128(5), 3));
+    }
+
+    #[test]
+    fn the_view_carries_the_flags_through_and_serializes_them() {
+        let v = view_from_state(
+            QueueState::Playing {
+                bot_channel: ChannelId::new(9),
+                tracks: vec![t(1, Some("A"), None)],
+                paused: true,
+                looping: false,
+            },
+            names,
+        );
+        let QueueView::Playing {
+            paused, looping, ..
+        } = &v
+        else {
+            panic!("not playing: {v:?}")
+        };
+        assert_eq!((*paused, *looping), (true, false));
+        let json = serde_json::to_string(&v).unwrap();
+        assert!(
+            json.contains("\"paused\":true") && json.contains("\"looping\":false"),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn control_requests_parse_by_type() {
+        let p = |s: &str| serde_json::from_str::<ControlRequest>(s);
+        assert_eq!(
+            p(r#"{"type":"skip","id":"00000000-0000-0000-0000-000000000005"}"#).unwrap(),
+            ControlRequest::Skip {
+                id: Uuid::from_u128(5)
+            }
+        );
+        assert_eq!(p(r#"{"type":"pause"}"#).unwrap(), ControlRequest::Pause);
+        assert_eq!(
+            p(r#"{"type":"repeat","on":true}"#).unwrap(),
+            ControlRequest::Repeat { on: true }
+        );
+        assert!(p(r#"{"type":"stop"}"#).is_err(), "not a dashboard control");
+        assert!(
+            p(r#"{"type":"skip"}"#).is_err(),
+            "skip needs the id it saw playing"
+        );
+        assert!(
+            p(r#"{"type":"repeat"}"#).is_err(),
+            "repeat is explicit, not a toggle"
+        );
+    }
+
+    #[test]
+    fn answers_and_plan_serialize_tagged() {
+        let s = |r: &ControlResult| serde_json::to_string(r).unwrap();
+        assert_eq!(
+            s(&ControlResult::PremiumRequired),
+            r#"{"result":"premium_required"}"#
+        );
+        assert_eq!(s(&ControlResult::TooMany), r#"{"result":"too_many"}"#);
+        let st = PageState {
+            view: &QueueView::Idle,
+            can_control: false,
+            plan: PlanView::Free,
+        };
+        assert!(serde_json::to_string(&st)
+            .unwrap()
+            .contains(r#""plan":"free""#));
+    }
+
+    #[test]
+    fn requests_become_core_controls() {
+        use crack_core::music::remote::Control;
+        assert_eq!(
+            Control::from(ControlRequest::Remove {
+                id: Uuid::from_u128(3)
+            }),
+            Control::Remove {
+                id: Uuid::from_u128(3)
+            }
+        );
+        assert_eq!(
+            Control::from(ControlRequest::Skip {
+                id: Uuid::from_u128(1)
+            }),
+            Control::Skip {
+                expect: Uuid::from_u128(1)
+            }
+        );
     }
 }

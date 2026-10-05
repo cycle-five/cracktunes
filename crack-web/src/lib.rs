@@ -6,6 +6,7 @@ pub mod access;
 pub mod backend;
 pub mod config;
 pub mod history;
+pub mod limit;
 pub mod page;
 pub mod routes;
 #[cfg(test)]
@@ -15,11 +16,11 @@ pub mod watch;
 
 use crate::{
     access::{HistoryAccess, MemberMemo, Membership, Presence, MEMBER_TTL},
-    backend::{Backend, GuildEntry, HistoryError, MoveRefused},
+    backend::{Backend, Control, ControlRefused, GuildEntry, HistoryError, MoveRefused},
     config::WebEnv,
     history::{HistoryPage, HistoryQuery},
     routes::WebState,
-    view::{view_from_state, QueueView},
+    view::{view_from_state, PlanView, QueueView},
     watch::{Hub, ViewSource, LINGER, TICK},
 };
 use crack_core::{
@@ -167,6 +168,24 @@ impl Backend for LiveBackend {
             to,
         )
         .await
+    }
+
+    async fn control(&self, user: UserId, g: GuildId, c: Control) -> Result<(), ControlRefused> {
+        // The echo line is already spawned in core.
+        remote::control(
+            self.deps.data.clone(),
+            self.deps.http.clone(),
+            self.deps.cache.clone(),
+            g,
+            user,
+            c,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    async fn plan(&self, g: GuildId) -> PlanView {
+        crate::view::plan_view(self.deps.data.get_premium(g).await)
     }
 
     async fn guilds_for(&self, u: UserId) -> Vec<GuildEntry> {
@@ -321,6 +340,10 @@ async fn serve(env: WebEnv, deps: WebDeps) -> std::io::Result<()> {
         hub: Hub::new(backend.clone(), TICK, LINGER),
         backend,
         origin: env.public_origin.clone().into(),
+        limiter: Arc::new(limit::RateLimit::new(
+            limit::CONTROLS_PER_WINDOW,
+            limit::CONTROL_WINDOW,
+        )),
     };
     let listener = tokio::net::TcpListener::bind(&env.bind).await?;
     tracing::info!("web dashboard on {} for {}", env.bind, env.public_origin);

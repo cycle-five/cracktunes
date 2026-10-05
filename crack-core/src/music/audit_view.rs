@@ -12,7 +12,7 @@ pub const AUDITLOG_LIMIT: usize = 200;
 /// The longest window `since` accepts.
 const MAX_SINCE_WEEKS: i64 = 52;
 /// Titles longer than this are cut, with `…`.
-const TITLE_MAX: usize = 40;
+pub(crate) const TITLE_MAX: usize = 40;
 /// An `add` names at most this many tracks, then a count.
 const ADD_NAMES: usize = 3;
 
@@ -72,11 +72,16 @@ pub(crate) fn escape(s: &str) -> String {
 /// A track's title for display: cut at `TITLE_MAX` characters with `…`, or
 /// `(untitled)`. Not escaped: `/auditlog` escapes the whole line's wording.
 fn title_text(t: &TrackRef) -> String {
-    let Some(raw) = t.title.as_deref() else {
-        return "(untitled)".to_owned();
-    };
-    let cut: String = raw.chars().take(TITLE_MAX).collect();
-    if raw.chars().count() > TITLE_MAX {
+    match t.title.as_deref() {
+        Some(raw) => cap(raw, TITLE_MAX),
+        None => "(untitled)".to_owned(),
+    }
+}
+
+/// `raw` cut at `max` characters with `…`, or whole if it fits. Not escaped.
+pub(crate) fn cap(raw: &str, max: usize) -> String {
+    let cut: String = raw.chars().take(max).collect();
+    if raw.chars().count() > max {
         format!("{cut}…")
     } else {
         cut

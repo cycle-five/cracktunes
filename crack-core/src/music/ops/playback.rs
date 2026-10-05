@@ -14,7 +14,7 @@ use tokio::time::timeout;
 
 /// A stalled driver must not stall `/volume`, nor the repeat toggle, which
 /// asks the track while it holds the lease.
-const TRACK_INFO_TIMEOUT: Duration = Duration::from_secs(1);
+pub(crate) const TRACK_INFO_TIMEOUT: Duration = Duration::from_secs(1);
 /// How long a seek may take to confirm. Seeking a YouTube or HTTP input can
 /// re-request the stream, which takes seconds; the lease is released before
 /// this wait, so only `/seek` itself waits it out. Past it, the seek is
