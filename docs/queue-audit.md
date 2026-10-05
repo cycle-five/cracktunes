@@ -23,8 +23,9 @@ guild's game is running.
 Repeat changes are recorded as action `repeat`, with detail
 `{"action":"repeat","on":true}` (`on` is the new setting).
 
-Dashboard actions record `command` as `dashboard <op>` (e.g. `dashboard move`,
-`dashboard skip`); it used to be `dashboard move` for all of them. Every user-initiated
+Today only `dashboard move` is recorded by any dashboard surface; the dashboard's
+`command` used to be that literal for any action, and is now `dashboard <op>`, so new
+dashboard controls will record e.g. `dashboard skip`. Every user-initiated
 change is made through `music::ops`, and clippy bans calling the `music::queue`
 primitives from anywhere else (`/gp` and autopause are the two exempt callers).
 

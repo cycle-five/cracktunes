@@ -111,10 +111,6 @@ pub fn track_end_status(gp_active: bool, next_exists: bool, autoplay: bool) -> T
 /// Event handler to handle the end of a track.
 #[async_trait]
 impl EventHandler for TrackEndHandler {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "autopause: the bot acting on its own, under its own lease"
-    )]
     async fn act(&self, event_ctx: &EventContext<'_>) -> Option<Event> {
         // 🪤 These five were ERROR (#512) -- leftover printf debugging, not
         // failures. The rest of this function already uses `trace!` for its
@@ -186,6 +182,10 @@ impl EventHandler for TrackEndHandler {
                     let handler = self.call.lock().await;
                     // Nobody asked for this pause, so a failure has nobody to
                     // report it to.
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "autopause: the bot acting on its own, under its own lease"
+                    )]
                     pause_queue(&guard, &handler).ok();
                 },
                 // A nicety with nobody to answer to: log it and carry on.
