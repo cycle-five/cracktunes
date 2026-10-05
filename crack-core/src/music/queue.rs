@@ -1256,61 +1256,9 @@ mod test {
 
     use super::*;
     use crate::music::audit::{AuditEvent, BotReason, TrackRef};
+    use crate::music::ops::test_support::*;
     use crate::utils::{get_requesting_user, get_track_handle_metadata};
     use crate::{Data, DataInner};
-    use serenity::all::GuildId;
-
-    const GUILD: GuildId = GuildId::new(1);
-
-    /// A songbird call with no gateway and no voice connection: tracks queue on
-    /// it, and nothing ever plays.
-    fn offline_call() -> Arc<Mutex<Call>> {
-        Arc::new(Mutex::new(Call::standalone(GUILD, UserId::new(2))))
-    }
-
-    fn titled(title: &str) -> AuxMetadata {
-        AuxMetadata {
-            title: Some(title.to_owned()),
-            ..Default::default()
-        }
-    }
-
-    async fn queue_of(
-        n: usize,
-    ) -> (
-        Data,
-        Arc<Mutex<Call>>,
-        Vec<uuid::Uuid>,
-        tokio::sync::mpsc::Receiver<AuditEvent>,
-    ) {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(256);
-        let data = Data(Arc::new(DataInner {
-            audit_tx: Some(tx),
-            ..Default::default()
-        }));
-        let call = offline_call();
-        let mut ids = Vec::new();
-        {
-            let guard = data
-                .lock_queue(GUILD, PlaybackOwner::Free, actor())
-                .await
-                .unwrap();
-            for i in 0..n {
-                let file = format!("/nonexistent/{i}.opus");
-                let h = enqueue_input_back(
-                    &guard,
-                    &call,
-                    songbird::input::File::new(file).into(),
-                    Some(titled(&format!("t{i}"))),
-                    None,
-                )
-                .await;
-                ids.push(h.uuid());
-            }
-        }
-        while rx.try_recv().is_ok() {}
-        (data, call, ids, rx)
-    }
 
     fn actor() -> Actor {
         Actor::bot(BotReason::Autopause)

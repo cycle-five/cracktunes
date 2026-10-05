@@ -100,13 +100,13 @@ impl Actor {
         }
     }
 
-    /// A signed-in member acting from the web dashboard.
+    /// A signed-in member acting from the web dashboard; `op` names the control.
     #[must_use]
-    pub fn web(user: UserId) -> Self {
+    pub fn web(user: UserId, op: &'static str) -> Self {
         Self {
             user: Some(user),
             source: Source::Web,
-            command: Cow::Borrowed("dashboard move"),
+            command: Cow::Owned(format!("dashboard {op}")),
             origin_channel: None,
         }
     }
@@ -291,7 +291,7 @@ mod test {
         assert_eq!(slash.origin_channel(), Some(GenericChannelId::new(3)));
         let prefix = Actor::for_command(UserId::new(7), true, "skip", None);
         assert_eq!(prefix.source(), Source::Prefix);
-        let web = Actor::web(UserId::new(8));
+        let web = Actor::web(UserId::new(8), "move");
         assert_eq!(
             (web.source(), web.user(), web.command()),
             (Source::Web, Some(UserId::new(8)), "dashboard move")

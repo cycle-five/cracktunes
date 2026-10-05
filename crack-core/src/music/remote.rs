@@ -170,7 +170,7 @@ pub async fn move_by_id(
 ) -> Result<usize, MoveRefused> {
     // The lease first: a game refuses at once, before the call is touched.
     let guard = data
-        .lock_queue(guild_id, PlaybackOwner::Free, Actor::web(mover))
+        .lock_queue(guild_id, PlaybackOwner::Free, Actor::web(mover, "move"))
         .await
         .map_err(|e| match e {
             CrackedError::GameInProgress => MoveRefused::GameInProgress,
