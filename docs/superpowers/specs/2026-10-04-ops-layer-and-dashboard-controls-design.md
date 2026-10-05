@@ -294,8 +294,8 @@ two exemptions re-exported through a narrow, named module, and the spec is amend
 | `/movesong` | `move_track(Index, to)` | none. `remote::move_by_id` becomes a call to `move_track(Id, to)`. |
 | `/stop` | `stop` | none. It still turns autoplay off first. |
 | `/clear` | `clear` | none |
-| `/seek mm:ss` | `seek(Duration)` | parsing stays in the command. **It now takes the lease**, so a seek can't land on the track a concurrent skip just started. |
-| `/volume [n]` | `volume(n)` / `volume_now()` | **it now takes the lease** to set. Settings go through a setter on `Data` instead of writing `guild_settings_map` inline. The per-call `error!` logs and the `get_info().unwrap()` go. Reply texts are unchanged. |
+| `/seek mm:ss` | `seek(Duration)` | parsing stays in the command. **It now takes the lease to issue the seek**, so it can't land on the track a concurrent skip just started. The guard is dropped before the seek's callback is awaited, and that wait is bounded by `SEEK_TIMEOUT` (amended 2026-10-04 after the final review: a seek on a remote input can take seconds). |
+| `/volume [n]` | `volume(n)` / `volume_now()` | **takes no lease** (amended 2026-10-04: volume changes no queue order, and a lease would let a `/gp` game block it, which it never did). Settings go through a setter on `Data` instead of writing `guild_settings_map` inline, and the setter returns the real old value. The per-call `error!` logs and the `get_info().unwrap()` go. Reply texts are unchanged. |
 | `/leave` | `leave` (wraps `music::disconnect`) | none |
 | `downvote` (unregistered) | its skip goes through `skip` | stays unregistered |
 
