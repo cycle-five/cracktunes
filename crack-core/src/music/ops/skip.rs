@@ -6,7 +6,7 @@ use crate::{
     messaging::message::CrackedMessage,
     music::{
         queue::{drain_after_current, force_skip_top_track},
-        remote::{TrackSummary, summarize, summary_of},
+        remote::{summarize, summary_of, TrackSummary},
     },
 };
 use serenity::all::{GuildId, UserId};

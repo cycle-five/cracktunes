@@ -2,13 +2,13 @@
 //! still the newest message in its channel and moved to the bottom otherwise.
 //! Spec: docs/superpowers/specs/2026-09-15-floating-status-message-design.md
 
-use crate::Data;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::http_utils::is_unknown_message;
 use crate::messaging::interface::create_now_playing_embed;
 use crate::messaging::messages::{
     NOW_PLAYING_POINTER, STATUS_FINISHED_DESCRIPTION, STATUS_FINISHED_TITLE,
 };
+use crate::Data;
 use serenity::all::{Cache, CreateEmbed, GenericChannelId, GuildId, Http, MessageId, MessageLink};
 use serenity::async_trait;
 use serenity::builder::{CreateMessage, EditMessage};
