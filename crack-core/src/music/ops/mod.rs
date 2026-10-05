@@ -7,6 +7,7 @@ mod edit;
 mod end;
 mod playback;
 mod skip;
+pub use edit::*;
 pub use playback::*;
 pub use skip::*;
 #[cfg(test)]

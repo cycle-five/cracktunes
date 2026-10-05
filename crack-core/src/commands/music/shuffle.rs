@@ -1,12 +1,10 @@
 use crate::{
     commands::cmd_check_music,
-    errors::verify,
-    handlers::track_end::update_queue_messages,
+    errors::CrackedError,
     messaging::message::CrackedMessage,
-    music::{move_track, shuffle_behind_current, PlaybackOwner},
-    poise_ext::ContextExt,
+    music::ops::{self, OpCx, Target},
     utils::send_reply,
-    Context, CrackedError, Error,
+    Context, Error,
 };
 
 /// Move a song in the queue to a different position.
@@ -29,42 +27,12 @@ pub async fn movesong(
 /// Move a song in the queue to a different position, internal function.
 #[cfg(not(tarpaulin_include))]
 pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let call = ctx.get_call().await?;
-
-    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
-    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
-    // more kindly. This one cannot be forgotten.
-    let guard = ctx
-        .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
-        .await?;
-    let handler = call.lock().await;
-    let len = handler.queue().current_queue().len();
-    verify(
-        at > 0 && at < len,
-        CrackedError::Other("Index for `at` out of bounds"),
-    )?;
-    verify(
-        to > 0 && to < len,
-        CrackedError::Other("Index for `to` out of bounds"),
-    )?;
-
-    move_track(&guard, &handler, at, to);
-    // The guard is held only for the mutation, not across the Discord round
-    // trips below (`send_reply`, `update_queue_messages`) -- see lease.rs.
-    drop(guard);
-
-    // refetch the queue after modification
-    let queue = handler.queue().current_queue();
-    drop(handler);
-
+    let cx = OpCx::from_ctx(&ctx)?;
+    let done = ops::move_track(&cx, Target::Index(at), to)
+        .await
+        .map_err(CrackedError::from)?;
     send_reply(&ctx, CrackedMessage::SongMoved { at, to }, true).await?;
-    update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
+    done.settle_now(&cx).await;
     Ok(())
 }
 
@@ -78,31 +46,9 @@ pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result
     guild_only
 )]
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let call = ctx.get_call().await?;
-
-    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
-    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
-    // more kindly. This one cannot be forgotten.
-    let guard = ctx
-        .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
-        .await?;
-    let handler = call.lock().await;
-    shuffle_behind_current(&guard, &handler);
-    // The guard is held only for the mutation, not across the Discord round
-    // trips below (`send_reply`, `update_queue_messages`) -- see lease.rs.
-    drop(guard);
-
-    // refetch the queue after modification
-    let queue = handler.queue().current_queue();
-    drop(handler);
-
-    send_reply(&ctx, CrackedMessage::Shuffle, true).await?;
-    update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
+    let cx = OpCx::from_ctx(&ctx)?;
+    let done = ops::shuffle(&cx).await.map_err(CrackedError::from)?;
+    send_reply(&ctx, done.outcome.message(), true).await?;
+    done.settle_now(&cx).await;
     Ok(())
 }

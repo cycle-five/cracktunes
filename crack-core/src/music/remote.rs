@@ -5,15 +5,13 @@
 //! `Songbird::get`, no `TrackHandle::data`). crack-web only sees the plain
 //! types below.
 
-use crate::music::audit::Actor;
+use crate::music::{audit::Actor, ops, PlaybackOwner};
 use crate::{
     commands::music_utils::connected_call,
-    handlers::track_end::update_queue_messages,
-    music::{move_track_by_id, PlaybackOwner},
     utils::{get_requesting_user, get_track_handle_metadata},
-    CrackedError, Data,
+    Data,
 };
-use serenity::all::{ChannelId, GuildId, Http, UserId};
+use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
 use songbird::{tracks::TrackHandle, Call};
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
@@ -163,44 +161,45 @@ pub enum MoveRefused {
 pub async fn move_by_id(
     data: Arc<Data>,
     http: Arc<Http>,
+    cache: Arc<Cache>,
     guild_id: GuildId,
     mover: UserId,
     id: Uuid,
     to_upcoming: usize,
 ) -> Result<usize, MoveRefused> {
-    // The lease first: a game refuses at once, before the call is touched.
-    let guard = data
-        .lock_queue(guild_id, PlaybackOwner::Free, Actor::web(mover, "move"))
-        .await
-        .map_err(|e| match e {
-            CrackedError::GameInProgress => MoveRefused::GameInProgress,
-            other => {
-                tracing::warn!("lock_queue refused a dashboard move: {other}");
-                MoveRefused::GameInProgress
-            },
-        })?;
-    let call = connected_call(&data.songbird, guild_id, None)
-        .await
-        .ok_or(MoveRefused::NotPlaying)?;
-    let handler = call.lock().await;
-    let moved = move_track_by_id(&guard, &handler, id, to_upcoming);
-    // Held only for the mutation, as every command does -- see lease.rs.
-    drop(guard);
-    let queue = handler.queue().current_queue();
-    drop(handler);
-    if moved.is_ok() {
-        tokio::spawn(async move {
-            update_queue_messages(&*http, data, &queue, guild_id).await;
-        });
+    let cx = ops::OpCx {
+        data,
+        http,
+        cache,
+        guild_id,
+        actor: Actor::web(mover, "move"),
+    };
+    match ops::move_track(&cx, ops::Target::Id(id), to_upcoming).await {
+        Ok(done) => {
+            let to = done.outcome.to;
+            // Settled in the background, as before: queue messages are edited
+            // one by one under Discord's rate limit; the move is done regardless.
+            tokio::spawn(async move {
+                done.settle_now(&cx).await;
+            });
+            Ok(to)
+        },
+        Err(ops::OpRefused::GameInProgress) => Err(MoveRefused::GameInProgress),
+        Err(ops::OpRefused::NotConnected) => Err(MoveRefused::NotPlaying),
+        Err(ops::OpRefused::Absent) => Err(MoveRefused::Absent),
+        Err(ops::OpRefused::NowPlaying) => Err(MoveRefused::NowPlaying),
+        Err(other) => {
+            tracing::warn!("dashboard move refused: {other:?}");
+            Err(MoveRefused::NotPlaying)
+        },
     }
-    moved
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::{Data, DataInner};
-    use serenity::all::{GuildId, Http};
+    use serenity::all::{Cache, GuildId, Http};
     use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
@@ -255,7 +254,16 @@ mod test {
         d.claim_playback(G, crate::music::PlaybackOwner::Game)
             .unwrap();
         let http = Arc::new(Http::new(crack_types::get_valid_token()));
-        let got = move_by_id(d, http, G, UserId::new(9), uuid::Uuid::from_u128(1), 0).await;
+        let got = move_by_id(
+            d,
+            http,
+            Arc::new(Cache::default()),
+            G,
+            UserId::new(9),
+            uuid::Uuid::from_u128(1),
+            0,
+        )
+        .await;
         assert_eq!(got, Err(MoveRefused::GameInProgress));
     }
 
@@ -265,6 +273,7 @@ mod test {
         let got = move_by_id(
             Arc::new(data()),
             http,
+            Arc::new(Cache::default()),
             G,
             UserId::new(9),
             uuid::Uuid::from_u128(1),
