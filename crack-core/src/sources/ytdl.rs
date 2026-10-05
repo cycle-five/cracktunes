@@ -97,6 +97,29 @@ impl MyYoutubeDl {
 
 #[cfg(test)]
 mod test {
+    /// The production failure, end to end: yt-dlp picks SoundCloud's format,
+    /// songbird fetches it, and symphonia probes it. Without the format sort
+    /// this fails with "adts: only 1 aac frame per adts packet is supported".
+    /// It lives in crack-core because crack-core's symphonia has the readers
+    /// the bot ships with; crack-types' own test binary has no MP3 reader.
+    #[tokio::test]
+    #[ignore = "hits live SoundCloud and needs yt-dlp on PATH"]
+    async fn a_soundcloud_track_is_playable() {
+        use songbird::input::{
+            codecs::{get_codec_registry, get_probe},
+            Input,
+        };
+        let ytdl = crack_types::ytdl_for_url(
+            reqwest::Client::new(),
+            "https://soundcloud.com/realtimechris/t-sne-the-whole-thing-into-oblivion",
+        )
+        .unwrap();
+        let input: Input = ytdl.into();
+        let playable = input
+            .make_playable_async(get_codec_registry(), get_probe())
+            .await;
+        assert!(playable.is_ok(), "{:?}", playable.err());
+    }
 
     #[tokio::test]
     async fn test_ytdl() {

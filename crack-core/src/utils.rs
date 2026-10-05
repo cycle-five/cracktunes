@@ -294,7 +294,10 @@ pub async fn edit_reponse_interaction(
             .await
             .map_err(Into::into),
         Interaction::Autocomplete(int) => int
-            .edit_response(http.http(), EditInteractionResponse::new().embed(embed.clone()))
+            .edit_response(
+                http.http(),
+                EditInteractionResponse::new().embed(embed.clone()),
+            )
             .await
             //.map(|_| Message::default())
             .map_err(Into::into),
