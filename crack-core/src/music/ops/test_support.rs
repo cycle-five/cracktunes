@@ -1,14 +1,15 @@
 //! Offline queues for op tests: tracks queue on a `Call::standalone`, nothing plays.
+use super::OpCx;
 use crate::music::{
+    PlaybackOwner,
     audit::{Action, Actor, AuditEvent, BotReason},
     queue::enqueue_input_back,
-    PlaybackOwner,
 };
 use crate::{Data, DataInner};
-use serenity::all::{GuildId, UserId};
-use songbird::{input::AuxMetadata, Call};
+use serenity::all::{Cache, GuildId, Http, UserId};
+use songbird::{Call, input::AuxMetadata};
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 pub const GUILD: GuildId = GuildId::new(1);
 
@@ -90,4 +91,15 @@ pub async fn ids_of(call: &Arc<Mutex<Call>>) -> Vec<uuid::Uuid> {
         .iter()
         .map(|h| h.uuid())
         .collect()
+}
+
+/// An `OpCx` over a default `Data` with no call registered.
+pub fn cx_without_call() -> OpCx {
+    OpCx {
+        data: Arc::new(Data(Arc::new(DataInner::default()))),
+        http: Arc::new(Http::new(crack_types::get_valid_token())),
+        cache: Arc::new(Cache::default()),
+        guild_id: GUILD,
+        actor: Actor::web(UserId::new(9), "test"),
+    }
 }

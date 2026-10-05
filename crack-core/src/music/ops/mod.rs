@@ -8,12 +8,14 @@ mod end;
 mod playback;
 mod skip;
 pub use edit::*;
+pub use end::*;
 pub use playback::*;
 pub use skip::*;
 #[cfg(test)]
 pub(crate) mod test_support;
 
 use crate::{
+    CrackedError, Data,
     commands::music_utils::connected_call,
     handlers::track_end::update_queue_messages,
     messaging::{
@@ -22,8 +24,7 @@ use crate::{
         },
         status,
     },
-    music::{audit::Actor, PlaybackOwner, QueueGuard},
-    CrackedError, Data,
+    music::{PlaybackOwner, QueueGuard, audit::Actor},
 };
 use serenity::all::{Cache, GenericChannelId, GuildId, Http, MessageId};
 use songbird::Call;
@@ -85,6 +86,8 @@ pub enum OpRefused {
     Invalid(&'static str),
     Failed(Failure),
     SeekFailed(songbird::tracks::ControlError),
+    /// Leaving voice failed for a reason other than there being no call.
+    LeaveFailed(songbird::error::JoinError),
 }
 
 impl From<OpRefused> for CrackedError {
@@ -108,6 +111,7 @@ impl From<OpRefused> for CrackedError {
             OpRefused::Failed(Failure::Resume) => CrackedError::FailedResume,
             OpRefused::Failed(Failure::Loop) => CrackedError::Other(FAIL_LOOP),
             OpRefused::SeekFailed(_) => CrackedError::Other(FAIL_SEEK_OP),
+            OpRefused::LeaveFailed(e) => e.into(),
         }
     }
 }
@@ -212,19 +216,15 @@ pub(crate) async fn begin(cx: &OpCx) -> Result<(QueueGuard, Arc<Mutex<Call>>), O
 
 #[cfg(test)]
 mod test {
+    use super::test_support::{GUILD as G, cx_without_call};
     use super::*;
-    use crate::{music::PlaybackOwner, Data, DataInner};
-    use serenity::all::{Cache, GuildId, Http, UserId};
-
-    const G: GuildId = GuildId::new(1);
+    use crate::{Data, DataInner, music::PlaybackOwner};
+    use serenity::all::UserId;
 
     fn cx(data: Data) -> OpCx {
         OpCx {
             data: Arc::new(data),
-            http: Arc::new(Http::new(crack_types::get_valid_token())),
-            cache: Arc::new(Cache::default()),
-            guild_id: G,
-            actor: Actor::web(UserId::new(9), "test"),
+            ..cx_without_call()
         }
     }
 

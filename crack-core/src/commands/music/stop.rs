@@ -1,14 +1,10 @@
-use songbird::tracks::TrackHandle;
-
 use crate::{
-    commands::cmd_check_music,
-    errors::{verify, CrackedError},
-    guild::operations::GuildSettingsOperations,
-    messaging::message::CrackedMessage,
-    music::{queue::stop_queue, PlaybackOwner},
-    poise_ext::ContextExt,
-    utils::send_reply,
     Context, Error,
+    commands::cmd_check_music,
+    errors::CrackedError,
+    messaging::message::CrackedMessage,
+    music::ops::{self, OpCx},
+    utils::send_reply,
 };
 
 /// Stop the current track and clear the queue.
@@ -21,51 +17,14 @@ use crate::{
     guild_only
 )]
 pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
-    stop_internal(ctx).await?;
-    Ok(())
-}
-
-/// The return vector from this should be empty.
-#[cfg(not(tarpaulin_include))]
-pub async fn stop_internal(ctx: Context<'_>) -> Result<Vec<TrackHandle>, Error> {
-    let (call, guild_id) = ctx.get_call_guild_id().await?;
-    let _ = ctx.data().set_autoplay(guild_id, false).await;
-
-    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
-    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
-    // more kindly. This one cannot be forgotten.
-    let guard = ctx
-        .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
-        .await?;
-    let handler = call.lock().await;
-    // Do we want to return an error here or just pritn and return/?
-    verify(!handler.queue().is_empty(), CrackedError::NothingPlaying)?;
-    stop_queue(&guard, &handler);
-
-    // refetch the queue after modification
-    let queue = handler.queue().current_queue();
-    drop(handler);
-    // `stop_queue` fires `TrackEvent::End`, and the global track-end handler
-    // awaits `lock_queue` for autopause -- so the guard goes before the reply
-    // below, not after it. See `stop_queue`.
-    drop(guard);
-
+    let cx = OpCx::from_ctx(&ctx)?;
+    // A guild a game owns refuses here (GameInProgress), the same refusal
+    // GP_BLOCKED_COMMANDS gives earlier and more kindly.
+    let done = ops::stop(&cx).await.map_err(CrackedError::from)?;
+    // The lease is gone by now: `stop_queue` fires `TrackEvent::End`, and the
+    // track-end handler awaits `lock_queue`, so the reply must not hold it.
     send_reply(&ctx, CrackedMessage::Stop, true).await?;
-
     // Idempotent with the track end `stop_queue` fires: both land on Finished.
-    let serenity_ctx = ctx.serenity_context();
-    crate::messaging::status::show_finished(
-        &ctx.data(),
-        serenity_ctx.http.clone(),
-        serenity_ctx.cache.clone(),
-        guild_id,
-    )
-    .await;
-
-    Ok(queue)
+    done.settle_now(&cx).await;
+    Ok(())
 }
