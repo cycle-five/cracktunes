@@ -7,6 +7,7 @@ mod edit;
 mod end;
 mod playback;
 mod skip;
+pub use playback::*;
 #[cfg(test)]
 pub(crate) mod test_support;
 
@@ -189,13 +190,6 @@ impl<T> Done<T> {
 
 /// The lease, then the call. In that order: a game refuses at once, before
 /// the call is looked up (as `remote::move_by_id` always did).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "the first op to call it lands in the next task; remove this then"
-    )
-)]
 pub(crate) async fn begin(cx: &OpCx) -> Result<(QueueGuard, Arc<Mutex<Call>>), OpRefused> {
     let guard = cx
         .data

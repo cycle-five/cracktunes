@@ -188,6 +188,9 @@ pub enum Action {
     },
     Pause,
     Resume,
+    Repeat {
+        on: bool,
+    },
     Leave {
         discarded: usize,
     },
@@ -207,6 +210,7 @@ impl Action {
             Action::Stop { .. } => "stop",
             Action::Pause => "pause",
             Action::Resume => "resume",
+            Action::Repeat { .. } => "repeat",
             Action::Leave { .. } => "leave",
         }
     }
@@ -336,12 +340,22 @@ mod test {
             Action::Stop { removed: 1 },
             Action::Pause,
             Action::Resume,
+            Action::Repeat { on: true },
             Action::Leave { discarded: 4 },
         ];
         for a in all {
             let tag: Tag = serde_json::from_str(&serde_json::to_string(&a).unwrap()).unwrap();
             assert_eq!(tag.action, a.name());
         }
+    }
+
+    #[test]
+    fn repeat_round_trips_with_its_tag() {
+        let a = Action::Repeat { on: true };
+        let s = serde_json::to_string(&a).unwrap();
+        assert_eq!(s, r#"{"action":"repeat","on":true}"#);
+        assert_eq!(serde_json::from_str::<Action>(&s).unwrap(), a);
+        assert_eq!(a.name(), "repeat");
     }
 
     #[test]

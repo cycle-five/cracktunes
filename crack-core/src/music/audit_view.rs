@@ -131,6 +131,8 @@ pub fn what_text(a: &Action) -> String {
         Action::Stop { removed } => format!("stopped, {removed} tracks dropped"),
         Action::Pause => "paused".to_owned(),
         Action::Resume => "resumed".to_owned(),
+        Action::Repeat { on: true } => "repeat on".to_owned(),
+        Action::Repeat { on: false } => "repeat off".to_owned(),
         Action::Leave { discarded } => format!("left voice, {discarded} tracks discarded"),
     }
 }
@@ -282,6 +284,7 @@ pub enum ActionChoice {
     Stop,
     Pause,
     Resume,
+    Repeat,
     Leave,
 }
 
@@ -299,6 +302,7 @@ impl ActionChoice {
             ActionChoice::Stop => "stop",
             ActionChoice::Pause => "pause",
             ActionChoice::Resume => "resume",
+            ActionChoice::Repeat => "repeat",
             ActionChoice::Leave => "leave",
         }
     }
@@ -316,6 +320,7 @@ impl ActionChoice {
             "stop" => ActionChoice::Stop,
             "pause" => ActionChoice::Pause,
             "resume" => ActionChoice::Resume,
+            "repeat" => ActionChoice::Repeat,
             "leave" => ActionChoice::Leave,
             _ => return None,
         })
@@ -805,6 +810,7 @@ mod test {
             (ActionChoice::Stop, Action::Stop { removed: 0 }),
             (ActionChoice::Pause, Action::Pause),
             (ActionChoice::Resume, Action::Resume),
+            (ActionChoice::Repeat, Action::Repeat { on: true }),
             (ActionChoice::Leave, Action::Leave { discarded: 0 }),
         ];
         for (c, a) in pairs {
@@ -867,6 +873,14 @@ mod test {
     }
 
     #[test]
+    fn repeat_is_described_and_filterable() {
+        assert_eq!(what_text(&Action::Repeat { on: true }), "repeat on");
+        assert_eq!(what_text(&Action::Repeat { on: false }), "repeat off");
+        assert_eq!(ActionChoice::from_name("repeat"), Some(ActionChoice::Repeat));
+        assert_eq!(ActionChoice::Repeat.name(), "repeat");
+    }
+
+    #[test]
     fn choices_round_trip_through_their_names() {
         for c in [
             ActionChoice::Add,
@@ -878,6 +892,7 @@ mod test {
             ActionChoice::Stop,
             ActionChoice::Pause,
             ActionChoice::Resume,
+            ActionChoice::Repeat,
             ActionChoice::Leave,
         ] {
             assert_eq!(ActionChoice::from_name(c.name()), Some(c));
