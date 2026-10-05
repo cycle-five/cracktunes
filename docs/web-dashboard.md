@@ -1,6 +1,7 @@
 # Web dashboard
 
-Arc 1: view a guild's queue live; reorder it from the bot's voice channel.
+View a guild's queue live; reorder it from the bot's voice channel; on premium
+servers, pause, skip, shuffle, repeat and remove from there too.
 Design: `docs/superpowers/specs/2026-09-30-web-dashboard-queue-design.md`.
 
 ## Turning it on
@@ -22,6 +23,33 @@ and the bot runs on.
 `GET /health` answers `cracktunes dashboard ok <version>` with no sign-in. It
 reads nothing, so it proves the web server is answering, not that the bot is
 on the gateway. The bot's log reports that.
+
+## Controls (premium)
+
+Above the queue, a member in the bot's voice channel gets Pause/Resume, Skip,
+Shuffle and Repeat, and a ✕ on each upcoming track to remove it. They post to
+`POST /g/<id>/control`. Premium is read on every request, so a `/premium grant`
+or `revoke` applies to the next click; an open page picks the new plan up
+within 5 s.
+
+Free servers see the controls disabled, with "Dashboard controls are a premium
+feature" and the Patreon link under them. Reordering stays free.
+
+The same rule as reordering decides who may use them: members in the bot's voice
+channel. Anyone else sees them disabled and gets 403 (`not_allowed`). Each
+member may send 5 controls per 10 s, across every server; the sixth gets 429
+(`too_many`). Moves are not limited.
+
+Each control posts one line in Discord, where the now-playing message goes,
+such as "⏸ Paused from the dashboard — @member", and the now-playing message
+lands below it. It is an embed, so the mention never pings. A refused control posts
+nothing, and a move stays silent, as it always has.
+
+Each one is recorded in `queue_audit` with source `web` and command
+`dashboard skip`, `dashboard pause`, `dashboard resume`, `dashboard repeat`,
+`dashboard remove` or `dashboard shuffle`; a reorder is `dashboard move`.
+
+Design: `docs/superpowers/specs/2026-10-04-ops-layer-and-dashboard-controls-design.md`.
 
 ## Queue history
 
@@ -68,8 +96,9 @@ Additionally:
 - each viewer's role ids, read from Discord when the member isn't cached, kept for 5 minutes;
 - the display names of members shown in a history page, kept for 1 hour.
 
-**In the log:** each move is logged with the mover's user id; catacombs logs
+**In the log:** each move and control is logged with the member's user id; catacombs logs
 the username and user id at sign-in and log-out.
 
-Nothing is written to the database; the history page reads `queue_audit`. Restarting the bot invalidates no session: sessions are JWTs signed with `WEB_JWT_SECRET`; rotate that to sign
+The dashboard keeps nothing of its own in the database: moves and controls are
+recorded in `queue_audit` like any other queue change, and the history page reads it. Restarting the bot invalidates no session: sessions are JWTs signed with `WEB_JWT_SECRET`; rotate that to sign
 everyone out.
