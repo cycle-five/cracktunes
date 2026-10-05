@@ -2,13 +2,13 @@
 //! still the newest message in its channel and moved to the bottom otherwise.
 //! Spec: docs/superpowers/specs/2026-09-15-floating-status-message-design.md
 
+use crate::Data;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::http_utils::is_unknown_message;
 use crate::messaging::interface::create_now_playing_embed;
 use crate::messaging::messages::{
     NOW_PLAYING_POINTER, STATUS_FINISHED_DESCRIPTION, STATUS_FINISHED_TITLE,
 };
-use crate::Data;
 use serenity::all::{Cache, CreateEmbed, GenericChannelId, GuildId, Http, MessageId, MessageLink};
 use serenity::async_trait;
 use serenity::builder::{CreateMessage, EditMessage};
@@ -329,6 +329,34 @@ pub async fn update_after(
     let tracked = slot.message.map(|status| status.channel);
     let target = target_channel(music, slot.last_command_channel, tracked)?;
     apply_after(transport, &mut slot, guild, target, embed, phase, after).await
+}
+
+/// Post `embed` where the status message would go, and say where it landed.
+/// The echo is not the status message, so the slot's tracked message is left
+/// alone. A failed send is logged and lands nowhere.
+pub async fn announce(
+    data: &Data,
+    transport: &dyn StatusTransport,
+    guild: GuildId,
+    embed: CreateEmbed<'static>,
+) -> Option<(GenericChannelId, MessageId)> {
+    let music = data.get_music_channel(guild).await;
+    let (last, tracked) = {
+        let slot = data.status_slot(guild);
+        let slot = slot.lock().await;
+        (
+            slot.last_command_channel,
+            slot.message.map(|status| status.channel),
+        )
+    };
+    let target = target_channel(music, last, tracked)?;
+    match transport.send(target, embed).await {
+        Ok(id) => Some((target, id)),
+        Err(err) => {
+            tracing::warn!("announce in {target} failed: {err:?}");
+            None
+        },
+    }
 }
 
 /// Show what is playing now.
@@ -1052,5 +1080,46 @@ mod tests {
             now_playing_pointer("Hit That", None),
             "🔊 Now playing: **Hit That** ↓"
         );
+    }
+
+    // ---- announce ----
+
+    #[tokio::test]
+    async fn announce_posts_where_the_status_would_go_and_leaves_the_status_alone() {
+        let data = crate::Data::default();
+        note_command_channel(&data, GUILD, ch(10)).await;
+        let status = tracked(10, 100, Phase::Playing);
+        data.status_slot(GUILD).lock().await.message = Some(status);
+        let fake = Fake::default();
+
+        let landed = announce(&data, &fake, GUILD, embed()).await;
+
+        assert_eq!(fake.ops(), vec![Op::Send(10)]);
+        assert_eq!(landed, Some((ch(10), MessageId::new(1000))));
+        assert_eq!(
+            data.status_slot(GUILD).lock().await.message,
+            Some(status),
+            "the echo is not the status message"
+        );
+    }
+
+    #[tokio::test]
+    async fn announce_with_nowhere_to_post_sends_nothing() {
+        let data = crate::Data::default();
+        let fake = Fake::default();
+
+        assert_eq!(announce(&data, &fake, GUILD, embed()).await, None);
+        assert!(fake.ops().is_empty());
+    }
+
+    #[tokio::test]
+    async fn announce_whose_send_fails_lands_nowhere() {
+        let data = crate::Data::default();
+        note_command_channel(&data, GUILD, ch(10)).await;
+        let fake = Fake::default();
+        *fake.send_error.lock().unwrap() = Some(TransportError::Other("boom".into()));
+
+        assert_eq!(announce(&data, &fake, GUILD, embed()).await, None);
+        assert_eq!(fake.ops(), vec![Op::Send(10)]);
     }
 }

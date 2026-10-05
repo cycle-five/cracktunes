@@ -5,14 +5,20 @@
 //! `Songbird::get`, no `TrackHandle::data`). crack-web only sees the plain
 //! types below.
 
-use crate::music::{audit::Actor, ops, PlaybackOwner};
+use crate::messaging::messages::{
+    ECHO_FROM_DASHBOARD, ECHO_PAUSED, ECHO_REMOVED, ECHO_REPEAT_OFF, ECHO_REPEAT_ON, ECHO_RESUMED,
+    ECHO_SHUFFLED, ECHO_SKIPPED,
+};
+use crate::messaging::status::{self, DiscordTransport};
+use crate::music::audit_view::escape;
+use crate::music::{PlaybackOwner, audit::Actor, ops};
 use crate::{
+    Data,
     commands::music_utils::connected_call,
     utils::{get_requesting_user, get_track_handle_metadata},
-    Data,
 };
-use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
-use songbird::{input::AuxMetadata, tracks::TrackHandle, Call};
+use serenity::all::{Cache, ChannelId, CreateEmbed, GuildId, Http, UserId};
+use songbird::{Call, input::AuxMetadata, tracks::TrackHandle};
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -201,6 +207,182 @@ pub async fn move_by_id(
     }
 }
 
+/// A control the dashboard may run on the queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Control {
+    /// Only if `expect` is still the playing track.
+    Skip {
+        expect: Uuid,
+    },
+    Pause,
+    Resume,
+    Repeat {
+        on: bool,
+    },
+    Remove {
+        id: Uuid,
+    },
+    Shuffle,
+}
+
+/// Why a control was not run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlRefused {
+    NotPlaying,
+    GameInProgress,
+    /// The queue changed under the member: the track is gone, is playing, or
+    /// is no longer the one they saw.
+    Conflict,
+    Failed,
+}
+
+impl From<&ops::OpRefused> for ControlRefused {
+    fn from(r: &ops::OpRefused) -> Self {
+        use ops::OpRefused as R;
+        match r {
+            R::GameInProgress => Self::GameInProgress,
+            R::NotConnected | R::NothingPlaying | R::QueueEmpty => Self::NotPlaying,
+            R::Absent | R::NowPlaying | R::Stale => Self::Conflict,
+            other => {
+                tracing::warn!("dashboard control refused: {other:?}");
+                Self::Failed
+            },
+        }
+    }
+}
+
+/// What a control did, for the echo line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Echo {
+    Skipped { title: Option<String> },
+    Paused,
+    Resumed,
+    Repeat { on: bool },
+    Removed { title: Option<String> },
+    Shuffled,
+}
+
+impl Echo {
+    /// The one line posted in Discord. Titles are third-party text, so they
+    /// are escaped.
+    #[must_use]
+    pub fn line(&self, user: UserId) -> String {
+        let (what, title) = match self {
+            Self::Skipped { title } => (ECHO_SKIPPED, title.as_deref()),
+            Self::Paused => (ECHO_PAUSED, None),
+            Self::Resumed => (ECHO_RESUMED, None),
+            Self::Repeat { on: true } => (ECHO_REPEAT_ON, None),
+            Self::Repeat { on: false } => (ECHO_REPEAT_OFF, None),
+            Self::Removed { title } => (ECHO_REMOVED, title.as_deref()),
+            Self::Shuffled => (ECHO_SHUFFLED, None),
+        };
+        match title {
+            Some(t) => format!("{what} **{}** {ECHO_FROM_DASHBOARD} — <@{user}>", escape(t)),
+            None => format!("{what} {ECHO_FROM_DASHBOARD} — <@{user}>"),
+        }
+    }
+}
+
+fn echo_embed(echo: &Echo, user: UserId) -> CreateEmbed<'static> {
+    // An embed mention never pings.
+    CreateEmbed::new().description(echo.line(user))
+}
+
+/// Run a control for `user`. On success the echo is returned at once; posting
+/// it and settling the queue messages (anchored after the echo, so now-playing
+/// lands below it) happen in the background.
+pub async fn control(
+    data: Arc<Data>,
+    http: Arc<Http>,
+    cache: Arc<Cache>,
+    guild_id: GuildId,
+    user: UserId,
+    c: Control,
+) -> Result<Echo, ControlRefused> {
+    let op = match c {
+        Control::Skip { .. } => "skip",
+        Control::Pause => "pause",
+        Control::Resume => "resume",
+        Control::Repeat { .. } => "repeat",
+        Control::Remove { .. } => "remove",
+        Control::Shuffle => "shuffle",
+    };
+    let cx = ops::OpCx {
+        data,
+        http,
+        cache,
+        guild_id,
+        actor: Actor::web(user, op),
+    };
+    let (echo, settle, call) = match c {
+        Control::Skip { expect } => {
+            let (s, settle, call) = ops::skip(&cx, 1, Some(expect))
+                .await
+                .map_err(|r| ControlRefused::from(&r))?
+                .into_parts();
+            (
+                Echo::Skipped {
+                    title: s.skipped.and_then(|t| t.title),
+                },
+                settle,
+                call,
+            )
+        },
+        Control::Pause => {
+            let (_, settle, call) = ops::pause(&cx)
+                .await
+                .map_err(|r| ControlRefused::from(&r))?
+                .into_parts();
+            (Echo::Paused, settle, call)
+        },
+        Control::Resume => {
+            let (_, settle, call) = ops::resume(&cx)
+                .await
+                .map_err(|r| ControlRefused::from(&r))?
+                .into_parts();
+            (Echo::Resumed, settle, call)
+        },
+        Control::Repeat { on } => {
+            let (_, settle, call) = ops::repeat(&cx, Some(on))
+                .await
+                .map_err(|r| ControlRefused::from(&r))?
+                .into_parts();
+            (Echo::Repeat { on }, settle, call)
+        },
+        Control::Remove { id } => {
+            let (r, settle, call) = ops::remove(&cx, ops::Target::Id(id))
+                .await
+                .map_err(|r| ControlRefused::from(&r))?
+                .into_parts();
+            (
+                Echo::Removed {
+                    title: r.first.title,
+                },
+                settle,
+                call,
+            )
+        },
+        Control::Shuffle => {
+            let (_, settle, call) = ops::shuffle(&cx)
+                .await
+                .map_err(|r| ControlRefused::from(&r))?
+                .into_parts();
+            (Echo::Shuffled, settle, call)
+        },
+    };
+    let posted = echo.clone();
+    tokio::spawn(async move {
+        let transport = DiscordTransport {
+            http: cx.http.clone(),
+            cache: cx.cache.clone(),
+        };
+        let anchor =
+            status::announce(&cx.data, &transport, guild_id, echo_embed(&posted, user)).await;
+        settle.after(&cx, call.as_ref(), anchor).await;
+    });
+    Ok(echo)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -287,5 +469,110 @@ mod test {
         )
         .await;
         assert_eq!(got, Err(MoveRefused::NotPlaying));
+    }
+
+    #[test]
+    fn refusals_map_to_control_answers() {
+        use crate::music::ops::OpRefused as R;
+        for (r, want) in [
+            (R::GameInProgress, ControlRefused::GameInProgress),
+            (R::NotConnected, ControlRefused::NotPlaying),
+            (R::NothingPlaying, ControlRefused::NotPlaying),
+            (R::QueueEmpty, ControlRefused::NotPlaying),
+            (R::Absent, ControlRefused::Conflict),
+            (R::NowPlaying, ControlRefused::Conflict),
+            (R::Stale, ControlRefused::Conflict),
+            (
+                R::Failed(crate::music::ops::Failure::Pause),
+                ControlRefused::Failed,
+            ),
+        ] {
+            assert_eq!(ControlRefused::from(&r), want, "{r:?}");
+        }
+    }
+
+    #[test]
+    fn echo_lines_name_the_track_and_the_member() {
+        let u = UserId::new(42);
+        assert_eq!(
+            Echo::Skipped {
+                title: Some("Song".into())
+            }
+            .line(u),
+            "⏭ Skipped **Song** from the dashboard — <@42>"
+        );
+        assert_eq!(Echo::Paused.line(u), "⏸ Paused from the dashboard — <@42>");
+        assert_eq!(
+            Echo::Resumed.line(u),
+            "▶ Resumed from the dashboard — <@42>"
+        );
+        assert_eq!(
+            Echo::Repeat { on: true }.line(u),
+            "🔁 Repeat on from the dashboard — <@42>"
+        );
+        assert_eq!(
+            Echo::Repeat { on: false }.line(u),
+            "🔁 Repeat off from the dashboard — <@42>"
+        );
+        assert_eq!(
+            Echo::Removed { title: None }.line(u),
+            "🗑 Removed from the dashboard — <@42>"
+        );
+        assert_eq!(
+            Echo::Shuffled.line(u),
+            "🔀 Shuffled the queue from the dashboard — <@42>"
+        );
+        assert_eq!(
+            Echo::Skipped { title: None }.line(u),
+            "⏭ Skipped from the dashboard — <@42>"
+        );
+    }
+
+    /// 🔑 `escape` backslashes markdown and `<` (so `<@id>` cannot form); a bare
+    /// `@everyone` is left alone, and cannot ping from an embed.
+    #[test]
+    fn a_title_cannot_inject_markdown_or_a_mention() {
+        let u = UserId::new(42);
+        let l = Echo::Skipped {
+            title: Some("**x** <@7> [a](b)\nz".into()),
+        }
+        .line(u);
+        assert_eq!(
+            l,
+            r"⏭ Skipped **\*\*x\*\* \<@7\> \[a\](b) z** from the dashboard — <@42>"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_game_refuses_a_control_before_the_call_is_looked_up() {
+        let d = Arc::new(data());
+        d.claim_playback(G, crate::music::PlaybackOwner::Game)
+            .unwrap();
+        let http = Arc::new(Http::new(crack_types::get_valid_token()));
+        let got = control(
+            d,
+            http,
+            Arc::new(Cache::default()),
+            G,
+            UserId::new(9),
+            Control::Pause,
+        )
+        .await;
+        assert_eq!(got, Err(ControlRefused::GameInProgress));
+    }
+
+    #[tokio::test]
+    async fn a_control_with_no_call_is_not_playing() {
+        let http = Arc::new(Http::new(crack_types::get_valid_token()));
+        let got = control(
+            Arc::new(data()),
+            http,
+            Arc::new(Cache::default()),
+            G,
+            UserId::new(9),
+            Control::Shuffle,
+        )
+        .await;
+        assert_eq!(got, Err(ControlRefused::NotPlaying));
     }
 }
