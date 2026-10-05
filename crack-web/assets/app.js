@@ -38,12 +38,21 @@
   const nowEl = document.getElementById("now");
   const listEl = document.getElementById("upcoming");
   const badge = document.getElementById("badge");
+  const controlsEl = document.getElementById("controls");
+  const premiumEl = document.getElementById("premium-controls");
+  const pauseBtn = document.getElementById("c-pause");
+  const skipBtn = document.getElementById("c-skip");
+  const shuffleBtn = document.getElementById("c-shuffle");
+  const repeatBtn = document.getElementById("c-repeat");
 
   let state = JSON.parse(document.getElementById("initial").textContent);
   let dragging = false;
   // The newest state the stream sent while it could not be drawn. It is kept
   // until drawn: the stream sends a view once, on change, and never again.
   let pending = null;
+  // A control request is on its way. The buttons stay disabled until its
+  // answer is drawn; the server's `expect` is the real guard, this is courtesy.
+  let busy = false;
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -74,10 +83,32 @@
     return li;
   }
 
+  // The ✕ on an upcoming row. The title is third-party text: it reaches the
+  // label through setAttribute, which never parses it.
+  function removeButton(t, enabled) {
+    const b = el("button", "remove", "✕");
+    b.type = "button";
+    b.setAttribute("aria-label", `Remove ${t.title || "this track"}`);
+    b.disabled = !enabled;
+    b.addEventListener("click", () => control({ type: "remove", id: t.id }));
+    return b;
+  }
+
   function render() {
     const v = state.view;
     nowEl.replaceChildren();
     listEl.replaceChildren();
+    const playing = v.state === "playing";
+    const premium = state.plan === "premium";
+    const live = playing && premium && !!state.can_control && !busy;
+    controlsEl.hidden = !playing;
+    premiumEl.hidden = !playing || premium;
+    for (const b of [pauseBtn, skipBtn, shuffleBtn, repeatBtn]) b.disabled = !live;
+    if (playing) {
+      pauseBtn.textContent = v.paused ? "▶ Resume" : "⏸ Pause";
+      repeatBtn.setAttribute("aria-pressed", String(!!v.looping));
+      repeatBtn.classList.toggle("pressed", !!v.looping);
+    }
     if (v.state === "idle") {
       nowEl.appendChild(el("p", "empty", "Nothing is playing."));
     } else if (v.state === "hidden") {
@@ -86,7 +117,11 @@
       const now = track(v.now, false);
       now.classList.add("now");
       nowEl.appendChild(now);
-      for (const t of v.upcoming) listEl.appendChild(track(t, state.can_control));
+      for (const t of v.upcoming) {
+        const li = track(t, state.can_control);
+        li.appendChild(removeButton(t, live));
+        listEl.appendChild(li);
+      }
       if (v.upcoming.length === 0) listEl.appendChild(el("li", "empty", "Nothing queued after this."));
     }
     sortable.option("disabled", !(state.can_control && v.state === "playing"));
@@ -115,16 +150,74 @@
     else if (result === "game_in_progress") say("A Guilty Pleasure game is on — the queue is locked.");
     else if (result === "not_playing") say("Nothing is playing.");
     else if (status) say(`That did not work (${status}).`);
-    // The answer's view is read after the move; without one, the newest view
-    // the stream sent, else the one on screen. Never keep an order the server
-    // did not accept.
+    // The answer's view is read after the move. Never keep an order the
+    // server did not accept; if another drag began meanwhile, it waits.
+    settle(body);
+  }
+
+  // Draw an answer's view, or else the newest the stream sent, else the one
+  // on screen; never mid-drag, where it waits in `pending` like the stream's.
+  function settle(body) {
     const base = pending || state;
     const next = body && body.view ? { ...base, view: body.view } : base;
-    if (dragging) { pending = next; return; } // another drag began meanwhile
+    if (dragging) { pending = next; return; }
     pending = null;
     state = next;
     render();
   }
+
+  async function control(req) {
+    if (busy) return;
+    busy = true;
+    for (const b of root.querySelectorAll("#controls button, .remove")) b.disabled = true;
+    let body = null;
+    let status = 0;
+    try {
+      const res = await fetch(`/g/${guild}/control`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(req),
+      });
+      status = res.status;
+      body = await res.json().catch(() => null);
+    } catch (_) {
+      say("Could not reach the server. Nothing changed.");
+    }
+    const result = body && body.result;
+    if (result === "done") say("");
+    else if (result === "conflict") say("The queue changed — here it is now.");
+    else if (result === "not_allowed") say("Join the bot's voice channel to use the controls.");
+    else if (result === "premium_required") say("Dashboard controls are a premium feature.");
+    else if (result === "game_in_progress") say("A Guilty Pleasure game is on — the queue is locked.");
+    else if (result === "not_playing") say("Nothing is playing.");
+    else if (result === "too_many") say("Slow down a little.");
+    else if (result === "failed") say("That did not work.");
+    else if (status) say(`That did not work (${status}).`);
+    busy = false;
+    settle(body);
+  }
+
+  // Each control reads the view on screen at click time.
+  function playingView() {
+    const v = state.view;
+    return v.state === "playing" ? v : null;
+  }
+  pauseBtn.addEventListener("click", () => {
+    const v = playingView();
+    if (v) control({ type: v.paused ? "resume" : "pause" });
+  });
+  skipBtn.addEventListener("click", () => {
+    const v = playingView();
+    if (v) control({ type: "skip", id: v.now.id });
+  });
+  shuffleBtn.addEventListener("click", () => {
+    if (playingView()) control({ type: "shuffle" });
+  });
+  repeatBtn.addEventListener("click", () => {
+    const v = playingView();
+    if (v) control({ type: "repeat", on: !v.looping });
+  });
 
   const sortable = Sortable.create(listEl, {
     handle: ".handle",

@@ -32,7 +32,14 @@ a.title:hover { text-decoration: underline; }
 .sortable-ghost { opacity: 0.4; }
 .empty { color: var(--muted); }
 #badge, #note { background: var(--note); padding: 8px 12px; border-radius: 6px; }
-@media (max-width: 480px) { .track { flex-wrap: wrap; } .meta { width: 100%; } }
+#controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+#controls button, .remove { background: none; border: 1px solid var(--line); color: var(--muted);
+                            border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
+#controls button.pressed { border-color: var(--accent); color: var(--accent); }
+#controls button[disabled], .remove[disabled] { opacity: 0.45; cursor: not-allowed; }
+.remove { padding: 0 6px; font-size: 0.85rem; line-height: 1.6; margin-left: auto; }
+.track.now .remove { display: none; }
+@media (max-width: 480px) { .track { flex-wrap: wrap; } .meta { width: 100%; order: 1; } }
 
 .links { margin: 0 0 1rem; }
 .links a { color: var(--accent); }

@@ -496,4 +496,7 @@ pub const AUDITLOG_ONLY_OLDER: &str =
 /// Shown where the free 24-hour window hid older history: in `/auditlog`
 /// and on the dashboard's history page.
 pub const PREMIUM_HISTORY: &str = "Older history is a premium feature.";
+/// Shown on the dashboard's queue page to free servers, under the disabled
+/// controls.
+pub const PREMIUM_CONTROLS: &str = "Dashboard controls are a premium feature.";
 pub const PATREON_URL: &str = "https://patreon.com/CrackTunes";
