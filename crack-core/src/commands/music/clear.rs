@@ -31,7 +31,7 @@ pub async fn clear(
 pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;
     let done = ops::clear(&cx).await.map_err(CrackedError::from)?;
-    send_reply(&ctx, done.outcome.message(), true).await?;
+    send_reply(&ctx, done.outcome().message(), true).await?;
     done.settle_now(&cx).await;
     Ok(())
 }

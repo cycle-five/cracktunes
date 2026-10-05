@@ -48,7 +48,7 @@ pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;
     let done = ops::shuffle(&cx).await.map_err(CrackedError::from)?;
-    send_reply(&ctx, done.outcome.message(), true).await?;
+    send_reply(&ctx, done.outcome().message(), true).await?;
     done.settle_now(&cx).await;
     Ok(())
 }

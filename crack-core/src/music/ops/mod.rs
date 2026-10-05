@@ -19,7 +19,8 @@ use crate::{
     handlers::track_end::update_queue_messages,
     messaging::{
         messages::{
-            FAIL_LOOP, FAIL_PAUSE, FAIL_SEEK_OP, OP_TRACK_ABSENT, OP_TRACK_PLAYING, OP_TRACK_STALE,
+            FAIL_LOOP, FAIL_PAUSE, FAIL_SEEK_OP, FAIL_SEEK_TIMED_OUT, FAIL_SKIP, OP_TRACK_ABSENT,
+            OP_TRACK_PLAYING, OP_TRACK_STALE,
         },
         status,
     },
@@ -61,6 +62,7 @@ pub enum Failure {
     Pause,
     Resume,
     Loop,
+    Skip,
 }
 
 /// Why an op did nothing.
@@ -86,6 +88,8 @@ pub enum OpRefused {
     Invalid(&'static str),
     Failed(Failure),
     SeekFailed(songbird::tracks::ControlError),
+    /// The driver did not confirm the seek within [`SEEK_TIMEOUT`].
+    SeekTimedOut,
     /// Leaving voice failed for a reason other than there being no call.
     LeaveFailed(songbird::error::JoinError),
 }
@@ -110,7 +114,9 @@ impl From<OpRefused> for CrackedError {
             OpRefused::Failed(Failure::Pause) => CrackedError::Other(FAIL_PAUSE),
             OpRefused::Failed(Failure::Resume) => CrackedError::FailedResume,
             OpRefused::Failed(Failure::Loop) => CrackedError::Other(FAIL_LOOP),
+            OpRefused::Failed(Failure::Skip) => CrackedError::Other(FAIL_SKIP),
             OpRefused::SeekFailed(_) => CrackedError::Other(FAIL_SEEK_OP),
+            OpRefused::SeekTimedOut => CrackedError::Other(FAIL_SEEK_TIMED_OUT),
             OpRefused::LeaveFailed(e) => e.into(),
         }
     }
@@ -125,9 +131,10 @@ pub enum Target {
 }
 
 /// What Discord needs refreshed after an op. Decided by the op's effect,
-/// never by the surface (spec §1 "Settling").
+/// never by the surface (spec §1 "Settling"). Not `Copy`: a settle is owed
+/// once, and copying one is how it would be owed twice or silently dropped.
 #[must_use = "settle it: the surface owes Discord a refresh"]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Settle {
     QueueMessages,
     NowPlaying,
@@ -175,22 +182,54 @@ impl Settle {
     }
 }
 
-/// An op's outcome, how to settle it, and the call it ran on.
+/// An op's outcome, how to settle it, and the call it ran on. The fields are
+/// private so a surface cannot settle with the wrong call or forget to: it
+/// reads the outcome with [`Done::outcome`], then settles with
+/// [`Done::settle_now`] or [`Done::settle_after`], which hand the outcome back.
 #[must_use = "settle it: call settle_now or settle_after"]
 pub struct Done<T> {
-    pub outcome: T,
-    pub settle: Settle,
-    pub call: Option<Arc<Mutex<Call>>>,
+    outcome: T,
+    settle: Settle,
+    call: Option<Arc<Mutex<Call>>>,
 }
 
 impl<T> Done<T> {
+    /// Settle with no anchor.
     pub async fn settle_now(self, cx: &OpCx) -> T {
         self.settle.now(cx, self.call.as_ref()).await;
         self.outcome
     }
+
+    /// Settle below `anchor`, the surface's visible reply.
     pub async fn settle_after(self, cx: &OpCx, anchor: Option<(GenericChannelId, MessageId)>) -> T {
         self.settle.after(cx, self.call.as_ref(), anchor).await;
         self.outcome
+    }
+
+    /// The outcome, for a surface that renders its reply before it settles.
+    pub fn outcome(&self) -> &T {
+        &self.outcome
+    }
+
+    /// How this op must be settled. Read-only, for tests and dispatchers that
+    /// need to know; settling still goes through `settle_now`/`settle_after`.
+    pub fn settle(&self) -> &Settle {
+        &self.settle
+    }
+
+    /// The parts, for a surface that settles somewhere else (in the background,
+    /// as `remote::move_by_id` does). The [`Settle`] is still owed.
+    pub fn into_parts(self) -> (T, Settle, Option<Arc<Mutex<Call>>>) {
+        (self.outcome, self.settle, self.call)
+    }
+
+    /// The same settle and call, with the outcome mapped.
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Done<U> {
+        Done {
+            outcome: f(self.outcome),
+            settle: self.settle,
+            call: self.call,
+        }
     }
 }
 
@@ -244,9 +283,28 @@ mod test {
         assert!(matches!(begin(&cx(d)).await, Err(OpRefused::NotConnected)));
     }
 
+    #[tokio::test]
+    async fn map_keeps_the_settle_and_the_call() {
+        let call = super::test_support::offline_call();
+        let done = Done {
+            outcome: 1,
+            settle: Settle::QueueMessages,
+            call: Some(call.clone()),
+        }
+        .map(|n| n + 1);
+        assert_eq!(*done.outcome(), 2);
+        let (outcome, settle, kept) = done.into_parts();
+        assert_eq!((outcome, settle), (2, Settle::QueueMessages));
+        assert!(Arc::ptr_eq(&kept.expect("map keeps the call"), &call));
+    }
+
     #[test]
     fn refusals_map_to_the_errors_the_commands_replied_with() {
-        use crate::messaging::messages::FAIL_LOOP;
+        use crate::messaging::messages::{
+            FAIL_LOOP, FAIL_SEEK_OP, FAIL_SEEK_TIMED_OUT, FAIL_SKIP, OP_TRACK_ABSENT,
+            OP_TRACK_PLAYING, OP_TRACK_STALE,
+        };
+        use songbird::{error::JoinError, tracks::ControlError};
         let cases: Vec<(OpRefused, String)> = vec![
             (
                 OpRefused::NotConnected,
@@ -272,6 +330,34 @@ mod test {
             (
                 OpRefused::Failed(Failure::Loop),
                 CrackedError::Other(FAIL_LOOP).to_string(),
+            ),
+            (
+                OpRefused::Failed(Failure::Skip),
+                CrackedError::Other(FAIL_SKIP).to_string(),
+            ),
+            (
+                OpRefused::Absent,
+                CrackedError::Other(OP_TRACK_ABSENT).to_string(),
+            ),
+            (
+                OpRefused::NowPlaying,
+                CrackedError::Other(OP_TRACK_PLAYING).to_string(),
+            ),
+            (
+                OpRefused::Stale,
+                CrackedError::Other(OP_TRACK_STALE).to_string(),
+            ),
+            (
+                OpRefused::SeekFailed(ControlError::Finished),
+                CrackedError::Other(FAIL_SEEK_OP).to_string(),
+            ),
+            (
+                OpRefused::SeekTimedOut,
+                CrackedError::Other(FAIL_SEEK_TIMED_OUT).to_string(),
+            ),
+            (
+                OpRefused::LeaveFailed(JoinError::TimedOut),
+                CrackedError::from(JoinError::TimedOut).to_string(),
             ),
             (
                 OpRefused::Invalid("Index for `at` out of bounds"),

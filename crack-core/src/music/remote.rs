@@ -12,7 +12,7 @@ use crate::{
     Data,
 };
 use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
-use songbird::{tracks::TrackHandle, Call};
+use songbird::{input::AuxMetadata, tracks::TrackHandle, Call};
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -100,22 +100,28 @@ pub(crate) async fn summarize(handles: &[TrackHandle]) -> Vec<TrackSummary> {
     for handle in handles {
         // No metadata is a blank row, not an error: `/queue` does the same.
         let meta = get_track_handle_metadata(handle).await.unwrap_or_default();
-        let requester = get_requesting_user(handle).await.ok().map(|u| {
-            if u.get() == 1 {
-                Requester::Auto
-            } else {
-                Requester::User(u)
-            }
-        });
-        out.push(TrackSummary {
-            id: handle.uuid(),
-            title: meta.title,
-            url: meta.source_url,
-            duration: meta.duration,
-            requester,
-        });
+        out.push(summary_of(handle, meta).await);
     }
     out
+}
+
+/// One handle's summary from metadata already read. Infallible: a missing
+/// requester is `None`, as missing metadata is a blank row.
+pub(crate) async fn summary_of(handle: &TrackHandle, meta: AuxMetadata) -> TrackSummary {
+    let requester = get_requesting_user(handle).await.ok().map(|u| {
+        if u.get() == 1 {
+            Requester::Auto
+        } else {
+            Requester::User(u)
+        }
+    });
+    TrackSummary {
+        id: handle.uuid(),
+        title: meta.title,
+        url: meta.source_url,
+        duration: meta.duration,
+        requester,
+    }
 }
 
 /// The voice channel the bot is connected to in `guild_id`, if any.
@@ -176,13 +182,13 @@ pub async fn move_by_id(
     };
     match ops::move_track(&cx, ops::Target::Id(id), to_upcoming).await {
         Ok(done) => {
-            let to = done.outcome.to;
+            let (moved, settle, call) = done.into_parts();
             // Settled in the background, as before: queue messages are edited
             // one by one under Discord's rate limit; the move is done regardless.
             tokio::spawn(async move {
-                done.settle_now(&cx).await;
+                settle.now(&cx, call.as_ref()).await;
             });
-            Ok(to)
+            Ok(moved.to)
         },
         Err(ops::OpRefused::GameInProgress) => Err(MoveRefused::GameInProgress),
         Err(ops::OpRefused::NotConnected) => Err(MoveRefused::NotPlaying),

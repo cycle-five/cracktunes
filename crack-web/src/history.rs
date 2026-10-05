@@ -23,7 +23,7 @@ pub const ROLE_TTL: Duration = Duration::from_secs(300);
 
 pub const BAD_USER: &str = "user must be a Discord user id";
 pub const BAD_ACTION: &str =
-    "action must be one of add, remove, move, skip, clear, shuffle, stop, pause, resume, leave";
+    "action must be one of add, remove, move, skip, clear, shuffle, stop, pause, resume, repeat, leave";
 pub const BAD_SOURCE: &str = "source must be one of slash, prefix, web, bot";
 pub const BAD_SINCE: &str = "since must look like 90m, 6h, 2d or 1w, at most 52 weeks";
 pub const BAD_CURSOR: &str = "before and after must be positive row ids";
@@ -283,6 +283,21 @@ mod test {
         assert_eq!(got.since, Some(chrono::Duration::hours(6)));
         assert_eq!(got.cursor, AuditCursor::After(40));
         assert_eq!(q("before=7").unwrap().cursor, AuditCursor::Before(7));
+    }
+
+    #[test]
+    fn every_recorded_action_is_accepted_and_named_in_the_refusal() {
+        for name in [
+            "add", "remove", "move", "skip", "clear", "shuffle", "stop", "pause", "resume",
+            "repeat", "leave",
+        ] {
+            let got = q(&format!("action={name}")).unwrap().action;
+            assert_eq!(got.map(ActionChoice::name), Some(name));
+            assert!(
+                BAD_ACTION.split([' ', ',']).any(|w| w == name),
+                "BAD_ACTION does not name {name}"
+            );
+        }
     }
 
     #[test]

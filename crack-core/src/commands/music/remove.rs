@@ -44,8 +44,10 @@ pub async fn remove_internal(
         None => Target::Index(b_index),
     };
     let done = ops::remove(&cx, target).await.map_err(CrackedError::from)?;
-    if done.outcome.count == 1 {
-        send_embed_response_poise(ctx, removed_embed(&done.outcome.first_meta)).await?;
+    let removed = done.outcome();
+    if removed.count == 1 {
+        let embed = removed_embed(&removed.first, removed.thumbnail.as_deref());
+        send_embed_response_poise(ctx, embed).await?;
     } else {
         send_reply(&ctx, CrackedMessage::RemoveMultiple, true).await?;
     }

@@ -69,10 +69,10 @@ pub(crate) async fn skip_on(
         let count = count.max(1).min(queue.len());
         drain_after_current(g, &handler, count - 1);
         // `force_skip_top_track` has no `Err` path today; a failure would be
-        // songbird refusing, which is `Failed(Pause)` as the brief allows.
+        // songbird refusing the skip.
         force_skip_top_track(g, &handler)
             .await
-            .map_err(|_| OpRefused::Failed(Failure::Pause))?;
+            .map_err(|_| OpRefused::Failed(Failure::Skip))?;
         (handler.queue().current(), count)
     };
     // 🔑 The Call lock is released: `summarize` reads track metadata.
@@ -128,18 +128,7 @@ pub async fn voteskip(cx: &OpCx, voter: UserId) -> Result<Done<Vote>, OpRefused>
         return Err(OpRefused::NothingPlaying);
     }
     match cast_vote(&cx.data, cx.guild_id, voter, skip_threshold(in_channel)).await {
-        Ok(()) => {
-            let Done {
-                outcome,
-                settle,
-                call,
-            } = skip_on(&g, &call, 1, None).await?;
-            Ok(Done {
-                outcome: Vote::Skipped(outcome),
-                settle,
-                call,
-            })
-        },
+        Ok(()) => Ok(skip_on(&g, &call, 1, None).await?.map(Vote::Skipped)),
         Err(missing) => Ok(Done {
             outcome: Vote::Voted { missing },
             settle: Settle::Nothing,
@@ -158,8 +147,8 @@ mod test {
         let (data, call, ids, mut rx) = queue_of(3).await;
         let g = guard(&data).await;
         let done = skip_on(&g, &call, 1, None).await.unwrap();
-        assert_eq!(done.settle, Settle::NowPlaying);
-        assert_eq!(done.outcome.now.as_ref().map(|t| t.id), Some(ids[1]));
+        assert_eq!(*done.settle(), Settle::NowPlaying);
+        assert_eq!(done.outcome().now.as_ref().map(|t| t.id), Some(ids[1]));
         assert_eq!(ids_of(&call).await, ids[1..].to_vec());
         assert!(matches!(
             recorded(&mut rx).as_slice(),
@@ -181,8 +170,18 @@ mod test {
         let g = guard(&data).await;
         let done = skip_on(&g, &call, 9, None).await.unwrap();
         assert!(ids_of(&call).await.is_empty());
-        assert_eq!(done.outcome.count, 2);
-        assert!(done.outcome.now.is_none());
+        assert_eq!(done.outcome().count, 2);
+        assert!(done.outcome().now.is_none());
+    }
+
+    #[tokio::test]
+    async fn skipping_zero_skips_one() {
+        let (data, call, ids, _) = queue_of(3).await;
+        let g = guard(&data).await;
+        let done = skip_on(&g, &call, 0, None).await.unwrap();
+        assert_eq!(done.outcome().count, 1);
+        assert_eq!(done.outcome().now.as_ref().map(|t| t.id), Some(ids[1]));
+        assert_eq!(ids_of(&call).await, ids[1..].to_vec());
     }
 
     #[tokio::test]

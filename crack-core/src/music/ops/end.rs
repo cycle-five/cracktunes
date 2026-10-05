@@ -27,9 +27,13 @@ impl Left {
 
 /// Turns autoplay off, then stops everything. Settles `Finished`.
 pub async fn stop(cx: &OpCx) -> Result<Done<Stopped>, OpRefused> {
-    // As /stop always did: autoplay off first, so the emptied queue is not refilled.
-    cx.data.set_autoplay(cx.guild_id, false).await;
+    // As /stop always did: a refusal (a game, no call) changes nothing, so
+    // the lease and the call come first. Then autoplay goes off before the
+    // queue is emptied, so the End that `stop_queue` fires does not refill it.
+    // `set_autoplay` is a settings write, not Discord HTTP: the lease may
+    // be held across it.
     let (g, call) = begin(cx).await?;
+    cx.data.set_autoplay(cx.guild_id, false).await;
     stop_on(&g, &call).await
 }
 
@@ -84,7 +88,10 @@ mod test {
         let (data, call, _, mut rx) = queue_of(3).await;
         let g = guard(&data).await;
         let d = stop_on(&g, &call).await.unwrap();
-        assert_eq!((d.outcome.removed, d.settle), (3, Settle::Finished));
+        assert_eq!(
+            (d.outcome().removed, d.settle().clone()),
+            (3, Settle::Finished)
+        );
         assert!(ids_of(&call).await.is_empty());
         assert!(matches!(
             recorded(&mut rx).as_slice(),
@@ -109,11 +116,11 @@ mod test {
     }
 
     #[tokio::test]
-    async fn stop_with_no_call_turns_autoplay_off_and_is_not_connected() {
+    async fn stop_with_no_call_is_not_connected_and_leaves_autoplay_alone() {
         let cx = cx_without_call();
         cx.data.set_autoplay(cx.guild_id, true).await;
         assert!(matches!(stop(&cx).await, Err(OpRefused::NotConnected)));
-        assert!(!cx.data.get_autoplay(cx.guild_id).await);
+        assert!(cx.data.get_autoplay(cx.guild_id).await);
     }
 
     #[tokio::test]

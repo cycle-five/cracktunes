@@ -31,10 +31,13 @@ pub async fn voteskip(
     let done = ops::voteskip(&cx, ctx.get_user_id())
         .await
         .map_err(CrackedError::from)?;
-    match &done.outcome {
+    let anchor = match done.outcome() {
         Vote::Skipped(s) => {
-            // Never anchored, so it does not now.
-            send_skip_reply(ctx, s.message(), false).await?;
+            // Always visible, so it anchors the status, as /skip's visible reply
+            // does: the status must land below it even before its gateway echo
+            // reaches the cache.
+            let msg = send_skip_reply(ctx, s.message(), false).await?;
+            Some((msg.channel_id, msg.id))
         },
         Vote::Voted { missing } => {
             ctx.send_reply_embed(CrackedMessage::VoteSkip {
@@ -45,8 +48,10 @@ pub async fn voteskip(
             .into_message()
             .await
             .map_err(CrackedError::from)?;
+            // A counted vote settles `Nothing`; there is nothing to anchor.
+            None
         },
-    }
-    done.settle_now(&cx).await;
+    };
+    done.settle_after(&cx, anchor).await;
     Ok(())
 }

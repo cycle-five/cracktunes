@@ -8,19 +8,18 @@ use crate::{
     },
     music::{
         queue::{clear_from, remove_at, shuffle_behind_current},
-        remote::{summarize, MoveRefused, TrackSummary},
+        remote::{summary_of, MoveRefused, TrackSummary},
     },
     utils::get_track_handle_metadata,
 };
 use serenity::all::CreateEmbed;
-use songbird::input::AuxMetadata;
 
-/// What a remove took out: the first track (with its metadata, for the
-/// embed) and how many went.
+/// What a remove took out: the first track (and its thumbnail, for the
+/// embed) and how many went. No songbird types: crack-web reads this.
 #[derive(Debug)]
 pub struct Removed {
     pub first: TrackSummary,
-    pub first_meta: AuxMetadata,
+    pub thumbnail: Option<String>,
     pub count: usize,
 }
 
@@ -52,18 +51,15 @@ impl Cleared {
 }
 
 /// The single-track `/remove` embed; never panics on missing metadata.
-pub fn removed_embed(meta: &AuxMetadata) -> CreateEmbed<'static> {
-    let title = meta
-        .title
-        .clone()
-        .unwrap_or_else(|| QUEUE_NO_TITLE.to_owned());
-    let value = match &meta.source_url {
+pub fn removed_embed(first: &TrackSummary, thumbnail: Option<&str>) -> CreateEmbed<'static> {
+    let title = first.title.as_deref().unwrap_or(QUEUE_NO_TITLE);
+    let value = match &first.url {
         Some(url) => format!("[**{title}**]({url})"),
         None => format!("**{title}**"),
     };
     let embed = CreateEmbed::default().field(REMOVED_QUEUE, value, false);
-    match &meta.thumbnail {
-        Some(t) => embed.thumbnail(t.clone(), None),
+    match thumbnail {
+        Some(t) => embed.thumbnail(t.to_owned(), None),
         None => embed,
     }
 }
@@ -131,16 +127,15 @@ pub(crate) async fn remove_on(
         (first, until - start + 1)
     };
     // 🔑 The Call lock is released: reading metadata awaits. Removing a
-    // track does not drop its metadata.
-    let first_meta = get_track_handle_metadata(&first).await.unwrap_or_default();
-    let first = summarize(std::slice::from_ref(&first))
-        .await
-        .pop()
-        .ok_or(OpRefused::Absent)?;
+    // track does not drop its metadata. Nothing below may fail: the removal
+    // is done and recorded, so it is reported, metadata or not.
+    let meta = get_track_handle_metadata(&first).await.unwrap_or_default();
+    let thumbnail = meta.thumbnail.clone();
+    let first = summary_of(&first, meta).await;
     Ok(Done {
         outcome: Removed {
             first,
-            first_meta,
+            thumbnail,
             count,
         },
         settle: Settle::QueueMessages,
@@ -261,9 +256,10 @@ mod test {
         let g = guard(&data).await;
         let d = remove_on(&g, &call, Target::Index(2)).await.unwrap();
         assert_eq!(
-            (d.outcome.first.id, d.outcome.count, d.settle),
+            (d.outcome().first.id, d.outcome().count, d.settle().clone()),
             (ids[2], 1, Settle::QueueMessages)
         );
+        assert_eq!(d.outcome().first.title.as_deref(), Some("t2"));
         assert_eq!(ids_of(&call).await, vec![ids[0], ids[1], ids[3], ids[4]]);
         let _ = remove_on(&g, &call, Target::Range(1, 2)).await.unwrap();
         assert_eq!(ids_of(&call).await, vec![ids[0], ids[4]]);
@@ -309,7 +305,14 @@ mod test {
 
     #[test]
     fn the_removed_embed_survives_missing_metadata() {
-        let _ = removed_embed(&songbird::input::AuxMetadata::default());
+        let blank = TrackSummary {
+            id: uuid::Uuid::nil(),
+            title: None,
+            url: None,
+            duration: None,
+            requester: None,
+        };
+        let _ = removed_embed(&blank, None);
     }
 
     #[tokio::test]
@@ -324,7 +327,10 @@ mod test {
         let mut want = ids.clone();
         want.sort();
         assert_eq!(sorted, want);
-        assert_eq!((d.outcome.count, d.settle), (5, Settle::QueueMessages));
+        assert_eq!(
+            (d.outcome().count, d.settle().clone()),
+            (5, Settle::QueueMessages)
+        );
         assert!(matches!(
             recorded(&mut rx).as_slice(),
             [Action::Shuffle { count: 5 }]
@@ -336,10 +342,13 @@ mod test {
         let (data, call, ids, _) = queue_of(4).await;
         let g = guard(&data).await;
         let d = move_on(&g, &call, Target::Index(3), 1).await.unwrap();
-        assert_eq!((d.outcome.to, d.settle), (1, Settle::QueueMessages));
+        assert_eq!(
+            (d.outcome().to, d.settle().clone()),
+            (1, Settle::QueueMessages)
+        );
         assert_eq!(ids_of(&call).await, vec![ids[0], ids[3], ids[1], ids[2]]);
         let d = move_on(&g, &call, Target::Id(ids[1]), 99).await.unwrap();
-        assert_eq!(d.outcome.to, 2);
+        assert_eq!(d.outcome().to, 2);
         assert_eq!(ids_of(&call).await, vec![ids[0], ids[3], ids[2], ids[1]]);
         assert!(matches!(
             move_on(&g, &call, Target::Index(0), 1).await,
@@ -360,7 +369,7 @@ mod test {
         let (data, call, ids, _) = queue_of(4).await;
         let g = guard(&data).await;
         let d = clear_on(&g, &call).await.unwrap();
-        assert_eq!(d.outcome.removed, 3);
+        assert_eq!(d.outcome().removed, 3);
         assert_eq!(ids_of(&call).await, vec![ids[0]]);
         let (data, call, _, _) = queue_of(1).await;
         let g = guard(&data).await;

@@ -8,12 +8,18 @@ use crate::{
         queue::{pause_queue, resume_queue},
     },
 };
-use songbird::tracks::{LoopState, TrackHandle};
+use songbird::tracks::{LoopState, TrackCallback, TrackHandle};
 use std::time::Duration;
 use tokio::time::timeout;
 
-/// A stalled driver must not stall `/volume`.
+/// A stalled driver must not stall `/volume`, nor the repeat toggle, which
+/// asks the track while it holds the lease.
 const TRACK_INFO_TIMEOUT: Duration = Duration::from_secs(1);
+/// How long a seek may take to confirm. Seeking a YouTube or HTTP input can
+/// re-request the stream, which takes seconds; the lease is released before
+/// this wait, so only `/seek` itself waits it out. Past it, the seek is
+/// reported as unfinished ([`OpRefused::SeekTimedOut`]).
+pub const SEEK_TIMEOUT: Duration = Duration::from_secs(10);
 /// The track volume shown when the track cannot be asked.
 const FALLBACK_TRACK_VOLUME: f32 = 0.1;
 
@@ -142,9 +148,10 @@ pub(crate) async fn repeat_on(
     let on = match on {
         Some(on) => on,
         None => {
-            let info = track
-                .get_info()
+            // 🔑 Under the lease: a stalled driver must not hold it forever.
+            let info = timeout(TRACK_INFO_TIMEOUT, track.get_info())
                 .await
+                .map_err(|_| OpRefused::Failed(Failure::Loop))?
                 .map_err(|_| OpRefused::Failed(Failure::Loop))?;
             info.loops != LoopState::Infinite
         },
@@ -163,47 +170,67 @@ pub(crate) async fn repeat_on(
     })
 }
 
+/// Seek the playing track. The lease covers only sending the seek: the wait
+/// for the driver to confirm it (up to [`SEEK_TIMEOUT`]) holds nothing, so
+/// `/play`, autopause and every other op do not queue behind a slow input.
 pub async fn seek(cx: &OpCx, to: Duration) -> Result<Done<Sought>, OpRefused> {
     let (g, call) = begin(cx).await?;
-    seek_on(&g, &call, to).await
+    seek_on(g, &call, to, SEEK_TIMEOUT).await
 }
 
+/// Takes the guard by value: it is dropped once the seek is sent, before
+/// the wait.
 pub(crate) async fn seek_on(
+    g: QueueGuard,
+    call: &Arc<Mutex<Call>>,
+    to: Duration,
+    limit: Duration,
+) -> Result<Done<Sought>, OpRefused> {
+    let callback = seek_send(&g, call, to).await?;
+    // 🔑 Release the lease before waiting on the driver.
+    drop(g);
+    match timeout(limit, callback.result_async()).await {
+        Ok(Ok(_)) => Ok(Done {
+            outcome: Sought { to },
+            settle: Settle::Nothing,
+            call: Some(call.clone()),
+        }),
+        Ok(Err(e)) => Err(OpRefused::SeekFailed(e)),
+        Err(_) => Err(OpRefused::SeekTimedOut),
+    }
+}
+
+/// Send the seek under the lease; the returned callback is awaited without it.
+pub(crate) async fn seek_send(
     _g: &QueueGuard,
     call: &Arc<Mutex<Call>>,
     to: Duration,
-) -> Result<Done<Sought>, OpRefused> {
+) -> Result<TrackCallback<Duration>, OpRefused> {
     let track = call
         .lock()
         .await
         .queue()
         .current()
         .ok_or(OpRefused::NothingPlaying)?;
-    track
-        .seek(to)
-        .result_async()
-        .await
-        .map_err(OpRefused::SeekFailed)?;
-    Ok(Done {
-        outcome: Sought { to },
-        settle: Settle::Nothing,
-        call: Some(call.clone()),
-    })
+    Ok(track.seek(to))
 }
 
 /// Set the volume to `percent`% in settings and on the playing track.
+/// Volume changes no queue order, so it takes no lease: a `/gp` game must
+/// not block it (the old `/volume` never took one either).
 pub async fn volume(cx: &OpCx, percent: u32) -> Result<Done<VolumeSet>, OpRefused> {
-    let (g, call) = begin(cx).await?;
-    volume_on(&g, &call, &cx.data, percent).await
+    let call = connected_call(&cx.data.songbird, cx.guild_id, None)
+        .await
+        .ok_or(OpRefused::NotConnected)?;
+    volume_on(&call, &cx.data, cx.guild_id, percent).await
 }
 
 pub(crate) async fn volume_on(
-    g: &QueueGuard,
     call: &Arc<Mutex<Call>>,
     data: &Data,
+    guild: GuildId,
     percent: u32,
 ) -> Result<Done<VolumeSet>, OpRefused> {
-    let guild = g.guild_id();
     let new = percent as f32 / 100.0;
     let old = data.set_volume(guild, new).await;
     let current = call.lock().await.queue().current();
@@ -254,9 +281,9 @@ mod test {
         let (data, call, _, mut rx) = queue_of(2).await;
         let g = guard(&data).await;
         let done = pause_on(&g, &call).await.unwrap();
-        assert_eq!(done.settle, Settle::Nothing);
+        assert_eq!(*done.settle(), Settle::Nothing);
         let done = resume_on(&g, &call).await.unwrap();
-        assert_eq!(done.settle, Settle::Nothing);
+        assert_eq!(*done.settle(), Settle::Nothing);
         assert_eq!(recorded(&mut rx), vec![Action::Pause, Action::Resume]);
     }
 
@@ -279,8 +306,14 @@ mod test {
     async fn repeat_sets_explicitly_and_records_what_it_set() {
         let (data, call, _, mut rx) = queue_of(1).await;
         let g = guard(&data).await;
-        assert!(repeat_on(&g, &call, Some(true)).await.unwrap().outcome.on);
-        assert!(!repeat_on(&g, &call, Some(false)).await.unwrap().outcome.on);
+        assert!(repeat_on(&g, &call, Some(true)).await.unwrap().outcome().on);
+        assert!(
+            !repeat_on(&g, &call, Some(false))
+                .await
+                .unwrap()
+                .outcome()
+                .on
+        );
         assert_eq!(
             recorded(&mut rx),
             vec![Action::Repeat { on: true }, Action::Repeat { on: false }]
@@ -328,10 +361,9 @@ mod test {
             .await
             .insert(GUILD, GuildSettings::default());
         data.set_volume(GUILD, 0.3).await;
-        let g = guard(&data).await;
-        let done = volume_on(&g, &call, &data, 70).await.unwrap();
-        assert_eq!(done.settle, Settle::Nothing);
-        assert_eq!(done.outcome, VolumeSet { old: 0.3, new: 0.7 });
+        let done = volume_on(&call, &data, GUILD, 70).await.unwrap();
+        assert_eq!(*done.settle(), Settle::Nothing);
+        assert_eq!(*done.outcome(), VolumeSet { old: 0.3, new: 0.7 });
         assert_eq!(data.get_volume(GUILD).await.0, 0.7);
         assert!(recorded(&mut rx).is_empty());
     }
@@ -341,8 +373,62 @@ mod test {
         let (data, call, _, _) = queue_of(0).await;
         let g = guard(&data).await;
         assert!(matches!(
-            seek_on(&g, &call, Duration::from_secs(5)).await,
+            seek_on(g, &call, Duration::from_secs(5), SEEK_TIMEOUT).await,
             Err(OpRefused::NothingPlaying)
+        ));
+    }
+
+    /// Fails instead of hanging when a guarded wait never ends.
+    const HANG_GUARD: Duration = Duration::from_secs(5);
+
+    #[tokio::test]
+    async fn a_seek_releases_the_lease_before_it_waits() {
+        // Offline, the driver never answers the seek: the wait runs out.
+        let (data, call, _, _) = queue_of(1).await;
+        let g = guard(&data).await;
+        let limit = Duration::from_millis(1500);
+        let seek = tokio::spawn({
+            let call = call.clone();
+            async move { seek_on(g, &call, Duration::from_secs(5), limit).await }
+        });
+        // The lease must be free well before the seek's wait ends.
+        let next = timeout(Duration::from_millis(750), guard(&data)).await;
+        assert!(next.is_ok(), "the seek held the lease while it waited");
+        drop(next);
+        let got = timeout(HANG_GUARD, seek).await.expect("seek hung").unwrap();
+        assert!(
+            matches!(got, Err(OpRefused::SeekTimedOut)),
+            "{:?}",
+            got.as_ref().err()
+        );
+    }
+
+    #[tokio::test]
+    async fn the_repeat_toggle_times_out_instead_of_hanging() {
+        // Offline, `get_info` never answers; the toggle must give up on its own.
+        let (data, call, _, mut rx) = queue_of(1).await;
+        let g = guard(&data).await;
+        let got = timeout(HANG_GUARD, repeat_on(&g, &call, None))
+            .await
+            .expect("the repeat toggle hung under the lease");
+        assert!(
+            matches!(got, Err(OpRefused::Failed(Failure::Loop))),
+            "{:?}",
+            got.as_ref().err()
+        );
+        assert!(recorded(&mut rx).is_empty());
+    }
+
+    #[tokio::test]
+    async fn volume_is_not_blocked_by_a_game() {
+        let cx = cx_without_call();
+        cx.data
+            .claim_playback(cx.guild_id, crate::music::PlaybackOwner::Game)
+            .unwrap();
+        // A lease would refuse GameInProgress; volume must reach the call lookup.
+        assert!(matches!(
+            volume(&cx, 50).await,
+            Err(OpRefused::NotConnected)
         ));
     }
 

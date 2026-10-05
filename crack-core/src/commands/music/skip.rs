@@ -33,7 +33,7 @@ pub async fn skip(
         .await
         .map_err(CrackedError::from)?;
     // The op holds no lease or Call lock by now; the reply is a Discord round trip.
-    let reply = send_skip_reply(ctx, done.outcome.message(), private).await?;
+    let reply = send_skip_reply(ctx, done.outcome().message(), private).await?;
     // A visible reply is the floor: its gateway echo may not have reached
     // the cache yet, and the status must still land below it. An ephemeral
     // reply is not a channel message and must not move the status.
