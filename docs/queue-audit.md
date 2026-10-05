@@ -7,7 +7,7 @@ the details in `detail` as JSON). Design:
 `docs/superpowers/specs/2026-09-30-queue-audit-log-design.md`.
 
 Not recorded: a track ending on its own (see `play_log`); refused attempts; volume,
-seek, repeat and the autoplay settings. Without a database, events go to the bot's
+seek and the autoplay settings. Without a database, events go to the bot's
 log at `info` as `queue audit (no database)`. A full writer channel drops an event
 with a `warn`; commands never wait on the log.
 
@@ -19,6 +19,14 @@ to 24 per batch), not one row for the whole playlist.
 `command = 'gp'`, member-issued ones carry the qualified name (e.g. `gp start`). They
 carry the round's song titles, so any reader shown to players must hide them while the
 guild's game is running.
+
+Repeat changes are recorded as action `repeat`, with detail
+`{"action":"repeat","on":true}` (`on` is the new setting).
+
+Dashboard actions record `command` as `dashboard <op>` (e.g. `dashboard move`,
+`dashboard skip`); it used to be `dashboard move` for all of them. Every user-initiated
+change is made through `music::ops`, and clippy bans calling the `music::queue`
+primitives from anywhere else (`/gp` and autopause are the two exempt callers).
 
 ## Example queries
 
