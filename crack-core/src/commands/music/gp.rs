@@ -2287,6 +2287,7 @@ async fn gp_send(
 /// failed send leaves the guild with a game that no timer and no track handler
 /// will ever advance, while [`GP_BLOCKED_COMMANDS`] keeps refusing its music
 /// commands until somebody thinks to run `/gp end`.
+#[expect(clippy::disallowed_methods, reason = "/gp owns playback as PlaybackOwner::Game and interleaves these with round state")]
 async fn gp_abort(pb: &GpPlayback, text_channel: GenericChannelId, reason: &str) {
     if pb.data.gp_remove(pb.guild_id).is_none() {
         return;
@@ -3015,6 +3016,7 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
     guild_only,
     check = "cmd_check_music"
 )]
+#[expect(clippy::disallowed_methods, reason = "/gp owns playback as PlaybackOwner::Game and interleaves these with round state")]
 pub async fn gp_start(
     ctx: Context<'_>,
     #[description = "Prompt category (or Mixed)."] category: GpCategory,
@@ -3322,6 +3324,7 @@ pub async fn gp_close(ctx: Context<'_>) -> Result<(), Error> {
     guild_only,
     check = "cmd_check_music"
 )]
+#[expect(clippy::disallowed_methods, reason = "/gp owns playback as PlaybackOwner::Game and interleaves these with round state")]
 pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
@@ -3453,6 +3456,7 @@ pub async fn gp_voteskip(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[cfg(not(tarpaulin_include))]
+#[expect(clippy::disallowed_methods, reason = "/gp owns playback as PlaybackOwner::Game and interleaves these with round state")]
 async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();

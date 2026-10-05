@@ -76,6 +76,7 @@ pub async fn pause(cx: &OpCx) -> Result<Done<Paused>, OpRefused> {
     pause_on(&g, &call).await
 }
 
+#[expect(clippy::disallowed_methods, reason = "music::ops is where these are orchestrated")]
 pub(crate) async fn pause_on(
     g: &QueueGuard,
     call: &Arc<Mutex<Call>>,
@@ -97,6 +98,7 @@ pub async fn resume(cx: &OpCx) -> Result<Done<Resumed>, OpRefused> {
     resume_on(&g, &call).await
 }
 
+#[expect(clippy::disallowed_methods, reason = "music::ops is where these are orchestrated")]
 pub(crate) async fn resume_on(
     g: &QueueGuard,
     call: &Arc<Mutex<Call>>,

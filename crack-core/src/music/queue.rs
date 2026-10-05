@@ -1276,6 +1276,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn each_primitive_records_exactly_what_it_did() {
         let (data, call, ids, mut rx) = queue_of(5).await;
         let guard = data
@@ -1317,6 +1318,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn draining_after_the_current_track_records_a_clear() {
         let (data, call, _ids, mut rx) = queue_of(4).await;
         let guard = data
@@ -1377,6 +1379,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn no_ops_record_nothing() {
         let (data, call, _ids, mut rx) = queue_of(1).await;
         let guard = data
@@ -1404,6 +1407,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn skipping_records_the_track_that_was_playing() {
         let (data, call, _ids, mut rx) = queue_of(2).await;
         let guard = data
@@ -1422,6 +1426,7 @@ mod test {
     /// `current().unwrap()`, which the user never sees and the log records only
     /// as a backtrace.
     #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn skipping_an_already_empty_queue_is_a_no_op_not_a_panic() {
         let data = Data(Arc::new(DataInner::default()));
         let guard = data
@@ -1448,6 +1453,7 @@ mod test {
             .collect()
     }
 
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn move_in(
         data: &Data,
         call: &Arc<Mutex<Call>>,
