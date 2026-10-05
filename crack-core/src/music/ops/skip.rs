@@ -49,7 +49,10 @@ pub async fn skip(
     skip_on(&g, &call, count, expect).await
 }
 
-#[expect(clippy::disallowed_methods, reason = "music::ops is where these are orchestrated")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "music::ops is where these are orchestrated"
+)]
 pub(crate) async fn skip_on(
     g: &QueueGuard,
     call: &Arc<Mutex<Call>>,

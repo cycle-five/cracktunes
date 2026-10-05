@@ -1,15 +1,15 @@
 //! Offline queues for op tests: tracks queue on a `Call::standalone`, nothing plays.
 use super::OpCx;
 use crate::music::{
-    PlaybackOwner,
     audit::{Action, Actor, AuditEvent, BotReason},
     queue::enqueue_input_back,
+    PlaybackOwner,
 };
 use crate::{Data, DataInner};
 use serenity::all::{Cache, GuildId, Http, UserId};
-use songbird::{Call, input::AuxMetadata};
+use songbird::{input::AuxMetadata, Call};
 use std::sync::Arc;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 
 pub const GUILD: GuildId = GuildId::new(1);
 

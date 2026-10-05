@@ -33,7 +33,10 @@ pub async fn stop(cx: &OpCx) -> Result<Done<Stopped>, OpRefused> {
     stop_on(&g, &call).await
 }
 
-#[expect(clippy::disallowed_methods, reason = "music::ops is where these are orchestrated")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "music::ops is where these are orchestrated"
+)]
 pub(crate) async fn stop_on(
     g: &QueueGuard,
     call: &Arc<Mutex<Call>>,

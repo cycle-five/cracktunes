@@ -1,11 +1,11 @@
 use crate::{
-    Context, Error,
     commands::cmd_check_music,
-    errors::{CrackedError, verify},
+    errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_NO_TRACK_PLAYING, FAIL_SECONDS_PARSING},
     music::ops::{self, OpCx, OpRefused},
     utils::send_reply,
+    Context, Error,
 };
 use std::{borrow::Cow, time::Duration};
 

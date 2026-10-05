@@ -75,7 +75,10 @@ pub async fn remove(cx: &OpCx, target: Target) -> Result<Done<Removed>, OpRefuse
     remove_on(&g, &call, target).await
 }
 
-#[expect(clippy::disallowed_methods, reason = "music::ops is where these are orchestrated")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "music::ops is where these are orchestrated"
+)]
 pub(crate) async fn remove_on(
     g: &QueueGuard,
     call: &Arc<Mutex<Call>>,
@@ -152,7 +155,10 @@ pub async fn shuffle(cx: &OpCx) -> Result<Done<Shuffled>, OpRefused> {
     shuffle_on(&g, &call).await
 }
 
-#[expect(clippy::disallowed_methods, reason = "music::ops is where these are orchestrated")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "music::ops is where these are orchestrated"
+)]
 pub(crate) async fn shuffle_on(
     g: &QueueGuard,
     call: &Arc<Mutex<Call>>,
@@ -177,7 +183,10 @@ pub async fn move_track(cx: &OpCx, target: Target, to: usize) -> Result<Done<Mov
     move_on(&g, &call, target, to).await
 }
 
-#[expect(clippy::disallowed_methods, reason = "music::ops is where these are orchestrated")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "music::ops is where these are orchestrated"
+)]
 pub(crate) async fn move_on(
     g: &QueueGuard,
     call: &Arc<Mutex<Call>>,
@@ -220,7 +229,10 @@ pub async fn clear(cx: &OpCx) -> Result<Done<Cleared>, OpRefused> {
     clear_on(&g, &call).await
 }
 
-#[expect(clippy::disallowed_methods, reason = "music::ops is where these are orchestrated")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "music::ops is where these are orchestrated"
+)]
 pub(crate) async fn clear_on(
     g: &QueueGuard,
     call: &Arc<Mutex<Call>>,

@@ -1,10 +1,10 @@
 use crate::{
-    Context, Error,
     commands::cmd_check_music,
     errors::CrackedError,
     messaging::message::CrackedMessage,
     music::ops::{self, OpCx},
     utils::send_reply,
+    Context, Error,
 };
 
 /// Stop the current track and clear the queue.

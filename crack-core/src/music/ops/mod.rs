@@ -15,7 +15,6 @@ pub use skip::*;
 pub(crate) mod test_support;
 
 use crate::{
-    CrackedError, Data,
     commands::music_utils::connected_call,
     handlers::track_end::update_queue_messages,
     messaging::{
@@ -24,7 +23,8 @@ use crate::{
         },
         status,
     },
-    music::{PlaybackOwner, QueueGuard, audit::Actor},
+    music::{audit::Actor, PlaybackOwner, QueueGuard},
+    CrackedError, Data,
 };
 use serenity::all::{Cache, GenericChannelId, GuildId, Http, MessageId};
 use songbird::Call;
@@ -216,9 +216,9 @@ pub(crate) async fn begin(cx: &OpCx) -> Result<(QueueGuard, Arc<Mutex<Call>>), O
 
 #[cfg(test)]
 mod test {
-    use super::test_support::{GUILD as G, cx_without_call};
+    use super::test_support::{cx_without_call, GUILD as G};
     use super::*;
-    use crate::{Data, DataInner, music::PlaybackOwner};
+    use crate::{music::PlaybackOwner, Data, DataInner};
     use serenity::all::UserId;
 
     fn cx(data: Data) -> OpCx {

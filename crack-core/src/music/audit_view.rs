@@ -876,7 +876,10 @@ mod test {
     fn repeat_is_described_and_filterable() {
         assert_eq!(what_text(&Action::Repeat { on: true }), "repeat on");
         assert_eq!(what_text(&Action::Repeat { on: false }), "repeat off");
-        assert_eq!(ActionChoice::from_name("repeat"), Some(ActionChoice::Repeat));
+        assert_eq!(
+            ActionChoice::from_name("repeat"),
+            Some(ActionChoice::Repeat)
+        );
         assert_eq!(ActionChoice::Repeat.name(), "repeat");
     }
 
