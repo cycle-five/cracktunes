@@ -2308,6 +2308,10 @@ async fn gp_abort(pb: &GpPlayback, text_channel: GenericChannelId, reason: &str)
     {
         Ok(guard) => {
             let handler = pb.call.lock().await;
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "gp_abort is cleanup as the game owner: it stops the queue of a game that failed"
+            )]
             stop_queue(&guard, &handler);
         },
         Err(e) => tracing::warn!(
@@ -3123,6 +3127,10 @@ pub async fn gp_start(
         let handler = call.lock().await;
         let non_empty = !handler.queue().is_empty();
         if non_empty {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "/gp start stops any leftover queue as the game owner before the first round"
+            )]
             stop_queue(&guard, &handler);
         }
         non_empty
@@ -3358,6 +3366,10 @@ pub async fn gp_skip(ctx: Context<'_>) -> Result<(), Error> {
             return Err(CrackedError::NothingPlaying.into());
         }
         // stop() fires TrackEvent::End, which is what advances the game.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "/gp skip is the game owner moving its own round on"
+        )]
         force_skip_top_track(&guard, &handler).await?;
     }
     ctx.send_reply(CrackedMessage::GpRoundSkipped, true).await?;
@@ -3494,6 +3506,10 @@ async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
             return Err(CrackedError::NothingPlaying);
         }
         // stop() fires TrackEvent::End, which is what advances the game.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "a /gp vote-skip is the game owner moving its own round on"
+        )]
         force_skip_top_track(&guard, &handler).await?;
     }
     Ok(answer)
@@ -3591,7 +3607,10 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
     // stopping the queue must reach any registered Call, connected or not:
     // songbird reuses a guild's Call on the next join, so tracks left in a
     // stranded one would start playing in whatever comes next.
-    #[allow(clippy::disallowed_methods)]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "raw Songbird::get on purpose (#507: cleanup reaches any registered Call), and the game owner stopping its own queue"
+    )]
     let was_playing = match data.songbird.get(guild_id) {
         Some(call) => {
             // `gp_park_for_end` only sets a flag -- the game stays in the map,

@@ -1,18 +1,12 @@
-use self::serenity::builder::CreateEmbed;
 use crate::{
     commands::cmd_check_music,
-    errors::{verify, CrackedError},
-    handlers::track_end::update_queue_messages,
+    errors::CrackedError,
     messaging::message::CrackedMessage,
-    messaging::messages::REMOVED_QUEUE,
-    music::{remove_at, PlaybackOwner},
+    music::ops::{self, removed_embed, OpCx, Target},
+    utils::send_embed_response_poise,
     utils::send_reply,
-    utils::{get_track_handle_metadata, send_embed_response_poise},
     Context, Error,
 };
-use poise::serenity_prelude as serenity;
-use songbird::tracks::TrackHandle;
-use std::cmp::min;
 
 /// Remove track(s) from the queue.
 #[cfg(not(tarpaulin_include))]
@@ -44,88 +38,19 @@ pub async fn remove_internal(
     b_index: usize,
     e_index: Option<usize>,
 ) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = ctx.data().songbird.clone();
-    let call = crate::commands::connected_call(&manager, guild_id, None)
-        .await
-        .ok_or(CrackedError::NotConnected)?;
-
-    let remove_index = b_index;
-    let remove_until = match e_index {
-        Some(arg) => arg,
-        None => remove_index,
+    let cx = OpCx::from_ctx(&ctx)?;
+    let target = match e_index {
+        Some(end) => Target::Range(b_index, end),
+        None => Target::Index(b_index),
     };
-
-    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
-    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
-    // more kindly. This one cannot be forgotten.
-    let guard = ctx
-        .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
-        .await?;
-    let handler = call.lock().await;
-    let queue = handler.queue().current_queue();
-
-    let queue_len = queue.len();
-    let remove_until = min(remove_until, queue_len.saturating_sub(1));
-
-    verify(queue_len > 1, CrackedError::QueueEmpty)?;
-    verify(
-        remove_index < queue_len,
-        CrackedError::NotInRange("index", remove_index as isize, 1, queue_len as isize),
-    )?;
-    verify(
-        remove_until >= remove_index,
-        CrackedError::NotInRange(
-            "until",
-            remove_until as isize,
-            remove_index as isize,
-            queue_len as isize,
-        ),
-    )?;
-
-    let track = queue.get(remove_index).unwrap();
-
-    // Removing repeatedly at `remove_index` shifts each later track down into
-    // it, so this reaches the same tracks as the old `v.drain(a..=b)` did.
-    for _ in remove_index..=remove_until {
-        remove_at(&guard, &handler, remove_index);
-    }
-    // The guard is held only for the mutation, not across the Discord round
-    // trips below (the reply, then `update_queue_messages`) -- see lease.rs.
-    drop(guard);
-
-    // refetch the queue after modification
-    let queue = handler.queue().current_queue();
-    drop(handler);
-
-    if remove_until == remove_index {
-        let embed = create_remove_enqueued_embed(track).await;
-        //send_embed_response(&ctx.serenity_context().http, interaction, embed).await?;
+    let done = ops::remove(&cx, target).await.map_err(CrackedError::from)?;
+    let removed = done.outcome();
+    if removed.count == 1 {
+        let embed = removed_embed(&removed.first, removed.thumbnail.as_deref());
         send_embed_response_poise(ctx, embed).await?;
     } else {
         send_reply(&ctx, CrackedMessage::RemoveMultiple, true).await?;
     }
-
-    update_queue_messages(&ctx.serenity_context().http, ctx.data(), &queue, guild_id).await;
+    done.settle_now(&cx).await;
     Ok(())
-}
-
-async fn create_remove_enqueued_embed(track: &TrackHandle) -> CreateEmbed<'_> {
-    let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
-    CreateEmbed::default()
-        .field(
-            REMOVED_QUEUE,
-            format!(
-                "[**{}**]({})",
-                metadata.title.unwrap(),
-                metadata.source_url.unwrap()
-            ),
-            false,
-        )
-        .thumbnail(metadata.thumbnail.unwrap(), None)
 }

@@ -1,10 +1,8 @@
 use crate::{
     commands::cmd_check_music,
-    errors::{verify, CrackedError},
-    messaging::message::CrackedMessage,
-    music::{queue::resume_queue, PlaybackOwner},
+    music::ops::{self, OpCx},
     utils::send_reply,
-    {Context, Error},
+    CrackedError, {Context, Error},
 };
 
 /// Resume the current track.
@@ -22,39 +20,12 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Internal function to resume the current track.
 pub async fn resume_internal(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let songbird = ctx.data().songbird.clone();
-    let call = crate::commands::connected_call(&songbird, guild_id, None)
+    let cx = OpCx::from_ctx(&ctx)?;
+    let resumed = ops::resume(&cx)
         .await
-        .ok_or(CrackedError::NotConnected)?;
-
-    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
-    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
-    // more kindly. This one cannot be forgotten.
-    //
-    // 🔴 `/resume` reached `queue.resume()` on a running `/gp` round until this
-    // line existed: it was on neither the blocklist nor the funnel. The
-    // blocklist entry added alongside is the friendlier of the two refusals;
-    // this is the one that cannot be forgotten.
-    let guard = ctx
-        .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
-        .await?;
-    {
-        let handler = call.lock().await;
-
-        verify(!handler.queue().is_empty(), CrackedError::NothingPlaying)?;
-        verify(resume_queue(&guard, &handler), CrackedError::FailedResume)?;
-    }
-    // Resuming does not fire `End`, but the guard still goes before the Discord
-    // round trip -- exclusion is held for milliseconds, never for a send.
-    drop(guard);
-
-    send_reply(&ctx, CrackedMessage::Resume, true).await?;
-
+        .map_err(CrackedError::from)?
+        .settle_now(&cx)
+        .await;
+    send_reply(&ctx, resumed.message(), true).await?;
     Ok(())
 }

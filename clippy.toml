@@ -98,4 +98,18 @@ disallowed-methods = [
     # through `YoutubeDl::new_search`, whose `ytsearchN:` prefix it cannot escape.
     { path = "songbird::input::YoutubeDl::new", reason = "yt-dlp reads a string starting with `-` as an option; use crack_types::ytdl_for_url for links or YoutubeDl::new_search for search text" },
     { path = "songbird::input::YoutubeDl::new_ytdl_like", reason = "yt-dlp reads a string starting with `-` as an option; use crack_types::ytdl_for_url for links or YoutubeDl::new_search for search text" },
+    # 🔒 Every user-initiated playback/queue change is orchestrated in music::ops
+    # (spec 2026-10-04): it takes the lease, makes the call, records the audit
+    # row. These are its primitives. /gp (the game owner) and autopause (the bot)
+    # are the only other callers, each with a reasoned #[expect].
+    { path = "crack_core::music::queue::pause_queue", reason = "orchestrate through music::ops" },
+    { path = "crack_core::music::queue::resume_queue", reason = "orchestrate through music::ops" },
+    { path = "crack_core::music::queue::remove_at", reason = "orchestrate through music::ops" },
+    { path = "crack_core::music::queue::stop_queue", reason = "orchestrate through music::ops" },
+    { path = "crack_core::music::queue::clear_from", reason = "orchestrate through music::ops" },
+    { path = "crack_core::music::queue::drain_after_current", reason = "orchestrate through music::ops" },
+    { path = "crack_core::music::queue::shuffle_behind_current", reason = "orchestrate through music::ops" },
+    { path = "crack_core::music::queue::move_track", reason = "orchestrate through music::ops" },
+    { path = "crack_core::music::queue::move_track_by_id", reason = "orchestrate through music::ops" },
+    { path = "crack_core::music::queue::force_skip_top_track", reason = "orchestrate through music::ops" },
 ]

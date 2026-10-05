@@ -112,8 +112,9 @@ pub fn queue_page(
 /// `GET /g/{id}/history`: the first page inlined; `history.js` draws it,
 /// filters it, polls for new rows and loads older ones.
 pub fn history_page(guild_name: &str, guild_id: GuildId, page: &HistoryPage) -> String {
-    const ACTIONS: [&str; 10] = [
+    const ACTIONS: [&str; 11] = [
         "add", "remove", "move", "skip", "clear", "shuffle", "stop", "pause", "resume", "leave",
+        "repeat",
     ];
     let actions: String = ACTIONS
         .iter()

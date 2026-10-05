@@ -298,7 +298,7 @@ mod test {
             action,
         };
         let alice = Actor::for_command(UserId::new(10), false, "pause", None);
-        let bob = Actor::web(UserId::new(20));
+        let bob = Actor::web(UserId::new(20), "move");
         for e in [
             ev(g, 1, alice.clone(), Action::Pause),
             ev(
@@ -403,7 +403,7 @@ mod test {
         let g = GuildId::new(1);
         let other = GuildId::new(2);
         let now = chrono::Utc::now();
-        let actor = Actor::web(UserId::new(20));
+        let actor = Actor::web(UserId::new(20), "move");
         // Ten rows in guild 1, inserted in order; one in guild 2 between them.
         for i in 0..10 {
             let e = AuditEvent {

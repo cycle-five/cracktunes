@@ -57,7 +57,8 @@ pub trait GuildSettingsOperations {
     fn set_autoplay_setting(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
     fn get_autoplay_setting(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn get_volume(&self, guild_id: GuildId) -> impl Future<Output = (f32, f32)>;
-    fn set_volume(&self, guild_id: GuildId, volume: u64) -> impl Future<Output = ()>;
+    /// Set the volume (a fraction, 0.5 = 50%), returning the one it replaced.
+    fn set_volume(&self, guild_id: GuildId, volume: f32) -> impl Future<Output = f32>;
     fn get_reply_with_embed(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn set_reply_with_embed(&self, guild_id: GuildId, as_embed: bool)
         -> impl Future<Output = bool>;
@@ -405,21 +406,19 @@ impl GuildSettingsOperations for Data {
             .unwrap_or((DEFAULT_VOLUME_LEVEL, DEFAULT_VOLUME_LEVEL))
     }
 
-    /// Set the current autoplay settings.
-    async fn set_volume(&self, guild_id: GuildId, vol: u64) {
-        self.guild_settings_map
-            .write()
-            .await
-            .entry(guild_id)
-            .and_modify(|e| {
-                e.old_volume = e.volume;
-                e.volume = vol as f32;
-            })
-            .or_insert_with(|| GuildSettings {
-                volume: vol as f32,
-                old_volume: vol as f32,
-                ..Default::default()
-            });
+    /// Set the volume (a fraction, 0.5 = 50%), returning the one it replaced.
+    /// Never creates settings: they exist whenever the bot is in voice, and an
+    /// inserted default would clobber what loads later (see v0.19.4).
+    async fn set_volume(&self, guild_id: GuildId, vol: f32) -> f32 {
+        match self.guild_settings_map.write().await.get_mut(&guild_id) {
+            Some(s) => {
+                let old = s.volume;
+                s.old_volume = old;
+                s.volume = vol;
+                old
+            },
+            None => DEFAULT_VOLUME_LEVEL,
+        }
     }
 
     /// Get the current reply with embed setting.

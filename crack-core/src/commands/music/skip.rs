@@ -1,20 +1,15 @@
-use crate::poise_ext::ContextExt;
 use crate::{
-    commands::cmd_check_music,
-    commands::get_call_or_join_author,
-    errors::{verify, CrackedError},
+    commands::{cmd_check_music, get_call_or_join_author},
+    errors::CrackedError,
     guild::operations::GuildSettingsOperations,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
-    music::{drain_after_current, force_skip_top_track, PlaybackOwner},
+    music::ops::{self, OpCx, OpRefused},
     poise_ext::PoiseContextExt,
     utils::get_track_handle_metadata,
     Context, Error,
 };
 use serenity::all::{Colour, CreateEmbed, Message};
-use songbird::Call;
-use std::cmp::min;
-use tokio::sync::MutexGuard;
 
 /// Skip the current track, or a number of tracks.
 #[cfg(not(tarpaulin_include))]
@@ -29,85 +24,32 @@ pub async fn skip(
     ctx: Context<'_>,
     #[description = "Number of tracks to skip"] num_tracks: Option<u32>,
 ) -> Result<(), Error> {
-    let (call, guild_id) = ctx.get_call_guild_id().await?;
-    let to_skip = num_tracks.unwrap_or(1) as usize;
+    let cx = OpCx::from_ctx(&ctx)?;
     let private = crate::messaging::status::reply_privately(
-        ctx.data().get_ephemeral_replies(guild_id).await,
+        ctx.data().get_ephemeral_replies(cx.guild_id).await,
         ctx.is_prefix(),
     );
-
-    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
-    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
-    // more kindly. This one cannot be forgotten.
-    let guard = ctx
-        .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
-        )
-        .await?;
-    let handler = call.lock().await;
-    let queue = handler.queue();
-
-    verify(!queue.is_empty(), CrackedError::NothingPlaying)?;
-
-    let tracks_to_skip = min(to_skip, queue.len());
-
-    drain_after_current(&guard, &handler, tracks_to_skip.saturating_sub(1));
-
-    force_skip_top_track(&guard, &handler).await?;
-    // The guard is held only for the mutations above, not across the Discord
-    // round trip in `create_skip_response` -- see lease.rs.
-    drop(guard);
-    let reply = create_skip_response(ctx, &handler, tracks_to_skip, private).await?;
-    let still_playing = handler.queue().current().is_some();
-    // 🔑 Released before the status update, which takes the Call lock itself.
-    drop(handler);
-    if still_playing {
-        // A visible reply is the floor: its gateway echo may not have reached
-        // the cache yet, and the status must still land below it. An ephemeral
-        // reply is not a channel message and must not move the status.
-        let after = (!private).then_some((reply.channel_id, reply.id));
-        let serenity_ctx = ctx.serenity_context();
-        crate::messaging::status::show_now_playing_after(
-            &ctx.data(),
-            serenity_ctx.http.clone(),
-            serenity_ctx.cache.clone(),
-            guild_id,
-            &call,
-            after,
-        )
-        .await;
-    }
+    let done = ops::skip(&cx, num_tracks.unwrap_or(1) as usize, None)
+        .await
+        .map_err(CrackedError::from)?;
+    // The op holds no lease or Call lock by now; the reply is a Discord round trip.
+    let reply = send_skip_reply(ctx, done.outcome().message(), private).await?;
+    // A visible reply is the floor: its gateway echo may not have reached
+    // the cache yet, and the status must still land below it. An ephemeral
+    // reply is not a channel message and must not move the status.
+    let anchor = (!private).then_some((reply.channel_id, reply.id));
+    done.settle_after(&cx, anchor).await;
     Ok(())
 }
 
 /// Send the response to discord for skipping a track.
 // Why don't we need to defer here?
 #[cfg(not(tarpaulin_include))]
-pub async fn create_skip_response(
+pub async fn send_skip_reply(
     ctx: Context<'_>,
-    handler: &MutexGuard<'_, Call>,
-    tracks_to_skip: usize,
+    send_msg: CrackedMessage,
     private: bool,
 ) -> Result<Message, CrackedError> {
-    let send_msg = match handler.queue().current() {
-        Some(track) => {
-            let metadata = get_track_handle_metadata(&track).await?;
-            CrackedMessage::SkipTo {
-                title: metadata.title.clone().unwrap_or_default(),
-                url: metadata.source_url.clone().unwrap_or_default(),
-            }
-        },
-        None => {
-            if tracks_to_skip > 1 {
-                CrackedMessage::SkipAll
-            } else {
-                CrackedMessage::Skip
-            }
-        },
-    };
     // `send_reply(send_msg, true)`, plus the guild's ephemeral choice.
     let color = Colour::from(&send_msg);
     let embed: Option<CreateEmbed> = <Option<CreateEmbed>>::from(&send_msg);
@@ -135,58 +77,36 @@ pub async fn create_skip_response(
 )]
 pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-
     let call = get_call_or_join_author(ctx).await?;
 
-    // Ordinary music commands mutate as `Free`; a guild a game owns refuses
-    // here, which is the same refusal GP_BLOCKED_COMMANDS gives earlier and
-    // more kindly. This one cannot be forgotten.
-    //
-    // 🪤 The database write below sits *under* the guard, against the usual
-    // rule. It was hoisted above the lock once and that bought two holes: a
-    // refused lock left an orphan downvote row with no skip to go with it, and
-    // the `current()` read moved outside exclusion, so the track downvoted was
-    // not provably the track skipped. Closing either needs the write to sit
-    // between the read and the skip, which is to say inside. One `UPDATE` is
-    // the lesser evil now that every other hold on this guard is milliseconds.
-    //
-    // That trade also holds `handler` (the songbird `Call` mutex) across the
-    // `downvote_track` DB round trip below, not just the guard -- `handler` is
-    // locked before the write and not dropped until after the skip. A re-lock
-    // around just the write was considered and rejected: `TrackQueue` advances
-    // to the next track from its own `End` handler under the queue's internal
-    // lock, not under `Call`, so releasing `handler` for the UPDATE would not
-    // buy back the "the track downvoted is the track skipped" property this
-    // comment is about -- a concurrent skip could still land between the
-    // re-lock and the read. And nothing is blocked behind the UPDATE today
-    // regardless: `downvote` is unregistered (see `blocklist_matches_registry`
-    // in gp.rs), so this hold has no observable cost yet.
-    let guard = ctx
-        .data()
-        .lock_queue(
-            guild_id,
-            PlaybackOwner::Free,
-            crate::music::audit::Actor::from_ctx(&ctx),
+    // The downvoted track must be the one skipped. The DB write sits between
+    // the read and the skip, with no lease or Call lock held across it, so the
+    // skip carries the id it read: if the track moved on in between, the op
+    // refuses `Stale` and nothing else is skipped.
+    let (current_id, source_url) = {
+        let handler = call.lock().await;
+        let current = handler
+            .queue()
+            .current()
+            .ok_or(CrackedError::NothingPlaying)?;
+        let metadata = get_track_handle_metadata(&current).await?;
+        (
+            current.uuid(),
+            metadata.source_url.ok_or(CrackedError::NoMetadata)?,
         )
-        .await?;
-    let handler = call.lock().await;
-    let current = handler
-        .queue()
-        .current()
-        .ok_or(CrackedError::NothingPlaying)?;
-    let metadata = get_track_handle_metadata(&current).await?;
-
-    let source_url = metadata.source_url.ok_or(CrackedError::NoMetadata)?;
+    };
     let res1 = ctx.data().downvote_track(guild_id, &source_url).await?;
-    let res2 = force_skip_top_track(&guard, &handler).await?;
-    // Released the moment the last mutation is done, the same as `skip` above.
-    // `force_skip_top_track` fires `TrackEvent::End`, and since Task 6 the
-    // global track-end handler awaits `lock_queue` for autopause -- holding on
-    // past here would park songbird's event task for the formatting below.
-    drop(guard);
-
     tracing::warn!("downvoted track: {:#?}", res1);
-    tracing::warn!("refetched queue: {:#?}", res2);
 
+    let cx = OpCx::from_ctx(&ctx)?;
+    match ops::skip(&cx, 1, Some(current_id)).await {
+        Ok(done) => {
+            done.settle_now(&cx).await;
+        },
+        Err(OpRefused::Stale) => {
+            tracing::warn!("downvoted a track that had already moved on; skipped nothing");
+        },
+        Err(e) => return Err(CrackedError::from(e).into()),
+    }
     Ok(())
 }

@@ -182,6 +182,10 @@ impl EventHandler for TrackEndHandler {
                     let handler = self.call.lock().await;
                     // Nobody asked for this pause, so a failure has nobody to
                     // report it to.
+                    #[expect(
+                        clippy::disallowed_methods,
+                        reason = "autopause: the bot acting on its own, under its own lease"
+                    )]
                     pause_queue(&guard, &handler).ok();
                 },
                 // A nicety with nobody to answer to: log it and carry on.

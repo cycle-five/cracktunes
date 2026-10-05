@@ -100,13 +100,13 @@ impl Actor {
         }
     }
 
-    /// A signed-in member acting from the web dashboard.
+    /// A signed-in member acting from the web dashboard; `op` names the control.
     #[must_use]
-    pub fn web(user: UserId) -> Self {
+    pub fn web(user: UserId, op: &'static str) -> Self {
         Self {
             user: Some(user),
             source: Source::Web,
-            command: Cow::Borrowed("dashboard move"),
+            command: Cow::Owned(format!("dashboard {op}")),
             origin_channel: None,
         }
     }
@@ -188,6 +188,9 @@ pub enum Action {
     },
     Pause,
     Resume,
+    Repeat {
+        on: bool,
+    },
     Leave {
         discarded: usize,
     },
@@ -207,6 +210,7 @@ impl Action {
             Action::Stop { .. } => "stop",
             Action::Pause => "pause",
             Action::Resume => "resume",
+            Action::Repeat { .. } => "repeat",
             Action::Leave { .. } => "leave",
         }
     }
@@ -291,7 +295,7 @@ mod test {
         assert_eq!(slash.origin_channel(), Some(GenericChannelId::new(3)));
         let prefix = Actor::for_command(UserId::new(7), true, "skip", None);
         assert_eq!(prefix.source(), Source::Prefix);
-        let web = Actor::web(UserId::new(8));
+        let web = Actor::web(UserId::new(8), "move");
         assert_eq!(
             (web.source(), web.user(), web.command()),
             (Source::Web, Some(UserId::new(8)), "dashboard move")
@@ -336,12 +340,22 @@ mod test {
             Action::Stop { removed: 1 },
             Action::Pause,
             Action::Resume,
+            Action::Repeat { on: true },
             Action::Leave { discarded: 4 },
         ];
         for a in all {
             let tag: Tag = serde_json::from_str(&serde_json::to_string(&a).unwrap()).unwrap();
             assert_eq!(tag.action, a.name());
         }
+    }
+
+    #[test]
+    fn repeat_round_trips_with_its_tag() {
+        let a = Action::Repeat { on: true };
+        let s = serde_json::to_string(&a).unwrap();
+        assert_eq!(s, r#"{"action":"repeat","on":true}"#);
+        assert_eq!(serde_json::from_str::<Action>(&s).unwrap(), a);
+        assert_eq!(a.name(), "repeat");
     }
 
     #[test]

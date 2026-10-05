@@ -2,10 +2,10 @@ use crate::{
     commands::{cmd_check_music, help},
     errors::CrackedError,
     messaging::message::CrackedMessage,
+    music::ops::{self, OpCx, OpRefused},
     utils::send_reply,
     Context, Error,
 };
-use songbird::error::JoinError;
 
 /// Tell the bot to leave the voice channel it is in.
 #[cfg(not(tarpaulin_include))]
@@ -32,42 +32,22 @@ pub async fn leave(
 
 /// Leave a voice channel. Actually impl.
 pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let manager = ctx.data().songbird.clone();
-    // check if we're actually in a call
-    let mut left = false;
-    let crack_msg = match crate::music::disconnect::disconnect(
-        &ctx.data(),
-        &manager,
-        guild_id,
-        crate::music::audit::Actor::from_ctx(&ctx),
-    )
-    .await
-    {
-        Ok(()) => {
-            tracing::info!("Driver successfully removed.");
-            left = true;
-            CrackedMessage::Leaving
+    let cx = OpCx::from_ctx(&ctx)?;
+    match ops::leave(&cx).await {
+        Ok(done) => {
+            let _ = send_reply(&ctx, CrackedMessage::Leaving, true).await?;
+            done.settle_now(&cx).await;
         },
-        Err(err) => {
-            tracing::error!("Driver could not be removed: {}", err);
-            match err {
-                JoinError::NoCall => CrackedMessage::CrackedError(CrackedError::NotConnected),
-                _ => return Err(err.into()),
-            }
+        // Not being in a call is a reply, not an error.
+        Err(OpRefused::NotConnected) => {
+            let _ = send_reply(
+                &ctx,
+                CrackedMessage::CrackedError(CrackedError::NotConnected),
+                true,
+            )
+            .await?;
         },
-    };
-
-    let _ = send_reply(&ctx, crack_msg, true).await?;
-    if left {
-        let serenity_ctx = ctx.serenity_context();
-        crate::messaging::status::show_finished(
-            &ctx.data(),
-            serenity_ctx.http.clone(),
-            serenity_ctx.cache.clone(),
-            guild_id,
-        )
-        .await;
+        Err(refused) => return Err(CrackedError::from(refused).into()),
     }
     Ok(())
 }

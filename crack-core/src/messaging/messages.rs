@@ -66,6 +66,16 @@ pub const FAIL_AUTHOR_DISCONNECTED: &str = "⚠️ You are not connected to";
 ///?
 pub const FAIL_AUTHOR_NOT_FOUND: &str = "⚠️ Could not find you in any voice channel!";
 pub const FAIL_LOOP: &str = "⚠️ Failed to toggle loop!";
+pub const FAIL_PAUSE: &str = "Failed to pause";
+pub const FAIL_SEEK_OP: &str = "Failed to seek";
+/// The driver did not confirm a seek within `ops::SEEK_TIMEOUT`.
+pub const FAIL_SEEK_TIMED_OUT: &str = "The seek did not finish in time";
+pub const FAIL_SKIP: &str = "Failed to skip";
+/// `/seek`'s own words for an empty queue (not `FAIL_NOTHING_PLAYING`).
+pub const FAIL_NO_TRACK_PLAYING: &str = "No track playing";
+pub const OP_TRACK_ABSENT: &str = "That track is no longer queued";
+pub const OP_TRACK_PLAYING: &str = "That track is playing";
+pub const OP_TRACK_STALE: &str = "That track is no longer playing";
 pub const FAIL_EMPTY_VECTOR: &str = "⚠️ Empty vector not allowed!";
 pub const FAIL_INSERT: &str = "⚠️ Failed to insert!";
 pub const FAIL_INVALID_TOPGG_TOKEN: &str = "⚠️ Invalid top.gg token!";

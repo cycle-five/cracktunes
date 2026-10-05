@@ -1256,61 +1256,9 @@ mod test {
 
     use super::*;
     use crate::music::audit::{AuditEvent, BotReason, TrackRef};
+    use crate::music::ops::test_support::*;
     use crate::utils::{get_requesting_user, get_track_handle_metadata};
     use crate::{Data, DataInner};
-    use serenity::all::GuildId;
-
-    const GUILD: GuildId = GuildId::new(1);
-
-    /// A songbird call with no gateway and no voice connection: tracks queue on
-    /// it, and nothing ever plays.
-    fn offline_call() -> Arc<Mutex<Call>> {
-        Arc::new(Mutex::new(Call::standalone(GUILD, UserId::new(2))))
-    }
-
-    fn titled(title: &str) -> AuxMetadata {
-        AuxMetadata {
-            title: Some(title.to_owned()),
-            ..Default::default()
-        }
-    }
-
-    async fn queue_of(
-        n: usize,
-    ) -> (
-        Data,
-        Arc<Mutex<Call>>,
-        Vec<uuid::Uuid>,
-        tokio::sync::mpsc::Receiver<AuditEvent>,
-    ) {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(256);
-        let data = Data(Arc::new(DataInner {
-            audit_tx: Some(tx),
-            ..Default::default()
-        }));
-        let call = offline_call();
-        let mut ids = Vec::new();
-        {
-            let guard = data
-                .lock_queue(GUILD, PlaybackOwner::Free, actor())
-                .await
-                .unwrap();
-            for i in 0..n {
-                let file = format!("/nonexistent/{i}.opus");
-                let h = enqueue_input_back(
-                    &guard,
-                    &call,
-                    songbird::input::File::new(file).into(),
-                    Some(titled(&format!("t{i}"))),
-                    None,
-                )
-                .await;
-                ids.push(h.uuid());
-            }
-        }
-        while rx.try_recv().is_ok() {}
-        (data, call, ids, rx)
-    }
 
     fn actor() -> Actor {
         Actor::bot(BotReason::Autopause)
@@ -1328,6 +1276,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn each_primitive_records_exactly_what_it_did() {
         let (data, call, ids, mut rx) = queue_of(5).await;
         let guard = data
@@ -1369,6 +1318,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn draining_after_the_current_track_records_a_clear() {
         let (data, call, _ids, mut rx) = queue_of(4).await;
         let guard = data
@@ -1429,6 +1379,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn no_ops_record_nothing() {
         let (data, call, _ids, mut rx) = queue_of(1).await;
         let guard = data
@@ -1456,6 +1407,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn skipping_records_the_track_that_was_playing() {
         let (data, call, _ids, mut rx) = queue_of(2).await;
         let guard = data
@@ -1474,6 +1426,7 @@ mod test {
     /// `current().unwrap()`, which the user never sees and the log records only
     /// as a backtrace.
     #[tokio::test]
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn skipping_an_already_empty_queue_is_a_no_op_not_a_panic() {
         let data = Data(Arc::new(DataInner::default()));
         let guard = data
@@ -1500,6 +1453,7 @@ mod test {
             .collect()
     }
 
+    #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn move_in(
         data: &Data,
         call: &Arc<Mutex<Call>>,

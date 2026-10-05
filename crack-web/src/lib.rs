@@ -160,6 +160,7 @@ impl Backend for LiveBackend {
         remote::move_by_id(
             self.deps.data.clone(),
             self.deps.http.clone(),
+            self.deps.cache.clone(),
             g,
             user,
             id,

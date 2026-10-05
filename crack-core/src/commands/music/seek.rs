@@ -2,8 +2,8 @@ use crate::{
     commands::cmd_check_music,
     errors::{verify, CrackedError},
     messaging::message::CrackedMessage,
-    messaging::messages::{FAIL_MINUTES_PARSING, FAIL_SECONDS_PARSING},
-    poise_ext::ContextExt,
+    messaging::messages::{FAIL_MINUTES_PARSING, FAIL_NO_TRACK_PLAYING, FAIL_SECONDS_PARSING},
+    music::ops::{self, OpCx, OpRefused},
     utils::send_reply,
     Context, Error,
 };
@@ -27,8 +27,6 @@ pub async fn seek(
 
 /// Internal seek function.
 pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Error> {
-    let call = ctx.get_call().await?;
-
     let timestamp_str = seek_time.as_str();
     let mut units_iter = timestamp_str.split(':');
 
@@ -40,22 +38,23 @@ pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Er
 
     let timestamp = minutes * 60 + seconds;
 
-    let handler = call.lock().await;
-    let track = handler
-        .queue()
-        .current()
-        .ok_or(CrackedError::Other("No track playing"))?;
-    drop(handler);
-
-    let callback = track.seek(Duration::from_secs(timestamp));
-    let msg = match callback.result_async().await {
-        Ok(_) => CrackedMessage::Seek {
-            timestamp: timestamp_str.to_owned(),
+    let cx = OpCx::from_ctx(&ctx)?;
+    let msg = match ops::seek(&cx, Duration::from_secs(timestamp)).await {
+        Ok(done) => {
+            done.settle_now(&cx).await;
+            CrackedMessage::Seek {
+                timestamp: timestamp_str.to_owned(),
+            }
         },
-        Err(e) => CrackedMessage::SeekFail {
+        Err(OpRefused::SeekFailed(e)) => CrackedMessage::SeekFail {
             timestamp: Cow::Owned(timestamp_str.to_owned()),
             error: e,
         },
+        // /seek has always worded this its own way, not as NothingPlaying.
+        Err(OpRefused::NothingPlaying) => {
+            return Err(CrackedError::Other(FAIL_NO_TRACK_PLAYING).into());
+        },
+        Err(refused) => return Err(CrackedError::from(refused).into()),
     };
 
     let _ = send_reply(&ctx, msg, true).await?;
