@@ -7,7 +7,7 @@ use crate::{
         parse_history_query, ErrorBody, HistoryQuery, HISTORY_FAILED, NEEDS_MANAGE, NO_DATABASE,
     },
     page,
-    view::{MoveRequest, MoveResult, PageState, QueueView},
+    view::{MoveRequest, MoveResult, PageState, PlanView, QueueView},
     watch::Hub,
 };
 use axum::{
@@ -145,6 +145,7 @@ async fn guild_page<B: Backend>(
             let state = PageState {
                 view: &view,
                 can_control: access == Access::Control,
+                plan: PlanView::Free, // Task 5 reads the real plan
             };
             let history_link =
                 tokio::time::timeout(HISTORY_LINK_TIMEOUT, s.backend.history_access(g, user))
@@ -295,8 +296,14 @@ async fn move_track<B: Backend>(
 }
 
 fn event(view: &QueueView, can_control: bool) -> Event {
-    Event::default()
-        .data(serde_json::to_string(&PageState { view, can_control }).expect("the view serializes"))
+    Event::default().data(
+        serde_json::to_string(&PageState {
+            view,
+            can_control,
+            plan: PlanView::Free, // Task 5 reads the real plan
+        })
+        .expect("the view serializes"),
+    )
 }
 
 async fn events<B: Backend>(

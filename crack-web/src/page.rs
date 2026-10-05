@@ -197,6 +197,7 @@ mod test {
             &PageState {
                 view: &view,
                 can_control: false,
+                plan: crate::view::PlanView::Free,
             },
             false,
         );

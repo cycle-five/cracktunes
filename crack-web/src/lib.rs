@@ -15,11 +15,11 @@ pub mod watch;
 
 use crate::{
     access::{HistoryAccess, MemberMemo, Membership, Presence, MEMBER_TTL},
-    backend::{Backend, GuildEntry, HistoryError, MoveRefused},
+    backend::{Backend, Control, ControlRefused, GuildEntry, HistoryError, MoveRefused},
     config::WebEnv,
     history::{HistoryPage, HistoryQuery},
     routes::WebState,
-    view::{view_from_state, QueueView},
+    view::{view_from_state, PlanView, QueueView},
     watch::{Hub, ViewSource, LINGER, TICK},
 };
 use crack_core::{
@@ -167,6 +167,24 @@ impl Backend for LiveBackend {
             to,
         )
         .await
+    }
+
+    async fn control(&self, user: UserId, g: GuildId, c: Control) -> Result<(), ControlRefused> {
+        // The echo line is already spawned in core.
+        remote::control(
+            self.deps.data.clone(),
+            self.deps.http.clone(),
+            self.deps.cache.clone(),
+            g,
+            user,
+            c,
+        )
+        .await
+        .map(|_| ())
+    }
+
+    async fn plan(&self, g: GuildId) -> PlanView {
+        Plan::of(self.deps.data.get_premium(g).await).into()
     }
 
     async fn guilds_for(&self, u: UserId) -> Vec<GuildEntry> {
