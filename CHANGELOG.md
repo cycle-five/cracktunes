@@ -169,6 +169,11 @@
   playlist of dead links is one notice listing ten tracks and counting the rest.
   The raw error goes to the log, never to Discord. A `/gp` game reports its own
   dead songs and is left alone.
+- **A track whose stream YouTube refuses gets a second try.** YouTube now and then
+  answers the URL yt-dlp just resolved with `403 Forbidden` (3 of ~45 track starts on
+  production over a day), and the track was skipped before a note played. Every queued
+  track now re-resolves once when its stream URL is refused, which gets yt-dlp a fresh
+  URL; only a second refusal skips it, with the notice above.
 - **Joining voice reset a server's settings in memory to defaults, until the next
   restart.** `get_or_create_guild_settings` built its defaults in the argument to an
   eager `unwrap_or`, so it ran on every call and stored the defaults over the settings

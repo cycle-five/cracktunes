@@ -252,7 +252,12 @@ pub(crate) fn new_track(
         Some(metadata) => data.with_metadata(metadata),
         None => data,
     };
-    QueuedTrack(Track::new_with_data(source, data))
+    // Every queued track passes here, so this is where a refused stream URL
+    // gets its second try: see `sources::retry`.
+    QueuedTrack(Track::new_with_data(
+        crate::sources::retry::retry_refused(source),
+        data,
+    ))
 }
 
 /// Put a [`QueuedTrack`] at the back of `call`'s queue.
@@ -1259,6 +1264,18 @@ mod test {
     use crate::music::ops::test_support::*;
     use crate::utils::{get_requesting_user, get_track_handle_metadata};
     use crate::{Data, DataInner};
+
+    /// Every queued track gets a second try at a refused stream URL.
+    #[tokio::test]
+    async fn a_queued_track_retries_a_refused_stream() {
+        let (inner, calls) = crate::sources::retry::refuses_once();
+        let track = new_track(SongbirdInput::Lazy(inner), None, None);
+        let SongbirdInput::Lazy(mut source) = track.0.input else {
+            panic!("still lazy");
+        };
+        assert!(source.create_async().await.is_ok());
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
 
     fn actor() -> Actor {
         Actor::bot(BotReason::Autopause)
