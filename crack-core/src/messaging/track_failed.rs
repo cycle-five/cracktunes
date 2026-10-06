@@ -106,10 +106,12 @@ impl Data {
 }
 
 /// `**title**: reason`, the title cut and escaped: it is third-party text.
+/// A blank title counts as none: a link yt-dlp could not read (a members-only
+/// video, say) is queued with `Some("")`, which rendered as a bare `****`.
 fn entry(failure: &Failure) -> String {
-    let title = match failure.title.as_deref() {
-        Some(t) => escape(&cap(t, TITLE_MAX)),
-        None => TRACK_FAILED_UNTITLED.to_owned(),
+    let title = match failure.title.as_deref().map(str::trim) {
+        Some(t) if !t.is_empty() => escape(&cap(t, TITLE_MAX)),
+        _ => TRACK_FAILED_UNTITLED.to_owned(),
     };
     format!("**{title}**: {}", failure.reason.text())
 }
@@ -407,6 +409,17 @@ mod tests {
             render(&[untitled], 0),
             "⚠️ Couldn't play **(untitled)**: couldn't open the stream"
         );
+    }
+
+    /// What a members-only link produced on TuneTitan, 2026-10-06.
+    #[test]
+    fn a_blank_title_is_untitled() {
+        for blank in ["", "  "] {
+            assert_eq!(
+                render(&[failed(blank, FailReason::Open)], 0),
+                "⚠️ Couldn't play **(untitled)**: couldn't open the stream"
+            );
+        }
     }
 
     // ---- edit or post ----
