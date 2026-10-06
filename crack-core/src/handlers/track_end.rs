@@ -4,6 +4,8 @@ use crate::{
     messaging::{
         interface::{create_nav_btns, create_queue_embed},
         messages::{AUTOPLAY_NEEDS_MUSICRECO, AUTOPLAY_STOPPED},
+        status::DiscordTransport,
+        track_failed,
     },
     music::autoplay,
     music::query::NewQueryType,
@@ -196,6 +198,30 @@ impl EventHandler for TrackEndHandler {
         }
 
         let music_channel = self.data.get_music_channel(self.guild_id).await;
+
+        // A track that could not play says so, rather than leaving the
+        // channel to wonder why the music stopped.
+        if let EventContext::Track(tracks) = event_ctx {
+            let failed = track_failed::failures(tracks).await;
+            if !failed.is_empty() {
+                if let Some(channel) = self.notice_channel(music_channel).await {
+                    let transport = DiscordTransport {
+                        http: self.http.clone(),
+                        cache: self.cache.clone(),
+                    };
+                    track_failed::notify(
+                        &self.data,
+                        &transport,
+                        self.guild_id,
+                        channel,
+                        failed,
+                        std::time::Instant::now(),
+                    )
+                    .await;
+                }
+            }
+        }
+
         let mut autoplay = autoplay;
 
         if autoplay {
@@ -239,15 +265,9 @@ impl EventHandler for TrackEndHandler {
             _ => None,
         };
 
-        // Where "autoplay off" is announced: the music channel, else the voice
-        // channel's chat. The status message resolves its own channel.
-        let fallback = self
-            .call
-            .lock()
-            .await
-            .current_channel()
-            .map(|c| GenericChannelId::new(c.get()));
-        let Some(channel) = music_channel.or(fallback) else {
+        // Where "autoplay off" is announced. The status message resolves its
+        // own channel.
+        let Some(channel) = self.notice_channel(music_channel).await else {
             // Not connected any more: nowhere to announce, nothing to play into.
             return None;
         };
@@ -291,6 +311,21 @@ impl EventHandler for TrackEndHandler {
 }
 
 impl TrackEndHandler {
+    /// Where a notice goes: the music channel, else the voice channel's chat.
+    /// `None` once the bot has left voice.
+    ///
+    /// 🔑 The Call guard is a temporary, released at the end of the `let`.
+    async fn notice_channel(
+        &self,
+        music_channel: Option<GenericChannelId>,
+    ) -> Option<GenericChannelId> {
+        if music_channel.is_some() {
+            return music_channel;
+        }
+        let voice = self.call.lock().await.current_channel();
+        voice.map(|c| GenericChannelId::new(c.get()))
+    }
+
     /// The status says what is playing now.
     async fn show_now_playing(&self) {
         crate::messaging::status::show_now_playing(
