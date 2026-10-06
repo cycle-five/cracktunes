@@ -81,6 +81,14 @@ pub const ECHO_REPEAT_OFF: &str = "🔁 Repeat off";
 pub const ECHO_REMOVED: &str = "🗑 Removed";
 pub const ECHO_SHUFFLED: &str = "🔀 Shuffled the queue";
 pub const ECHO_FROM_DASHBOARD: &str = "from the dashboard";
+pub const TRACK_FAILED: &str = "⚠️ Couldn't play";
+pub const TRACK_FAILED_TRACKS: &str = "tracks";
+pub const TRACK_FAILED_MORE: &str = "more";
+pub const TRACK_FAILED_UNTITLED: &str = "(untitled)";
+pub const TRACK_FAILED_OPEN: &str = "couldn't open the stream";
+pub const TRACK_FAILED_FORMAT: &str = "that format isn't supported";
+pub const TRACK_FAILED_BROKE_OFF: &str = "the stream broke off partway";
+pub const TRACK_FAILED_SEEK: &str = "couldn't seek in it";
 /// `/seek`'s own words for an empty queue (not `FAIL_NOTHING_PLAYING`).
 pub const FAIL_NO_TRACK_PLAYING: &str = "No track playing";
 pub const OP_TRACK_ABSENT: &str = "That track is no longer queued";

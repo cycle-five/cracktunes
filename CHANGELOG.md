@@ -161,6 +161,14 @@
 
 ### Fixed
 
+- **A track that could not play now says so.** songbird ends a track it cannot
+  open or decode, and the queue moved on in silence: SoundCloud's undecodable
+  streams before v0.20.1 just emptied the queue. The music channel (or the voice
+  channel's chat) now gets "⚠️ Couldn't play **Title**: that format isn't
+  supported". Failures within 30 seconds of each other edit one message, so a
+  playlist of dead links is one notice listing ten tracks and counting the rest.
+  The raw error goes to the log, never to Discord. A `/gp` game reports its own
+  dead songs and is left alone.
 - **Joining voice reset a server's settings in memory to defaults, until the next
   restart.** `get_or_create_guild_settings` built its defaults in the argument to an
   eager `unwrap_or`, so it ran on every call and stored the defaults over the settings
