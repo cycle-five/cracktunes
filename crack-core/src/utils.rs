@@ -1,5 +1,4 @@
 use crate::http_utils::CacheHttpExt;
-use crate::http_utils::SendMessageParams;
 use crate::messaging::courier::{self, Destination};
 use crate::messaging::format::{duration_text, TrackLabel, INLINE_TITLE_MAX};
 use crate::messaging::messages::{
@@ -22,17 +21,16 @@ use crate::{
     },
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
-use ::serenity::all::MessageInteractionMetadata;
 use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{
-        CacheHttp, Colour, ComponentInteractionDataKind, CreateActionRow, CreateComponent,
+        CacheHttp, ComponentInteractionDataKind, CreateActionRow, CreateComponent,
         CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, GenericChannelId, GuildId,
         Interaction,
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
-        CreateInteractionResponseMessage, EditInteractionResponse,
+        CreateInteractionResponseMessage,
     },
     futures::StreamExt,
     model::channel::Message,
@@ -41,7 +39,7 @@ use anyhow::Result;
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
 use poise::{
-    serenity_prelude::{self as serenity, CommandInteraction, Context as SerenityContext},
+    serenity_prelude::{self as serenity, Context as SerenityContext},
     ReplyHandle,
 };
 use serenity::all::UserId;
@@ -111,51 +109,6 @@ pub async fn send_reply_owned(
     as_embed: bool,
 ) -> Result<ReplyHandle<'_>, CrackedError> {
     ctx.send_reply_owned(message, as_embed).await
-}
-
-/// Sends a regular reply response.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_nonembed_reply(
-    ctx: &CrackContext<'_>,
-    msg: CrackedMessage,
-) -> Result<Message, CrackedError> {
-    let color = Colour::from(&msg);
-
-    let params = SendMessageParams::default()
-        .with_color(color)
-        .with_msg(msg)
-        .with_as_embed(false);
-
-    let handle = ctx.send_message(params).await?;
-    Ok(handle.into_message().await?)
-}
-
-#[cfg(not(tarpaulin_include))]
-/// Edit an embed response with a CrackedMessage.
-pub async fn edit_response_poise(
-    ctx: CrackContext<'_>,
-    message: CrackedMessage,
-) -> Result<Message, CrackedError> {
-    let embed = CreateEmbed::default().description(format!("{message}"));
-
-    match get_interaction_new(&ctx) {
-        Some(interaction) => edit_embed_response(&ctx, &interaction, embed).await,
-        None => match send_embed_response_poise(ctx, embed).await {
-            Ok(msg) => msg.into_message().await.map_err(Into::into),
-            Err(e) => Err(e),
-        },
-    }
-}
-
-#[cfg(not(tarpaulin_include))]
-/// Edit an embed response from a CommandOrMessageInteraction with a str.
-pub async fn edit_response_text(
-    http: &impl CacheHttp,
-    interaction: &CommandOrMessageInteraction,
-    content: &str,
-) -> Result<Message, CrackedError> {
-    let embed = CreateEmbed::default().description(content);
-    edit_embed_response(http, interaction, embed).await
 }
 
 use poise::serenity_prelude::CollectComponentInteractions;
@@ -252,6 +205,10 @@ pub async fn yt_search_select(
     tracing::error!("url: {:?}", qt);
 
     // Acknowledge the interaction and edit the message
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "component responses move in PR 2"
+    )]
     let res = interaction
         .create_response(
             ctx.http(),
@@ -295,46 +252,6 @@ pub async fn send_embed_response_poise_as<'ctx>(
     courier::reply_rendered(ctx, Rendered::embed(embed.into_owned()), ephemeral).await
 }
 
-pub async fn edit_reponse_interaction(
-    http: &impl CacheHttp,
-    interaction: &Interaction,
-    embed: CreateEmbed<'_>,
-) -> Result<Message, CrackedError> {
-    match interaction {
-        Interaction::Command(int) => int
-            .edit_response(
-                http.http(),
-                EditInteractionResponse::new().embed(embed.clone()),
-            )
-            .await
-            .map_err(Into::into),
-        Interaction::Component(int) => int
-            .edit_response(
-                http.http(),
-                EditInteractionResponse::new().embed(embed.clone()),
-            )
-            .await
-            .map_err(Into::into),
-        Interaction::Modal(int) => int
-            .edit_response(
-                http.http(),
-                EditInteractionResponse::new().embed(embed.clone()),
-            )
-            .await
-            .map_err(Into::into),
-        Interaction::Autocomplete(int) => int
-            .edit_response(
-                http.http(),
-                EditInteractionResponse::new().embed(embed.clone()),
-            )
-            .await
-            //.map(|_| Message::default())
-            .map_err(Into::into),
-        Interaction::Ping(_int) => Ok(Message::default()),
-        _ => todo!(),
-    }
-}
-
 /// Edit the message `msg` points to.
 ///
 /// `content` is for text that must survive when the embed does not. 🪤 A
@@ -366,71 +283,6 @@ pub async fn edit_embed_response2(
     }
     courier::edit_rendered(ctx, &msg, out).await?;
     Ok(())
-}
-
-/// WHY ARE THERE TWO OF THESE?
-pub async fn edit_embed_response(
-    http: &impl CacheHttp,
-    interaction: &CommandOrMessageInteraction,
-    embed: CreateEmbed<'_>,
-) -> Result<Message, CrackedError> {
-    match interaction {
-        CommandOrMessageInteraction::Command(int) => {
-            edit_reponse_interaction(http, &Interaction::Command(int.clone()), embed).await
-        },
-        CommandOrMessageInteraction::Message(msg) => match msg {
-            Some(_msg) => {
-                // Ok(CreateMessage::new().content("edit_embed_response not implemented").)
-                Ok(Message::default())
-                //    http.edit_origin, new_attachments)
-                //     msg.user.id
-            },
-            _ => Ok(Message::default()),
-        },
-    }
-}
-
-// #[allow(deprecated)]
-// pub enum ApplicationCommandOrMessageInteraction {
-//     Command(CommandInteraction),
-//     Message(MessageReaction),
-// }
-
-// #[allow(deprecated)]
-// impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
-//     fn from(message: MessageReaction) -> Self {
-//         Self::Message(message)
-//     }
-// }
-
-// impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
-//     fn from(message: MessageInteraction) -> Self {
-//         Self::ApplicationCommand(message)
-//     }
-// }
-
-pub async fn edit_embed_response_poise(
-    ctx: CrackContext<'_>,
-    embed: CreateEmbed<'_>,
-) -> Result<Message, CrackedError> {
-    let reply_handle = match get_interaction_new(&ctx) {
-        Some(interaction1) => match interaction1 {
-            CommandOrMessageInteraction::Command(interaction2) => {
-                return interaction2
-                    .edit_response(
-                        &ctx.serenity_context().http,
-                        EditInteractionResponse::new().content(" ").embed(embed),
-                    )
-                    .await
-                    .map_err(Into::into);
-                //     },
-                //     _ => Err(CrackedError::Other("not implemented")),
-            },
-            CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
-        },
-        None => send_embed_response_poise(ctx, embed).await,
-    };
-    reply_handle?.into_message().await.map_err(Into::into)
 }
 
 //use tokio::sync::RwLock;
@@ -706,6 +558,10 @@ pub async fn create_paged_embed(
                     ))),
             )
             .with_components(create_nav_btns(*page_wlock, num_pages));
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "component responses move in PR 2"
+            )]
             mci.create_response(
                 ctx.http(),
                 CreateInteractionResponse::UpdateMessage(flipped.to_interaction_message()),
@@ -848,13 +704,6 @@ pub fn compare_domains(domain: &str, subdomain: &str) -> bool {
     subdomain == domain || subdomain.ends_with(domain)
 }
 
-/// Checks that a message successfully sent; if not, then logs why to stdout.
-pub fn check_msg(result: Result<Message, Error>) {
-    if let Err(why) = result {
-        tracing::error!("Error sending message: {:?}", why);
-    }
-}
-
 #[cfg(not(tarpaulin_include))]
 /// Takes a Result ReplyHandle and logs the error if it's an Err.
 pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
@@ -862,56 +711,6 @@ pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
         tracing::error!("Error sending message: {:?}", why);
     }
 }
-
-/// Checks a Result and logs the error if it's an Err.
-pub fn check_interaction(result: Result<(), Error>) {
-    if let Err(why) = result {
-        tracing::error!("Error sending message: {:?}", why);
-    }
-}
-
-// `Command(CommandInteraction)` is ~776 bytes against a boxed `Message` variant.
-// Deferred with the other large-variant cleanups.
-#[allow(deprecated, clippy::large_enum_variant)]
-pub enum CommandOrMessageInteraction {
-    Command(CommandInteraction),
-    Message(Option<Box<MessageInteractionMetadata>>),
-    //Message(Option<Box<MessageInteraction>>),
-}
-
-pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
-    match ctx {
-        CrackContext::Application(app_ctx) => app_ctx.interaction.clone().into(),
-        // match app_ctx.interaction {
-        //     CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
-        //     CommandOrAutocompleteInteraction::Autocomplete(_) => None,
-        // },
-        // CrackContext::Prefix(prefix_ctx) => Some(prefix_ctx.msg.interaction.into()),
-        CrackContext::Prefix(_ctx) => None,
-    }
-}
-
-#[allow(deprecated)]
-pub fn get_interaction_new(ctx: &CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
-    match ctx {
-        CrackContext::Application(app_ctx) => Some(CommandOrMessageInteraction::Command(
-            app_ctx.interaction.clone(),
-        )),
-        CrackContext::Prefix(ctx) => Some(CommandOrMessageInteraction::Message(
-            ctx.msg.interaction_metadata.clone(),
-        )),
-    }
-}
-
-// pub async fn handle_error(
-//     ctx: CrackContext<'_>,
-//     interaction: &CommandOrMessageInteraction,
-//     err: CrackedError,
-// ) {
-//     create_response_text(&ctx, interaction, &format!("{err}"))
-//         .await
-//         .expect("failed to create response");
-// }
 
 #[cfg(feature = "crack-metrics")]
 pub fn count_command(command: &str, is_prefix: bool) {

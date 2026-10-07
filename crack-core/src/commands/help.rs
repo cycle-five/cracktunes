@@ -4,6 +4,8 @@
 //! for the poise crate. I've adapted it to work here now that it
 //! was removed from poise.
 //! cycle.five
+
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
 //---------------------------------------------------
 
 use crate::commands::CrackedError;

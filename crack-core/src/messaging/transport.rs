@@ -64,6 +64,10 @@ impl DiscordTransport {
 
 #[async_trait]
 impl Transport for DiscordTransport {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
     async fn send(
         &self,
         channel: GenericChannelId,
@@ -78,10 +82,18 @@ impl Transport for DiscordTransport {
         id: MessageId,
         out: Rendered,
     ) -> Result<(), TransportError> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "messaging is where sends are made"
+        )]
         channel.edit_message(&self.http, id, out.to_edit()).await?;
         Ok(())
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
     async fn delete(&self, channel: GenericChannelId, id: MessageId) -> Result<(), TransportError> {
         Ok(channel.delete_message(&self.http, id, None).await?)
     }

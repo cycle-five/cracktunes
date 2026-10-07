@@ -9,12 +9,13 @@ use crate::{
     http_utils,
     http_utils::check_banned_domains,
     messaging::{
+        courier,
         interface::{send_no_query_provided, send_search_failed},
         message::CrackedMessage,
         messages::SPOTIFY_LOOKUP_FAILED,
     },
     sources::sleevenote,
-    utils::{edit_response_poise, yt_search_select},
+    utils::yt_search_select,
     Context, CrackedResult, Error,
 };
 use ::serenity::all::{Attachment, CreateAttachment, CreateMessage};
@@ -350,6 +351,10 @@ impl NewQueryType {
         let (status, file_name) = self.get_download_status_and_filename(mp3).await?;
         // Not through the courier: the file is the message, and `Rendered`
         // carries no attachments.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "carries a file attachment; Rendered has none"
+        )]
         ctx.channel_id()
             .send_message(
                 ctx.http(),
@@ -582,7 +587,7 @@ impl NewQueryType {
         search_reply: ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {
         let NewQueryType(qt) = self;
-        let search_msg = &search_reply.into_message().await?;
+        let search_msg = &search_reply.clone().into_message().await?;
         match qt {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 // FIXME
@@ -608,8 +613,10 @@ impl NewQueryType {
                 Ok(true)
             },
             _ => {
-                ctx.defer().await?; // Why did I do this?
-                edit_response_poise(ctx, CrackedMessage::PlayAllFailed).await?;
+                // The search placeholder is the reply to edit (#494). This
+                // used to defer and PATCH `@original`, which is a different
+                // message when the placeholder is a followup.
+                courier::edit_reply(ctx, &search_reply, CrackedMessage::PlayAllFailed).await?;
                 Ok(false)
             },
         }

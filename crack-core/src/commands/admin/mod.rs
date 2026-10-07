@@ -1,3 +1,5 @@
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+
 // pub mod audit_logs;
 // pub mod authorize;
 // pub mod broadcast_voice;

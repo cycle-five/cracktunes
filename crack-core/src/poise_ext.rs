@@ -451,8 +451,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let color = serenity::Colour::from(&message);
         let params = SendMessageParams::new(message)
             .with_color(color)
-            .with_as_embed(as_embed)
-            .with_reply(true);
+            .with_as_embed(as_embed);
         let handle = self.send_message_owned(params).await?;
         Ok(handle)
     }
@@ -466,8 +465,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         let color = serenity::Colour::from(&message);
         let params = SendMessageParams::new(message)
             .with_color(color)
-            .with_as_embed(as_embed)
-            .with_reply(true);
+            .with_as_embed(as_embed);
         let handle = self.send_message(params).await?;
         Ok(handle)
     }
@@ -502,11 +500,9 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         embed: CreateEmbed<'ctx>,
     ) -> CrackedResult<ReplyHandle<'ctx>> {
         let is_ephemeral = false;
-        let is_reply = true;
         let params = SendMessageParams::default()
             .with_ephemeral(is_ephemeral)
-            .with_embed(Some(embed))
-            .with_reply(is_reply);
+            .with_embed(Some(embed));
 
         self.send_message(params).await
     }
@@ -632,9 +628,6 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
 //         }
 //     }
 // }
-
-/// Extension trait for the poise::Context<'_> for owned contexts.
-pub trait OwnedContextExt {}
 
 // `JoinVCToken` and `SongbirdManagerExt::join_vc` lived here and were deleted
 // in #481: zero callers workspace-wide, and the per-guild mutex backing them

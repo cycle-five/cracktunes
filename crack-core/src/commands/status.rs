@@ -3,6 +3,7 @@
 
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::plan::Plan;
+use crate::messaging::courier;
 use crate::messaging::format::{cap, escape, INLINE_TITLE_MAX};
 use crate::messaging::messages::{
     STATUS_AUTOPAUSE, STATUS_AUTOPLAY, STATUS_BOT, STATUS_FREE, STATUS_GAME, STATUS_IDLE,
@@ -10,10 +11,10 @@ use crate::messaging::messages::{
     STATUS_PLAYBACK, STATUS_PREMIUM, STATUS_SERVER, STATUS_SETTINGS, STATUS_TITLE, STATUS_UNTITLED,
     STATUS_VOLUME,
 };
+use crate::messaging::render::Rendered;
 use crate::music::remote::{self, QueueState};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
-use poise::CreateReply;
 use serenity::{ChannelId, CreateEmbed, Mentionable, UserId};
 use std::time::{Duration, SystemTime};
 
@@ -60,8 +61,7 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
         .fold(CreateEmbed::default().title(STATUS_TITLE), |e, s| {
             e.field(s.name, s.value, false)
         });
-    ctx.send(CreateReply::default().embed(embed).ephemeral(true))
-        .await?;
+    courier::reply_rendered(ctx, Rendered::embed(embed), true).await?;
     Ok(())
 }
 

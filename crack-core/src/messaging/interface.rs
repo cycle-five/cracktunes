@@ -86,6 +86,10 @@ pub async fn build_log_embed_thumb<'a>(
 
 /// Send a log message as a embed with a thumbnail.
 #[cfg(not(tarpaulin_include))]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "messaging is where sends are made"
+)]
 pub async fn send_log_embed_thumb(
     guild_name: &str,
     channel: &GenericChannelId,
@@ -99,23 +103,6 @@ pub async fn send_log_embed_thumb(
 
     channel
         .send_message(cache_http.http(), CreateMessage::new().embed(embed))
-        .await
-        .map_err(Into::into)
-}
-
-/// Create and sends an log message as an embed.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_log_embed(
-    channel: &GenericChannelId,
-    http: &impl CacheHttp,
-    title: &str,
-    description: &str,
-    avatar_url: &str,
-) -> Result<Message, CrackedError> {
-    let embed = build_log_embed(title, description, avatar_url).await?;
-
-    channel
-        .send_message(http.http(), CreateMessage::new().embed(embed))
         .await
         .map_err(Into::into)
 }

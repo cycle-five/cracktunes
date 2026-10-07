@@ -689,33 +689,6 @@ impl Default for CrackedMessage {
     }
 }
 
-use colored::Color;
-impl From<CrackedMessage> for Color {
-    fn from(message: CrackedMessage) -> Color {
-        match message {
-            CrackedMessage::Error => Color::Red,
-            CrackedMessage::ErrorHttp(_) => Color::Red,
-            CrackedMessage::CrackedError(_) => Color::Red,
-            CrackedMessage::CrackedRed(_) => Color::Red,
-            CrackedMessage::Other(_) => Color::Yellow,
-            _ => Color::Blue,
-        }
-    }
-}
-
-impl From<&CrackedMessage> for Color {
-    fn from(message: &CrackedMessage) -> Color {
-        match message {
-            CrackedMessage::Error => Color::Red,
-            CrackedMessage::ErrorHttp(_) => Color::Red,
-            CrackedMessage::CrackedError(_) => Color::Red,
-            CrackedMessage::CrackedRed(_) => Color::Red,
-            CrackedMessage::Other(_) => Color::Yellow,
-            _ => Color::Blue,
-        }
-    }
-}
-
 use serenity::Colour;
 impl From<CrackedMessage> for Colour {
     fn from(message: CrackedMessage) -> Colour {

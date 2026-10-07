@@ -27,6 +27,10 @@ impl<'ctx> ReplySink for PoiseReplies<'ctx> {
     type Handle = poise::ReplyHandle<'ctx>;
 
     /// The ephemeral flag is set at send time: Discord cannot change it later.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
     async fn send(&self, out: Rendered, ephemeral: bool) -> Result<Self::Handle, CrackedError> {
         self.0
             .send(out.to_reply(ephemeral))
@@ -55,6 +59,10 @@ impl<'ctx> ReplySink for PoiseReplies<'ctx> {
     }
 }
 
+#[expect(
+    clippy::disallowed_methods,
+    reason = "messaging is where sends are made"
+)]
 async fn edit_poise<'ctx>(
     ctx: crate::Context<'ctx>,
     handle: &poise::ReplyHandle<'ctx>,

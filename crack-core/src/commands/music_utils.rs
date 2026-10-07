@@ -281,11 +281,7 @@ async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
         return;
     };
     tracing::warn!("Could not answer the join with an embed: {embed_err:?}, retrying as text");
-    // 🪤 Built here rather than through `send_reply_owned(.., false)`. That
-    // helper's non-embed branch pipes the text through `colored`, whose
-    // tty/`CLICOLOR_FORCE`/`NO_COLOR` decision nothing here pins -- if it ever
-    // resolves to "yes", the user's join confirmation arrives as a literal
-    // `\e[38;2;...m` escape sequence. Discord is not a terminal.
+    // Content, not an embed: it is what survives a denied `EMBED_LINKS`.
     let plain = Rendered::text(
         CrackedMessage::Summon {
             mention: channel_id.mention(),

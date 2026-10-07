@@ -44,6 +44,8 @@
 //! are named. The same goes for a game that finished but whose ending never
 //! went up -- it gets its last results and scoreboard, and its tombstone.
 
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+
 use super::gp::{
     gp_after_close, gp_play_track, gp_round_results_embed, gp_scoreboard_embed,
     gp_spawn_window_timer_secs, now, GpClip, GpGame, GpPhase, GpPlayback, GpReveal, GpRound,

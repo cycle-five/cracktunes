@@ -7,6 +7,8 @@
 //! here. Editing the column by hand while the bot runs does not stick: memory
 //! keeps the old value, and the shutdown save writes it back over the edit.
 
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+
 use crate::db::GuildEntity;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::plan::Plan;

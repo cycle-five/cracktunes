@@ -1,3 +1,5 @@
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+
 use crate::{
     commands::admin::{deafen::deafen_internal, mute::mute_internal},
     messaging::messages::UNKNOWN,

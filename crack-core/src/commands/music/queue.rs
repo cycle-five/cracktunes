@@ -122,6 +122,10 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
 
         let flipped = Rendered::embed(create_queue_embed(&tracks, page_num).await)
             .with_components(create_nav_btns(page_num, num_pages));
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "component responses move in PR 2"
+        )]
         mci.create_response(
             ctx.http(),
             CreateInteractionResponse::UpdateMessage(flipped.to_interaction_message()),

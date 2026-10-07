@@ -8,6 +8,8 @@
 //! Postgres at each submission and each song's end so a restart does not end
 //! the game -- see [`gp_persist`](super::gp_persist).
 
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+
 use crate::{
     commands::cmd_check_music,
     commands::get_call_or_join_author,

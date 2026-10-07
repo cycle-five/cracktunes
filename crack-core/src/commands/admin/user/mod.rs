@@ -1,3 +1,5 @@
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+
 pub mod ban;
 pub mod deafen;
 pub mod unban;
