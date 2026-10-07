@@ -68,9 +68,14 @@ impl Rendered {
         }
     }
 
+    /// Every command reply is a reply-reference to the invoking message
+    /// (`.reply(true)`): no caller ever asked for a bare message, and poise
+    /// ignores the flag for slash commands. The flag is private on
+    /// `poise::CreateReply`, so no test can observe it; this line is deliberate.
     #[must_use]
     pub fn to_reply(&self, ephemeral: bool) -> poise::CreateReply<'static> {
         let mut reply = poise::CreateReply::default()
+            .reply(true)
             .ephemeral(ephemeral)
             .allowed_mentions(self.allowed_mentions())
             .components(self.components.clone());

@@ -361,7 +361,7 @@ pub fn rendered_from_params(params: &SendMessageParams<'_>) -> Rendered {
     if !params.as_embed {
         return Rendered::text(params.msg.to_string());
     }
-    let mut out = match &params.embed {
+    let out = match &params.embed {
         Some(embed) => Rendered::embed(embed.clone().into_owned()),
         None => {
             let mut out = render(&params.msg, &RenderCx::now());
@@ -372,10 +372,17 @@ pub fn rendered_from_params(params: &SendMessageParams<'_>) -> Rendered {
             out
         },
     };
+    finish(out, &params.msg)
+}
+
+/// A message must carry something: one that rendered to neither content nor
+/// embed (not reachable with today's `render`) is sent as its plain text.
+fn finish(out: Rendered, msg: &CrackedMessage) -> Rendered {
     if out.embed.is_none() && out.content.is_none() {
-        out = Rendered::text(params.msg.to_string());
+        Rendered::text(msg.to_string())
+    } else {
+        out
     }
-    out
 }
 
 /// Extension trait for the poise::Context.
@@ -682,6 +689,29 @@ mod tests {
         let p = params("ignored").with_embed(Some(CreateEmbed::new().description("mine")));
         let out = rendered_from_params(&p);
         assert_eq!(description(&out).as_deref(), Some("mine"));
+    }
+
+    /// A caller's own embed keeps its own colour: only an embed built here
+    /// takes `params.color`.
+    #[test]
+    fn a_given_embed_does_not_take_the_params_colour() {
+        let p = params("ignored")
+            .with_color(serenity::Colour::RED)
+            .with_embed(Some(CreateEmbed::new().description("mine")));
+        let out = rendered_from_params(&p);
+        let v = serde_json::to_value(out.embed.unwrap()).unwrap();
+        assert_eq!(v["description"], "mine");
+        assert!(v.get("color").is_none(), "colour applied: {v}");
+    }
+
+    #[test]
+    fn a_message_that_renders_to_nothing_is_sent_as_its_text() {
+        // Only reachable if `render` yields neither content nor embed.
+        let mut out = Rendered::default();
+        let msg = CrackedMessage::Other("fallback".into());
+        out = finish(out, &msg);
+        assert_eq!(out.content.as_deref(), Some("fallback"));
+        assert!(out.embed.is_none());
     }
 
     #[test]
