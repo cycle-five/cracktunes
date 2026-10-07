@@ -648,7 +648,7 @@ pub async fn play_internal(
         let after = if private {
             None
         } else {
-            crate::messaging::status::reply_floor(footnote.as_ref().unwrap_or(&search_msg)).await
+            crate::messaging::courier::locate(ctx, footnote.as_ref().unwrap_or(&search_msg)).await
         };
         let serenity_ctx = ctx.serenity_context();
         crate::messaging::status::show_now_playing_after(

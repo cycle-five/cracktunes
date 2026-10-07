@@ -5,6 +5,7 @@
 //! `Songbird::get`, no `TrackHandle::data`). crack-web only sees the plain
 //! types below.
 
+use crate::messaging::render::Rendered;
 use crate::messaging::status::{self, DiscordTransport};
 use crate::music::{audit::Actor, ops, PlaybackOwner, QueueGuard};
 use crate::{
@@ -327,8 +328,13 @@ pub async fn control(
             http: cx.http.clone(),
             cache: cx.cache.clone(),
         };
-        let anchor =
-            status::announce(&cx.data, &transport, guild_id, echo_embed(&posted, user)).await;
+        let anchor = status::announce(
+            &cx.data,
+            &transport,
+            guild_id,
+            Rendered::embed(echo_embed(&posted, user)),
+        )
+        .await;
         settle.after(&cx, Some(&call), anchor).await;
     });
     Ok(echo)

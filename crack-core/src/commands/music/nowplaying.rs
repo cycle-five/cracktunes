@@ -1,6 +1,6 @@
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::status::{
-    now_playing_pointer, pointer_goes_first, reply_floor, reply_privately, show_now_playing,
+    now_playing_pointer, pointer_goes_first, reply_privately, show_now_playing,
     show_now_playing_after,
 };
 use crate::poise_ext::{ContextExt, PoiseContextExt};
@@ -87,7 +87,7 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
         // few milliseconds before the status reads it, so the reply itself is
         // the floor: without it the status is edited in place above the "↓".
         // This branch only runs for a visible reply (`pointer_goes_first`).
-        let after = reply_floor(&reply).await;
+        let after = crate::messaging::courier::locate(ctx, &reply).await;
         show_now_playing_after(
             &data,
             serenity_ctx.http.clone(),

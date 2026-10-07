@@ -83,6 +83,23 @@ impl Rendered {
         reply
     }
 
+    /// The reply for `ReplyHandle::edit`, which ties the builder's lifetime to
+    /// the context's. `CreateReply` and `CreateComponent` are invariant in it,
+    /// so a `'static` component list cannot be passed: it is left out, and the
+    /// caller is told so by the returned flag.
+    #[must_use]
+    pub fn to_reply_edit<'a>(&self) -> (poise::CreateReply<'a>, bool) {
+        let mut reply: poise::CreateReply<'a> =
+            poise::CreateReply::default().allowed_mentions(self.allowed_mentions());
+        if let Some(content) = &self.content {
+            reply = reply.content(content.clone());
+        }
+        if let Some(embed) = &self.embed {
+            reply = reply.embed(embed.clone());
+        }
+        (reply, !self.components.is_empty())
+    }
+
     pub fn to_message(&self) -> CreateMessage<'static> {
         let mut m = CreateMessage::new()
             .allowed_mentions(self.allowed_mentions())
@@ -196,6 +213,21 @@ mod tests {
             now_unix: 0,
             embed_links: true,
         }
+    }
+
+    #[test]
+    fn text_is_clipped_to_the_content_limit() {
+        let out = Rendered::text("a".repeat(3000));
+        assert_eq!(out.content.unwrap().chars().count(), CONTENT_MAX);
+    }
+
+    /// An edit replaces everything: a message edited to one without an embed
+    /// must lose its old embed and content.
+    #[test]
+    fn an_edit_without_an_embed_clears_the_old_one() {
+        let json = serde_json::to_value(Rendered::default().to_edit()).expect("serializes");
+        assert_eq!(json["embeds"], serde_json::json!([]));
+        assert_eq!(json["content"], serde_json::json!(""));
     }
 
     /// The owner's TuneTitan screenshot, 2026-10-06: "⏭️ Skipped to **!".
