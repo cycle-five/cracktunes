@@ -225,6 +225,10 @@ pub const STATUS_FINISHED_TITLE: &str = "⏹️ Finished";
 pub const STATUS_FINISHED_DESCRIPTION: &str = "Nothing is playing. Use /play to start again.";
 pub const EPHEMERAL_REPLIES_ON: &str = "🙈 /play, /skip and /nowplaying now reply privately.";
 pub const EPHEMERAL_REPLIES_OFF: &str = "👀 /play, /skip and /nowplaying now reply in the channel.";
+pub const CONTROL_ECHOES_ON: &str =
+    "📣 Button and dashboard controls now post a line in the channel.";
+pub const CONTROL_ECHOES_OFF: &str =
+    "🔇 Button and dashboard controls no longer post a line in the channel.";
 pub const QUEUE_PAGE_OF: &str = "of";
 pub const QUEUE_PAGE: &str = "Page";
 pub const QUEUE_UP_NEXT: &str = "⌛ Up next";
