@@ -144,7 +144,8 @@ pub async fn diagnose(ctx: Context<'_>) -> Result<(), Error> {
                  channel in this server."
             .to_string(),
     };
-    courier::reply_rendered(ctx, Rendered::text(out), false).await?;
+    // `true`, not the attribute: an explicit flag overrides `ephemeral` above.
+    courier::reply_rendered(ctx, Rendered::text(out), true).await?;
     Ok(())
 }
 

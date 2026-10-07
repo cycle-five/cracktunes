@@ -109,6 +109,8 @@ pub async fn locate<'ctx>(
     locate_on(&PoiseReplies(ctx), handle).await
 }
 
+/// A visible reply: `reply_as(ctx, msg, false)`, so it is public even in a
+/// command declared `ephemeral`.
 pub async fn reply<'ctx>(
     ctx: crate::Context<'ctx>,
     msg: CrackedMessage,
@@ -116,6 +118,11 @@ pub async fn reply<'ctx>(
     reply_as(ctx, msg, false).await
 }
 
+/// Reply with `msg`, ephemeral or not as `ephemeral` says.
+///
+/// 🪤 The flag always wins: it overrides the command's own `ephemeral`
+/// attribute (poise applies that only when a reply leaves the flag unset), so
+/// a command declared `ephemeral` must pass `true` here.
 pub async fn reply_as<'ctx>(
     ctx: crate::Context<'ctx>,
     msg: CrackedMessage,
@@ -134,6 +141,9 @@ pub async fn edit_reply<'ctx>(
 
 /// A reply that is already rendered (the degraded EMBED_LINKS case builds
 /// content + embed together).
+///
+/// 🪤 As with [`reply_as`], `ephemeral` overrides the command's own
+/// `ephemeral` attribute: a command declared `ephemeral` must pass `true`.
 pub async fn reply_rendered<'ctx>(
     ctx: crate::Context<'ctx>,
     out: Rendered,

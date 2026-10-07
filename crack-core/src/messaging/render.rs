@@ -353,6 +353,21 @@ mod tests {
         );
     }
 
+    /// The flag `to_reply` is given is the one Discord gets, set either way:
+    /// poise fills in a command's `ephemeral` attribute only when a reply
+    /// leaves it unset, so `false` makes even an `ephemeral` command public.
+    #[test]
+    fn a_replys_ephemeral_flag_reaches_the_wire() {
+        let flags = |ephemeral: bool| {
+            let r = Rendered::text("x")
+                .to_reply(ephemeral)
+                .to_slash_initial_response(serenity::all::CreateInteractionResponseMessage::new());
+            serde_json::to_value(r).unwrap()["flags"].as_u64()
+        };
+        assert_eq!(flags(true), Some(64));
+        assert_eq!(flags(false).unwrap_or(0) & 64, 0);
+    }
+
     #[test]
     fn errors_are_red() {
         let r = render(&CrackedMessage::Error, &cx());
