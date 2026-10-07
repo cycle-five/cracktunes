@@ -55,7 +55,8 @@ impl NowPlayingButton {
     }
 
     /// The button an id names, or `None` for anything malformed. Never panics:
-    /// a zero guild id is rejected before `GuildId::new`, which panics on it.
+    /// serenity ids are `NonMaxU64`, so `GuildId::new(u64::MAX)` panics; that and the
+    /// never-issued 0 are rejected before it.
     #[must_use]
     pub fn parse(id: &str) -> Option<Self> {
         let mut parts = id.strip_prefix(NP_PREFIX)?.split(':');
@@ -64,7 +65,7 @@ impl NowPlayingButton {
             .next()?
             .parse::<u64>()
             .ok()
-            .filter(|&n| n != 0)
+            .filter(|&n| n != 0 && n != u64::MAX)
             .map(GuildId::new)?;
         let button = match kind {
             "pause" => Self::Pause { guild },
@@ -247,6 +248,8 @@ mod tests {
             "np:pause",
             "np:pause:",
             "np:pause:0",
+            "np:pause:18446744073709551615",
+            "np:skip:18446744073709551615:67e55044-10b1-426f-9247-bb680e5fe0c8",
             "np:pause:-1",
             "np:pause:abc",
             "np:pause:1:extra",
