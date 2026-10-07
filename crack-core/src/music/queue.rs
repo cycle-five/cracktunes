@@ -1663,7 +1663,7 @@ mod test {
     /// handler, a dead event task.
     #[tokio::test]
     async fn every_way_a_track_is_queued_reads_back_without_a_panic() {
-        use crate::messaging::interface::{create_now_playing_embed, create_queue_embed};
+        use crate::messaging::interface::{create_queue_embed, now_playing_card};
 
         let data = Data(Arc::new(DataInner::default()));
         let guard = data
@@ -1729,11 +1729,7 @@ mod test {
             // the driver for the play position, which an offline driver never
             // answers. A panic in the readers still fails this test; the wait
             // after them is cut short and ignored.
-            let _ = tokio::time::timeout(
-                Duration::from_millis(200),
-                create_now_playing_embed(track.clone()),
-            )
-            .await;
+            let _ = tokio::time::timeout(Duration::from_millis(200), now_playing_card(track)).await;
             get_requesting_user(track).await.expect("a requester");
         }
     }

@@ -3,10 +3,13 @@
 //! Spec: docs/superpowers/specs/2026-09-15-floating-status-message-design.md
 
 use crate::guild::operations::GuildSettingsOperations;
-use crate::messaging::interface::create_now_playing_embed;
+use crate::messaging::courier::{post, Destination};
+use crate::messaging::interface::now_playing_card;
+use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
     NOW_PLAYING_POINTER, STATUS_FINISHED_DESCRIPTION, STATUS_FINISHED_TITLE,
 };
+use crate::messaging::render::RenderCx;
 use crate::messaging::render::Rendered;
 use crate::Data;
 use serenity::all::{Cache, CreateEmbed, GenericChannelId, GuildId, Http, MessageId, MessageLink};
@@ -301,19 +304,25 @@ pub async fn show_now_playing_after(
         return None;
     }
     let track = call.lock().await.queue().current()?;
-    let embed: CreateEmbed<'static> = create_now_playing_embed(track).await;
-    let out = Rendered::embed(embed);
-    update_after(
+    let card = now_playing_card(&track).await;
+    let msg = CrackedMessage::NowPlayingCard(Box::new(card));
+    post(
         data,
         &DiscordTransport { http, cache },
-        guild,
-        out,
-        Phase::Playing,
-        after,
+        Destination::Status { guild, after },
+        &msg,
+        &RenderCx::now(),
     )
     .await
+    .map(|(channel, id)| StatusMessage {
+        channel,
+        id,
+        phase: Phase::Playing,
+    })
 }
 
+/// Show that playback finished. The message stays tracked, so the next
+/// now-playing moment continues it.
 pub async fn show_finished(
     data: &Data,
     http: Arc<Http>,
@@ -323,14 +332,19 @@ pub async fn show_finished(
     if data.gp_is_active(guild) {
         return None;
     }
-    update(
+    post(
         data,
         &DiscordTransport { http, cache },
-        guild,
-        Rendered::embed(finished_embed()),
-        Phase::Finished,
+        Destination::Status { guild, after: None },
+        &CrackedMessage::Finished,
+        &RenderCx::now(),
     )
     .await
+    .map(|(channel, id)| StatusMessage {
+        channel,
+        id,
+        phase: Phase::Finished,
+    })
 }
 
 /// The "Finished" status.

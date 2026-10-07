@@ -9,8 +9,9 @@ use crate::{
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
     handlers::track_end::update_queue_messages,
-    messaging::interface::create_now_playing_embed,
+    messaging::interface::now_playing_card,
     messaging::placeholder::{discard_on_err, Placeholder},
+    messaging::render::{render, RenderCx},
     messaging::{
         message::CrackedMessage,
         messages::{
@@ -325,6 +326,18 @@ fn degraded_delivery(text: Option<&TextPerms>) -> Option<NoticeDelivery> {
 
 /// The reply to a playlist `/play`: what [`CrackedMessage::PlaylistQueued`]
 /// says, not its variant name.
+/// The now-playing embed for `track`, until the play reply moves to the
+/// courier.
+async fn now_playing_embed<'a>(track: &TrackHandle) -> CreateEmbed<'a> {
+    let card = now_playing_card(track).await;
+    render(
+        &CrackedMessage::NowPlayingCard(Box::new(card)),
+        &RenderCx::now(),
+    )
+    .embed
+    .unwrap_or_default()
+}
+
 fn playlist_queued_embed<'a>() -> CreateEmbed<'a> {
     CreateEmbed::default().description(CrackedMessage::PlaylistQueued.to_string())
 }
@@ -372,24 +385,24 @@ pub async fn build_play_embed<'a>(
                 (QueryType::File(_x_), y) => {
                     tracing::error!("QueryType::File, mode: {:?}", y);
                     let track = queue.first().unwrap();
-                    create_now_playing_embed(track.clone()).await
+                    now_playing_embed(track).await
                 },
                 (QueryType::YoutubeSearch(_x), y) => {
                     tracing::error!("QueryType::YoutubeSearch, mode: {:?}", y);
                     let track = queue.first().unwrap();
-                    create_now_playing_embed(track.clone()).await
+                    now_playing_embed(track).await
                 },
                 (x, y) => {
                     tracing::error!("{:?} {:?} {:?}", x, y, mode);
                     let track = queue.first().unwrap();
-                    create_now_playing_embed(track.clone()).await
+                    now_playing_embed(track).await
                 },
             }
         },
         Ordering::Equal => {
             tracing::warn!("Only one track in queue, just playing it.");
             let track = queue.first().unwrap();
-            create_now_playing_embed(track.clone()).await
+            now_playing_embed(track).await
         },
         Ordering::Less => {
             tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");

@@ -1,9 +1,11 @@
 use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
+use crate::messaging::cards::NowPlayingCard;
+use crate::messaging::format::{Progress, TrackLabel};
 use crate::messaging::messages::UNKNOWN;
 use crate::messaging::messages::{
-    PROGRESS, QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC,
-    QUEUE_NO_TITLE, QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT, REQUESTED_BY,
+    QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC, QUEUE_NO_TITLE,
+    QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
 };
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
@@ -14,11 +16,10 @@ use crate::{
 };
 use crate::{
     messaging::message::CrackedMessage,
-    utils::{build_footer_info, get_requesting_user, get_track_handle_metadata},
+    utils::{get_requesting_user, get_track_handle_metadata},
     Context as CrackContext, Error,
 };
 use crack_types::get_human_readable_timestamp;
-use crack_types::NewAuxMetadata;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;
@@ -34,7 +35,7 @@ use serenity::{
     },
 };
 use songbird::input::AuxMetadata;
-use songbird::tracks::TrackHandle;
+use songbird::tracks::{PlayMode, TrackHandle};
 use std::borrow::Cow;
 use std::fmt::Write;
 use std::time::Duration;
@@ -218,95 +219,34 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
 // This is probably the message that the user sees //
 // the most from the bot.                         //
 
-use serenity::all::Http;
-use songbird::Call;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-/// Send the current track information as an ebmed to the given channel.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_now_playing(
-    channel: GenericChannelId,
-    http: Arc<Http>,
-    call: Arc<Mutex<Call>>,
-    //cur_position: Option<Duration>,
-    //metadata: Option<AuxMetadata>,
-) -> Result<Message, Error> {
-    let mutex_guard = call.lock().await;
-    let msg: CreateMessage = match mutex_guard.queue().current() {
-        Some(track_handle) => {
-            let embed = create_now_playing_embed(track_handle.clone()).await;
-            CreateMessage::new().embed(embed)
-        },
-        None => CreateMessage::new().content("Nothing playing"),
-    };
-    tracing::warn!("sending message: {:?}", msg);
-    channel.send_message(&http, msg).await.map_err(|e| e.into())
-}
-
-/// Creates an embed from a CrackedMessage and sends it as an embed.
-pub fn build_now_playing_embed_metadata<'a>(
-    requesting_user: Option<UserId>,
-    cur_position: Option<Duration>,
-    metadata: NewAuxMetadata,
-) -> CreateEmbed<'a> {
-    let NewAuxMetadata(metadata) = metadata;
-    //tracing::warn!("metadata: {:?}", metadata);
-
-    let title = metadata.title.clone().unwrap_or_default();
-
-    let source_url = metadata.source_url.clone().unwrap_or_default();
-
-    let position = get_human_readable_timestamp(cur_position);
-    let duration = get_human_readable_timestamp(metadata.duration);
-
-    let progress_field = (PROGRESS, format!(">>> {} / {}", position, duration), true);
-
-    let channel_field: (&'static str, String, bool) = match requesting_user {
-        Some(user_id) => (
-            REQUESTED_BY,
-            format!(">>> {}", requesting_user_to_string(user_id)),
-            true,
-        ),
-        None => {
-            tracing::info!("No user id, we're autoplaying");
-            (REQUESTED_BY, ">>> N/A".to_string(), true)
-        },
-    };
-    let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
-
-    let (footer_text, footer_icon_url, vanity) = build_footer_info(&source_url);
-
-    CreateEmbed::new()
-        .author(CreateEmbedAuthor::new(CrackedMessage::NowPlaying))
-        .title(title.clone())
-        .url(source_url)
-        .field(progress_field.0, progress_field.1, progress_field.2)
-        .field(channel_field.0, channel_field.1, channel_field.2)
-        // .thumbnail(url::Url::parse(&thumbnail).unwrap())
-        .thumbnail(
-            url::Url::parse(&thumbnail)
-                .map(|x| x.to_string())
-                .map_err(|e| {
-                    tracing::error!("error parsing url: {:?}", e);
-                    "".to_string()
-                })
-                .unwrap_or_default(),
-            None,
-        )
-        .description(vanity)
-        .footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon_url))
-}
-
-/// Creates a now playing embed for the given track.
-pub async fn create_now_playing_embed<'a>(track: TrackHandle) -> CreateEmbed<'a> {
-    // let (requesting_user, duration, metadata) = track_handle_to_metadata(track).await.unwrap();
-    // No metadata is a blank embed, not a panic: this runs inside songbird's
-    // event task too (`send_now_playing` from the track-end handler).
-    let metadata = get_track_handle_metadata(&track).await.unwrap_or_default();
-    let requesting_user = get_requesting_user(&track).await.ok();
-    let duration = Some(track.get_info().await.unwrap_or_default().position);
-    build_now_playing_embed_metadata(requesting_user, duration, NewAuxMetadata(metadata))
+/// Read everything the now-playing card shows from a track. Nothing here
+/// panics or hangs: missing metadata is an empty card, and a driver that does
+/// not answer within `TRACK_INFO_TIMEOUT` (an offline call, a dying driver)
+/// reads as "just started".
+pub async fn now_playing_card(track: &TrackHandle) -> NowPlayingCard {
+    let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
+    let requester = get_requesting_user(track).await.ok();
+    let label = TrackLabel::from_metadata(&metadata);
+    let progress =
+        match tokio::time::timeout(crate::music::ops::TRACK_INFO_TIMEOUT, track.get_info()).await {
+            Ok(Ok(info)) if info.playing == PlayMode::Pause => Progress::Paused {
+                position: Some(info.position),
+            },
+            Ok(Ok(info)) => Progress::Playing {
+                position: info.position,
+                duration: label.duration,
+            },
+            _ => Progress::Playing {
+                position: Duration::ZERO,
+                duration: label.duration,
+            },
+        };
+    NowPlayingCard {
+        label,
+        thumbnail: metadata.thumbnail,
+        requester,
+        progress,
+    }
 }
 
 // ---------------------- Lyrics ---------------------------- //
@@ -504,6 +444,23 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
 
 #[cfg(test)]
 mod test {
+    /// `get_info` never answers on an offline call; the card must still come
+    /// back, as "just started", within the bound.
+    #[tokio::test]
+    async fn a_driver_that_never_answers_does_not_hang_the_card() {
+        use super::now_playing_card;
+        use crate::messaging::format::Progress;
+        use std::time::Duration;
+        let (_data, call, _ids, _rx) = crate::music::ops::test_support::queue_of(1).await;
+        let handle = call.lock().await.queue().current_queue()[0].clone();
+        let card = tokio::time::timeout(Duration::from_secs(5), now_playing_card(&handle))
+            .await
+            .expect("now_playing_card outlived its bound");
+        assert_eq!(card.label.title.as_deref(), Some("t0"));
+        assert!(
+            matches!(card.progress, Progress::Playing { position, .. } if position == Duration::ZERO)
+        );
+    }
 
     /// A songbird call with no connection, queued with `(title, requester)`
     /// tracks in order; `None` is an autoplayed track. The call is returned so
