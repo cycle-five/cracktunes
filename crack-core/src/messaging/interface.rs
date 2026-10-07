@@ -125,46 +125,90 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     // one-song queue listed that song twice.
     let queue = tracks.iter().skip(start_idx + 1).take(EMBED_PAGE_SIZE);
 
-    let mut description = String::new();
-    let mut used = 0;
-
+    let mut entries = Vec::new();
     for (i, t) in queue.enumerate() {
         // A track can have no metadata (a pick nothing resolved a title for).
         // It gets a blank line here, not a panic that kills `/queue`.
         let metadata = get_track_handle_metadata(t).await.unwrap_or_default();
-        let label = TrackLabel::from_metadata(&metadata);
-        let requesting_user = get_requesting_user(t).await.unwrap_or(UserId::new(1));
-
-        // No brackets around the requester: autoplay's is already "(auto)".
-        let render = |label: &TrackLabel| {
-            format!(
-                "{}. {} • {}\n",
-                i + start_idx + 1,
-                track_text(label),
-                requesting_user_to_string(requesting_user),
-            )
-        };
-        let mut line = render(&label);
-        if line.chars().count() > FIELD_MAX {
-            // A link too long for a field on its own: the title alone, rather
-            // than a line that can never be shown.
-            line = render(&TrackLabel { url: None, ..label });
-        }
-        // 🔑 Discord rejects a field over 1024 characters, and with it the
-        // whole `/queue` reply. Whole lines only: a cut line is a cut link.
-        let len = line.chars().count();
-        if used + len > FIELD_MAX {
-            break;
-        }
-        used += len;
-        description.push_str(&line);
+        let requester = get_requesting_user(t).await.unwrap_or(UserId::new(1));
+        entries.push(QueueEntry {
+            number: i + start_idx + 1,
+            label: TrackLabel::from_metadata(&metadata),
+            requester,
+        });
     }
+    let description = fit_page(&entries);
 
     // An empty embed field is rejected by Discord.
     if description.is_empty() {
         return String::from(QUEUE_NO_SONGS);
     }
     description
+}
+
+/// One line of "Up next", before it is rendered.
+struct QueueEntry {
+    number: usize,
+    label: TrackLabel,
+    requester: UserId,
+}
+
+impl QueueEntry {
+    /// `3. [**title**](url) • 4:33 • <@id>`, or the title alone when
+    /// `linked` is false. No brackets around the requester: autoplay's is
+    /// already "(auto)".
+    fn line(&self, linked: bool) -> String {
+        let label = if linked {
+            self.label.clone()
+        } else {
+            TrackLabel {
+                url: None,
+                ..self.label.clone()
+            }
+        };
+        format!(
+            "{}. {} • {}\n",
+            self.number,
+            track_text(&label),
+            requesting_user_to_string(self.requester),
+        )
+    }
+}
+
+/// A page of "Up next" that fits one embed field.
+///
+/// 🔑 Discord rejects a field over 1024 characters, and with it the whole
+/// `/queue` reply. Six SoundCloud-length links are enough to pass it. Links
+/// are dropped from the last line up until the page fits, so every track on
+/// the page is still listed, by title; a cut line would be a cut link. A page
+/// of title-only lines always fits (six at the 60-character title cap, fully
+/// escaped, are about 1000), so dropping whole lines is only a last resort.
+fn fit_page(entries: &[QueueEntry]) -> String {
+    let mut linked = vec![true; entries.len()];
+    let render = |linked: &[bool]| -> String {
+        entries
+            .iter()
+            .zip(linked)
+            .map(|(entry, &linked)| entry.line(linked))
+            .collect()
+    };
+    let mut page = render(&linked);
+    for i in (0..entries.len()).rev() {
+        if page.chars().count() <= FIELD_MAX {
+            break;
+        }
+        linked[i] = false;
+        page = render(&linked);
+    }
+    // The last resort: whole lines from the end.
+    while page.chars().count() > FIELD_MAX {
+        let Some(cut) = page.trim_end_matches('\n').rfind('\n') else {
+            page.clear();
+            break;
+        };
+        page.truncate(cut + 1);
+    }
+    page
 }
 
 /// A queued track: `[**title**](url) • 4:33`. The link and the length are
@@ -711,31 +755,32 @@ mod test {
     }
 
     /// 🔑 Six such lines are ~1160 characters, and Discord rejects a field
-    /// over 1024 -- and with it the whole `/queue` reply. The page stops at
-    /// the last whole line that fits; nothing is cut mid-link.
+    /// over 1024 -- and with it the whole `/queue` reply. Every track on the
+    /// page is still listed: links are dropped from the last line up until
+    /// the page fits, and nothing is cut mid-link.
     #[tokio::test]
-    async fn up_next_stops_at_the_field_limit_on_a_whole_line() {
+    async fn up_next_keeps_every_track_and_drops_links_from_the_end() {
         let (_call, tracks) = queue_with((0..7).map(long_entry).collect()).await;
 
         let page = super::create_queue_page(&tracks, 0).await;
 
         assert!(page.chars().count() <= super::FIELD_MAX, "{page}");
-        assert!(page.ends_with(" • <@123456789012345678>\n"), "{page}");
         let lines: Vec<&str> = page.lines().collect();
-        assert_eq!(
-            lines.len(),
-            5,
-            "the cap should have dropped the sixth: {page}"
-        );
+        assert_eq!(lines.len(), 6, "every track on the page is listed: {page}");
+        let linked: Vec<bool> = lines
+            .iter()
+            .enumerate()
+            .map(|(i, line)| {
+                line.contains(&format!("https://soundcloud.com/artist-number-{}/", i + 1))
+            })
+            .collect();
+        // The earliest keep their links; the last lose them first.
+        assert_eq!(linked, vec![true, true, true, true, false, false], "{page}");
         for (i, line) in lines.iter().enumerate() {
-            let link = format!("https://soundcloud.com/artist-number-{}/", i + 1);
-            assert!(
-                line.starts_with(&format!("{}. [**{} ", i + 1, i + 1)),
-                "{line}"
-            );
-            assert!(line.contains(&link), "{line}");
+            assert!(line.starts_with(&format!("{}. ", i + 1)), "{line}");
             assert!(line.ends_with(" • 3:45 • <@123456789012345678>"), "{line}");
         }
+        assert!(lines[5].starts_with("6. **6 Extended"), "{}", lines[5]);
     }
 
     /// A link too long to fit a field even alone is left off, so the track

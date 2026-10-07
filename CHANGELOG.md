@@ -142,8 +142,9 @@
   like the other music messages.
 - **Replies and notices carry a colour stripe by kind:** errors red, general
   notices gold (the idle-leave alert, the autoplay notices, the playlist
-  progress line), the rest blue. Cards (now playing, queued) and embeds a
-  command builds itself carry none. Before, most replies had no colour.
+  progress line), the rest blue. Cards (now playing, queued, the "Finished"
+  status), dashboard echo lines, the failed-track notice and embeds a command
+  builds itself carry none. Before, most replies had no colour.
 - **The autoplay notices and the idle-leave alert are embeds** like every other
   notice.
 - **Music messages can't ping @everyone, a role or a user by accident.** Every
@@ -210,8 +211,9 @@
   only from an http(s) URL, on `/queue`, `/remove` and `/spotify` too.
 - **`/queue` no longer fails on a page of long links.** Six tracks with
   SoundCloud-length links could pass Discord's 1024-character limit for a
-  field, and Discord rejected the whole reply. A page now ends at the last
-  whole line that fits.
+  field, and Discord rejected the whole reply. Every track on the page is
+  still listed: when the links don't fit, the last lines show their title
+  without the link.
 - **A `/search` pick no longer fails when its results menu can't be deleted.**
   The pick plays, and the leftover menu is logged.
 - **`/search` no longer panics on long titles in Japanese, emoji and the like.**
