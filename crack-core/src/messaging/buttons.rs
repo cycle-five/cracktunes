@@ -1,5 +1,5 @@
 //! The now-playing buttons: their custom ids, the row on the status message,
-//! and (Task 7) what a press does. Spec: the messaging-layer design, "PR 2".
+//! and what a press does. Spec: the messaging-layer design, "PR 2".
 //!
 //! 🔑 An id names an intent, never a toggle, and carries everything a press
 //! needs: buttons on an old status message still work after a restart, and a
@@ -357,7 +357,7 @@ mod tests {
         assert_eq!(b.custom_id().len(), 65);
     }
 
-    /// Review Focus 3: nothing malformed parses, and nothing panics
+    /// Plan 2026-10-07-now-playing-buttons, Review Focus 3: nothing malformed parses, and nothing panics
     /// (`GuildId::new(0)` would).
     #[test]
     fn malformed_ids_are_rejected() {
@@ -553,7 +553,7 @@ mod tests {
         assert_eq!(ran.len(), 1);
     }
 
-    /// Review Focus 3.
+    /// A forged id never runs a control (Plan 2026-10-07-now-playing-buttons, Review Focus 3).
     #[tokio::test]
     async fn a_malformed_id_is_out_of_date_and_runs_nothing() {
         let data = Data::default();
@@ -584,7 +584,7 @@ mod tests {
         assert!(ran.is_empty(), "a press from a DM runs nothing");
     }
 
-    /// Review Focus 4: refused in the slash command's words, privately.
+    /// Plan 2026-10-07-now-playing-buttons, Review Focus 4: refused in the slash command's words, privately.
     #[tokio::test]
     async fn a_press_outside_the_music_channel_is_refused_privately() {
         let data = Data::default();
@@ -603,7 +603,7 @@ mod tests {
         assert!(ran.is_empty());
     }
 
-    /// Review Focus 1 and 2: a stale skip, and nothing playing.
+    /// Plan 2026-10-07-now-playing-buttons, Review Focus 1 and 2: a stale skip, and nothing playing.
     #[tokio::test]
     async fn refusals_from_the_control_are_answered_privately() {
         let data = Data::default();

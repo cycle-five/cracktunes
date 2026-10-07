@@ -853,7 +853,7 @@ mod test {
             assert_eq!(echo, None);
         }
 
-        /// Review Focus 5: a driver that never answers must not hang the
+        /// Plan 2026-10-07-now-playing-buttons, Review Focus 5: a driver that never answers must not hang the
         /// before-read.
         #[tokio::test]
         async fn the_before_read_of_a_stalled_driver_is_unknown_within_the_bound() {

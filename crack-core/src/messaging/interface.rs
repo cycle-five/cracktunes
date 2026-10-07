@@ -568,7 +568,7 @@ mod test {
         );
     }
 
-    /// Review Focus 5: a stalled driver still gets its buttons, at their defaults
+    /// Plan 2026-10-07-now-playing-buttons, Review Focus 5: a stalled driver still gets its buttons, at their defaults
     /// (Pause, repeat off), for the playing track, within the bound.
     #[tokio::test]
     async fn the_status_card_of_a_stalled_driver_has_default_controls() {

@@ -331,7 +331,6 @@ mod tests {
         assert_eq!(r.content.as_deref(), Some("pong"));
     }
 
-    /// A page flip carries the new embed and the nav buttons, and pings nobody.
     /// A follow-up to a press: private when asked, pings nobody, carries the embed.
     #[test]
     fn a_followup_is_private_when_asked_and_pings_nobody() {
@@ -344,6 +343,7 @@ mod tests {
         assert_eq!(public["flags"].as_u64().unwrap_or(0) & 64, 0);
     }
 
+    /// A page flip carries the new embed and the nav buttons, and pings nobody.
     #[test]
     fn an_interaction_update_carries_the_embed_and_the_buttons() {
         let r = Rendered::embed(CreateEmbed::new().title("Page 2"))

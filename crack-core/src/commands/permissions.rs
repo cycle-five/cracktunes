@@ -145,7 +145,7 @@ mod tests {
         );
     }
 
-    /// Review Focus 4: while `/gp` owns playback, the blocked commands are
+    /// Plan 2026-10-07-now-playing-buttons, Review Focus 4: while `/gp` owns playback, the blocked commands are
     /// refused in its words, and the rest still run.
     #[tokio::test]
     async fn a_game_refuses_what_it_blocks_and_only_that() {

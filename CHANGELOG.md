@@ -126,10 +126,13 @@
   container.
 - **Buttons on the now-playing message.** Pause or Resume, Skip, Repeat and
   Shuffle, for anyone who may use the music commands there (the music channel
-  and `/gp` rules apply). A press posts the same echo line a dashboard control
-  does, and the status message updates below it. Skip names the song it was
-  drawn for, so an old message or two people pressing at once cannot skip the
-  next song. Buttons on an old message still work after a restart.
+  and `/gp` rules apply). A press posts an echo line naming who pressed it, as
+  a dashboard control does, and the status message updates below it. Skip names
+  the song it was drawn for, so an old message or two people pressing at once
+  cannot skip the next song. Buttons on an old message still work after a
+  restart. Restrictions set on individual commands under Server Settings →
+  Integrations do not cover the buttons: the bot's own music-channel and `/gp`
+  rules do.
 - **`/echoes`** (admins) turns those echo lines off or on for the server, for
   buttons and the dashboard alike. On by default.
 - The queue history's source filter (`/auditlog`, the dashboard) has `button`.

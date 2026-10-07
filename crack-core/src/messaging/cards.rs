@@ -304,7 +304,7 @@ mod tests {
         );
     }
 
-    /// Ruling 4: a press in Discord needs no "from ..."; the dashboard keeps its.
+    /// Plan 2026-10-07-now-playing-buttons, Ruling 4: a press in Discord needs no "from ..."; the dashboard keeps its.
     #[test]
     fn a_button_echo_has_no_source_suffix() {
         let skipped = Echo::Skipped {
