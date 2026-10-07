@@ -597,7 +597,7 @@ mod tests {
             ops,
             vec![
                 PressOp::Acknowledge,
-                private("⚠️ You are not in the music channel! Use <#10>"),
+                private("⚠️ You are not in the music channel! Use <#77>"),
             ]
         );
         assert!(ran.is_empty());

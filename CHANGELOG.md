@@ -288,6 +288,8 @@
   now read from the URI.
 - A dashboard control that changed nothing (pausing a paused song from a stale
   tab) no longer posts an echo line.
+- Outside the music channel, the refusal now names the music channel to use,
+  not the channel you are already in.
 
 ## TODO:
 

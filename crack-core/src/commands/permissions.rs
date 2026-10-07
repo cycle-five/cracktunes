@@ -33,8 +33,10 @@ pub async fn music_access(
         .get_guild_settings(guild)
         .await
         .and_then(|settings| settings.get_music_channel());
-    if music_channel.is_some_and(|allowed| allowed != channel) {
-        return Err(CrackedError::NotInMusicChannel(channel));
+    if let Some(allowed) = music_channel {
+        if allowed != channel {
+            return Err(CrackedError::NotInMusicChannel(allowed));
+        }
     }
     match is_authorized_music(member.map(Cow::Borrowed), None) {
         Ok(true) => Ok(()),
@@ -128,7 +130,7 @@ mod tests {
             .is_ok());
         let got = music_access(&data, G, None, false, ELSEWHERE, "skip").await;
         assert!(
-            matches!(got, Err(CrackedError::NotInMusicChannel(c)) if c == ELSEWHERE),
+            matches!(got, Err(CrackedError::NotInMusicChannel(c)) if c == MUSIC),
             "{got:?}"
         );
     }
