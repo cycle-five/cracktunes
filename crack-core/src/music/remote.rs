@@ -350,9 +350,12 @@ pub async fn control(
     let (guard, call) = ops::begin(&cx)
         .await
         .map_err(|r| ControlRefused::from(&r))?;
-    // Under the lease, bounded: what the track was doing decides whether the
-    // control changes anything worth echoing.
-    let before = flags_before(&call).await;
+    // Under the lease, bounded: only pause, resume and repeat echo according
+    // to what the track was doing, so only they pay for the read.
+    let before = match c {
+        Control::Pause | Control::Resume | Control::Repeat { .. } => flags_before(&call).await,
+        _ => None,
+    };
     let (echo, settle) = run_control(&guard, &call, c, before)
         .await
         .map_err(|r| ControlRefused::from(&r))?;
