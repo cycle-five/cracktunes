@@ -9,10 +9,8 @@ use crate::{
     http_utils,
     http_utils::check_banned_domains,
     messaging::{
-        courier,
         interface::{send_no_query_provided, send_search_failed},
-        message::CrackedMessage,
-        messages::SPOTIFY_LOOKUP_FAILED,
+        messages::{PLAY_ALL_FAILED, SPOTIFY_LOOKUP_FAILED},
     },
     sources::sleevenote,
     utils::yt_search_select,
@@ -587,37 +585,18 @@ impl NewQueryType {
         search_reply: ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {
         let NewQueryType(qt) = self;
-        let search_msg = &search_reply.clone().into_message().await?;
-        match qt {
-            QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
+        match play_all_plan(qt)? {
+            PlayAll::Link(url) => {
                 // FIXME
                 let mut src = ytdl_for_url(http_utils::get_client_old().clone(), url)?;
                 let metadata = src.aux_metadata().await?;
                 queue_track_back(ctx, &call, &QueryType::NewYoutubeDl((src, metadata))).await?;
                 Ok(true)
             },
-            QueryType::KeywordList(keywords_list) => {
-                let queries = keywords_list
-                    .iter()
-                    .map(|x| QueryType::Keywords(x.clone()))
-                    .collect::<Vec<QueryType>>();
-                queue_keyword_list_back(ctx, call, queries, search_msg).await?;
+            PlayAll::Searches(queries) => {
+                let search_msg = search_reply.into_message().await?;
+                queue_keyword_list_back(ctx, call, queries, &search_msg).await?;
                 Ok(true)
-            },
-            QueryType::SpotifyTracks(tracks) => {
-                let queries = tracks
-                    .iter()
-                    .map(|x| QueryType::Keywords(x.build_query()))
-                    .collect::<Vec<QueryType>>();
-                queue_keyword_list_back(ctx, call, queries, search_msg).await?;
-                Ok(true)
-            },
-            _ => {
-                // The search placeholder is the reply to edit (#494). This
-                // used to defer and PATCH `@original`, which is a different
-                // message when the placeholder is a followup.
-                courier::edit_reply(ctx, &search_reply, CrackedMessage::PlayAllFailed).await?;
-                Ok(false)
             },
         }
     }
@@ -1135,4 +1114,75 @@ pub async fn query_type_from_url(
         .ok_or(CrackedError::NoGuildSettings)?;
     let query = check_banned_domains(&guild_settings, query_type.map(NewQueryType))?;
     Ok(query.map(|query| ResolvedQuery { query, shortfall }))
+}
+
+/// What `mode:all` (and `reverse`, `shuffle`) queues from a query.
+#[derive(Debug)]
+enum PlayAll<'q> {
+    /// A video or playlist link, queued through yt-dlp.
+    Link(&'q str),
+    /// A list of searches, queued as one batch.
+    Searches(Vec<QueryType>),
+}
+
+/// 🔑 Anything but a link or a list is an error, not `Ok(false)`. The error
+/// takes `/play`'s search placeholder down and is the reply; `Ok(false)` let
+/// `/play` go on to edit the placeholder into "Now playing" or "No tracks in
+/// queue!" for a request that queued nothing, over the notice.
+fn play_all_plan(qt: &QueryType) -> Result<PlayAll<'_>, CrackedError> {
+    match qt {
+        QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => Ok(PlayAll::Link(url)),
+        QueryType::KeywordList(keywords) => Ok(PlayAll::Searches(
+            keywords
+                .iter()
+                .map(|x| QueryType::Keywords(x.clone()))
+                .collect(),
+        )),
+        QueryType::SpotifyTracks(tracks) => Ok(PlayAll::Searches(
+            tracks
+                .iter()
+                .map(|x| QueryType::Keywords(x.build_query()))
+                .collect(),
+        )),
+        _ => Err(CrackedError::Other(PLAY_ALL_FAILED)),
+    }
+}
+
+#[cfg(test)]
+mod play_all_tests {
+    use super::*;
+
+    #[test]
+    fn play_all_refuses_plain_keywords_with_the_notice_as_the_error() {
+        let err = play_all_plan(&QueryType::Keywords("some song".to_owned())).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "⚠️ Cannot fetch playlist via keywords! Try passing this command an URL."
+        );
+    }
+
+    #[test]
+    fn play_all_queues_a_playlist_link_as_a_link() {
+        let url = "https://www.youtube.com/playlist?list=PL0123456789";
+        assert!(matches!(
+            play_all_plan(&QueryType::PlaylistLink(url.to_owned())),
+            Ok(PlayAll::Link(u)) if u == url
+        ));
+    }
+
+    #[test]
+    fn play_all_queues_a_keyword_list_as_searches_in_order() {
+        let list = QueryType::KeywordList(vec!["one".to_owned(), "two".to_owned()]);
+        let Ok(PlayAll::Searches(queries)) = play_all_plan(&list) else {
+            panic!("a keyword list is searches");
+        };
+        let words: Vec<_> = queries
+            .iter()
+            .map(|q| match q {
+                QueryType::Keywords(k) => k.as_str(),
+                other => panic!("not a search: {other:?}"),
+            })
+            .collect();
+        assert_eq!(words, ["one", "two"]);
+    }
 }
