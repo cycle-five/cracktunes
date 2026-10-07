@@ -118,7 +118,7 @@ fn entry(failure: &Failure) -> String {
 
 /// The notice's text: one line for one track, a list for several.
 #[must_use]
-pub fn render(listed: &[Failure], more: usize) -> String {
+pub fn render_text(listed: &[Failure], more: usize) -> String {
     match (listed, more) {
         ([one], 0) => format!("{TRACK_FAILED} {}", entry(one)),
         _ => {
@@ -158,7 +158,7 @@ pub async fn report(
         more += 1;
     }
     // An embed: a mention in a title never pings.
-    let embed = CreateEmbed::new().description(render(&listed, more));
+    let embed = CreateEmbed::new().description(render_text(&listed, more));
 
     if let Some(id) = open {
         match transport.edit(channel, id, embed.clone()).await {
@@ -365,7 +365,7 @@ mod tests {
     #[test]
     fn one_failure_is_one_line() {
         assert_eq!(
-            render(&[failed("Want You Bad", FailReason::Format)], 0),
+            render_text(&[failed("Want You Bad", FailReason::Format)], 0),
             "⚠️ Couldn't play **Want You Bad**: that format isn't supported"
         );
     }
@@ -373,7 +373,7 @@ mod tests {
     #[test]
     fn several_failures_are_a_counted_list() {
         assert_eq!(
-            render(
+            render_text(
                 &[
                     failed("A", FailReason::Format),
                     failed("B", FailReason::Open)
@@ -389,7 +389,7 @@ mod tests {
         let listed: Vec<_> = (0..LISTED_MAX)
             .map(|i| failed(&format!("t{i}"), FailReason::Open))
             .collect();
-        let shown = render(&listed, 3);
+        let shown = render_text(&listed, 3);
         assert!(shown.starts_with("⚠️ Couldn't play 13 tracks:"), "{shown}");
         assert!(shown.ends_with("\n+3 more"), "{shown}");
         assert_eq!(shown.matches("\n• ").count(), LISTED_MAX);
@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn a_title_is_cut_escaped_and_untitled_has_a_name() {
         let long = format!("@everyone *{}", "a".repeat(TITLE_MAX));
-        let shown = render(&[failed(&long, FailReason::Open)], 0);
+        let shown = render_text(&[failed(&long, FailReason::Open)], 0);
         assert!(shown.contains("**\\@everyone \\*"), "{shown}");
         assert!(shown.contains("…**"), "{shown}");
         let untitled = Failure {
@@ -406,7 +406,7 @@ mod tests {
             reason: FailReason::Open,
         };
         assert_eq!(
-            render(&[untitled], 0),
+            render_text(&[untitled], 0),
             "⚠️ Couldn't play **(untitled)**: couldn't open the stream"
         );
     }
@@ -416,7 +416,7 @@ mod tests {
     fn a_blank_title_is_untitled() {
         for blank in ["", "  "] {
             assert_eq!(
-                render(&[failed(blank, FailReason::Open)], 0),
+                render_text(&[failed(blank, FailReason::Open)], 0),
                 "⚠️ Couldn't play **(untitled)**: couldn't open the stream"
             );
         }

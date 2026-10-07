@@ -1,5 +1,6 @@
 use crate::http_utils::CacheHttpExt;
 use crate::http_utils::SendMessageParams;
+use crate::messaging::format::TrackLabel;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
@@ -228,10 +229,13 @@ pub async fn yt_search_select(
         .create_response(
             ctx.http(),
             CreateInteractionResponse::UpdateMessage(
-                CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued {
-                    title: rev_map.get(url).unwrap().to_string(),
-                    url: url.to_owned(),
-                }),
+                CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued(
+                    TrackLabel {
+                        title: Some(rev_map.get(url).unwrap().to_string()),
+                        url: Some(url.to_owned()),
+                        duration: None,
+                    },
+                )),
             ),
         )
         .await

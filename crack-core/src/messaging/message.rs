@@ -8,7 +8,16 @@ use serenity::{Mention, Mentionable, UserId};
 use songbird::error::ControlError;
 use std::time::Duration;
 
-use crate::{errors::CrackedError, messaging::messages::*, utils::duration_to_string};
+use crate::{
+    errors::CrackedError,
+    messaging::{
+        cards::{EchoLine, NowPlayingCard, QueuedCard},
+        format::{TrackLabel, INLINE_TITLE_MAX},
+        messages::*,
+        track_failed,
+    },
+    utils::duration_to_string,
+};
 
 pub const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
 pub const REPO_LINK: &str = "https://github.com/cycle-five/cracktunes/";
@@ -113,10 +122,7 @@ pub enum CrackedMessage {
     Shuffle,
     Skip,
     SkipAll,
-    SkipTo {
-        title: String,
-        url: String,
-    },
+    SkipTo(TrackLabel),
     Stop,
     SubcommandNotFound {
         group: Cow<'static, String>,
@@ -129,10 +135,7 @@ pub enum CrackedMessage {
         at: usize,
         to: usize,
     },
-    SongQueued {
-        title: String,
-        url: String,
-    },
+    SongQueued(TrackLabel),
     /// A Spotify listing that sleevenote could only partly read.
     ///
     /// Only built when `missing > 0`: a whole listing says nothing, and a page
@@ -287,9 +290,26 @@ pub enum CrackedMessage {
     GpVoteFullAlready,
     EphemeralRepliesOn,
     EphemeralRepliesOff,
+    // Appended at the end: `PartialEq` compares discriminants.
+    NowPlayingCard(Box<NowPlayingCard>),
+    Finished,
+    TrackFailed {
+        listed: Vec<track_failed::Failure>,
+        more: usize,
+    },
+    Echo(Box<EchoLine>),
+    Queued(Box<QueuedCard>),
 }
 
 impl CrackedMessage {
+    /// Embed or plain text. Decided per variant, once. Every message is an
+    /// embed today: `Pong`, `Version` and `Prefixes` are all sent as embeds
+    /// at their call sites. `Text` is for Task 9's text replies.
+    #[must_use]
+    pub fn style(&self) -> crate::messaging::render::Style {
+        crate::messaging::render::Style::Embed
+    }
+
     fn discriminant(&self) -> u8 {
         unsafe { *(self as *const Self as *const u8) }
     }
@@ -416,18 +436,29 @@ impl Display for CrackedMessage {
                 "{} {} {} {} {}.",
                 SONG_MOVED, SONG_MOVED_FROM, SONG_MOVED_TO, at, to
             )),
-            Self::SongQueued { title, url } => {
-                f.write_str(&format!("{} [**{}**]({})", ADDED_QUEUE, title, url))
-            },
+            Self::SongQueued(label) => f.write_str(&format!(
+                "{} {}",
+                ADDED_QUEUE,
+                label.linked(INLINE_TITLE_MAX)
+            )),
             Self::Seek { timestamp } => f.write_str(&format!("{} **{}**!", SEEKED, timestamp)),
             Self::SeekFail { timestamp, error } => {
                 f.write_str(&format!("{} **{}**!\n{}", SEEK_FAIL, timestamp, error))
             },
             Self::Skip => f.write_str(SKIPPED),
             Self::SkipAll => f.write_str(SKIPPED_ALL),
-            Self::SkipTo { title, url } => {
-                f.write_str(&format!("{} [**{}**]({})!", SKIPPED_TO, title, url))
+            Self::SkipTo(label) => f.write_str(&format!(
+                "{} {}!",
+                SKIPPED_TO,
+                label.linked(INLINE_TITLE_MAX)
+            )),
+            Self::NowPlayingCard(_) => f.write_str(QUEUE_NOW_PLAYING),
+            Self::Finished => f.write_str(STATUS_FINISHED_TITLE),
+            Self::TrackFailed { listed, more } => {
+                f.write_str(&crate::messaging::track_failed::render_text(listed, *more))
             },
+            Self::Echo(line) => f.write_str(&line.line()),
+            Self::Queued(card) => f.write_str(card.author),
             Self::Summon { mention } => f.write_str(&format!("{} **{}**!", JOINING, mention)),
             Self::AlreadyHere { mention } => {
                 f.write_str(&format!("{} **{}**!", ALREADY_HERE, mention))

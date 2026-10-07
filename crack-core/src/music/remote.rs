@@ -5,12 +5,7 @@
 //! `Songbird::get`, no `TrackHandle::data`). crack-web only sees the plain
 //! types below.
 
-use crate::messaging::messages::{
-    ECHO_FROM_DASHBOARD, ECHO_PAUSED, ECHO_REMOVED, ECHO_REPEAT_OFF, ECHO_REPEAT_ON, ECHO_RESUMED,
-    ECHO_SHUFFLED, ECHO_SKIPPED,
-};
 use crate::messaging::status::{self, DiscordTransport};
-use crate::music::audit_view::{cap, escape, TITLE_MAX};
 use crate::music::{audit::Actor, ops, PlaybackOwner, QueueGuard};
 use crate::{
     commands::music_utils::connected_call,
@@ -285,40 +280,7 @@ impl From<&ops::OpRefused> for ControlRefused {
     }
 }
 
-/// What a control did, for the echo line.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Echo {
-    Skipped { title: Option<String> },
-    Paused,
-    Resumed,
-    Repeat { on: bool },
-    Removed { title: Option<String> },
-    Shuffled,
-}
-
-impl Echo {
-    /// The one line posted in Discord. Titles are third-party text, so they
-    /// are cut to `TITLE_MAX` characters, then escaped.
-    #[must_use]
-    pub fn line(&self, user: UserId) -> String {
-        let (what, title) = match self {
-            Self::Skipped { title } => (ECHO_SKIPPED, title.as_deref()),
-            Self::Paused => (ECHO_PAUSED, None),
-            Self::Resumed => (ECHO_RESUMED, None),
-            Self::Repeat { on: true } => (ECHO_REPEAT_ON, None),
-            Self::Repeat { on: false } => (ECHO_REPEAT_OFF, None),
-            Self::Removed { title } => (ECHO_REMOVED, title.as_deref()),
-            Self::Shuffled => (ECHO_SHUFFLED, None),
-        };
-        match title {
-            Some(t) => format!(
-                "{what} **{}** {ECHO_FROM_DASHBOARD} — <@{user}>",
-                escape(&cap(t, TITLE_MAX))
-            ),
-            None => format!("{what} {ECHO_FROM_DASHBOARD} — <@{user}>"),
-        }
-    }
-}
+pub use crate::messaging::cards::Echo;
 
 fn echo_embed(echo: &Echo, user: UserId) -> CreateEmbed<'static> {
     // An embed mention never pings.
@@ -650,10 +612,7 @@ mod test {
         }
         .line(u);
         assert!(l.chars().count() <= 4096, "{} chars", l.chars().count());
-        assert!(
-            l.contains(&format!("**{}…**", "a".repeat(TITLE_MAX))),
-            "{l}"
-        );
+        assert!(l.contains(&format!("**{}…**", "a".repeat(60))), "{l}");
         assert!(l.ends_with("<@42>"), "{l}");
     }
 
