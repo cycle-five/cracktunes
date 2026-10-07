@@ -1,7 +1,9 @@
 use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::cards::NowPlayingCard;
-use crate::messaging::format::{duration_text, Progress, TrackLabel, INLINE_TITLE_MAX};
+use crate::messaging::format::{
+    duration_text, http_url, Progress, TrackLabel, FIELD_MAX, INLINE_TITLE_MAX,
+};
 use crate::messaging::messages::UNKNOWN;
 use crate::messaging::messages::{
     QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_PAGE, QUEUE_PAGE_OF,
@@ -37,7 +39,6 @@ use serenity::{
 use songbird::input::AuxMetadata;
 use songbird::tracks::{LoopState, PlayMode, TrackHandle, TrackState};
 use std::borrow::Cow;
-use std::fmt::Write;
 use std::time::Duration;
 
 //###########################################################################//
@@ -127,6 +128,7 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let queue = tracks.iter().skip(start_idx + 1).take(EMBED_PAGE_SIZE);
 
     let mut description = String::new();
+    let mut used = 0;
 
     for (i, t) in queue.enumerate() {
         // A track can have no metadata (a pick nothing resolved a title for).
@@ -136,17 +138,28 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
         let requesting_user = get_requesting_user(t).await.unwrap_or(UserId::new(1));
 
         // No brackets around the requester: autoplay's is already "(auto)".
-        // An unknown duration is left out, not shown as 00:00.
-        let _ = writeln!(
-            description,
-            "{}. {}{} • {}",
-            i + start_idx + 1,
-            label.linked(INLINE_TITLE_MAX),
-            duration_text(label.duration)
-                .map(|d| format!(" • {d}"))
-                .unwrap_or_default(),
-            requesting_user_to_string(requesting_user),
-        );
+        let render = |label: &TrackLabel| {
+            format!(
+                "{}. {} • {}\n",
+                i + start_idx + 1,
+                track_text(label),
+                requesting_user_to_string(requesting_user),
+            )
+        };
+        let mut line = render(&label);
+        if line.chars().count() > FIELD_MAX {
+            // A link too long for a field on its own: the title alone, rather
+            // than a line that can never be shown.
+            line = render(&TrackLabel { url: None, ..label });
+        }
+        // 🔑 Discord rejects a field over 1024 characters, and with it the
+        // whole `/queue` reply. Whole lines only: a cut line is a cut link.
+        let len = line.chars().count();
+        if used + len > FIELD_MAX {
+            break;
+        }
+        used += len;
+        description.push_str(&line);
     }
 
     // An empty embed field is rejected by Discord.
@@ -156,37 +169,40 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     description
 }
 
+/// A queued track: `[**title**](url) • 4:33`. The link and the length are
+/// each left out when unknown; a length is never `00:00`.
+fn track_text(label: &TrackLabel) -> String {
+    format!(
+        "{}{}",
+        label.linked(INLINE_TITLE_MAX),
+        duration_text(label.duration)
+            .map(|d| format!(" • {d}"))
+            .unwrap_or_default(),
+    )
+}
+
 /// Creates a queue embed.
 pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed<'static> {
-    let (description, thumbnail): (String, String) = if !tracks.is_empty() {
-        let metadata = get_track_handle_metadata(tracks.first().unwrap())
-            .await
-            .unwrap_or_default();
-
-        let url = metadata.thumbnail.clone().unwrap_or_default();
-        let thumbnail = match url::Url::parse(&url) {
-            Ok(url) => url.to_string(),
-            Err(e) => {
-                tracing::error!("error parsing url: {:?}", e);
-                "".to_string()
-            },
-        };
-
+    let (description, thumbnail) = if let Some(first) = tracks.first() {
+        let metadata = get_track_handle_metadata(first).await.unwrap_or_default();
+        // Only a web URL: an empty or relative one is left out, not logged.
+        let thumbnail = http_url(metadata.thumbnail.as_deref());
         let label = TrackLabel::from_metadata(&metadata);
-        let description = format!(
-            "{}{}",
-            label.linked(INLINE_TITLE_MAX),
-            duration_text(label.duration)
-                .map(|d| format!(" • {d}"))
-                .unwrap_or_default(),
-        );
+        let mut description = track_text(&label);
+        if description.chars().count() > FIELD_MAX {
+            // As in "Up next": the title alone, never a cut link.
+            description = track_text(&TrackLabel { url: None, ..label });
+        }
         (description, thumbnail)
     } else {
-        (QUEUE_NOTHING_IS_PLAYING.to_string(), "".to_string())
+        (QUEUE_NOTHING_IS_PLAYING.to_string(), None)
     };
 
-    CreateEmbed::default()
-        .thumbnail(thumbnail, None)
+    let mut embed = CreateEmbed::default();
+    if let Some(t) = thumbnail {
+        embed = embed.thumbnail(t.to_string(), None);
+    }
+    embed
         .field(QUEUE_NOW_PLAYING, Cow::Owned(description), false)
         .field(QUEUE_UP_NEXT, create_queue_page(tracks, page).await, false)
         .footer(CreateEmbedFooter::new(format!(
@@ -548,6 +564,26 @@ mod test {
         std::sync::Arc<tokio::sync::Mutex<songbird::Call>>,
         Vec<songbird::tracks::TrackHandle>,
     ) {
+        let tracks: Vec<_> = tracks
+            .iter()
+            .map(|(title, requester)| {
+                let metadata = songbird::input::AuxMetadata {
+                    title: Some((*title).to_owned()),
+                    ..Default::default()
+                };
+                (metadata, *requester)
+            })
+            .collect();
+        queue_with(tracks).await
+    }
+
+    /// [`queue_of`], with whole metadata: links, lengths, thumbnails.
+    async fn queue_with(
+        tracks: Vec<(songbird::input::AuxMetadata, Option<u64>)>,
+    ) -> (
+        std::sync::Arc<tokio::sync::Mutex<songbird::Call>>,
+        Vec<songbird::tracks::TrackHandle>,
+    ) {
         use crate::music::queue::{enqueue_track_back, new_track};
         use crate::music::PlaybackOwner;
         use crate::{Data, DataInner};
@@ -567,11 +603,7 @@ mod test {
             guild,
             UserId::new(2),
         )));
-        for (title, requester) in tracks {
-            let metadata = songbird::input::AuxMetadata {
-                title: Some((*title).to_owned()),
-                ..Default::default()
-            };
+        for (metadata, requester) in tracks {
             let source = songbird::input::File::new("/nonexistent/queued.opus").into();
             let track = new_track(source, Some(metadata), requester.map(UserId::new));
             enqueue_track_back(&guard, &call, track, None).await;
@@ -660,6 +692,103 @@ mod test {
         let wire = serde_json::to_string(&embed).unwrap();
         assert!(wire.contains("**(untitled)**"), "{wire}");
         assert!(!wire.contains("00:00"), "{wire}");
+    }
+
+    /// A track with a link, a length and a requester, as SoundCloud gives
+    /// them: a 60-character title and a 90-character link.
+    fn long_entry(i: usize) -> (songbird::input::AuxMetadata, Option<u64>) {
+        let title = format!("{i} {}", "Extended Club Mix ".repeat(4));
+        let title: String = title.chars().take(60).collect();
+        let url = format!("https://soundcloud.com/artist-number-{i}/");
+        let url = format!("{url}{}", "a".repeat(90 - url.len()));
+        assert_eq!((title.chars().count(), url.len()), (60, 90));
+        let metadata = songbird::input::AuxMetadata {
+            title: Some(title),
+            source_url: Some(url),
+            duration: Some(std::time::Duration::from_secs(225)),
+            ..Default::default()
+        };
+        (metadata, Some(123_456_789_012_345_678))
+    }
+
+    /// 🔑 Six such lines are ~1160 characters, and Discord rejects a field
+    /// over 1024 -- and with it the whole `/queue` reply. The page stops at
+    /// the last whole line that fits; nothing is cut mid-link.
+    #[tokio::test]
+    async fn up_next_stops_at_the_field_limit_on_a_whole_line() {
+        let (_call, tracks) = queue_with((0..7).map(long_entry).collect()).await;
+
+        let page = super::create_queue_page(&tracks, 0).await;
+
+        assert!(page.chars().count() <= super::FIELD_MAX, "{page}");
+        assert!(page.ends_with(" • <@123456789012345678>\n"), "{page}");
+        let lines: Vec<&str> = page.lines().collect();
+        assert_eq!(
+            lines.len(),
+            5,
+            "the cap should have dropped the sixth: {page}"
+        );
+        for (i, line) in lines.iter().enumerate() {
+            let link = format!("https://soundcloud.com/artist-number-{}/", i + 1);
+            assert!(
+                line.starts_with(&format!("{}. [**{} ", i + 1, i + 1)),
+                "{line}"
+            );
+            assert!(line.contains(&link), "{line}");
+            assert!(line.ends_with(" • 3:45 • <@123456789012345678>"), "{line}");
+        }
+    }
+
+    /// A link too long to fit a field even alone is left off, so the track
+    /// is still listed (by title) instead of the page reading as empty.
+    #[tokio::test]
+    async fn a_link_too_long_for_any_field_is_left_off() {
+        let huge = format!("https://example.com/{}", "a".repeat(1100));
+        let entry = |title: &str| {
+            let metadata = songbird::input::AuxMetadata {
+                title: Some(title.to_owned()),
+                source_url: Some(huge.clone()),
+                ..Default::default()
+            };
+            (metadata, Some(9))
+        };
+        let (_call, tracks) = queue_with(vec![entry("Playing"), entry("Next")]).await;
+
+        assert_eq!(
+            super::create_queue_page(&tracks, 0).await,
+            "1. **Next** • <@9>\n"
+        );
+        let embed = serde_json::to_value(super::create_queue_embed(&tracks, 0).await).unwrap();
+        assert_eq!(embed["fields"][0]["value"], "**Playing**");
+    }
+
+    /// Only a web URL becomes the thumbnail: an empty one was parsed, logged
+    /// as `RelativeUrlWithoutBase` at error level, and sent as `""`.
+    #[tokio::test]
+    async fn the_queue_thumbnail_is_set_only_from_a_web_url() {
+        for (thumbnail, want) in [
+            (
+                Some("https://i.ytimg.com/a.jpg"),
+                Some("https://i.ytimg.com/a.jpg"),
+            ),
+            (Some(""), None),
+            (Some("/vi/x/hq.jpg"), None),
+            (Some("javascript:alert(1)"), None),
+            (None, None),
+        ] {
+            let metadata = songbird::input::AuxMetadata {
+                title: Some("Playing".into()),
+                thumbnail: thumbnail.map(str::to_owned),
+                ..Default::default()
+            };
+            let (_call, tracks) = queue_with(vec![(metadata, None)]).await;
+            let embed = serde_json::to_value(super::create_queue_embed(&tracks, 0).await).unwrap();
+            assert_eq!(
+                embed.get("thumbnail").and_then(|t| t["url"].as_str()),
+                want,
+                "{thumbnail:?}: {embed}"
+            );
+        }
     }
 
     #[test]
