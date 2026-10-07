@@ -1,9 +1,9 @@
 use crate::{
     commands::{cmd_check_music, help},
     errors::CrackedError,
+    messaging::courier,
     messaging::message::CrackedMessage,
     music::ops::{self, OpCx, OpRefused},
-    utils::send_reply,
     Context, Error,
 };
 
@@ -35,15 +35,14 @@ pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;
     match ops::leave(&cx).await {
         Ok(done) => {
-            let _ = send_reply(&ctx, CrackedMessage::Leaving, true).await?;
+            let _ = courier::reply(ctx, CrackedMessage::Leaving).await?;
             done.settle_now(&cx).await;
         },
         // Not being in a call is a reply, not an error.
         Err(OpRefused::NotConnected) => {
-            let _ = send_reply(
-                &ctx,
+            let _ = courier::reply(
+                ctx,
                 CrackedMessage::CrackedError(CrackedError::NotConnected),
-                true,
             )
             .await?;
         },

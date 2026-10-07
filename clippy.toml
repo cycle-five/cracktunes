@@ -54,6 +54,10 @@ disallowed-methods = [
     { path = "songbird::tracks::TrackQueue::add_source", reason = "queues an Input with no TrackData at all; use the functions in music::queue" },
     { path = "songbird::tracks::TrackQueue::add_with_preload", reason = "queues a bare Track, which may carry no TrackData; use the functions in music::queue" },
     { path = "songbird::tracks::TrackHandle::data", reason = "panics on a track without TrackData; use utils::get_track_handle_metadata or utils::get_requesting_user" },
+    # 🪤 Tests only (nothing in the bot builds a standalone call): songbird's
+    # scheduler dies with the test runtime that first builds a call, so a later
+    # test's call panics. See music::ops::test_support::standalone_call.
+    { path = "songbird::handler::Call::standalone", reason = "tests: use music::ops::test_support::standalone_call, which keeps songbird's scheduler alive" },
     # 🪤 songbird runs every event handler inline on the call's one event task,
     # which holds the call's handlers, track event stores and track states as
     # locals. One panicking handler unwinds it, and the queue stops advancing
@@ -112,4 +116,34 @@ disallowed-methods = [
     { path = "crack_core::music::queue::move_track", reason = "orchestrate through music::ops" },
     { path = "crack_core::music::queue::move_track_by_id", reason = "orchestrate through music::ops" },
     { path = "crack_core::music::queue::force_skip_top_track", reason = "orchestrate through music::ops" },
+    # 🔒 Every music-facing message is rendered by `messaging::render` and
+    # delivered by `messaging::courier` (spec 2026-10-07): replies through a
+    # `ReplySink`, channel posts and edits through a `Transport`. That is where
+    # mentions are pinned to nobody, titles are escaped, `EMBED_LINKS` is
+    # degraded around, and an edit goes to the handle it was given rather than
+    # `@original` (#494). A raw send skips all of it, so these close the doors.
+    # `messaging` carries the reasoned #[expect]s; modules not yet migrated
+    # carry a module-level one ("messaging arc: not migrated yet"), which is the
+    # follow-ups' to-do list. `ChannelId` has no send of its own in this
+    # serenity: it widens to `GenericChannelId`, which is banned here.
+    { path = "serenity::model::id::GenericChannelId::send_message", reason = "send through messaging::courier" },
+    { path = "serenity::model::id::GenericChannelId::say", reason = "send through messaging::courier" },
+    { path = "serenity::model::id::GenericChannelId::edit_message", reason = "edit through messaging::courier" },
+    { path = "serenity::model::id::GenericChannelId::delete_message", reason = "delete through messaging::transport::Transport" },
+    { path = "serenity::model::channel::GuildChannel::send_message", reason = "send through messaging::courier" },
+    { path = "serenity::model::channel::Message::reply", reason = "reply through messaging::courier" },
+    { path = "serenity::model::channel::Message::reply_ping", reason = "reply through messaging::courier, which pings nobody unless the message says so" },
+    { path = "serenity::model::channel::Message::edit", reason = "edit through messaging::courier" },
+    { path = "serenity::model::application::ComponentInteraction::create_response", reason = "respond through messaging::courier" },
+    { path = "serenity::model::application::ComponentInteraction::edit_response", reason = "edit through messaging::courier" },
+    { path = "serenity::model::application::ComponentInteraction::create_followup", reason = "reply through messaging::courier" },
+    { path = "serenity::model::application::CommandInteraction::create_response", reason = "reply through messaging::courier" },
+    { path = "serenity::model::application::CommandInteraction::edit_response", reason = "edits @original, whichever message was meant (#494); edit the reply handle through messaging::courier" },
+    { path = "serenity::model::application::CommandInteraction::create_followup", reason = "reply through messaging::courier" },
+    { path = "poise::Context::send", reason = "reply through messaging::courier" },
+    { path = "poise::Context::say", reason = "reply through messaging::courier" },
+    { path = "poise::Context::reply", reason = "reply through messaging::courier" },
+    { path = "poise::send_reply", reason = "reply through messaging::courier" },
+    { path = "poise::say_reply", reason = "reply through messaging::courier" },
+    { path = "poise::ReplyHandle::edit", reason = "edit through messaging::courier" },
 ]

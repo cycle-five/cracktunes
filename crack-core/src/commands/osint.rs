@@ -1,3 +1,5 @@
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+
 use crate::{
     //commands::sub_help as help,
     http_utils,
@@ -82,7 +84,6 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
         channel: channel_id,
         as_embed: true,
         ephemeral: false,
-        reply: true,
         msg: message,
         ..Default::default()
     };
@@ -117,7 +118,6 @@ pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error
         channel: channel_id,
         as_embed: true,
         ephemeral: false,
-        reply: true,
         msg: message,
         ..Default::default()
     };

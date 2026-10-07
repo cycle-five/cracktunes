@@ -515,6 +515,7 @@ async fn abandon_resume(
     if let Err(e) = gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await {
         tracing::warn!("gp: marking the game in {guild_id} lost: {e}");
     }
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     let _ = text_channel
         .send_message(http, CreateMessage::new().content(GP_LOST))
         .await;
@@ -572,6 +573,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
         if !owed.is_empty() {
             let scores = game.sorted_scores();
             let msg = CreateMessage::new().embed(gp_scoreboard_embed(&scores, GP_GAME_OVER));
+            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
             if let Err(e) = text_channel.send_message(&ctx.http, msg).await {
                 tracing::warn!("gp: posting the finished game's scoreboard in {guild_id}: {e}");
             }
@@ -618,6 +620,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
             let msg = CreateMessage::new()
                 .content(GP_LOST)
                 .embed(gp_scoreboard_embed(&scores, GP_SCOREBOARD));
+            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
             if let Err(e) = text_channel.send_message(&ctx.http, msg).await {
                 tracing::warn!("gp: posting the lost game's scoreboard in {guild_id}: {e}");
             }
@@ -734,6 +737,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
             // Restore the one-live-dropdown invariant: the reveal only edits the
             // message the track remembers, which is about to be the new one.
             if let Some((c, m)) = old_message {
+                #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
                 if let Err(e) = c
                     .edit_message(
                         &pb.http,
@@ -763,6 +767,7 @@ async fn post_owed_results(http: &Http, game: &GpGame) -> Vec<usize> {
     let mut posted = Vec::new();
     for idx in game.unposted_results() {
         let embed = gp_round_results_embed(&game.round_result(idx));
+        #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
         match game
             .text_channel
             .send_message(http, CreateMessage::new().embed(embed))
@@ -780,6 +785,7 @@ async fn post_owed_results(http: &Http, game: &GpGame) -> Vec<usize> {
 }
 
 async fn announce(pb: &GpPlayback, text_channel: GenericChannelId, what: &str) {
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     if let Err(e) = text_channel
         .send_message(
             &pb.http,

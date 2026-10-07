@@ -10,8 +10,7 @@ use crate::{
     guild::settings::GuildSettings,
     handlers::SerenityHandler,
     http_utils::CacheHttpExt,
-    http_utils::SendMessageParams,
-    messaging::message::CrackedMessage,
+    messaging::{courier, message::CrackedMessage},
     utils::{check_reply, count_command},
     BotConfig, Data, DataInner, Error, EventLogAsync,
 };
@@ -47,8 +46,11 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
         },
         poise::FrameworkError::Command { error, ctx, .. } => {
             let myerr = CrackedError::Poise(error);
-            let params = SendMessageParams::new(CrackedMessage::CrackedError(myerr));
-            check_reply(ctx.send_message(params).await.map_err(Into::into));
+            check_reply(
+                courier::reply(ctx, CrackedMessage::CrackedError(myerr))
+                    .await
+                    .map_err(Into::into),
+            );
             // #[cfg(feature = "crack-metrics")]
             // COMMAND_ERRORS
             //     .with_label_values(&[&ctx.command().qualified_name])
@@ -74,8 +76,11 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             };
             match reply {
                 Some(err) => {
-                    let params = SendMessageParams::new(CrackedMessage::CrackedError(err));
-                    check_reply(ctx.send_message(params).await.map_err(Into::into));
+                    check_reply(
+                        courier::reply(ctx, CrackedMessage::CrackedError(err))
+                            .await
+                            .map_err(Into::into),
+                    );
                 },
                 None => tracing::trace!(
                     "check on {} refused a bot author, saying nothing",

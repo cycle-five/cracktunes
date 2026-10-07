@@ -9,15 +9,17 @@
 //! playlist of dead links is one notice rather than fifty. The raw error never
 //! reaches Discord -- it can carry a tool's stderr (v0.17.2's leak) -- only one
 //! of the [`FailReason`]s, and the detail goes to the log.
+use crate::messaging::format::{TrackLabel, INLINE_TITLE_MAX};
+use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
     TRACK_FAILED, TRACK_FAILED_BROKE_OFF, TRACK_FAILED_FORMAT, TRACK_FAILED_MORE,
-    TRACK_FAILED_OPEN, TRACK_FAILED_SEEK, TRACK_FAILED_TRACKS, TRACK_FAILED_UNTITLED,
+    TRACK_FAILED_OPEN, TRACK_FAILED_SEEK, TRACK_FAILED_TRACKS,
 };
-use crate::messaging::status::{StatusTransport, TransportError};
-use crate::music::audit_view::{cap, escape, TITLE_MAX};
+use crate::messaging::render::{render, RenderCx};
+use crate::messaging::transport::{Transport, TransportError};
 use crate::utils::get_track_handle_metadata;
 use crate::Data;
-use serenity::all::{CreateEmbed, GenericChannelId, GuildId, MessageId};
+use serenity::all::{GenericChannelId, GuildId, MessageId};
 use songbird::tracks::{PlayError, PlayMode, TrackHandle, TrackState};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -105,20 +107,22 @@ impl Data {
     }
 }
 
-/// `**title**: reason`, the title cut and escaped: it is third-party text.
-/// A blank title counts as none: a link yt-dlp could not read (a members-only
-/// video, say) is queued with `Some("")`, which rendered as a bare `****`.
+/// `**title**: reason`, the title cut at `INLINE_TITLE_MAX` and escaped: it
+/// is third-party text in a sentence. A blank title counts as none: a link
+/// yt-dlp could not read (a members-only video, say) is queued with
+/// `Some("")`, which rendered as a bare `****`.
 fn entry(failure: &Failure) -> String {
-    let title = match failure.title.as_deref().map(str::trim) {
-        Some(t) if !t.is_empty() => escape(&cap(t, TITLE_MAX)),
-        _ => TRACK_FAILED_UNTITLED.to_owned(),
-    };
+    let title = TrackLabel {
+        title: failure.title.clone(),
+        ..TrackLabel::default()
+    }
+    .title_text(INLINE_TITLE_MAX);
     format!("**{title}**: {}", failure.reason.text())
 }
 
 /// The notice's text: one line for one track, a list for several.
 #[must_use]
-pub fn render(listed: &[Failure], more: usize) -> String {
+pub fn render_text(listed: &[Failure], more: usize) -> String {
     match (listed, more) {
         ([one], 0) => format!("{TRACK_FAILED} {}", entry(one)),
         _ => {
@@ -140,7 +144,7 @@ pub fn render(listed: &[Failure], more: usize) -> String {
 /// is recent and in the same channel, else post a new one. Best effort -- a
 /// notice that cannot be delivered is logged, never raised.
 pub async fn report(
-    transport: &dyn StatusTransport,
+    transport: &dyn Transport,
     slot: &mut NoticeSlot,
     channel: GenericChannelId,
     failure: Failure,
@@ -158,10 +162,16 @@ pub async fn report(
         more += 1;
     }
     // An embed: a mention in a title never pings.
-    let embed = CreateEmbed::new().description(render(&listed, more));
+    let out = render(
+        &CrackedMessage::TrackFailed {
+            listed: listed.clone(),
+            more,
+        },
+        &RenderCx::now(),
+    );
 
     if let Some(id) = open {
-        match transport.edit(channel, id, embed.clone()).await {
+        match transport.edit(channel, id, out.clone()).await {
             Ok(()) => {
                 *slot = Some(FailureNotice {
                     channel,
@@ -179,7 +189,7 @@ pub async fn report(
             },
         }
     }
-    match transport.send(channel, embed).await {
+    match transport.send(channel, out).await {
         Ok(id) => {
             *slot = Some(FailureNotice {
                 channel,
@@ -218,7 +228,7 @@ pub async fn failures(tracks: &[(&TrackState, &TrackHandle)]) -> Vec<Failure> {
 /// dead songs in its reveal, so a guild it owns hears nothing from here.
 pub async fn notify(
     data: &Data,
-    transport: &dyn StatusTransport,
+    transport: &dyn Transport,
     guild: GuildId,
     channel: GenericChannelId,
     failures: Vec<Failure>,
@@ -237,8 +247,7 @@ pub async fn notify(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use crate::messaging::test_support::{FakeTransport, Op};
 
     const GUILD: GuildId = GuildId::new(1);
 
@@ -250,84 +259,6 @@ mod tests {
         Failure {
             title: Some(title.to_owned()),
             reason,
-        }
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    enum Op {
-        Send(u64, String),
-        Edit(u64, u64, String),
-    }
-
-    /// A stand-in Discord that records what it was asked to show.
-    #[derive(Default)]
-    struct Fake {
-        ops: std::sync::Mutex<Vec<Op>>,
-        edit_error: std::sync::Mutex<Option<TransportError>>,
-        send_error: std::sync::Mutex<Option<TransportError>>,
-        sent: AtomicU64,
-    }
-
-    impl Fake {
-        fn ops(&self) -> Vec<Op> {
-            self.ops.lock().unwrap().clone()
-        }
-    }
-
-    fn text(embed: &CreateEmbed<'static>) -> String {
-        let value = serde_json::to_value(embed).expect("embed serializes");
-        value["description"].as_str().unwrap_or_default().to_owned()
-    }
-
-    #[async_trait]
-    impl StatusTransport for Fake {
-        async fn send(
-            &self,
-            channel: GenericChannelId,
-            embed: CreateEmbed<'static>,
-        ) -> Result<MessageId, TransportError> {
-            self.ops
-                .lock()
-                .unwrap()
-                .push(Op::Send(channel.get(), text(&embed)));
-            if let Some(err) = self.send_error.lock().unwrap().clone() {
-                return Err(err);
-            }
-            Ok(MessageId::new(
-                1000 + self.sent.fetch_add(1, Ordering::SeqCst),
-            ))
-        }
-
-        async fn edit(
-            &self,
-            channel: GenericChannelId,
-            id: MessageId,
-            embed: CreateEmbed<'static>,
-        ) -> Result<(), TransportError> {
-            self.ops
-                .lock()
-                .unwrap()
-                .push(Op::Edit(channel.get(), id.get(), text(&embed)));
-            match self.edit_error.lock().unwrap().clone() {
-                Some(err) => Err(err),
-                None => Ok(()),
-            }
-        }
-
-        async fn delete(
-            &self,
-            _channel: GenericChannelId,
-            _id: MessageId,
-        ) -> Result<(), TransportError> {
-            unreachable!("a failure notice is never deleted")
-        }
-
-        fn last_message_id(
-            &self,
-            _guild: GuildId,
-            _channel: GenericChannelId,
-        ) -> Option<MessageId> {
-            None
         }
     }
 
@@ -365,7 +296,7 @@ mod tests {
     #[test]
     fn one_failure_is_one_line() {
         assert_eq!(
-            render(&[failed("Want You Bad", FailReason::Format)], 0),
+            render_text(&[failed("Want You Bad", FailReason::Format)], 0),
             "⚠️ Couldn't play **Want You Bad**: that format isn't supported"
         );
     }
@@ -373,7 +304,7 @@ mod tests {
     #[test]
     fn several_failures_are_a_counted_list() {
         assert_eq!(
-            render(
+            render_text(
                 &[
                     failed("A", FailReason::Format),
                     failed("B", FailReason::Open)
@@ -389,24 +320,31 @@ mod tests {
         let listed: Vec<_> = (0..LISTED_MAX)
             .map(|i| failed(&format!("t{i}"), FailReason::Open))
             .collect();
-        let shown = render(&listed, 3);
+        let shown = render_text(&listed, 3);
         assert!(shown.starts_with("⚠️ Couldn't play 13 tracks:"), "{shown}");
         assert!(shown.ends_with("\n+3 more"), "{shown}");
         assert_eq!(shown.matches("\n• ").count(), LISTED_MAX);
     }
 
+    /// An in-sentence title gets the spec's 60 characters (was the audit
+    /// log's 40): 11 characters of prefix and 49 `a`s, then `…`.
     #[test]
     fn a_title_is_cut_escaped_and_untitled_has_a_name() {
-        let long = format!("@everyone *{}", "a".repeat(TITLE_MAX));
-        let shown = render(&[failed(&long, FailReason::Open)], 0);
-        assert!(shown.contains("**@everyone \\*"), "{shown}");
-        assert!(shown.contains("…**"), "{shown}");
+        let long = format!("@everyone *{}", "a".repeat(100));
+        let shown = render_text(&[failed(&long, FailReason::Open)], 0);
+        assert_eq!(
+            shown,
+            format!(
+                "⚠️ Couldn't play **\\@everyone \\*{}…**: couldn't open the stream",
+                "a".repeat(49)
+            )
+        );
         let untitled = Failure {
             title: None,
             reason: FailReason::Open,
         };
         assert_eq!(
-            render(&[untitled], 0),
+            render_text(&[untitled], 0),
             "⚠️ Couldn't play **(untitled)**: couldn't open the stream"
         );
     }
@@ -416,7 +354,7 @@ mod tests {
     fn a_blank_title_is_untitled() {
         for blank in ["", "  "] {
             assert_eq!(
-                render(&[failed(blank, FailReason::Open)], 0),
+                render_text(&[failed(blank, FailReason::Open)], 0),
                 "⚠️ Couldn't play **(untitled)**: couldn't open the stream"
             );
         }
@@ -426,7 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_first_failure_posts_and_the_next_one_edits() {
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         let mut slot = None;
         let t0 = Instant::now();
         report(&fake, &mut slot, ch(5), failed("A", FailReason::Format), t0).await;
@@ -438,15 +376,12 @@ mod tests {
             t0 + WINDOW,
         )
         .await;
+        assert_eq!(fake.ops(), vec![Op::Send(5), Op::Edit(5, 1000)]);
         assert_eq!(
-            fake.ops(),
+            fake.texts(),
             vec![
-                Op::Send(5, "⚠️ Couldn't play **A**: that format isn't supported".into()),
-                Op::Edit(
-                    5,
-                    1000,
-                    "⚠️ Couldn't play 2 tracks:\n• **A**: that format isn't supported\n• **B**: couldn't open the stream".into()
-                ),
+                "⚠️ Couldn't play **A**: that format isn't supported",
+                "⚠️ Couldn't play 2 tracks:\n• **A**: that format isn't supported\n• **B**: couldn't open the stream",
             ]
         );
     }
@@ -455,7 +390,7 @@ mod tests {
     /// editing one notice.
     #[tokio::test]
     async fn the_window_runs_from_the_latest_failure() {
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         let mut slot = None;
         let t0 = Instant::now();
         for i in 0..3u32 {
@@ -469,14 +404,14 @@ mod tests {
             .await;
         }
         let ops = fake.ops();
-        assert!(matches!(ops[0], Op::Send(5, _)));
-        assert!(matches!(ops[1], Op::Edit(5, 1000, _)));
-        assert!(matches!(ops[2], Op::Edit(5, 1000, _)));
+        assert!(matches!(ops[0], Op::Send(5)));
+        assert!(matches!(ops[1], Op::Edit(5, 1000)));
+        assert!(matches!(ops[2], Op::Edit(5, 1000)));
     }
 
     #[tokio::test]
     async fn after_the_window_a_new_notice_starts_fresh() {
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         let mut slot = None;
         let t0 = Instant::now();
         report(&fake, &mut slot, ch(5), failed("A", FailReason::Open), t0).await;
@@ -488,28 +423,30 @@ mod tests {
             t0 + WINDOW + Duration::from_millis(1),
         )
         .await;
+        assert_eq!(fake.ops()[1], Op::Send(5));
         assert_eq!(
-            fake.ops()[1],
-            Op::Send(5, "⚠️ Couldn't play **B**: couldn't open the stream".into())
+            fake.texts()[1],
+            "⚠️ Couldn't play **B**: couldn't open the stream"
         );
     }
 
     #[tokio::test]
     async fn a_failure_in_another_channel_starts_its_own_notice() {
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         let mut slot = None;
         let t0 = Instant::now();
         report(&fake, &mut slot, ch(5), failed("A", FailReason::Open), t0).await;
         report(&fake, &mut slot, ch(6), failed("B", FailReason::Open), t0).await;
+        assert_eq!(fake.ops()[1], Op::Send(6));
         assert_eq!(
-            fake.ops()[1],
-            Op::Send(6, "⚠️ Couldn't play **B**: couldn't open the stream".into())
+            fake.texts()[1],
+            "⚠️ Couldn't play **B**: couldn't open the stream"
         );
     }
 
     #[tokio::test]
     async fn a_deleted_notice_is_posted_again_with_everything_so_far() {
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         let mut slot = None;
         let t0 = Instant::now();
         report(&fake, &mut slot, ch(5), failed("A", FailReason::Open), t0).await;
@@ -517,17 +454,18 @@ mod tests {
         report(&fake, &mut slot, ch(5), failed("B", FailReason::Open), t0).await;
         let ops = fake.ops();
         assert_eq!(ops.len(), 3, "{ops:?}");
-        assert!(matches!(&ops[2], Op::Send(5, t) if t.starts_with("⚠️ Couldn't play 2 tracks:")));
+        assert_eq!(ops[2], Op::Send(5));
+        assert!(fake.texts()[2].starts_with("⚠️ Couldn't play 2 tracks:"));
         // The new message is the one later failures edit.
         *fake.edit_error.lock().unwrap() = None;
         report(&fake, &mut slot, ch(5), failed("C", FailReason::Open), t0).await;
-        assert!(matches!(fake.ops()[3], Op::Edit(5, 1001, _)));
+        assert!(matches!(fake.ops()[3], Op::Edit(5, 1001)));
     }
 
     /// A whole dead playlist stays one message, and the list stops growing.
     #[tokio::test]
     async fn a_burst_past_the_cap_counts_the_rest() {
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         let mut slot = None;
         let t0 = Instant::now();
         for i in 0..LISTED_MAX + 2 {
@@ -541,13 +479,10 @@ mod tests {
             .await;
         }
         let ops = fake.ops();
-        assert_eq!(
-            ops.iter().filter(|op| matches!(op, Op::Send(..))).count(),
-            1
-        );
-        let Some(Op::Edit(5, 1000, last)) = ops.last() else {
-            panic!("{ops:?}");
-        };
+        assert_eq!(ops.iter().filter(|op| matches!(op, Op::Send(_))).count(), 1);
+        assert_eq!(ops.last(), Some(&Op::Edit(5, 1000)));
+        let texts = fake.texts();
+        let last = texts.last().expect("sent something");
         assert!(last.starts_with("⚠️ Couldn't play 12 tracks:"), "{last}");
         assert!(last.ends_with("\n+2 more"), "{last}");
         assert_eq!(last.matches("\n• ").count(), LISTED_MAX);
@@ -555,7 +490,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_undeliverable_notice_leaves_nothing_to_edit() {
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         let mut slot = None;
         *fake.send_error.lock().unwrap() = Some(TransportError::Other("Missing Access".into()));
         report(
@@ -578,7 +513,7 @@ mod tests {
     #[tokio::test]
     async fn a_guild_hears_about_its_failed_tracks() {
         let data = data();
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         notify(
             &data,
             &fake,
@@ -588,12 +523,10 @@ mod tests {
             Instant::now(),
         )
         .await;
+        assert_eq!(fake.ops(), vec![Op::Send(5)]);
         assert_eq!(
-            fake.ops(),
-            vec![Op::Send(
-                5,
-                "⚠️ Couldn't play **A**: that format isn't supported".into()
-            )]
+            fake.texts(),
+            vec!["⚠️ Couldn't play **A**: that format isn't supported"]
         );
     }
 
@@ -616,7 +549,7 @@ mod tests {
             0,
         )
         .expect("game starts");
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         notify(
             &data,
             &fake,

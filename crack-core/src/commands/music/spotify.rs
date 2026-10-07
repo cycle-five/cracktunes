@@ -1,8 +1,9 @@
 use crate::commands::help;
+use crate::messaging::format::{duration_text, escape, http_url};
+use crate::messaging::{courier, message::CrackedMessage};
 use crate::sources::sleevenote::{self, MediaType};
 use crate::{Context, Error};
 use crack_sleevenote::{Album, Error as SleevenoteError, Playlist, Track};
-use poise::CreateReply;
 use serenity::all::{Color, CreateEmbed};
 
 /// How many tracks of a collection to list before saying "and N more".
@@ -79,13 +80,14 @@ fn track_embed(track: Track) -> CreateEmbed<'static> {
         .color(Color::BLURPLE);
 
     if let Some(album) = &track.album {
-        embed = embed.field("Album", album.name.clone(), true);
-        if let Some(image) = &album.image {
-            embed = embed.thumbnail(image.clone(), None);
+        embed = embed.field("Album", escape(&album.name), true);
+        // Only a web URL: an empty or relative one is left out.
+        if let Some(image) = http_url(album.image.as_deref()) {
+            embed = embed.thumbnail(image.to_string(), None);
         }
     }
-    if let Some(duration) = track.duration() {
-        embed = embed.field("Length", hms(duration.as_secs()), true);
+    if let Some(length) = duration_text(track.duration()) {
+        embed = embed.field("Length", length, true);
     }
     embed
 }
@@ -96,7 +98,7 @@ fn album_embed(album: Album) -> CreateEmbed<'static> {
     let names = album
         .artists
         .iter()
-        .map(|a| a.name.as_str())
+        .map(|a| escape(&a.name))
         .collect::<Vec<_>>()
         .join(", ");
     collection_embed(
@@ -116,7 +118,7 @@ fn playlist_embed(playlist: Playlist) -> CreateEmbed<'static> {
     collection_embed(
         playlist.name,
         playlist.url,
-        playlist.owner.unwrap_or_else(|| "Spotify".to_string()),
+        escape(&playlist.owner.unwrap_or_else(|| "Spotify".to_string())),
         &playlist.tracks,
         playlist.unresolved_items,
         shortfall,
@@ -137,7 +139,7 @@ fn collection_embed(
         .iter()
         .take(PREVIEW_TRACKS)
         .enumerate()
-        .map(|(i, t)| format!("{}. {} — {}", i + 1, t.name, artists(t)))
+        .map(|(i, t)| format!("{}. {} — {}", i + 1, escape(&t.name), artists(t)))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -167,8 +169,8 @@ fn collection_embed(
     if let Some(missing) = shortfall.filter(|n| *n > 0) {
         embed = embed.field("Not recovered", missing.to_string(), true);
     }
-    if let Some(image) = image {
-        embed = embed.thumbnail(image, None);
+    if let Some(image) = http_url(image.as_deref()) {
+        embed = embed.thumbnail(image.to_string(), None);
     }
     embed.field("Listing", listing, false)
 }
@@ -177,7 +179,7 @@ fn artists(track: &Track) -> String {
     let names = track
         .artists
         .iter()
-        .map(|a| a.name.as_str())
+        .map(|a| escape(&a.name))
         .collect::<Vec<_>>()
         .join(", ");
     if names.is_empty() {
@@ -187,11 +189,6 @@ fn artists(track: &Track) -> String {
     }
 }
 
-fn hms(secs: u64) -> String {
-    let (m, s) = (secs / 60, secs % 60);
-    format!("{m}:{s:02}")
-}
-
 fn fail(msg: &str) -> CreateEmbed<'static> {
     CreateEmbed::default()
         .description(msg.to_string())
@@ -199,8 +196,143 @@ fn fail(msg: &str) -> CreateEmbed<'static> {
 }
 
 async fn reply(ctx: Context<'_>, embed: CreateEmbed<'static>) -> Result<(), Error> {
-    ctx.send(CreateReply::default().embed(embed))
+    courier::reply(ctx, CrackedMessage::CreateEmbed(Box::new(embed)))
         .await
         .map(|_| ())
         .map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hostile_track() -> Track {
+        Track {
+            id: "t".into(),
+            tag: Default::default(),
+            name: "[click](https://evil.example)".into(),
+            artists: vec![crack_sleevenote::Artist {
+                name: "@everyone".into(),
+                id: None,
+            }],
+            album: None,
+            duration_ms: None,
+            url: "https://open.spotify.com/track/t".into(),
+        }
+    }
+
+    /// Track names, artists and owners come from Spotify pages: none may
+    /// become a masked link or a ping in the embed.
+    #[test]
+    fn a_listing_escapes_what_spotify_called_things() {
+        let embed = collection_embed(
+            "Mix".into(),
+            "https://open.spotify.com/playlist/p".into(),
+            r"*bold* owner".into(),
+            &[hostile_track()],
+            0,
+            None,
+            None,
+        );
+        let json = serde_json::to_string(&embed).unwrap();
+        assert!(
+            json.contains(r"1. \\[click\\](https://evil.example) — \\@everyone"),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn a_track_embed_escapes_its_artists_and_album() {
+        let mut track = hostile_track();
+        track.album = Some(
+            serde_json::from_str(
+                r#"{"id":"a","name":"_album_","url":"https://open.spotify.com/album/a","image":null}"#,
+            )
+            .expect("album"),
+        );
+        let json = serde_json::to_string(&track_embed(track)).unwrap();
+        assert!(json.contains(r"\\@everyone"), "{json}");
+        assert!(json.contains(r"\\_album\\_"), "{json}");
+    }
+
+    fn thumbnail_of(embed: &CreateEmbed<'static>) -> Option<String> {
+        let json = serde_json::to_value(embed).unwrap();
+        json.get("thumbnail")
+            .and_then(|t| t["url"].as_str())
+            .map(str::to_owned)
+    }
+
+    /// Cover art is set only from a web URL, as on every other card: an
+    /// empty or relative one is left out rather than sent broken.
+    #[test]
+    fn cover_art_is_set_only_from_a_web_url() {
+        for (image, want) in [
+            (
+                "https://i.scdn.co/image/ab67",
+                Some("https://i.scdn.co/image/ab67"),
+            ),
+            ("", None),
+            ("/image/ab67", None),
+        ] {
+            let mut track = hostile_track();
+            track.album = Some(
+                serde_json::from_str(&format!(
+                    r#"{{"id":"a","name":"A","url":"https://open.spotify.com/album/a","image":"{image}"}}"#
+                ))
+                .expect("album"),
+            );
+            assert_eq!(
+                thumbnail_of(&track_embed(track)).as_deref(),
+                want,
+                "{image:?}"
+            );
+            let listing = collection_embed(
+                "Mix".into(),
+                "https://open.spotify.com/playlist/p".into(),
+                "owner".into(),
+                &[],
+                0,
+                None,
+                Some(image.to_owned()),
+            );
+            assert_eq!(thumbnail_of(&listing).as_deref(), want, "{image:?}");
+        }
+    }
+
+    /// The length reads as in every music message: `h:mm:ss` from an hour
+    /// up (it read `63:12`), and nothing when unknown or zero.
+    #[test]
+    fn a_track_length_reads_like_every_other_length() {
+        let length = |ms: Option<u64>| {
+            let mut track = hostile_track();
+            track.duration_ms = ms;
+            let json = serde_json::to_value(track_embed(track)).unwrap();
+            json["fields"]
+                .as_array()
+                .and_then(|f| f.iter().find(|f| f["name"] == "Length"))
+                .map(|f| f["value"].as_str().unwrap().to_owned())
+        };
+        assert_eq!(length(Some(192_000)).as_deref(), Some("3:12"));
+        assert_eq!(length(Some(3_792_000)).as_deref(), Some("1:03:12"));
+        assert_eq!(length(Some(0)), None);
+        assert_eq!(length(None), None);
+    }
+
+    #[test]
+    fn a_playlist_owner_is_escaped() {
+        let playlist = Playlist {
+            id: "p".into(),
+            tag: Default::default(),
+            name: "Mix".into(),
+            owner: Some("*bold*".into()),
+            image: None,
+            url: "https://open.spotify.com/playlist/p".into(),
+            tracks: vec![],
+            unresolved_items: 0,
+            declared_items: None,
+            complete: true,
+        };
+        let json = serde_json::to_string(&playlist_embed(playlist)).unwrap();
+        assert!(json.contains(r"\\*bold\\*"), "{json}");
+    }
 }

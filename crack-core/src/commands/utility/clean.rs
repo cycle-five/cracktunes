@@ -1,3 +1,5 @@
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+
 use crate::{
     //commands::sub_help as help,
     errors::CrackedError,

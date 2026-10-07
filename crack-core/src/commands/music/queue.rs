@@ -1,20 +1,20 @@
-use crate::utils::get_interaction_new;
 use crate::{
     commands::cmd_check_music,
     errors::CrackedError,
     handlers::track_end::ModifyQueueHandler,
     messaging::{
+        courier,
         interface::{create_nav_btns, create_queue_embed},
+        message::CrackedMessage,
         messages::QUEUE_EXPIRED,
+        render::Rendered,
+        transport::DiscordTransport,
     },
     utils::{calculate_num_pages, forget_queue_message},
     Context, Error,
 };
-use ::serenity::builder::{
-    CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage, EditMessage,
-};
+use ::serenity::builder::{CreateEmbed, CreateInteractionResponse};
 use ::serenity::futures::StreamExt;
-use poise::CreateReply;
 use songbird::{Event, TrackEvent};
 use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
@@ -63,31 +63,12 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     let num_pages = calculate_num_pages(&tracks);
     tracing::info!("num_pages: {}", num_pages);
 
-    let mut message = match get_interaction_new(&ctx) {
-        Some(crate::utils::CommandOrMessageInteraction::Command(interaction)) => {
-            interaction
-                .create_response(
-                    ctx.http(),
-                    CreateInteractionResponse::Message(
-                        CreateInteractionResponseMessage::new()
-                            .embed(create_queue_embed(&tracks, 0).await)
-                            .components(create_nav_btns(0, num_pages)),
-                    ),
-                )
-                .await?;
-            interaction
-                .get_response(&ctx.serenity_context().http)
-                .await?
-        },
-        _ => {
-            let create_reply = CreateReply::default()
-                .embed(create_queue_embed(&tracks, 0).await)
-                .components(create_nav_btns(0, num_pages));
-
-            let reply = ctx.send(create_reply).await?;
-            reply.into_message().await?
-        },
-    };
+    let first = Rendered::embed(create_queue_embed(&tracks, 0).await)
+        .with_components(create_nav_btns(0, num_pages));
+    let message = courier::reply_rendered(ctx, first, false)
+        .await?
+        .into_message()
+        .await?;
 
     let page: Arc<RwLock<usize>> = Arc::new(RwLock::new(0));
 
@@ -139,24 +120,27 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
             *page_wlock
         };
 
+        let flipped = Rendered::embed(create_queue_embed(&tracks, page_num).await)
+            .with_components(create_nav_btns(page_num, num_pages));
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "component responses move in PR 2"
+        )]
         mci.create_response(
             ctx.http(),
-            CreateInteractionResponse::UpdateMessage(
-                CreateInteractionResponseMessage::new()
-                    .add_embed(create_queue_embed(&tracks, page_num).await)
-                    .components(create_nav_btns(page_num, num_pages)),
-            ),
+            CreateInteractionResponse::UpdateMessage(flipped.to_interaction_message()),
         )
         .await?;
     }
 
-    message
-        .edit(
-            &ctx.serenity_context().http,
-            EditMessage::new().embed(CreateEmbed::default().description(QUEUE_EXPIRED)),
-        )
-        .await
-        .unwrap();
+    let transport = DiscordTransport::of(ctx.serenity_context());
+    let expired =
+        CrackedMessage::CreateEmbed(Box::new(CreateEmbed::default().description(QUEUE_EXPIRED)));
+    if let Err(err) =
+        courier::edit_message(&transport, message.channel_id, message.id, &expired).await
+    {
+        tracing::warn!("could not mark the queue expired (message deleted?): {err:?}");
+    }
 
     forget_queue_message(data, &message, guild_id)
         .await

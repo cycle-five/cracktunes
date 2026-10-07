@@ -1,7 +1,6 @@
 use crate::{
     commands::cmd_check_music,
     music::ops::{self, OpCx},
-    utils::send_reply,
     Context, CrackedError, Error,
 };
 
@@ -30,11 +29,8 @@ pub async fn repeat(
 #[cfg(not(tarpaulin_include))]
 pub async fn repeat_internal(ctx: Context<'_>) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;
-    let repeat = ops::repeat(&cx, None)
-        .await
-        .map_err(CrackedError::from)?
-        .settle_now(&cx)
-        .await;
-    send_reply(&ctx, repeat.message(), true).await?;
+    let done = ops::repeat(&cx, None).await.map_err(CrackedError::from)?;
+    let msg = done.outcome().message();
+    done.reply_then_settle(ctx, &cx, msg).await?;
     Ok(())
 }

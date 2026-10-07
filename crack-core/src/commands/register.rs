@@ -2,6 +2,8 @@
 //! It would be nice to be able to not maintain these functions for ourselves.
 //! Utilities for registering application commands
 
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+
 use poise::serenity_prelude as serenity;
 use serenity::CollectComponentInteractions;
 use std::borrow::Cow;

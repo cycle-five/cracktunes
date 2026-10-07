@@ -1,8 +1,10 @@
 use crate::commands::{cmd_check_music, connected_call, do_join, help, sub_help as help};
 use crate::{
-    connection::get_voice_channel_for_user_summon, errors::CrackedError,
-    messaging::message::CrackedMessage, poise_ext::ContextExt, poise_ext::PoiseContextExt, Context,
-    Error,
+    connection::get_voice_channel_for_user_summon,
+    errors::CrackedError,
+    messaging::{courier, message::CrackedMessage},
+    poise_ext::ContextExt,
+    Context, Error,
 };
 use ::serenity::all::{Channel, ChannelId, GenericChannelId, Mentionable};
 use songbird::Call;
@@ -95,9 +97,12 @@ pub async fn summon_internal(
                     // already sitting there. Answering a no-op with a claim
                     // about an action is a smaller lie than #506's red error,
                     // but it is still a lie.
-                    ctx.send_reply_embed(CrackedMessage::AlreadyHere {
-                        mention: channel_id.mention(),
-                    })
+                    courier::reply(
+                        ctx,
+                        CrackedMessage::AlreadyHere {
+                            mention: channel_id.mention(),
+                        },
+                    )
                     .await?;
                     call
                 },

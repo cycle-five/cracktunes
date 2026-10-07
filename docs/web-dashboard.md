@@ -42,11 +42,12 @@ member may send 5 controls per 10 s, across every server; the sixth gets 429
 (`too_many`). Moves are not limited.
 
 Each control posts one line in Discord, where the now-playing message goes,
-such as "⏸ Paused from the dashboard — @member". After a skip, the new
-now-playing message lands below that line; the other controls leave the
-now-playing message where it is. The line is an embed, so the mention never
-pings, and a title in it is cut to 40 characters. A refused control posts
-nothing, and a move stays silent, as it always has.
+such as "⏸ Paused from the dashboard — @member". After a skip, pause, resume
+or repeat, the now-playing message is re-rendered below that line, so its
+progress line is current ("Paused at 1:12", a new end time, "on repeat");
+remove and shuffle leave it where it is. The line is an embed, so the mention
+never pings, and a title in it is cut to 60 characters and escaped. A refused
+control posts nothing, and a move stays silent, as it always has.
 
 Each one is recorded in `queue_audit` with source `web` and command
 `dashboard skip`, `dashboard pause`, `dashboard resume`, `dashboard repeat`,

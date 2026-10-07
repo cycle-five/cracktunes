@@ -3,18 +3,21 @@
 //! Spec: docs/superpowers/specs/2026-09-15-floating-status-message-design.md
 
 use crate::guild::operations::GuildSettingsOperations;
-use crate::http_utils::is_unknown_message;
-use crate::messaging::interface::create_now_playing_embed;
+use crate::messaging::courier::{post, Destination};
+use crate::messaging::interface::now_playing_card;
+use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
     NOW_PLAYING_POINTER, STATUS_FINISHED_DESCRIPTION, STATUS_FINISHED_TITLE,
 };
+use crate::messaging::render::RenderCx;
+use crate::messaging::render::Rendered;
 use crate::Data;
 use serenity::all::{Cache, CreateEmbed, GenericChannelId, GuildId, Http, MessageId, MessageLink};
-use serenity::async_trait;
-use serenity::builder::{CreateMessage, EditMessage};
 use songbird::Call;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+pub use super::transport::{DiscordTransport, Transport, TransportError};
 
 /// Whether the status says something is playing or that playback finished.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,68 +111,28 @@ pub fn target_channel(
     music.or(last_command).or(tracked)
 }
 
-/// Why Discord refused a status request.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TransportError {
-    /// The message is gone -- deleted by hand or by `/clean`.
-    UnknownMessage,
-    /// Anything else, as text for the log.
-    Other(String),
-}
-
-impl From<serenity::Error> for TransportError {
-    fn from(err: serenity::Error) -> Self {
-        if is_unknown_message(&err) {
-            Self::UnknownMessage
-        } else {
-            Self::Other(err.to_string())
-        }
-    }
-}
-
-/// The Discord calls the status makes, behind a seam so every branch of
-/// [`apply`] is testable without Discord.
-#[async_trait]
-pub trait StatusTransport: Send + Sync {
-    async fn send(
-        &self,
-        channel: GenericChannelId,
-        embed: CreateEmbed<'static>,
-    ) -> Result<MessageId, TransportError>;
-    async fn edit(
-        &self,
-        channel: GenericChannelId,
-        id: MessageId,
-        embed: CreateEmbed<'static>,
-    ) -> Result<(), TransportError>;
-    async fn delete(&self, channel: GenericChannelId, id: MessageId) -> Result<(), TransportError>;
-    /// The newest message id the gateway has reported for `channel`, if the
-    /// channel is cached.
-    fn last_message_id(&self, guild: GuildId, channel: GenericChannelId) -> Option<MessageId>;
-}
-
 /// Bring the status in `slot` up to date in `target`, and return what is on
 /// screen afterwards.
 pub async fn apply(
-    transport: &dyn StatusTransport,
+    transport: &dyn Transport,
     slot: &mut StatusSlot,
     guild: GuildId,
     target: GenericChannelId,
-    embed: CreateEmbed<'static>,
+    out: Rendered,
     phase: Phase,
 ) -> Option<StatusMessage> {
-    apply_after(transport, slot, guild, target, embed, phase, None).await
+    apply_after(transport, slot, guild, target, out, phase, None).await
 }
 
 /// [`apply`], knowing that `after` -- a visible reply the caller just posted,
 /// as `(channel, id)` -- is in the channel even if the cache has not heard of
 /// it yet (see [`newest_known`]).
 pub async fn apply_after(
-    transport: &dyn StatusTransport,
+    transport: &dyn Transport,
     slot: &mut StatusSlot,
     guild: GuildId,
     target: GenericChannelId,
-    embed: CreateEmbed<'static>,
+    out: Rendered,
     phase: Phase,
     after: Option<(GenericChannelId, MessageId)>,
 ) -> Option<StatusMessage> {
@@ -178,7 +141,7 @@ pub async fn apply_after(
     match (placement(current.as_ref(), target, last), current) {
         (Placement::Edit, Some(current)) => {
             match transport
-                .edit(current.channel, current.id, embed.clone())
+                .edit(current.channel, current.id, out.clone())
                 .await
             {
                 Ok(()) => {
@@ -211,7 +174,7 @@ pub async fn apply_after(
         },
         _ => {},
     }
-    match transport.send(target, embed).await {
+    match transport.send(target, out).await {
         Ok(id) => {
             let shown = StatusMessage {
                 channel: target,
@@ -242,57 +205,6 @@ impl crate::Data {
     }
 }
 
-/// The real Discord behind [`StatusTransport`].
-pub struct DiscordTransport {
-    pub http: Arc<Http>,
-    pub cache: Arc<Cache>,
-}
-
-#[async_trait]
-impl StatusTransport for DiscordTransport {
-    async fn send(
-        &self,
-        channel: GenericChannelId,
-        embed: CreateEmbed<'static>,
-    ) -> Result<MessageId, TransportError> {
-        Ok(channel
-            .send_message(&self.http, CreateMessage::new().embed(embed))
-            .await?
-            .id)
-    }
-
-    async fn edit(
-        &self,
-        channel: GenericChannelId,
-        id: MessageId,
-        embed: CreateEmbed<'static>,
-    ) -> Result<(), TransportError> {
-        channel
-            .edit_message(&self.http, id, EditMessage::new().embed(embed))
-            .await?;
-        Ok(())
-    }
-
-    async fn delete(&self, channel: GenericChannelId, id: MessageId) -> Result<(), TransportError> {
-        Ok(channel.delete_message(&self.http, id, None).await?)
-    }
-
-    /// serenity sets `last_message_id` on every message-create for guild
-    /// channels and threads (`cache/event.rs`). None when the guild or channel
-    /// is not cached, which `placement` treats as "moved".
-    fn last_message_id(&self, guild: GuildId, channel: GenericChannelId) -> Option<MessageId> {
-        let guild = self.cache.guild(guild)?;
-        let (channel_id, thread_id) = channel.split();
-        match guild.channels.get(&channel_id) {
-            Some(guild_channel) => guild_channel.base.last_message_id,
-            None => guild
-                .threads
-                .get(&thread_id)
-                .and_then(|thread| thread.base.last_message_id),
-        }
-    }
-}
-
 /// Remember where the guild's latest music command was run.
 pub async fn note_command_channel(data: &Data, guild: GuildId, channel: GenericChannelId) {
     data.status_slot(guild).lock().await.last_command_channel = Some(channel);
@@ -302,21 +214,21 @@ pub async fn note_command_channel(data: &Data, guild: GuildId, channel: GenericC
 /// lock so a `/skip` cannot race a track end.
 pub async fn update(
     data: &Data,
-    transport: &dyn StatusTransport,
+    transport: &dyn Transport,
     guild: GuildId,
-    embed: CreateEmbed<'static>,
+    out: Rendered,
     phase: Phase,
 ) -> Option<StatusMessage> {
-    update_after(data, transport, guild, embed, phase, None).await
+    update_after(data, transport, guild, out, phase, None).await
 }
 
 /// [`update`], with the visible reply the caller just posted as the floor for
 /// "has anything been posted since?" (see [`apply_after`]).
 pub async fn update_after(
     data: &Data,
-    transport: &dyn StatusTransport,
+    transport: &dyn Transport,
     guild: GuildId,
-    embed: CreateEmbed<'static>,
+    out: Rendered,
     phase: Phase,
     after: Option<(GenericChannelId, MessageId)>,
 ) -> Option<StatusMessage> {
@@ -328,17 +240,17 @@ pub async fn update_after(
     }
     let tracked = slot.message.map(|status| status.channel);
     let target = target_channel(music, slot.last_command_channel, tracked)?;
-    apply_after(transport, &mut slot, guild, target, embed, phase, after).await
+    apply_after(transport, &mut slot, guild, target, out, phase, after).await
 }
 
-/// Post `embed` where the status message would go, and say where it landed.
+/// Post `out` where the status message would go, and say where it landed.
 /// The echo is not the status message, so the slot's tracked message is left
 /// alone. A failed send is logged and lands nowhere.
 pub async fn announce(
     data: &Data,
-    transport: &dyn StatusTransport,
+    transport: &dyn Transport,
     guild: GuildId,
-    embed: CreateEmbed<'static>,
+    out: Rendered,
 ) -> Option<(GenericChannelId, MessageId)> {
     let music = data.get_music_channel(guild).await;
     let (last, tracked) = {
@@ -350,7 +262,7 @@ pub async fn announce(
         )
     };
     let target = target_channel(music, last, tracked)?;
-    match transport.send(target, embed).await {
+    match transport.send(target, out).await {
         Ok(id) => Some((target, id)),
         Err(err) => {
             tracing::warn!("announce in {target} failed: {err:?}");
@@ -392,31 +304,21 @@ pub async fn show_now_playing_after(
         return None;
     }
     let track = call.lock().await.queue().current()?;
-    let embed: CreateEmbed<'static> = create_now_playing_embed(track).await;
-    update_after(
+    let card = now_playing_card(&track).await;
+    let msg = CrackedMessage::NowPlayingCard(Box::new(card));
+    post(
         data,
         &DiscordTransport { http, cache },
-        guild,
-        embed,
-        Phase::Playing,
-        after,
+        Destination::Status { guild, after },
+        &msg,
+        &RenderCx::now(),
     )
     .await
-}
-
-/// Where a reply the caller just posted landed, as the `after` floor for
-/// [`show_now_playing_after`]. Only for a *visible* reply. None, with a
-/// warning, when poise cannot produce the message (a slash command's initial
-/// response is fetched over HTTP); the status then falls back to the cache.
-#[cfg(not(tarpaulin_include))]
-pub async fn reply_floor(reply: &poise::ReplyHandle<'_>) -> Option<(GenericChannelId, MessageId)> {
-    match reply.message().await {
-        Ok(message) => Some((message.channel_id, message.id)),
-        Err(err) => {
-            tracing::warn!("status: could not read the reply to place the status below it: {err}");
-            None
-        },
-    }
+    .map(|(channel, id)| StatusMessage {
+        channel,
+        id,
+        phase: Phase::Playing,
+    })
 }
 
 /// Show that playback finished. The message stays tracked, so the next
@@ -430,14 +332,19 @@ pub async fn show_finished(
     if data.gp_is_active(guild) {
         return None;
     }
-    update(
+    post(
         data,
         &DiscordTransport { http, cache },
-        guild,
-        finished_embed(),
-        Phase::Finished,
+        Destination::Status { guild, after: None },
+        &CrackedMessage::Finished,
+        &RenderCx::now(),
     )
     .await
+    .map(|(channel, id)| StatusMessage {
+        channel,
+        id,
+        phase: Phase::Finished,
+    })
 }
 
 /// The "Finished" status.
@@ -484,7 +391,7 @@ pub fn pointer_goes_first(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    use crate::messaging::test_support::{FakeTransport, Op};
 
     const GUILD: GuildId = GuildId::new(1);
 
@@ -500,92 +407,8 @@ mod tests {
         }
     }
 
-    fn embed() -> CreateEmbed<'static> {
-        CreateEmbed::new().title("status")
-    }
-
-    #[derive(Debug, Clone, PartialEq, Eq)]
-    enum Op {
-        Send(u64),
-        Edit(u64, u64),
-        Delete(u64, u64),
-    }
-
-    /// A stand-in Discord: records every call, answers from what the test set.
-    #[derive(Default)]
-    struct Fake {
-        last: std::sync::Mutex<Option<MessageId>>,
-        edit_error: std::sync::Mutex<Option<TransportError>>,
-        delete_error: std::sync::Mutex<Option<TransportError>>,
-        send_error: std::sync::Mutex<Option<TransportError>>,
-        ops: std::sync::Mutex<Vec<Op>>,
-        sent: AtomicU64,
-    }
-
-    impl Fake {
-        fn with_last(self, last: u64) -> Self {
-            *self.last.lock().unwrap() = Some(MessageId::new(last));
-            self
-        }
-        fn ops(&self) -> Vec<Op> {
-            self.ops.lock().unwrap().clone()
-        }
-    }
-
-    #[async_trait]
-    impl StatusTransport for Fake {
-        async fn send(
-            &self,
-            channel: GenericChannelId,
-            _embed: CreateEmbed<'static>,
-        ) -> Result<MessageId, TransportError> {
-            self.ops.lock().unwrap().push(Op::Send(channel.get()));
-            if let Some(err) = self.send_error.lock().unwrap().clone() {
-                return Err(err);
-            }
-            Ok(MessageId::new(
-                1000 + self.sent.fetch_add(1, Ordering::SeqCst),
-            ))
-        }
-
-        async fn edit(
-            &self,
-            channel: GenericChannelId,
-            id: MessageId,
-            _embed: CreateEmbed<'static>,
-        ) -> Result<(), TransportError> {
-            self.ops
-                .lock()
-                .unwrap()
-                .push(Op::Edit(channel.get(), id.get()));
-            match self.edit_error.lock().unwrap().clone() {
-                Some(err) => Err(err),
-                None => Ok(()),
-            }
-        }
-
-        async fn delete(
-            &self,
-            channel: GenericChannelId,
-            id: MessageId,
-        ) -> Result<(), TransportError> {
-            self.ops
-                .lock()
-                .unwrap()
-                .push(Op::Delete(channel.get(), id.get()));
-            match self.delete_error.lock().unwrap().clone() {
-                Some(err) => Err(err),
-                None => Ok(()),
-            }
-        }
-
-        fn last_message_id(
-            &self,
-            _guild: GuildId,
-            _channel: GenericChannelId,
-        ) -> Option<MessageId> {
-            *self.last.lock().unwrap()
-        }
+    fn embed() -> Rendered {
+        Rendered::embed(CreateEmbed::new().title("status"))
     }
 
     // ---- placement ----
@@ -731,7 +554,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_first_update_sends_and_tracks_the_message() {
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         let mut slot = StatusSlot::default();
 
         let shown = apply(&fake, &mut slot, GUILD, ch(5), embed(), Phase::Playing).await;
@@ -743,7 +566,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_quiet_channel_is_edited_in_place() {
-        let fake = Fake::default().with_last(100);
+        let fake = FakeTransport::default().with_last(100);
         let mut slot = StatusSlot {
             message: Some(tracked(5, 100, Phase::Playing)),
             ..Default::default()
@@ -757,7 +580,7 @@ mod tests {
 
     #[tokio::test]
     async fn chat_since_the_status_moves_it_to_the_bottom() {
-        let fake = Fake::default().with_last(101);
+        let fake = FakeTransport::default().with_last(101);
         let mut slot = StatusSlot {
             message: Some(tracked(5, 100, Phase::Playing)),
             ..Default::default()
@@ -771,7 +594,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_status_deleted_by_hand_is_sent_again() {
-        let fake = Fake::default().with_last(100);
+        let fake = FakeTransport::default().with_last(100);
         *fake.edit_error.lock().unwrap() = Some(TransportError::UnknownMessage);
         let mut slot = StatusSlot {
             message: Some(tracked(5, 100, Phase::Playing)),
@@ -786,7 +609,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_delete_still_sends_the_new_status() {
-        let fake = Fake::default().with_last(101);
+        let fake = FakeTransport::default().with_last(101);
         *fake.delete_error.lock().unwrap() =
             Some(TransportError::Other("Missing Permissions".into()));
         let mut slot = StatusSlot {
@@ -802,7 +625,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_send_forgets_the_message() {
-        let fake = Fake::default().with_last(101);
+        let fake = FakeTransport::default().with_last(101);
         *fake.send_error.lock().unwrap() = Some(TransportError::Other("Missing Access".into()));
         let mut slot = StatusSlot {
             message: Some(tracked(5, 100, Phase::Playing)),
@@ -818,7 +641,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_edit_forgets_the_message() {
-        let fake = Fake::default().with_last(100);
+        let fake = FakeTransport::default().with_last(100);
         *fake.edit_error.lock().unwrap() =
             Some(TransportError::Other("Missing Permissions".into()));
         let mut slot = StatusSlot {
@@ -835,7 +658,7 @@ mod tests {
 
     #[tokio::test]
     async fn finished_stays_tracked_and_playing_continues_it() {
-        let fake = Fake::default().with_last(100);
+        let fake = FakeTransport::default().with_last(100);
         let mut slot = StatusSlot {
             message: Some(tracked(5, 100, Phase::Playing)),
             ..Default::default()
@@ -851,7 +674,7 @@ mod tests {
 
     #[tokio::test]
     async fn moving_to_another_channel_deletes_the_old_status() {
-        let fake = Fake::default().with_last(100);
+        let fake = FakeTransport::default().with_last(100);
         let mut slot = StatusSlot {
             message: Some(tracked(5, 100, Phase::Playing)),
             ..Default::default()
@@ -868,7 +691,7 @@ mod tests {
     /// in place would leave the status above the reply.
     #[tokio::test]
     async fn a_reply_not_yet_echoed_still_moves_the_status_below_it() {
-        let fake = Fake::default().with_last(100);
+        let fake = FakeTransport::default().with_last(100);
         let mut slot = StatusSlot {
             message: Some(tracked(5, 100, Phase::Playing)),
             ..Default::default()
@@ -891,7 +714,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_reply_in_another_channel_does_not_move_the_status() {
-        let fake = Fake::default().with_last(100);
+        let fake = FakeTransport::default().with_last(100);
         let mut slot = StatusSlot {
             message: Some(tracked(5, 100, Phase::Playing)),
             ..Default::default()
@@ -938,7 +761,7 @@ mod tests {
     #[tokio::test]
     async fn with_nowhere_to_post_nothing_is_posted() {
         let data = crate::Data::default();
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
 
         assert_eq!(
             update(&data, &fake, GUILD, embed(), Phase::Playing).await,
@@ -957,7 +780,7 @@ mod tests {
             .await
             .insert(GUILD, settings);
         note_command_channel(&data, GUILD, ch(5)).await;
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
 
         update(&data, &fake, GUILD, embed(), Phase::Playing).await;
 
@@ -968,7 +791,7 @@ mod tests {
     async fn without_a_music_channel_the_last_command_channel_is_used() {
         let data = crate::Data::default();
         note_command_channel(&data, GUILD, ch(5)).await;
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
 
         update(&data, &fake, GUILD, embed(), Phase::Playing).await;
 
@@ -979,7 +802,7 @@ mod tests {
     async fn a_command_in_another_channel_moves_the_status_there() {
         let data = crate::Data::default();
         note_command_channel(&data, GUILD, ch(5)).await;
-        let fake = Fake::default().with_last(1000);
+        let fake = FakeTransport::default().with_last(1000);
         update(&data, &fake, GUILD, embed(), Phase::Playing).await;
 
         note_command_channel(&data, GUILD, ch(6)).await;
@@ -996,7 +819,7 @@ mod tests {
     async fn finished_with_nothing_on_screen_posts_nothing() {
         let data = crate::Data::default();
         note_command_channel(&data, GUILD, ch(5)).await;
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
 
         let shown = update(&data, &fake, GUILD, embed(), Phase::Finished).await;
 
@@ -1008,7 +831,7 @@ mod tests {
     async fn a_second_finished_changes_nothing() {
         let data = crate::Data::default();
         note_command_channel(&data, GUILD, ch(5)).await;
-        let fake = Fake::default().with_last(1000);
+        let fake = FakeTransport::default().with_last(1000);
 
         update(&data, &fake, GUILD, embed(), Phase::Playing).await;
         update(&data, &fake, GUILD, embed(), Phase::Finished).await;
@@ -1025,7 +848,7 @@ mod tests {
     async fn update_carries_the_reply_floor_to_the_placement() {
         let data = crate::Data::default();
         note_command_channel(&data, GUILD, ch(5)).await;
-        let fake = Fake::default().with_last(1000);
+        let fake = FakeTransport::default().with_last(1000);
         update(&data, &fake, GUILD, embed(), Phase::Playing).await;
 
         let shown =
@@ -1090,7 +913,7 @@ mod tests {
         note_command_channel(&data, GUILD, ch(10)).await;
         let status = tracked(10, 100, Phase::Playing);
         data.status_slot(GUILD).lock().await.message = Some(status);
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
 
         let landed = announce(&data, &fake, GUILD, embed()).await;
 
@@ -1106,7 +929,7 @@ mod tests {
     #[tokio::test]
     async fn announce_with_nowhere_to_post_sends_nothing() {
         let data = crate::Data::default();
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
 
         assert_eq!(announce(&data, &fake, GUILD, embed()).await, None);
         assert!(fake.ops().is_empty());
@@ -1116,7 +939,7 @@ mod tests {
     async fn announce_whose_send_fails_lands_nowhere() {
         let data = crate::Data::default();
         note_command_channel(&data, GUILD, ch(10)).await;
-        let fake = Fake::default();
+        let fake = FakeTransport::default();
         *fake.send_error.lock().unwrap() = Some(TransportError::Other("boom".into()));
 
         assert_eq!(announce(&data, &fake, GUILD, embed()).await, None);

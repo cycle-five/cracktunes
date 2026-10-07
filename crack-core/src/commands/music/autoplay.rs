@@ -1,6 +1,7 @@
 use crate::commands::cmd_check_music;
 use crate::guild::operations::GuildSettingsOperations;
-use crate::{messaging::message::CrackedMessage, utils::send_reply, Context, CrackedError, Error};
+use crate::messaging::courier;
+use crate::{messaging::message::CrackedMessage, Context, CrackedError, Error};
 
 /// Toggle music autoplay.
 #[cfg(not(tarpaulin_include))]
@@ -39,6 +40,6 @@ pub async fn toggle_autoplay(ctx: Context<'_>, value: Option<bool>) -> Result<()
     // Session-only (Ruling 48): the guild's stored settings are not touched.
     ctx.data().set_autoplay(guild_id, autoplay).await;
 
-    send_reply(&ctx, autoplay_msg(autoplay), true).await?;
+    courier::reply(ctx, autoplay_msg(autoplay)).await?;
     Ok(())
 }

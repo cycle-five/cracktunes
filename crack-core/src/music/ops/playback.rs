@@ -1,4 +1,6 @@
-//! State-only ops: nothing in Discord shows this state, so they settle `Nothing`.
+//! Playback ops. Pause, resume, seek and repeat change what the now-playing
+//! status shows (its progress line), so they settle `NowPlaying` (ruling R9);
+//! volume is shown nowhere, and settles `Nothing`.
 use super::*;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::{
@@ -97,7 +99,8 @@ pub(crate) async fn pause_on(
     pause_queue(g, &handler).map_err(|_| OpRefused::Failed(Failure::Pause))?;
     Ok(Done {
         outcome: Paused,
-        settle: Settle::Nothing,
+        // "Paused at 1:12", not an end time Discord counts down past.
+        settle: Settle::NowPlaying,
         call: Some(call.clone()),
     })
 }
@@ -122,7 +125,8 @@ pub(crate) async fn resume_on(
     resume_queue(g, &handler).map_err(|_| OpRefused::Failed(Failure::Resume))?;
     Ok(Done {
         outcome: Resumed,
-        settle: Settle::Nothing,
+        // The end time moved by however long the track sat paused.
+        settle: Settle::NowPlaying,
         call: Some(call.clone()),
     })
 }
@@ -165,7 +169,8 @@ pub(crate) async fn repeat_on(
     g.record(voice, Action::Repeat { on });
     Ok(Done {
         outcome: Repeat { on },
-        settle: Settle::Nothing,
+        // "on repeat" in place of the end time, or the end time back.
+        settle: Settle::NowPlaying,
         call: Some(call.clone()),
     })
 }
@@ -190,13 +195,20 @@ pub(crate) async fn seek_on(
     // 🔑 Release the lease before waiting on the driver.
     drop(g);
     match timeout(limit, callback.result_async()).await {
-        Ok(Ok(_)) => Ok(Done {
-            outcome: Sought { to },
-            settle: Settle::Nothing,
-            call: Some(call.clone()),
-        }),
+        Ok(Ok(_)) => Ok(sought(call, to)),
         Ok(Err(e)) => Err(OpRefused::SeekFailed(e)),
         Err(_) => Err(OpRefused::SeekTimedOut),
+    }
+}
+
+/// A confirmed seek. Split out so its settle is pinned without a driver: an
+/// offline call never confirms one.
+fn sought(call: &Arc<Mutex<Call>>, to: Duration) -> Done<Sought> {
+    Done {
+        outcome: Sought { to },
+        // The end time is wherever the track now is plus what is left.
+        settle: Settle::NowPlaying,
+        call: Some(call.clone()),
     }
 }
 
@@ -276,15 +288,27 @@ mod test {
     use crate::music::{audit::Action, ops::test_support::*};
     use std::time::Duration;
 
+    /// Ruling R9 (was `..._settle_nothing`): the status re-renders, so it says
+    /// "Paused at 1:12" while paused and a fresh end time once resumed.
     #[tokio::test]
-    async fn pause_and_resume_record_and_settle_nothing() {
+    async fn pause_and_resume_record_and_settle_now_playing() {
         let (data, call, _, mut rx) = queue_of(2).await;
         let g = guard(&data).await;
         let done = pause_on(&g, &call).await.unwrap();
-        assert_eq!(*done.settle(), Settle::Nothing);
+        assert_eq!(*done.settle(), Settle::NowPlaying);
         let done = resume_on(&g, &call).await.unwrap();
-        assert_eq!(*done.settle(), Settle::Nothing);
+        assert_eq!(*done.settle(), Settle::NowPlaying);
         assert_eq!(recorded(&mut rx), vec![Action::Pause, Action::Resume]);
+    }
+
+    /// Ruling R9: a seek moves the end time. Offline the driver never
+    /// confirms a seek, so the confirmed result is pinned directly.
+    #[tokio::test]
+    async fn a_confirmed_seek_settles_now_playing() {
+        let call = offline_call();
+        let done = sought(&call, Duration::from_secs(5));
+        assert_eq!(*done.settle(), Settle::NowPlaying);
+        assert_eq!(done.outcome().to, Duration::from_secs(5));
     }
 
     #[tokio::test]
@@ -302,18 +326,18 @@ mod test {
         assert!(recorded(&mut rx).is_empty());
     }
 
+    /// Ruling R9: either way the status re-renders, "on repeat" in place of
+    /// an end time, or the end time back.
     #[tokio::test]
     async fn repeat_sets_explicitly_and_records_what_it_set() {
         let (data, call, _, mut rx) = queue_of(1).await;
         let g = guard(&data).await;
-        assert!(repeat_on(&g, &call, Some(true)).await.unwrap().outcome().on);
-        assert!(
-            !repeat_on(&g, &call, Some(false))
-                .await
-                .unwrap()
-                .outcome()
-                .on
-        );
+        let on = repeat_on(&g, &call, Some(true)).await.unwrap();
+        assert!(on.outcome().on);
+        assert_eq!(*on.settle(), Settle::NowPlaying);
+        let off = repeat_on(&g, &call, Some(false)).await.unwrap();
+        assert!(!off.outcome().on);
+        assert_eq!(*off.settle(), Settle::NowPlaying);
         assert_eq!(
             recorded(&mut rx),
             vec![Action::Repeat { on: true }, Action::Repeat { on: false }]

@@ -133,6 +133,24 @@ impl ResolvedTrack<'_> {
         }
     }
 
+    /// The track's length, from the same source `get_duration` reads, or
+    /// `None` when nothing resolved one. For callers that format it themselves.
+    pub fn duration(&self) -> Option<Duration> {
+        if let Some(metadata) = &self.metadata {
+            metadata.duration
+        } else if let Some(details) = &self.details {
+            details
+                .length_seconds
+                .parse::<u64>()
+                .ok()
+                .map(Duration::from_secs)
+        } else {
+            self.search_video
+                .as_ref()
+                .map(|video| Duration::from_millis(video.duration))
+        }
+    }
+
     /// Get the duration of the track.
     pub fn get_duration(&self) -> String {
         if let Some(metadata) = &self.metadata {
@@ -392,6 +410,16 @@ mod suggest_string_tests {
         );
         // The real assertion is that the line above did not panic.
         assert!(s.is_char_boundary(s.len()), "result must be valid UTF-8");
+    }
+
+    /// The length as a `Duration`, for a caller that formats it itself; `None`
+    /// when nothing resolved one, rather than a made-up zero.
+    #[test]
+    fn duration_reads_the_metadata_or_says_it_is_unknown() {
+        assert_eq!(track("t", 272).duration(), Some(Duration::from_secs(272)));
+        assert_eq!(ResolvedTrack::default().duration(), None);
+        let no_length = ResolvedTrack::default().with_metadata(AuxMetadata::default());
+        assert_eq!(no_length.duration(), None);
     }
 
     /// Every byte offset is exercised, so a regression cannot hide behind one

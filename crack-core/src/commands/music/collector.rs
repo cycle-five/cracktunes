@@ -1,9 +1,12 @@
+use crate::messaging::courier;
+use crate::messaging::render::Rendered;
+use crate::messaging::transport::DiscordTransport;
 use crate::{Context, Error};
 use ::serenity::builder::{
     CreateActionRow, CreateButton, CreateComponent, CreateInteractionResponse,
-    CreateInteractionResponseMessage, EditMessage,
+    CreateInteractionResponseMessage,
 };
-use poise::{serenity_prelude as serenity, CreateReply};
+use poise::serenity_prelude as serenity;
 
 /// Boop the bot!
 /// TODO: get this working
@@ -14,14 +17,15 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
 
     let id_str = format!("{}", uuid_boop);
 
-    ctx.send(
-        CreateReply::default()
-            .content("I want some boops!")
-            .components(Cow::Owned(vec![CreateComponent::ActionRow(
-                CreateActionRow::buttons(Cow::Owned(vec![CreateButton::new(id_str)
-                    .style(serenity::ButtonStyle::Primary)
-                    .label("Boop me!")])),
-            )])),
+    let button = vec![CreateComponent::ActionRow(CreateActionRow::buttons(
+        Cow::Owned(vec![CreateButton::new(id_str)
+            .style(serenity::ButtonStyle::Primary)
+            .label("Boop me!")]),
+    ))];
+    courier::reply_rendered(
+        ctx,
+        Rendered::text("I want some boops!").with_components(button.clone()),
+        false,
     )
     .await?;
 
@@ -35,13 +39,23 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
     {
         boop_count += 1;
 
-        let mut msg = mci.message.clone();
-        msg.edit(
-            &ctx,
-            EditMessage::default().content(format!("Boop count: {}", boop_count)),
+        // A channel-message edit replaces the components too, so the button
+        // rides along or the second boop has nothing to press.
+        if let Err(err) = courier::edit_rendered_message(
+            &DiscordTransport::of(ctx.serenity_context()),
+            mci.message.channel_id,
+            mci.message.id,
+            Rendered::text(format!("Boop count: {}", boop_count)).with_components(button.clone()),
         )
-        .await?;
+        .await
+        {
+            tracing::warn!("boop: could not update the count: {err:?}");
+        }
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "component responses move in PR 2"
+        )]
         mci.create_response(
             ctx.http(),
             CreateInteractionResponse::UpdateMessage(CreateInteractionResponseMessage::default()),

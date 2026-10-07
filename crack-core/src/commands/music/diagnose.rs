@@ -6,6 +6,8 @@
 //! configuration reason is the worst possible diagnostic, because the reason
 //! to run it is that the bot is being silent.
 
+use crate::messaging::courier;
+use crate::messaging::render::Rendered;
 use crate::music::perms::{resolve, MusicPermissions, TextKind, VoiceCheck};
 use crate::{Context, Error};
 use poise::serenity_prelude::all::{Mentionable, Permissions};
@@ -142,7 +144,8 @@ pub async fn diagnose(ctx: Context<'_>) -> Result<(), Error> {
                  channel in this server."
             .to_string(),
     };
-    ctx.say(out).await?;
+    // `true`, not the attribute: an explicit flag overrides `ephemeral` above.
+    courier::reply_rendered(ctx, Rendered::text(out), true).await?;
     Ok(())
 }
 

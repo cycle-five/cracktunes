@@ -2,6 +2,7 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
+    messaging::{courier, message::CrackedMessage, transport::DiscordTransport},
     music::{
         audit::{track_ref, Action, Actor, AddAt},
         NewQueryType, PlaybackOwner, QueueGuard,
@@ -14,7 +15,7 @@ use crack_testing::ResolvedTrack;
 use crack_types::{Mode, NewAuxMetadata, QueryType};
 use rand::RngExt;
 use serenity::{
-    all::{CreateEmbed, EditMessage, Message, UserId},
+    all::{Message, UserId},
     small_fixed_array::FixedString,
 };
 use songbird::{
@@ -481,6 +482,15 @@ const QUEUE_BATCH_SIZE: usize = 24;
 /// long playlist used to stall the load waiting on 429 backoff.
 const PROGRESS_EDIT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
 
+/// Where a playlist's progress line is edited: the placeholder reply, by
+/// its channel and id.
+fn progress_transport(ctx: &CrackContext<'_>) -> DiscordTransport {
+    DiscordTransport {
+        http: ctx.serenity_context().http.clone(),
+        cache: ctx.serenity_context().cache.clone(),
+    }
+}
+
 /// Queue a list of keywords to be played from the end of the queue.
 ///
 /// The first track is resolved and queued on its own so playback starts
@@ -490,7 +500,7 @@ pub async fn queue_keyword_list_back(
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
-    msg: &mut Message,
+    msg: &Message,
 ) -> Result<(), Error> {
     let (first, rest) = queries
         .split_first()
@@ -507,6 +517,7 @@ pub async fn queue_keyword_list_back(
     let total = rest.len();
     let mut queued = 0usize;
     let mut last_edit = std::time::Instant::now();
+    let transport = progress_transport(&ctx);
 
     for chunk in rest.chunks(QUEUE_BATCH_SIZE) {
         queue_vec_query_type(ctx, call.clone(), chunk.to_vec(), Mode::End).await?;
@@ -521,14 +532,15 @@ pub async fn queue_keyword_list_back(
                 format!("Queuing playlist... {queued}/{total}")
             };
             // A failed progress edit must not abort the load.
-            if let Err(e) = msg
-                .edit(
-                    &ctx,
-                    EditMessage::new().embed(CreateEmbed::default().description(description)),
-                )
-                .await
+            if let Err(e) = courier::edit_message(
+                &transport,
+                msg.channel_id,
+                msg.id,
+                &CrackedMessage::Other(description),
+            )
+            .await
             {
-                tracing::warn!("Failed to update queue progress message: {e}");
+                tracing::warn!("Failed to update queue progress message: {e:?}");
             }
         }
     }
@@ -545,7 +557,7 @@ pub async fn queue_resolved_list_back(
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     tracks: Vec<ResolvedTrack<'static>>,
-    msg: &mut Message,
+    msg: &Message,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // A user queued something, so autoplay's buffered picks -- chosen from
@@ -580,7 +592,13 @@ pub async fn queue_resolved_list_back(
     enqueue_resolved_tracks_back(&guard, &call, tracks, client.clone()).await?;
     let snapshot = call.lock().await.queue().current_queue();
     drop(guard);
-    update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+    update_queue_messages(
+        &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+        ctx.data(),
+        &snapshot,
+        guild_id,
+    )
+    .await;
 
     if rest.is_empty() {
         return Ok(());
@@ -589,6 +607,7 @@ pub async fn queue_resolved_list_back(
     let total = rest.len();
     let mut queued = 0usize;
     let mut last_edit = std::time::Instant::now();
+    let transport = progress_transport(&ctx);
 
     for chunk in rest.chunks(QUEUE_BATCH_SIZE) {
         // Same reasoning as the first batch above: guard held across the
@@ -603,7 +622,13 @@ pub async fn queue_resolved_list_back(
         queued += inserted.count();
         let snapshot = call.lock().await.queue().current_queue();
         drop(guard);
-        update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+        update_queue_messages(
+            &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+            ctx.data(),
+            &snapshot,
+            guild_id,
+        )
+        .await;
 
         let is_last = queued >= total;
         if is_last || last_edit.elapsed() >= PROGRESS_EDIT_INTERVAL {
@@ -613,14 +638,15 @@ pub async fn queue_resolved_list_back(
             } else {
                 format!("Queuing playlist... {queued}/{total}")
             };
-            if let Err(e) = msg
-                .edit(
-                    &ctx,
-                    EditMessage::new().embed(CreateEmbed::default().description(description)),
-                )
-                .await
+            if let Err(e) = courier::edit_message(
+                &transport,
+                msg.channel_id,
+                msg.id,
+                &CrackedMessage::Other(description),
+            )
+            .await
             {
-                tracing::warn!("Failed to update queue progress message: {e}");
+                tracing::warn!("Failed to update queue progress message: {e:?}");
             }
         }
     }
@@ -703,7 +729,13 @@ pub async fn queue_vec_query_type(
         .await?;
     let snapshot = enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await?;
     drop(guard);
-    update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+    update_queue_messages(
+        &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+        ctx.data(),
+        &snapshot,
+        guild_id,
+    )
+    .await;
     Ok(())
 }
 
@@ -761,7 +793,13 @@ pub async fn queue_query_list_offset(
             .collect::<Vec<_>>();
         let snapshot = enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await?;
         drop(guard);
-        update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+        update_queue_messages(
+            &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+            ctx.data(),
+            &snapshot,
+            guild_id,
+        )
+        .await;
         return Ok(());
     }
 
@@ -798,7 +836,13 @@ pub async fn queue_query_list_offset(
     };
     drop(guard);
 
-    update_queue_messages(&ctx, ctx.data(), &cur_q, guild_id).await;
+    update_queue_messages(
+        &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+        ctx.data(),
+        &cur_q,
+        guild_id,
+    )
+    .await;
 
     Ok(())
 }
@@ -1663,7 +1707,7 @@ mod test {
     /// handler, a dead event task.
     #[tokio::test]
     async fn every_way_a_track_is_queued_reads_back_without_a_panic() {
-        use crate::messaging::interface::{create_now_playing_embed, create_queue_embed};
+        use crate::messaging::interface::{create_queue_embed, now_playing_card};
 
         let data = Data(Arc::new(DataInner::default()));
         let guard = data
@@ -1729,11 +1773,7 @@ mod test {
             // the driver for the play position, which an offline driver never
             // answers. A panic in the readers still fails this test; the wait
             // after them is cut short and ignored.
-            let _ = tokio::time::timeout(
-                Duration::from_millis(200),
-                create_now_playing_embed(track.clone()),
-            )
-            .await;
+            let _ = tokio::time::timeout(Duration::from_millis(200), now_playing_card(track)).await;
             get_requesting_user(track).await.expect("a requester");
         }
     }

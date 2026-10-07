@@ -84,7 +84,15 @@ pub const ECHO_FROM_DASHBOARD: &str = "from the dashboard";
 pub const TRACK_FAILED: &str = "⚠️ Couldn't play";
 pub const TRACK_FAILED_TRACKS: &str = "tracks";
 pub const TRACK_FAILED_MORE: &str = "more";
-pub const TRACK_FAILED_UNTITLED: &str = "(untitled)";
+pub const TRACK_UNTITLED: &str = "(untitled)";
+pub const PROGRESS_ENDS: &str = "ends";
+pub const PROGRESS_STARTED: &str = "Started";
+pub const PROGRESS_PAUSED_AT: &str = "Paused at";
+pub const PROGRESS_PAUSED: &str = "Paused";
+/// After the length of a track on repeat, which has no end time to show.
+pub const PROGRESS_ON_REPEAT: &str = "on repeat";
+/// A track on repeat whose length is unknown.
+pub const PROGRESS_REPEATING: &str = "On repeat";
 pub const TRACK_FAILED_OPEN: &str = "couldn't open the stream";
 pub const TRACK_FAILED_FORMAT: &str = "that format isn't supported";
 pub const TRACK_FAILED_BROKE_OFF: &str = "the stream broke off partway";
@@ -132,6 +140,8 @@ pub const JOINING: &str = "Joining";
 /// an action that did not happen.
 pub const ALREADY_HERE: &str = "Already in";
 pub const KICKED: &str = "Kicked";
+/// `/grab` could not deliver the DM (usually closed DMs).
+pub const GRAB_DM_FAILED: &str = "Could not send you a DM. Check that your DMs are open.";
 pub const GRABBED_NOTICE: &str = "📃 Sent you a DM with the current track!";
 pub const LEAVING: &str = "👋 See you soon!";
 pub const LOOP_DISABLED: &str = "🔁 Disabled loop!";
@@ -227,6 +237,8 @@ pub const ROLE_DELETED: &str = "🗑️ Deleted role!";
 pub const ROLE_NOT_FOUND: &str = "⚠️ Role not found!";
 pub const SCAN_QUEUED: &str = "🔍 Scan queued! Use";
 pub const SEARCHING: &str = "🔎 Searching...";
+/// `/search`'s pick-a-result menu could not be posted in the channel.
+pub const SEARCH_RESULTS_NOT_POSTED: &str = "⚠️ Could not post the search results here.";
 pub const SEEKED: &str = "⏩ Seeked current track to";
 pub const SEEK_FAIL: &str = "❌⏩ Failed to seek to";
 pub const SHUFFLED_SUCCESS: &str = "🔀 Shuffled successfully!";

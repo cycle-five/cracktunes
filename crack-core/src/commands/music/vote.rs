@@ -1,6 +1,8 @@
 use crate::db;
 use crate::errors::CrackedError;
 use crate::http_utils;
+use crate::messaging::courier;
+use crate::messaging::render::Rendered;
 use crate::poise_ext::ContextExt;
 use crate::{
     messaging::messages::{
@@ -42,11 +44,11 @@ pub async fn vote_topgg_internal(ctx: Context<'_>) -> Result<(), Error> {
         VOTE_TOPGG_NOT_VOTED
     };
 
-    ctx.reply(format!(
+    let text = format!(
         "{}\n{} [{}]({})",
         msg_str, VOTE_TOPGG_TEXT, VOTE_TOPGG_LINK_TEXT, VOTE_TOPGG_URL
-    ))
-    .await?;
+    );
+    courier::reply_rendered(ctx, Rendered::text(text), false).await?;
 
     Ok(())
 }

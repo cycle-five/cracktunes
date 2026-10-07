@@ -1,8 +1,8 @@
 use self::serenity::builder::CreateEmbed;
 use crate::commands::{cmd_check_music, help};
 use crate::errors::CrackedError;
+use crate::messaging::{courier, message::CrackedMessage};
 use crate::music::ops::{self, OpCx, OpRefused, VolumeSet};
-use crate::utils::send_embed_response_poise;
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
@@ -52,7 +52,7 @@ pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(),
             Err(refused) => return Err(CrackedError::from(refused).into()),
         },
     };
-    let _ = send_embed_response_poise(ctx, embed).await?;
+    courier::reply(ctx, CrackedMessage::CreateEmbed(Box::new(embed))).await?;
     Ok(())
 }
 

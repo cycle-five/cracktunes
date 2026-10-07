@@ -2261,6 +2261,7 @@ impl EventHandler for GpTrackEndHandler {
 /// Send a game message, retrying once: a rate limit or a transient 5xx should
 /// not cost the guild its game. Both attempts failing is treated as fatal by the
 /// callers, because everything the round needs is armed after the send.
+#[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
 async fn gp_send(
     pb: &GpPlayback,
     channel: GenericChannelId,
@@ -2324,6 +2325,7 @@ async fn gp_abort(pb: &GpPlayback, text_channel: GenericChannelId, reason: &str)
     // and a handler awaiting `lock_queue` would park that task for the length
     // of this send. See `stop_queue`.
     // Best effort: the channel is usually what just failed.
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     if let Err(e) = text_channel
         .send_message(&pb.http, CreateMessage::new().content(GP_ABORTED))
         .await
@@ -2397,6 +2399,7 @@ pub fn gp_spawn_window_timer_secs(
             let Some(warning) = pb.data.gp_warning_if(guild_id, generation) else {
                 return;
             };
+            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
             if let Err(e) = text_channel
                 .send_message(
                     &pb.http,
@@ -2423,6 +2426,7 @@ pub fn gp_spawn_window_timer_secs(
 
 pub async fn gp_after_close(pb: GpPlayback, closed: GpWindowClosed) -> Result<(), Error> {
     let embed = gp_prompt_closed_embed(&closed);
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     let edited = match closed.prompt_message {
         Some((chan, msg_id)) => chan
             .edit_message(&pb.http, msg_id, EditMessage::new().embed(embed.clone()))
@@ -2431,6 +2435,7 @@ pub async fn gp_after_close(pb: GpPlayback, closed: GpWindowClosed) -> Result<()
         None => false,
     };
     if !edited {
+        #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
         if let Err(e) = closed
             .text_channel
             .send_message(&pb.http, CreateMessage::new().embed(embed))
@@ -2462,6 +2467,7 @@ async fn gp_follow(
             // Remove first: a game that cannot post its scoreboard must still end,
             // or the guild keeps a finished game blocking its music commands.
             pb.data.gp_remove(pb.guild_id);
+            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
             text_channel
                 .send_message(
                     &pb.http,
@@ -2749,6 +2755,7 @@ pub async fn gp_advance_track(
     };
 
     let reveal = gp_reveal_embed(&res);
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     let edited = match res.message {
         Some((chan, msg_id)) => chan
             .edit_message(
@@ -2763,6 +2770,7 @@ pub async fn gp_advance_track(
         None => false,
     };
     if !edited {
+        #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
         if let Err(e) = res
             .text_channel
             .send_message(&pb.http, CreateMessage::new().embed(reveal))
@@ -2777,6 +2785,7 @@ pub async fn gp_advance_track(
     // it is up the round is marked as having had its results, and the game
     // written down again: the snapshot that ended the round went out before
     // this post, and a round left unmarked is posted by the next resume.
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     if let Some(round) = &res.round {
         match res
             .text_channel
@@ -2832,6 +2841,7 @@ pub async fn handle_gp_component(
         Ok(text) => text,
         Err(e) => e.to_string(),
     };
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     mci.create_response(
         &ctx.http,
         CreateInteractionResponse::Message(
@@ -3399,6 +3409,7 @@ async fn gp_answer_vote(ctx: Context<'_>, (mine, room): GpVoteAnswer) -> Result<
             .create_dm_channel(&ctx)
             .await
             .map(|c| c.id.widen());
+        #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
         let sent = match dm {
             Ok(dm) => dm
                 .send_message(
@@ -3430,6 +3441,7 @@ async fn gp_answer_vote(ctx: Context<'_>, (mine, room): GpVoteAnswer) -> Result<
     else {
         return Ok(());
     };
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     channel
         .send_message(
             &ctx.serenity_context().http,

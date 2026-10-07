@@ -32,7 +32,6 @@ pub struct SendMessageParams<'a> {
     pub channel: GenericChannelId,
     pub as_embed: bool,
     pub ephemeral: bool,
-    pub reply: bool,
     pub color: Color,
     pub msg: CrackedMessage,
     pub embed: Option<CreateEmbed<'a>>,
@@ -44,7 +43,6 @@ impl PartialEq for SendMessageParams<'_> {
         self.channel == other.channel
             && self.as_embed == other.as_embed
             && self.ephemeral == other.ephemeral
-            && self.reply == other.reply
             && self.color == other.color
             && self.msg == other.msg
         // Note: We don't compare `embed` here
@@ -58,7 +56,6 @@ impl Default for SendMessageParams<'_> {
             channel: GenericChannelId::new(1),
             as_embed: true,
             ephemeral: false,
-            reply: true,
             color: Color::BLUE,
             msg: CrackedMessage::Other(String::new()),
             embed: None,
@@ -82,10 +79,6 @@ impl<'a> SendMessageParams<'a> {
 
     pub fn with_ephemeral(self, ephemeral: bool) -> Self {
         Self { ephemeral, ..self }
-    }
-
-    pub fn with_reply(self, reply: bool) -> Self {
-        Self { reply, ..self }
     }
 
     pub fn with_color(self, color: Color) -> Self {
@@ -145,8 +138,9 @@ impl<T: CacheHttp> CacheHttpExt for T {
         get_guild_name(self, channel_id, guild_id).await
     }
 
-    /// Sends a message to a channel.
+    /// Sends a message to a channel. Only `/osint` uses it.
     #[cfg(not(tarpaulin_include))]
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     async fn send_channel_message(&self, params: SendMessageParams<'_>) -> CrackedResult<Message> {
         let channel = params.channel;
         let content = format!("{}", params.msg);
@@ -405,7 +399,6 @@ mod test {
         let params = SendMessageParams::new(msg)
             .with_as_embed(true)
             .with_ephemeral(false)
-            .with_reply(true)
             .with_color(Colour::BLUE)
             .with_channel(channel_id)
             .with_embed(None);
@@ -413,7 +406,6 @@ mod test {
         assert_eq!(params.channel, channel_id);
         assert!(params.as_embed);
         assert!(!params.ephemeral);
-        assert!(params.reply);
         assert_eq!(params.color, Colour::BLUE);
         assert_eq!(
             params.msg,

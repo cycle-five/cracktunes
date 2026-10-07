@@ -1,9 +1,9 @@
 use crate::{
     commands::cmd_check_music,
     errors::CrackedError,
+    messaging::courier,
     messaging::message::CrackedMessage,
     music::ops::{self, OpCx, Target},
-    utils::send_reply,
     Context, Error,
 };
 
@@ -31,7 +31,7 @@ pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result
     let done = ops::move_track(&cx, Target::Index(at), to)
         .await
         .map_err(CrackedError::from)?;
-    send_reply(&ctx, CrackedMessage::SongMoved { at, to }, true).await?;
+    courier::reply(ctx, CrackedMessage::SongMoved { at, to }).await?;
     done.settle_now(&cx).await;
     Ok(())
 }
@@ -48,7 +48,7 @@ pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result
 pub async fn shuffle(ctx: Context<'_>) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;
     let done = ops::shuffle(&cx).await.map_err(CrackedError::from)?;
-    send_reply(&ctx, done.outcome().message(), true).await?;
+    courier::reply(ctx, done.outcome().message()).await?;
     done.settle_now(&cx).await;
     Ok(())
 }

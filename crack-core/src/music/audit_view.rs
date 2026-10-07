@@ -50,24 +50,7 @@ pub fn parse_since(s: &str) -> Option<Duration> {
     (d <= Duration::weeks(MAX_SINCE_WEEKS)).then_some(d)
 }
 
-/// Escape Discord markdown, links and mentions in text we did not write, and
-/// flatten line breaks.
-pub(crate) fn escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            // A newline would split the one-line entry, and could split a page.
-            '\n' | '\r' => out.push(' '),
-            // `[`/`]` make masked links; `<` starts mentions and timestamps.
-            '*' | '_' | '`' | '~' | '|' | '>' | '<' | '[' | ']' | '\\' => {
-                out.push('\\');
-                out.push(c);
-            },
-            _ => out.push(c),
-        }
-    }
-    out
-}
+pub(crate) use crate::messaging::format::{cap, escape};
 
 /// A track's title for display: cut at `TITLE_MAX` characters with `…`, or
 /// `(untitled)`. Not escaped: `/auditlog` escapes the whole line's wording.
@@ -75,16 +58,6 @@ fn title_text(t: &TrackRef) -> String {
     match t.title.as_deref() {
         Some(raw) => cap(raw, TITLE_MAX),
         None => "(untitled)".to_owned(),
-    }
-}
-
-/// `raw` cut at `max` characters with `…`, or whole if it fits. Not escaped.
-pub(crate) fn cap(raw: &str, max: usize) -> String {
-    let cut: String = raw.chars().take(max).collect();
-    if raw.chars().count() > max {
-        format!("{cut}…")
-    } else {
-        cut
     }
 }
 
@@ -645,7 +618,7 @@ mod test {
             },
         ));
         assert!(
-            line.contains(r"\[x\](u) \<@5\> \<t:1:R\>  next line"),
+            line.contains(r"\[x\](u) \<\@5\> \<t:1:R\>  next line"),
             "{line}"
         );
         assert_eq!(line.lines().count(), 1, "{line}");
@@ -845,7 +818,7 @@ mod test {
         assert_eq!(what_text(&a), "moved *Bold* [x](y) <@1> 5 → 2");
         let r = row("slash", "move", Some(7), a);
         assert!(
-            audit_line(&r).ends_with(r"<@7> · /move — moved \*Bold\* \[x\](y) \<@1\> 5 → 2"),
+            audit_line(&r).ends_with(r"<@7> · /move — moved \*Bold\* \[x\](y) \<\@1\> 5 → 2"),
             "{}",
             audit_line(&r)
         );

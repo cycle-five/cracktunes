@@ -5,19 +5,18 @@
 //! `Songbird::get`, no `TrackHandle::data`). crack-web only sees the plain
 //! types below.
 
-use crate::messaging::messages::{
-    ECHO_FROM_DASHBOARD, ECHO_PAUSED, ECHO_REMOVED, ECHO_REPEAT_OFF, ECHO_REPEAT_ON, ECHO_RESUMED,
-    ECHO_SHUFFLED, ECHO_SKIPPED,
-};
-use crate::messaging::status::{self, DiscordTransport};
-use crate::music::audit_view::{cap, escape, TITLE_MAX};
+use crate::messaging::cards::{EchoLine, Via};
+use crate::messaging::courier::{self, Destination};
+use crate::messaging::message::CrackedMessage;
+use crate::messaging::render::RenderCx;
+use crate::messaging::status::DiscordTransport;
 use crate::music::{audit::Actor, ops, PlaybackOwner, QueueGuard};
 use crate::{
     commands::music_utils::connected_call,
     utils::{get_requesting_user, get_track_handle_metadata},
     Data,
 };
-use serenity::all::{Cache, ChannelId, CreateEmbed, GuildId, Http, UserId};
+use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
 use songbird::{
     input::AuxMetadata,
     tracks::{LoopState, PlayMode, TrackHandle, TrackState},
@@ -285,49 +284,12 @@ impl From<&ops::OpRefused> for ControlRefused {
     }
 }
 
-/// What a control did, for the echo line.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Echo {
-    Skipped { title: Option<String> },
-    Paused,
-    Resumed,
-    Repeat { on: bool },
-    Removed { title: Option<String> },
-    Shuffled,
-}
-
-impl Echo {
-    /// The one line posted in Discord. Titles are third-party text, so they
-    /// are cut to `TITLE_MAX` characters, then escaped.
-    #[must_use]
-    pub fn line(&self, user: UserId) -> String {
-        let (what, title) = match self {
-            Self::Skipped { title } => (ECHO_SKIPPED, title.as_deref()),
-            Self::Paused => (ECHO_PAUSED, None),
-            Self::Resumed => (ECHO_RESUMED, None),
-            Self::Repeat { on: true } => (ECHO_REPEAT_ON, None),
-            Self::Repeat { on: false } => (ECHO_REPEAT_OFF, None),
-            Self::Removed { title } => (ECHO_REMOVED, title.as_deref()),
-            Self::Shuffled => (ECHO_SHUFFLED, None),
-        };
-        match title {
-            Some(t) => format!(
-                "{what} **{}** {ECHO_FROM_DASHBOARD} — <@{user}>",
-                escape(&cap(t, TITLE_MAX))
-            ),
-            None => format!("{what} {ECHO_FROM_DASHBOARD} — <@{user}>"),
-        }
-    }
-}
-
-fn echo_embed(echo: &Echo, user: UserId) -> CreateEmbed<'static> {
-    // An embed mention never pings.
-    CreateEmbed::new().description(echo.line(user))
-}
+pub use crate::messaging::cards::Echo;
 
 /// Run a control for `user`. On success the echo is returned at once; posting
 /// it and settling happen in the background. The settle is anchored after the
-/// echo, so after a skip the new now-playing message lands below it.
+/// echo, so after a skip, pause, resume or repeat the now-playing message is
+/// re-rendered below it.
 pub async fn control(
     data: Arc<Data>,
     http: Arc<Http>,
@@ -365,8 +327,19 @@ pub async fn control(
             http: cx.http.clone(),
             cache: cx.cache.clone(),
         };
-        let anchor =
-            status::announce(&cx.data, &transport, guild_id, echo_embed(&posted, user)).await;
+        let line = EchoLine {
+            echo: posted,
+            user,
+            via: Via::Dashboard,
+        };
+        let anchor = courier::post(
+            &cx.data,
+            &transport,
+            Destination::Echo(guild_id),
+            &CrackedMessage::Echo(Box::new(line)),
+            &RenderCx::now(),
+        )
+        .await;
         settle.after(&cx, Some(&call), anchor).await;
     });
     Ok(echo)
@@ -428,6 +401,20 @@ mod test {
     use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
+
+    /// What the channel reads: the echo, rendered the way `control` posts it.
+    fn line(echo: Echo, user: UserId) -> String {
+        let msg = CrackedMessage::Echo(Box::new(EchoLine {
+            echo,
+            user,
+            via: Via::Dashboard,
+        }));
+        crate::messaging::render::description(&crate::messaging::render::render(
+            &msg,
+            &RenderCx::now(),
+        ))
+        .expect("an echo renders as an embed")
+    }
 
     fn data() -> Data {
         Data(Arc::new(DataInner::default()))
@@ -560,35 +547,37 @@ mod test {
     fn echo_lines_name_the_track_and_the_member() {
         let u = UserId::new(42);
         assert_eq!(
-            Echo::Skipped {
-                title: Some("Song".into())
-            }
-            .line(u),
+            line(
+                Echo::Skipped {
+                    title: Some("Song".into())
+                },
+                u
+            ),
             "⏭ Skipped **Song** from the dashboard — <@42>"
         );
-        assert_eq!(Echo::Paused.line(u), "⏸ Paused from the dashboard — <@42>");
+        assert_eq!(line(Echo::Paused, u), "⏸ Paused from the dashboard — <@42>");
         assert_eq!(
-            Echo::Resumed.line(u),
+            line(Echo::Resumed, u),
             "▶ Resumed from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Repeat { on: true }.line(u),
+            line(Echo::Repeat { on: true }, u),
             "🔁 Repeat on from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Repeat { on: false }.line(u),
+            line(Echo::Repeat { on: false }, u),
             "🔁 Repeat off from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Removed { title: None }.line(u),
+            line(Echo::Removed { title: None }, u),
             "🗑 Removed from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Shuffled.line(u),
+            line(Echo::Shuffled, u),
             "🔀 Shuffled the queue from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Skipped { title: None }.line(u),
+            line(Echo::Skipped { title: None }, u),
             "⏭ Skipped from the dashboard — <@42>"
         );
     }
@@ -598,13 +587,15 @@ mod test {
     #[test]
     fn a_title_cannot_inject_markdown_or_a_mention() {
         let u = UserId::new(42);
-        let l = Echo::Skipped {
-            title: Some("**x** <@7> [a](b)\nz".into()),
-        }
-        .line(u);
+        let l = line(
+            Echo::Skipped {
+                title: Some("**x** <@7> [a](b)\nz".into()),
+            },
+            u,
+        );
         assert_eq!(
             l,
-            r"⏭ Skipped **\*\*x\*\* \<@7\> \[a\](b) z** from the dashboard — <@42>"
+            r"⏭ Skipped **\*\*x\*\* \<\@7\> \[a\](b) z** from the dashboard — <@42>"
         );
     }
 
@@ -645,15 +636,14 @@ mod test {
     #[test]
     fn a_long_title_is_cut_before_it_is_escaped() {
         let u = UserId::new(42);
-        let l = Echo::Removed {
-            title: Some("a".repeat(5000)),
-        }
-        .line(u);
-        assert!(l.chars().count() <= 4096, "{} chars", l.chars().count());
-        assert!(
-            l.contains(&format!("**{}…**", "a".repeat(TITLE_MAX))),
-            "{l}"
+        let l = line(
+            Echo::Removed {
+                title: Some("a".repeat(5000)),
+            },
+            u,
         );
+        assert!(l.chars().count() <= 4096, "{} chars", l.chars().count());
+        assert!(l.contains(&format!("**{}…**", "a".repeat(60))), "{l}");
         assert!(l.ends_with("<@42>"), "{l}");
     }
 
@@ -664,13 +654,15 @@ mod test {
             ops::{test_support::*, OpRefused, Settle},
         };
 
+        /// Ruling R9 (was `Settle::Nothing`): the status re-renders below the
+        /// echo with its progress line brought up to date, as after a skip.
         #[tokio::test]
         async fn pause_pauses_and_echoes_paused() {
             let (data, call, _, mut rx) = queue_of(2).await;
             let g = guard(&data).await;
             let (echo, settle) = run_control(&g, &call, Control::Pause).await.unwrap();
             assert_eq!(echo, Echo::Paused);
-            assert_eq!(settle, Settle::Nothing);
+            assert_eq!(settle, Settle::NowPlaying);
             assert_eq!(recorded(&mut rx), vec![Action::Pause]);
         }
 
@@ -680,7 +672,7 @@ mod test {
             let g = guard(&data).await;
             let (echo, settle) = run_control(&g, &call, Control::Resume).await.unwrap();
             assert_eq!(echo, Echo::Resumed);
-            assert_eq!(settle, Settle::Nothing);
+            assert_eq!(settle, Settle::NowPlaying);
             assert_eq!(recorded(&mut rx), vec![Action::Resume]);
         }
 
@@ -698,7 +690,7 @@ mod test {
             .expect("repeat hung")
             .unwrap();
             assert_eq!(echo, Echo::Repeat { on: true });
-            assert_eq!(settle, Settle::Nothing);
+            assert_eq!(settle, Settle::NowPlaying);
             assert_eq!(recorded(&mut rx), vec![Action::Repeat { on: true }]);
             let (echo, _) = tokio::time::timeout(
                 std::time::Duration::from_secs(5),

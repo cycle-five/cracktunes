@@ -4,10 +4,12 @@
 use crate::db::queue_audit::{recent_audit, AuditFilter};
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::plan::Plan;
+use crate::messaging::courier;
 use crate::messaging::messages::{
     AUDITLOG_BAD_SINCE, AUDITLOG_EMPTY, AUDITLOG_FAILED, AUDITLOG_GP_HIDDEN, AUDITLOG_NO_DATABASE,
     AUDITLOG_ONLY_OLDER, AUDITLOG_TITLE,
 };
+use crate::messaging::render::Rendered;
 use crate::music::audit_view::{
     compose_auditlog, parse_since, premium_history_line, ActionChoice, AuditlogReply, SourceChoice,
     AUDITLOG_LIMIT,
@@ -15,7 +17,6 @@ use crate::music::audit_view::{
 use crate::utils::{create_paged_embed, PagedStyle};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
-use poise::CreateReply;
 
 /// Show who changed this server's queue, and how.
 #[cfg(not(tarpaulin_include))]
@@ -39,8 +40,7 @@ pub async fn auditlog(
     // Mistakes in the request are answered privately whatever `public` says:
     // nobody else needs to see a typo. Both are checked before the defer, while
     // the interaction has no response yet.
-    let tell_caller =
-        |text: &'static str| ctx.send(CreateReply::default().content(text).ephemeral(true));
+    let tell_caller = |text: &'static str| courier::reply_rendered(ctx, Rendered::text(text), true);
 
     let Some(pool) = ctx.data().database_pool.clone() else {
         tell_caller(AUDITLOG_NO_DATABASE).await?;
@@ -62,8 +62,7 @@ pub async fn auditlog(
     } else {
         ctx.defer().await?;
     }
-    let say =
-        |text: &'static str| ctx.send(CreateReply::default().content(text).ephemeral(ephemeral));
+    let say = |text: &'static str| courier::reply_rendered(ctx, Rendered::text(text), ephemeral);
     let source_str = source.map(|s| s.source().as_str());
     let filter = AuditFilter {
         user: user.map(|u| u.id),
@@ -99,8 +98,7 @@ pub async fn auditlog(
         },
         AuditlogReply::OnlyOlder => {
             let text = format!("{AUDITLOG_ONLY_OLDER}\n{}", premium_history_line());
-            ctx.send(CreateReply::default().content(text).ephemeral(ephemeral))
-                .await?;
+            courier::reply_rendered(ctx, Rendered::text(text), ephemeral).await?;
             return Ok(());
         },
         AuditlogReply::Lines(lines) => lines,

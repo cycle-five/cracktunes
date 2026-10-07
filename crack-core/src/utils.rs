@@ -1,5 +1,9 @@
 use crate::http_utils::CacheHttpExt;
-use crate::http_utils::SendMessageParams;
+use crate::messaging::courier::{self, Destination};
+use crate::messaging::format::{duration_text, TrackLabel, INLINE_TITLE_MAX};
+use crate::messaging::messages::{SEARCH_RESULTS_NOT_POSTED, TRACK_UNTITLED};
+use crate::messaging::render::{RenderCx, Rendered};
+use crate::messaging::transport::{DiscordTransport, Transport};
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
@@ -15,29 +19,26 @@ use crate::{
     },
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
-use ::serenity::all::MessageInteractionMetadata;
 use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{
-        CacheHttp, Colour, ComponentInteractionDataKind, CreateSelectMenu, CreateSelectMenuKind,
-        CreateSelectMenuOption, GenericChannelId, GuildId, Interaction,
+        CacheHttp, ComponentInteractionDataKind, CreateActionRow, CreateComponent,
+        CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, GenericChannelId, GuildId,
+        Interaction,
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
-        CreateInteractionResponseMessage, EditInteractionResponse,
+        CreateInteractionResponseMessage,
     },
     futures::StreamExt,
     model::channel::Message,
 };
 use anyhow::Result;
-use crack_types::get_human_readable_timestamp;
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
 use poise::{
-    serenity_prelude::{
-        self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
-    },
-    CreateReply, ReplyHandle,
+    serenity_prelude::{self as serenity, Context as SerenityContext},
+    ReplyHandle,
 };
 use serenity::all::UserId;
 #[allow(deprecated)]
@@ -108,52 +109,26 @@ pub async fn send_reply_owned(
     ctx.send_reply_owned(message, as_embed).await
 }
 
-/// Sends a regular reply response.
-#[cfg(not(tarpaulin_include))]
-pub async fn send_nonembed_reply(
-    ctx: &CrackContext<'_>,
-    msg: CrackedMessage,
-) -> Result<Message, CrackedError> {
-    let color = Colour::from(&msg);
-
-    let params = SendMessageParams::default()
-        .with_color(color)
-        .with_msg(msg)
-        .with_as_embed(false);
-
-    let handle = ctx.send_message(params).await?;
-    Ok(handle.into_message().await?)
-}
-
-#[cfg(not(tarpaulin_include))]
-/// Edit an embed response with a CrackedMessage.
-pub async fn edit_response_poise(
-    ctx: CrackContext<'_>,
-    message: CrackedMessage,
-) -> Result<Message, CrackedError> {
-    let embed = CreateEmbed::default().description(format!("{message}"));
-
-    match get_interaction_new(&ctx) {
-        Some(interaction) => edit_embed_response(&ctx, &interaction, embed).await,
-        None => match send_embed_response_poise(ctx, embed).await {
-            Ok(msg) => msg.into_message().await.map_err(Into::into),
-            Err(e) => Err(e),
-        },
-    }
-}
-
-#[cfg(not(tarpaulin_include))]
-/// Edit an embed response from a CommandOrMessageInteraction with a str.
-pub async fn edit_response_text(
-    http: &impl CacheHttp,
-    interaction: &CommandOrMessageInteraction,
-    content: &str,
-) -> Result<Message, CrackedError> {
-    let embed = CreateEmbed::default().description(content);
-    edit_embed_response(http, interaction, embed).await
-}
-
 use poise::serenity_prelude::CollectComponentInteractions;
+
+/// A search hit as a select-menu option, `(label, value)`. The label is plain
+/// text (a select menu renders no markdown), `length: title` or just the title
+/// when the length is unknown, cut to 99 characters -- characters, not bytes:
+/// a byte cut panicked mid-character on a title in Japanese.
+fn search_option(hit: &AuxMetadata) -> (String, String) {
+    // A select option needs a non-empty label; Discord rejects the whole menu
+    // otherwise. Plain text, not escaped: a select menu renders no markdown.
+    let title = match hit.title.as_deref().map(str::trim) {
+        Some(t) if !t.is_empty() => t.to_owned(),
+        _ => TRACK_UNTITLED.to_owned(),
+    };
+    let link = hit.source_url.clone().unwrap_or_default();
+    let label = match duration_text(hit.duration) {
+        Some(length) => format!("{length}: {title}"),
+        None => title,
+    };
+    (label.chars().take(99).collect(), link)
+}
 
 #[cfg(not(tarpaulin_include))]
 /// Interactive youtube search and selection.
@@ -163,12 +138,7 @@ pub async fn yt_search_select(
     metadata: Vec<AuxMetadata>,
 ) -> Result<QueryType, Error> {
     let res = metadata.iter().map(|x| {
-        let title = x.title.clone().unwrap_or_default();
-        let link = x.source_url.clone().unwrap_or_default();
-        let duration = x.duration.unwrap_or_default();
-        let elem = format!("{}: {}", duration_to_string(duration), title);
-        let len = min(elem.len(), 99);
-        let elem = elem[..len].to_string();
+        let (elem, link) = search_option(x);
         tracing::warn!("elem: {}", elem);
         (elem, link)
     });
@@ -176,37 +146,46 @@ pub async fn yt_search_select(
         .clone()
         .map(|(elem, link)| (link, elem))
         .collect::<HashMap<_, _>>();
-    // Ask the user for its favorite animal
-    let m = channel_id
-        .send_message(
-            ctx.http(),
-            CreateMessage::new().content("Search results").select_menu(
-                CreateSelectMenu::new(
-                    "song_select",
-                    CreateSelectMenuKind::String {
-                        options: res
-                            .map(|(x, y)| CreateSelectMenuOption::new(x, y))
-                            .collect(),
-                    },
-                )
-                .custom_id("song_select")
-                .placeholder("Select Song to Play"),
-            ),
-        )
-        .await?;
+    let menu = CreateSelectMenu::new(
+        "song_select",
+        CreateSelectMenuKind::String {
+            options: res
+                .map(|(x, y)| CreateSelectMenuOption::new(x, y))
+                .collect(),
+        },
+    )
+    .custom_id("song_select")
+    .placeholder("Select Song to Play");
+    let out = Rendered::text("Search results").with_components(vec![CreateComponent::ActionRow(
+        CreateActionRow::SelectMenu(menu),
+    )]);
+    let transport = DiscordTransport::of(&ctx);
+    // The collector needs the menu's id, so this send is the fallible one.
+    let menu_id = courier::post_message(&transport, channel_id, &out)
+        .await
+        .map_err(|err| {
+            tracing::warn!("search: the results menu was not posted: {err:?}");
+            CrackedError::Other(SEARCH_RESULTS_NOT_POSTED)
+        })?;
 
     // Wait for the user to make a selection
     // This uses a collector to wait for an incoming event without needing to listen for it
     // manually in the EventHandler.
-    let interaction = match m
-        .id
+    let interaction = match menu_id
         .collect_component_interactions(&ctx)
         .timeout(Duration::from_secs(60 * 3))
         .await
     {
         Some(x) => x,
         None => {
-            m.reply(ctx.http(), "Timed out").await.unwrap();
+            courier::post(
+                &ctx.data::<Data>(),
+                &transport,
+                Destination::Channel(channel_id),
+                &CrackedMessage::Other("Timed out".to_owned()),
+                &RenderCx::now(),
+            )
+            .await;
             return Err(CrackedError::Other("Timed out").into());
         },
     };
@@ -224,22 +203,43 @@ pub async fn yt_search_select(
     tracing::error!("url: {:?}", qt);
 
     // Acknowledge the interaction and edit the message
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "component responses move in PR 2"
+    )]
     let res = interaction
         .create_response(
             ctx.http(),
             CreateInteractionResponse::UpdateMessage(
-                CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued {
-                    title: rev_map.get(url).unwrap().to_string(),
-                    url: url.to_owned(),
-                }),
+                CreateInteractionResponseMessage::default().content(CrackedMessage::SongQueued(
+                    TrackLabel {
+                        title: Some(rev_map.get(url).unwrap().to_string()),
+                        url: Some(url.to_owned()),
+                        duration: None,
+                    },
+                )),
             ),
         )
         .await
         .map_err(|e| e.into())
         .map(|_| qt);
 
-    channel_id.delete_message(ctx.http(), m.id, None).await?;
-    res
+    clear_menu_keeping(res, &transport, channel_id, menu_id).await
+}
+
+/// Delete the search menu and hand back `pick` either way: a menu left behind
+/// is untidy, but the member's choice still plays. A failed delete used to
+/// replace a successful pick with an error, and nothing was queued.
+async fn clear_menu_keeping(
+    pick: Result<QueryType, Error>,
+    transport: &dyn Transport,
+    channel: GenericChannelId,
+    menu: ::serenity::all::MessageId,
+) -> Result<QueryType, Error> {
+    if let Err(err) = transport.delete(channel, menu).await {
+        tracing::warn!("search: the results menu was not removed: {err:?}");
+    }
+    pick
 }
 
 /// Sends a reply response with an embed.
@@ -258,52 +258,7 @@ pub async fn send_embed_response_poise_as<'ctx>(
     embed: CreateEmbed<'ctx>,
     ephemeral: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-    let params = SendMessageParams::default()
-        .with_ephemeral(ephemeral)
-        .with_embed(Some(embed))
-        .with_reply(true);
-
-    ctx.send_message_owned(params).await
-}
-
-pub async fn edit_reponse_interaction(
-    http: &impl CacheHttp,
-    interaction: &Interaction,
-    embed: CreateEmbed<'_>,
-) -> Result<Message, CrackedError> {
-    match interaction {
-        Interaction::Command(int) => int
-            .edit_response(
-                http.http(),
-                EditInteractionResponse::new().embed(embed.clone()),
-            )
-            .await
-            .map_err(Into::into),
-        Interaction::Component(int) => int
-            .edit_response(
-                http.http(),
-                EditInteractionResponse::new().embed(embed.clone()),
-            )
-            .await
-            .map_err(Into::into),
-        Interaction::Modal(int) => int
-            .edit_response(
-                http.http(),
-                EditInteractionResponse::new().embed(embed.clone()),
-            )
-            .await
-            .map_err(Into::into),
-        Interaction::Autocomplete(int) => int
-            .edit_response(
-                http.http(),
-                EditInteractionResponse::new().embed(embed.clone()),
-            )
-            .await
-            //.map(|_| Message::default())
-            .map_err(Into::into),
-        Interaction::Ping(_int) => Ok(Message::default()),
-        _ => todo!(),
-    }
+    courier::reply_rendered(ctx, Rendered::embed(embed.into_owned()), ephemeral).await
 }
 
 /// Edit the message `msg` points to.
@@ -331,77 +286,12 @@ pub async fn edit_embed_response2(
     msg: ReplyHandle<'_>,
     content: Option<String>,
 ) -> Result<(), Error> {
-    let mut reply = CreateReply::default().embed(embed);
+    let mut out = Rendered::embed(embed.into_owned());
     if let Some(content) = content {
-        reply = reply.content(content);
+        out = out.with_content(content);
     }
-    msg.edit(ctx, reply).await?;
+    courier::edit_rendered(ctx, &msg, out).await?;
     Ok(())
-}
-
-/// WHY ARE THERE TWO OF THESE?
-pub async fn edit_embed_response(
-    http: &impl CacheHttp,
-    interaction: &CommandOrMessageInteraction,
-    embed: CreateEmbed<'_>,
-) -> Result<Message, CrackedError> {
-    match interaction {
-        CommandOrMessageInteraction::Command(int) => {
-            edit_reponse_interaction(http, &Interaction::Command(int.clone()), embed).await
-        },
-        CommandOrMessageInteraction::Message(msg) => match msg {
-            Some(_msg) => {
-                // Ok(CreateMessage::new().content("edit_embed_response not implemented").)
-                Ok(Message::default())
-                //    http.edit_origin, new_attachments)
-                //     msg.user.id
-            },
-            _ => Ok(Message::default()),
-        },
-    }
-}
-
-// #[allow(deprecated)]
-// pub enum ApplicationCommandOrMessageInteraction {
-//     Command(CommandInteraction),
-//     Message(MessageReaction),
-// }
-
-// #[allow(deprecated)]
-// impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
-//     fn from(message: MessageReaction) -> Self {
-//         Self::Message(message)
-//     }
-// }
-
-// impl From<MessageInteraction> for ApplicationCommandOrMessageInteraction {
-//     fn from(message: MessageInteraction) -> Self {
-//         Self::ApplicationCommand(message)
-//     }
-// }
-
-pub async fn edit_embed_response_poise(
-    ctx: CrackContext<'_>,
-    embed: CreateEmbed<'_>,
-) -> Result<Message, CrackedError> {
-    let reply_handle = match get_interaction_new(&ctx) {
-        Some(interaction1) => match interaction1 {
-            CommandOrMessageInteraction::Command(interaction2) => {
-                return interaction2
-                    .edit_response(
-                        &ctx.serenity_context().http,
-                        EditInteractionResponse::new().content(" ").embed(embed),
-                    )
-                    .await
-                    .map_err(Into::into);
-                //     },
-                //     _ => Err(CrackedError::Other("not implemented")),
-            },
-            CommandOrMessageInteraction::Message(_) => send_embed_response_poise(ctx, embed).await,
-        },
-        None => send_embed_response_poise(ctx, embed).await,
-    };
-    reply_handle?.into_message().await.map_err(Into::into)
 }
 
 //use tokio::sync::RwLock;
@@ -514,17 +404,17 @@ async fn build_queue_page_metadata(metadata: &[NewAuxMetadata], page: usize) -> 
 
     for (i, &t) in queue.iter().enumerate() {
         let NewAuxMetadata(t) = t;
-        let title = t.title.clone().unwrap_or_default();
-        let url = t.source_url.clone().unwrap_or_default();
-        let duration = get_human_readable_timestamp(t.duration);
+        let label = TrackLabel::from_metadata(t);
 
+        // An unknown duration is left out, not shown as 00:00.
         let _ = writeln!(
             description,
-            "`{}.` [{}]({}) • `{}`",
+            "`{}.` {}{}",
             i + start_idx + 1,
-            title,
-            url,
-            duration
+            label.linked(INLINE_TITLE_MAX),
+            duration_text(label.duration)
+                .map(|d| format!(" • `{d}`"))
+                .unwrap_or_default(),
         );
     }
 
@@ -623,17 +513,17 @@ pub async fn create_paged_embed(
 
     let _x: Result<(), CrackedError> = {
         let reply_handle = {
-            ctx.send(
-                CreateReply::default()
-                    .embed(
-                        CreateEmbed::new()
-                            .title(title.clone())
-                            .author(CreateEmbedAuthor::new(author.clone()))
-                            .description(page_getter(0))
-                            .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
-                    )
-                    .components(create_nav_btns(0, num_pages))
-                    .ephemeral(style.ephemeral),
+            courier::reply_rendered(
+                ctx,
+                Rendered::embed(
+                    CreateEmbed::new()
+                        .title(title.clone())
+                        .author(CreateEmbedAuthor::new(author.clone()))
+                        .description(page_getter(0))
+                        .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
+                )
+                .with_components(create_nav_btns(0, num_pages)),
+                style.ephemeral,
             )
             .await?
         };
@@ -665,32 +555,31 @@ pub async fn create_paged_embed(
                 _ => continue,
             };
 
+            let flipped = Rendered::embed(
+                CreateEmbed::new()
+                    .title(title.clone())
+                    .author(CreateEmbedAuthor::new(author.clone()))
+                    .description(page_getter(*page_wlock))
+                    .footer(CreateEmbedFooter::new(format!(
+                        "Page {}/{}",
+                        *page_wlock + 1,
+                        num_pages
+                    ))),
+            )
+            .with_components(create_nav_btns(*page_wlock, num_pages));
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "component responses move in PR 2"
+            )]
             mci.create_response(
                 ctx.http(),
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new()
-                        .embeds(vec![CreateEmbed::new()
-                            .title(title.clone())
-                            .author(CreateEmbedAuthor::new(author.clone()))
-                            .description(page_getter(*page_wlock))
-                            .footer(CreateEmbedFooter::new(format!(
-                                "Page {}/{}",
-                                *page_wlock + 1,
-                                num_pages
-                            )))])
-                        .components(create_nav_btns(*page_wlock, num_pages)),
-                ),
+                CreateInteractionResponse::UpdateMessage(flipped.to_interaction_message()),
             )
             .await?;
         }
 
-        if let Err(e) = reply_handle
-            .edit(
-                ctx,
-                CreateReply::default()
-                    .embed(CreateEmbed::default().description(CrackedMessage::PaginationComplete)),
-            )
-            .await
+        if let Err(e) =
+            courier::edit_reply(ctx, &reply_handle, CrackedMessage::PaginationComplete).await
         {
             tracing::warn!("could not mark pagination complete (message dismissed?): {e}");
         }
@@ -824,13 +713,6 @@ pub fn compare_domains(domain: &str, subdomain: &str) -> bool {
     subdomain == domain || subdomain.ends_with(domain)
 }
 
-/// Checks that a message successfully sent; if not, then logs why to stdout.
-pub fn check_msg(result: Result<Message, Error>) {
-    if let Err(why) = result {
-        tracing::error!("Error sending message: {:?}", why);
-    }
-}
-
 #[cfg(not(tarpaulin_include))]
 /// Takes a Result ReplyHandle and logs the error if it's an Err.
 pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
@@ -838,56 +720,6 @@ pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
         tracing::error!("Error sending message: {:?}", why);
     }
 }
-
-/// Checks a Result and logs the error if it's an Err.
-pub fn check_interaction(result: Result<(), Error>) {
-    if let Err(why) = result {
-        tracing::error!("Error sending message: {:?}", why);
-    }
-}
-
-// `Command(CommandInteraction)` is ~776 bytes against a boxed `Message` variant.
-// Deferred with the other large-variant cleanups.
-#[allow(deprecated, clippy::large_enum_variant)]
-pub enum CommandOrMessageInteraction {
-    Command(CommandInteraction),
-    Message(Option<Box<MessageInteractionMetadata>>),
-    //Message(Option<Box<MessageInteraction>>),
-}
-
-pub fn get_interaction(ctx: CrackContext<'_>) -> Option<CommandInteraction> {
-    match ctx {
-        CrackContext::Application(app_ctx) => app_ctx.interaction.clone().into(),
-        // match app_ctx.interaction {
-        //     CommandOrAutocompleteInteraction::Command(x) => Some(x.clone()),
-        //     CommandOrAutocompleteInteraction::Autocomplete(_) => None,
-        // },
-        // CrackContext::Prefix(prefix_ctx) => Some(prefix_ctx.msg.interaction.into()),
-        CrackContext::Prefix(_ctx) => None,
-    }
-}
-
-#[allow(deprecated)]
-pub fn get_interaction_new(ctx: &CrackContext<'_>) -> Option<CommandOrMessageInteraction> {
-    match ctx {
-        CrackContext::Application(app_ctx) => Some(CommandOrMessageInteraction::Command(
-            app_ctx.interaction.clone(),
-        )),
-        CrackContext::Prefix(ctx) => Some(CommandOrMessageInteraction::Message(
-            ctx.msg.interaction_metadata.clone(),
-        )),
-    }
-}
-
-// pub async fn handle_error(
-//     ctx: CrackContext<'_>,
-//     interaction: &CommandOrMessageInteraction,
-//     err: CrackedError,
-// ) {
-//     create_response_text(&ctx, interaction, &format!("{err}"))
-//         .await
-//         .expect("failed to create response");
-// }
 
 #[cfg(feature = "crack-metrics")]
 pub fn count_command(command: &str, is_prefix: bool) {
@@ -935,7 +767,72 @@ pub fn duration_to_string(duration: Duration) -> String {
 }
 
 #[cfg(test)]
+mod search_option_tests {
+    use super::search_option;
+    use songbird::input::AuxMetadata;
+    use std::time::Duration;
+
+    /// 🪤 The label was cut at 99 *bytes*: a title in Japanese (or with an
+    /// emoji) split a character and panicked the search.
+    #[test]
+    fn a_search_option_is_cut_by_characters() {
+        let hit = AuxMetadata {
+            title: Some("あ".repeat(120)),
+            source_url: Some("https://youtu.be/x".into()),
+            duration: Some(Duration::from_secs(273)),
+            ..Default::default()
+        };
+        let (label, value) = search_option(&hit);
+        assert_eq!(label.chars().count(), 99);
+        assert!(label.starts_with("4:33: あ"), "{label}");
+        assert_eq!(value, "https://youtu.be/x");
+    }
+
+    /// No `00:00:00` for a length nobody knew.
+    #[test]
+    fn a_search_option_of_unknown_length_is_just_its_title() {
+        let hit = AuxMetadata {
+            title: Some("song".into()),
+            ..Default::default()
+        };
+        assert_eq!(search_option(&hit).0, "song");
+    }
+
+    /// Discord rejects an empty option label, and the whole menu with it.
+    #[test]
+    fn a_search_option_with_no_title_and_no_length_is_untitled() {
+        let hit = AuxMetadata::default();
+        assert_eq!(search_option(&hit).0, "(untitled)");
+        let blank = AuxMetadata {
+            title: Some("   ".into()),
+            ..Default::default()
+        };
+        assert_eq!(search_option(&blank).0, "(untitled)");
+    }
+}
+
+#[cfg(test)]
 mod test {
+
+    /// A pick stands when its menu cannot be deleted: the delete failure is
+    /// logged, and the pick is what comes back.
+    #[tokio::test]
+    async fn a_menu_that_will_not_delete_does_not_cost_the_pick() {
+        use crate::messaging::test_support::{FakeTransport, Op};
+        use crate::messaging::transport::TransportError;
+        use ::serenity::all::{GenericChannelId, MessageId};
+
+        let t = FakeTransport::default();
+        *t.delete_error.lock().unwrap() = Some(TransportError::Other("Missing Access".into()));
+        let pick = Ok(QueryType::VideoLink("https://youtu.be/x".into()));
+        let got =
+            super::clear_menu_keeping(pick, &t, GenericChannelId::new(7), MessageId::new(42)).await;
+        assert!(
+            matches!(&got, Ok(QueryType::VideoLink(url)) if url == "https://youtu.be/x"),
+            "{got:?}"
+        );
+        assert_eq!(t.ops(), vec![Op::Delete(7, 42)]);
+    }
 
     use ::serenity::{
         all::Button,
@@ -946,6 +843,16 @@ mod test {
     use crack_types::to_fixed;
 
     use super::*;
+    use crack_types::get_human_readable_timestamp;
+
+    /// A playlist track with nothing known about it has a plain `(untitled)`
+    /// line: no empty link, no 00:00.
+    #[tokio::test]
+    async fn a_playlist_page_line_without_link_or_duration_is_plain() {
+        let blank = NewAuxMetadata(Default::default());
+        let page = build_queue_page_metadata(&[blank], 0).await;
+        assert_eq!(page, "`1.` **(untitled)**\n");
+    }
 
     #[test]
     fn newline_splitter_never_slices_inside_a_multibyte_char() {

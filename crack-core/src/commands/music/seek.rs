@@ -1,10 +1,10 @@
 use crate::{
     commands::cmd_check_music,
     errors::{verify, CrackedError},
+    messaging::courier,
     messaging::message::CrackedMessage,
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_NO_TRACK_PLAYING, FAIL_SECONDS_PARSING},
     music::ops::{self, OpCx, OpRefused},
-    utils::send_reply,
     Context, Error,
 };
 use std::{borrow::Cow, time::Duration};
@@ -41,10 +41,11 @@ pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Er
     let cx = OpCx::from_ctx(&ctx)?;
     let msg = match ops::seek(&cx, Duration::from_secs(timestamp)).await {
         Ok(done) => {
-            done.settle_now(&cx).await;
-            CrackedMessage::Seek {
+            let msg = CrackedMessage::Seek {
                 timestamp: timestamp_str.to_owned(),
-            }
+            };
+            done.reply_then_settle(ctx, &cx, msg).await?;
+            return Ok(());
         },
         Err(OpRefused::SeekFailed(e)) => CrackedMessage::SeekFail {
             timestamp: Cow::Owned(timestamp_str.to_owned()),
@@ -57,6 +58,6 @@ pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Er
         Err(refused) => return Err(CrackedError::from(refused).into()),
     };
 
-    let _ = send_reply(&ctx, msg, true).await?;
+    let _ = courier::reply(ctx, msg).await?;
     Ok(())
 }

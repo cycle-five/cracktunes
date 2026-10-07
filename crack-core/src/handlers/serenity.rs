@@ -231,6 +231,7 @@ impl SerenityHandler {
             (_, None) => {},
             (Some(message), Some(channel)) => {
                 let channel = serenity::GenericChannelId::new(channel);
+                #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
                 let x = channel
                     .send_message(
                         ctx.http(),
@@ -557,6 +558,7 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
     // We can use GenericChannelId directly to send a message to a specific channel; in this case, the
     // message would be sent to the #testing channel on the discord server.
     if let Some(chan_id) = config.sys_log_channel_id {
+        #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
         let message = GenericChannelId::new(chan_id)
             .send_message(
                 ctx.http(),

@@ -1,3 +1,5 @@
+#![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+
 use poise::CreateReply;
 use serenity::all::{Color, CreateEmbed};
 

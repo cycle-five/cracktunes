@@ -6,7 +6,10 @@ use std::sync::{
     Arc,
 };
 
+use crate::messaging::courier::{self, Destination};
+use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::IDLE_ALERT;
+use crate::messaging::render::RenderCx;
 
 /// Handler for the idle event.
 pub struct IdleHandler {
@@ -25,6 +28,17 @@ use songbird::error::JoinError;
 #[must_use]
 pub fn times_out(no_timeout: bool, limit: usize, count: usize) -> bool {
     !no_timeout && limit > 0 && count >= limit
+}
+
+/// What the handler does once the idle alert has been posted (or not): a
+/// failed post cancels the handler (`post` has logged why); a delivered one
+/// carries on.
+#[must_use]
+fn after_alert(posted: Option<(serenity::GenericChannelId, serenity::MessageId)>) -> Option<Event> {
+    match posted {
+        Some(_) => None,
+        None => Some(Event::Cancel),
+    }
 }
 
 /// TODO: Add metrics
@@ -97,17 +111,21 @@ impl EventHandler for IdleHandler {
                         self.guild_id,
                     )
                     .await;
-                    match self
-                        .channel_id
-                        .say(&self.serenity_ctx.http, IDLE_ALERT)
-                        .await
-                    {
-                        Ok(_) => {},
-                        Err(e) => {
-                            tracing::error!("Error sending idle alert: {:?}", e);
-                            return Some(Event::Cancel);
-                        },
+                    let transport = crate::messaging::status::DiscordTransport {
+                        http: self.serenity_ctx.http.clone(),
+                        cache: self.serenity_ctx.cache.clone(),
                     };
+                    let sent = courier::post(
+                        &data,
+                        &transport,
+                        Destination::Channel(self.channel_id),
+                        &CrackedMessage::Other(IDLE_ALERT.to_owned()),
+                        &RenderCx::now(),
+                    )
+                    .await;
+                    if let Some(event) = after_alert(sent) {
+                        return Some(event);
+                    }
                 },
                 Err(JoinError::NoCall) => {
                     tracing::warn!("No call found for guild: {:?}", self.guild_id);
@@ -125,7 +143,20 @@ impl EventHandler for IdleHandler {
 
 #[cfg(test)]
 mod test {
-    use super::times_out;
+    use super::{after_alert, times_out};
+    use poise::serenity_prelude::{GenericChannelId, MessageId};
+    use songbird::Event;
+
+    #[test]
+    fn an_undelivered_idle_alert_cancels_the_handler() {
+        assert!(matches!(after_alert(None), Some(Event::Cancel)));
+    }
+
+    #[test]
+    fn a_delivered_idle_alert_carries_on() {
+        let posted = Some((GenericChannelId::new(1), MessageId::new(2)));
+        assert!(after_alert(posted).is_none());
+    }
 
     #[test]
     fn premium_never_times_out() {

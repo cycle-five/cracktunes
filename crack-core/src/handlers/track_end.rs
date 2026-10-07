@@ -2,10 +2,14 @@ use crate::{
     errors::CrackedError,
     guild::operations::GuildSettingsOperations,
     messaging::{
+        courier::{self, Destination},
         interface::{create_nav_btns, create_queue_embed},
+        message::CrackedMessage,
         messages::{AUTOPLAY_NEEDS_MUSICRECO, AUTOPLAY_STOPPED},
+        render::{RenderCx, Rendered},
         status::DiscordTransport,
         track_failed,
+        transport::Transport,
     },
     music::autoplay,
     music::query::NewQueryType,
@@ -17,13 +21,11 @@ use crate::{
 use ::serenity::{
     all::{Cache, GenericChannelId},
     async_trait,
-    builder::{CreateMessage, EditMessage},
     http::Http,
     model::id::GuildId,
 };
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
-use serenity::all::CacheHttp;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -235,7 +237,7 @@ impl EventHandler for TrackEndHandler {
                     tracing::warn!("autoplay disabled for {}: track errored", self.guild_id);
                     // Speaks up only when a music channel is configured.
                     if let Some(c) = music_channel {
-                        send_plain(c, self.http.clone(), AUTOPLAY_STOPPED).await;
+                        self.send_plain(c, AUTOPLAY_STOPPED).await;
                     }
                     // Carry on without it: the status still says what plays
                     // next, or that playback finished.
@@ -281,7 +283,7 @@ impl EventHandler for TrackEndHandler {
             // simply stop.
             self.data.set_autoplay(self.guild_id, false).await;
             tracing::warn!("autoplay disabled for {}: no recommendation", self.guild_id);
-            announce_autoplay_off(channel, self.http.clone(), self.data.musicreco.is_some()).await;
+            self.announce_autoplay_off(channel).await;
             self.show_finished_unless_playing().await;
             return None;
         };
@@ -301,8 +303,7 @@ impl EventHandler for TrackEndHandler {
             Err(e) => {
                 self.data.set_autoplay(self.guild_id, false).await;
                 tracing::warn!("autoplay disabled for {}: {}", self.guild_id, e);
-                announce_autoplay_off(channel, self.http.clone(), self.data.musicreco.is_some())
-                    .await;
+                self.announce_autoplay_off(channel).await;
                 self.show_finished_unless_playing().await;
             },
         }
@@ -474,8 +475,11 @@ impl EventHandler for ModifyQueueHandler {
             // not worth a panic on songbird's event task.
             let _ = track.set_volume(vol);
         }
-        let cache_http = (Some(&self.cache), self.http.as_ref());
-        update_queue_messages(&cache_http, self.data.clone(), &queue, self.guild_id).await;
+        let transport = DiscordTransport {
+            http: self.http.clone(),
+            cache: self.cache.clone(),
+        };
+        update_queue_messages(&transport, self.data.clone(), &queue, self.guild_id).await;
 
         None
     }
@@ -484,7 +488,7 @@ impl EventHandler for ModifyQueueHandler {
 /// This function goes through all the active "queue" messages that are still
 /// being updated and updates them with the current.
 pub async fn update_queue_messages(
-    cache_http: &impl CacheHttp,
+    transport: &dyn Transport,
     data: Arc<Data>,
     tracks: &[TrackHandle],
     guild_id: GuildId,
@@ -505,14 +509,13 @@ pub async fn update_queue_messages(
 
         let embed = create_queue_embed(tracks, page_val).await;
 
-        let edit_message = message
-            .edit(
-                cache_http,
-                EditMessage::new()
-                    .embed(embed)
-                    .components(create_nav_btns(page_val, num_pages)),
-            )
-            .await;
+        let edit_message = courier::edit_rendered_message(
+            transport,
+            message.channel_id,
+            message.id,
+            Rendered::embed(embed).with_components(create_nav_btns(page_val, num_pages)),
+        )
+        .await;
 
         if edit_message.is_err() {
             forget_queue_message(data.clone(), message, guild_id)
@@ -522,23 +525,32 @@ pub async fn update_queue_messages(
     }
 }
 
-/// Send a plain-text line to a channel, best effort.
-///
-/// Failing to deliver an explanation must never be louder than the thing being
-/// explained, so a send error is logged and swallowed.
-async fn send_plain(channel: GenericChannelId, http: Arc<Http>, content: &str) {
-    if let Err(e) = channel
-        .send_message(&http, CreateMessage::new().content(content))
-        .await
-    {
-        tracing::warn!("could not send autoplay notice to {}: {}", channel, e);
+impl TrackEndHandler {
+    /// Send a one-line notice to a channel, best effort.
+    ///
+    /// Failing to deliver an explanation must never be louder than the thing
+    /// being explained, so a send error is logged and swallowed (by `post`).
+    async fn send_plain(&self, channel: GenericChannelId, content: &str) {
+        let transport = DiscordTransport {
+            http: self.http.clone(),
+            cache: self.cache.clone(),
+        };
+        courier::post(
+            &self.data,
+            &transport,
+            Destination::Channel(channel),
+            &CrackedMessage::Other(content.to_owned()),
+            &RenderCx::now(),
+        )
+        .await;
     }
-}
 
-/// Tell the channel autoplay has been switched off, in as few words as that
-/// takes. The reason is in the logs.
-async fn announce_autoplay_off(channel: GenericChannelId, http: Arc<Http>, has_recommender: bool) {
-    send_plain(channel, http, autoplay_off_notice(has_recommender)).await;
+    /// Tell the channel autoplay has been switched off, in as few words as that
+    /// takes. The reason is in the logs.
+    async fn announce_autoplay_off(&self, channel: GenericChannelId) {
+        self.send_plain(channel, autoplay_off_notice(self.data.musicreco.is_some()))
+            .await;
+    }
 }
 
 /// "Autoplay off" -- unless this deployment has no recommender at all, which is
@@ -573,10 +585,12 @@ mod tests {
     async fn an_autoplay_pick_is_queued_with_the_metadata_it_resolved_to() {
         let data = Data(Arc::new(crate::DataInner::default()));
         let guild_id = GuildId::new(1);
-        let call = Arc::new(Mutex::new(Call::standalone(
-            guild_id,
-            serenity::all::UserId::new(2),
-        )));
+        let call = Arc::new(Mutex::new(
+            crate::music::ops::test_support::standalone_call(
+                guild_id,
+                serenity::all::UserId::new(2),
+            ),
+        ));
         let resolved = vec![NewAuxMetadata(songbird::input::AuxMetadata {
             title: Some("Want You Bad".to_owned()),
             ..Default::default()

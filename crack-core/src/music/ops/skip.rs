@@ -1,5 +1,6 @@
 //! Skips: what plays changes, so they settle `NowPlaying`.
 use super::*;
+use crate::messaging::format::TrackLabel;
 use crate::utils::get_track_handle_metadata;
 use crate::{
     connection::get_voice_channel_for_user,
@@ -31,10 +32,11 @@ impl Skipped {
     /// What `/skip` always said: the next track, or "skipped" / "skipped all".
     pub fn message(&self) -> CrackedMessage {
         match &self.now {
-            Some(t) => CrackedMessage::SkipTo {
-                title: t.title.clone().unwrap_or_default(),
-                url: t.url.clone().unwrap_or_default(),
-            },
+            Some(t) => CrackedMessage::SkipTo(TrackLabel {
+                title: t.title.clone(),
+                url: t.url.clone(),
+                duration: t.duration,
+            }),
             None if self.count > 1 => CrackedMessage::SkipAll,
             None => CrackedMessage::Skip,
         }
@@ -251,7 +253,7 @@ mod test {
                 count: 1
             }
             .message(),
-            CrackedMessage::SkipTo { .. }
+            CrackedMessage::SkipTo(_)
         ));
         assert!(matches!(
             Skipped {

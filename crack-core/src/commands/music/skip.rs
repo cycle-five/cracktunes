@@ -2,14 +2,13 @@ use crate::{
     commands::{cmd_check_music, get_call_or_join_author},
     errors::CrackedError,
     guild::operations::GuildSettingsOperations,
-    http_utils::SendMessageParams,
-    messaging::message::CrackedMessage,
+    messaging::{courier, message::CrackedMessage},
     music::ops::{self, OpCx, OpRefused},
     poise_ext::PoiseContextExt,
     utils::get_track_handle_metadata,
     Context, Error,
 };
-use serenity::all::{Colour, CreateEmbed, Message};
+use serenity::all::Message;
 
 /// Skip the current track, or a number of tracks.
 #[cfg(not(tarpaulin_include))]
@@ -50,16 +49,7 @@ pub async fn send_skip_reply(
     send_msg: CrackedMessage,
     private: bool,
 ) -> Result<Message, CrackedError> {
-    // `send_reply(send_msg, true)`, plus the guild's ephemeral choice.
-    let color = Colour::from(&send_msg);
-    let embed: Option<CreateEmbed> = <Option<CreateEmbed>>::from(&send_msg);
-    let params = SendMessageParams::new(send_msg)
-        .with_color(color)
-        .with_as_embed(true)
-        .with_embed(embed)
-        .with_reply(true)
-        .with_ephemeral(private);
-    ctx.send_message(params)
+    courier::reply_as(ctx, send_msg, private)
         .await?
         .into_message()
         .await

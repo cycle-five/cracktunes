@@ -1,6 +1,9 @@
 use crate::guild::operations::GuildSettingsOperations;
+use crate::messaging::courier;
+use crate::messaging::format::{TrackLabel, INLINE_TITLE_MAX};
+use crate::messaging::render::Rendered;
 use crate::messaging::status::{
-    now_playing_pointer, pointer_goes_first, reply_floor, reply_privately, show_now_playing,
+    now_playing_pointer, pointer_goes_first, reply_privately, show_now_playing,
     show_now_playing_after,
 };
 use crate::poise_ext::{ContextExt, PoiseContextExt};
@@ -10,8 +13,8 @@ use crate::{
     errors::CrackedError,
     Context, Error,
 };
-use poise::CreateReply;
-use serenity::all::CreateAllowedMentions;
+use serenity::all::MessageLink;
+use songbird::input::AuxMetadata;
 
 /// Get the currently playing track.
 #[cfg(not(tarpaulin_include))]
@@ -35,18 +38,28 @@ pub async fn nowplaying(
     nowplaying_internal(ctx).await
 }
 
-/// `/nowplaying`'s one-line reply, for both orderings.
+/// `/nowplaying`'s one-line reply, as plain message content (v0.13.0 replaced
+/// an embed with it on purpose).
 ///
-/// 🔑 Mentions are suppressed (an empty allow-list parses none). The pointer
-/// is message content carrying a track title, and the title is whatever the
-/// uploader chose: `@everyone` or `<@&role>` in it would otherwise ping. The
-/// embed this replaced never could. Only this reply opts out -- other commands
-/// may mention on purpose, so there is no global default.
-fn pointer_reply(content: String, private: bool) -> CreateReply<'static> {
-    CreateReply::default()
-        .content(content)
-        .ephemeral(private)
-        .allowed_mentions(CreateAllowedMentions::new())
+/// 🔑 Mentions are suppressed: `Rendered::text` defaults to `Mentions::None`,
+/// an empty allow-list. The pointer carries a track title, and the title is
+/// whatever the uploader chose: `@everyone` or `<@&role>` in it would
+/// otherwise ping.
+fn pointer_reply(content: String) -> Rendered {
+    Rendered::text(content)
+}
+
+/// `/nowplaying`'s one-line pointer text. The title is whatever the uploader
+/// chose, so it arrives escaped (`a*b` must not turn the rest bold) and
+/// `(untitled)` when blank.
+///
+/// 🔑 It is sent as `CrackedMessage::Other`, which renders with no mentions
+/// allowed: `@everyone` in a title cannot ping.
+fn pointer_text(meta: &AuxMetadata, link: Option<MessageLink>) -> String {
+    now_playing_pointer(
+        &TrackLabel::from_metadata(meta).title_text(INLINE_TITLE_MAX),
+        link,
+    )
 }
 
 /// Get the currently playing track. Internal function.
@@ -66,11 +79,11 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
         .ok_or(CrackedError::NothingPlaying)?;
     // A track without metadata still gets a pointer, just an untitled one --
     // but not silently.
-    let title = match get_track_handle_metadata(&track).await {
-        Ok(meta) => meta.title.unwrap_or_default(),
+    let meta = match get_track_handle_metadata(&track).await {
+        Ok(meta) => meta,
         Err(err) => {
             tracing::warn!("nowplaying: no metadata for the current track in {guild_id}: {err}");
-            String::new()
+            AuxMetadata::default()
         },
     };
 
@@ -80,14 +93,13 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
     let serenity_ctx = ctx.serenity_context();
 
     if pointer_goes_first(private, music_channel, ctx.channel_id()) {
-        let reply = ctx
-            .send(pointer_reply(now_playing_pointer(&title, None), private))
-            .await?;
+        let reply =
+            courier::reply_rendered(ctx, pointer_reply(pointer_text(&meta, None)), private).await?;
         // 🔑 The reply's gateway echo almost never reaches the cache in the
         // few milliseconds before the status reads it, so the reply itself is
         // the floor: without it the status is edited in place above the "↓".
         // This branch only runs for a visible reply (`pointer_goes_first`).
-        let after = reply_floor(&reply).await;
+        let after = courier::locate(ctx, &reply).await;
         show_now_playing_after(
             &data,
             serenity_ctx.http.clone(),
@@ -107,8 +119,7 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
         )
         .await;
         let link = shown.map(|status| status.id.link(status.channel, Some(guild_id)));
-        ctx.send(pointer_reply(now_playing_pointer(&title, link), private))
-            .await?;
+        courier::reply_rendered(ctx, pointer_reply(pointer_text(&meta, link)), private).await?;
     }
     Ok(())
 }
@@ -116,46 +127,35 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serenity::all::CreateInteractionResponseMessage;
 
-    /// The part of a reply's wire form this test reads.
-    #[derive(serde::Deserialize)]
-    struct WireReply {
-        #[serde(default)]
-        allowed_mentions: Option<WireMentions>,
-    }
-
-    #[derive(serde::Deserialize)]
-    struct WireMentions {
-        parse: Vec<String>,
-        users: Vec<String>,
-        roles: Vec<String>,
-    }
-
-    /// 🔑 The pointer carries a track title, which anyone uploading a video
-    /// chooses. As message content -- unlike the embed it replaced -- an
-    /// `@everyone` or `<@&role>` in it would ping, unless the reply says which
-    /// mentions to parse: none.
-    ///
-    /// poise keeps `CreateReply::allowed_mentions` crate-private, so this reads
-    /// it the way poise sends it: converted into serenity's builder and
-    /// serialized.
-    #[test]
-    fn the_pointer_reply_never_pings() {
-        for private in [false, true] {
-            let reply = pointer_reply(now_playing_pointer("@everyone <@&1> <@2>", None), private);
-            let wire = serde_json::to_string(
-                &reply.to_slash_initial_response(CreateInteractionResponseMessage::new()),
-            )
-            .unwrap();
-            let wire: WireReply = serde_json::from_str(&wire).unwrap();
-
-            let mentions = wire
-                .allowed_mentions
-                .expect("the pointer must say which mentions to parse");
-            assert!(mentions.parse.is_empty(), "parses {:?}", mentions.parse);
-            assert!(mentions.users.is_empty());
-            assert!(mentions.roles.is_empty());
+    fn titled(title: &str) -> AuxMetadata {
+        AuxMetadata {
+            title: Some(title.to_owned()),
+            ..Default::default()
         }
+    }
+
+    /// A title is third-party text: its markdown must not leak into the pointer.
+    #[test]
+    fn the_pointer_escapes_the_title() {
+        let text = pointer_text(&titled("a*b"), None);
+        assert!(text.contains("a\\*b"), "{text}");
+    }
+
+    /// 🔑 Plain content, never an embed, and it pings nobody.
+    #[test]
+    fn the_pointer_is_plain_content_that_never_pings() {
+        let text = pointer_text(&titled("@everyone <@&1> <@2>"), None);
+        let reply = pointer_reply(text.clone());
+        assert!(reply.embed.is_none());
+        assert_eq!(reply.content.as_deref(), Some(text.as_str()));
+        let am = serde_json::to_value(reply.allowed_mentions()).unwrap();
+        assert_eq!(am["parse"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn a_track_without_a_title_is_pointed_to_as_untitled() {
+        let text = pointer_text(&AuxMetadata::default(), None);
+        assert!(text.contains("**(untitled)**"), "{text}");
     }
 }
