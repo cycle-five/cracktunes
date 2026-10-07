@@ -443,17 +443,19 @@ pub async fn send_joining_channel<'ctx>(
 
 // ---------------------- Most Generic Message Function ---------------//
 
+/// One field per search hit: `[title]`, then `(link) - 3:45`. The length
+/// reads as in every music message, and is left out when unknown.
 async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
-    use crate::utils::duration_to_string;
     tracing::warn!("num elems: {:?}", elems.len());
     let mut fields = vec![];
-    // let tmp = "".to_string();
     for elem in elems.into_iter() {
         let title = elem.title.unwrap_or_default();
         let link = elem.source_url.unwrap_or_default();
-        let duration = elem.duration.unwrap_or_default();
-        let elem = format!("({}) - {}", link, duration_to_string(duration));
-        fields.push(EmbedField::new(format!("[{}]", title), elem, true));
+        let value = match duration_text(elem.duration) {
+            Some(length) => format!("({link}) - {length}"),
+            None => format!("({link})"),
+        };
+        fields.push(EmbedField::new(format!("[{}]", title), value, true));
     }
     fields
 }
@@ -787,6 +789,24 @@ mod test {
                 "{thumbnail:?}: {embed}"
             );
         }
+    }
+
+    /// A search hit's length reads `m:ss` (it read `00:03:45`), and an
+    /// unknown one is left out (it read `00:00:00`).
+    #[tokio::test]
+    async fn a_search_hit_shows_its_length_as_m_ss_or_not_at_all() {
+        let hit = |secs: Option<u64>| songbird::input::AuxMetadata {
+            title: Some("Song".into()),
+            source_url: Some("https://youtu.be/x".into()),
+            duration: secs.map(std::time::Duration::from_secs),
+            ..Default::default()
+        };
+        let fields = super::build_embed_fields(vec![hit(Some(225)), hit(None)]).await;
+        let values: Vec<&str> = fields.iter().map(|f| f.value.as_str()).collect();
+        assert_eq!(
+            values,
+            ["(https://youtu.be/x) - 3:45", "(https://youtu.be/x)"]
+        );
     }
 
     #[test]

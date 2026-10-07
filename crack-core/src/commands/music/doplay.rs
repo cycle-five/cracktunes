@@ -10,7 +10,7 @@ use crate::{
     handlers::track_end::update_queue_messages,
     messaging::cards::QueuedCard,
     messaging::courier,
-    messaging::format::{escape, http_url, TrackLabel},
+    messaging::format::{duration_text, escape, http_url, TrackLabel},
     messaging::interface::now_playing_card,
     messaging::messages::TRACK_UNTITLED,
     messaging::placeholder::{discard_on_err, Placeholder},
@@ -262,7 +262,7 @@ pub async fn playytplaylist(
     let yt_playlist_str = playlist_display(
         queued
             .iter()
-            .map(|t| (t.get_title(), t.get_url(), t.get_duration())),
+            .map(|t| (t.get_title(), t.get_url(), t.duration())),
     );
     tracing::warn!("yt_playlist_str: {}", yt_playlist_str);
     courier::reply(ctx, CrackedMessage::Other(yt_playlist_str)).await?;
@@ -278,27 +278,31 @@ fn queuing_text(query: &str) -> String {
     format!("Queuing... {}", escape(query))
 }
 
-/// One playlist entry as `[title](url) • `duration``. The title is third-party
+/// One playlist entry as `[title](url) • `3:21``. The title is third-party
 /// text and is escaped; a URL that is not http(s) is dropped rather than
-/// linked, and parentheses in it cannot end the link early.
-fn playlist_line(title: &str, url: &str, duration: &str) -> String {
+/// linked, and parentheses in it cannot end the link early. The length reads
+/// as everywhere else (`m:ss`), and is left out when unknown, never `00:00`.
+fn playlist_line(title: &str, url: &str, duration: Option<Duration>) -> String {
     let title = match title.trim() {
         "" => TRACK_UNTITLED.to_owned(),
         t => escape(t),
     };
+    let length = duration_text(duration)
+        .map(|d| format!(" • `{d}`"))
+        .unwrap_or_default();
     match http_url(Some(url)) {
         Some(url) => {
             let target = url.as_str().replace('(', "%28").replace(')', "%29");
-            format!("[{title}]({target}) • `{duration}`")
+            format!("[{title}]({target}){length}")
         },
-        None => format!("{title} • `{duration}`"),
+        None => format!("{title}{length}"),
     }
 }
 
 /// The playlist display: one [`playlist_line`] per `(title, url, duration)`.
-fn playlist_display(entries: impl Iterator<Item = (String, String, String)>) -> String {
+fn playlist_display(entries: impl Iterator<Item = (String, String, Option<Duration>)>) -> String {
     entries
-        .map(|(title, url, duration)| playlist_line(&title, &url, &duration))
+        .map(|(title, url, duration)| playlist_line(&title, &url, duration))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -1355,20 +1359,43 @@ mod tests {
     #[test]
     fn a_playlist_line_escapes_the_title_and_keeps_the_wording() {
         assert_eq!(
-            playlist_line("[a](b) *x*", "https://youtu.be/x", "03:21"),
-            r"[\[a\](b) \*x\*](https://youtu.be/x) • `03:21`"
+            playlist_line(
+                "[a](b) *x*",
+                "https://youtu.be/x",
+                Some(Duration::from_secs(201))
+            ),
+            r"[\[a\](b) \*x\*](https://youtu.be/x) • `3:21`"
         );
     }
 
     #[test]
     fn a_playlist_line_with_no_title_or_no_http_link_is_still_sane() {
+        let ten = Some(Duration::from_secs(10));
         assert_eq!(
-            playlist_line("  ", "javascript:alert(1)", "00:10"),
-            "(untitled) • `00:10`"
+            playlist_line("  ", "javascript:alert(1)", ten),
+            "(untitled) • `0:10`"
         );
         assert_eq!(
-            playlist_line("t", "https://x.example/a(b)", "00:10"),
-            "[t](https://x.example/a%28b%29) • `00:10`"
+            playlist_line("t", "https://x.example/a(b)", ten),
+            "[t](https://x.example/a%28b%29) • `0:10`"
+        );
+    }
+
+    /// The length reads `m:ss` like every other music message (it read
+    /// `03:21`), and an unknown one is left out, not `00:00` or "Unknown
+    /// duration".
+    #[test]
+    fn a_playlist_line_of_unknown_length_has_no_length() {
+        for unknown in [None, Some(Duration::ZERO)] {
+            assert_eq!(
+                playlist_line("t", "https://x.example/1", unknown),
+                "[t](https://x.example/1)",
+                "{unknown:?}"
+            );
+        }
+        assert_eq!(
+            playlist_line("t", "https://x.example/1", Some(Duration::from_secs(3600))),
+            "[t](https://x.example/1) • `1:00:00`"
         );
     }
 
@@ -1376,11 +1403,11 @@ mod tests {
     fn a_playlist_display_is_one_line_per_track() {
         let out = playlist_display(
             [
-                ("a", "https://x.example/1", "1:00"),
-                ("b", "https://x.example/2", "2:00"),
+                ("a", "https://x.example/1", 60),
+                ("b", "https://x.example/2", 120),
             ]
             .into_iter()
-            .map(|(a, b, c)| (a.to_owned(), b.to_owned(), c.to_owned())),
+            .map(|(a, b, c)| (a.to_owned(), b.to_owned(), Some(Duration::from_secs(c)))),
         );
         assert_eq!(
             out,

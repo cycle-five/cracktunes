@@ -1,5 +1,5 @@
 use crate::commands::help;
-use crate::messaging::format::{escape, http_url};
+use crate::messaging::format::{duration_text, escape, http_url};
 use crate::messaging::{courier, message::CrackedMessage};
 use crate::sources::sleevenote::{self, MediaType};
 use crate::{Context, Error};
@@ -86,8 +86,8 @@ fn track_embed(track: Track) -> CreateEmbed<'static> {
             embed = embed.thumbnail(image.to_string(), None);
         }
     }
-    if let Some(duration) = track.duration() {
-        embed = embed.field("Length", hms(duration.as_secs()), true);
+    if let Some(length) = duration_text(track.duration()) {
+        embed = embed.field("Length", length, true);
     }
     embed
 }
@@ -187,11 +187,6 @@ fn artists(track: &Track) -> String {
     } else {
         names
     }
-}
-
-fn hms(secs: u64) -> String {
-    let (m, s) = (secs / 60, secs % 60);
-    format!("{m}:{s:02}")
 }
 
 fn fail(msg: &str) -> CreateEmbed<'static> {
@@ -302,6 +297,25 @@ mod tests {
             );
             assert_eq!(thumbnail_of(&listing).as_deref(), want, "{image:?}");
         }
+    }
+
+    /// The length reads as in every music message: `h:mm:ss` from an hour
+    /// up (it read `63:12`), and nothing when unknown or zero.
+    #[test]
+    fn a_track_length_reads_like_every_other_length() {
+        let length = |ms: Option<u64>| {
+            let mut track = hostile_track();
+            track.duration_ms = ms;
+            let json = serde_json::to_value(track_embed(track)).unwrap();
+            json["fields"]
+                .as_array()
+                .and_then(|f| f.iter().find(|f| f["name"] == "Length"))
+                .map(|f| f["value"].as_str().unwrap().to_owned())
+        };
+        assert_eq!(length(Some(192_000)).as_deref(), Some("3:12"));
+        assert_eq!(length(Some(3_792_000)).as_deref(), Some("1:03:12"));
+        assert_eq!(length(Some(0)), None);
+        assert_eq!(length(None), None);
     }
 
     #[test]

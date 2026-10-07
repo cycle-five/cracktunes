@@ -128,22 +128,32 @@
 ### Changed
 
 - **The now-playing message shows when the track ends**, counted down live by
-  Discord ("4:33 · ends in 3 minutes"), "Paused at 1:12" while paused, and
-  "Started … ago" for a live stream. Ticking in real time between events is a
-  planned follow-up.
-- **Durations read `m:ss`, or `h:mm:ss` from an hour up**, everywhere.
-- **Reply embeds carry a colour stripe by kind:** errors red, everything else
-  blue. Before, most replies had no colour and errors were blue.
+  Discord ("4:33 · ends in 3 minutes"); "Paused at 1:12" while paused; "4:33 ·
+  on repeat" while the track repeats, since it has no end; and "Started … ago"
+  for a live stream. `/pause`, `/resume`, `/seek` and `/repeat`, and the
+  dashboard's pause, resume and repeat, bring it up to date and move it below
+  their reply, as a skip does. Ticking in real time between events is a planned
+  follow-up.
+- **Durations in music messages read `m:ss`, or `h:mm:ss` from an hour up**
+  (`/playytplaylist`'s lines, search results and `/spotify`'s track length
+  included), and an unknown one is left out. `/gp` and `/uptime` keep the old
+  `00:00:00` style until they move to the new layer.
+- **Queue pages show titles in bold** (`[**title**](url)`, was `[title](url)`),
+  like the other music messages.
+- **Replies and notices carry a colour stripe by kind:** errors red, general
+  notices gold (the idle-leave alert, the autoplay notices, the playlist
+  progress line), the rest blue. Cards (now playing, queued) and embeds a
+  command builds itself carry none. Before, most replies had no colour.
 - **The autoplay notices and the idle-leave alert are embeds** like every other
   notice.
-- **Nothing the bot says can ping @everyone, a role or a user by accident.**
-  Every message states who it may ping, and the default is nobody; for one,
-  `/diagnose`'s mention no longer pings.
+- **Music messages can't ping @everyone, a role or a user by accident.** Every
+  message sent through the new layer states who it may ping, and the default is
+  nobody, so an `@everyone` in a track title stays text. Sends not migrated yet
+  (the welcome message, camera enforcement, `/gp`, admin) are unchanged.
 - **Every music message now goes through one renderer and one delivery path**,
   and clippy refuses raw Discord sends outside `crack-core::messaging`. The
   modules not yet migrated (`/gp`, admin, settings, utility, ...) are marked and
   move in follow-ups.
-
 - **Free servers now see 24 hours of queue history.** The dashboard's history page and
   `/auditlog` show free servers the last 24 hours, and premium servers everything. When
   older entries exist, both say older history is a premium feature and link the
@@ -178,10 +188,10 @@
 
 ### Fixed
 
-- **A track with no title read "⏭️ Skipped to **!"** (and "Couldn't play **", and
-  so on); it now reads "(untitled)". Blank queue lines, playlist lines and
-  search-menu labels do too; an empty search-menu label would have made Discord
-  reject the whole menu.
+- **A track with no title read "⏭️ Skipped to **!"**; it now reads
+  "(untitled)". Blank queue lines, playlist lines, the dashboard's echo lines
+  ("⏭ Skipped **** from the dashboard") and search-menu labels do too; an empty
+  search-menu label would have made Discord reject the whole menu.
 - **Titles with `*`, `_`, backticks, brackets, `<` or `@` broke the message's
   formatting or could ping** (`@everyone` in a title). Titles are now escaped
   everywhere they appear: skip, queued, now playing, queue pages, `/nowplaying`'s
@@ -196,7 +206,14 @@
   `[**x**]()` links to nowhere, and parentheses in a URL no longer cut the link
   short.
 - **No more `RelativeUrlWithoutBase` errors in the log, or "Streaming via
-  unknown" footer,** for tracks without a link or thumbnail.
+  unknown" footer,** for tracks without a link or thumbnail. A thumbnail is set
+  only from an http(s) URL, on `/queue`, `/remove` and `/spotify` too.
+- **`/queue` no longer fails on a page of long links.** Six tracks with
+  SoundCloud-length links could pass Discord's 1024-character limit for a
+  field, and Discord rejected the whole reply. A page now ends at the last
+  whole line that fits.
+- **A `/search` pick no longer fails when its results menu can't be deleted.**
+  The pick plays, and the leftover menu is logged.
 - **`/search` no longer panics on long titles in Japanese, emoji and the like.**
   Labels were cut by bytes, not characters.
 - **`/play` in play-all, reverse or shuffle mode with plain keywords answered as
@@ -208,7 +225,6 @@
   so as an error instead of sending a "Nothing playing" DM.
 - **Plain-text replies no longer carry stray ANSI colour codes.** They were
   invisible only because the container's stdout is not a terminal.
-
 - **A track that could not play now says so.** songbird ends a track it cannot
   open or decode, and the queue moved on in silence: SoundCloud's undecodable
   streams before v0.20.1 just emptied the queue. The music channel (or the voice
