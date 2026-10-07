@@ -1,6 +1,8 @@
 use crate::{
-    commands::help, errors::CrackedError, guild::operations::GuildSettingsOperations,
-    http_utils::SendMessageParams, messaging::message::CrackedMessage, poise_ext::PoiseContextExt,
+    commands::help,
+    errors::CrackedError,
+    guild::operations::GuildSettingsOperations,
+    messaging::{courier, message::CrackedMessage},
     Context, Error,
 };
 
@@ -33,15 +35,12 @@ pub async fn ephemeral_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let private = ctx.data().toggle_ephemeral_replies(guild_id).await?;
-    let params = SendMessageParams {
-        msg: if private {
-            CrackedMessage::EphemeralRepliesOn
-        } else {
-            CrackedMessage::EphemeralRepliesOff
-        },
-        ..Default::default()
+    let msg = if private {
+        CrackedMessage::EphemeralRepliesOn
+    } else {
+        CrackedMessage::EphemeralRepliesOff
     };
-    ctx.send_message(params).await?;
+    courier::reply(ctx, msg).await?;
 
     Ok(())
 }

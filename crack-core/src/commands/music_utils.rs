@@ -1,9 +1,10 @@
 use crate::connection::get_voice_channel_for_user;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::handlers::{IdleHandler, TrackEndHandler};
+use crate::messaging::courier;
 use crate::messaging::message::CrackedMessage;
+use crate::messaging::render::Rendered;
 use crate::music::perms::JoinPermit;
-use crate::poise_ext::PoiseContextExt;
 use crate::CrackedError;
 use crate::{Context, Data, Error};
 // use crack_testing::ReplyHandleWrapper;
@@ -269,11 +270,13 @@ pub(crate) async fn join_permitted(
 /// instead of silence. Cheap, and worth keeping -- just not for the reason
 /// first written down.
 async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
-    let Err(embed_err) = ctx
-        .send_reply_embed(CrackedMessage::Summon {
+    let Err(embed_err) = courier::reply(
+        ctx,
+        CrackedMessage::Summon {
             mention: channel_id.mention(),
-        })
-        .await
+        },
+    )
+    .await
     else {
         return;
     };
@@ -283,13 +286,13 @@ async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
     // tty/`CLICOLOR_FORCE`/`NO_COLOR` decision nothing here pins -- if it ever
     // resolves to "yes", the user's join confirmation arrives as a literal
     // `\e[38;2;...m` escape sequence. Discord is not a terminal.
-    let plain = poise::CreateReply::default().content(
+    let plain = Rendered::text(
         CrackedMessage::Summon {
             mention: channel_id.mention(),
         }
         .to_string(),
     );
-    if let Err(text_err) = ctx.send(plain).await {
+    if let Err(text_err) = courier::reply_rendered(ctx, plain, false).await {
         tracing::warn!(
             "Could not answer the join at all: {text_err:?}. \
              The bot IS in {channel_id:?} but nothing in the channel says so."

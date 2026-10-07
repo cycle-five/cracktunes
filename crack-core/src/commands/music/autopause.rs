@@ -2,9 +2,7 @@ use crate::{
     commands::{cmd_check_music, help},
     errors::CrackedError,
     guild::operations::GuildSettingsOperations,
-    http_utils::SendMessageParams,
-    messaging::message::CrackedMessage,
-    poise_ext::PoiseContextExt,
+    messaging::{courier, message::CrackedMessage},
     Context, Error,
 };
 
@@ -35,15 +33,12 @@ pub async fn autopause_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
     let autopause = ctx.data().toggle_autopause(guild_id).await;
-    let params = SendMessageParams {
-        msg: if autopause {
-            CrackedMessage::AutopauseOn
-        } else {
-            CrackedMessage::AutopauseOff
-        },
-        ..Default::default()
+    let msg = if autopause {
+        CrackedMessage::AutopauseOn
+    } else {
+        CrackedMessage::AutopauseOff
     };
-    ctx.send_message(params).await?;
+    courier::reply(ctx, msg).await?;
 
     Ok(())
 }

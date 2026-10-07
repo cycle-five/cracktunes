@@ -1,5 +1,5 @@
+use crate::messaging::courier;
 use crate::messaging::message::CrackedMessage;
-use crate::poise_ext::PoiseContextExt;
 use crate::{Context, Error};
 
 /// Flip a coin.
@@ -8,7 +8,7 @@ use crate::{Context, Error};
 pub async fn coinflip(ctx: Context<'_>) -> Result<(), Error> {
     let res = rand::random::<bool>();
 
-    ctx.send_reply(CrackedMessage::Coinflip(res), true).await?;
+    courier::reply(ctx, CrackedMessage::Coinflip(res)).await?;
 
     Ok(())
 }
@@ -37,7 +37,7 @@ pub async fn rolldice_internal(
         sides: sides_per_die,
         results: res,
     };
-    ctx.send_reply(msg, true).await?;
+    courier::reply(ctx, msg).await?;
     Ok(())
 }
 

@@ -5,7 +5,7 @@ use crate::messaging::interface;
 use crate::messaging::messages::GRAB_DM_FAILED;
 use crate::messaging::render::{render, RenderCx};
 use crate::messaging::status::DiscordTransport;
-use crate::poise_ext::{ContextExt, PoiseContextExt};
+use crate::poise_ext::ContextExt;
 use crate::{Context, CrackedMessage, Error};
 
 /// Send the current tack to your DMs.
@@ -49,7 +49,7 @@ async fn grab_internal(ctx: Context<'_>) -> Result<(), Error> {
             CrackedError::Other(GRAB_DM_FAILED)
         })?;
 
-    ctx.send_reply_embed(CrackedMessage::GrabbedNotice).await?;
+    courier::reply(ctx, CrackedMessage::GrabbedNotice).await?;
 
     Ok(())
 }

@@ -1,9 +1,9 @@
 use crate::{
     commands::{cmd_check_music, music::send_skip_reply},
     errors::CrackedError,
-    messaging::message::CrackedMessage,
+    messaging::{courier, message::CrackedMessage},
     music::ops::{self, OpCx, Vote},
-    poise_ext::{ContextExt, PoiseContextExt},
+    poise_ext::ContextExt,
     Context, Error,
 };
 use poise::serenity_prelude as serenity;
@@ -40,10 +40,13 @@ pub async fn voteskip(
             Some((msg.channel_id, msg.id))
         },
         Vote::Voted { missing } => {
-            ctx.send_reply_embed(CrackedMessage::VoteSkip {
-                mention: ctx.get_user_id().mention(),
-                missing: *missing,
-            })
+            courier::reply(
+                ctx,
+                CrackedMessage::VoteSkip {
+                    mention: ctx.get_user_id().mention(),
+                    missing: *missing,
+                },
+            )
             .await?
             .into_message()
             .await
