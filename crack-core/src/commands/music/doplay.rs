@@ -10,10 +10,12 @@ use crate::{
     handlers::track_end::update_queue_messages,
     messaging::cards::QueuedCard,
     messaging::courier,
-    messaging::format::{escape, TrackLabel},
+    messaging::format::{escape, http_url, TrackLabel},
     messaging::interface::now_playing_card,
+    messaging::messages::TRACK_UNTITLED,
     messaging::placeholder::{discard_on_err, Placeholder},
     messaging::render::{render, RenderCx, Rendered},
+    messaging::transport::DiscordTransport,
     messaging::{
         message::CrackedMessage,
         messages::{PLAY_QUEUE, PLAY_TOP},
@@ -27,7 +29,7 @@ use crate::{
 use ::serenity::all::CreateAutocompleteResponse;
 use ::serenity::{
     all::{CommandInteraction, Message},
-    builder::{CreateEmbed, CreateEmbedFooter, EditMessage},
+    builder::{CreateEmbed, CreateEmbedFooter},
 };
 use crack_types::QueryType;
 use crack_types::{search_result_to_aux_metadata, Mode, NewAuxMetadata};
@@ -247,7 +249,7 @@ pub async fn playytplaylist(
     // Refused before joining voice: only a YouTube playlist link is fetched.
     let query =
         crack_types::canonical_youtube_playlist_url(&query).ok_or(CrackedError::InvalidPlaylist)?;
-    let mut crack_client = ctx.data().ct_client.clone();
+    let crack_client = ctx.data().ct_client.clone();
     // This retrieves the call that the bot is connected to or joins the author's channel.
     // We error hear if the bot can't join the channel, or if the author isn't in a channel,
     // or the bot is in another channel, etc. So this should happen first.
@@ -256,14 +258,49 @@ pub async fn playytplaylist(
     // At this point we should have enough information to determine if any of the tracks
     // aren't allowed or able to be played (possibly?) and display the who list of them.
     let _tracks = crack_client.resolve_playlist(&query).await?;
-    let _ = crack_client.build_display(guild_id).await;
-    let yt_playlist_str = crack_client.get_display(guild_id);
+    let queued = crack_client.get_queue(guild_id).await;
+    let yt_playlist_str = playlist_display(
+        queued
+            .iter()
+            .map(|t| (t.get_title(), t.get_url(), t.get_duration())),
+    );
     tracing::warn!("yt_playlist_str: {}", yt_playlist_str);
     courier::reply(ctx, CrackedMessage::Other(yt_playlist_str)).await?;
     // This enqueues the tracks into the internal queue for the bot.
     //let _ = enqueue_resolved_tracks(call, tracks).await;
     courier::reply(ctx, CrackedMessage::PlaylistQueued).await?;
     Ok(())
+}
+
+/// The "Queuing..." progress line. The query is built from third-party
+/// metadata, so it is escaped.
+fn queuing_text(query: &str) -> String {
+    format!("Queuing... {}", escape(query))
+}
+
+/// One playlist entry as `[title](url) • `duration``. The title is third-party
+/// text and is escaped; a URL that is not http(s) is dropped rather than
+/// linked, and parentheses in it cannot end the link early.
+fn playlist_line(title: &str, url: &str, duration: &str) -> String {
+    let title = match title.trim() {
+        "" => TRACK_UNTITLED.to_owned(),
+        t => escape(t),
+    };
+    match http_url(Some(url)) {
+        Some(url) => {
+            let target = url.as_str().replace('(', "%28").replace(')', "%29");
+            format!("[{title}]({target}) • `{duration}`")
+        },
+        None => format!("{title} • `{duration}`"),
+    }
+}
+
+/// The playlist display: one [`playlist_line`] per `(title, url, duration)`.
+fn playlist_display(entries: impl Iterator<Item = (String, String, String)>) -> String {
+    entries
+        .map(|(title, url, duration)| playlist_line(&title, &url, &duration))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 use crate::commands::resume_internal;
@@ -919,7 +956,7 @@ use rusty_ytdl::search::YouTube;
 pub async fn queue_aux_metadata(
     ctx: Context<'_>,
     aux_metadata: &[NewAuxMetadata],
-    mut msg: Message,
+    msg: Message,
 ) -> CrackedResult<()> {
     // use crate::http_utils;
 
@@ -937,16 +974,18 @@ pub async fn queue_aux_metadata(
         .set_client(client.clone())
         .build();
     let rusty_ytdl = YouTube::new_with_options(&req)?;
+    let transport = DiscordTransport::of(ctx.serenity_context());
     for metadata in search_results {
         let source_url = metadata.metadata().source_url.as_ref();
         let metadata_final = if source_url.is_none() || source_url.unwrap().is_empty() {
             let search_query = build_query_aux_metadata(metadata.metadata());
-            let _ = msg
-                .edit(
-                    &ctx,
-                    EditMessage::default().content(format!("Queuing... {}", search_query)),
-                )
-                .await;
+            let _ = courier::edit_rendered_message(
+                &transport,
+                msg.channel_id,
+                msg.id,
+                Rendered::text(queuing_text(&search_query)),
+            )
+            .await;
 
             let res = rusty_ytdl.search_one(search_query, None).await?;
             let res = res.ok_or(CrackedError::Other("No results found"))?;
@@ -1303,6 +1342,51 @@ mod tests {
     use super::*;
     use crate::messaging::messages::PLAY_PLAYLIST;
     use crate::messaging::render::description;
+
+    #[test]
+    fn the_queuing_line_escapes_the_query() {
+        assert_eq!(
+            queuing_text("[x](https://evil.example) @everyone"),
+            r"Queuing... \[x\](https://evil.example) \@everyone"
+        );
+        assert_eq!(queuing_text("plain"), "Queuing... plain");
+    }
+
+    #[test]
+    fn a_playlist_line_escapes_the_title_and_keeps_the_wording() {
+        assert_eq!(
+            playlist_line("[a](b) *x*", "https://youtu.be/x", "03:21"),
+            r"[\[a\](b) \*x\*](https://youtu.be/x) • `03:21`"
+        );
+    }
+
+    #[test]
+    fn a_playlist_line_with_no_title_or_no_http_link_is_still_sane() {
+        assert_eq!(
+            playlist_line("  ", "javascript:alert(1)", "00:10"),
+            "(untitled) • `00:10`"
+        );
+        assert_eq!(
+            playlist_line("t", "https://x.example/a(b)", "00:10"),
+            "[t](https://x.example/a%28b%29) • `00:10`"
+        );
+    }
+
+    #[test]
+    fn a_playlist_display_is_one_line_per_track() {
+        let out = playlist_display(
+            [
+                ("a", "https://x.example/1", "1:00"),
+                ("b", "https://x.example/2", "2:00"),
+            ]
+            .into_iter()
+            .map(|(a, b, c)| (a.to_owned(), b.to_owned(), c.to_owned())),
+        );
+        assert_eq!(
+            out,
+            "[a](https://x.example/1) • `1:00`\n[b](https://x.example/2) • `2:00`"
+        );
+    }
 
     /// 🪤 Seen on production v0.12.1: a playlist `/play` replied with the literal
     /// text "PlaylistQueued", `{:?}` of the message instead of its text.

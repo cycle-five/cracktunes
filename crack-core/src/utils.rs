@@ -2,9 +2,11 @@ use crate::http_utils::CacheHttpExt;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::courier::{self, Destination};
 use crate::messaging::format::{duration_text, TrackLabel, INLINE_TITLE_MAX};
-use crate::messaging::messages::SEARCH_RESULTS_NOT_POSTED;
+use crate::messaging::messages::{
+    SEARCH_MENU_NOT_REMOVED, SEARCH_RESULTS_NOT_POSTED, TRACK_UNTITLED,
+};
 use crate::messaging::render::{RenderCx, Rendered};
-use crate::messaging::transport::DiscordTransport;
+use crate::messaging::transport::{DiscordTransport, Transport};
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
@@ -163,7 +165,12 @@ use poise::serenity_prelude::CollectComponentInteractions;
 /// when the length is unknown, cut to 99 characters -- characters, not bytes:
 /// a byte cut panicked mid-character on a title in Japanese.
 fn search_option(hit: &AuxMetadata) -> (String, String) {
-    let title = hit.title.clone().unwrap_or_default();
+    // A select option needs a non-empty label; Discord rejects the whole menu
+    // otherwise. Plain text, not escaped: a select menu renders no markdown.
+    let title = match hit.title.as_deref().map(str::trim) {
+        Some(t) if !t.is_empty() => t.to_owned(),
+        _ => TRACK_UNTITLED.to_owned(),
+    };
     let link = hit.source_url.clone().unwrap_or_default();
     let label = match duration_text(hit.duration) {
         Some(length) => format!("{length}: {title}"),
@@ -201,10 +208,7 @@ pub async fn yt_search_select(
     let out = Rendered::text("Search results").with_components(vec![CreateComponent::ActionRow(
         CreateActionRow::SelectMenu(menu),
     )]);
-    let transport = DiscordTransport {
-        http: ctx.http.clone(),
-        cache: ctx.cache.clone(),
-    };
+    let transport = DiscordTransport::of(&ctx);
     // The collector needs the menu's id, so this send is the fallible one.
     let menu_id = courier::post_message(&transport, channel_id, &out)
         .await
@@ -265,7 +269,10 @@ pub async fn yt_search_select(
         .map_err(|e| e.into())
         .map(|_| qt);
 
-    channel_id.delete_message(ctx.http(), menu_id, None).await?;
+    transport.delete(channel_id, menu_id).await.map_err(|err| {
+        tracing::warn!("search: the results menu was not removed: {err:?}");
+        CrackedError::Other(SEARCH_MENU_NOT_REMOVED)
+    })?;
     res
 }
 
@@ -981,6 +988,18 @@ mod search_option_tests {
             ..Default::default()
         };
         assert_eq!(search_option(&hit).0, "song");
+    }
+
+    /// Discord rejects an empty option label, and the whole menu with it.
+    #[test]
+    fn a_search_option_with_no_title_and_no_length_is_untitled() {
+        let hit = AuxMetadata::default();
+        assert_eq!(search_option(&hit).0, "(untitled)");
+        let blank = AuxMetadata {
+            title: Some("   ".into()),
+            ..Default::default()
+        };
+        assert_eq!(search_option(&blank).0, "(untitled)");
     }
 }
 
