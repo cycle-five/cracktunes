@@ -77,6 +77,11 @@
         "ordinal": 14,
         "name": "ephemeral_replies",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 15,
+        "name": "control_echoes",
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -85,6 +90,7 @@
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       false,
