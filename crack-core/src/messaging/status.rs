@@ -4,7 +4,7 @@
 
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::courier::{post, Destination};
-use crate::messaging::interface::now_playing_card;
+use crate::messaging::interface::now_playing_status_card;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
     NOW_PLAYING_POINTER, STATUS_FINISHED_DESCRIPTION, STATUS_FINISHED_TITLE,
@@ -304,7 +304,7 @@ pub async fn show_now_playing_after(
         return None;
     }
     let track = call.lock().await.queue().current()?;
-    let card = now_playing_card(&track).await;
+    let card = now_playing_status_card(&track, guild).await;
     let msg = CrackedMessage::NowPlayingCard(Box::new(card));
     post(
         data,

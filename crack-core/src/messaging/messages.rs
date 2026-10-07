@@ -527,3 +527,10 @@ pub const PREMIUM_CONTROLS: &str = "Dashboard controls are a premium feature.";
 /// not in the bot's voice channel, under the disabled controls.
 pub const JOIN_VOICE_FOR_CONTROLS: &str = "Join the bot's voice channel to use the controls.";
 pub const PATREON_URL: &str = "https://patreon.com/CrackTunes";
+
+// The now-playing buttons.
+pub const NP_BUTTON_PAUSE: &str = "⏸ Pause";
+pub const NP_BUTTON_RESUME: &str = "▶ Resume";
+pub const NP_BUTTON_SKIP: &str = "⏭ Skip";
+pub const NP_BUTTON_REPEAT: &str = "🔁 Repeat";
+pub const NP_BUTTON_SHUFFLE: &str = "🔀 Shuffle";

@@ -1,5 +1,5 @@
-//! The structured messages: now playing, queued, the echo of a dashboard
-//! control, and their renderers.
+//! The structured messages: now playing, queued, the echo of a dashboard or
+//! button control, and their renderers.
 use crate::messaging::format::{
     clip, duration_text, http_url, progress_text, Progress, TrackLabel, AUTHOR_MAX,
     EMBED_TITLE_MAX, FIELD_MAX, INLINE_TITLE_MAX,
@@ -22,6 +22,8 @@ pub struct NowPlayingCard {
     pub thumbnail: Option<String>,
     pub requester: Option<UserId>,
     pub progress: Progress,
+    /// The buttons: only the status message has them, never a reply or a DM.
+    pub controls: Option<crate::messaging::buttons::Controls>,
 }
 
 /// A track or list added to the queue.
@@ -134,7 +136,11 @@ pub fn now_playing(card: &NowPlayingCard, cx: &RenderCx) -> Rendered {
     if let Some(t) = http_url(card.thumbnail.as_deref()) {
         embed = embed.thumbnail(t.to_string(), None);
     }
-    Rendered::embed(embed)
+    let out = Rendered::embed(embed);
+    match &card.controls {
+        Some(c) => out.with_components(vec![crate::messaging::buttons::now_playing_row(c)]),
+        None => out,
+    }
 }
 
 #[must_use]
@@ -201,6 +207,7 @@ mod tests {
                 position: Duration::from_secs(73),
                 duration: Some(Duration::from_secs(273)),
             },
+            controls: None,
         }
     }
 
@@ -429,5 +436,30 @@ mod tests {
         c.label.title = Some("*".repeat(300));
         let e = v(&queued(&c, &RenderCx::default()));
         assert!(e["title"].as_str().unwrap().chars().count() <= EMBED_TITLE_MAX);
+    }
+
+    #[test]
+    fn a_card_with_controls_carries_one_row_and_one_without_carries_none() {
+        use crate::messaging::buttons::Controls;
+        let mut c = card(None, None);
+        assert!(now_playing(&c, &RenderCx::default()).components.is_empty());
+        c.controls = Some(Controls {
+            guild: serenity::all::GuildId::new(1),
+            track: uuid::Uuid::nil(),
+            paused: false,
+            looping: false,
+        });
+        let r = now_playing(&c, &RenderCx::default());
+        assert_eq!(r.components.len(), 1);
+        let row = serde_json::to_value(&r.components[0]).unwrap();
+        assert_eq!(row["components"][0]["custom_id"], "np:pause:1");
+    }
+
+    /// "None on Finished": the edit to Finished clears the row.
+    #[test]
+    fn the_finished_card_has_no_buttons() {
+        assert!(finished().components.is_empty());
+        let edit = serde_json::to_value(finished().to_edit()).unwrap();
+        assert_eq!(edit["components"].as_array().map(Vec::len), Some(0));
     }
 }
