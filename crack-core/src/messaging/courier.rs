@@ -4,7 +4,7 @@ use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::messaging::status::{self, Phase};
-use crate::messaging::transport::Transport;
+use crate::messaging::transport::{Transport, TransportError};
 use crate::Data;
 use serenity::all::{GenericChannelId, GuildId, MessageId};
 use serenity::async_trait;
@@ -153,6 +153,17 @@ pub enum Destination {
     Echo(GuildId),
 }
 
+/// A fallible send for when the message *is* the command's product (`/grab`'s
+/// DM): nothing is rendered or swallowed here, the caller passes the
+/// `Rendered` and gets the transport's error back.
+pub async fn post_message(
+    transport: &dyn Transport,
+    channel: GenericChannelId,
+    out: &Rendered,
+) -> Result<MessageId, TransportError> {
+    transport.send(channel, out.clone()).await
+}
+
 /// Deliver `msg` to `dest`. Best effort: failures are logged and swallowed,
 /// and the result says where it landed, if anywhere.
 pub async fn post(
@@ -269,6 +280,20 @@ mod tests {
         .await;
         assert_eq!(t.ops(), vec![Op::Send(7)]);
         assert_eq!(at, Some((GenericChannelId::new(7), MessageId::new(1000))));
+    }
+
+    /// Covers `/grab`'s DM: the glue needs a live context, this is the
+    /// fallible seam it relies on.
+    #[tokio::test]
+    async fn post_message_returns_the_transport_failure() {
+        let t = FakeTransport::default();
+        let out = render(&CrackedMessage::Clear, &cx());
+        let ok = post_message(&t, GenericChannelId::new(7), &out).await;
+        assert_eq!(ok, Ok(MessageId::new(1000)));
+        assert_eq!(t.ops(), vec![Op::Send(7)]);
+        *t.send_error.lock().unwrap() = Some(TransportError::Other("Cannot send".into()));
+        let err = post_message(&t, GenericChannelId::new(7), &out).await;
+        assert_eq!(err, Err(TransportError::Other("Cannot send".into())));
     }
 
     #[tokio::test]

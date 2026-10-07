@@ -1,8 +1,9 @@
 use crate::commands::help;
 use crate::errors::CrackedError;
-use crate::messaging::courier::{self, Destination};
+use crate::messaging::courier;
 use crate::messaging::interface;
-use crate::messaging::render::RenderCx;
+use crate::messaging::messages::GRAB_DM_FAILED;
+use crate::messaging::render::{render, RenderCx};
 use crate::messaging::status::DiscordTransport;
 use crate::poise_ext::{ContextExt, PoiseContextExt};
 use crate::{Context, CrackedMessage, Error};
@@ -41,14 +42,12 @@ async fn grab_internal(ctx: Context<'_>) -> Result<(), Error> {
         http: ctx.serenity_context().http.clone(),
         cache: ctx.serenity_context().cache.clone(),
     };
-    courier::post(
-        &ctx.data(),
-        &transport,
-        Destination::Channel(chan_id),
-        &msg,
-        &RenderCx::now(),
-    )
-    .await;
+    courier::post_message(&transport, chan_id, &render(&msg, &RenderCx::now()))
+        .await
+        .map_err(|err| {
+            tracing::warn!("/grab: the DM was not delivered: {err:?}");
+            CrackedError::Other(GRAB_DM_FAILED)
+        })?;
 
     ctx.send_reply_embed(CrackedMessage::GrabbedNotice).await?;
 

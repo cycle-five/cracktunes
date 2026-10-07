@@ -137,6 +137,8 @@ pub const JOINING: &str = "Joining";
 /// an action that did not happen.
 pub const ALREADY_HERE: &str = "Already in";
 pub const KICKED: &str = "Kicked";
+/// `/grab` could not deliver the DM (usually closed DMs).
+pub const GRAB_DM_FAILED: &str = "Could not send you a DM. Check that your DMs are open.";
 pub const GRABBED_NOTICE: &str = "📃 Sent you a DM with the current track!";
 pub const LEAVING: &str = "👋 See you soon!";
 pub const LOOP_DISABLED: &str = "🔁 Disabled loop!";
