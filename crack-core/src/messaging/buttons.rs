@@ -20,8 +20,9 @@ use crate::music::remote::{self, Control, ControlRefused, Echo};
 use crate::Data;
 use serenity::all::{
     ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton, CreateComponent,
-    GenericChannelId, GuildId, Member, UserId,
+    GenericChannelId, GuildId, Member, ReactionType, UserId,
 };
+use serenity::small_fixed_array::FixedString;
 use std::borrow::Cow;
 use std::future::Future;
 use std::sync::Arc;
@@ -193,8 +194,11 @@ pub fn now_playing_row(c: &Controls) -> CreateComponent<'static> {
     ])))
 }
 
-fn button(b: NowPlayingButton, label: &'static str, style: ButtonStyle) -> CreateButton<'static> {
-    CreateButton::new(b.custom_id()).label(label).style(style)
+/// A button that is only its symbol: no text label (#588).
+fn button(b: NowPlayingButton, emoji: &'static str, style: ButtonStyle) -> CreateButton<'static> {
+    CreateButton::new(b.custom_id())
+        .emoji(ReactionType::Unicode(FixedString::from_static_trunc(emoji)))
+        .style(style)
 }
 
 /// Who pressed, and where: the parts of the interaction `respond` reads.
@@ -406,15 +410,18 @@ mod tests {
     fn row_json(c: &Controls) -> serde_json::Value {
         serde_json::to_value(now_playing_row(c)).unwrap()
     }
-    fn ids_labels_styles(v: &serde_json::Value) -> Vec<(String, String, u64)> {
+    /// Each button's `(custom_id, emoji, style)`. A button has no text label
+    /// (#588): a labelled row wrapped unevenly on narrow screens.
+    fn ids_emoji_styles(v: &serde_json::Value) -> Vec<(String, String, u64)> {
         v["components"]
             .as_array()
             .expect("an action row")
             .iter()
             .map(|b| {
+                assert!(b.get("label").is_none(), "a button with a label: {b}");
                 (
                     b["custom_id"].as_str().unwrap().to_owned(),
-                    b["label"].as_str().unwrap().to_owned(),
+                    b["emoji"]["name"].as_str().unwrap().to_owned(),
                     b["style"].as_u64().unwrap(),
                 )
             })
@@ -431,24 +438,16 @@ mod tests {
             looping: false,
         };
         assert_eq!(
-            ids_labels_styles(&row_json(&c)),
+            ids_emoji_styles(&row_json(&c)),
             vec![
-                ("np:pause:123456789012345678".into(), "⏸ Pause".into(), 2),
+                ("np:pause:123456789012345678".into(), "⏸️".into(), 2),
                 (
                     "np:skip:123456789012345678:67e55044-10b1-426f-9247-bb680e5fe0c8".into(),
-                    "⏭ Skip".into(),
+                    "⏭️".into(),
                     2
                 ),
-                (
-                    "np:repeat-on:123456789012345678".into(),
-                    "🔁 Repeat".into(),
-                    2
-                ),
-                (
-                    "np:shuffle:123456789012345678".into(),
-                    "🔀 Shuffle".into(),
-                    2
-                ),
+                ("np:repeat-on:123456789012345678".into(), "🔁".into(), 2),
+                ("np:shuffle:123456789012345678".into(), "🔀".into(), 2),
             ]
         );
     }
@@ -462,18 +461,14 @@ mod tests {
             paused: true,
             looping: true,
         };
-        let got = ids_labels_styles(&row_json(&c));
+        let got = ids_emoji_styles(&row_json(&c));
         assert_eq!(
             got[0],
-            ("np:resume:123456789012345678".into(), "▶ Resume".into(), 2)
+            ("np:resume:123456789012345678".into(), "▶️".into(), 2)
         );
         assert_eq!(
             got[2],
-            (
-                "np:repeat-off:123456789012345678".into(),
-                "🔁 Repeat".into(),
-                3
-            )
+            ("np:repeat-off:123456789012345678".into(), "🔁".into(), 3)
         );
     }
 

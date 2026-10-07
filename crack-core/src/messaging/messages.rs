@@ -529,9 +529,11 @@ pub const PREMIUM_CONTROLS: &str = "Dashboard controls are a premium feature.";
 pub const JOIN_VOICE_FOR_CONTROLS: &str = "Join the bot's voice channel to use the controls.";
 pub const PATREON_URL: &str = "https://patreon.com/CrackTunes";
 
-// The now-playing buttons.
-pub const NP_BUTTON_PAUSE: &str = "⏸ Pause";
-pub const NP_BUTTON_RESUME: &str = "▶ Resume";
-pub const NP_BUTTON_SKIP: &str = "⏭ Skip";
-pub const NP_BUTTON_REPEAT: &str = "🔁 Repeat";
-pub const NP_BUTTON_SHUFFLE: &str = "🔀 Shuffle";
+// The now-playing buttons: symbols only, so the row never wraps unevenly on
+// a narrow screen (#588). Fully qualified (with U+FE0F where a symbol has a
+// text form), which is what Discord expects of a button emoji.
+pub const NP_BUTTON_PAUSE: &str = "⏸️";
+pub const NP_BUTTON_RESUME: &str = "▶️";
+pub const NP_BUTTON_SKIP: &str = "⏭️";
+pub const NP_BUTTON_REPEAT: &str = "🔁";
+pub const NP_BUTTON_SHUFFLE: &str = "🔀";

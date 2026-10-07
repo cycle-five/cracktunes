@@ -125,7 +125,8 @@
   means in Docker Compose, where the bot's own localhost is not the sleevenote
   container.
 - **Buttons on the now-playing message.** Pause or Resume, Skip, Repeat and
-  Shuffle, for anyone who may use the music commands there (the music channel
+  Shuffle, as symbols only (⏸️ ▶️ ⏭️ 🔁 🔀) so the row stays on one line on a
+  phone, for anyone who may use the music commands there (the music channel
   and `/gp` rules apply). A press posts an echo line naming who pressed it, as
   a dashboard control does, and the status message updates below it. Skip names
   the song it was drawn for, so an old message or two people pressing at once
