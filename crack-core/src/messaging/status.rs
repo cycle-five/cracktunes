@@ -299,6 +299,20 @@ pub async fn show_now_playing_after(
     call: &Arc<Mutex<Call>>,
     after: Option<(GenericChannelId, MessageId)>,
 ) -> Option<StatusMessage> {
+    show_now_playing_on(data, &DiscordTransport { http, cache }, guild, call, after).await
+}
+
+/// [`show_now_playing_after`] over any [`Transport`], so a test can read
+/// what is sent.
+///
+/// 🔑 The same lock order as [`show_now_playing`]: hold no Call lock.
+pub(crate) async fn show_now_playing_on(
+    data: &Data,
+    transport: &dyn Transport,
+    guild: GuildId,
+    call: &Arc<Mutex<Call>>,
+    after: Option<(GenericChannelId, MessageId)>,
+) -> Option<StatusMessage> {
     // A `/gp` round is guessing the song: the status would give it away.
     if data.gp_is_active(guild) {
         return None;
@@ -308,7 +322,7 @@ pub async fn show_now_playing_after(
     let msg = CrackedMessage::NowPlayingCard(Box::new(card));
     post(
         data,
-        &DiscordTransport { http, cache },
+        transport,
         Destination::Status { guild, after },
         &msg,
         &RenderCx::now(),
@@ -944,5 +958,27 @@ mod tests {
 
         assert_eq!(announce(&data, &fake, GUILD, embed()).await, None);
         assert_eq!(fake.ops(), vec![Op::Send(10)]);
+    }
+
+    /// The status is rendered through the buttons card: its first component
+    /// carries the Pause button for track guild 1.
+    #[tokio::test]
+    async fn the_now_playing_status_carries_the_button_row() {
+        use crate::music::ops::test_support::queue_of;
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let (data, call, _ids, _rx) = queue_of(1).await;
+            note_command_channel(&data, GUILD, ch(10)).await;
+            let t = FakeTransport::default();
+
+            let shown = show_now_playing_on(&data, &t, GUILD, &call, None).await;
+
+            assert!(shown.is_some());
+            assert_eq!(t.ops(), vec![Op::Send(10)]);
+            let sent = t.sent.lock().unwrap();
+            let row = serde_json::to_value(&sent[0].components[0]).unwrap();
+            assert_eq!(row["components"][0]["custom_id"], "np:pause:1");
+        })
+        .await
+        .expect("get_info is bounded, so the render finishes");
     }
 }
