@@ -127,6 +127,23 @@
 
 ### Changed
 
+- **The now-playing message shows when the track ends**, counted down live by
+  Discord ("4:33 · ends in 3 minutes"), "Paused at 1:12" while paused, and
+  "Started … ago" for a live stream. Ticking in real time between events is a
+  planned follow-up.
+- **Durations read `m:ss`, or `h:mm:ss` from an hour up**, everywhere.
+- **Reply embeds carry a colour stripe by kind:** errors red, everything else
+  blue. Before, most replies had no colour and errors were blue.
+- **The autoplay notices and the idle-leave alert are embeds** like every other
+  notice.
+- **Nothing the bot says can ping @everyone, a role or a user by accident.**
+  Every message states who it may ping, and the default is nobody; for one,
+  `/diagnose`'s mention no longer pings.
+- **Every music message now goes through one renderer and one delivery path**,
+  and clippy refuses raw Discord sends outside `crack-core::messaging`. The
+  modules not yet migrated (`/gp`, admin, settings, utility, ...) are marked and
+  move in follow-ups.
+
 - **Free servers now see 24 hours of queue history.** The dashboard's history page and
   `/auditlog` show free servers the last 24 hours, and premium servers everything. When
   older entries exist, both say older history is a premium feature and link the
@@ -160,6 +177,37 @@
   degrades with a message saying so.
 
 ### Fixed
+
+- **A track with no title read "⏭️ Skipped to **!"** (and "Couldn't play **", and
+  so on); it now reads "(untitled)". Blank queue lines, playlist lines and
+  search-menu labels do too; an empty search-menu label would have made Discord
+  reject the whole menu.
+- **Titles with `*`, `_`, backticks, brackets, `<` or `@` broke the message's
+  formatting or could ping** (`@everyone` in a title). Titles are now escaped
+  everywhere they appear: skip, queued, now playing, queue pages, `/nowplaying`'s
+  pointer, `/playlog`, `/myplaylog`, `/spotify`, `/playytplaylist`, failure
+  notices and the dashboard's echo lines.
+- **"Track duration: 00:00" and the "Estimated time until play" built on it no
+  longer appear when a length is unknown.** The estimate itself was wrong: it
+  counted the playing track's whole length once per track ahead, could show "∞"
+  for a live stream, and could hang reading track info. It now sums each track's
+  own remaining length, and is left out when any length is unknown.
+- **A title is a link only when its URL is a real http(s) URL.** No more
+  `[**x**]()` links to nowhere, and parentheses in a URL no longer cut the link
+  short.
+- **No more `RelativeUrlWithoutBase` errors in the log, or "Streaming via
+  unknown" footer,** for tracks without a link or thumbnail.
+- **`/search` no longer panics on long titles in Japanese, emoji and the like.**
+  Labels were cut by bytes, not characters.
+- **`/play` in play-all, reverse or shuffle mode with plain keywords answered as
+  if it had worked** ("Now playing ...", "No tracks in queue!"). It now says it
+  can't do that, with the existing play-all failure text, and removes the
+  "🔎 Searching..." placeholder.
+- **`/grab` said "grabbed" even when your DMs were closed.** It now says "Could
+  not send you a DM. Check that your DMs are open." With nothing playing it says
+  so as an error instead of sending a "Nothing playing" DM.
+- **Plain-text replies no longer carry stray ANSI colour codes.** They were
+  invisible only because the container's stdout is not a terminal.
 
 - **A track that could not play now says so.** songbird ends a track it cannot
   open or decode, and the queue moved on in silence: SoundCloud's undecodable

@@ -45,7 +45,7 @@ Each control posts one line in Discord, where the now-playing message goes,
 such as "⏸ Paused from the dashboard — @member". After a skip, the new
 now-playing message lands below that line; the other controls leave the
 now-playing message where it is. The line is an embed, so the mention never
-pings, and a title in it is cut to 40 characters. A refused control posts
+pings, and a title in it is cut to 60 characters and escaped. A refused control posts
 nothing, and a move stays silent, as it always has.
 
 Each one is recorded in `queue_audit` with source `web` and command
