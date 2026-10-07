@@ -145,7 +145,7 @@ pub fn history_page(guild_name: &str, guild_id: GuildId, page: &HistoryPage) -> 
 <label>Action <select id=\"f-action\"><option value=\"\">all</option>{actions}</select></label>\
 <label>Source <select id=\"f-source\"><option value=\"\">all</option>\
 <option value=\"slash\">slash</option><option value=\"prefix\">prefix</option>\
-<option value=\"web\">dashboard</option><option value=\"bot\">bot</option></select></label>\
+<option value=\"web\">dashboard</option><option value=\"button\">button</option><option value=\"bot\">bot</option></select></label>\
 <label>Since <select id=\"f-since\"><option value=\"\">all</option>\
 <option value=\"1h\">1 h</option><option value=\"6h\">6 h</option>\
 <option value=\"1d\">1 d</option><option value=\"1w\">1 w</option></select></label>\
