@@ -1,4 +1,4 @@
-//! Queue operations for callers with no poise `Context` -- the web dashboard.
+//! Queue operations for callers with no poise `Context` -- the web dashboard and the now-playing buttons.
 //!
 //! Everything that touches songbird for the dashboard lives here, inside
 //! crack-core, so it stays behind this crate's `clippy.toml` bans (no
@@ -286,18 +286,52 @@ impl From<&ops::OpRefused> for ControlRefused {
 
 pub use crate::messaging::cards::Echo;
 
-/// Run a control for `user`. On success the echo is returned at once; posting
-/// it and settling happen in the background. The settle is anchored after the
-/// echo, so after a skip, pause, resume or repeat the now-playing message is
-/// re-rendered below it.
+/// The audit actor for a control from `via`.
+pub(crate) fn actor_for(via: Via, user: UserId, op: &'static str) -> Actor {
+    match via {
+        Via::Dashboard => Actor::web(user, op),
+        Via::Button => Actor::button(user, op),
+    }
+}
+
+/// Whether `c` changes anything, given the playing track's `(paused, looping)`
+/// before it ran. Unknown (`None`) is a change: echoing a no-op is the old
+/// behaviour, and staying silent about a real change would be worse.
+pub(crate) fn changes(c: Control, before: Option<(bool, bool)>) -> bool {
+    match (c, before) {
+        (Control::Pause, Some((paused, _))) => !paused,
+        (Control::Resume, Some((paused, _))) => paused,
+        (Control::Repeat { on }, Some((_, looping))) => on != looping,
+        _ => true,
+    }
+}
+
+/// The playing track's `(paused, looping)`, or `None` when nothing plays or
+/// the driver does not answer within the bound. The Call lock is held only to
+/// clone the handle.
+pub(crate) async fn flags_before(call: &Arc<Mutex<Call>>) -> Option<(bool, bool)> {
+    let current = call.lock().await.queue().current()?;
+    let info = tokio::time::timeout(ops::TRACK_INFO_TIMEOUT, current.get_info())
+        .await
+        .ok()?
+        .ok()?;
+    Some(playback_flags(Some(&info)))
+}
+
+/// Run a control for `user`, from the dashboard or a button. On success the
+/// echo is returned at once, or `None` when the control changed nothing;
+/// posting it (if the guild's `control_echoes` is on) and settling happen in
+/// the background. The settle is anchored after the echo, so after a skip,
+/// pause, resume or repeat the now-playing message is re-rendered below it.
 pub async fn control(
     data: Arc<Data>,
     http: Arc<Http>,
     cache: Arc<Cache>,
     guild_id: GuildId,
     user: UserId,
+    via: Via,
     c: Control,
-) -> Result<Echo, ControlRefused> {
+) -> Result<Option<Echo>, ControlRefused> {
     let op = match c {
         Control::Skip { .. } => "skip",
         Control::Pause => "pause",
@@ -311,12 +345,15 @@ pub async fn control(
         http,
         cache,
         guild_id,
-        actor: Actor::web(user, op),
+        actor: actor_for(via, user, op),
     };
     let (guard, call) = ops::begin(&cx)
         .await
         .map_err(|r| ControlRefused::from(&r))?;
-    let (echo, settle) = run_control(&guard, &call, c)
+    // Under the lease, bounded: what the track was doing decides whether the
+    // control changes anything worth echoing.
+    let before = flags_before(&call).await;
+    let (echo, settle) = run_control(&guard, &call, c, before)
         .await
         .map_err(|r| ControlRefused::from(&r))?;
     // The lease covers the op only; announcing and settling run without it.
@@ -327,31 +364,35 @@ pub async fn control(
             http: cx.http.clone(),
             cache: cx.cache.clone(),
         };
-        let line = EchoLine {
-            echo: posted,
-            user,
-            via: Via::Dashboard,
+        let anchor = match posted {
+            Some(echo) => {
+                let line = EchoLine { echo, user, via };
+                courier::post(
+                    &cx.data,
+                    &transport,
+                    Destination::Echo(guild_id),
+                    &CrackedMessage::Echo(Box::new(line)),
+                    &RenderCx::now(),
+                )
+                .await
+            },
+            None => None,
         };
-        let anchor = courier::post(
-            &cx.data,
-            &transport,
-            Destination::Echo(guild_id),
-            &CrackedMessage::Echo(Box::new(line)),
-            &RenderCx::now(),
-        )
-        .await;
         settle.after(&cx, Some(&call), anchor).await;
     });
     Ok(echo)
 }
 
-/// Run `c` under `guard` on `call`: the op, and what to echo. No Discord.
+/// Run `c` under `guard` on `call`: the op, and what to echo (`None` when it
+/// changed nothing). No Discord.
 pub(crate) async fn run_control(
     guard: &QueueGuard,
     call: &Arc<Mutex<Call>>,
     c: Control,
-) -> Result<(Echo, ops::Settle), ops::OpRefused> {
-    Ok(match c {
+    before: Option<(bool, bool)>,
+) -> Result<(Option<Echo>, ops::Settle), ops::OpRefused> {
+    let changed = changes(c, before);
+    let (echo, settle, changed) = match c {
         Control::Skip { expect } => {
             let (s, settle, _) = ops::skip_on(guard, call, 1, Some(expect))
                 .await?
@@ -361,19 +402,20 @@ pub(crate) async fn run_control(
                     title: s.skipped.and_then(|t| t.title),
                 },
                 settle,
+                changed,
             )
         },
         Control::Pause => {
             let (_, settle, _) = ops::pause_on(guard, call).await?.into_parts();
-            (Echo::Paused, settle)
+            (Echo::Paused, settle, changed)
         },
         Control::Resume => {
             let (_, settle, _) = ops::resume_on(guard, call).await?.into_parts();
-            (Echo::Resumed, settle)
+            (Echo::Resumed, settle, changed)
         },
         Control::Repeat { on } => {
             let (_, settle, _) = ops::repeat_on(guard, call, Some(on)).await?.into_parts();
-            (Echo::Repeat { on }, settle)
+            (Echo::Repeat { on }, settle, changed)
         },
         Control::Remove { id } => {
             let (r, settle, _) = ops::remove_on(guard, call, ops::Target::Id(id))
@@ -384,13 +426,16 @@ pub(crate) async fn run_control(
                     title: r.first.title,
                 },
                 settle,
+                changed,
             )
         },
         Control::Shuffle => {
-            let (_, settle, _) = ops::shuffle_on(guard, call).await?.into_parts();
-            (Echo::Shuffled, settle)
+            let (s, settle, _) = ops::shuffle_on(guard, call).await?.into_parts();
+            // Fewer than two upcoming tracks: nothing moved.
+            (Echo::Shuffled, settle, s.count > 0)
         },
-    })
+    };
+    Ok((changed.then_some(echo), settle))
 }
 
 #[cfg(test)]
@@ -479,6 +524,38 @@ mod test {
             .expect("read_flags outlived TRACK_INFO_TIMEOUT");
         assert_eq!(got, (false, false));
         assert_eq!(read_flags(&[]).await, (false, false));
+    }
+
+    #[test]
+    fn a_control_that_would_change_nothing_is_not_a_change() {
+        // (paused, looping) before the control ran.
+        assert!(!changes(Control::Pause, Some((true, false))));
+        assert!(changes(Control::Pause, Some((false, false))));
+        assert!(!changes(Control::Resume, Some((false, true))));
+        assert!(changes(Control::Resume, Some((true, true))));
+        assert!(!changes(Control::Repeat { on: true }, Some((false, true))));
+        assert!(changes(Control::Repeat { on: true }, Some((false, false))));
+        assert!(!changes(Control::Repeat { on: false }, Some((true, false))));
+        // Unknown state: echo, as before.
+        assert!(changes(Control::Pause, None));
+        assert!(changes(Control::Repeat { on: false }, None));
+        // Skip and remove always change something (a stale skip is refused).
+        assert!(changes(
+            Control::Skip {
+                expect: uuid::Uuid::nil()
+            },
+            Some((true, true))
+        ));
+    }
+
+    #[test]
+    fn a_button_acts_as_a_button_and_the_dashboard_as_the_web() {
+        let b = actor_for(Via::Button, UserId::new(9), "skip");
+        assert_eq!(b.source(), crate::music::audit::Source::Button);
+        assert_eq!(b.command(), "button skip");
+        let w = actor_for(Via::Dashboard, UserId::new(9), "skip");
+        assert_eq!(w.source(), crate::music::audit::Source::Web);
+        assert_eq!(w.command(), "dashboard skip");
     }
 
     #[tokio::test]
@@ -611,6 +688,7 @@ mod test {
             Arc::new(Cache::default()),
             G,
             UserId::new(9),
+            Via::Dashboard,
             Control::Pause,
         )
         .await;
@@ -626,6 +704,7 @@ mod test {
             Arc::new(Cache::default()),
             G,
             UserId::new(9),
+            Via::Dashboard,
             Control::Shuffle,
         )
         .await;
@@ -660,8 +739,8 @@ mod test {
         async fn pause_pauses_and_echoes_paused() {
             let (data, call, _, mut rx) = queue_of(2).await;
             let g = guard(&data).await;
-            let (echo, settle) = run_control(&g, &call, Control::Pause).await.unwrap();
-            assert_eq!(echo, Echo::Paused);
+            let (echo, settle) = run_control(&g, &call, Control::Pause, None).await.unwrap();
+            assert_eq!(echo, Some(Echo::Paused));
             assert_eq!(settle, Settle::NowPlaying);
             assert_eq!(recorded(&mut rx), vec![Action::Pause]);
         }
@@ -670,8 +749,8 @@ mod test {
         async fn resume_resumes_and_echoes_resumed() {
             let (data, call, _, mut rx) = queue_of(2).await;
             let g = guard(&data).await;
-            let (echo, settle) = run_control(&g, &call, Control::Resume).await.unwrap();
-            assert_eq!(echo, Echo::Resumed);
+            let (echo, settle) = run_control(&g, &call, Control::Resume, None).await.unwrap();
+            assert_eq!(echo, Some(Echo::Resumed));
             assert_eq!(settle, Settle::NowPlaying);
             assert_eq!(recorded(&mut rx), vec![Action::Resume]);
         }
@@ -684,22 +763,22 @@ mod test {
             let g = guard(&data).await;
             let (echo, settle) = tokio::time::timeout(
                 std::time::Duration::from_secs(5),
-                run_control(&g, &call, Control::Repeat { on: true }),
+                run_control(&g, &call, Control::Repeat { on: true }, None),
             )
             .await
             .expect("repeat hung")
             .unwrap();
-            assert_eq!(echo, Echo::Repeat { on: true });
+            assert_eq!(echo, Some(Echo::Repeat { on: true }));
             assert_eq!(settle, Settle::NowPlaying);
             assert_eq!(recorded(&mut rx), vec![Action::Repeat { on: true }]);
             let (echo, _) = tokio::time::timeout(
                 std::time::Duration::from_secs(5),
-                run_control(&g, &call, Control::Repeat { on: false }),
+                run_control(&g, &call, Control::Repeat { on: false }, None),
             )
             .await
             .expect("repeat hung")
             .unwrap();
-            assert_eq!(echo, Echo::Repeat { on: false });
+            assert_eq!(echo, Some(Echo::Repeat { on: false }));
             assert_eq!(recorded(&mut rx), vec![Action::Repeat { on: false }]);
         }
 
@@ -707,14 +786,14 @@ mod test {
         async fn remove_takes_out_that_track_and_names_it() {
             let (data, call, ids, _) = queue_of(4).await;
             let g = guard(&data).await;
-            let (echo, settle) = run_control(&g, &call, Control::Remove { id: ids[2] })
+            let (echo, settle) = run_control(&g, &call, Control::Remove { id: ids[2] }, None)
                 .await
                 .unwrap();
             assert_eq!(
                 echo,
-                Echo::Removed {
+                Some(Echo::Removed {
                     title: Some("t2".into())
-                }
+                })
             );
             assert_eq!(settle, Settle::QueueMessages);
             assert_eq!(ids_of(&call).await, vec![ids[0], ids[1], ids[3]]);
@@ -724,14 +803,14 @@ mod test {
         async fn skip_advances_and_names_what_it_skipped() {
             let (data, call, ids, _) = queue_of(3).await;
             let g = guard(&data).await;
-            let (echo, settle) = run_control(&g, &call, Control::Skip { expect: ids[0] })
+            let (echo, settle) = run_control(&g, &call, Control::Skip { expect: ids[0] }, None)
                 .await
                 .unwrap();
             assert_eq!(
                 echo,
-                Echo::Skipped {
+                Some(Echo::Skipped {
                     title: Some("t0".into())
-                }
+                })
             );
             assert_eq!(settle, Settle::NowPlaying);
             assert_eq!(ids_of(&call).await, ids[1..].to_vec());
@@ -741,18 +820,58 @@ mod test {
         async fn a_stale_skip_is_refused_and_changes_nothing() {
             let (data, call, ids, mut rx) = queue_of(3).await;
             let g = guard(&data).await;
-            let got = run_control(&g, &call, Control::Skip { expect: ids[1] }).await;
+            let got = run_control(&g, &call, Control::Skip { expect: ids[1] }, None).await;
             assert!(matches!(got, Err(OpRefused::Stale)), "{got:?}");
             assert_eq!(ids_of(&call).await, ids);
             assert!(recorded(&mut rx).is_empty());
+        }
+
+        /// A redundant pause (a stale tab, an old status message) still pauses
+        /// and still settles, but there is nothing to echo.
+        #[tokio::test]
+        async fn a_pause_of_a_paused_track_echoes_nothing() {
+            let (data, call, _, mut rx) = queue_of(2).await;
+            let g = guard(&data).await;
+            let (echo, settle) = run_control(&g, &call, Control::Pause, Some((true, false)))
+                .await
+                .unwrap();
+            assert_eq!(echo, None);
+            assert_eq!(settle, Settle::NowPlaying);
+            assert_eq!(recorded(&mut rx), vec![Action::Pause]);
+        }
+
+        #[tokio::test]
+        async fn shuffling_one_track_echoes_nothing() {
+            let (data, call, _, _) = queue_of(1).await;
+            let g = guard(&data).await;
+            let (echo, _) = run_control(&g, &call, Control::Shuffle, None)
+                .await
+                .unwrap();
+            assert_eq!(echo, None);
+        }
+
+        /// Review Focus 5: a driver that never answers must not hang the
+        /// before-read.
+        #[tokio::test]
+        async fn the_before_read_of_a_stalled_driver_is_unknown_within_the_bound() {
+            let (_data, call, _, _) = queue_of(1).await;
+            let got = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                super::super::flags_before(&call),
+            )
+            .await
+            .expect("flags_before outlived TRACK_INFO_TIMEOUT");
+            assert_eq!(got, None);
         }
 
         #[tokio::test]
         async fn shuffle_keeps_the_playing_track_first() {
             let (data, call, ids, _) = queue_of(6).await;
             let g = guard(&data).await;
-            let (echo, settle) = run_control(&g, &call, Control::Shuffle).await.unwrap();
-            assert_eq!(echo, Echo::Shuffled);
+            let (echo, settle) = run_control(&g, &call, Control::Shuffle, None)
+                .await
+                .unwrap();
+            assert_eq!(echo, Some(Echo::Shuffled));
             assert_eq!(settle, Settle::QueueMessages);
             let after = ids_of(&call).await;
             assert_eq!(after[0], ids[0]);

@@ -37,6 +37,8 @@ pub struct QueuedCard {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Via {
     Dashboard,
+    /// A now-playing button, pressed in Discord.
+    Button,
 }
 
 /// A control's echo line, with who did it and from where.
@@ -50,7 +52,7 @@ pub struct EchoLine {
 impl EchoLine {
     #[must_use]
     pub fn line(&self) -> String {
-        self.echo.line(self.user)
+        self.echo.line(self.user, self.via)
     }
 }
 
@@ -70,7 +72,7 @@ impl Echo {
     /// are cut to `INLINE_TITLE_MAX` characters, then escaped; a blank one is
     /// `(untitled)`, never `****`.
     #[must_use]
-    pub fn line(&self, user: UserId) -> String {
+    pub fn line(&self, user: UserId, via: Via) -> String {
         let (what, title) = match self {
             Self::Skipped { title } => (ECHO_SKIPPED, title.as_deref()),
             Self::Paused => (ECHO_PAUSED, None),
@@ -80,16 +82,21 @@ impl Echo {
             Self::Removed { title } => (ECHO_REMOVED, title.as_deref()),
             Self::Shuffled => (ECHO_SHUFFLED, None),
         };
+        // A press in Discord is visibly in Discord; the dashboard says so.
+        let from = match via {
+            Via::Dashboard => format!(" {ECHO_FROM_DASHBOARD}"),
+            Via::Button => String::new(),
+        };
         match title {
             Some(t) => format!(
-                "{what} **{}** {ECHO_FROM_DASHBOARD} — <@{user}>",
+                "{what} **{}**{from} — <@{user}>",
                 TrackLabel {
                     title: Some(t.to_owned()),
                     ..TrackLabel::default()
                 }
                 .title_text(INLINE_TITLE_MAX)
             ),
-            None => format!("{what} {ECHO_FROM_DASHBOARD} — <@{user}>"),
+            None => format!("{what}{from} — <@{user}>"),
         }
     }
 }
@@ -290,6 +297,30 @@ mod tests {
         );
     }
 
+    /// Ruling 4: a press in Discord needs no "from ..."; the dashboard keeps its.
+    #[test]
+    fn a_button_echo_has_no_source_suffix() {
+        let skipped = Echo::Skipped {
+            title: Some("t0".into()),
+        };
+        assert_eq!(
+            skipped.line(UserId::new(42), Via::Button),
+            "⏭ Skipped **t0** — <@42>"
+        );
+        assert_eq!(
+            skipped.line(UserId::new(42), Via::Dashboard),
+            "⏭ Skipped **t0** from the dashboard — <@42>"
+        );
+        assert_eq!(
+            Echo::Paused.line(UserId::new(42), Via::Button),
+            "⏸ Paused — <@42>"
+        );
+        assert_eq!(
+            Echo::Repeat { on: true }.line(UserId::new(42), Via::Button),
+            "🔁 Repeat on — <@42>"
+        );
+    }
+
     /// A blank title (a members-only link queues `Some("")`) echoed as
     /// "⏭ Skipped **** …"; it is `(untitled)`, as everywhere else.
     #[test]
@@ -299,7 +330,7 @@ mod tests {
                 title: Some(blank.into()),
             };
             assert_eq!(
-                echo.line(UserId::new(42)),
+                echo.line(UserId::new(42), Via::Dashboard),
                 "⏭ Skipped **(untitled)** from the dashboard — <@42>",
                 "{blank:?}"
             );
