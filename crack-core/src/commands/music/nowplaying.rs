@@ -1,7 +1,7 @@
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::courier;
 use crate::messaging::format::{TrackLabel, INLINE_TITLE_MAX};
-use crate::messaging::message::CrackedMessage;
+use crate::messaging::render::Rendered;
 use crate::messaging::status::{
     now_playing_pointer, pointer_goes_first, reply_privately, show_now_playing,
     show_now_playing_after,
@@ -38,7 +38,18 @@ pub async fn nowplaying(
     nowplaying_internal(ctx).await
 }
 
-/// `/nowplaying`'s one-line pointer. The title is whatever the uploader
+/// `/nowplaying`'s one-line reply, as plain message content (v0.13.0 replaced
+/// an embed with it on purpose).
+///
+/// 🔑 Mentions are suppressed: `Rendered::text` defaults to `Mentions::None`,
+/// an empty allow-list. The pointer carries a track title, and the title is
+/// whatever the uploader chose: `@everyone` or `<@&role>` in it would
+/// otherwise ping.
+fn pointer_reply(content: String) -> Rendered {
+    Rendered::text(content)
+}
+
+/// `/nowplaying`'s one-line pointer text. The title is whatever the uploader
 /// chose, so it arrives escaped (`a*b` must not turn the rest bold) and
 /// `(untitled)` when blank.
 ///
@@ -82,12 +93,8 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
     let serenity_ctx = ctx.serenity_context();
 
     if pointer_goes_first(private, music_channel, ctx.channel_id()) {
-        let reply = courier::reply_as(
-            ctx,
-            CrackedMessage::Other(pointer_text(&meta, None)),
-            private,
-        )
-        .await?;
+        let reply =
+            courier::reply_rendered(ctx, pointer_reply(pointer_text(&meta, None)), private).await?;
         // 🔑 The reply's gateway echo almost never reaches the cache in the
         // few milliseconds before the status reads it, so the reply itself is
         // the floor: without it the status is edited in place above the "↓".
@@ -112,12 +119,7 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
         )
         .await;
         let link = shown.map(|status| status.id.link(status.channel, Some(guild_id)));
-        courier::reply_as(
-            ctx,
-            CrackedMessage::Other(pointer_text(&meta, link)),
-            private,
-        )
-        .await?;
+        courier::reply_rendered(ctx, pointer_reply(pointer_text(&meta, link)), private).await?;
     }
     Ok(())
 }
@@ -138,6 +140,17 @@ mod tests {
     fn the_pointer_escapes_the_title() {
         let text = pointer_text(&titled("a*b"), None);
         assert!(text.contains("a\\*b"), "{text}");
+    }
+
+    /// 🔑 Plain content, never an embed, and it pings nobody.
+    #[test]
+    fn the_pointer_is_plain_content_that_never_pings() {
+        let text = pointer_text(&titled("@everyone <@&1> <@2>"), None);
+        let reply = pointer_reply(text.clone());
+        assert!(reply.embed.is_none());
+        assert_eq!(reply.content.as_deref(), Some(text.as_str()));
+        let am = serde_json::to_value(reply.allowed_mentions()).unwrap();
+        assert_eq!(am["parse"], serde_json::json!([]));
     }
 
     #[test]
