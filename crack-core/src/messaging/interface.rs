@@ -599,10 +599,9 @@ mod test {
             )
             .await
             .unwrap();
-        let call = std::sync::Arc::new(tokio::sync::Mutex::new(songbird::Call::standalone(
-            guild,
-            UserId::new(2),
-        )));
+        let call = std::sync::Arc::new(tokio::sync::Mutex::new(
+            crate::music::ops::test_support::standalone_call(guild, UserId::new(2)),
+        ));
         for (metadata, requester) in tracks {
             let source = songbird::input::File::new("/nonexistent/queued.opus").into();
             let track = new_track(source, Some(metadata), requester.map(UserId::new));

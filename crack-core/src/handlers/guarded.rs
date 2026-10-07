@@ -132,7 +132,8 @@ mod tests {
         use std::time::Duration;
 
         let ticks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let mut call = Call::standalone(GuildId::new(1), UserId::new(2));
+        let mut call =
+            crate::music::ops::test_support::standalone_call(GuildId::new(1), UserId::new(2));
         let every_tick = || Event::Periodic(Duration::from_millis(20), None);
         if guard_the_panic {
             add_global_handler(&mut call, every_tick(), Panics);

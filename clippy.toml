@@ -54,6 +54,10 @@ disallowed-methods = [
     { path = "songbird::tracks::TrackQueue::add_source", reason = "queues an Input with no TrackData at all; use the functions in music::queue" },
     { path = "songbird::tracks::TrackQueue::add_with_preload", reason = "queues a bare Track, which may carry no TrackData; use the functions in music::queue" },
     { path = "songbird::tracks::TrackHandle::data", reason = "panics on a track without TrackData; use utils::get_track_handle_metadata or utils::get_requesting_user" },
+    # 🪤 Tests only (nothing in the bot builds a standalone call): songbird's
+    # scheduler dies with the test runtime that first builds a call, so a later
+    # test's call panics. See music::ops::test_support::standalone_call.
+    { path = "songbird::handler::Call::standalone", reason = "tests: use music::ops::test_support::standalone_call, which keeps songbird's scheduler alive" },
     # 🪤 songbird runs every event handler inline on the call's one event task,
     # which holds the call's handlers, track event stores and track states as
     # locals. One panicking handler unwinds it, and the queue stops advancing

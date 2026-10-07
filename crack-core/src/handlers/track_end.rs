@@ -585,10 +585,12 @@ mod tests {
     async fn an_autoplay_pick_is_queued_with_the_metadata_it_resolved_to() {
         let data = Data(Arc::new(crate::DataInner::default()));
         let guild_id = GuildId::new(1);
-        let call = Arc::new(Mutex::new(Call::standalone(
-            guild_id,
-            serenity::all::UserId::new(2),
-        )));
+        let call = Arc::new(Mutex::new(
+            crate::music::ops::test_support::standalone_call(
+                guild_id,
+                serenity::all::UserId::new(2),
+            ),
+        ));
         let resolved = vec![NewAuxMetadata(songbird::input::AuxMetadata {
             title: Some("Want You Bad".to_owned()),
             ..Default::default()
