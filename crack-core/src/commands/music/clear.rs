@@ -1,8 +1,8 @@
 use crate::{
     commands::{cmd_check_music, help},
     errors::CrackedError,
+    messaging::courier,
     music::ops::{self, OpCx},
-    utils::send_reply,
     Context, Error,
 };
 
@@ -31,7 +31,7 @@ pub async fn clear(
 pub async fn clear_internal(ctx: Context<'_>) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;
     let done = ops::clear(&cx).await.map_err(CrackedError::from)?;
-    send_reply(&ctx, done.outcome().message(), true).await?;
+    courier::reply(ctx, done.outcome().message()).await?;
     done.settle_now(&cx).await;
     Ok(())
 }

@@ -1,10 +1,10 @@
 use crate::{
     commands::cmd_check_music,
     errors::{verify, CrackedError},
+    messaging::courier,
     messaging::message::CrackedMessage,
     messaging::messages::{FAIL_MINUTES_PARSING, FAIL_NO_TRACK_PLAYING, FAIL_SECONDS_PARSING},
     music::ops::{self, OpCx, OpRefused},
-    utils::send_reply,
     Context, Error,
 };
 use std::{borrow::Cow, time::Duration};
@@ -57,6 +57,6 @@ pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Er
         Err(refused) => return Err(CrackedError::from(refused).into()),
     };
 
-    let _ = send_reply(&ctx, msg, true).await?;
+    let _ = courier::reply(ctx, msg).await?;
     Ok(())
 }

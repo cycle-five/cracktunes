@@ -1,10 +1,8 @@
 use crate::{
     commands::cmd_check_music,
     errors::CrackedError,
-    messaging::message::CrackedMessage,
+    messaging::{courier, message::CrackedMessage},
     music::ops::{self, removed_embed, OpCx, Target},
-    utils::send_embed_response_poise,
-    utils::send_reply,
     Context, Error,
 };
 
@@ -47,9 +45,9 @@ pub async fn remove_internal(
     let removed = done.outcome();
     if removed.count == 1 {
         let embed = removed_embed(&removed.first, removed.thumbnail.as_deref());
-        send_embed_response_poise(ctx, embed).await?;
+        courier::reply(ctx, CrackedMessage::CreateEmbed(Box::new(embed))).await?;
     } else {
-        send_reply(&ctx, CrackedMessage::RemoveMultiple, true).await?;
+        courier::reply(ctx, CrackedMessage::RemoveMultiple).await?;
     }
     done.settle_now(&cx).await;
     Ok(())

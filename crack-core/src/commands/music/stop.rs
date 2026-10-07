@@ -1,9 +1,9 @@
 use crate::{
     commands::cmd_check_music,
     errors::CrackedError,
+    messaging::courier,
     messaging::message::CrackedMessage,
     music::ops::{self, OpCx},
-    utils::send_reply,
     Context, Error,
 };
 
@@ -23,7 +23,7 @@ pub async fn stop(ctx: Context<'_>) -> Result<(), Error> {
     let done = ops::stop(&cx).await.map_err(CrackedError::from)?;
     // The lease is gone by now: `stop_queue` fires `TrackEvent::End`, and the
     // track-end handler awaits `lock_queue`, so the reply must not hold it.
-    send_reply(&ctx, CrackedMessage::Stop, true).await?;
+    courier::reply(ctx, CrackedMessage::Stop).await?;
     // Idempotent with the track end `stop_queue` fires: both land on Finished.
     done.settle_now(&cx).await;
     Ok(())
