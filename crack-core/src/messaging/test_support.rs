@@ -148,3 +148,40 @@ impl ReplySink for FakeReplies {
         Some((GenericChannelId::new(5), MessageId::new(*handle)))
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PressOp {
+    Acknowledge,
+    Followup { ephemeral: bool, text: String },
+}
+
+/// A stand-in for one button press.
+#[derive(Default)]
+pub struct FakePress {
+    pub ops: Mutex<Vec<PressOp>>,
+    pub ack_error: Mutex<Option<TransportError>>,
+}
+
+impl FakePress {
+    pub fn ops(&self) -> Vec<PressOp> {
+        self.ops.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl super::transport::Press for FakePress {
+    async fn acknowledge(&self) -> Result<(), TransportError> {
+        self.ops.lock().unwrap().push(PressOp::Acknowledge);
+        match self.ack_error.lock().unwrap().clone() {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
+    }
+    async fn followup(&self, out: Rendered, ephemeral: bool) -> Result<(), TransportError> {
+        self.ops.lock().unwrap().push(PressOp::Followup {
+            ephemeral,
+            text: text_of(&out),
+        });
+        Ok(())
+    }
+}

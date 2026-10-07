@@ -1,10 +1,11 @@
 //! Delivery: replies through a [`ReplySink`], background posts through a
 //! [`Transport`], all rendered by [`render`]. Spec: the messaging-layer design.
 use crate::errors::CrackedError;
+use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::messaging::status::{self, Phase};
-use crate::messaging::transport::{Transport, TransportError};
+use crate::messaging::transport::{Press, Transport, TransportError};
 use crate::Data;
 use serenity::all::{GenericChannelId, GuildId, MessageId};
 use serenity::async_trait;
@@ -167,7 +168,7 @@ pub enum Destination {
         guild: GuildId,
         after: Option<(GenericChannelId, MessageId)>,
     },
-    /// Where Status would land; the tracked status message is left alone.
+    /// Where Status would land; the tracked status message is left alone. Nothing when the guild's control_echoes is off.
     Echo(GuildId),
 }
 
@@ -235,7 +236,32 @@ pub async fn post(
                 .await
                 .map(|shown| (shown.channel, shown.id))
         },
-        Destination::Echo(guild) => status::announce(data, transport, guild, out).await,
+        // A guild can turn control echoes off (`/echoes`); the control still ran.
+        Destination::Echo(guild) => {
+            if !data.get_control_echoes(guild).await {
+                return None;
+            }
+            status::announce(data, transport, guild, out).await
+        },
+    }
+}
+
+/// Tell Discord a button press arrived. Best effort: `false`, logged, when it
+/// failed (the press is still handled; Discord shows its own failure notice).
+pub async fn acknowledge(press: &dyn Press) -> bool {
+    match press.acknowledge().await {
+        Ok(()) => true,
+        Err(err) => {
+            tracing::warn!("acknowledging a button press failed: {err:?}");
+            false
+        },
+    }
+}
+
+/// Answer the presser only. Best effort: a failure is logged.
+pub async fn answer_privately(press: &dyn Press, msg: &CrackedMessage, cx: &RenderCx) {
+    if let Err(err) = press.followup(render(msg, cx), true).await {
+        tracing::warn!("answering a button press failed: {err:?}");
     }
 }
 
@@ -428,5 +454,61 @@ mod tests {
         .await;
         assert_eq!(at, Some((GenericChannelId::new(10), MessageId::new(1000))));
         assert!(data.status_slot(guild).lock().await.message.is_none());
+    }
+
+    #[tokio::test]
+    async fn an_echo_is_not_posted_when_the_guild_turned_echoes_off() {
+        use crate::guild::settings::GuildSettings;
+        let data = Data(Arc::new(DataInner::default()));
+        let guild = GuildId::new(1);
+        status::note_command_channel(&data, guild, GenericChannelId::new(10)).await;
+        let mut settings = GuildSettings::new(guild, None, None);
+        settings.control_echoes = false;
+        data.guild_settings_map
+            .write()
+            .await
+            .insert(guild, settings);
+        let t = FakeTransport::default();
+        let at = post(
+            &data,
+            &t,
+            Destination::Echo(guild),
+            &CrackedMessage::Clear,
+            &cx(),
+        )
+        .await;
+        assert_eq!(at, None);
+        assert!(t.ops().is_empty(), "{:?}", t.ops());
+    }
+
+    #[tokio::test]
+    async fn a_press_is_acknowledged_then_answered_privately() {
+        use crate::messaging::test_support::{FakePress, PressOp};
+        let p = FakePress::default();
+        assert!(acknowledge(&p).await);
+        answer_privately(
+            &p,
+            &CrackedMessage::CrackedError(crate::errors::CrackedError::NothingPlaying),
+            &cx(),
+        )
+        .await;
+        assert_eq!(
+            p.ops(),
+            vec![
+                PressOp::Acknowledge,
+                PressOp::Followup {
+                    ephemeral: true,
+                    text: "🔈 Nothing is playing!".into()
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_acknowledge_is_reported_not_raised() {
+        use crate::messaging::test_support::FakePress;
+        let p = FakePress::default();
+        *p.ack_error.lock().unwrap() = Some(TransportError::Other("Unknown interaction".into()));
+        assert!(!acknowledge(&p).await);
     }
 }

@@ -67,6 +67,11 @@ pub trait GuildSettingsOperations {
         &self,
         guild_id: GuildId,
     ) -> impl Future<Output = Result<bool, CrackedError>>;
+    fn get_control_echoes(&self, guild_id: GuildId) -> impl Future<Output = bool>;
+    fn toggle_control_echoes(
+        &self,
+        guild_id: GuildId,
+    ) -> impl Future<Output = Result<bool, CrackedError>>;
 }
 
 /// Implementation of the guild settings operations.
@@ -475,6 +480,43 @@ impl GuildSettingsOperations for Data {
             settings.save(pool).await?;
         }
         Ok(settings.ephemeral_replies)
+    }
+
+    /// Whether controls (dashboard, buttons) post an echo line. On when the
+    /// guild has no settings loaded: echoes were always on before v0.23.0.
+    async fn get_control_echoes(&self, guild_id: GuildId) -> bool {
+        self.guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .is_none_or(|settings| settings.control_echoes)
+    }
+
+    /// Flip whether controls echo, save it, and return the new value.
+    ///
+    /// 🔑 As with `toggle_ephemeral_replies`: load the stored row first, or
+    /// the full-row upsert writes defaults over it.
+    async fn toggle_control_echoes(&self, guild_id: GuildId) -> Result<bool, CrackedError> {
+        self.ensure_settings_loaded(guild_id).await?;
+        let settings = self
+            .guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|settings| {
+                settings.toggle_control_echoes();
+            })
+            .or_insert_with(|| {
+                let mut settings =
+                    GuildSettings::new(guild_id, Some(&self.bot_settings.get_prefix()), None);
+                settings.toggle_control_echoes();
+                settings
+            })
+            .clone();
+        if let Some(pool) = self.database_pool.as_ref() {
+            settings.save(pool).await?;
+        }
+        Ok(settings.control_echoes)
     }
 }
 
@@ -1087,5 +1129,34 @@ mod test {
              ensure_settings_loaded, which lets a guild whose load failed overwrite \
              its stored row with defaults: {unguarded:#?}"
         );
+    }
+
+    #[tokio::test]
+    async fn control_echoes_are_on_for_a_guild_with_no_settings() {
+        let data = crate::Data::default();
+        assert!(data.get_control_echoes(GuildId::new(123)).await);
+    }
+
+    #[tokio::test]
+    async fn control_echoes_follow_the_guild_setting() {
+        let data = crate::Data::default();
+        let guild_id = GuildId::new(123);
+        let mut settings = GuildSettings::new(guild_id, None, None);
+        settings.control_echoes = false;
+        data.guild_settings_map
+            .write()
+            .await
+            .insert(guild_id, settings);
+        assert!(!data.get_control_echoes(guild_id).await);
+    }
+
+    #[tokio::test]
+    async fn toggling_control_echoes_flips_it_and_reports_the_new_value() {
+        let data = crate::Data::default();
+        let guild_id = GuildId::new(123);
+        assert!(!data.toggle_control_echoes(guild_id).await.unwrap());
+        assert!(!data.get_control_echoes(guild_id).await);
+        assert!(data.toggle_control_echoes(guild_id).await.unwrap());
+        assert!(data.get_control_echoes(guild_id).await);
     }
 }

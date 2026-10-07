@@ -101,6 +101,7 @@ pub const TRACK_FAILED_SEEK: &str = "couldn't seek in it";
 pub const FAIL_NO_TRACK_PLAYING: &str = "No track playing";
 pub const OP_TRACK_ABSENT: &str = "That track is no longer queued";
 pub const OP_TRACK_PLAYING: &str = "That track is playing";
+pub const BUTTON_OUT_OF_DATE: &str = "This button is out of date.";
 pub const OP_TRACK_STALE: &str = "That track is no longer playing";
 pub const FAIL_EMPTY_VECTOR: &str = "⚠️ Empty vector not allowed!";
 pub const FAIL_INSERT: &str = "⚠️ Failed to insert!";
@@ -225,6 +226,10 @@ pub const STATUS_FINISHED_TITLE: &str = "⏹️ Finished";
 pub const STATUS_FINISHED_DESCRIPTION: &str = "Nothing is playing. Use /play to start again.";
 pub const EPHEMERAL_REPLIES_ON: &str = "🙈 /play, /skip and /nowplaying now reply privately.";
 pub const EPHEMERAL_REPLIES_OFF: &str = "👀 /play, /skip and /nowplaying now reply in the channel.";
+pub const CONTROL_ECHOES_ON: &str =
+    "📣 Button and dashboard controls now post a line in the channel.";
+pub const CONTROL_ECHOES_OFF: &str =
+    "🔇 Button and dashboard controls no longer post a line in the channel.";
 pub const QUEUE_PAGE_OF: &str = "of";
 pub const QUEUE_PAGE: &str = "Page";
 pub const QUEUE_UP_NEXT: &str = "⌛ Up next";
@@ -523,3 +528,12 @@ pub const PREMIUM_CONTROLS: &str = "Dashboard controls are a premium feature.";
 /// not in the bot's voice channel, under the disabled controls.
 pub const JOIN_VOICE_FOR_CONTROLS: &str = "Join the bot's voice channel to use the controls.";
 pub const PATREON_URL: &str = "https://patreon.com/CrackTunes";
+
+// The now-playing buttons: symbols only, so the row never wraps unevenly on
+// a narrow screen (#588). Fully qualified (with U+FE0F where a symbol has a
+// text form), which is what Discord expects of a button emoji.
+pub const NP_BUTTON_PAUSE: &str = "⏸️";
+pub const NP_BUTTON_RESUME: &str = "▶️";
+pub const NP_BUTTON_SKIP: &str = "⏭️";
+pub const NP_BUTTON_REPEAT: &str = "🔁";
+pub const NP_BUTTON_SHUFFLE: &str = "🔀";

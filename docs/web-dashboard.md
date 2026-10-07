@@ -42,7 +42,11 @@ member may send 5 controls per 10 s, across every server; the sixth gets 429
 (`too_many`). Moves are not limited.
 
 Each control posts one line in Discord, where the now-playing message goes,
-such as "⏸ Paused from the dashboard — @member". After a skip, pause, resume
+such as "⏸ Paused from the dashboard — @member". Since v0.23.0 that line is
+skipped when the server has turned echoes off (`/echoes`), and when the control
+changed nothing (pausing a paused song). The now-playing buttons in Discord run
+the same controls and post the same line, without "from the dashboard", and the
+audit log records them with source `button`. After a skip, pause, resume
 or repeat, the now-playing message is re-rendered below that line, so its
 progress line is current ("Paused at 1:12", a new end time, "on repeat");
 remove and shuffle leave it where it is. The line is an embed, so the mention

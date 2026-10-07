@@ -17,6 +17,8 @@ pub enum Source {
     Slash,
     Prefix,
     Web,
+    /// A now-playing button (`np:`), pressed in Discord.
+    Button,
     Bot,
 }
 
@@ -28,6 +30,7 @@ impl Source {
             Source::Slash => "slash",
             Source::Prefix => "prefix",
             Source::Web => "web",
+            Source::Button => "button",
             Source::Bot => "bot",
         }
     }
@@ -107,6 +110,17 @@ impl Actor {
             user: Some(user),
             source: Source::Web,
             command: Cow::Owned(format!("dashboard {op}")),
+            origin_channel: None,
+        }
+    }
+
+    /// A member pressing a now-playing button; `op` names the control.
+    #[must_use]
+    pub fn button(user: UserId, op: &'static str) -> Self {
+        Self {
+            user: Some(user),
+            source: Source::Button,
+            command: Cow::Owned(format!("button {op}")),
             origin_channel: None,
         }
     }
@@ -274,10 +288,31 @@ mod test {
     /// are written twice, so this is what keeps them one spelling.
     #[test]
     fn source_as_str_is_the_serde_name() {
-        for source in [Source::Slash, Source::Prefix, Source::Web, Source::Bot] {
+        for source in [
+            Source::Slash,
+            Source::Prefix,
+            Source::Web,
+            Source::Button,
+            Source::Bot,
+        ] {
             let json = serde_json::to_string(&source).unwrap();
             assert_eq!(json.trim_matches('"'), source.as_str());
         }
+    }
+
+    #[test]
+    fn a_button_press_is_its_own_source() {
+        let a = Actor::button(UserId::new(42), "skip");
+        assert_eq!(a.source(), Source::Button);
+        assert_eq!(a.source().as_str(), "button");
+        assert_eq!(a.command(), "button skip");
+        assert_eq!(a.user(), Some(UserId::new(42)));
+        assert_eq!(a.origin_channel(), None);
+        // The stored spelling is the serde name.
+        assert_eq!(
+            serde_json::to_string(&Source::Button).unwrap(),
+            "\"button\""
+        );
     }
 
     #[test]

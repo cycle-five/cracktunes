@@ -124,6 +124,19 @@
 - `SLEEVENOTE_BASE_URL` is documented, including what its localhost default
   means in Docker Compose, where the bot's own localhost is not the sleevenote
   container.
+- **Buttons on the now-playing message.** Pause or Resume, Skip, Repeat and
+  Shuffle, as symbols only (⏸️ ▶️ ⏭️ 🔁 🔀) so the row stays on one line on a
+  phone, for anyone who may use the music commands there (the music channel
+  and `/gp` rules apply). A press posts an echo line naming who pressed it, as
+  a dashboard control does, and the status message updates below it. Skip names
+  the song it was drawn for, so an old message or two people pressing at once
+  cannot skip the next song. Buttons on an old message still work after a
+  restart. Restrictions set on individual commands under Server Settings →
+  Integrations do not cover the buttons: the bot's own music-channel and `/gp`
+  rules do.
+- **`/echoes`** (admins) turns those echo lines off or on for the server, for
+  buttons and the dashboard alike. On by default.
+- The queue history's source filter (`/auditlog`, the dashboard) has `button`.
 
 ### Changed
 
@@ -277,6 +290,10 @@
 - `spotify:album:<id>` and `spotify:playlist:<id>` URIs were rewritten into
   `/track/<id>` URLs and looked up as tracks, which found nothing. The kind is
   now read from the URI.
+- A dashboard control that changed nothing (pausing a paused song from a stale
+  tab) no longer posts an echo line.
+- Outside the music channel, the refusal now names the music channel to use,
+  not the channel you are already in.
 
 ## TODO:
 
