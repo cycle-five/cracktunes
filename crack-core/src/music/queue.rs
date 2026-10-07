@@ -2,6 +2,7 @@ use crate::{
     errors::{verify, CrackedError},
     handlers::track_end::update_queue_messages,
     http_utils::CacheHttpExt,
+    messaging::{courier, message::CrackedMessage, transport::DiscordTransport},
     music::{
         audit::{track_ref, Action, Actor, AddAt},
         NewQueryType, PlaybackOwner, QueueGuard,
@@ -14,7 +15,7 @@ use crack_testing::ResolvedTrack;
 use crack_types::{Mode, NewAuxMetadata, QueryType};
 use rand::RngExt;
 use serenity::{
-    all::{CreateEmbed, EditMessage, Message, UserId},
+    all::{Message, UserId},
     small_fixed_array::FixedString,
 };
 use songbird::{
@@ -481,6 +482,15 @@ const QUEUE_BATCH_SIZE: usize = 24;
 /// long playlist used to stall the load waiting on 429 backoff.
 const PROGRESS_EDIT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3);
 
+/// Where a playlist's progress line is edited: the placeholder reply, by
+/// its channel and id.
+fn progress_transport(ctx: &CrackContext<'_>) -> DiscordTransport {
+    DiscordTransport {
+        http: ctx.serenity_context().http.clone(),
+        cache: ctx.serenity_context().cache.clone(),
+    }
+}
+
 /// Queue a list of keywords to be played from the end of the queue.
 ///
 /// The first track is resolved and queued on its own so playback starts
@@ -490,7 +500,7 @@ pub async fn queue_keyword_list_back(
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     queries: Vec<QueryType>,
-    msg: &mut Message,
+    msg: &Message,
 ) -> Result<(), Error> {
     let (first, rest) = queries
         .split_first()
@@ -507,6 +517,7 @@ pub async fn queue_keyword_list_back(
     let total = rest.len();
     let mut queued = 0usize;
     let mut last_edit = std::time::Instant::now();
+    let transport = progress_transport(&ctx);
 
     for chunk in rest.chunks(QUEUE_BATCH_SIZE) {
         queue_vec_query_type(ctx, call.clone(), chunk.to_vec(), Mode::End).await?;
@@ -521,14 +532,15 @@ pub async fn queue_keyword_list_back(
                 format!("Queuing playlist... {queued}/{total}")
             };
             // A failed progress edit must not abort the load.
-            if let Err(e) = msg
-                .edit(
-                    &ctx,
-                    EditMessage::new().embed(CreateEmbed::default().description(description)),
-                )
-                .await
+            if let Err(e) = courier::edit_message(
+                &transport,
+                msg.channel_id,
+                msg.id,
+                &CrackedMessage::Other(description),
+            )
+            .await
             {
-                tracing::warn!("Failed to update queue progress message: {e}");
+                tracing::warn!("Failed to update queue progress message: {e:?}");
             }
         }
     }
@@ -545,7 +557,7 @@ pub async fn queue_resolved_list_back(
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
     tracks: Vec<ResolvedTrack<'static>>,
-    msg: &mut Message,
+    msg: &Message,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // A user queued something, so autoplay's buffered picks -- chosen from
@@ -589,6 +601,7 @@ pub async fn queue_resolved_list_back(
     let total = rest.len();
     let mut queued = 0usize;
     let mut last_edit = std::time::Instant::now();
+    let transport = progress_transport(&ctx);
 
     for chunk in rest.chunks(QUEUE_BATCH_SIZE) {
         // Same reasoning as the first batch above: guard held across the
@@ -613,14 +626,15 @@ pub async fn queue_resolved_list_back(
             } else {
                 format!("Queuing playlist... {queued}/{total}")
             };
-            if let Err(e) = msg
-                .edit(
-                    &ctx,
-                    EditMessage::new().embed(CreateEmbed::default().description(description)),
-                )
-                .await
+            if let Err(e) = courier::edit_message(
+                &transport,
+                msg.channel_id,
+                msg.id,
+                &CrackedMessage::Other(description),
+            )
+            .await
             {
-                tracing::warn!("Failed to update queue progress message: {e}");
+                tracing::warn!("Failed to update queue progress message: {e:?}");
             }
         }
     }

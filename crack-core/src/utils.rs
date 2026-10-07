@@ -1,8 +1,10 @@
 use crate::http_utils::CacheHttpExt;
 use crate::http_utils::SendMessageParams;
-use crate::messaging::courier;
-use crate::messaging::format::TrackLabel;
-use crate::messaging::render::Rendered;
+use crate::messaging::courier::{self, Destination};
+use crate::messaging::format::{duration_text, TrackLabel};
+use crate::messaging::messages::SEARCH_RESULTS_NOT_POSTED;
+use crate::messaging::render::{RenderCx, Rendered};
+use crate::messaging::transport::DiscordTransport;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
@@ -22,8 +24,9 @@ use ::serenity::all::MessageInteractionMetadata;
 use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{
-        CacheHttp, Colour, ComponentInteractionDataKind, CreateSelectMenu, CreateSelectMenuKind,
-        CreateSelectMenuOption, GenericChannelId, GuildId, Interaction,
+        CacheHttp, Colour, ComponentInteractionDataKind, CreateActionRow, CreateComponent,
+        CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, GenericChannelId, GuildId,
+        Interaction,
     },
     builder::{
         CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
@@ -37,9 +40,7 @@ use crack_types::get_human_readable_timestamp;
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
 use poise::{
-    serenity_prelude::{
-        self as serenity, CommandInteraction, Context as SerenityContext, CreateMessage,
-    },
+    serenity_prelude::{self as serenity, CommandInteraction, Context as SerenityContext},
     CreateReply, ReplyHandle,
 };
 use serenity::all::UserId;
@@ -158,6 +159,20 @@ pub async fn edit_response_text(
 
 use poise::serenity_prelude::CollectComponentInteractions;
 
+/// A search hit as a select-menu option, `(label, value)`. The label is plain
+/// text (a select menu renders no markdown), `length: title` or just the title
+/// when the length is unknown, cut to 99 characters -- characters, not bytes:
+/// a byte cut panicked mid-character on a title in Japanese.
+fn search_option(hit: &AuxMetadata) -> (String, String) {
+    let title = hit.title.clone().unwrap_or_default();
+    let link = hit.source_url.clone().unwrap_or_default();
+    let label = match duration_text(hit.duration) {
+        Some(length) => format!("{length}: {title}"),
+        None => title,
+    };
+    (label.chars().take(99).collect(), link)
+}
+
 #[cfg(not(tarpaulin_include))]
 /// Interactive youtube search and selection.
 pub async fn yt_search_select(
@@ -166,12 +181,7 @@ pub async fn yt_search_select(
     metadata: Vec<AuxMetadata>,
 ) -> Result<QueryType, Error> {
     let res = metadata.iter().map(|x| {
-        let title = x.title.clone().unwrap_or_default();
-        let link = x.source_url.clone().unwrap_or_default();
-        let duration = x.duration.unwrap_or_default();
-        let elem = format!("{}: {}", duration_to_string(duration), title);
-        let len = min(elem.len(), 99);
-        let elem = elem[..len].to_string();
+        let (elem, link) = search_option(x);
         tracing::warn!("elem: {}", elem);
         (elem, link)
     });
@@ -179,37 +189,49 @@ pub async fn yt_search_select(
         .clone()
         .map(|(elem, link)| (link, elem))
         .collect::<HashMap<_, _>>();
-    // Ask the user for its favorite animal
-    let m = channel_id
-        .send_message(
-            ctx.http(),
-            CreateMessage::new().content("Search results").select_menu(
-                CreateSelectMenu::new(
-                    "song_select",
-                    CreateSelectMenuKind::String {
-                        options: res
-                            .map(|(x, y)| CreateSelectMenuOption::new(x, y))
-                            .collect(),
-                    },
-                )
-                .custom_id("song_select")
-                .placeholder("Select Song to Play"),
-            ),
-        )
-        .await?;
+    let menu = CreateSelectMenu::new(
+        "song_select",
+        CreateSelectMenuKind::String {
+            options: res
+                .map(|(x, y)| CreateSelectMenuOption::new(x, y))
+                .collect(),
+        },
+    )
+    .custom_id("song_select")
+    .placeholder("Select Song to Play");
+    let out = Rendered::text("Search results").with_components(vec![CreateComponent::ActionRow(
+        CreateActionRow::SelectMenu(menu),
+    )]);
+    let transport = DiscordTransport {
+        http: ctx.http.clone(),
+        cache: ctx.cache.clone(),
+    };
+    // The collector needs the menu's id, so this send is the fallible one.
+    let menu_id = courier::post_message(&transport, channel_id, &out)
+        .await
+        .map_err(|err| {
+            tracing::warn!("search: the results menu was not posted: {err:?}");
+            CrackedError::Other(SEARCH_RESULTS_NOT_POSTED)
+        })?;
 
     // Wait for the user to make a selection
     // This uses a collector to wait for an incoming event without needing to listen for it
     // manually in the EventHandler.
-    let interaction = match m
-        .id
+    let interaction = match menu_id
         .collect_component_interactions(&ctx)
         .timeout(Duration::from_secs(60 * 3))
         .await
     {
         Some(x) => x,
         None => {
-            m.reply(ctx.http(), "Timed out").await.unwrap();
+            courier::post(
+                &ctx.data::<Data>(),
+                &transport,
+                Destination::Channel(channel_id),
+                &CrackedMessage::Other("Timed out".to_owned()),
+                &RenderCx::now(),
+            )
+            .await;
             return Err(CrackedError::Other("Timed out").into());
         },
     };
@@ -244,7 +266,7 @@ pub async fn yt_search_select(
         .map_err(|e| e.into())
         .map(|_| qt);
 
-    channel_id.delete_message(ctx.http(), m.id, None).await?;
+    channel_id.delete_message(ctx.http(), menu_id, None).await?;
     res
 }
 
@@ -933,6 +955,39 @@ pub fn duration_to_string(duration: Duration) -> String {
     let minutes = secs / 60;
     secs %= 60;
     format!("{:02}:{:02}:{:02}", hours, minutes, secs)
+}
+
+#[cfg(test)]
+mod search_option_tests {
+    use super::search_option;
+    use songbird::input::AuxMetadata;
+    use std::time::Duration;
+
+    /// 🪤 The label was cut at 99 *bytes*: a title in Japanese (or with an
+    /// emoji) split a character and panicked the search.
+    #[test]
+    fn a_search_option_is_cut_by_characters() {
+        let hit = AuxMetadata {
+            title: Some("あ".repeat(120)),
+            source_url: Some("https://youtu.be/x".into()),
+            duration: Some(Duration::from_secs(273)),
+            ..Default::default()
+        };
+        let (label, value) = search_option(&hit);
+        assert_eq!(label.chars().count(), 99);
+        assert!(label.starts_with("4:33: あ"), "{label}");
+        assert_eq!(value, "https://youtu.be/x");
+    }
+
+    /// No `00:00:00` for a length nobody knew.
+    #[test]
+    fn a_search_option_of_unknown_length_is_just_its_title() {
+        let hit = AuxMetadata {
+            title: Some("song".into()),
+            ..Default::default()
+        };
+        assert_eq!(search_option(&hit).0, "song");
+    }
 }
 
 #[cfg(test)]

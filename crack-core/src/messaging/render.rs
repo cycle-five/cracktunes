@@ -28,6 +28,9 @@ pub struct Rendered {
     pub embed: Option<CreateEmbed<'static>>,
     pub components: Vec<CreateComponent<'static>>,
     pub mentions: Mentions,
+    /// Embeds after `embed`, in order, for the one message that shows a list
+    /// of them (search results).
+    pub embeds_extra: Vec<CreateEmbed<'static>>,
 }
 
 impl Rendered {
@@ -61,6 +64,15 @@ impl Rendered {
         self
     }
 
+    /// `embed`, then `embeds_extra`: every embed the message carries, in order.
+    fn embeds(&self) -> Vec<CreateEmbed<'static>> {
+        self.embed
+            .iter()
+            .chain(&self.embeds_extra)
+            .cloned()
+            .collect()
+    }
+
     pub fn allowed_mentions(&self) -> CreateAllowedMentions<'static> {
         match self.mentions {
             Mentions::None => CreateAllowedMentions::new(),
@@ -82,8 +94,8 @@ impl Rendered {
         if let Some(content) = &self.content {
             reply = reply.content(content.clone());
         }
-        if let Some(embed) = &self.embed {
-            reply = reply.embed(embed.clone());
+        for embed in self.embeds() {
+            reply = reply.embed(embed);
         }
         reply
     }
@@ -99,8 +111,8 @@ impl Rendered {
         if let Some(content) = &self.content {
             reply = reply.content(content.clone());
         }
-        if let Some(embed) = &self.embed {
-            reply = reply.embed(embed.clone());
+        for embed in self.embeds() {
+            reply = reply.embed(embed);
         }
         (reply, !self.components.is_empty())
     }
@@ -112,8 +124,9 @@ impl Rendered {
         if let Some(content) = &self.content {
             m = m.content(content.clone());
         }
-        if let Some(embed) = &self.embed {
-            m = m.embed(embed.clone());
+        let embeds = self.embeds();
+        if !embeds.is_empty() {
+            m = m.embeds(embeds);
         }
         m
     }
@@ -121,15 +134,11 @@ impl Rendered {
     /// An edit replaces everything: a field left `None` is cleared, so a
     /// status that loses its buttons really loses them.
     pub fn to_edit(&self) -> EditMessage<'static> {
-        let mut e = EditMessage::new()
+        EditMessage::new()
             .allowed_mentions(self.allowed_mentions())
             .components(self.components.clone())
-            .content(self.content.clone().unwrap_or_default());
-        e = match &self.embed {
-            Some(embed) => e.embed(embed.clone()),
-            None => e.embeds(Vec::new()),
-        };
-        e
+            .content(self.content.clone().unwrap_or_default())
+            .embeds(self.embeds())
     }
 }
 
@@ -281,6 +290,38 @@ mod tests {
         let r = Rendered::text("pong");
         assert!(r.embed.is_none());
         assert_eq!(r.content.as_deref(), Some("pong"));
+    }
+
+    fn embed_titles(v: &serde_json::Value) -> Vec<String> {
+        v["embeds"]
+            .as_array()
+            .expect("embeds")
+            .iter()
+            .map(|e| e["title"].as_str().unwrap_or_default().to_owned())
+            .collect()
+    }
+
+    /// Search results are one message with an embed per hit: every send and
+    /// edit carries all of them, in order.
+    #[test]
+    fn extra_embeds_follow_the_embed_everywhere() {
+        let mut r = Rendered::embed(CreateEmbed::new().title("a"));
+        r.embeds_extra = vec![CreateEmbed::new().title("b"), CreateEmbed::new().title("c")];
+        let abc = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+
+        let sent = serde_json::to_value(r.to_message()).unwrap();
+        assert_eq!(embed_titles(&sent), abc);
+        let edited = serde_json::to_value(r.to_edit()).unwrap();
+        assert_eq!(embed_titles(&edited), abc);
+        let reply = r
+            .to_reply(false)
+            .to_slash_initial_response(serenity::all::CreateInteractionResponseMessage::new());
+        assert_eq!(embed_titles(&serde_json::to_value(reply).unwrap()), abc);
+        let reply_edit = r.to_reply_edit().0.to_prefix_edit(EditMessage::new());
+        assert_eq!(
+            embed_titles(&serde_json::to_value(reply_edit).unwrap()),
+            abc
+        );
     }
 
     #[test]

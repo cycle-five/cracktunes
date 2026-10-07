@@ -1,14 +1,14 @@
 //! The structured messages: now playing, queued, the echo of a dashboard
-//! control. This task holds the types; their renderers arrive with the
-//! messages that use them.
+//! control, and their renderers.
 use crate::messaging::format::{
-    cap, clip, escape, http_url, progress_text, Progress, TrackLabel, AUTHOR_MAX, EMBED_TITLE_MAX,
-    FIELD_MAX, INLINE_TITLE_MAX,
+    cap, clip, duration_text, escape, http_url, progress_text, Progress, TrackLabel, AUTHOR_MAX,
+    EMBED_TITLE_MAX, FIELD_MAX, INLINE_TITLE_MAX,
 };
 use crate::messaging::interface::requesting_user_to_string;
 use crate::messaging::messages::{
     ECHO_FROM_DASHBOARD, ECHO_PAUSED, ECHO_REMOVED, ECHO_REPEAT_OFF, ECHO_REPEAT_ON, ECHO_RESUMED,
-    ECHO_SHUFFLED, ECHO_SKIPPED, PROGRESS, QUEUE_NOW_PLAYING, REQUESTED_BY,
+    ECHO_SHUFFLED, ECHO_SKIPPED, PROGRESS, QUEUE_NOW_PLAYING, REQUESTED_BY, TRACK_DURATION,
+    TRACK_TIME_TO_PLAY,
 };
 use crate::messaging::render::{RenderCx, Rendered};
 use crate::utils::build_footer_info;
@@ -130,10 +130,33 @@ pub fn finished() -> Rendered {
     Rendered::embed(crate::messaging::status::finished_embed())
 }
 
-/// Stub until the queued card moves here.
+/// The card for a track added to the queue. Its length and its wait are each
+/// left out when unknown, never shown as `00:00`: an unknown wait is a live
+/// stream (or a track of unknown length) ahead of it.
 #[must_use]
-pub fn queued(_card: &QueuedCard, _cx: &RenderCx) -> Rendered {
-    Rendered::default()
+pub fn queued(card: &QueuedCard, _cx: &RenderCx) -> Rendered {
+    // `title_text` escapes after capping, so the escaped title can be longer.
+    let title = clip(&card.label.title_text(EMBED_TITLE_MAX), EMBED_TITLE_MAX);
+    let mut embed = CreateEmbed::new()
+        .author(CreateEmbedAuthor::new(clip(card.author, AUTHOR_MAX)))
+        .title(title);
+    if let Some(u) = http_url(card.label.url.as_deref()) {
+        embed = embed.url(u.to_string());
+    }
+    if let Some(t) = http_url(card.thumbnail.as_deref()) {
+        embed = embed.thumbnail(t.to_string(), None);
+    }
+    let footer: Vec<String> = [
+        duration_text(card.label.duration).map(|d| format!("{TRACK_DURATION} {d}")),
+        duration_text(card.wait).map(|w| format!("{TRACK_TIME_TO_PLAY} {w}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !footer.is_empty() {
+        embed = embed.footer(CreateEmbedFooter::new(footer.join("\n")));
+    }
+    Rendered::embed(embed)
 }
 
 #[must_use]
@@ -257,5 +280,84 @@ mod tests {
     fn the_finished_card_is_the_status_embed() {
         let e = v(&finished());
         assert_eq!(e["title"], STATUS_FINISHED_TITLE);
+    }
+
+    fn queued_card(duration: Option<Duration>, wait: Option<Duration>) -> QueuedCard {
+        QueuedCard {
+            author: "📃 Added to queue!",
+            label: TrackLabel {
+                title: Some("OH SHIT I'M FEELING IT".into()),
+                url: Some("https://www.youtube.com/watch?v=x".into()),
+                duration,
+            },
+            thumbnail: Some("https://i.ytimg.com/a.jpg".into()),
+            wait,
+        }
+    }
+
+    /// "Added to queue! Track duration: 00:00" was computed from a length
+    /// nobody knew; now an unknown length and wait say nothing at all.
+    #[test]
+    fn a_queued_track_of_unknown_length_has_no_footer() {
+        let e = v(&queued(&queued_card(None, None), &RenderCx::default()));
+        assert!(e.get("footer").is_none() || e["footer"].is_null(), "{e}");
+        assert_eq!(e["author"]["name"], "📃 Added to queue!");
+        assert_eq!(e["title"], "OH SHIT I'M FEELING IT");
+        assert_eq!(e["url"], "https://www.youtube.com/watch?v=x");
+        assert_eq!(e["thumbnail"]["url"], "https://i.ytimg.com/a.jpg");
+    }
+
+    #[test]
+    fn a_queued_track_says_its_length_and_its_wait() {
+        let e = v(&queued(
+            &queued_card(
+                Some(Duration::from_secs(273)),
+                Some(Duration::from_secs(48)),
+            ),
+            &RenderCx::default(),
+        ));
+        assert_eq!(
+            e["footer"]["text"],
+            "Track duration: 4:33\nEstimated time until play: 0:48"
+        );
+    }
+
+    /// Each line stands alone: a known length with an unknown wait (a live
+    /// stream ahead of it) still says the length.
+    #[test]
+    fn a_queued_track_with_an_unknown_wait_says_only_its_length() {
+        let e = v(&queued(
+            &queued_card(Some(Duration::from_secs(273)), None),
+            &RenderCx::default(),
+        ));
+        assert_eq!(e["footer"]["text"], "Track duration: 4:33");
+    }
+
+    #[test]
+    fn an_untitled_queued_track_is_named_untitled() {
+        let mut c = queued_card(None, None);
+        c.label.title = Some("  ".into());
+        assert_eq!(v(&queued(&c, &RenderCx::default()))["title"], "(untitled)");
+    }
+
+    /// A link or thumbnail that is not http(s) is left out, not sent broken.
+    #[test]
+    fn a_queued_track_without_a_web_link_has_no_url_or_thumbnail() {
+        let mut c = queued_card(None, None);
+        c.label.url = Some("javascript:alert(1)".into());
+        c.thumbnail = Some(String::new());
+        let e = v(&queued(&c, &RenderCx::default()));
+        for key in ["url", "thumbnail"] {
+            assert!(e.get(key).is_none() || e[key].is_null(), "{key}: {e}");
+        }
+    }
+
+    /// Ruling R2, for the queued card too.
+    #[test]
+    fn an_escaped_queued_title_still_fits_the_embed_title() {
+        let mut c = queued_card(None, None);
+        c.label.title = Some("*".repeat(300));
+        let e = v(&queued(&c, &RenderCx::default()));
+        assert!(e["title"].as_str().unwrap().chars().count() <= EMBED_TITLE_MAX);
     }
 }

@@ -348,6 +348,8 @@ impl NewQueryType {
 
     pub async fn mode_download(&self, ctx: Context<'_>, mp3: bool) -> Result<bool, CrackedError> {
         let (status, file_name) = self.get_download_status_and_filename(mp3).await?;
+        // Not through the courier: the file is the message, and `Rendered`
+        // carries no attachments.
         ctx.channel_id()
             .send_message(
                 ctx.http(),
@@ -502,7 +504,7 @@ impl NewQueryType {
         search_reply: ReplyHandle<'ctx>,
     ) -> Result<bool, CrackedError> {
         let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-        let search_msg = &mut search_reply.clone().into_message().await?;
+        let search_msg = &search_reply.clone().into_message().await?;
         let NewQueryType(qt) = self;
         match qt {
             QueryType::SpotifyLink(url) => Err(unresolved_spotify_link(url)),
@@ -580,7 +582,7 @@ impl NewQueryType {
         search_reply: ReplyHandle<'_>,
     ) -> Result<bool, CrackedError> {
         let NewQueryType(qt) = self;
-        let search_msg = &mut search_reply.into_message().await?;
+        let search_msg = &search_reply.into_message().await?;
         match qt {
             QueryType::VideoLink(url) | QueryType::PlaylistLink(url) => {
                 // FIXME

@@ -164,6 +164,20 @@ pub async fn post_message(
     transport.send(channel, out.clone()).await
 }
 
+/// Edit a channel message the caller holds by `(channel, id)`, such as
+/// `/play`'s playlist progress line. Fallible: the caller decides whether a
+/// failed edit matters.
+pub async fn edit_message(
+    transport: &dyn Transport,
+    channel: GenericChannelId,
+    id: MessageId,
+    msg: &CrackedMessage,
+) -> Result<(), TransportError> {
+    transport
+        .edit(channel, id, render(msg, &RenderCx::now()))
+        .await
+}
+
 /// Deliver `msg` to `dest`. Best effort: failures are logged and swallowed,
 /// and the result says where it landed, if anywhere.
 pub async fn post(
@@ -294,6 +308,31 @@ mod tests {
         *t.send_error.lock().unwrap() = Some(TransportError::Other("Cannot send".into()));
         let err = post_message(&t, GenericChannelId::new(7), &out).await;
         assert_eq!(err, Err(TransportError::Other("Cannot send".into())));
+    }
+
+    /// The playlist progress line edits the message it was given, rendered.
+    #[tokio::test]
+    async fn edit_message_edits_that_message() {
+        let t = FakeTransport::default();
+        edit_message(
+            &t,
+            GenericChannelId::new(7),
+            MessageId::new(42),
+            &CrackedMessage::Other("Queuing playlist... 24/100".into()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(t.ops(), vec![Op::Edit(7, 42)]);
+        assert_eq!(t.texts(), vec!["Queuing playlist... 24/100".to_owned()]);
+        *t.edit_error.lock().unwrap() = Some(TransportError::UnknownMessage);
+        let err = edit_message(
+            &t,
+            GenericChannelId::new(7),
+            MessageId::new(42),
+            &CrackedMessage::Clear,
+        )
+        .await;
+        assert_eq!(err, Err(TransportError::UnknownMessage));
     }
 
     #[tokio::test]

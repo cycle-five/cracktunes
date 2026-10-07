@@ -234,6 +234,8 @@ pub const ROLE_DELETED: &str = "🗑️ Deleted role!";
 pub const ROLE_NOT_FOUND: &str = "⚠️ Role not found!";
 pub const SCAN_QUEUED: &str = "🔍 Scan queued! Use";
 pub const SEARCHING: &str = "🔎 Searching...";
+/// `/search`'s pick-a-result menu could not be posted in the channel.
+pub const SEARCH_RESULTS_NOT_POSTED: &str = "⚠️ Could not post the search results here.";
 pub const SEEKED: &str = "⏩ Seeked current track to";
 pub const SEEK_FAIL: &str = "❌⏩ Failed to seek to";
 pub const SHUFFLED_SUCCESS: &str = "🔀 Shuffled successfully!";

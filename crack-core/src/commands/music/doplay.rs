@@ -1,22 +1,22 @@
+use crate::commands::get_call_or_join_author;
 use crate::commands::{cmd_check_music, help};
 use crate::music::query::{query_type_from_url, ResolvedQuery};
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
 use crate::music::NewQueryType;
-use crate::utils::edit_embed_response2;
 use crate::CrackedResult;
-use crate::{commands::get_call_or_join_author, http_utils::SendMessageParams};
 use crate::{
     errors::{verify, CrackedError},
     guild::operations::GuildSettingsOperations,
     handlers::track_end::update_queue_messages,
+    messaging::cards::QueuedCard,
+    messaging::courier,
+    messaging::format::{escape, TrackLabel},
     messaging::interface::now_playing_card,
     messaging::placeholder::{discard_on_err, Placeholder},
-    messaging::render::{render, RenderCx},
+    messaging::render::{render, RenderCx, Rendered},
     messaging::{
         message::CrackedMessage,
-        messages::{
-            PLAY_QUEUE, PLAY_TOP, QUEUE_NO_SRC, QUEUE_NO_TITLE, TRACK_DURATION, TRACK_TIME_TO_PLAY,
-        },
+        messages::{PLAY_QUEUE, PLAY_TOP},
     },
     music::query::ListingShortfall,
     poise_ext::ContextExt,
@@ -27,12 +27,10 @@ use crate::{
 use ::serenity::all::CreateAutocompleteResponse;
 use ::serenity::{
     all::{CommandInteraction, Message},
-    builder::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, EditMessage},
+    builder::{CreateEmbed, CreateEmbedFooter, EditMessage},
 };
 use crack_types::QueryType;
-use crack_types::{
-    get_human_readable_timestamp, search_result_to_aux_metadata, Mode, NewAuxMetadata,
-};
+use crack_types::{search_result_to_aux_metadata, Mode, NewAuxMetadata};
 use poise::{serenity_prelude as serenity, ReplyHandle};
 use songbird::{tracks::TrackHandle, Call};
 use std::borrow::Cow;
@@ -50,11 +48,15 @@ use tokio::sync::Mutex;
 )]
 pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
     let shard_id = ctx.serenity_context().shard_id;
-    ctx.say(format!(
-        "The name of this guild is: {}, shard_id: {}",
-        ctx.partial_guild().await.unwrap().name,
-        shard_id
-    ))
+    // The guild's name is the guild's text, not ours: escaped.
+    let name = escape(&ctx.partial_guild().await.unwrap().name);
+    courier::reply(
+        ctx,
+        CrackedMessage::Other(format!(
+            "The name of this guild is: {}, shard_id: {}",
+            name, shard_id
+        )),
+    )
     .await?;
 
     Ok(())
@@ -257,12 +259,10 @@ pub async fn playytplaylist(
     let _ = crack_client.build_display(guild_id).await;
     let yt_playlist_str = crack_client.get_display(guild_id);
     tracing::warn!("yt_playlist_str: {}", yt_playlist_str);
-    let _ = ctx
-        .send_reply_embed(CrackedMessage::Other(yt_playlist_str))
-        .await?;
+    courier::reply(ctx, CrackedMessage::Other(yt_playlist_str)).await?;
     // This enqueues the tracks into the internal queue for the bot.
     //let _ = enqueue_resolved_tracks(call, tracks).await;
-    let _ = ctx.send_reply_embed(CrackedMessage::PlaylistQueued).await?;
+    courier::reply(ctx, CrackedMessage::PlaylistQueued).await?;
     Ok(())
 }
 
@@ -324,39 +324,35 @@ fn degraded_delivery(text: Option<&TextPerms>) -> Option<NoticeDelivery> {
     }
 }
 
-/// The reply to a playlist `/play`: what [`CrackedMessage::PlaylistQueued`]
-/// says, not its variant name.
-/// The now-playing embed for `track`, until the play reply moves to the
-/// courier.
-async fn now_playing_embed<'a>(track: &TrackHandle) -> CreateEmbed<'a> {
-    let card = now_playing_card(track).await;
-    render(
-        &CrackedMessage::NowPlayingCard(Box::new(card)),
-        &RenderCx::now(),
-    )
-    .embed
-    .unwrap_or_default()
+/// The play reply for a track that is playing now.
+async fn now_playing(track: &TrackHandle) -> CrackedMessage {
+    CrackedMessage::NowPlayingCard(Box::new(now_playing_card(track).await))
 }
 
-fn playlist_queued_embed<'a>() -> CreateEmbed<'a> {
-    CreateEmbed::default().description(CrackedMessage::PlaylistQueued.to_string())
+/// The play reply for `track`, just queued with `wait` ahead of it.
+async fn queued(
+    author: &'static str,
+    track: &TrackHandle,
+    wait: Option<Duration>,
+) -> CrackedMessage {
+    let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
+    CrackedMessage::Queued(Box::new(QueuedCard {
+        author,
+        label: TrackLabel::from_metadata(&metadata),
+        thumbnail: metadata.thumbnail,
+        wait,
+    }))
 }
 
-pub async fn build_play_embed<'a>(
-    queue: &'a [TrackHandle],
+/// What the play reply says: the track queued and when it plays, the
+/// playlist queued (in words, never its variant name), or what is playing.
+pub async fn build_play_message(
+    queue: &[TrackHandle],
     mode: Mode,
     query_type: NewQueryType,
-    text: Option<&TextPerms>,
-) -> Result<CreateEmbed<'a>, Error> {
-    // let estimated_time = calculate_time_until_play(&queue, Mode::Next).await.unwrap_or_default();
-    // let track = queue.first().unwrap();
-    // let embed = build_queued_embed(PLAY_TOP, track, estimated_time).await;
-    // Ok(embed)
-    let embed = match queue.len().cmp(&1) {
+) -> CrackedMessage {
+    match queue.len().cmp(&1) {
         Ordering::Greater => {
-            let estimated_time = calculate_time_until_play(queue, mode)
-                .await
-                .unwrap_or_default();
             let NewQueryType(query_type) = query_type;
             match (query_type, mode) {
                 (
@@ -364,81 +360,86 @@ pub async fn build_play_embed<'a>(
                     Mode::Next,
                 ) => {
                     tracing::error!("QueryType::VideoLink|Keywords|NewYoutubeDl, mode: Mode::Next");
-                    let track = queue.get(1).unwrap();
-                    build_queued_embed(PLAY_TOP, track, estimated_time).await
+                    let wait = calculate_time_until_play(queue, mode).await;
+                    queued(PLAY_TOP, &queue[1], wait).await
                 },
                 (
                     QueryType::VideoLink(_) | QueryType::Keywords(_) | QueryType::NewYoutubeDl(_),
                     Mode::End,
                 ) => {
                     tracing::error!("QueryType::VideoLink|Keywords|NewYoutubeDl, mode: Mode::End");
-                    let track = queue.last().unwrap();
-                    build_queued_embed(PLAY_QUEUE, track, estimated_time).await
+                    let wait = calculate_time_until_play(queue, mode).await;
+                    queued(PLAY_QUEUE, &queue[queue.len() - 1], wait).await
                 },
                 (QueryType::PlaylistLink(_) | QueryType::KeywordList(_), y) => {
                     tracing::error!(
                         "QueryType::PlaylistLink|QueryType::KeywordList, mode: {:?}",
                         y
                     );
-                    playlist_queued_embed()
+                    CrackedMessage::PlaylistQueued
                 },
                 (QueryType::File(_x_), y) => {
                     tracing::error!("QueryType::File, mode: {:?}", y);
-                    let track = queue.first().unwrap();
-                    now_playing_embed(track).await
+                    now_playing(&queue[0]).await
                 },
                 (QueryType::YoutubeSearch(_x), y) => {
                     tracing::error!("QueryType::YoutubeSearch, mode: {:?}", y);
-                    let track = queue.first().unwrap();
-                    now_playing_embed(track).await
+                    now_playing(&queue[0]).await
                 },
                 (x, y) => {
                     tracing::error!("{:?} {:?} {:?}", x, y, mode);
-                    let track = queue.first().unwrap();
-                    now_playing_embed(track).await
+                    now_playing(&queue[0]).await
                 },
             }
         },
         Ordering::Equal => {
             tracing::warn!("Only one track in queue, just playing it.");
-            let track = queue.first().unwrap();
-            now_playing_embed(track).await
+            now_playing(&queue[0]).await
         },
         Ordering::Less => {
             tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
-            CreateEmbed::default()
-                .description("No tracks in queue!")
-                .footer(CreateEmbedFooter::new("No tracks in queue!"))
+            CrackedMessage::CreateEmbed(Box::new(
+                CreateEmbed::default()
+                    .description("No tracks in queue!")
+                    .footer(CreateEmbedFooter::new("No tracks in queue!")),
+            ))
         },
-    };
-    let embed = match degraded_delivery(text) {
-        Some(NoticeDelivery::Field(note)) => embed.field("⚠️ Limited permissions", note, false),
-        // Deliberately not attached: the caller puts this one in the message
-        // content, because the embed it would ride on is exactly what Discord
-        // strips when EMBED_LINKS is missing.
-        Some(NoticeDelivery::Content(_)) | None => embed,
-    };
-    Ok(embed)
+    }
 }
 
-/// The whole play reply: the embed, plus the note that cannot ride inside it.
+/// The whole play reply: the message, plus the permission note where it will
+/// actually be seen.
 ///
-/// 🪤 Returned as a pair on purpose. The `Content` half exists precisely
-/// because a channel without `EMBED_LINKS` never shows the embed, so handing
-/// a caller only the embed is exactly how that note goes missing. A caller
-/// that drops the second element now has to do it in plain sight.
-pub async fn build_play_reply<'a>(
-    queue: &'a [TrackHandle],
+/// 🪤 One [`Rendered`], content and embed together, on purpose. The
+/// `Content` note exists precisely because a channel without `EMBED_LINKS`
+/// never shows the embed; carrying both in one value means no caller can
+/// deliver the embed and drop the note.
+pub async fn build_play_reply(
+    queue: &[TrackHandle],
     mode: Mode,
     query_type: NewQueryType,
     text: Option<&TextPerms>,
-) -> Result<(CreateEmbed<'a>, Option<String>), Error> {
-    let content = match degraded_delivery(text) {
-        Some(NoticeDelivery::Content(note)) => Some(note),
-        Some(NoticeDelivery::Field(_)) | None => None,
-    };
-    let embed = build_play_embed(queue, mode, query_type, text).await?;
-    Ok((embed, content))
+) -> Rendered {
+    let msg = build_play_message(queue, mode, query_type).await;
+    with_notice(render(&msg, &RenderCx::now()), degraded_delivery(text))
+}
+
+/// `out` with the permission note added where [`NoticeDelivery`] says.
+fn with_notice(mut out: Rendered, notice: Option<NoticeDelivery>) -> Rendered {
+    match notice {
+        Some(NoticeDelivery::Field(note)) => match out.embed.take() {
+            Some(embed) => {
+                out.embed = Some(embed.field("⚠️ Limited permissions", note, false));
+                out
+            },
+            // Every play reply is an embed; were one not, the note still rides.
+            None => out.with_content(note),
+        },
+        // The embed is kept for whoever can see it; the note rides outside
+        // it, because Discord strips the embed in exactly this channel.
+        Some(NoticeDelivery::Content(note)) => out.with_content(note),
+        None => out,
+    }
 }
 
 /// What `/play` knows once its placeholder has become the reply.
@@ -522,12 +523,11 @@ async fn fill_search_reply(
         crate::music::perms::resolve(ctx.cache(), gid, ctx.channel_id(), ctx.author().id)
             .map(|p| p.text)
     });
-    let (embed, notice_content) =
-        build_play_reply(&queue, mode, query_type, text_perms.as_ref()).await?;
+    let reply = build_play_reply(&queue, mode, query_type, text_perms.as_ref()).await;
 
     let after_embed = std::time::Instant::now();
 
-    edit_embed_response2(ctx, embed, search_msg.clone(), notice_content).await?;
+    courier::edit_rendered(ctx, search_msg, reply).await?;
 
     Ok(FilledReply {
         shortfall,
@@ -562,12 +562,8 @@ pub async fn play_internal(
         if ctx.is_paused().await.unwrap_or_default() {
             return resume_internal(ctx).await;
         }
-        let msg_params = SendMessageParams::default()
-            .with_channel(ctx.channel_id())
-            .with_msg(CrackedMessage::CrackedError(CrackedError::NoQuery))
-            .with_color(crate::serenity::Color::RED);
-
-        ctx.send_message(msg_params).await?;
+        // An error, so red, as every rendered error is.
+        courier::reply(ctx, CrackedMessage::CrackedError(CrackedError::NoQuery)).await?;
         return Ok(());
     }
 
@@ -633,22 +629,14 @@ pub async fn play_internal(
             short.declared,
             short.missing
         );
-        // `send_reply_embed(msg)`, plus the guild's ephemeral choice: the
-        // footnote to an ephemeral result must not land as a visible message.
+        // The guild's ephemeral choice: the footnote to an ephemeral result
+        // must not land as a visible message.
         let msg = CrackedMessage::SpotifyListingShort {
             seen: short.seen,
             declared: short.declared,
             missing: short.missing,
         };
-        let color = crate::serenity::Colour::from(&msg);
-        let embed: Option<CreateEmbed> = <Option<CreateEmbed>>::from(&msg);
-        let params = SendMessageParams::new(msg)
-            .with_color(color)
-            .with_as_embed(true)
-            .with_embed(embed)
-            .with_reply(true)
-            .with_ephemeral(private);
-        footnote = Some(ctx.send_message(params).await?);
+        footnote = Some(courier::reply_as(ctx, msg, private).await?);
     }
 
     // A `/play` that started a song is a now-playing moment. The status follows
@@ -875,87 +863,53 @@ async fn match_mode(
 //     tracing::info!("mode: {:?}", mode);
 // }
 
-/// Calculate the time until the next track plays.
+/// How long until the track just queued plays: what is left of the one
+/// playing, plus the length of each track between them. `None` when any of
+/// those lengths is unknown (a live stream, a track nothing measured), since
+/// an estimate built on a guess is worse than none.
 async fn calculate_time_until_play(queue: &[TrackHandle], mode: Mode) -> Option<Duration> {
-    if queue.is_empty() {
-        return None;
-    }
-
-    let zero_duration = Duration::ZERO;
-    let top_track = queue.first()?;
-    let top_track_elapsed = top_track
-        .get_info()
-        .await
-        .map(|i| i.position)
-        .unwrap_or(zero_duration);
-    let metadata = get_track_handle_metadata(top_track).await.ok()?;
-
-    let top_track_duration = match metadata.duration {
-        Some(duration) => duration,
-        None => return Some(Duration::MAX),
+    let playing = queue.first()?;
+    // Bounded: a driver that does not answer reads as "just started".
+    let elapsed =
+        match tokio::time::timeout(crate::music::ops::TRACK_INFO_TIMEOUT, playing.get_info()).await
+        {
+            Ok(Ok(info)) => info.position,
+            _ => Duration::ZERO,
+        };
+    let between = match mode {
+        // The new track is next: nothing is between them.
+        Mode::Next => &[][..],
+        // The new track is last: everything but the two ends is between.
+        _ => queue.get(1..queue.len() - 1).unwrap_or_default(),
     };
-
-    match mode {
-        Mode::Next => Some(top_track_duration - top_track_elapsed),
-        _ => {
-            let center = &queue[1..queue.len() - 1];
-            let livestreams =
-                center.len() - center.iter().filter_map(|_t| metadata.duration).count();
-
-            // if any of the tracks before are livestreams, the new track will never play
-            if livestreams > 0 {
-                return Some(Duration::MAX);
-            }
-
-            let durations = center
-                .iter()
-                .fold(Duration::ZERO, |acc, _x| acc + metadata.duration.unwrap());
-
-            Some(durations + top_track_duration - top_track_elapsed)
-        },
+    let mut lengths = Vec::with_capacity(between.len());
+    for track in between {
+        lengths.push(length_of(track).await);
     }
+    time_until_play(length_of(playing).await, elapsed, &lengths)
 }
 
-/// Build an embed for the cure
-async fn build_queued_embed<'att>(
-    author_title: &'att str,
-    track: &'att TrackHandle,
-    estimated_time: Duration,
-) -> CreateEmbed<'att> {
-    let metadata = {
-        // let map = track.typemap().read().await;
-        // let my_metadata = map.get::<NewAuxMetadata>().unwrap();
+async fn length_of(track: &TrackHandle) -> Option<Duration> {
+    get_track_handle_metadata(track)
+        .await
+        .ok()
+        .and_then(|m| m.duration)
+}
 
-        // match my_metadata {
-        //     NewAuxMetadata(metadata) => metadata.clone(),
-        // }
-        get_track_handle_metadata(track).await.unwrap_or_default()
-    };
-    let thumbnail = metadata.thumbnail.clone().unwrap_or_default();
-    let meta_title = metadata.title.clone().unwrap_or(QUEUE_NO_TITLE.to_string());
-    let source_url = metadata
-        .source_url
-        .clone()
-        .unwrap_or(QUEUE_NO_SRC.to_string());
-
-    // let title_text = &format!("[**{}**]({})", meta_title, source_url);
-
-    let footer_text = format!(
-        "{} {}\n{} {}",
-        TRACK_DURATION,
-        get_human_readable_timestamp(metadata.duration),
-        TRACK_TIME_TO_PLAY,
-        get_human_readable_timestamp(Some(estimated_time))
-    );
-
-    let author = CreateEmbedAuthor::new(author_title);
-
-    CreateEmbed::new()
-        .author(author)
-        .title(meta_title)
-        .url(source_url)
-        .thumbnail(thumbnail, None)
-        .footer(CreateEmbedFooter::new(Cow::Owned(footer_text)))
+/// The wait before a new track: the rest of the one playing (`elapsed` into
+/// `playing`), plus every length in `between`. `None` if any length is
+/// unknown or rounds to zero, the same rule as `format::duration_text`.
+fn time_until_play(
+    playing: Option<Duration>,
+    elapsed: Duration,
+    between: &[Option<Duration>],
+) -> Option<Duration> {
+    let known = |d: Option<Duration>| d.filter(|d| d.as_secs() > 0);
+    let mut wait = known(playing)?.saturating_sub(elapsed);
+    for length in between {
+        wait = wait.checked_add(known(*length)?)?;
+    }
+    Some(wait)
 }
 
 use crate::sources::rusty_ytdl::RequestOptionsBuilder;
@@ -1100,7 +1054,7 @@ mod degraded_perms_notice_tests {
 }
 
 /// 🪤 The tests above all exercise the private helpers in isolation. Delete
-/// the notice from `build_play_embed` and the `text_perms` resolve at the call
+/// the notice from `build_play_reply` and the `text_perms` resolve at the call
 /// site, and every one of them still passes while the feature does nothing at
 /// all -- which is the same defect as a guard test that asserts a hard-coded
 /// count. These pin the **wiring**: what the built reply actually carries.
@@ -1122,21 +1076,49 @@ mod degraded_notice_wiring_tests {
     /// `Ordering::Less` branch, which needs no `TrackHandle` and therefore no
     /// Discord, no songbird and no network.
     async fn reply(text: Option<&TextPerms>) -> (String, Option<String>) {
-        let (embed, content) = build_play_reply(
+        let out = build_play_reply(
             &[],
             Mode::End,
             NewQueryType(QueryType::Keywords("anything".to_string())),
             text,
         )
-        .await
-        .expect("an empty queue still builds a reply");
+        .await;
         // `CreateEmbed` is a third-party builder with no accessors, so its
         // own `Serialize` is the only way to read one back. An opaque
         // payload whose shape we do not own is exactly what `Value` is for.
-        let rendered = serde_json::to_value(&embed)
-            .expect("CreateEmbed serialises")
-            .to_string();
-        (rendered, content)
+        let rendered =
+            serde_json::to_value(out.embed.as_ref().expect("the play reply is an embed"))
+                .expect("CreateEmbed serialises")
+                .to_string();
+        (rendered, out.content)
+    }
+
+    /// The spec's missing-`EMBED_LINKS` case, as Discord receives it: a
+    /// prefix `r!play` edits its placeholder into the reply (poise's
+    /// `to_prefix_edit`), and in a channel without `EMBED_LINKS` that edit's
+    /// content is the only part anyone sees. The note is there; the embed
+    /// is kept for whoever can see it.
+    #[tokio::test]
+    async fn without_embed_links_the_notice_is_in_the_content_and_the_embed_is_kept() {
+        let out = build_play_reply(
+            &[],
+            Mode::End,
+            NewQueryType(QueryType::Keywords("anything".to_string())),
+            Some(&perms(TEXT_REQUIRED - Permissions::EMBED_LINKS)),
+        )
+        .await;
+        let edit = out
+            .to_reply_edit()
+            .0
+            .to_prefix_edit(serenity::EditMessage::new());
+        let v = serde_json::to_value(edit).expect("EditMessage serialises");
+        assert_eq!(
+            v["content"],
+            "⚠️ Missing **Embed Links** here — I won't post now-playing. `/diagnose` for detail."
+        );
+        let embeds = v["embeds"].as_array().expect("the edit carries embeds");
+        assert_eq!(embeds.len(), 1, "{v}");
+        assert_eq!(embeds[0]["description"], "No tracks in queue!");
     }
 
     #[tokio::test]
@@ -1192,17 +1174,148 @@ mod degraded_notice_wiring_tests {
 }
 
 #[cfg(test)]
+mod time_until_play_tests {
+    use super::*;
+    use crate::music::audit::{Actor, BotReason};
+    use crate::music::ops::test_support::{offline_call, GUILD};
+    use crate::music::queue::enqueue_input_back;
+    use crate::music::PlaybackOwner;
+    use crate::{Data, DataInner};
+    use songbird::input::AuxMetadata;
+
+    /// An offline queue whose tracks have these lengths, in seconds. The call
+    /// is returned so it outlives the handles.
+    async fn queue_of(lengths: &[Option<u64>]) -> (Arc<Mutex<Call>>, Vec<TrackHandle>) {
+        let data = Data(Arc::new(DataInner::default()));
+        let call = offline_call();
+        let guard = data
+            .lock_queue(GUILD, PlaybackOwner::Free, Actor::bot(BotReason::Autopause))
+            .await
+            .unwrap();
+        for (i, length) in lengths.iter().enumerate() {
+            let metadata = AuxMetadata {
+                title: Some(format!("t{i}")),
+                duration: length.map(Duration::from_secs),
+                ..Default::default()
+            };
+            let source = songbird::input::File::new(format!("/nonexistent/{i}.opus")).into();
+            enqueue_input_back(&guard, &call, source, Some(metadata), None).await;
+        }
+        let queue = call.lock().await.queue().current_queue();
+        (call, queue)
+    }
+
+    /// The wait for the last track of `lengths`, bounded: `get_info` never
+    /// answers on an offline call, and the reply must not wait for it.
+    async fn wait_for(lengths: &[Option<u64>], mode: Mode) -> Option<Duration> {
+        let (_call, queue) = queue_of(lengths).await;
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            calculate_time_until_play(&queue, mode),
+        )
+        .await
+        .expect("calculate_time_until_play outlived its bound")
+    }
+
+    /// Each track ahead counts its own length. It used to count the playing
+    /// track's length for every one of them, so a live stream in the middle
+    /// went unnoticed. (Offline, the playing track reads as just started.)
+    #[tokio::test]
+    async fn the_wait_adds_up_each_track_ahead() {
+        assert_eq!(
+            wait_for(&[Some(100), Some(30), Some(10)], Mode::End).await,
+            Some(Duration::from_secs(130))
+        );
+        assert_eq!(
+            wait_for(&[Some(100), None, Some(10)], Mode::End).await,
+            None
+        );
+        // Queued next: only the playing track is ahead of it.
+        assert_eq!(
+            wait_for(&[Some(100), None, Some(10)], Mode::Next).await,
+            Some(Duration::from_secs(100))
+        );
+    }
+
+    /// The queued reply, end to end: the card is the new track's, with its
+    /// length and the wait ahead of it; behind a live stream, the length only.
+    #[tokio::test]
+    async fn a_queued_reply_says_the_new_tracks_length_and_its_wait() {
+        let footer = |lengths: &'static [Option<u64>]| async move {
+            let (_call, queue) = queue_of(lengths).await;
+            let out = build_play_reply(
+                &queue,
+                Mode::End,
+                NewQueryType(QueryType::Keywords("anything".into())),
+                None,
+            )
+            .await;
+            let v = serde_json::to_value(out.embed.expect("the play reply is an embed")).unwrap();
+            assert_eq!(v["author"]["name"], PLAY_QUEUE);
+            assert_eq!(v["title"], "t1");
+            v["footer"]["text"].as_str().map(str::to_owned)
+        };
+        assert_eq!(
+            footer(&[Some(100), Some(273)]).await.as_deref(),
+            Some("Track duration: 4:33\nEstimated time until play: 1:40")
+        );
+        assert_eq!(
+            footer(&[None, Some(273)]).await.as_deref(),
+            Some("Track duration: 4:33")
+        );
+    }
+
+    /// "Estimated time until play: ∞" (a live stream playing) and "00:00" (a
+    /// length nobody knew) were both computed from an unknown length.
+    #[test]
+    fn an_unknown_length_ahead_means_no_estimate() {
+        let s = |secs| Some(Duration::from_secs(secs));
+        assert_eq!(time_until_play(None, Duration::ZERO, &[]), None);
+        assert_eq!(time_until_play(s(100), Duration::ZERO, &[None]), None);
+        assert_eq!(time_until_play(s(100), Duration::ZERO, &[s(0)]), None);
+        assert_eq!(time_until_play(s(0), Duration::ZERO, &[]), None);
+    }
+
+    #[test]
+    fn the_estimate_is_what_is_left_of_the_playing_track_plus_the_rest() {
+        let s = |secs| Some(Duration::from_secs(secs));
+        assert_eq!(time_until_play(s(100), Duration::from_secs(40), &[]), s(60));
+        assert_eq!(
+            time_until_play(s(100), Duration::from_secs(40), &[s(30), s(5)]),
+            s(95)
+        );
+        // A position past the reported end (it happens) is not a panic.
+        assert_eq!(
+            time_until_play(s(100), Duration::from_secs(130), &[s(30)]),
+            s(30)
+        );
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::messaging::messages::PLAY_PLAYLIST;
+    use crate::messaging::render::description;
 
     /// 🪤 Seen on production v0.12.1: a playlist `/play` replied with the literal
     /// text "PlaylistQueued", `{:?}` of the message instead of its text.
-    #[test]
-    fn a_queued_playlist_is_announced_in_words() {
-        let json = serde_json::to_string(&playlist_queued_embed()).expect("an embed serializes");
+    #[tokio::test]
+    async fn a_queued_playlist_is_announced_in_words() {
+        let (_data, call, _ids, _rx) = crate::music::ops::test_support::queue_of(2).await;
+        let queue = call.lock().await.queue().current_queue();
+        let out = build_play_reply(
+            &queue,
+            Mode::End,
+            NewQueryType(QueryType::PlaylistLink(
+                "https://www.youtube.com/playlist?list=x".into(),
+            )),
+            None,
+        )
+        .await;
+        let text = description(&out).expect("the play reply is an embed");
 
-        assert!(json.contains(PLAY_PLAYLIST), "{json}");
-        assert!(!json.contains("PlaylistQueued"), "{json}");
+        assert_eq!(text, PLAY_PLAYLIST);
+        assert!(!text.contains("PlaylistQueued"), "{text}");
     }
 }

@@ -7,6 +7,7 @@ use crate::messaging::messages::{
     QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC, QUEUE_NO_TITLE,
     QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
 };
+use crate::messaging::render::Rendered;
 use crate::utils::EMBED_PAGE_SIZE;
 use crate::utils::{calculate_num_pages, send_embed_response_poise};
 use crate::CrackedResult;
@@ -23,7 +24,7 @@ use crack_types::get_human_readable_timestamp;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;
-use poise::{CreateReply, ReplyHandle};
+use poise::ReplyHandle;
 use serenity::all::EmbedField;
 use serenity::all::GuildId;
 use serenity::small_fixed_array::FixedString;
@@ -328,16 +329,15 @@ pub fn create_nav_btns<'att>(page: usize, num_pages: usize) -> Vec<CreateCompone
 
 // -------- Search Results -------- //
 
-/// Creates a search results reply.
-pub async fn create_search_results_reply(results: Vec<CreateEmbed<'_>>) -> CreateReply<'_> {
-    let mut reply = CreateReply::default()
-        .reply(true)
-        .content("Search results:");
-    for result in results {
-        reply = reply.clone().embed(result);
-    }
-
-    reply.clone()
+/// The search results reply: a line of text, then one embed per hit, in
+/// order.
+#[must_use]
+pub fn create_search_results_reply(results: Vec<CreateEmbed<'static>>) -> Rendered {
+    let mut results = results.into_iter();
+    let mut out = Rendered::text("Search results:");
+    out.embed = results.next();
+    out.embeds_extra = results.collect();
+    out
 }
 /// Sends a message to the user indicating that the search failed.
 pub async fn send_search_failed(ctx: &CrackContext<'_>) -> Result<(), CrackedError> {
@@ -444,6 +444,26 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
 
 #[cfg(test)]
 mod test {
+    /// Every hit is in the one reply, in order, under its line of text.
+    #[test]
+    fn search_results_are_one_reply_with_every_hit_in_order() {
+        use serenity::all::CreateEmbed;
+        let out = super::create_search_results_reply(vec![
+            CreateEmbed::new().title("(1)[a]"),
+            CreateEmbed::new().title("(2)[b]"),
+            CreateEmbed::new().title("(3)[c]"),
+        ]);
+        assert_eq!(out.content.as_deref(), Some("Search results:"));
+        let v = serde_json::to_value(out.to_message()).unwrap();
+        let titles: Vec<&str> = v["embeds"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["title"].as_str().unwrap())
+            .collect();
+        assert_eq!(titles, ["(1)[a]", "(2)[b]", "(3)[c]"]);
+    }
+
     /// `get_info` never answers on an offline call; the card must still come
     /// back, as "just started", within the bound.
     #[tokio::test]
