@@ -7,8 +7,8 @@
 use crate::messaging::format::{clip, CONTENT_MAX, DESCRIPTION_MAX};
 use crate::messaging::message::CrackedMessage;
 use serenity::all::{
-    Colour, CreateAllowedMentions, CreateComponent, CreateEmbed, CreateInteractionResponseMessage,
-    CreateMessage, EditMessage,
+    Colour, CreateAllowedMentions, CreateComponent, CreateEmbed, CreateInteractionResponseFollowup,
+    CreateInteractionResponseMessage, CreateMessage, EditMessage,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -152,6 +152,22 @@ impl Rendered {
             m = m.embeds(embeds);
         }
         m
+    }
+
+    /// A follow-up to a component interaction (a button press's answer).
+    pub fn to_followup(&self, ephemeral: bool) -> CreateInteractionResponseFollowup<'static> {
+        let mut f = CreateInteractionResponseFollowup::new()
+            .ephemeral(ephemeral)
+            .allowed_mentions(self.allowed_mentions())
+            .components(self.components.clone());
+        if let Some(content) = &self.content {
+            f = f.content(content.clone());
+        }
+        let embeds = self.embeds();
+        if !embeds.is_empty() {
+            f = f.embeds(embeds);
+        }
+        f
     }
 
     /// An edit replaces everything: a field left `None` is cleared, so a
@@ -316,6 +332,18 @@ mod tests {
     }
 
     /// A page flip carries the new embed and the nav buttons, and pings nobody.
+    /// A follow-up to a press: private when asked, pings nobody, carries the embed.
+    #[test]
+    fn a_followup_is_private_when_asked_and_pings_nobody() {
+        let r = render(&CrackedMessage::Other("@everyone".into()), &cx());
+        let private = serde_json::to_value(r.to_followup(true)).unwrap();
+        assert_eq!(private["flags"].as_u64(), Some(64));
+        assert_eq!(private["allowed_mentions"]["parse"], serde_json::json!([]));
+        assert_eq!(private["embeds"].as_array().map(Vec::len), Some(1));
+        let public = serde_json::to_value(r.to_followup(false)).unwrap();
+        assert_eq!(public["flags"].as_u64().unwrap_or(0) & 64, 0);
+    }
+
     #[test]
     fn an_interaction_update_carries_the_embed_and_the_buttons() {
         let r = Rendered::embed(CreateEmbed::new().title("Page 2"))

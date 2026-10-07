@@ -5,7 +5,7 @@ use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::messaging::status::{self, Phase};
-use crate::messaging::transport::{Transport, TransportError};
+use crate::messaging::transport::{Press, Transport, TransportError};
 use crate::Data;
 use serenity::all::{GenericChannelId, GuildId, MessageId};
 use serenity::async_trait;
@@ -246,6 +246,25 @@ pub async fn post(
     }
 }
 
+/// Tell Discord a button press arrived. Best effort: `false`, logged, when it
+/// failed (the press is still handled; Discord shows its own failure notice).
+pub async fn acknowledge(press: &dyn Press) -> bool {
+    match press.acknowledge().await {
+        Ok(()) => true,
+        Err(err) => {
+            tracing::warn!("acknowledging a button press failed: {err:?}");
+            false
+        },
+    }
+}
+
+/// Answer the presser only. Best effort: a failure is logged.
+pub async fn answer_privately(press: &dyn Press, msg: &CrackedMessage, cx: &RenderCx) {
+    if let Err(err) = press.followup(render(msg, cx), true).await {
+        tracing::warn!("answering a button press failed: {err:?}");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -460,5 +479,36 @@ mod tests {
         .await;
         assert_eq!(at, None);
         assert!(t.ops().is_empty(), "{:?}", t.ops());
+    }
+
+    #[tokio::test]
+    async fn a_press_is_acknowledged_then_answered_privately() {
+        use crate::messaging::test_support::{FakePress, PressOp};
+        let p = FakePress::default();
+        assert!(acknowledge(&p).await);
+        answer_privately(
+            &p,
+            &CrackedMessage::CrackedError(crate::errors::CrackedError::NothingPlaying),
+            &cx(),
+        )
+        .await;
+        assert_eq!(
+            p.ops(),
+            vec![
+                PressOp::Acknowledge,
+                PressOp::Followup {
+                    ephemeral: true,
+                    text: "🔈 Nothing is playing!".into()
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_acknowledge_is_reported_not_raised() {
+        use crate::messaging::test_support::FakePress;
+        let p = FakePress::default();
+        *p.ack_error.lock().unwrap() = Some(TransportError::Other("Unknown interaction".into()));
+        assert!(!acknowledge(&p).await);
     }
 }

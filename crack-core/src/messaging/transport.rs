@@ -2,7 +2,10 @@
 //! cache knows of a channel. Tests swap in `test_support::FakeTransport`.
 use crate::http_utils::is_unknown_message;
 use crate::messaging::render::Rendered;
-use serenity::all::{Cache, GenericChannelId, GuildId, Http, MessageId};
+use serenity::all::{
+    Cache, ComponentInteraction, CreateInteractionResponse, GenericChannelId, GuildId, Http,
+    MessageId,
+};
 use serenity::async_trait;
 use std::sync::Arc;
 
@@ -111,5 +114,46 @@ impl Transport for DiscordTransport {
                 .get(&thread_id)
                 .and_then(|thread| thread.base.last_message_id),
         }
+    }
+}
+
+/// One button press: acknowledge it, then answer whoever pressed it. Bound
+/// to its interaction, as `ReplySink` is bound to a command. Tests swap in
+/// `test_support::FakePress`.
+#[async_trait]
+pub trait Press: Send + Sync {
+    /// A deferred update: Discord stops waiting, and the message is left as is.
+    async fn acknowledge(&self) -> Result<(), TransportError>;
+    async fn followup(&self, out: Rendered, ephemeral: bool) -> Result<(), TransportError>;
+}
+
+/// The real Discord behind [`Press`].
+pub struct DiscordPress<'a> {
+    pub http: &'a Http,
+    pub interaction: &'a ComponentInteraction,
+}
+
+#[async_trait]
+impl Press for DiscordPress<'_> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
+    async fn acknowledge(&self) -> Result<(), TransportError> {
+        Ok(self
+            .interaction
+            .create_response(self.http, CreateInteractionResponse::Acknowledge)
+            .await?)
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
+    async fn followup(&self, out: Rendered, ephemeral: bool) -> Result<(), TransportError> {
+        self.interaction
+            .create_followup(self.http, out.to_followup(ephemeral))
+            .await?;
+        Ok(())
     }
 }
