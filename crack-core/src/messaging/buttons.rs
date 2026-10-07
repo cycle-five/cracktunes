@@ -229,14 +229,14 @@ pub async fn handle(data: &Data, ctx: &serenity::all::Context, interaction: &Com
         &press,
         &interaction.data.custom_id,
         who,
-        |guild, user, c| {
+        |guild, user, via, c| {
             remote::control(
                 data_arc,
                 ctx.http.clone(),
                 ctx.cache.clone(),
                 guild,
                 user,
-                Via::Button,
+                via,
                 c,
             )
         },
@@ -252,7 +252,7 @@ pub(crate) async fn respond<F, Fut>(
     who: Presser<'_>,
     run: F,
 ) where
-    F: FnOnce(GuildId, UserId, Control) -> Fut,
+    F: FnOnce(GuildId, UserId, Via, Control) -> Fut,
     Fut: Future<Output = Result<Option<Echo>, ControlRefused>>,
 {
     courier::acknowledge(press).await;
@@ -282,7 +282,7 @@ pub(crate) async fn respond<F, Fut>(
         courier::answer_privately(press, &CrackedMessage::CrackedError(err), &cx).await;
         return;
     }
-    if let Err(refused) = run(guild, who.user, button.control()).await {
+    if let Err(refused) = run(guild, who.user, Via::Button, button.control()).await {
         courier::answer_privately(press, &refusal(refused), &cx).await;
     }
 }
@@ -502,11 +502,11 @@ mod tests {
         id: &str,
         who: Presser<'_>,
         answer: Result<Option<Echo>, ControlRefused>,
-    ) -> (Vec<PressOp>, Vec<(GuildId, UserId, Control)>) {
+    ) -> (Vec<PressOp>, Vec<(GuildId, UserId, Via, Control)>) {
         let p = FakePress::default();
         let ran = Mutex::new(Vec::new());
-        respond(data, &p, id, who, |g, u, c| {
-            ran.lock().unwrap().push((g, u, c));
+        respond(data, &p, id, who, |g, u, v, c| {
+            ran.lock().unwrap().push((g, u, v, c));
             async move { answer }
         })
         .await;
@@ -536,7 +536,10 @@ mod tests {
         )
         .await;
         assert_eq!(ops, vec![PressOp::Acknowledge]);
-        assert_eq!(ran, vec![(G, U, Control::Skip { expect: uuid() })]);
+        assert_eq!(
+            ran,
+            vec![(G, U, Via::Button, Control::Skip { expect: uuid() })]
+        );
     }
 
     /// A control that changed nothing still says nothing to the presser: the
