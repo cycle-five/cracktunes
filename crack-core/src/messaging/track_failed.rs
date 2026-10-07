@@ -9,14 +9,14 @@
 //! playlist of dead links is one notice rather than fifty. The raw error never
 //! reaches Discord -- it can carry a tool's stderr (v0.17.2's leak) -- only one
 //! of the [`FailReason`]s, and the detail goes to the log.
+use crate::messaging::format::{TrackLabel, INLINE_TITLE_MAX};
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
     TRACK_FAILED, TRACK_FAILED_BROKE_OFF, TRACK_FAILED_FORMAT, TRACK_FAILED_MORE,
-    TRACK_FAILED_OPEN, TRACK_FAILED_SEEK, TRACK_FAILED_TRACKS, TRACK_FAILED_UNTITLED,
+    TRACK_FAILED_OPEN, TRACK_FAILED_SEEK, TRACK_FAILED_TRACKS,
 };
 use crate::messaging::render::{render, RenderCx};
 use crate::messaging::transport::{Transport, TransportError};
-use crate::music::audit_view::{cap, escape, TITLE_MAX};
 use crate::utils::get_track_handle_metadata;
 use crate::Data;
 use serenity::all::{GenericChannelId, GuildId, MessageId};
@@ -107,14 +107,16 @@ impl Data {
     }
 }
 
-/// `**title**: reason`, the title cut and escaped: it is third-party text.
-/// A blank title counts as none: a link yt-dlp could not read (a members-only
-/// video, say) is queued with `Some("")`, which rendered as a bare `****`.
+/// `**title**: reason`, the title cut at `INLINE_TITLE_MAX` and escaped: it
+/// is third-party text in a sentence. A blank title counts as none: a link
+/// yt-dlp could not read (a members-only video, say) is queued with
+/// `Some("")`, which rendered as a bare `****`.
 fn entry(failure: &Failure) -> String {
-    let title = match failure.title.as_deref().map(str::trim) {
-        Some(t) if !t.is_empty() => escape(&cap(t, TITLE_MAX)),
-        _ => TRACK_FAILED_UNTITLED.to_owned(),
-    };
+    let title = TrackLabel {
+        title: failure.title.clone(),
+        ..TrackLabel::default()
+    }
+    .title_text(INLINE_TITLE_MAX);
     format!("**{title}**: {}", failure.reason.text())
 }
 
@@ -324,12 +326,19 @@ mod tests {
         assert_eq!(shown.matches("\n• ").count(), LISTED_MAX);
     }
 
+    /// An in-sentence title gets the spec's 60 characters (was the audit
+    /// log's 40): 11 characters of prefix and 49 `a`s, then `…`.
     #[test]
     fn a_title_is_cut_escaped_and_untitled_has_a_name() {
-        let long = format!("@everyone *{}", "a".repeat(TITLE_MAX));
+        let long = format!("@everyone *{}", "a".repeat(100));
         let shown = render_text(&[failed(&long, FailReason::Open)], 0);
-        assert!(shown.contains("**\\@everyone \\*"), "{shown}");
-        assert!(shown.contains("…**"), "{shown}");
+        assert_eq!(
+            shown,
+            format!(
+                "⚠️ Couldn't play **\\@everyone \\*{}…**: couldn't open the stream",
+                "a".repeat(49)
+            )
+        );
         let untitled = Failure {
             title: None,
             reason: FailReason::Open,

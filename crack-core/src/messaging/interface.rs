@@ -85,12 +85,10 @@ pub async fn build_log_embed_thumb<'a>(
         .footer(footer))
 }
 
-/// Send a log message as a embed with a thumbnail.
+/// Send a log message as a embed with a thumbnail. An event-log send, not
+/// part of the layer: it moves when the event log is migrated.
 #[cfg(not(tarpaulin_include))]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "messaging is where sends are made"
-)]
+#[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
 pub async fn send_log_embed_thumb(
     guild_name: &str,
     channel: &GenericChannelId,

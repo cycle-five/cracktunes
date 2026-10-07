@@ -1,7 +1,7 @@
 //! The structured messages: now playing, queued, the echo of a dashboard
 //! control, and their renderers.
 use crate::messaging::format::{
-    cap, clip, duration_text, escape, http_url, progress_text, Progress, TrackLabel, AUTHOR_MAX,
+    clip, duration_text, http_url, progress_text, Progress, TrackLabel, AUTHOR_MAX,
     EMBED_TITLE_MAX, FIELD_MAX, INLINE_TITLE_MAX,
 };
 use crate::messaging::interface::requesting_user_to_string;
@@ -67,7 +67,8 @@ pub enum Echo {
 
 impl Echo {
     /// The one line posted in Discord. Titles are third-party text, so they
-    /// are cut to `INLINE_TITLE_MAX` characters, then escaped.
+    /// are cut to `INLINE_TITLE_MAX` characters, then escaped; a blank one is
+    /// `(untitled)`, never `****`.
     #[must_use]
     pub fn line(&self, user: UserId) -> String {
         let (what, title) = match self {
@@ -82,7 +83,11 @@ impl Echo {
         match title {
             Some(t) => format!(
                 "{what} **{}** {ECHO_FROM_DASHBOARD} — <@{user}>",
-                escape(&cap(t, INLINE_TITLE_MAX))
+                TrackLabel {
+                    title: Some(t.to_owned()),
+                    ..TrackLabel::default()
+                }
+                .title_text(INLINE_TITLE_MAX)
             ),
             None => format!("{what} {ECHO_FROM_DASHBOARD} — <@{user}>"),
         }
@@ -283,6 +288,22 @@ mod tests {
             v(&now_playing(&c, &cx))["fields"][0]["value"],
             ">>> 4:33 · on repeat"
         );
+    }
+
+    /// A blank title (a members-only link queues `Some("")`) echoed as
+    /// "⏭ Skipped **** …"; it is `(untitled)`, as everywhere else.
+    #[test]
+    fn an_echo_of_a_blank_title_says_untitled() {
+        for blank in ["", "   "] {
+            let echo = Echo::Skipped {
+                title: Some(blank.into()),
+            };
+            assert_eq!(
+                echo.line(UserId::new(42)),
+                "⏭ Skipped **(untitled)** from the dashboard — <@42>",
+                "{blank:?}"
+            );
+        }
     }
 
     /// Ruling R2: escaping after the cap can push a title past Discord's limit.

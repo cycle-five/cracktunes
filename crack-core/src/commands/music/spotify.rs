@@ -1,5 +1,5 @@
 use crate::commands::help;
-use crate::messaging::format::escape;
+use crate::messaging::format::{escape, http_url};
 use crate::messaging::{courier, message::CrackedMessage};
 use crate::sources::sleevenote::{self, MediaType};
 use crate::{Context, Error};
@@ -81,8 +81,9 @@ fn track_embed(track: Track) -> CreateEmbed<'static> {
 
     if let Some(album) = &track.album {
         embed = embed.field("Album", escape(&album.name), true);
-        if let Some(image) = &album.image {
-            embed = embed.thumbnail(image.clone(), None);
+        // Only a web URL: an empty or relative one is left out.
+        if let Some(image) = http_url(album.image.as_deref()) {
+            embed = embed.thumbnail(image.to_string(), None);
         }
     }
     if let Some(duration) = track.duration() {
@@ -168,8 +169,8 @@ fn collection_embed(
     if let Some(missing) = shortfall.filter(|n| *n > 0) {
         embed = embed.field("Not recovered", missing.to_string(), true);
     }
-    if let Some(image) = image {
-        embed = embed.thumbnail(image, None);
+    if let Some(image) = http_url(image.as_deref()) {
+        embed = embed.thumbnail(image.to_string(), None);
     }
     embed.field("Listing", listing, false)
 }
@@ -257,6 +258,50 @@ mod tests {
         let json = serde_json::to_string(&track_embed(track)).unwrap();
         assert!(json.contains(r"\\@everyone"), "{json}");
         assert!(json.contains(r"\\_album\\_"), "{json}");
+    }
+
+    fn thumbnail_of(embed: &CreateEmbed<'static>) -> Option<String> {
+        let json = serde_json::to_value(embed).unwrap();
+        json.get("thumbnail")
+            .and_then(|t| t["url"].as_str())
+            .map(str::to_owned)
+    }
+
+    /// Cover art is set only from a web URL, as on every other card: an
+    /// empty or relative one is left out rather than sent broken.
+    #[test]
+    fn cover_art_is_set_only_from_a_web_url() {
+        for (image, want) in [
+            (
+                "https://i.scdn.co/image/ab67",
+                Some("https://i.scdn.co/image/ab67"),
+            ),
+            ("", None),
+            ("/image/ab67", None),
+        ] {
+            let mut track = hostile_track();
+            track.album = Some(
+                serde_json::from_str(&format!(
+                    r#"{{"id":"a","name":"A","url":"https://open.spotify.com/album/a","image":"{image}"}}"#
+                ))
+                .expect("album"),
+            );
+            assert_eq!(
+                thumbnail_of(&track_embed(track)).as_deref(),
+                want,
+                "{image:?}"
+            );
+            let listing = collection_embed(
+                "Mix".into(),
+                "https://open.spotify.com/playlist/p".into(),
+                "owner".into(),
+                &[],
+                0,
+                None,
+                Some(image.to_owned()),
+            );
+            assert_eq!(thumbnail_of(&listing).as_deref(), want, "{image:?}");
+        }
     }
 
     #[test]

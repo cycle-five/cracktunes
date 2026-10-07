@@ -105,6 +105,11 @@ impl Rendered {
     /// the context's. `CreateReply` and `CreateComponent` are invariant in it,
     /// so a `'static` component list cannot be passed: it is left out, and the
     /// caller is told so by the returned flag.
+    ///
+    /// 🪤 Unlike [`Rendered::to_edit`], this does not clear absent content:
+    /// poise sets the content only when it is `Some`, so an edit without
+    /// content leaves the old text on the message. (Embeds it always
+    /// replaces, an empty list included.)
     #[must_use]
     pub fn to_reply_edit<'a>(&self) -> (poise::CreateReply<'a>, bool) {
         let mut reply: poise::CreateReply<'a> =

@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     messaging::{
-        format::{TrackLabel, INLINE_TITLE_MAX},
+        format::{http_url, TrackLabel, INLINE_TITLE_MAX},
         message::CrackedMessage,
         messages::REMOVED_QUEUE,
     },
@@ -52,7 +52,8 @@ impl Cleared {
     }
 }
 
-/// The single-track `/remove` embed; never panics on missing metadata.
+/// The single-track `/remove` embed; never panics on missing metadata. The
+/// thumbnail is set only from a web URL: an empty or relative one is left out.
 pub fn removed_embed(first: &TrackSummary, thumbnail: Option<&str>) -> CreateEmbed<'static> {
     let value = TrackLabel::from_ref(&TrackRef {
         title: first.title.clone(),
@@ -60,8 +61,8 @@ pub fn removed_embed(first: &TrackSummary, thumbnail: Option<&str>) -> CreateEmb
     })
     .linked(INLINE_TITLE_MAX);
     let embed = CreateEmbed::default().field(REMOVED_QUEUE, value, false);
-    match thumbnail {
-        Some(t) => embed.thumbnail(t.to_owned(), None),
+    match http_url(thumbnail) {
+        Some(t) => embed.thumbnail(t.to_string(), None),
         None => embed,
     }
 }
@@ -327,6 +328,33 @@ mod test {
         };
         let json = serde_json::to_value(removed_embed(&first, None)).unwrap();
         json["fields"][0]["value"].as_str().unwrap().to_owned()
+    }
+
+    #[test]
+    fn the_removed_embed_thumbnail_is_set_only_from_a_web_url() {
+        let first = TrackSummary {
+            id: uuid::Uuid::nil(),
+            title: Some("t".into()),
+            url: None,
+            duration: None,
+            requester: None,
+        };
+        for (thumbnail, want) in [
+            (
+                Some("https://i.ytimg.com/a.jpg"),
+                Some("https://i.ytimg.com/a.jpg"),
+            ),
+            (Some(""), None),
+            (Some("/vi/x/hq.jpg"), None),
+            (None, None),
+        ] {
+            let json = serde_json::to_value(removed_embed(&first, thumbnail)).unwrap();
+            assert_eq!(
+                json.get("thumbnail").and_then(|t| t["url"].as_str()),
+                want,
+                "{thumbnail:?}"
+            );
+        }
     }
 
     #[test]

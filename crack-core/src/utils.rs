@@ -1,9 +1,7 @@
 use crate::http_utils::CacheHttpExt;
 use crate::messaging::courier::{self, Destination};
 use crate::messaging::format::{duration_text, TrackLabel, INLINE_TITLE_MAX};
-use crate::messaging::messages::{
-    SEARCH_MENU_NOT_REMOVED, SEARCH_RESULTS_NOT_POSTED, TRACK_UNTITLED,
-};
+use crate::messaging::messages::{SEARCH_RESULTS_NOT_POSTED, TRACK_UNTITLED};
 use crate::messaging::render::{RenderCx, Rendered};
 use crate::messaging::transport::{DiscordTransport, Transport};
 #[cfg(feature = "crack-metrics")]
@@ -226,11 +224,22 @@ pub async fn yt_search_select(
         .map_err(|e| e.into())
         .map(|_| qt);
 
-    transport.delete(channel_id, menu_id).await.map_err(|err| {
+    clear_menu_keeping(res, &transport, channel_id, menu_id).await
+}
+
+/// Delete the search menu and hand back `pick` either way: a menu left behind
+/// is untidy, but the member's choice still plays. A failed delete used to
+/// replace a successful pick with an error, and nothing was queued.
+async fn clear_menu_keeping(
+    pick: Result<QueryType, Error>,
+    transport: &dyn Transport,
+    channel: GenericChannelId,
+    menu: ::serenity::all::MessageId,
+) -> Result<QueryType, Error> {
+    if let Err(err) = transport.delete(channel, menu).await {
         tracing::warn!("search: the results menu was not removed: {err:?}");
-        CrackedError::Other(SEARCH_MENU_NOT_REMOVED)
-    })?;
-    res
+    }
+    pick
 }
 
 /// Sends a reply response with an embed.
@@ -804,6 +813,26 @@ mod search_option_tests {
 
 #[cfg(test)]
 mod test {
+
+    /// A pick stands when its menu cannot be deleted: the delete failure is
+    /// logged, and the pick is what comes back.
+    #[tokio::test]
+    async fn a_menu_that_will_not_delete_does_not_cost_the_pick() {
+        use crate::messaging::test_support::{FakeTransport, Op};
+        use crate::messaging::transport::TransportError;
+        use ::serenity::all::{GenericChannelId, MessageId};
+
+        let t = FakeTransport::default();
+        *t.delete_error.lock().unwrap() = Some(TransportError::Other("Missing Access".into()));
+        let pick = Ok(QueryType::VideoLink("https://youtu.be/x".into()));
+        let got =
+            super::clear_menu_keeping(pick, &t, GenericChannelId::new(7), MessageId::new(42)).await;
+        assert!(
+            matches!(&got, Ok(QueryType::VideoLink(url)) if url == "https://youtu.be/x"),
+            "{got:?}"
+        );
+        assert_eq!(t.ops(), vec![Op::Delete(7, 42)]);
+    }
 
     use ::serenity::{
         all::Button,

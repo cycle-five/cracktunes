@@ -84,7 +84,6 @@ pub const ECHO_FROM_DASHBOARD: &str = "from the dashboard";
 pub const TRACK_FAILED: &str = "⚠️ Couldn't play";
 pub const TRACK_FAILED_TRACKS: &str = "tracks";
 pub const TRACK_FAILED_MORE: &str = "more";
-pub const TRACK_FAILED_UNTITLED: &str = TRACK_UNTITLED;
 pub const TRACK_UNTITLED: &str = "(untitled)";
 pub const PROGRESS_ENDS: &str = "ends";
 pub const PROGRESS_STARTED: &str = "Started";
@@ -240,7 +239,6 @@ pub const SCAN_QUEUED: &str = "🔍 Scan queued! Use";
 pub const SEARCHING: &str = "🔎 Searching...";
 /// `/search`'s pick-a-result menu could not be posted in the channel.
 pub const SEARCH_RESULTS_NOT_POSTED: &str = "⚠️ Could not post the search results here.";
-pub const SEARCH_MENU_NOT_REMOVED: &str = "⚠️ Could not remove the search results menu.";
 pub const SEEKED: &str = "⏩ Seeked current track to";
 pub const SEEK_FAIL: &str = "❌⏩ Failed to seek to";
 pub const SHUFFLED_SUCCESS: &str = "🔀 Shuffled successfully!";
