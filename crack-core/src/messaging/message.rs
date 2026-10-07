@@ -301,6 +301,7 @@ pub enum CrackedMessage {
     Queued(Box<QueuedCard>),
     ControlEchoesOn,
     ControlEchoesOff,
+    ButtonOutOfDate,
 }
 
 impl CrackedMessage {
@@ -653,6 +654,7 @@ impl Display for CrackedMessage {
             },
             Self::ControlEchoesOn => f.write_str(crate::messaging::messages::CONTROL_ECHOES_ON),
             Self::ControlEchoesOff => f.write_str(crate::messaging::messages::CONTROL_ECHOES_OFF),
+            Self::ButtonOutOfDate => f.write_str(crate::messaging::messages::BUTTON_OUT_OF_DATE),
         }
     }
 }

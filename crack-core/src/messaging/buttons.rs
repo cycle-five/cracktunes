@@ -5,12 +5,26 @@
 //! needs: buttons on an old status message still work after a restart, and a
 //! Skip names the track it was drawn for, so a stale or doubled press cannot
 //! skip the next song.
+use crate::commands::permissions::music_access;
+use crate::errors::CrackedError;
+use crate::messaging::cards::Via;
+use crate::messaging::courier;
+use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
     NP_BUTTON_PAUSE, NP_BUTTON_REPEAT, NP_BUTTON_RESUME, NP_BUTTON_SHUFFLE, NP_BUTTON_SKIP,
+    OP_TRACK_STALE,
 };
-use crate::music::remote::Control;
-use serenity::all::{ButtonStyle, CreateActionRow, CreateButton, CreateComponent, GuildId};
+use crate::messaging::render::RenderCx;
+use crate::messaging::transport::{DiscordPress, Press};
+use crate::music::remote::{self, Control, ControlRefused, Echo};
+use crate::Data;
+use serenity::all::{
+    ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton, CreateComponent,
+    GenericChannelId, GuildId, Member, UserId,
+};
 use std::borrow::Cow;
+use std::future::Future;
+use std::sync::Arc;
 use uuid::Uuid;
 
 /// Every now-playing button's custom id starts with this.
@@ -181,6 +195,111 @@ pub fn now_playing_row(c: &Controls) -> CreateComponent<'static> {
 
 fn button(b: NowPlayingButton, label: &'static str, style: ButtonStyle) -> CreateButton<'static> {
     CreateButton::new(b.custom_id()).label(label).style(style)
+}
+
+/// Who pressed, and where: the parts of the interaction `respond` reads.
+pub(crate) struct Presser<'a> {
+    /// `None` for a press outside a guild (a DM).
+    pub guild: Option<GuildId>,
+    pub user: UserId,
+    pub is_bot: bool,
+    pub member: Option<&'a Member>,
+    pub channel: GenericChannelId,
+}
+
+/// A press on an `np:` button. Acknowledged first, before anything slow,
+/// inside Discord's 3-second window; every later outcome the presser needs
+/// to hear is a private follow-up. Success says nothing more: the echo line
+/// (if the guild has echoes on) and the re-rendered status are the answer.
+pub async fn handle(data: &Data, ctx: &serenity::all::Context, interaction: &ComponentInteraction) {
+    let press = DiscordPress {
+        http: &ctx.http,
+        interaction,
+    };
+    let who = Presser {
+        guild: interaction.guild_id,
+        user: interaction.user.id,
+        is_bot: interaction.user.bot(),
+        member: interaction.member.as_deref(),
+        channel: interaction.channel_id,
+    };
+    let data_arc = Arc::new(data.clone());
+    respond(
+        data,
+        &press,
+        &interaction.data.custom_id,
+        who,
+        |guild, user, c| {
+            remote::control(
+                data_arc,
+                ctx.http.clone(),
+                ctx.cache.clone(),
+                guild,
+                user,
+                Via::Button,
+                c,
+            )
+        },
+    )
+    .await;
+}
+
+/// [`handle`] without Discord: `run` is the control.
+pub(crate) async fn respond<F, Fut>(
+    data: &Data,
+    press: &dyn Press,
+    custom_id: &str,
+    who: Presser<'_>,
+    run: F,
+) where
+    F: FnOnce(GuildId, UserId, Control) -> Fut,
+    Fut: Future<Output = Result<Option<Echo>, ControlRefused>>,
+{
+    courier::acknowledge(press).await;
+    let cx = RenderCx::now();
+    let button = match NowPlayingButton::parse(custom_id) {
+        Some(b) if who.guild == Some(b.guild()) => b,
+        _ => {
+            tracing::warn!(
+                "np: press with an unusable id {custom_id:?} from {}",
+                who.user
+            );
+            courier::answer_privately(press, &CrackedMessage::ButtonOutOfDate, &cx).await;
+            return;
+        },
+    };
+    let guild = button.guild();
+    if let Err(err) = music_access(
+        data,
+        guild,
+        who.member,
+        who.is_bot,
+        who.channel,
+        button.command(),
+    )
+    .await
+    {
+        courier::answer_privately(press, &CrackedMessage::CrackedError(err), &cx).await;
+        return;
+    }
+    if let Err(refused) = run(guild, who.user, button.control()).await {
+        courier::answer_privately(press, &refusal(refused), &cx).await;
+    }
+}
+
+/// A refused control, in the words the slash commands use.
+fn refusal(r: ControlRefused) -> CrackedMessage {
+    match r {
+        ControlRefused::NotPlaying => CrackedMessage::CrackedError(CrackedError::NothingPlaying),
+        ControlRefused::GameInProgress => {
+            CrackedMessage::CrackedError(CrackedError::GameInProgress)
+        },
+        // Only a Skip drawn for an earlier track gets here from a button.
+        ControlRefused::Conflict => {
+            CrackedMessage::CrackedError(CrackedError::Other(OP_TRACK_STALE))
+        },
+        ControlRefused::Failed => CrackedMessage::Error,
+    }
 }
 
 #[cfg(test)]
@@ -356,5 +475,151 @@ mod tests {
                 3
             )
         );
+    }
+
+    use crate::messaging::test_support::{FakePress, PressOp};
+    use crate::music::remote::{ControlRefused, Echo};
+    use crate::Data;
+    use serenity::all::{GenericChannelId, UserId};
+    use std::sync::Mutex;
+
+    const U: UserId = UserId::new(42);
+    const CH: GenericChannelId = GenericChannelId::new(10);
+
+    fn presser(guild: Option<GuildId>) -> Presser<'static> {
+        Presser {
+            guild,
+            user: U,
+            is_bot: false,
+            member: None,
+            channel: CH,
+        }
+    }
+
+    /// Records what `respond` asked to run; answers with `answer`.
+    async fn press_with(
+        data: &Data,
+        id: &str,
+        who: Presser<'_>,
+        answer: Result<Option<Echo>, ControlRefused>,
+    ) -> (Vec<PressOp>, Vec<(GuildId, UserId, Control)>) {
+        let p = FakePress::default();
+        let ran = Mutex::new(Vec::new());
+        respond(data, &p, id, who, |g, u, c| {
+            ran.lock().unwrap().push((g, u, c));
+            async move { answer }
+        })
+        .await;
+        (p.ops(), ran.into_inner().unwrap())
+    }
+
+    fn private(text: &str) -> PressOp {
+        PressOp::Followup {
+            ephemeral: true,
+            text: text.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_press_is_acknowledged_first_then_runs_its_control_and_says_nothing_more() {
+        let data = Data::default();
+        let id = NowPlayingButton::Skip {
+            guild: G,
+            track: uuid(),
+        }
+        .custom_id();
+        let (ops, ran) = press_with(
+            &data,
+            &id,
+            presser(Some(G)),
+            Ok(Some(Echo::Skipped { title: None })),
+        )
+        .await;
+        assert_eq!(ops, vec![PressOp::Acknowledge]);
+        assert_eq!(ran, vec![(G, U, Control::Skip { expect: uuid() })]);
+    }
+
+    /// A control that changed nothing still says nothing to the presser: the
+    /// status message is the answer.
+    #[tokio::test]
+    async fn a_no_op_press_is_silent() {
+        let data = Data::default();
+        let id = NowPlayingButton::Pause { guild: G }.custom_id();
+        let (ops, ran) = press_with(&data, &id, presser(Some(G)), Ok(None)).await;
+        assert_eq!(ops, vec![PressOp::Acknowledge]);
+        assert_eq!(ran.len(), 1);
+    }
+
+    /// Review Focus 3.
+    #[tokio::test]
+    async fn a_malformed_id_is_out_of_date_and_runs_nothing() {
+        let data = Data::default();
+        let (ops, ran) =
+            press_with(&data, "np:skip:1:not-a-uuid", presser(Some(G)), Ok(None)).await;
+        assert_eq!(
+            ops,
+            vec![PressOp::Acknowledge, private("This button is out of date.")]
+        );
+        assert!(ran.is_empty());
+    }
+
+    /// An id for another guild than the one the press came from (a forged id).
+    #[tokio::test]
+    async fn an_id_for_another_guild_is_out_of_date_and_runs_nothing() {
+        let data = Data::default();
+        let id = NowPlayingButton::Pause {
+            guild: GuildId::new(999),
+        }
+        .custom_id();
+        let (ops, ran) = press_with(&data, &id, presser(Some(G)), Ok(None)).await;
+        assert_eq!(
+            ops,
+            vec![PressOp::Acknowledge, private("This button is out of date.")]
+        );
+        assert!(ran.is_empty());
+        let (_, ran) = press_with(&data, &id, presser(None), Ok(None)).await;
+        assert!(ran.is_empty(), "a press from a DM runs nothing");
+    }
+
+    /// Review Focus 4: refused in the slash command's words, privately.
+    #[tokio::test]
+    async fn a_press_outside_the_music_channel_is_refused_privately() {
+        let data = Data::default();
+        let mut s = crate::guild::settings::GuildSettings::new(G, None, None);
+        s.set_music_channel(77);
+        data.guild_settings_map.write().await.insert(G, s);
+        let id = NowPlayingButton::Shuffle { guild: G }.custom_id();
+        let (ops, ran) = press_with(&data, &id, presser(Some(G)), Ok(None)).await;
+        assert_eq!(
+            ops,
+            vec![
+                PressOp::Acknowledge,
+                private("⚠️ You are not in the music channel! Use <#10>"),
+            ]
+        );
+        assert!(ran.is_empty());
+    }
+
+    /// Review Focus 1 and 2: a stale skip, and nothing playing.
+    #[tokio::test]
+    async fn refusals_from_the_control_are_answered_privately() {
+        let data = Data::default();
+        let id = NowPlayingButton::Skip {
+            guild: G,
+            track: uuid(),
+        }
+        .custom_id();
+        for (refused, words) in [
+            (ControlRefused::Conflict, "That track is no longer playing"),
+            (ControlRefused::NotPlaying, "🔈 Nothing is playing!"),
+            (
+                ControlRefused::GameInProgress,
+                "🎭 A game is running; that command would break the rounds. `/gp skip`, `/gp close` or `/gp end` instead.",
+            ),
+            (ControlRefused::Failed, "Fatality! Something went wrong ☹️"),
+        ] {
+            let (ops, _) = press_with(&data, &id, presser(Some(G)), Err(refused)).await;
+            assert_eq!(ops, vec![PressOp::Acknowledge, private(words)], "{refused:?}");
+        }
     }
 }
