@@ -604,7 +604,7 @@ mod test {
         .line(u);
         assert_eq!(
             l,
-            r"⏭ Skipped **\*\*x\*\* \<@7\> \[a\](b) z** from the dashboard — <@42>"
+            r"⏭ Skipped **\*\*x\*\* \<\@7\> \[a\](b) z** from the dashboard — <@42>"
         );
     }
 

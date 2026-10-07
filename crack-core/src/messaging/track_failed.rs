@@ -399,7 +399,7 @@ mod tests {
     fn a_title_is_cut_escaped_and_untitled_has_a_name() {
         let long = format!("@everyone *{}", "a".repeat(TITLE_MAX));
         let shown = render(&[failed(&long, FailReason::Open)], 0);
-        assert!(shown.contains("**@everyone \\*"), "{shown}");
+        assert!(shown.contains("**\\@everyone \\*"), "{shown}");
         assert!(shown.contains("…**"), "{shown}");
         let untitled = Failure {
             title: None,

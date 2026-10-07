@@ -3,22 +3,19 @@
 
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::plan::Plan;
+use crate::messaging::format::{cap, escape, INLINE_TITLE_MAX};
 use crate::messaging::messages::{
     STATUS_AUTOPAUSE, STATUS_AUTOPLAY, STATUS_BOT, STATUS_FREE, STATUS_GAME, STATUS_IDLE,
     STATUS_IDLE_TIMEOUT, STATUS_MORE_QUEUED, STATUS_NEVER_PREMIUM, STATUS_OFF, STATUS_ON,
     STATUS_PLAYBACK, STATUS_PREMIUM, STATUS_SERVER, STATUS_SETTINGS, STATUS_TITLE, STATUS_UNTITLED,
     STATUS_VOLUME,
 };
-use crate::music::audit_view::escape;
 use crate::music::remote::{self, QueueState};
 use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 use poise::CreateReply;
 use serenity::{ChannelId, CreateEmbed, Mentionable, UserId};
 use std::time::{Duration, SystemTime};
-
-/// Titles longer than this are cut, with `…`.
-const TITLE_MAX: usize = 60;
 
 /// Show this server's plan, the bot, what's playing, and the settings in effect.
 #[cfg(not(tarpaulin_include))]
@@ -177,17 +174,12 @@ pub fn compose_status(f: &StatusFacts) -> Vec<StatusSection> {
     ]
 }
 
-/// A title for display: escaped, cut at `TITLE_MAX` characters with `…`.
+/// A title for display: escaped, cut at `INLINE_TITLE_MAX` characters with `…`.
 fn title_text(title: &Option<String>) -> String {
     let Some(raw) = title.as_deref() else {
         return STATUS_UNTITLED.to_owned();
     };
-    let cut: String = raw.chars().take(TITLE_MAX).collect();
-    let cut = if raw.chars().count() > TITLE_MAX {
-        format!("{cut}…")
-    } else {
-        cut
-    };
+    let cut = cap(raw, INLINE_TITLE_MAX);
     escape(&cut)
 }
 
@@ -319,12 +311,12 @@ mod test {
         );
         let line = section(&f, STATUS_PLAYBACK);
         assert!(
-            line.contains(r"\*\*\[x\](http://e.vil)\*\* \<@&1\>"),
+            line.contains(r"\*\*\[x\](http://e.vil)\*\* \<\@&1\>"),
             "{line}"
         );
         assert!(!line.contains("more"), "{line}");
 
-        let long = "a".repeat(TITLE_MAX + 5);
+        let long = "a".repeat(INLINE_TITLE_MAX + 5);
         let f = facts(
             Plan::Free,
             Playback::Playing {
@@ -334,7 +326,9 @@ mod test {
                 more: 0,
             },
         );
-        assert!(section(&f, STATUS_PLAYBACK).contains(&format!("{}…", "a".repeat(TITLE_MAX))));
+        assert!(
+            section(&f, STATUS_PLAYBACK).contains(&format!("{}…", "a".repeat(INLINE_TITLE_MAX)))
+        );
     }
 
     /// The titles in a `/gp` game are its answers.
