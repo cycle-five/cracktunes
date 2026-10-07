@@ -528,6 +528,12 @@ pub const PREMIUM_CONTROLS: &str = "Dashboard controls are a premium feature.";
 /// not in the bot's voice channel, under the disabled controls.
 pub const JOIN_VOICE_FOR_CONTROLS: &str = "Join the bot's voice channel to use the controls.";
 pub const PATREON_URL: &str = "https://patreon.com/CrackTunes";
+// The dashboard's signed-out landing page, which is also its link preview
+// (#589).
+pub const DASH_LANDING_TITLE: &str = "CrackTunes dashboard";
+pub const DASH_LANDING_DESCRIPTION: &str =
+    "See what's playing in your Discord server and control the queue from your browser.";
+pub const DASH_SIGN_IN: &str = "Sign in with Discord";
 
 // The now-playing buttons: symbols only, so the row never wraps unevenly on
 // a narrow screen (#588). Fully qualified (with U+FE0F where a symbol has a
