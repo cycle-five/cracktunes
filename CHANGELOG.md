@@ -294,6 +294,11 @@
   tab) no longer posts an echo line.
 - Outside the music channel, the refusal now names the music channel to use,
   not the channel you are already in.
+- Pasting the dashboard's address in Discord previewed it as Discord's own
+  "CrackTunes • Discord App" sign-in card: a signed-out visit to `/` redirected
+  to the login, and Discord followed the redirect to its OAuth page. `/` now
+  answers signed-out visitors with a landing page that carries its own preview
+  (title, description and image) and a "Sign in with Discord" link. (#589)
 
 ## TODO:
 

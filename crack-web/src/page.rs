@@ -4,7 +4,8 @@
 
 use crate::{backend::GuildEntry, history::HistoryPage, view::PageState};
 use crack_core::messaging::messages::{
-    JOIN_VOICE_FOR_CONTROLS, PATREON_URL, PREMIUM_CONTROLS, PREMIUM_HISTORY,
+    DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE, DASH_SIGN_IN, JOIN_VOICE_FOR_CONTROLS,
+    PATREON_URL, PREMIUM_CONTROLS, PREMIUM_HISTORY,
 };
 use serde::Serialize;
 use serenity::all::GuildId;
@@ -52,6 +53,36 @@ fn layout(title: &str, body: &str, scripts: &[&str]) -> String {
 <button type=\"button\" id=\"logout\">Log out</button></header>\
 <main>{body}</main>{scripts}</body></html>",
         title = esc(title),
+    )
+}
+
+/// `GET /` signed out: what the dashboard is and a way in. It is also the
+/// card Discord shows when someone pastes the address (#589), so it carries
+/// Open Graph tags with absolute URLs under `origin`. Its own head: no logout
+/// button and no scripts.
+pub fn landing_page(origin: &str) -> String {
+    format!(
+        "<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">\
+<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\
+<title>{title}</title><meta name=\"description\" content=\"{description}\">\
+<meta property=\"og:type\" content=\"website\">\
+<meta property=\"og:site_name\" content=\"CrackTunes\">\
+<meta property=\"og:title\" content=\"{title}\">\
+<meta property=\"og:description\" content=\"{description}\">\
+<meta property=\"og:url\" content=\"{origin}/\">\
+<meta property=\"og:image\" content=\"{origin}/assets/og.webp\">\
+<meta property=\"og:image:width\" content=\"1200\">\
+<meta property=\"og:image:height\" content=\"630\">\
+<meta name=\"twitter:card\" content=\"summary_large_image\">\
+<link rel=\"stylesheet\" href=\"/assets/app.css\"></head>\
+<body><header><a class=\"brand\" href=\"/\">Crack Tunes</a></header>\
+<main><h1>{title}</h1><p>{description}</p>\
+<p><a class=\"button\" href=\"/auth/login?return_to=%2F\">{sign_in}</a></p></main>\
+</body></html>",
+        title = esc(DASH_LANDING_TITLE),
+        description = esc(DASH_LANDING_DESCRIPTION),
+        origin = esc(origin),
+        sign_in = esc(DASH_SIGN_IN),
     )
 }
 
@@ -229,6 +260,18 @@ mod test {
         }
         let parsed: State = serde_json::from_str(&html[start..end]).unwrap();
         assert_eq!(parsed.view, view);
+    }
+
+    /// The origin comes from the environment, but it lands in attributes:
+    /// it is escaped like everything else.
+    #[test]
+    fn the_landing_page_escapes_its_origin() {
+        let html = landing_page("https://x\"><script>");
+        assert!(!html.contains("<script>"), "{html}");
+        assert!(
+            html.contains(r#"content="https://x&quot;&gt;&lt;script&gt;/assets/og.webp""#),
+            "{html}"
+        );
     }
 
     #[test]
