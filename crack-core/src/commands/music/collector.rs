@@ -1,9 +1,11 @@
+use crate::messaging::courier;
+use crate::messaging::render::Rendered;
 use crate::{Context, Error};
 use ::serenity::builder::{
     CreateActionRow, CreateButton, CreateComponent, CreateInteractionResponse,
     CreateInteractionResponseMessage, EditMessage,
 };
-use poise::{serenity_prelude as serenity, CreateReply};
+use poise::serenity_prelude as serenity;
 
 /// Boop the bot!
 /// TODO: get this working
@@ -14,14 +16,14 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
 
     let id_str = format!("{}", uuid_boop);
 
-    ctx.send(
-        CreateReply::default()
-            .content("I want some boops!")
-            .components(Cow::Owned(vec![CreateComponent::ActionRow(
-                CreateActionRow::buttons(Cow::Owned(vec![CreateButton::new(id_str)
-                    .style(serenity::ButtonStyle::Primary)
-                    .label("Boop me!")])),
-            )])),
+    courier::reply_rendered(
+        ctx,
+        Rendered::text("I want some boops!").with_components(vec![CreateComponent::ActionRow(
+            CreateActionRow::buttons(Cow::Owned(vec![CreateButton::new(id_str)
+                .style(serenity::ButtonStyle::Primary)
+                .label("Boop me!")])),
+        )]),
+        false,
     )
     .await?;
 

@@ -969,7 +969,13 @@ pub async fn queue_aux_metadata(
     }
 
     let queue = call.lock().await.queue().current_queue();
-    update_queue_messages(&ctx, ctx.data(), &queue, guild_id).await;
+    update_queue_messages(
+        &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+        ctx.data(),
+        &queue,
+        guild_id,
+    )
+    .await;
     Ok(())
 }
 

@@ -1,11 +1,11 @@
 use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::cards::NowPlayingCard;
-use crate::messaging::format::{Progress, TrackLabel};
+use crate::messaging::format::{duration_text, Progress, TrackLabel, INLINE_TITLE_MAX};
 use crate::messaging::messages::UNKNOWN;
 use crate::messaging::messages::{
-    QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_NO_SRC, QUEUE_NO_TITLE,
-    QUEUE_PAGE, QUEUE_PAGE_OF, QUEUE_UP_NEXT,
+    QUEUE_NOTHING_IS_PLAYING, QUEUE_NOW_PLAYING, QUEUE_NO_SONGS, QUEUE_PAGE, QUEUE_PAGE_OF,
+    QUEUE_UP_NEXT,
 };
 use crate::messaging::render::Rendered;
 use crate::utils::EMBED_PAGE_SIZE;
@@ -20,7 +20,6 @@ use crate::{
     utils::{get_requesting_user, get_track_handle_metadata},
     Context as CrackContext, Error,
 };
-use crack_types::get_human_readable_timestamp;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;
@@ -146,19 +145,19 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
         // A track can have no metadata (a pick nothing resolved a title for).
         // It gets a blank line here, not a panic that kills `/queue`.
         let metadata = get_track_handle_metadata(t).await.unwrap_or_default();
-        let title = metadata.title.clone().unwrap_or_default();
-        let url = metadata.source_url.clone().unwrap_or_default();
-        let duration = get_human_readable_timestamp(metadata.duration);
+        let label = TrackLabel::from_metadata(&metadata);
         let requesting_user = get_requesting_user(t).await.unwrap_or(UserId::new(1));
 
         // No brackets around the requester: autoplay's is already "(auto)".
+        // An unknown duration is left out, not shown as 00:00.
         let _ = writeln!(
             description,
-            "{}. [{}]({}) • {} • {}",
+            "{}. {}{} • {}",
             i + start_idx + 1,
-            title,
-            url,
-            duration,
+            label.linked(INLINE_TITLE_MAX),
+            duration_text(label.duration)
+                .map(|d| format!(" • {d}"))
+                .unwrap_or_default(),
             requesting_user_to_string(requesting_user),
         );
     }
@@ -171,7 +170,7 @@ async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
 }
 
 /// Creates a queue embed.
-pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed<'_> {
+pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed<'static> {
     let (description, thumbnail): (String, String) = if !tracks.is_empty() {
         let metadata = get_track_handle_metadata(tracks.first().unwrap())
             .await
@@ -186,17 +185,13 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
             },
         };
 
+        let label = TrackLabel::from_metadata(&metadata);
         let description = format!(
-            "[{}]({}) • {}",
-            metadata
-                .title
-                .as_ref()
-                .unwrap_or(&String::from(QUEUE_NO_TITLE)),
-            metadata
-                .source_url
-                .as_ref()
-                .unwrap_or(&String::from(QUEUE_NO_SRC)),
-            get_human_readable_timestamp(metadata.duration)
+            "{}{}",
+            label.linked(INLINE_TITLE_MAX),
+            duration_text(label.duration)
+                .map(|d| format!(" • {d}"))
+                .unwrap_or_default(),
         );
         (description, thumbnail)
     } else {
@@ -532,7 +527,7 @@ mod test {
 
         let page = super::create_queue_page(&tracks, 0).await;
 
-        assert!(page.starts_with("1. [The Old Dun Cow]"), "{page}");
+        assert!(page.starts_with("1. **The Old Dun Cow**"), "{page}");
         assert!(!page.contains("I Had It All"), "{page}");
     }
 
@@ -546,7 +541,7 @@ mod test {
 
         let page = super::create_queue_page(&tracks, 1).await;
 
-        assert!(page.starts_with("7. [Track 7]"), "{page}");
+        assert!(page.starts_with("7. **Track 7**"), "{page}");
         assert_eq!(crate::utils::calculate_num_pages(&tracks), 2);
     }
 
@@ -569,6 +564,40 @@ mod test {
 
         assert!(page.contains("(auto)"), "{page}");
         assert!(!page.contains("((auto))"), "{page}");
+    }
+
+    /// A track nothing resolved: no title, no link, no duration. It reads
+    /// `(untitled)`, links nowhere, and never claims to be 00:00 long.
+    #[tokio::test]
+    async fn an_untitled_track_without_link_or_duration_has_a_plain_line() {
+        let (_call, tracks) = queue_of(&[("Playing", None), ("", Some(9))]).await;
+
+        let page = super::create_queue_page(&tracks, 0).await;
+
+        assert_eq!(page, "1. **(untitled)** • <@9>\n");
+        assert!(!page.contains("00:00"), "{page}");
+    }
+
+    /// The queue title is third-party text: escaped, not trusted as markdown.
+    #[tokio::test]
+    async fn a_queue_line_escapes_its_title() {
+        let (_call, tracks) = queue_of(&[("Playing", None), ("a*b", Some(9))]).await;
+
+        let page = super::create_queue_page(&tracks, 0).await;
+
+        assert!(page.contains("**a\\*b**"), "{page}");
+    }
+
+    /// The "Now playing" line follows the same rules as the lines below it.
+    #[tokio::test]
+    async fn an_unknown_now_playing_track_is_untitled_and_has_no_duration() {
+        let (_call, tracks) = queue_of(&[("", None)]).await;
+
+        let embed = super::create_queue_embed(&tracks, 0).await;
+
+        let wire = serde_json::to_string(&embed).unwrap();
+        assert!(wire.contains("**(untitled)**"), "{wire}");
+        assert!(!wire.contains("00:00"), "{wire}");
     }
 
     #[test]

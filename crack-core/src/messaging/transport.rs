@@ -51,6 +51,17 @@ pub struct DiscordTransport {
     pub cache: Arc<Cache>,
 }
 
+impl DiscordTransport {
+    /// The transport a command or event handler already has the pieces for.
+    #[must_use]
+    pub fn of(ctx: &serenity::all::Context) -> Self {
+        Self {
+            http: ctx.http.clone(),
+            cache: ctx.cache.clone(),
+        }
+    }
+}
+
 #[async_trait]
 impl Transport for DiscordTransport {
     async fn send(

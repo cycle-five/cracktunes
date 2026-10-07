@@ -1,7 +1,7 @@
 use crate::http_utils::CacheHttpExt;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::courier::{self, Destination};
-use crate::messaging::format::{duration_text, TrackLabel};
+use crate::messaging::format::{duration_text, TrackLabel, INLINE_TITLE_MAX};
 use crate::messaging::messages::SEARCH_RESULTS_NOT_POSTED;
 use crate::messaging::render::{RenderCx, Rendered};
 use crate::messaging::transport::DiscordTransport;
@@ -36,12 +36,11 @@ use ::serenity::{
     model::channel::Message,
 };
 use anyhow::Result;
-use crack_types::get_human_readable_timestamp;
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
 use poise::{
     serenity_prelude::{self as serenity, CommandInteraction, Context as SerenityContext},
-    CreateReply, ReplyHandle,
+    ReplyHandle,
 };
 use serenity::all::UserId;
 #[allow(deprecated)]
@@ -537,17 +536,17 @@ async fn build_queue_page_metadata(metadata: &[NewAuxMetadata], page: usize) -> 
 
     for (i, &t) in queue.iter().enumerate() {
         let NewAuxMetadata(t) = t;
-        let title = t.title.clone().unwrap_or_default();
-        let url = t.source_url.clone().unwrap_or_default();
-        let duration = get_human_readable_timestamp(t.duration);
+        let label = TrackLabel::from_metadata(t);
 
+        // An unknown duration is left out, not shown as 00:00.
         let _ = writeln!(
             description,
-            "`{}.` [{}]({}) • `{}`",
+            "`{}.` {}{}",
             i + start_idx + 1,
-            title,
-            url,
-            duration
+            label.linked(INLINE_TITLE_MAX),
+            duration_text(label.duration)
+                .map(|d| format!(" • `{d}`"))
+                .unwrap_or_default(),
         );
     }
 
@@ -646,17 +645,17 @@ pub async fn create_paged_embed(
 
     let _x: Result<(), CrackedError> = {
         let reply_handle = {
-            ctx.send(
-                CreateReply::default()
-                    .embed(
-                        CreateEmbed::new()
-                            .title(title.clone())
-                            .author(CreateEmbedAuthor::new(author.clone()))
-                            .description(page_getter(0))
-                            .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
-                    )
-                    .components(create_nav_btns(0, num_pages))
-                    .ephemeral(style.ephemeral),
+            courier::reply_rendered(
+                ctx,
+                Rendered::embed(
+                    CreateEmbed::new()
+                        .title(title.clone())
+                        .author(CreateEmbedAuthor::new(author.clone()))
+                        .description(page_getter(0))
+                        .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
+                )
+                .with_components(create_nav_btns(0, num_pages)),
+                style.ephemeral,
             )
             .await?
         };
@@ -688,32 +687,27 @@ pub async fn create_paged_embed(
                 _ => continue,
             };
 
+            let flipped = Rendered::embed(
+                CreateEmbed::new()
+                    .title(title.clone())
+                    .author(CreateEmbedAuthor::new(author.clone()))
+                    .description(page_getter(*page_wlock))
+                    .footer(CreateEmbedFooter::new(format!(
+                        "Page {}/{}",
+                        *page_wlock + 1,
+                        num_pages
+                    ))),
+            )
+            .with_components(create_nav_btns(*page_wlock, num_pages));
             mci.create_response(
                 ctx.http(),
-                CreateInteractionResponse::UpdateMessage(
-                    CreateInteractionResponseMessage::new()
-                        .embeds(vec![CreateEmbed::new()
-                            .title(title.clone())
-                            .author(CreateEmbedAuthor::new(author.clone()))
-                            .description(page_getter(*page_wlock))
-                            .footer(CreateEmbedFooter::new(format!(
-                                "Page {}/{}",
-                                *page_wlock + 1,
-                                num_pages
-                            )))])
-                        .components(create_nav_btns(*page_wlock, num_pages)),
-                ),
+                CreateInteractionResponse::UpdateMessage(flipped.to_interaction_message()),
             )
             .await?;
         }
 
-        if let Err(e) = reply_handle
-            .edit(
-                ctx,
-                CreateReply::default()
-                    .embed(CreateEmbed::default().description(CrackedMessage::PaginationComplete)),
-            )
-            .await
+        if let Err(e) =
+            courier::edit_reply(ctx, &reply_handle, CrackedMessage::PaginationComplete).await
         {
             tracing::warn!("could not mark pagination complete (message dismissed?): {e}");
         }
@@ -1002,6 +996,16 @@ mod test {
     use crack_types::to_fixed;
 
     use super::*;
+    use crack_types::get_human_readable_timestamp;
+
+    /// A playlist track with nothing known about it has a plain `(untitled)`
+    /// line: no empty link, no 00:00.
+    #[tokio::test]
+    async fn a_playlist_page_line_without_link_or_duration_is_plain() {
+        let blank = NewAuxMetadata(Default::default());
+        let page = build_queue_page_metadata(&[blank], 0).await;
+        assert_eq!(page, "`1.` **(untitled)**\n");
+    }
 
     #[test]
     fn newline_splitter_never_slices_inside_a_multibyte_char() {

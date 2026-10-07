@@ -7,7 +7,8 @@
 use crate::messaging::format::{clip, CONTENT_MAX, DESCRIPTION_MAX};
 use crate::messaging::message::CrackedMessage;
 use serenity::all::{
-    Colour, CreateAllowedMentions, CreateComponent, CreateEmbed, CreateMessage, EditMessage,
+    Colour, CreateAllowedMentions, CreateComponent, CreateEmbed, CreateInteractionResponseMessage,
+    CreateMessage, EditMessage,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -119,6 +120,23 @@ impl Rendered {
 
     pub fn to_message(&self) -> CreateMessage<'static> {
         let mut m = CreateMessage::new()
+            .allowed_mentions(self.allowed_mentions())
+            .components(self.components.clone());
+        if let Some(content) = &self.content {
+            m = m.content(content.clone());
+        }
+        let embeds = self.embeds();
+        if !embeds.is_empty() {
+            m = m.embeds(embeds);
+        }
+        m
+    }
+
+    /// The body of a component interaction's `UpdateMessage` response (a page
+    /// flip). The response itself stays with the caller until interaction
+    /// responses move here.
+    pub fn to_interaction_message(&self) -> CreateInteractionResponseMessage<'static> {
+        let mut m = CreateInteractionResponseMessage::new()
             .allowed_mentions(self.allowed_mentions())
             .components(self.components.clone());
         if let Some(content) = &self.content {
@@ -290,6 +308,17 @@ mod tests {
         let r = Rendered::text("pong");
         assert!(r.embed.is_none());
         assert_eq!(r.content.as_deref(), Some("pong"));
+    }
+
+    /// A page flip carries the new embed and the nav buttons, and pings nobody.
+    #[test]
+    fn an_interaction_update_carries_the_embed_and_the_buttons() {
+        let r = Rendered::embed(CreateEmbed::new().title("Page 2"))
+            .with_components(crate::messaging::interface::create_nav_btns(1, 3));
+        let v = serde_json::to_value(r.to_interaction_message()).unwrap();
+        assert_eq!(v["embeds"][0]["title"], "Page 2");
+        assert_eq!(v["components"].as_array().map(Vec::len), Some(1));
+        assert_eq!(v["allowed_mentions"]["parse"], serde_json::json!([]));
     }
 
     fn embed_titles(v: &serde_json::Value) -> Vec<String> {

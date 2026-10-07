@@ -592,7 +592,13 @@ pub async fn queue_resolved_list_back(
     enqueue_resolved_tracks_back(&guard, &call, tracks, client.clone()).await?;
     let snapshot = call.lock().await.queue().current_queue();
     drop(guard);
-    update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+    update_queue_messages(
+        &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+        ctx.data(),
+        &snapshot,
+        guild_id,
+    )
+    .await;
 
     if rest.is_empty() {
         return Ok(());
@@ -616,7 +622,13 @@ pub async fn queue_resolved_list_back(
         queued += inserted.count();
         let snapshot = call.lock().await.queue().current_queue();
         drop(guard);
-        update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+        update_queue_messages(
+            &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+            ctx.data(),
+            &snapshot,
+            guild_id,
+        )
+        .await;
 
         let is_last = queued >= total;
         if is_last || last_edit.elapsed() >= PROGRESS_EDIT_INTERVAL {
@@ -717,7 +729,13 @@ pub async fn queue_vec_query_type(
         .await?;
     let snapshot = enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await?;
     drop(guard);
-    update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+    update_queue_messages(
+        &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+        ctx.data(),
+        &snapshot,
+        guild_id,
+    )
+    .await;
     Ok(())
 }
 
@@ -775,7 +793,13 @@ pub async fn queue_query_list_offset(
             .collect::<Vec<_>>();
         let snapshot = enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await?;
         drop(guard);
-        update_queue_messages(&ctx, ctx.data(), &snapshot, guild_id).await;
+        update_queue_messages(
+            &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+            ctx.data(),
+            &snapshot,
+            guild_id,
+        )
+        .await;
         return Ok(());
     }
 
@@ -812,7 +836,13 @@ pub async fn queue_query_list_offset(
     };
     drop(guard);
 
-    update_queue_messages(&ctx, ctx.data(), &cur_q, guild_id).await;
+    update_queue_messages(
+        &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
+        ctx.data(),
+        &cur_q,
+        guild_id,
+    )
+    .await;
 
     Ok(())
 }

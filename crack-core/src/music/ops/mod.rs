@@ -14,6 +14,7 @@ pub use skip::*;
 #[cfg(test)]
 pub(crate) mod test_support;
 
+use crate::messaging::transport::DiscordTransport;
 use crate::{
     commands::music_utils::connected_call,
     handlers::track_end::update_queue_messages,
@@ -43,6 +44,13 @@ pub struct OpCx {
 }
 
 impl OpCx {
+    fn transport(&self) -> DiscordTransport {
+        DiscordTransport {
+            http: self.http.clone(),
+            cache: self.cache.clone(),
+        }
+    }
+
     /// The member running this command.
     pub fn from_ctx(ctx: &crate::Context<'_>) -> Result<OpCx, CrackedError> {
         let sc = ctx.serenity_context();
@@ -153,7 +161,7 @@ impl Settle {
         match (self, call) {
             (Settle::QueueMessages, Some(call)) => {
                 let queue = call.lock().await.queue().current_queue();
-                update_queue_messages(&cx.http, cx.data.clone(), &queue, cx.guild_id).await;
+                update_queue_messages(&cx.transport(), cx.data.clone(), &queue, cx.guild_id).await;
             },
             (Settle::NowPlaying, Some(call)) => {
                 let playing = call.lock().await.queue().current().is_some();

@@ -178,6 +178,18 @@ pub async fn edit_message(
         .await
 }
 
+/// Edit a channel message with an already rendered body. Unlike a reply edit,
+/// a channel-message edit keeps its components (queue pages keep their nav
+/// buttons).
+pub async fn edit_rendered_message(
+    transport: &dyn Transport,
+    channel: GenericChannelId,
+    id: MessageId,
+    out: Rendered,
+) -> Result<(), TransportError> {
+    transport.edit(channel, id, out).await
+}
+
 /// Deliver `msg` to `dest`. Best effort: failures are logged and swallowed,
 /// and the result says where it landed, if anywhere.
 pub async fn post(
@@ -333,6 +345,20 @@ mod tests {
         )
         .await;
         assert_eq!(err, Err(TransportError::UnknownMessage));
+    }
+
+    /// A queue page refresh edits in place and keeps its nav buttons.
+    #[tokio::test]
+    async fn edit_rendered_message_edits_that_message_with_its_components() {
+        let t = FakeTransport::default();
+        let out = Rendered::embed(serenity::all::CreateEmbed::new().description("page"))
+            .with_components(crate::messaging::interface::create_nav_btns(0, 2));
+        edit_rendered_message(&t, GenericChannelId::new(7), MessageId::new(42), out)
+            .await
+            .unwrap();
+        assert_eq!(t.ops(), vec![Op::Edit(7, 42)]);
+        let sent = t.sent.lock().unwrap();
+        assert_eq!(sent.last().map(|r| r.components.len()), Some(1));
     }
 
     #[tokio::test]
