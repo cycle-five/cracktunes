@@ -1,6 +1,8 @@
 use crate::http_utils::CacheHttpExt;
 use crate::http_utils::SendMessageParams;
+use crate::messaging::courier;
 use crate::messaging::format::TrackLabel;
+use crate::messaging::render::Rendered;
 #[cfg(feature = "crack-metrics")]
 use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
@@ -262,12 +264,7 @@ pub async fn send_embed_response_poise_as<'ctx>(
     embed: CreateEmbed<'ctx>,
     ephemeral: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-    let params = SendMessageParams::default()
-        .with_ephemeral(ephemeral)
-        .with_embed(Some(embed))
-        .with_reply(true);
-
-    ctx.send_message_owned(params).await
+    courier::reply_rendered(ctx, Rendered::embed(embed.into_owned()), ephemeral).await
 }
 
 pub async fn edit_reponse_interaction(
@@ -335,11 +332,11 @@ pub async fn edit_embed_response2(
     msg: ReplyHandle<'_>,
     content: Option<String>,
 ) -> Result<(), Error> {
-    let mut reply = CreateReply::default().embed(embed);
+    let mut out = Rendered::embed(embed.into_owned());
     if let Some(content) = content {
-        reply = reply.content(content);
+        out = out.with_content(content);
     }
-    msg.edit(ctx, reply).await?;
+    courier::edit_rendered(ctx, &msg, out).await?;
     Ok(())
 }
 

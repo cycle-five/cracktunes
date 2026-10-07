@@ -6,7 +6,10 @@ use std::sync::{
     Arc,
 };
 
+use crate::messaging::courier::{self, Destination};
+use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::IDLE_ALERT;
+use crate::messaging::render::RenderCx;
 
 /// Handler for the idle event.
 pub struct IdleHandler {
@@ -97,17 +100,22 @@ impl EventHandler for IdleHandler {
                         self.guild_id,
                     )
                     .await;
-                    match self
-                        .channel_id
-                        .say(&self.serenity_ctx.http, IDLE_ALERT)
-                        .await
-                    {
-                        Ok(_) => {},
-                        Err(e) => {
-                            tracing::error!("Error sending idle alert: {:?}", e);
-                            return Some(Event::Cancel);
-                        },
+                    let transport = crate::messaging::status::DiscordTransport {
+                        http: self.serenity_ctx.http.clone(),
+                        cache: self.serenity_ctx.cache.clone(),
                     };
+                    let sent = courier::post(
+                        &data,
+                        &transport,
+                        Destination::Channel(self.channel_id),
+                        &CrackedMessage::Other(IDLE_ALERT.to_owned()),
+                        &RenderCx::now(),
+                    )
+                    .await;
+                    if sent.is_none() {
+                        // `post` has logged why.
+                        return Some(Event::Cancel);
+                    }
                 },
                 Err(JoinError::NoCall) => {
                     tracing::warn!("No call found for guild: {:?}", self.guild_id);

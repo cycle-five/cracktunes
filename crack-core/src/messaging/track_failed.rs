@@ -9,16 +9,17 @@
 //! playlist of dead links is one notice rather than fifty. The raw error never
 //! reaches Discord -- it can carry a tool's stderr (v0.17.2's leak) -- only one
 //! of the [`FailReason`]s, and the detail goes to the log.
+use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
     TRACK_FAILED, TRACK_FAILED_BROKE_OFF, TRACK_FAILED_FORMAT, TRACK_FAILED_MORE,
     TRACK_FAILED_OPEN, TRACK_FAILED_SEEK, TRACK_FAILED_TRACKS, TRACK_FAILED_UNTITLED,
 };
-use crate::messaging::render::Rendered;
+use crate::messaging::render::{render, RenderCx};
 use crate::messaging::transport::{Transport, TransportError};
 use crate::music::audit_view::{cap, escape, TITLE_MAX};
 use crate::utils::get_track_handle_metadata;
 use crate::Data;
-use serenity::all::{CreateEmbed, GenericChannelId, GuildId, MessageId};
+use serenity::all::{GenericChannelId, GuildId, MessageId};
 use songbird::tracks::{PlayError, PlayMode, TrackHandle, TrackState};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -159,7 +160,13 @@ pub async fn report(
         more += 1;
     }
     // An embed: a mention in a title never pings.
-    let out = Rendered::embed(CreateEmbed::new().description(render_text(&listed, more)));
+    let out = render(
+        &CrackedMessage::TrackFailed {
+            listed: listed.clone(),
+            more,
+        },
+        &RenderCx::now(),
+    );
 
     if let Some(id) = open {
         match transport.edit(channel, id, out.clone()).await {

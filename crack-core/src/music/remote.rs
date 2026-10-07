@@ -5,15 +5,18 @@
 //! `Songbird::get`, no `TrackHandle::data`). crack-web only sees the plain
 //! types below.
 
-use crate::messaging::render::Rendered;
-use crate::messaging::status::{self, DiscordTransport};
+use crate::messaging::cards::{EchoLine, Via};
+use crate::messaging::courier::{self, Destination};
+use crate::messaging::message::CrackedMessage;
+use crate::messaging::render::RenderCx;
+use crate::messaging::status::DiscordTransport;
 use crate::music::{audit::Actor, ops, PlaybackOwner, QueueGuard};
 use crate::{
     commands::music_utils::connected_call,
     utils::{get_requesting_user, get_track_handle_metadata},
     Data,
 };
-use serenity::all::{Cache, ChannelId, CreateEmbed, GuildId, Http, UserId};
+use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
 use songbird::{
     input::AuxMetadata,
     tracks::{LoopState, PlayMode, TrackHandle, TrackState},
@@ -283,11 +286,6 @@ impl From<&ops::OpRefused> for ControlRefused {
 
 pub use crate::messaging::cards::Echo;
 
-fn echo_embed(echo: &Echo, user: UserId) -> CreateEmbed<'static> {
-    // An embed mention never pings.
-    CreateEmbed::new().description(echo.line(user))
-}
-
 /// Run a control for `user`. On success the echo is returned at once; posting
 /// it and settling happen in the background. The settle is anchored after the
 /// echo, so after a skip the new now-playing message lands below it.
@@ -328,11 +326,17 @@ pub async fn control(
             http: cx.http.clone(),
             cache: cx.cache.clone(),
         };
-        let anchor = status::announce(
+        let line = EchoLine {
+            echo: posted,
+            user,
+            via: Via::Dashboard,
+        };
+        let anchor = courier::post(
             &cx.data,
             &transport,
-            guild_id,
-            Rendered::embed(echo_embed(&posted, user)),
+            Destination::Echo(guild_id),
+            &CrackedMessage::Echo(Box::new(line)),
+            &RenderCx::now(),
         )
         .await;
         settle.after(&cx, Some(&call), anchor).await;
@@ -396,6 +400,20 @@ mod test {
     use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
+
+    /// What the channel reads: the echo, rendered the way `control` posts it.
+    fn line(echo: Echo, user: UserId) -> String {
+        let msg = CrackedMessage::Echo(Box::new(EchoLine {
+            echo,
+            user,
+            via: Via::Dashboard,
+        }));
+        crate::messaging::render::description(&crate::messaging::render::render(
+            &msg,
+            &RenderCx::now(),
+        ))
+        .expect("an echo renders as an embed")
+    }
 
     fn data() -> Data {
         Data(Arc::new(DataInner::default()))
@@ -528,35 +546,37 @@ mod test {
     fn echo_lines_name_the_track_and_the_member() {
         let u = UserId::new(42);
         assert_eq!(
-            Echo::Skipped {
-                title: Some("Song".into())
-            }
-            .line(u),
+            line(
+                Echo::Skipped {
+                    title: Some("Song".into())
+                },
+                u
+            ),
             "⏭ Skipped **Song** from the dashboard — <@42>"
         );
-        assert_eq!(Echo::Paused.line(u), "⏸ Paused from the dashboard — <@42>");
+        assert_eq!(line(Echo::Paused, u), "⏸ Paused from the dashboard — <@42>");
         assert_eq!(
-            Echo::Resumed.line(u),
+            line(Echo::Resumed, u),
             "▶ Resumed from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Repeat { on: true }.line(u),
+            line(Echo::Repeat { on: true }, u),
             "🔁 Repeat on from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Repeat { on: false }.line(u),
+            line(Echo::Repeat { on: false }, u),
             "🔁 Repeat off from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Removed { title: None }.line(u),
+            line(Echo::Removed { title: None }, u),
             "🗑 Removed from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Shuffled.line(u),
+            line(Echo::Shuffled, u),
             "🔀 Shuffled the queue from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Skipped { title: None }.line(u),
+            line(Echo::Skipped { title: None }, u),
             "⏭ Skipped from the dashboard — <@42>"
         );
     }
@@ -566,10 +586,12 @@ mod test {
     #[test]
     fn a_title_cannot_inject_markdown_or_a_mention() {
         let u = UserId::new(42);
-        let l = Echo::Skipped {
-            title: Some("**x** <@7> [a](b)\nz".into()),
-        }
-        .line(u);
+        let l = line(
+            Echo::Skipped {
+                title: Some("**x** <@7> [a](b)\nz".into()),
+            },
+            u,
+        );
         assert_eq!(
             l,
             r"⏭ Skipped **\*\*x\*\* \<\@7\> \[a\](b) z** from the dashboard — <@42>"
@@ -613,10 +635,12 @@ mod test {
     #[test]
     fn a_long_title_is_cut_before_it_is_escaped() {
         let u = UserId::new(42);
-        let l = Echo::Removed {
-            title: Some("a".repeat(5000)),
-        }
-        .line(u);
+        let l = line(
+            Echo::Removed {
+                title: Some("a".repeat(5000)),
+            },
+            u,
+        );
         assert!(l.chars().count() <= 4096, "{} chars", l.chars().count());
         assert!(l.contains(&format!("**{}…**", "a".repeat(60))), "{l}");
         assert!(l.ends_with("<@42>"), "{l}");

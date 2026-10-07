@@ -1,17 +1,18 @@
 use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings};
+use crate::messaging::courier;
+use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::music::TrackReadyData;
 use crate::{
     commands::CrackedError, db, http_utils, http_utils::SendMessageParams,
     messaging::message::CrackedMessage, utils::OptionTryUnwrap, CrackedResult, Error,
     MessageOrReplyHandle,
 };
-use colored::Colorize;
 use core::panic;
 use crack_testing::ResolvedTrack;
 use crack_types::NewAuxMetadata;
 use poise::serenity_prelude as serenity;
-use poise::{CreateReply, ReplyHandle};
+use poise::ReplyHandle;
 use serenity::all::{CreateEmbed, GenericChannelId, GuildId, Message, UserId};
 use songbird::input::AuxMetadata;
 use songbird::tracks::{PlayMode, TrackQueue};
@@ -351,6 +352,32 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
     }
 }
 
+/// What a [`SendMessageParams`] puts on the wire.
+///
+/// Plain text is plain: it used to be wrapped in ANSI colour codes, which
+/// Discord shows as literal escape characters outside a code block.
+#[must_use]
+pub fn rendered_from_params(params: &SendMessageParams<'_>) -> Rendered {
+    if !params.as_embed {
+        return Rendered::text(params.msg.to_string());
+    }
+    let mut out = match &params.embed {
+        Some(embed) => Rendered::embed(embed.clone().into_owned()),
+        None => {
+            let mut out = render(&params.msg, &RenderCx::now());
+            // A colour other than the default is the caller's choice.
+            if params.color != serenity::Colour::BLUE {
+                out.embed = out.embed.map(|e| e.colour(params.color));
+            }
+            out
+        },
+    };
+    if out.embed.is_none() && out.content.is_none() {
+        out = Rendered::text(params.msg.to_string());
+    }
+    out
+}
+
 /// Extension trait for the poise::Context.
 pub trait PoiseContextExt<'ctx> {
     // async fn send_error(
@@ -415,11 +442,9 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         as_embed: bool,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
         let color = serenity::Colour::from(&message);
-        let embed: Option<CreateEmbed> = <Option<CreateEmbed>>::from(&message);
         let params = SendMessageParams::new(message)
             .with_color(color)
             .with_as_embed(as_embed)
-            .with_embed(embed)
             .with_reply(true);
         let handle = self.send_message_owned(params).await?;
         Ok(handle)
@@ -432,11 +457,9 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         as_embed: bool,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
         let color = serenity::Colour::from(&message);
-        let embed: Option<CreateEmbed> = <Option<CreateEmbed>>::from(&message);
         let params = SendMessageParams::new(message)
             .with_color(color)
             .with_as_embed(as_embed)
-            .with_embed(embed)
             .with_reply(true);
         let handle = self.send_message(params).await?;
         Ok(handle)
@@ -454,31 +477,9 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         self,
         params: SendMessageParams<'ctx>,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-        //let channel_id = send_params.channel;
-        let as_embed = params.as_embed;
-        let as_reply = params.reply;
-        let as_ephemeral = params.ephemeral;
-        let text = params.msg.to_string();
-        let reply = if as_embed {
-            let embed = params
-                .embed
-                .unwrap_or(CreateEmbed::default().description(text).color(params.color));
-            CreateReply::default().embed(embed)
-        } else {
-            let c = colored::Color::TrueColor {
-                r: params.color.r(),
-                g: params.color.g(),
-                b: params.color.b(),
-            };
-            CreateReply::default().content(text.color(c).to_string())
-        };
-        let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
         // `/clean` learns of this message from the gateway, not from here: see
-        // `guild::cache::remember_bot_message`. Remembering it here cost a
-        // `get_response` round trip per reply and missed every message the bot
-        // sent any other way.
-        let handle = self.send(reply).await?;
-        Ok(handle)
+        // `guild::cache::remember_bot_message`.
+        courier::reply_rendered(self, rendered_from_params(&params), params.ephemeral).await
     }
 
     /// Base, very generic send message function.
@@ -486,31 +487,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         &'ctx self,
         params: SendMessageParams<'ctx>,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-        //let channel_id = send_params.channel;
-        let as_embed = params.as_embed;
-        let as_reply = params.reply;
-        let as_ephemeral = params.ephemeral;
-        let text = params.msg.to_string();
-        let reply = if as_embed {
-            let embed = params
-                .embed
-                .unwrap_or(CreateEmbed::default().description(text).color(params.color));
-            CreateReply::default().embed(embed)
-        } else {
-            let c = colored::Color::TrueColor {
-                r: params.color.r(),
-                g: params.color.g(),
-                b: params.color.b(),
-            };
-            CreateReply::default().content(text.color(c).to_string())
-        };
-        let reply = reply.reply(as_reply).ephemeral(as_ephemeral);
-        // `/clean` learns of this message from the gateway, not from here: see
-        // `guild::cache::remember_bot_message`. Remembering it here cost a
-        // `get_response` round trip per reply and missed every message the bot
-        // sent any other way.
-        let handle = self.send(reply).await?;
-        Ok(handle)
+        courier::reply_rendered(*self, rendered_from_params(&params), params.ephemeral).await
     }
 
     async fn send_embed_response(
@@ -670,4 +647,48 @@ pub fn check_bot_message(_serenity_ctx: &SerenityContext, msg: &Message) -> bool
     let allowed_bots = HashSet::from([1111844110597374042, 1124707756750934159]);
     let author_id = msg.author.id;
     allowed_bots.contains(&author_id.get())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messaging::render::description;
+
+    fn params(msg: &str) -> SendMessageParams<'static> {
+        SendMessageParams::new(CrackedMessage::Other(msg.into()))
+    }
+
+    #[test]
+    fn plain_text_carries_no_ansi_colour_codes() {
+        let p = params("hello")
+            .with_as_embed(false)
+            .with_color(serenity::Colour::RED);
+        let out = rendered_from_params(&p);
+        let text = out.content.expect("plain text goes in content");
+        assert_eq!(text, "hello");
+        assert!(!text.contains('\u{1b}'), "ANSI escape in {text:?}");
+        assert!(out.embed.is_none());
+    }
+
+    #[test]
+    fn an_embed_reply_without_an_embed_is_built_from_the_message() {
+        let out = rendered_from_params(&params("hello"));
+        assert_eq!(description(&out).as_deref(), Some("hello"));
+        assert!(out.content.is_none());
+    }
+
+    #[test]
+    fn a_given_embed_is_sent_as_it_is() {
+        let p = params("ignored").with_embed(Some(CreateEmbed::new().description("mine")));
+        let out = rendered_from_params(&p);
+        assert_eq!(description(&out).as_deref(), Some("mine"));
+    }
+
+    #[test]
+    fn a_non_default_colour_is_applied_to_the_built_embed() {
+        let p = params("hello").with_color(serenity::Colour::RED);
+        let out = rendered_from_params(&p);
+        let v = serde_json::to_value(out.embed.unwrap()).unwrap();
+        assert_eq!(v["color"], serenity::Colour::RED.0);
+    }
 }
