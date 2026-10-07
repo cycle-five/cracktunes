@@ -1,6 +1,5 @@
 use crate::{
     commands::cmd_check_music,
-    messaging::courier,
     music::ops::{self, OpCx},
     CrackedError, {Context, Error},
 };
@@ -21,11 +20,8 @@ pub async fn resume(ctx: Context<'_>) -> Result<(), Error> {
 /// Internal function to resume the current track.
 pub async fn resume_internal(ctx: Context<'_>) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;
-    let resumed = ops::resume(&cx)
-        .await
-        .map_err(CrackedError::from)?
-        .settle_now(&cx)
-        .await;
-    courier::reply(ctx, resumed.message()).await?;
+    let done = ops::resume(&cx).await.map_err(CrackedError::from)?;
+    let msg = done.outcome().message();
+    done.reply_then_settle(ctx, &cx, msg).await?;
     Ok(())
 }

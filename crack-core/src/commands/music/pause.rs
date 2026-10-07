@@ -1,6 +1,5 @@
 use crate::{
     commands::cmd_check_music,
-    messaging::courier,
     music::ops::{self, OpCx},
     CrackedError, {Context, Error},
 };
@@ -16,11 +15,8 @@ use crate::{
 )]
 pub async fn pause(ctx: Context<'_>) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;
-    let paused = ops::pause(&cx)
-        .await
-        .map_err(CrackedError::from)?
-        .settle_now(&cx)
-        .await;
-    courier::reply(ctx, paused.message()).await?;
+    let done = ops::pause(&cx).await.map_err(CrackedError::from)?;
+    let msg = done.outcome().message();
+    done.reply_then_settle(ctx, &cx, msg).await?;
     Ok(())
 }

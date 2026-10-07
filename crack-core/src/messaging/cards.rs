@@ -267,6 +267,24 @@ mod tests {
         );
     }
 
+    /// Ruling R9: a track on repeat never reaches "ends …", so the card says
+    /// it is on repeat instead of an end time that goes stale.
+    #[test]
+    fn a_card_on_repeat_has_no_end_time() {
+        let mut c = card(None, None);
+        c.progress = Progress::Repeating {
+            duration: Some(Duration::from_secs(273)),
+        };
+        let cx = RenderCx {
+            now_unix: 1_000_000,
+            embed_links: true,
+        };
+        assert_eq!(
+            v(&now_playing(&c, &cx))["fields"][0]["value"],
+            ">>> 4:33 · on repeat"
+        );
+    }
+
     /// Ruling R2: escaping after the cap can push a title past Discord's limit.
     #[test]
     fn an_escaped_title_still_fits_the_embed_title() {

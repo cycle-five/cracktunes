@@ -41,10 +41,11 @@ pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Er
     let cx = OpCx::from_ctx(&ctx)?;
     let msg = match ops::seek(&cx, Duration::from_secs(timestamp)).await {
         Ok(done) => {
-            done.settle_now(&cx).await;
-            CrackedMessage::Seek {
+            let msg = CrackedMessage::Seek {
                 timestamp: timestamp_str.to_owned(),
-            }
+            };
+            done.reply_then_settle(ctx, &cx, msg).await?;
+            return Ok(());
         },
         Err(OpRefused::SeekFailed(e)) => CrackedMessage::SeekFail {
             timestamp: Cow::Owned(timestamp_str.to_owned()),

@@ -35,7 +35,7 @@ use serenity::{
     },
 };
 use songbird::input::AuxMetadata;
-use songbird::tracks::{PlayMode, TrackHandle};
+use songbird::tracks::{LoopState, PlayMode, TrackHandle, TrackState};
 use std::borrow::Cow;
 use std::fmt::Write;
 use std::time::Duration;
@@ -210,25 +210,45 @@ pub async fn now_playing_card(track: &TrackHandle) -> NowPlayingCard {
     let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
     let requester = get_requesting_user(track).await.ok();
     let label = TrackLabel::from_metadata(&metadata);
-    let progress =
-        match tokio::time::timeout(crate::music::ops::TRACK_INFO_TIMEOUT, track.get_info()).await {
-            Ok(Ok(info)) if info.playing == PlayMode::Pause => Progress::Paused {
-                position: Some(info.position),
-            },
-            Ok(Ok(info)) => Progress::Playing {
-                position: info.position,
-                duration: label.duration,
-            },
-            _ => Progress::Playing {
-                position: Duration::ZERO,
-                duration: label.duration,
-            },
-        };
+    let info = tokio::time::timeout(crate::music::ops::TRACK_INFO_TIMEOUT, track.get_info())
+        .await
+        .ok()
+        .and_then(Result::ok);
+    let progress = progress_of(info.as_ref(), label.duration);
     NowPlayingCard {
         label,
         thumbnail: metadata.thumbnail,
         requester,
         progress,
+    }
+}
+
+/// Where a track is, from its `get_info` answer; `None` (no answer within
+/// the bound) reads as "just started". Paused wins over repeat: a paused track
+/// shows where it stopped either way.
+fn progress_of(info: Option<&TrackState>, duration: Option<Duration>) -> Progress {
+    match info {
+        Some(i) if i.playing == PlayMode::Pause => Progress::Paused {
+            position: Some(i.position),
+        },
+        Some(i) if on_repeat(i.loops) => Progress::Repeating { duration },
+        Some(i) => Progress::Playing {
+            position: i.position,
+            duration,
+        },
+        None => Progress::Playing {
+            position: Duration::ZERO,
+            duration,
+        },
+    }
+}
+
+/// Whether the track starts over when it ends: forever, or `n` more times.
+/// `Finite(0)`, songbird's default, is a track that ends.
+fn on_repeat(loops: LoopState) -> bool {
+    match loops {
+        LoopState::Infinite => true,
+        LoopState::Finite(n) => n.get() > 0,
     }
 }
 
@@ -461,6 +481,61 @@ mod test {
         assert_eq!(card.label.title.as_deref(), Some("t0"));
         assert!(
             matches!(card.progress, Progress::Playing { position, .. } if position == Duration::ZERO)
+        );
+    }
+
+    fn state(
+        playing: songbird::tracks::PlayMode,
+        loops: songbird::tracks::LoopState,
+    ) -> songbird::tracks::TrackState {
+        songbird::tracks::TrackState {
+            playing,
+            loops,
+            position: std::time::Duration::from_secs(72),
+            ..Default::default()
+        }
+    }
+
+    /// Ruling R9: the card reads repeat from the same bounded `get_info`
+    /// answer as pause. A track looping forever or `n` more times has no end
+    /// time; `Finite(0)` is an ordinary track; pause wins over repeat.
+    #[test]
+    fn the_card_reads_pause_and_repeat_from_the_track_state() {
+        use super::progress_of;
+        use crate::messaging::format::Progress;
+        use serenity::nonmax::NonMaxU32;
+        use songbird::tracks::{LoopState, PlayMode};
+        use std::time::Duration;
+        let len = Some(Duration::from_secs(273));
+        let three = LoopState::Finite(NonMaxU32::new(3).unwrap());
+        let once = LoopState::Finite(NonMaxU32::ZERO);
+
+        for loops in [LoopState::Infinite, three] {
+            assert_eq!(
+                progress_of(Some(&state(PlayMode::Play, loops)), len),
+                Progress::Repeating { duration: len },
+                "{loops:?}"
+            );
+        }
+        assert_eq!(
+            progress_of(Some(&state(PlayMode::Play, once)), len),
+            Progress::Playing {
+                position: Duration::from_secs(72),
+                duration: len
+            }
+        );
+        assert_eq!(
+            progress_of(Some(&state(PlayMode::Pause, LoopState::Infinite)), len),
+            Progress::Paused {
+                position: Some(Duration::from_secs(72))
+            }
+        );
+        assert_eq!(
+            progress_of(None, len),
+            Progress::Playing {
+                position: Duration::ZERO,
+                duration: len
+            }
         );
     }
 

@@ -288,7 +288,8 @@ pub use crate::messaging::cards::Echo;
 
 /// Run a control for `user`. On success the echo is returned at once; posting
 /// it and settling happen in the background. The settle is anchored after the
-/// echo, so after a skip the new now-playing message lands below it.
+/// echo, so after a skip, pause, resume or repeat the now-playing message is
+/// re-rendered below it.
 pub async fn control(
     data: Arc<Data>,
     http: Arc<Http>,
@@ -653,13 +654,15 @@ mod test {
             ops::{test_support::*, OpRefused, Settle},
         };
 
+        /// Ruling R9 (was `Settle::Nothing`): the status re-renders below the
+        /// echo with its progress line brought up to date, as after a skip.
         #[tokio::test]
         async fn pause_pauses_and_echoes_paused() {
             let (data, call, _, mut rx) = queue_of(2).await;
             let g = guard(&data).await;
             let (echo, settle) = run_control(&g, &call, Control::Pause).await.unwrap();
             assert_eq!(echo, Echo::Paused);
-            assert_eq!(settle, Settle::Nothing);
+            assert_eq!(settle, Settle::NowPlaying);
             assert_eq!(recorded(&mut rx), vec![Action::Pause]);
         }
 
@@ -669,7 +672,7 @@ mod test {
             let g = guard(&data).await;
             let (echo, settle) = run_control(&g, &call, Control::Resume).await.unwrap();
             assert_eq!(echo, Echo::Resumed);
-            assert_eq!(settle, Settle::Nothing);
+            assert_eq!(settle, Settle::NowPlaying);
             assert_eq!(recorded(&mut rx), vec![Action::Resume]);
         }
 
@@ -687,7 +690,7 @@ mod test {
             .expect("repeat hung")
             .unwrap();
             assert_eq!(echo, Echo::Repeat { on: true });
-            assert_eq!(settle, Settle::Nothing);
+            assert_eq!(settle, Settle::NowPlaying);
             assert_eq!(recorded(&mut rx), vec![Action::Repeat { on: true }]);
             let (echo, _) = tokio::time::timeout(
                 std::time::Duration::from_secs(5),

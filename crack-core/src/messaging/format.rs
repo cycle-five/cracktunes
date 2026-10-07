@@ -5,7 +5,8 @@
 //! handled once. Before this, `SkipTo` printed "Skipped to **!" for a track
 //! with an empty title, and `/play` printed "Track duration: 00:00".
 use crate::messaging::messages::{
-    PROGRESS_ENDS, PROGRESS_PAUSED, PROGRESS_PAUSED_AT, PROGRESS_STARTED, TRACK_UNTITLED,
+    PROGRESS_ENDS, PROGRESS_ON_REPEAT, PROGRESS_PAUSED, PROGRESS_PAUSED_AT, PROGRESS_REPEATING,
+    PROGRESS_STARTED, TRACK_UNTITLED,
 };
 use crate::music::audit::TrackRef;
 use songbird::input::AuxMetadata;
@@ -154,11 +155,15 @@ pub enum Progress {
     },
     /// `position` is `None` when the track would not say (see `get_info`).
     Paused { position: Option<Duration> },
+    /// Playing on repeat (songbird's `LoopState::Infinite`, or `Finite` with
+    /// loops left): it does not end when its length runs out, so no end time.
+    Repeating { duration: Option<Duration> },
 }
 
 /// The progress line. Playing with a known length: `4:33 · ends <t:…:R>`,
 /// which Discord counts down by itself. Without one (a live stream):
-/// `Started <t:…:R>`. Paused: `Paused at 1:12`, or just `Paused`.
+/// `Started <t:…:R>`. Paused: `Paused at 1:12`, or just `Paused`. On repeat:
+/// `4:33 · on repeat`, or `On repeat` when the length is unknown.
 #[must_use]
 pub fn progress_text(p: &Progress, now_unix: i64) -> String {
     match *p {
@@ -183,6 +188,10 @@ pub fn progress_text(p: &Progress, now_unix: i64) -> String {
             position: Some(position),
         } => format!("{PROGRESS_PAUSED_AT} {}", clock(position)),
         Progress::Paused { position: None } => PROGRESS_PAUSED.to_owned(),
+        Progress::Repeating { duration } => match duration_text(duration) {
+            Some(d) => format!("{d} · {PROGRESS_ON_REPEAT}"),
+            None => PROGRESS_REPEATING.to_owned(),
+        },
     }
 }
 
@@ -293,6 +302,20 @@ mod tests {
             progress_text(&Progress::Paused { position: None }, now),
             "Paused"
         );
+    }
+
+    /// Ruling R9: a track on repeat has no end time, so it shows none; it
+    /// said "ends 3 minutes ago" once its first play ran out.
+    #[test]
+    fn a_track_on_repeat_shows_no_end_time() {
+        let now = 1_000_000;
+        let repeating = |duration| progress_text(&Progress::Repeating { duration }, now);
+        assert_eq!(
+            repeating(Some(Duration::from_secs(273))),
+            "4:33 · on repeat"
+        );
+        assert_eq!(repeating(None), "On repeat");
+        assert_eq!(repeating(Some(Duration::ZERO)), "On repeat");
     }
 
     #[test]

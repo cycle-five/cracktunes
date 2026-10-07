@@ -90,6 +90,10 @@ pub const PROGRESS_ENDS: &str = "ends";
 pub const PROGRESS_STARTED: &str = "Started";
 pub const PROGRESS_PAUSED_AT: &str = "Paused at";
 pub const PROGRESS_PAUSED: &str = "Paused";
+/// After the length of a track on repeat, which has no end time to show.
+pub const PROGRESS_ON_REPEAT: &str = "on repeat";
+/// A track on repeat whose length is unknown.
+pub const PROGRESS_REPEATING: &str = "On repeat";
 pub const TRACK_FAILED_OPEN: &str = "couldn't open the stream";
 pub const TRACK_FAILED_FORMAT: &str = "that format isn't supported";
 pub const TRACK_FAILED_BROKE_OFF: &str = "the stream broke off partway";
