@@ -1,7 +1,3 @@
-// Nightly reports `unreachable_code` inside `poise::command` (stable does not).
-// An item-level allow does not cover a lint whose span is the attribute macro.
-#![allow(unreachable_code)]
-
 use crate::commands::get_call_or_join_author;
 use crate::commands::{cmd_check_music, help};
 use crate::music::query::{query_type_from_url, ResolvedQuery};

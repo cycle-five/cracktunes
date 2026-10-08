@@ -1,7 +1,3 @@
-// Nightly reports `unreachable_code` inside `poise::command` (stable does not).
-// An item-level allow does not cover a lint whose span is the attribute macro.
-#![allow(unreachable_code)]
-
 use crate::commands::help;
 use crate::messaging::format::{duration_text, escape, http_url};
 use crate::messaging::{courier, message::CrackedMessage};
