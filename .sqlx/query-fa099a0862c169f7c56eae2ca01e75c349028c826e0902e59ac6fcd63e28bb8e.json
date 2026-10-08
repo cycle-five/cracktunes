@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT round_idx, prompt, closes_at, prompt_channel_id, prompt_message_id,\n                      results_posted, category\n               FROM gp_round WHERE game_id = $1 ORDER BY round_idx",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "round_idx",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "gp_round",
+            "name": "round_idx"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "prompt",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gp_round",
+            "name": "prompt"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "closes_at",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "gp_round",
+            "name": "closes_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "prompt_channel_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "gp_round",
+            "name": "prompt_channel_id"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "prompt_message_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "gp_round",
+            "name": "prompt_message_id"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "results_posted",
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "gp_round",
+            "name": "results_posted"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "category",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "gp_round",
+            "name": "category"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "fa099a0862c169f7c56eae2ca01e75c349028c826e0902e59ac6fcd63e28bb8e"
+}
