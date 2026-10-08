@@ -872,11 +872,8 @@ mod test {
 
     #[test]
     fn command_failed_display_omits_output() {
-        let err = CrackedError::CommandFailed(
-            "yt-dlp",
-            failed_status(),
-            "DISCORD_TOKEN=leaked".into(),
-        );
+        let err =
+            CrackedError::CommandFailed("yt-dlp", failed_status(), "DISCORD_TOKEN=leaked".into());
         assert!(!err.to_string().contains("leaked"));
     }
 

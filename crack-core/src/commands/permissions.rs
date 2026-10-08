@@ -149,6 +149,7 @@ mod tests {
     /// refused in its words, and the rest still run.
     #[tokio::test]
     async fn a_game_refuses_what_it_blocks_and_only_that() {
+        use crate::commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt};
         let data = Data::default();
         data.gp_start(
             G,
@@ -156,8 +157,11 @@ mod tests {
             "alice".into(),
             ChannelId::new(10),
             GenericChannelId::new(20),
-            crate::commands::music::gp_prompts::GpCategory::Nostalgia,
-            vec!["p1".into()],
+            GpCategories::new([GpCategory::Nostalgia]).expect("Nostalgia has prompts"),
+            vec![GpPrompt {
+                category: GpCategory::Nostalgia,
+                text: "p1".into(),
+            }],
             120,
             None,
             crate::commands::music::GpReveal::default(),
