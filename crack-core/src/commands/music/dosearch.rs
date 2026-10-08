@@ -1,3 +1,7 @@
+// Nightly reports `unreachable_code` inside `poise::command` (stable does not).
+// An item-level allow does not cover a lint whose span is the attribute macro.
+#![allow(unreachable_code)]
+
 use crate::{
     commands::{cmd_check_music, sub_help as help},
     errors::CrackedError,

@@ -6,6 +6,9 @@
 //! cycle.five
 
 #![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+// Nightly reports `unreachable_code` inside `poise::command` (stable does not).
+// An item-level allow does not cover a lint whose span is the attribute macro.
+#![allow(unreachable_code)]
 //---------------------------------------------------
 
 use crate::commands::CrackedError;

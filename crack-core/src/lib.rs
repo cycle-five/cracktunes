@@ -1,3 +1,8 @@
+// Nightly's trait solver overflows proving `songbird::Call: Send` while
+// checking `RandomMuteHandler: Sync` (rust-lang/rust#159228). 128 is the
+// depth it reports; stable still solves it inside the default limit.
+#![recursion_limit = "256"]
+
 pub mod commands;
 pub mod config;
 pub mod connection;

@@ -872,12 +872,24 @@ mod test {
 
     #[test]
     fn command_failed_display_omits_output() {
-        use std::os::unix::process::ExitStatusExt;
         let err = CrackedError::CommandFailed(
             "yt-dlp",
-            ExitStatus::from_raw(256),
+            failed_status(),
             "DISCORD_TOKEN=leaked".into(),
         );
         assert!(!err.to_string().contains("leaked"));
+    }
+
+    fn failed_status() -> ExitStatus {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            ExitStatus::from_raw(256)
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::ExitStatusExt;
+            ExitStatus::from_raw(1)
+        }
     }
 }

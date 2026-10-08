@@ -785,7 +785,9 @@ mod provenance_wiring_tests {
     /// into a pure function and test that -- not to delete the test.
     #[test]
     fn only_the_database_arm_marks_settings_persistable() {
-        let src = include_str!("serenity.rs");
+        // `include_str!` keeps the checkout's newlines. A CRLF working tree
+        // would miss a marker that contains `\n` and then count this test.
+        let src = include_str!("serenity.rs").replace("\r\n", "\n");
 
         // Scan only the handler code above this test module. `include_str!`
         // pulls in this test's own source too, and its filter predicate and
@@ -794,7 +796,7 @@ mod provenance_wiring_tests {
         let production_src = src
             .split_once("#[cfg(test)]\nmod provenance_wiring_tests")
             .map(|(before, _)| before)
-            .unwrap_or(src);
+            .unwrap_or(&src);
 
         let marks: Vec<&str> = production_src
             .lines()

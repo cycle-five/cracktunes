@@ -3120,6 +3120,7 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
 async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Error> {
     let host = ctx.author().id;
     let mut picked: Vec<GpCategory> = Vec::new();
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     let reply = ctx
         .send(
             CreateReply::default()
@@ -3138,6 +3139,7 @@ async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Er
             .next()
             .await
         else {
+            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
             reply
                 .edit(
                     ctx,
@@ -3151,6 +3153,7 @@ async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Er
         // Only a prefix command's picker is public; from a slash command nobody
         // else can see it.
         if mci.user.id != host {
+            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
             mci.create_response(
                 ctx.http(),
                 CreateInteractionResponse::Message(
@@ -3188,6 +3191,7 @@ async fn gp_pick_update(
     text: &str,
     components: Vec<CreateComponent<'static>>,
 ) -> Result<(), Error> {
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     mci.create_response(
         ctx.http(),
         CreateInteractionResponse::UpdateMessage(
