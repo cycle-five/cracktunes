@@ -76,6 +76,7 @@ pub fn how_text(row: &AuditRow) -> String {
         "slash" => format!("/{}", row.command),
         "prefix" => format!("@{}", row.command),
         "web" => "dashboard".to_owned(),
+        "button" => "button".to_owned(),
         _ => row.command.clone(),
     }
 }
@@ -311,6 +312,7 @@ pub enum SourceChoice {
     Slash,
     Prefix,
     Web,
+    Button,
     Bot,
 }
 
@@ -321,17 +323,19 @@ impl SourceChoice {
             SourceChoice::Slash => Source::Slash,
             SourceChoice::Prefix => Source::Prefix,
             SourceChoice::Web => Source::Web,
+            SourceChoice::Button => Source::Button,
             SourceChoice::Bot => Source::Bot,
         }
     }
 
-    /// The choice whose stored spelling is `s`: `slash`, `prefix`, `web`, `bot`.
+    /// The choice whose stored spelling is `s`: `slash`, `prefix`, `web`, `button`, `bot`.
     #[must_use]
     pub fn from_name(s: &str) -> Option<SourceChoice> {
         Some(match s {
             "slash" => SourceChoice::Slash,
             "prefix" => SourceChoice::Prefix,
             "web" => SourceChoice::Web,
+            "button" => SourceChoice::Button,
             "bot" => SourceChoice::Bot,
             _ => return None,
         })
@@ -797,11 +801,27 @@ mod test {
     }
 
     #[test]
+    fn a_button_row_reads_button() {
+        let r = row(
+            "button",
+            "button skip",
+            Some(42),
+            Action::Skip { track: None },
+        );
+        assert_eq!(how_text(&r), "button");
+        assert_eq!(
+            SourceChoice::from_name("button"),
+            Some(SourceChoice::Button)
+        );
+    }
+
+    #[test]
     fn source_choices_match_source_names() {
         for (c, s) in [
             (SourceChoice::Slash, Source::Slash),
             (SourceChoice::Prefix, Source::Prefix),
             (SourceChoice::Web, Source::Web),
+            (SourceChoice::Button, Source::Button),
             (SourceChoice::Bot, Source::Bot),
         ] {
             assert_eq!(c.source(), s);
@@ -888,6 +908,7 @@ mod test {
             SourceChoice::Slash,
             SourceChoice::Prefix,
             SourceChoice::Web,
+            SourceChoice::Button,
             SourceChoice::Bot,
         ] {
             assert_eq!(SourceChoice::from_name(c.source().as_str()), Some(c));

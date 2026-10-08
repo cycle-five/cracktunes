@@ -260,11 +260,9 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
 // This is probably the message that the user sees //
 // the most from the bot.                         //
 
-/// Read everything the now-playing card shows from a track. Nothing here
-/// panics or hangs: missing metadata is an empty card, and a driver that does
-/// not answer within `TRACK_INFO_TIMEOUT` (an offline call, a dying driver)
-/// reads as "just started".
-pub async fn now_playing_card(track: &TrackHandle) -> NowPlayingCard {
+/// The card, and the track's `(paused, looping)` read from the same bounded
+/// `get_info` (`(false, false)` when it does not answer).
+async fn read_card(track: &TrackHandle) -> (NowPlayingCard, (bool, bool)) {
     let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
     let requester = get_requesting_user(track).await.ok();
     let label = TrackLabel::from_metadata(&metadata);
@@ -273,12 +271,38 @@ pub async fn now_playing_card(track: &TrackHandle) -> NowPlayingCard {
         .ok()
         .and_then(Result::ok);
     let progress = progress_of(info.as_ref(), label.duration);
-    NowPlayingCard {
-        label,
-        thumbnail: metadata.thumbnail,
-        requester,
-        progress,
-    }
+    let flags = crate::music::remote::playback_flags(info.as_ref());
+    (
+        NowPlayingCard {
+            label,
+            thumbnail: metadata.thumbnail,
+            requester,
+            progress,
+            controls: None,
+        },
+        flags,
+    )
+}
+
+/// Read everything the now-playing card shows from a track, for a reply or a
+/// DM (no buttons). Nothing here panics or hangs: missing metadata is an empty
+/// card, and a driver that does not answer within `TRACK_INFO_TIMEOUT` (an
+/// offline call, a dying driver) reads as "just started".
+pub async fn now_playing_card(track: &TrackHandle) -> NowPlayingCard {
+    read_card(track).await.0
+}
+
+/// The status message's card: the same, with the buttons for `guild`. On a
+/// driver that does not answer, they show their defaults (Pause, repeat off).
+pub async fn now_playing_status_card(track: &TrackHandle, guild: GuildId) -> NowPlayingCard {
+    let (mut card, (paused, looping)) = read_card(track).await;
+    card.controls = Some(crate::messaging::buttons::Controls {
+        guild,
+        track: track.uuid(),
+        paused,
+        looping,
+    });
+    card
 }
 
 /// Where a track is, from its `get_info` answer; `None` (no answer within
@@ -542,6 +566,45 @@ mod test {
         assert!(
             matches!(card.progress, Progress::Playing { position, .. } if position == Duration::ZERO)
         );
+    }
+
+    /// Plan 2026-10-07-now-playing-buttons, Review Focus 5: a stalled driver still gets its buttons, at their defaults
+    /// (Pause, repeat off), for the playing track, within the bound.
+    #[tokio::test]
+    async fn the_status_card_of_a_stalled_driver_has_default_controls() {
+        use super::now_playing_status_card;
+        use crate::messaging::buttons::Controls;
+        use std::time::Duration;
+        let (_data, call, ids, _rx) = crate::music::ops::test_support::queue_of(1).await;
+        let handle = call.lock().await.queue().current_queue()[0].clone();
+        let guild = serenity::all::GuildId::new(1);
+        let card = tokio::time::timeout(
+            Duration::from_secs(5),
+            now_playing_status_card(&handle, guild),
+        )
+        .await
+        .expect("now_playing_status_card outlived its bound");
+        assert_eq!(
+            card.controls,
+            Some(Controls {
+                guild,
+                track: ids[0],
+                paused: false,
+                looping: false
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_reply_card_has_no_controls() {
+        use super::now_playing_card;
+        use std::time::Duration;
+        let (_data, call, _ids, _rx) = crate::music::ops::test_support::queue_of(1).await;
+        let handle = call.lock().await.queue().current_queue()[0].clone();
+        let card = tokio::time::timeout(Duration::from_secs(5), now_playing_card(&handle))
+            .await
+            .expect("bounded");
+        assert_eq!(card.controls, None);
     }
 
     fn state(

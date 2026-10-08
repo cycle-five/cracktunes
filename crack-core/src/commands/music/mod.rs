@@ -6,6 +6,7 @@ pub mod collector;
 pub mod diagnose;
 pub mod doplay;
 pub mod dosearch;
+pub mod echoes;
 pub mod ephemeral;
 pub mod gambling;
 pub mod get_metadata;
@@ -40,6 +41,7 @@ pub use clear::*;
 pub use collector::*;
 pub use diagnose::*;
 pub use doplay::*;
+pub use echoes::*;
 pub use gambling::*;
 pub use get_metadata::*;
 pub use gp::*;
@@ -74,6 +76,7 @@ pub fn music_commands() -> Vec<crate::Command> {
             // publicly before it replies (#535).
             clear(),
             diagnose(),
+            echoes(),
             grab(),
             leave(),
             lyrics(),

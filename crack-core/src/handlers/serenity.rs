@@ -62,6 +62,16 @@ impl EventHandler for SerenityHandler {
                     tracing::warn!("gp component: {e}");
                 }
             },
+            // Now-playing buttons: routed by custom-id prefix, like `/gp`'s.
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Component(mci),
+            } if mci
+                .data
+                .custom_id
+                .starts_with(crate::messaging::buttons::NP_PREFIX) =>
+            {
+                crate::messaging::buttons::handle(&self.data, ctx, mci).await;
+            },
             _ => {},
         }
 

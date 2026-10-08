@@ -299,6 +299,9 @@ pub enum CrackedMessage {
     },
     Echo(Box<EchoLine>),
     Queued(Box<QueuedCard>),
+    ControlEchoesOn,
+    ControlEchoesOff,
+    ButtonOutOfDate,
 }
 
 impl CrackedMessage {
@@ -649,6 +652,9 @@ impl Display for CrackedMessage {
             Self::EphemeralRepliesOff => {
                 f.write_str(crate::messaging::messages::EPHEMERAL_REPLIES_OFF)
             },
+            Self::ControlEchoesOn => f.write_str(crate::messaging::messages::CONTROL_ECHOES_ON),
+            Self::ControlEchoesOff => f.write_str(crate::messaging::messages::CONTROL_ECHOES_OFF),
+            Self::ButtonOutOfDate => f.write_str(crate::messaging::messages::BUTTON_OUT_OF_DATE),
         }
     }
 }
@@ -756,6 +762,18 @@ mod test {
         assert_eq!(
             CrackedMessage::EphemeralRepliesOff.to_string(),
             EPHEMERAL_REPLIES_OFF
+        );
+    }
+
+    #[test]
+    fn control_echoes_messages_say_what_changed() {
+        assert_eq!(
+            CrackedMessage::ControlEchoesOn.to_string(),
+            "📣 Button and dashboard controls now post a line in the channel."
+        );
+        assert_eq!(
+            CrackedMessage::ControlEchoesOff.to_string(),
+            "🔇 Button and dashboard controls no longer post a line in the channel."
         );
     }
 
