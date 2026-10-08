@@ -872,7 +872,10 @@ mod test {
 
     #[test]
     fn command_failed_display_omits_output() {
+        #[cfg(unix)]
         use std::os::unix::process::ExitStatusExt;
+        #[cfg(windows)]
+        use std::os::windows::process::ExitStatusExt;
         let err = CrackedError::CommandFailed(
             "yt-dlp",
             ExitStatus::from_raw(256),
