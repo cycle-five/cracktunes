@@ -2,8 +2,14 @@ use super::state::*;
 use super::ui::*;
 use crate::{
     errors::CrackedError,
-    messaging::messages::{
-        GP_ABORTED, GP_GAME_OVER, GP_GUESS_CHANGED, GP_GUESS_RECORDED, GP_LIKED, GP_UNLIKED,
+    messaging::{
+        courier::{self, Destination},
+        message::CrackedMessage,
+        messages::{
+            GP_ABORTED, GP_GAME_OVER, GP_GUESS_CHANGED, GP_GUESS_RECORDED, GP_LIKED, GP_UNLIKED,
+        },
+        render::RenderCx,
+        transport::{DiscordPress, Press, Transport},
     },
     music::queue::{build_track, enqueue_track_back, preload_time, stop_queue},
     music::PlaybackOwner,
@@ -15,11 +21,6 @@ use ::serenity::{
         UserId,
     },
     async_trait,
-    builder::{
-        CreateComponent, CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage,
-        CreateMessage, EditMessage,
-    },
-    http::Http,
 };
 use poise::serenity_prelude::Context as SerenityContext;
 use songbird::tracks::{PlayMode, TrackHandle, TrackState};
@@ -31,12 +32,12 @@ use tokio::sync::Mutex;
 // Playback glue
 // ------------------------------------------------------------------
 
-/// What the playback side of a game needs: shared state, HTTP, the call, and
-/// the guild. Cloned into every per-track handler and timer task.
+/// What the playback side of a game needs: shared state, the wire to Discord,
+/// the call, and the guild. Cloned into every per-track handler and timer task.
 #[derive(Clone)]
 pub struct GpPlayback {
     pub data: Arc<Data>,
-    pub http: Arc<Http>,
+    pub transport: Arc<dyn Transport>,
     pub call: Arc<Mutex<Call>>,
     pub guild_id: GuildId,
 }
@@ -104,27 +105,69 @@ impl EventHandler for GpTrackEndHandler {
 /// Send a game message, retrying once: a rate limit or a transient 5xx should
 /// not cost the guild its game. Both attempts failing is treated as fatal by the
 /// callers, because everything the round needs is armed after the send.
-#[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
 async fn gp_send(
     pb: &GpPlayback,
     channel: GenericChannelId,
-    embed: CreateEmbed<'static>,
-    components: Vec<CreateComponent<'static>>,
+    card: GpCard,
 ) -> Result<MessageId, Error> {
-    let build = || {
-        CreateMessage::new()
-            .embed(embed.clone())
-            .components(components.clone())
-    };
-    let first = match channel.send_message(&pb.http, build()).await {
-        Ok(msg) => return Ok(msg.id),
+    let out = gp_rendered(card);
+    let first = match courier::post_message(&*pb.transport, channel, &out).await {
+        Ok(id) => return Ok(id),
         Err(e) => e,
     };
     tracing::warn!(
         "gp: send in {} failed ({first}), retrying once",
         pb.guild_id
     );
-    Ok(channel.send_message(&pb.http, build()).await?.id)
+    Ok(courier::post_message(&*pb.transport, channel, &out).await?)
+}
+
+/// Post a card to a channel. Best effort: a failure is logged with the card.
+pub async fn gp_post(
+    _data: &Data,
+    transport: &dyn Transport,
+    channel: GenericChannelId,
+    card: GpCard,
+) {
+    if let Err(e) = courier::post_message(transport, channel, &gp_rendered(card.clone())).await {
+        tracing::warn!("gp: posting \"{card}\" to {channel} failed: {e}");
+    }
+}
+
+/// Edit `card` into `message`, or post it if there is no message or the edit
+/// fails (deleted by hand, or by `/clean`). Best effort.
+async fn gp_edit_or_post(
+    pb: &GpPlayback,
+    message: Option<(GenericChannelId, MessageId)>,
+    channel: GenericChannelId,
+    card: GpCard,
+) {
+    let msg: CrackedMessage = card.into();
+    if let Some((chan, id)) = message {
+        match courier::edit_message(&*pb.transport, chan, id, &msg).await {
+            Ok(()) => return,
+            Err(e) => tracing::warn!("gp: editing {id} in {chan}: {e}; posting instead"),
+        }
+    }
+    courier::post(
+        &pb.data,
+        &*pb.transport,
+        Destination::Channel(channel),
+        &msg,
+        &RenderCx::now(),
+    )
+    .await;
+}
+
+/// Answer a dropdown pick or a 👍: one ephemeral response, worked out from
+/// memory before this is called -- well inside Discord's three seconds, so
+/// there is no acknowledge first (the spec, section 3).
+pub(in crate::commands::music::gp) async fn gp_answer_component(
+    press: &dyn Press,
+    text: String,
+) -> Result<(), Error> {
+    courier::respond(press, &GpCard::Line(text).into(), &RenderCx::now(), true).await?;
+    Ok(())
 }
 
 /// Discard the game after an error it cannot come back from. Without this a
@@ -168,13 +211,13 @@ async fn gp_abort(pb: &GpPlayback, text_channel: GenericChannelId, reason: &str)
     // and a handler awaiting `lock_queue` would park that task for the length
     // of this send. See `stop_queue`.
     // Best effort: the channel is usually what just failed.
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    if let Err(e) = text_channel
-        .send_message(&pb.http, CreateMessage::new().content(GP_ABORTED))
-        .await
-    {
-        tracing::warn!("gp: could not announce the abort in {}: {e}", pb.guild_id);
-    }
+    gp_post(
+        &pb.data,
+        &*pb.transport,
+        text_channel,
+        GpCard::Line(GP_ABORTED.into()),
+    )
+    .await;
 }
 
 pub async fn gp_open_round(pb: &GpPlayback, opened: GpWindowOpened) -> Result<(), Error> {
@@ -182,14 +225,7 @@ pub async fn gp_open_round(pb: &GpPlayback, opened: GpWindowOpened) -> Result<()
     if !pb.data.gp_is_active(guild_id) {
         return Ok(());
     }
-    let msg_id = match gp_send(
-        pb,
-        opened.text_channel,
-        gp_prompt_embed(&opened),
-        Vec::new(),
-    )
-    .await
-    {
+    let msg_id = match gp_send(pb, opened.text_channel, GpCard::Prompt(opened.clone())).await {
         Ok(id) => id,
         Err(e) => {
             gp_abort(
@@ -242,16 +278,13 @@ pub fn gp_spawn_window_timer_secs(
             let Some(warning) = pb.data.gp_warning_if(guild_id, generation) else {
                 return;
             };
-            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-            if let Err(e) = text_channel
-                .send_message(
-                    &pb.http,
-                    CreateMessage::new().content(gp_warning_text(&warning)),
-                )
-                .await
-            {
-                tracing::warn!("gp: window warning in {guild_id}: {e}");
-            }
+            gp_post(
+                &pb.data,
+                &*pb.transport,
+                text_channel,
+                GpCard::Line(gp_warning_text(&warning)),
+            )
+            .await;
             tokio::time::sleep(Duration::from_secs(GP_WARNING_SECS)).await;
         } else {
             tokio::time::sleep(Duration::from_secs(timer)).await;
@@ -268,25 +301,13 @@ pub fn gp_spawn_window_timer_secs(
 }
 
 pub async fn gp_after_close(pb: GpPlayback, closed: GpWindowClosed) -> Result<(), Error> {
-    let embed = gp_prompt_closed_embed(&closed);
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    let edited = match closed.prompt_message {
-        Some((chan, msg_id)) => chan
-            .edit_message(&pb.http, msg_id, EditMessage::new().embed(embed.clone()))
-            .await
-            .is_ok(),
-        None => false,
-    };
-    if !edited {
-        #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-        if let Err(e) = closed
-            .text_channel
-            .send_message(&pb.http, CreateMessage::new().embed(embed))
-            .await
-        {
-            tracing::warn!("gp: posting the closed-window embed: {e}");
-        }
-    }
+    gp_edit_or_post(
+        &pb,
+        closed.prompt_message,
+        closed.text_channel,
+        GpCard::PromptClosed(closed.clone()),
+    )
+    .await;
     gp_follow(pb, closed.next, closed.text_channel, false).await
 }
 
@@ -310,13 +331,16 @@ async fn gp_follow(
             // Remove first: a game that cannot post its scoreboard must still end,
             // or the guild keeps a finished game blocking its music commands.
             pb.data.gp_remove(pb.guild_id);
-            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-            text_channel
-                .send_message(
-                    &pb.http,
-                    CreateMessage::new().embed(gp_scoreboard_embed(&scores, GP_GAME_OVER)),
-                )
-                .await?;
+            courier::post_message(
+                &*pb.transport,
+                text_channel,
+                &gp_rendered(GpCard::Scoreboard {
+                    scores,
+                    title: GP_GAME_OVER,
+                    lead: None,
+                }),
+            )
+            .await?;
             Ok(())
         },
     }
@@ -353,14 +377,10 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
     let msg_id = match gp_send(
         pb,
         start.text_channel,
-        gp_track_embed(&start),
-        gp_components(
-            guild_id,
-            start.round_idx,
-            start.track_idx,
-            &start.players,
-            start.guessable,
-        ),
+        GpCard::Song {
+            start: start.clone(),
+            guild: guild_id,
+        },
     )
     .await
     {
@@ -597,47 +617,22 @@ pub async fn gp_advance_track(
         return Ok(());
     };
 
-    let reveal = gp_reveal_embed(&res);
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    let edited = match res.message {
-        Some((chan, msg_id)) => chan
-            .edit_message(
-                &pb.http,
-                msg_id,
-                EditMessage::new()
-                    .embed(reveal.clone())
-                    .components(Vec::<CreateComponent<'_>>::new()),
-            )
-            .await
-            .is_ok(),
-        None => false,
-    };
-    if !edited {
-        #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-        if let Err(e) = res
-            .text_channel
-            .send_message(&pb.http, CreateMessage::new().embed(reveal))
-            .await
-        {
-            tracing::warn!("gp: posting the reveal: {e}");
-        }
-    }
+    gp_edit_or_post(
+        &pb,
+        res.message,
+        res.text_channel,
+        GpCard::Reveal(res.clone()),
+    )
+    .await;
     // The round's last song: sum the round up at the bottom of the channel
     // before the next prompt (or the final scoreboard) goes up. Never reached
     // for a round nobody submitted to, which ends at the close, not here. Once
     // it is up the round is marked as having had its results, and the game
     // written down again: the snapshot that ended the round went out before
     // this post, and a round left unmarked is posted by the next resume.
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     if let Some(round) = &res.round {
-        match res
-            .text_channel
-            .send_message(
-                &pb.http,
-                CreateMessage::new().embed(gp_round_results_embed(round)),
-            )
-            .await
-        {
+        let out = gp_rendered(GpCard::RoundResults(round.clone()));
+        match courier::post_message(&*pb.transport, res.text_channel, &out).await {
             Ok(_) => pb.data.gp_mark_results_posted(guild_id, round.round_idx),
             Err(e) => tracing::warn!(
                 "gp: posting round {} results in {guild_id}: {e}",
@@ -684,17 +679,11 @@ pub async fn handle_gp_component(
         Ok(text) => text,
         Err(e) => e.to_string(),
     };
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    mci.create_response(
-        &ctx.http,
-        CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new()
-                .content(content)
-                .ephemeral(true),
-        ),
-    )
-    .await?;
-    Ok(())
+    let press = DiscordPress {
+        http: &ctx.http,
+        interaction: mci,
+    };
+    gp_answer_component(&press, content).await
 }
 
 fn gp_component_vc_check(

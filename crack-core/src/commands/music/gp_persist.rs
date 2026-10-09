@@ -45,9 +45,8 @@
 //! went up -- it gets its last results and scoreboard, and its tombstone.
 
 use super::gp::{
-    gp_after_close, gp_play_track, gp_round_results_embed, gp_scoreboard_embed,
-    gp_spawn_window_timer_secs, now, GpClip, GpGame, GpPhase, GpPlayback, GpReveal, GpRound,
-    GpTrack, GP_RESUME_WINDOW_SECS,
+    gp_after_close, gp_play_track, gp_post, gp_rendered, gp_spawn_window_timer_secs, now, GpCard,
+    GpClip, GpGame, GpPhase, GpPlayback, GpReveal, GpRound, GpTrack, GP_RESUME_WINDOW_SECS,
 };
 use super::gp_prompts::{GpCategories, GpCategory};
 use crate::commands::music_utils::set_global_handlers_with;
@@ -59,12 +58,12 @@ use crate::messaging::messages::{
     GP_GAME_OVER, GP_LOST, GP_RESUMED, GP_RESUMED_SONG, GP_RESUMED_WINDOW,
     GP_RESUMED_WINDOW_CLOSED, GP_SCOREBOARD,
 };
-use crate::Data;
-use ::serenity::{
-    all::{ChannelId, GenericChannelId, Guild, GuildId, MessageId, UserId},
-    builder::{CreateComponent, CreateMessage, EditMessage},
-    http::Http,
+use crate::messaging::{
+    courier,
+    transport::{DiscordTransport, Transport},
 };
+use crate::Data;
+use ::serenity::all::{ChannelId, GenericChannelId, Guild, GuildId, MessageId, UserId};
 use crack_testing::ResolvedTrack;
 use crack_types::SavedTrack;
 use poise::serenity_prelude::Context as SerenityContext;
@@ -525,16 +524,13 @@ async fn abandon_resume(
     guild_id: GuildId,
     started_at: i64,
     text_channel: GenericChannelId,
-    http: &Http,
+    transport: &dyn Transport,
 ) {
     data.gp_remove(guild_id);
     if let Err(e) = gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await {
         tracing::warn!("gp: marking the game in {guild_id} lost: {e}");
     }
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    let _ = text_channel
-        .send_message(http, CreateMessage::new().content(GP_LOST))
-        .await;
+    gp_post(data, transport, text_channel, GpCard::Line(GP_LOST.into())).await;
 }
 
 /// Bring back the guild's live game, if it has one and it is worth bringing
@@ -572,11 +568,12 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
         },
     };
     let text_channel = game.text_channel;
+    let transport: Arc<dyn Transport> = Arc::new(DiscordTransport::of(ctx));
 
     // Whatever becomes of the game, a round it moved past without its results
     // reaching the channel is owed them, and they go up first -- before anything
     // is said about the restart -- so they read as results arriving late.
-    let owed = post_owed_results(&ctx.http, &game).await;
+    let owed = post_owed_results(&*transport, &game).await;
 
     if game.phase == GpPhase::Finished {
         // The game played out, and the snapshot that finished it was written
@@ -588,11 +585,12 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
         tracing::info!("gp: the game in {guild_id} had finished; posting what it still owed");
         if !owed.is_empty() {
             let scores = game.sorted_scores();
-            let msg = CreateMessage::new().embed(gp_scoreboard_embed(&scores, GP_GAME_OVER));
-            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-            if let Err(e) = text_channel.send_message(&ctx.http, msg).await {
-                tracing::warn!("gp: posting the finished game's scoreboard in {guild_id}: {e}");
-            }
+            let card = GpCard::Scoreboard {
+                scores,
+                title: GP_GAME_OVER,
+                lead: None,
+            };
+            gp_post(data, &*transport, text_channel, card).await;
         }
         if let Err(e) =
             gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Finished).await
@@ -633,13 +631,12 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
             };
         if marked {
             let scores = game.sorted_scores();
-            let msg = CreateMessage::new()
-                .content(GP_LOST)
-                .embed(gp_scoreboard_embed(&scores, GP_SCOREBOARD));
-            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-            if let Err(e) = text_channel.send_message(&ctx.http, msg).await {
-                tracing::warn!("gp: posting the lost game's scoreboard in {guild_id}: {e}");
-            }
+            let card = GpCard::Scoreboard {
+                scores,
+                title: GP_SCOREBOARD,
+                lead: Some(GP_LOST),
+            };
+            gp_post(data, &*transport, text_channel, card).await;
         }
         return;
     }
@@ -665,7 +662,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
         Ok(permit) => permit,
         Err(e) => {
             tracing::warn!("gp: cannot rejoin {voice_channel} in {guild_id} to resume: {e}");
-            abandon_resume(data, pool, guild_id, started_at, text_channel, &ctx.http).await;
+            abandon_resume(data, pool, guild_id, started_at, text_channel, &*transport).await;
             return;
         },
     };
@@ -686,7 +683,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
                 // is superseded by `abandon_resume`, which owns the authoritative
                 // database write for this path, since `gp_remove`'s in-memory
                 // `game` reflects the pre-rejoin-failure state.
-                abandon_resume(data, pool, guild_id, started_at, text_channel, &ctx.http).await;
+                abandon_resume(data, pool, guild_id, started_at, text_channel, &*transport).await;
                 return;
             },
         };
@@ -700,7 +697,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     .await;
     let pb = GpPlayback {
         data: Arc::new(data.clone()),
-        http: ctx.http.clone(),
+        transport: transport.clone(),
         call,
         guild_id,
     };
@@ -753,19 +750,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
             // Restore the one-live-dropdown invariant: the reveal only edits the
             // message the track remembers, which is about to be the new one.
             if let Some((c, m)) = old_message {
-                #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-                if let Err(e) = c
-                    .edit_message(
-                        &pb.http,
-                        m,
-                        EditMessage::new().components(Vec::<CreateComponent<'_>>::new()),
-                    )
-                    .await
-                {
-                    tracing::warn!(
-                        "gp: taking down the pre-restart song message in {guild_id}: {e}"
-                    );
-                }
+                take_down_components(&*pb.transport, guild_id, c, m).await;
             }
             if let Err(e) = gp_play_track(&pb, start).await {
                 tracing::warn!("gp: restarting the song in {guild_id}: {e}");
@@ -779,16 +764,11 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
 /// the channel (see [`GpGame::unposted_results`]). Returns the rounds posted;
 /// marking them is the caller's, since only a game back in the map can be
 /// written down.
-async fn post_owed_results(http: &Http, game: &GpGame) -> Vec<usize> {
+pub(crate) async fn post_owed_results(transport: &dyn Transport, game: &GpGame) -> Vec<usize> {
     let mut posted = Vec::new();
     for idx in game.unposted_results() {
-        let embed = gp_round_results_embed(&game.round_result(idx));
-        #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-        match game
-            .text_channel
-            .send_message(http, CreateMessage::new().embed(embed))
-            .await
-        {
+        let out = gp_rendered(GpCard::RoundResults(game.round_result(idx)));
+        match courier::post_message(transport, game.text_channel, &out).await {
             Ok(_) => posted.push(idx),
             Err(e) => tracing::warn!(
                 "gp: posting round {} results in {} after a restart: {e}",
@@ -800,17 +780,28 @@ async fn post_owed_results(http: &Http, game: &GpGame) -> Vec<usize> {
     posted
 }
 
-async fn announce(pb: &GpPlayback, text_channel: GenericChannelId, what: &str) {
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    if let Err(e) = text_channel
-        .send_message(
-            &pb.http,
-            CreateMessage::new().content(format!("{GP_RESUMED} {what}")),
-        )
-        .await
-    {
-        tracing::warn!("gp: announcing the resume in {}: {e}", pb.guild_id);
+/// Take the dropdown off a song message from before a restart, leaving its
+/// embed: the reveal only edits the message the track remembers, which is
+/// about to be a new one. Best effort.
+pub(crate) async fn take_down_components(
+    transport: &dyn Transport,
+    guild: GuildId,
+    channel: GenericChannelId,
+    id: MessageId,
+) {
+    if let Err(e) = transport.clear_components(channel, id).await {
+        tracing::warn!("gp: taking down the pre-restart song message in {guild}: {e}");
     }
+}
+
+async fn announce(pb: &GpPlayback, text_channel: GenericChannelId, what: &str) {
+    gp_post(
+        &pb.data,
+        &*pb.transport,
+        text_channel,
+        GpCard::Line(format!("{GP_RESUMED} {what}")),
+    )
+    .await;
 }
 
 // ------------------------------------------------------------------

@@ -15,6 +15,9 @@ pub trait ReplySink: Send + Sync {
     type Handle: Send + Sync;
     async fn send(&self, out: Rendered, ephemeral: bool) -> Result<Self::Handle, CrackedError>;
     async fn edit(&self, handle: &Self::Handle, out: Rendered) -> Result<(), CrackedError>;
+    /// An edit that also takes the reply's components away: a menu that has
+    /// closed. `edit` cannot (ruling R4); an empty list has no lifetime to fight.
+    async fn retire(&self, handle: &Self::Handle, out: Rendered) -> Result<(), CrackedError>;
     /// The reply as a channel message, `None` for an ephemeral one or when
     /// it cannot be read.
     async fn locate(&self, handle: &Self::Handle) -> Option<(GenericChannelId, MessageId)>;
@@ -45,6 +48,10 @@ impl<'ctx> ReplySink for PoiseReplies<'ctx> {
         edit_poise(self.0, handle, out).await
     }
 
+    async fn retire(&self, handle: &Self::Handle, out: Rendered) -> Result<(), CrackedError> {
+        retire_poise(self.0, handle, out).await
+    }
+
     /// `None`, with a warning, when poise cannot produce the message (a slash
     /// command's initial response is fetched over HTTP).
     async fn locate(&self, handle: &Self::Handle) -> Option<(GenericChannelId, MessageId)> {
@@ -73,6 +80,20 @@ async fn edit_poise<'ctx>(
     if dropped_components {
         tracing::warn!("a reply edit cannot carry components (poise ties the builder to the context's lifetime); sent without");
     }
+    handle.edit(ctx, reply).await.map_err(Into::into)
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "messaging is where sends are made"
+)]
+async fn retire_poise<'ctx>(
+    ctx: crate::Context<'ctx>,
+    handle: &poise::ReplyHandle<'ctx>,
+    out: Rendered,
+) -> Result<(), CrackedError> {
+    let (reply, _) = out.to_reply_edit();
+    let reply = reply.components(Vec::<serenity::all::CreateComponent<'_>>::new());
     handle.edit(ctx, reply).await.map_err(Into::into)
 }
 
@@ -265,12 +286,52 @@ pub async fn answer_privately(press: &dyn Press, msg: &CrackedMessage, cx: &Rend
     }
 }
 
+/// Answer a press with its one response, to the presser only when
+/// `ephemeral`. Fallible: the caller decides whether a lost answer matters.
+pub async fn respond(
+    press: &dyn Press,
+    msg: &CrackedMessage,
+    cx: &RenderCx,
+    ephemeral: bool,
+) -> Result<(), TransportError> {
+    press.respond(render(msg, cx), ephemeral).await
+}
+
+/// Answer a press by redrawing the message it came from. Fallible.
+pub async fn update(
+    press: &dyn Press,
+    msg: &CrackedMessage,
+    cx: &RenderCx,
+) -> Result<(), TransportError> {
+    press.update(render(msg, cx)).await
+}
+
+pub async fn retire_reply_on<S: ReplySink>(
+    sink: &S,
+    handle: &S::Handle,
+    msg: &CrackedMessage,
+    cx: &RenderCx,
+) -> Result<(), CrackedError> {
+    sink.retire(handle, render(msg, cx)).await
+}
+
+/// Edit a reply for the last time and take its components away.
+pub async fn retire_reply<'ctx>(
+    ctx: crate::Context<'ctx>,
+    handle: &poise::ReplyHandle<'ctx>,
+    msg: CrackedMessage,
+) -> Result<(), CrackedError> {
+    retire_reply_on(&PoiseReplies(ctx), handle, &msg, &RenderCx::now()).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::messaging::format::TrackLabel;
     use crate::messaging::status;
-    use crate::messaging::test_support::{FakeReplies, FakeTransport, Op, ReplyOp};
+    use crate::messaging::test_support::{
+        FakePress, FakeReplies, FakeTransport, Op, PressOp, ReplyOp,
+    };
     use crate::messaging::transport::TransportError;
     use crate::{Data, DataInner};
     use std::sync::Arc;
@@ -483,7 +544,6 @@ mod tests {
 
     #[tokio::test]
     async fn a_press_is_acknowledged_then_answered_privately() {
-        use crate::messaging::test_support::{FakePress, PressOp};
         let p = FakePress::default();
         assert!(acknowledge(&p).await);
         answer_privately(
@@ -506,9 +566,108 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_acknowledge_is_reported_not_raised() {
-        use crate::messaging::test_support::FakePress;
         let p = FakePress::default();
         *p.ack_error.lock().unwrap() = Some(TransportError::Other("Unknown interaction".into()));
         assert!(!acknowledge(&p).await);
+    }
+
+    #[tokio::test]
+    async fn a_press_answered_now_is_one_private_response() {
+        let press = FakePress::default();
+        respond(&press, &CrackedMessage::Other("ok".into()), &cx(), true)
+            .await
+            .unwrap();
+        assert_eq!(
+            press.ops(),
+            vec![PressOp::Respond {
+                ephemeral: true,
+                text: "ok".into()
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_update_redraws_the_message_with_its_rows() {
+        let press = FakePress::default();
+        let msg = CrackedMessage::Other("page".into());
+        // `render` gives an `Other` no components; give it two rows to see them counted.
+        let out = render(&msg, &cx()).with_components(vec![
+            serenity::all::CreateComponent::ActionRow(serenity::all::CreateActionRow::Buttons(
+                std::borrow::Cow::Owned(vec![serenity::all::CreateButton::new("a")]),
+            )),
+            serenity::all::CreateComponent::ActionRow(serenity::all::CreateActionRow::Buttons(
+                std::borrow::Cow::Owned(vec![serenity::all::CreateButton::new("b")]),
+            )),
+        ]);
+        press.update(out).await.unwrap();
+        update(&press, &msg, &cx()).await.unwrap();
+        assert_eq!(
+            press.ops(),
+            vec![
+                PressOp::Update {
+                    text: "page".into(),
+                    rows: 2
+                },
+                PressOp::Update {
+                    text: "page".into(),
+                    rows: 0
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn retiring_a_reply_edits_it_and_clears_its_components() {
+        let sink = FakeReplies::default();
+        let handle = reply_on(&sink, &CrackedMessage::Other("pick".into()), &cx(), true)
+            .await
+            .unwrap();
+        retire_reply_on(
+            &sink,
+            &handle,
+            &CrackedMessage::Other("timed out".into()),
+            &cx(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            sink.ops().last().unwrap(),
+            &ReplyOp::Retire {
+                handle,
+                text: "timed out".into()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn clearing_components_touches_only_the_components() {
+        let t = FakeTransport::default();
+        t.clear_components(GenericChannelId::new(5), MessageId::new(9))
+            .await
+            .unwrap();
+        assert_eq!(t.ops(), vec![Op::ClearComponents(5, 9)]);
+        assert!(t.sent.lock().unwrap().is_empty(), "nothing was re-rendered");
+    }
+
+    #[tokio::test]
+    async fn queued_send_failures_fail_that_many_sends_then_let_them_through() {
+        let t = FakeTransport::default();
+        t.send_failures
+            .lock()
+            .unwrap()
+            .push_back(TransportError::Other("503".into()));
+        let first = t.send(GenericChannelId::new(5), Rendered::text("a")).await;
+        let second = t.send(GenericChannelId::new(5), Rendered::text("a")).await;
+        assert_eq!(first, Err(TransportError::Other("503".into())));
+        assert_eq!(second, Ok(MessageId::new(1000)));
+    }
+
+    #[test]
+    fn a_transport_error_reads_as_text() {
+        assert_eq!(
+            TransportError::UnknownMessage.to_string(),
+            "unknown message"
+        );
+        assert_eq!(TransportError::Other("boom".into()).to_string(), "boom");
     }
 }

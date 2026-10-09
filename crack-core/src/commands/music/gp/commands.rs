@@ -12,23 +12,22 @@ use crate::{
         GP_PICK_CANCELLED, GP_PICK_CHOSEN, GP_PICK_NOT_HOST, GP_PICK_TEXT, GP_PICK_TIMED_OUT,
         GP_SCOREBOARD, SPOTIFY_GP_ONE_SONG, SPOTIFY_NOTHING_PLAYABLE,
     },
+    messaging::{
+        courier,
+        render::RenderCx,
+        transport::{DiscordPress, DiscordTransport, Press},
+    },
     music::queue::{force_skip_top_track, stop_queue},
     music::PlaybackOwner,
     poise_ext::PoiseContextExt,
     sources::sleevenote,
     Context, CrackedResult, Error,
 };
-use ::serenity::{
-    all::{ChannelId, ComponentInteraction, ComponentInteractionDataKind, GuildId, UserId},
-    builder::{
-        CreateComponent, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
-    },
-};
+use ::serenity::all::{ChannelId, ComponentInteractionDataKind, GuildId, UserId};
 use crack_types::QueryType;
 use poise::serenity_prelude::CollectComponentInteractions;
-use poise::CreateReply;
 use songbird::Call;
-use std::{borrow::Cow, str::FromStr, sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 // ------------------------------------------------------------------
@@ -87,7 +86,7 @@ fn gp_require_player(ctx: Context<'_>, guild_id: GuildId) -> CrackedResult<Chann
 fn gp_playback(ctx: Context<'_>, call: Arc<Mutex<Call>>, guild_id: GuildId) -> GpPlayback {
     GpPlayback {
         data: ctx.data().clone(),
-        http: ctx.serenity_context().http.clone(),
+        transport: Arc::new(DiscordTransport::of(ctx.serenity_context())),
         call,
         guild_id,
     }
@@ -113,7 +112,7 @@ fn gp_playback(ctx: Context<'_>, call: Arc<Mutex<Call>>, guild_id: GuildId) -> G
     )
 )]
 pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.send_embed_response(gp_rules_embed()).await?;
+    courier::reply_as(ctx, GpCard::Rules.into(), false).await?;
     Ok(())
 }
 
@@ -125,15 +124,17 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
 async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Error> {
     let host = ctx.author().id;
     let mut picked: Vec<GpCategory> = Vec::new();
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    let reply = ctx
-        .send(
-            CreateReply::default()
-                .embed(gp_pick_embed(GP_PICK_TEXT))
-                .components(Cow::Owned(gp_pick_components(&picked)))
-                .ephemeral(true),
-        )
-        .await?;
+    let reply = courier::reply_as(
+        ctx,
+        GpCard::Picker {
+            text: GP_PICK_TEXT.into(),
+            picked: picked.clone(),
+            open: true,
+        }
+        .into(),
+        true,
+    )
+    .await?;
     let message_id = reply.message().await?.id;
     loop {
         // A collector per click, so the timeout is how long the host has sat
@@ -144,66 +145,70 @@ async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Er
             .next()
             .await
         else {
-            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-            reply
-                .edit(
-                    ctx,
-                    CreateReply::default()
-                        .embed(gp_pick_embed(GP_PICK_TIMED_OUT))
-                        .components(Cow::Owned(vec![])),
-                )
-                .await?;
+            courier::retire_reply(
+                ctx,
+                &reply,
+                GpCard::Picker {
+                    text: GP_PICK_TIMED_OUT.into(),
+                    picked: vec![],
+                    open: false,
+                }
+                .into(),
+            )
+            .await?;
             return Ok(None);
+        };
+        let press = DiscordPress {
+            http: ctx.http(),
+            interaction: &mci,
         };
         // Only a prefix command's picker is public; from a slash command nobody
         // else can see it.
         if mci.user.id != host {
-            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-            mci.create_response(
-                ctx.http(),
-                CreateInteractionResponse::Message(
-                    CreateInteractionResponseMessage::new()
-                        .content(GP_PICK_NOT_HOST)
-                        .ephemeral(true),
-                ),
+            courier::respond(
+                &press,
+                &GpCard::Line(GP_PICK_NOT_HOST.into()).into(),
+                &RenderCx::now(),
+                true,
             )
             .await?;
             continue;
         }
         let id = mci.data.custom_id.as_str();
         if id == GP_PICK_CANCEL_ID {
-            gp_pick_update(ctx, &mci, GP_PICK_CANCELLED, vec![]).await?;
+            gp_pick_update(&press, GP_PICK_CANCELLED, &[], false).await?;
             return Ok(None);
         }
         if id == GP_PICK_START_ID {
             if let Some(categories) = GpCategories::new(picked.iter().copied()) {
                 let chosen = format!("{GP_PICK_CHOSEN} {}", categories.display());
-                gp_pick_update(ctx, &mci, &chosen, vec![]).await?;
+                gp_pick_update(&press, &chosen, &[], false).await?;
                 return Ok(Some(categories));
             }
         } else if let ComponentInteractionDataKind::StringSelect { values } = &mci.data.kind {
             picked = gp_picked(values.iter().map(String::as_str));
         }
-        gp_pick_update(ctx, &mci, GP_PICK_TEXT, gp_pick_components(&picked)).await?;
+        gp_pick_update(&press, GP_PICK_TEXT, &picked, true).await?;
     }
 }
 
 /// Answer a picker click by redrawing the picker.
 #[cfg(not(tarpaulin_include))]
 async fn gp_pick_update(
-    ctx: Context<'_>,
-    mci: &ComponentInteraction,
+    press: &dyn Press,
     text: &str,
-    components: Vec<CreateComponent<'static>>,
+    picked: &[GpCategory],
+    open: bool,
 ) -> Result<(), Error> {
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    mci.create_response(
-        ctx.http(),
-        CreateInteractionResponse::UpdateMessage(
-            CreateInteractionResponseMessage::new()
-                .add_embed(gp_pick_embed(text))
-                .components(Cow::Owned(components)),
-        ),
+    courier::update(
+        press,
+        &GpCard::Picker {
+            text: text.to_string(),
+            picked: picked.to_vec(),
+            open,
+        }
+        .into(),
+        &RenderCx::now(),
     )
     .await?;
     Ok(())
@@ -610,16 +615,15 @@ async fn gp_answer_vote(ctx: Context<'_>, (mine, room): GpVoteAnswer) -> Result<
             .create_dm_channel(&ctx)
             .await
             .map(|c| c.id.widen());
-        #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-        let sent = match dm {
-            Ok(dm) => dm
-                .send_message(
-                    &ctx.serenity_context().http,
-                    CreateMessage::new().content(mine.to_string()),
-                )
-                .await
-                .map(|_| ()),
-            Err(e) => Err(e),
+        let transport = DiscordTransport::of(ctx.serenity_context());
+        let sent: Result<(), String> = match dm {
+            Ok(dm) => {
+                courier::post_message(&transport, dm, &gp_rendered(GpCard::Line(mine.to_string())))
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| e.to_string())
+            },
+            Err(e) => Err(e.to_string()),
         };
         if let Err(e) = sent {
             tracing::warn!(
@@ -642,13 +646,12 @@ async fn gp_answer_vote(ctx: Context<'_>, (mine, room): GpVoteAnswer) -> Result<
     else {
         return Ok(());
     };
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    channel
-        .send_message(
-            &ctx.serenity_context().http,
-            CreateMessage::new().content(room.to_string()),
-        )
-        .await?;
+    courier::post_message(
+        &DiscordTransport::of(ctx.serenity_context()),
+        channel,
+        &gp_rendered(GpCard::Line(room.to_string())),
+    )
+    .await?;
     Ok(())
 }
 
@@ -790,7 +793,7 @@ pub async fn gp_status(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     gp_require_player(ctx, guild_id)?;
     let status = ctx.data().gp_status(guild_id)?;
-    ctx.send_embed_response(gp_status_embed(&status)).await?;
+    courier::reply_as(ctx, GpCard::Status(status).into(), false).await?;
     Ok(())
 }
 
@@ -864,8 +867,17 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
     ctx.send_reply(CrackedMessage::GpEnded { by }, true).await?;
     let nothing_played = game.phase == GpPhase::Submitting && game.current_round == 0;
     if !nothing_played {
-        ctx.send_embed_response(gp_scoreboard_embed(&game.sorted_scores(), GP_SCOREBOARD))
-            .await?;
+        courier::reply_as(
+            ctx,
+            GpCard::Scoreboard {
+                scores: game.sorted_scores(),
+                title: GP_SCOREBOARD,
+                lead: None,
+            }
+            .into(),
+            false,
+        )
+        .await?;
     }
     Ok(())
 }

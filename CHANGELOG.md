@@ -150,6 +150,11 @@
 
 ### Changed
 
+- **`/gp` sends everything through the messaging layer.** Its prompts, songs,
+  reveals, results, scoreboards, picker and button answers are rendered by
+  the one renderer and delivered by the courier, like the music commands
+  since v0.22.0, and clippy now refuses a raw send anywhere in `/gp`. Nothing
+  else about the game changes.
 - **The now-playing message shows when the track ends**, counted down live by
   Discord ("4:33 · ends in 3 minutes"); "Paused at 1:12" while paused; "4:33 ·
   on repeat" while the track repeats, since it has no end; and "Started … ago"
@@ -212,6 +217,11 @@
 
 ### Fixed
 
+- **`/gp` song titles with `*`, `_`, backticks or `@` broke the song, reveal
+  and results embeds' formatting.** They are now escaped like every other
+  title since v0.22.0, and a pathological title is capped at 100 characters
+  (YouTube's own limit, so a real title is never cut). Player names in
+  `/gp status` are escaped too.
 - **A track with no title read "⏭️ Skipped to **!"**; it now reads
   "(untitled)". Blank queue lines, playlist lines, the dashboard's echo lines
   ("⏭ Skipped **** from the dashboard") and search-menu labels do too; an empty

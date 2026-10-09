@@ -13,6 +13,7 @@ pub enum Op {
     Send(u64),
     Edit(u64, u64),
     Delete(u64, u64),
+    ClearComponents(u64, u64),
 }
 
 /// Records every call, keeps every rendered message, answers from what the
@@ -23,6 +24,8 @@ pub struct FakeTransport {
     pub edit_error: Mutex<Option<TransportError>>,
     pub delete_error: Mutex<Option<TransportError>>,
     pub send_error: Mutex<Option<TransportError>>,
+    /// Each `send` pops one; when empty it falls back to `send_error`.
+    pub send_failures: Mutex<std::collections::VecDeque<TransportError>>,
     pub ops: Mutex<Vec<Op>>,
     pub sent: Mutex<Vec<Rendered>>,
     next: AtomicU64,
@@ -61,6 +64,9 @@ impl Transport for FakeTransport {
     ) -> Result<MessageId, TransportError> {
         self.ops.lock().unwrap().push(Op::Send(channel.get()));
         self.sent.lock().unwrap().push(out);
+        if let Some(err) = self.send_failures.lock().unwrap().pop_front() {
+            return Err(err);
+        }
         if let Some(err) = self.send_error.lock().unwrap().clone() {
             return Err(err);
         }
@@ -94,6 +100,20 @@ impl Transport for FakeTransport {
             None => Ok(()),
         }
     }
+    async fn clear_components(
+        &self,
+        channel: GenericChannelId,
+        id: MessageId,
+    ) -> Result<(), TransportError> {
+        self.ops
+            .lock()
+            .unwrap()
+            .push(Op::ClearComponents(channel.get(), id.get()));
+        match self.edit_error.lock().unwrap().clone() {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
+    }
     fn last_message_id(&self, _guild: GuildId, _channel: GenericChannelId) -> Option<MessageId> {
         *self.last.lock().unwrap()
     }
@@ -103,6 +123,7 @@ impl Transport for FakeTransport {
 pub enum ReplyOp {
     Send { ephemeral: bool, text: String },
     EditHandle { handle: u64, text: String },
+    Retire { handle: u64, text: String },
 }
 
 /// A stand-in for poise's reply path. Handles are numbered from 1.
@@ -144,6 +165,14 @@ impl ReplySink for FakeReplies {
         self.sent.lock().unwrap().push(out);
         Ok(())
     }
+    async fn retire(&self, handle: &u64, out: Rendered) -> Result<(), CrackedError> {
+        self.ops.lock().unwrap().push(ReplyOp::Retire {
+            handle: *handle,
+            text: text_of(&out),
+        });
+        self.sent.lock().unwrap().push(out);
+        Ok(())
+    }
     async fn locate(&self, handle: &u64) -> Option<(GenericChannelId, MessageId)> {
         Some((GenericChannelId::new(5), MessageId::new(*handle)))
     }
@@ -153,6 +182,8 @@ impl ReplySink for FakeReplies {
 pub enum PressOp {
     Acknowledge,
     Followup { ephemeral: bool, text: String },
+    Respond { ephemeral: bool, text: String },
+    Update { text: String, rows: usize },
 }
 
 /// A stand-in for one button press.
@@ -181,6 +212,20 @@ impl super::transport::Press for FakePress {
         self.ops.lock().unwrap().push(PressOp::Followup {
             ephemeral,
             text: text_of(&out),
+        });
+        Ok(())
+    }
+    async fn respond(&self, out: Rendered, ephemeral: bool) -> Result<(), TransportError> {
+        self.ops.lock().unwrap().push(PressOp::Respond {
+            ephemeral,
+            text: text_of(&out),
+        });
+        Ok(())
+    }
+    async fn update(&self, out: Rendered) -> Result<(), TransportError> {
+        self.ops.lock().unwrap().push(PressOp::Update {
+            text: text_of(&out),
+            rows: out.components.len(),
         });
         Ok(())
     }

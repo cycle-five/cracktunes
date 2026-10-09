@@ -1,14 +1,17 @@
 use crate::commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt};
+use crate::messaging::format::DESCRIPTION_MAX;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
     GP_FOOLED_EVERYONE, GP_FULL_SONG, GP_GAME_OVER, GP_GUESSED_RIGHT, GP_LIKES, GP_LIKE_HINT,
-    GP_LIKE_LABEL, GP_NOBODY_GUESSED, GP_NOBODY_YET, GP_PROMPT_CLOSES_TITLE,
+    GP_LIKE_LABEL, GP_LOST, GP_NOBODY_GUESSED, GP_NOBODY_YET, GP_PROMPT_CLOSES_TITLE,
     GP_PROMPT_HOW_TO_TITLE, GP_RESULTS_GUESSED_BY, GP_RESULTS_GUESSED_COUNT,
     GP_RESULTS_NOBODY_SCORED, GP_RESULTS_THIS_ROUND, GP_RESULTS_TITLE, GP_REVEAL, GP_REVEAL_HELD,
     GP_ROUND_HINT, GP_ROUND_TITLE, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE,
-    GP_STATUS_PLAYING, GP_STATUS_SUBMITTING, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE,
-    GP_WINDOW_CLOSED, GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING,
+    GP_STATUS_GUESSED, GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SUBMITTED,
+    GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, GP_WINDOW_CLOSED,
+    GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING,
 };
+use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::music::PlaybackOwner;
 use crate::{errors::CrackedError, Data};
 use ::serenity::all::{ChannelId, GenericChannelId, GuildId, MessageId, UserId};
@@ -23,18 +26,18 @@ use crate::DataInner;
 use crack_types::AuxMetadata;
 use rand::{rngs::StdRng, SeedableRng};
 
-const G: GuildId = GuildId::new(1);
+pub(super) const G: GuildId = GuildId::new(1);
 const VC: ChannelId = ChannelId::new(10);
-const TC: GenericChannelId = GenericChannelId::new(20);
-const A: UserId = UserId::new(100);
-const B: UserId = UserId::new(200);
+pub(super) const TC: GenericChannelId = GenericChannelId::new(20);
+pub(super) const A: UserId = UserId::new(100);
+pub(super) const B: UserId = UserId::new(200);
 const C: UserId = UserId::new(300);
 /// Never submits anything, so never a player.
 const D: UserId = UserId::new(400);
-const NOW: i64 = 1_700_000_000;
+pub(super) const NOW: i64 = 1_700_000_000;
 const TIMER: u64 = 120;
 
-fn data() -> Data {
+pub(super) fn data() -> Data {
     Data(Arc::new(DataInner {
         ..Default::default()
     }))
@@ -51,7 +54,7 @@ fn track(title: &str) -> ResolvedTrack<'static> {
     })
 }
 
-fn rng() -> StdRng {
+pub(super) fn rng() -> StdRng {
     StdRng::seed_from_u64(0)
 }
 
@@ -79,7 +82,7 @@ fn clip() -> GpClip {
 }
 
 /// A game hosted by alice with the given prompts; round 0's window is open.
-fn game_with(data: &Data, prompt_list: &[&str]) -> GpWindowOpened {
+pub(super) fn game_with(data: &Data, prompt_list: &[&str]) -> GpWindowOpened {
     game_with_clip(data, prompt_list, None)
 }
 
@@ -92,7 +95,7 @@ fn game_with_clip(data: &Data, prompt_list: &[&str], clip: Option<GpClip>) -> Gp
 }
 
 /// As [`game_with_clip`], with an explicit reveal setting.
-fn game_with_reveal(
+pub(super) fn game_with_reveal(
     data: &Data,
     prompt_list: &[&str],
     clip: Option<GpClip>,
@@ -102,7 +105,7 @@ fn game_with_reveal(
 }
 
 /// Every setting spelled out.
-fn game_with_settings(
+pub(super) fn game_with_settings(
     data: &Data,
     prompt_list: &[&str],
     clip: Option<GpClip>,
@@ -126,12 +129,12 @@ fn game_with_settings(
     .unwrap()
 }
 
-fn submit(data: &Data, user: UserId, name: &str, title: &str) -> GpSubmitOutcome {
+pub(super) fn submit(data: &Data, user: UserId, name: &str, title: &str) -> GpSubmitOutcome {
     data.gp_submit(G, user, name.into(), track(title), &[])
         .unwrap()
 }
 
-fn game(data: &Data) -> GpGame {
+pub(super) fn game(data: &Data) -> GpGame {
     data.gp_games.get(&G).unwrap().clone()
 }
 
@@ -1859,11 +1862,7 @@ fn round_results_embed_json() {
     };
     let v = serde_json::to_value(gp_round_results_embed(&big)).unwrap();
     let desc = v["description"].as_str().unwrap();
-    assert!(
-        desc.chars().count() <= GP_EMBED_DESCRIPTION_MAX,
-        "{}",
-        desc.len()
-    );
+    assert!(desc.chars().count() <= DESCRIPTION_MAX, "{}", desc.len());
     assert!(
         desc.contains(&format!("24 {GP_RESULTS_GUESSED_COUNT}")),
         "{desc}"
@@ -2127,7 +2126,7 @@ fn reveal_embed_json() {
     let desc = v["description"].as_str().unwrap();
     assert!(desc.contains("*Cry song.*"), "{desc}");
     assert!(
-        desc.contains("[song](https://example.invalid/song)"),
+        desc.contains("[**song**](https://example.invalid/song)"),
         "{desc}"
     );
     assert!(desc.contains(&format!("{GP_REVEAL} <@100>")), "{desc}");
@@ -2571,4 +2570,294 @@ fn a_refused_gp_command_is_logged_as_well_as_answered() {
         log.contains(&CrackedError::NoGuildId.to_string()),
         "error missing: {log}"
     );
+}
+
+// ------------------------------------------------------------------
+// Cards and the shared formatter
+// ------------------------------------------------------------------
+
+fn cx() -> RenderCx {
+    RenderCx {
+        now_unix: NOW,
+        embed_links: true,
+    }
+}
+
+fn embed_json(r: &Rendered) -> serde_json::Value {
+    serde_json::to_value(r.embed.clone().expect("an embed")).unwrap()
+}
+
+fn description(r: &Rendered) -> String {
+    embed_json(r)["description"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// A one-round game whose only song is `title`, closed and so playing.
+pub(super) fn playing_with_title(data: &Data, title: &str, reveal: GpReveal) -> GpTrackStart {
+    let opened = game_with_reveal(data, &["only"], None, reveal);
+    submit(data, B, "bob", title);
+    let closed = data
+        .gp_close_window_if(G, opened.generation, &mut rng(), NOW)
+        .unwrap();
+    match closed.next {
+        GpNext::Track(start) => *start,
+        other => panic!("expected a song, got {other:?}"),
+    }
+}
+
+fn title_of(r: &Rendered) -> String {
+    embed_json(r)["title"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn field_value(r: &Rendered, name: &str) -> String {
+    embed_json(r)["fields"]
+        .as_array()
+        .and_then(|fs| fs.iter().find(|f| f["name"] == name))
+        .and_then(|f| f["value"].as_str())
+        .unwrap_or_else(|| panic!("no field {name}"))
+        .to_string()
+}
+
+fn round_result(title: &str) -> GpRoundResult {
+    GpRoundResult {
+        round_idx: 0,
+        total_rounds: 3,
+        prompt: "p".into(),
+        guessable: false,
+        songs: vec![GpSongResult {
+            submitter: B,
+            title: title.into(),
+            correct: vec![],
+            fooled_everyone: false,
+            likes: 0,
+            played_full: false,
+            failed: false,
+        }],
+        points: vec![],
+        scores: vec![],
+    }
+}
+
+#[test]
+fn every_card_renders_through_the_one_renderer() {
+    let line: CrackedMessage = GpCard::Line("hello".into()).into();
+    let r = render(&line, &cx());
+    assert_eq!(r.content.as_deref(), Some("hello"));
+    assert!(
+        r.embed.is_none(),
+        "a line is plain text, as /gp sends it today"
+    );
+    assert_eq!(line.to_string(), "hello");
+
+    let round = format!("{GP_ROUND_TITLE} 1/3");
+    let go = |card: GpCard| render(&card.into(), &cx());
+
+    let rules = go(GpCard::Rules);
+    assert_eq!(title_of(&rules), GP_TITLE);
+
+    let status = go(GpCard::Status(GpStatus::Submitting {
+        host: A,
+        round: 1,
+        total: 3,
+        prompt: "p".into(),
+        closes_at: NOW,
+        submitted: vec![],
+        scores: vec![],
+    }));
+    assert!(title_of(&status).starts_with(GP_STATUS_SUBMITTING));
+
+    let prompt = go(GpCard::Prompt(GpWindowOpened {
+        round_idx: 0,
+        total_rounds: 3,
+        prompt: "p".into(),
+        category: None,
+        closes_at: NOW,
+        timer_secs: 60,
+        generation: 1,
+        text_channel: TC,
+    }));
+    assert_eq!(title_of(&prompt), round);
+    assert!(prompt.components.is_empty());
+    assert!(!field_value(&prompt, GP_PROMPT_HOW_TO_TITLE).is_empty());
+    assert!(!description(&prompt).contains(GP_WINDOW_EMPTY));
+
+    let closed = go(GpCard::PromptClosed(GpWindowClosed {
+        round_idx: 0,
+        total_rounds: 3,
+        prompt: "p".into(),
+        category: None,
+        prompt_message: None,
+        count: 0,
+        text_channel: TC,
+        next: GpNext::Finished(vec![]),
+    }));
+    assert_eq!(title_of(&closed), round);
+    assert!(description(&closed).contains(GP_WINDOW_EMPTY));
+
+    let results = go(GpCard::RoundResults(round_result("Song")));
+    assert_eq!(title_of(&results), format!("{round} {GP_RESULTS_TITLE}"));
+    assert!(title_of(&results).ends_with(GP_RESULTS_TITLE));
+}
+
+#[test]
+fn status_names_are_escaped_and_the_prompt_is_not() {
+    let status = |names: Vec<String>| {
+        [
+            GpStatus::Submitting {
+                host: A,
+                round: 1,
+                total: 2,
+                prompt: "a *loud* one".into(),
+                closes_at: NOW,
+                submitted: names.clone(),
+                scores: vec![],
+            },
+            GpStatus::Playing {
+                round: 1,
+                total: 2,
+                track: 1,
+                tracks: 2,
+                prompt: "a *loud* one".into(),
+                guessed: names,
+                likes: 0,
+                scores: vec![],
+            },
+        ]
+    };
+    let [submitting, playing] = status(vec!["*bob*".into()]);
+    let submitting = render(&GpCard::Status(submitting).into(), &cx());
+    let playing = render(&GpCard::Status(playing).into(), &cx());
+    assert!(field_value(&submitting, GP_STATUS_SUBMITTED).contains("\\*bob\\*"));
+    assert!(field_value(&playing, GP_STATUS_GUESSED).contains("\\*bob\\*"));
+    for r in [&submitting, &playing] {
+        assert_eq!(field_value(r, GP_STATUS_PROMPT), "a *loud* one");
+    }
+}
+
+#[test]
+fn the_results_line_caps_a_long_title() {
+    let results = render(
+        &GpCard::RoundResults(round_result(&"a".repeat(300))).into(),
+        &cx(),
+    );
+    let d = description(&results);
+    assert!(
+        d.contains(&format!("**{}…**", "a".repeat(GP_TITLE_MAX))),
+        "{d}"
+    );
+    assert!(!d.contains(&"a".repeat(GP_TITLE_MAX + 1)), "{d}");
+}
+
+#[test]
+fn a_song_carries_its_controls_and_a_reveal_carries_none() {
+    let data = data();
+    let start = playing_with_title(&data, "Song", GpReveal::Song);
+    let song = render_card(
+        &GpCard::Song {
+            start: start.clone(),
+            guild: G,
+        },
+        &cx(),
+    );
+    assert!(!song.components.is_empty(), "the 👍 row at least");
+    let res = data
+        .gp_reveal_and_advance(G, 0, 0, NOW)
+        .expect("the song was playing");
+    let reveal = render_card(&GpCard::Reveal(res), &cx());
+    assert!(
+        reveal.components.is_empty(),
+        "the reveal takes the dropdown away"
+    );
+    assert!(reveal.embed.is_some());
+}
+
+#[test]
+fn the_picker_has_its_rows_only_while_open() {
+    let open = render_card(
+        &GpCard::Picker {
+            text: "pick".into(),
+            picked: vec![],
+            open: true,
+        },
+        &cx(),
+    );
+    let closed = render_card(
+        &GpCard::Picker {
+            text: "done".into(),
+            picked: vec![],
+            open: false,
+        },
+        &cx(),
+    );
+    assert_eq!(open.components.len(), 2);
+    assert!(closed.components.is_empty());
+}
+
+#[test]
+fn a_lost_games_scoreboard_leads_with_the_line() {
+    let r = render_card(
+        &GpCard::Scoreboard {
+            scores: vec![(A, 3)],
+            title: GP_SCOREBOARD,
+            lead: Some(GP_LOST),
+        },
+        &cx(),
+    );
+    assert_eq!(r.content.as_deref(), Some(GP_LOST));
+    assert_eq!(embed_json(&r)["title"], GP_SCOREBOARD);
+}
+
+#[test]
+fn a_title_with_markdown_shows_literally_everywhere() {
+    let raw = "*NSYNC_`x` @everyone";
+    let escaped = "\\*NSYNC\\_\\`x\\` \\@everyone";
+    let data = data();
+    let start = playing_with_title(&data, raw, GpReveal::Round);
+    let song = render_card(&GpCard::Song { start, guild: G }, &cx());
+    assert!(
+        description(&song).contains(escaped),
+        "song: {}",
+        description(&song)
+    );
+    let res = data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+    let reveal = render_card(&GpCard::Reveal(res.clone()), &cx());
+    assert!(
+        description(&reveal).contains(escaped),
+        "reveal: {}",
+        description(&reveal)
+    );
+    let results = render_card(
+        &GpCard::RoundResults(res.round.expect("the round's last song posts results")),
+        &cx(),
+    );
+    assert!(
+        description(&results).contains(escaped),
+        "results: {}",
+        description(&results)
+    );
+}
+
+#[test]
+fn a_long_title_is_capped_and_a_real_one_is_not() {
+    let data = data();
+    let long = "a".repeat(300);
+    let start = playing_with_title(&data, &long, GpReveal::Song);
+    let d = description(&render_card(&GpCard::Song { start, guild: G }, &cx()));
+    // The test track's URL carries the title too, so look at the link text only.
+    assert!(
+        d.contains(&format!("[**{}…**]", "a".repeat(GP_TITLE_MAX))),
+        "{d}"
+    );
+
+    let data = self::data();
+    // YouTube's own limit, spelled out so lowering the cap fails here.
+    let real = "b".repeat(100);
+    let start = playing_with_title(&data, &real, GpReveal::Song);
+    let d = description(&render_card(&GpCard::Song { start, guild: G }, &cx()));
+    assert!(d.contains(&format!("[**{real}**]")), "{d}");
 }

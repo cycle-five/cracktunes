@@ -226,6 +226,7 @@ pub fn render(msg: &CrackedMessage, cx: &RenderCx) -> Rendered {
         CrackedMessage::Finished => super::cards::finished(),
         CrackedMessage::Queued(card) => super::cards::queued(card, cx),
         CrackedMessage::Echo(line) => super::cards::echo(line),
+        CrackedMessage::Gp(card) => crate::commands::music::gp::render_card(card, cx),
         CrackedMessage::TrackFailed { listed, more } => {
             Rendered::embed(CreateEmbed::new().description(clip(
                 &super::track_failed::render_text(listed, *more),
