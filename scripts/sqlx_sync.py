@@ -13,7 +13,8 @@ migrated database at DATABASE_URL:
 - Writes every generated query file that is new or differs (origin keys
   ignored when comparing), with
   sqlx 0.9's `origin` keys stripped (the repo's files never carry them).
-- Removes .sqlx files whose query text no longer appears in any tracked .rs file.
+- Removes .sqlx files whose query text no longer appears in any .rs file
+  (tracked or untracked, not ignored), and never one written by this run.
 """
 import glob, json, os, subprocess, sys
 
@@ -37,9 +38,10 @@ for f in sorted(glob.glob(os.path.join(out, "query-*.json"))):
     if not os.path.exists(target) or strip(json.load(open(target))) != gen:
         open(target, "w").write(dump(gen))
         written.append(target)
-files = subprocess.check_output(["git", "ls-files", "*.rs"], text=True).split()
+files = subprocess.check_output(["git", "ls-files", "-co", "--exclude-standard", "*.rs"], text=True).split()
 src = "".join(open(p, encoding="utf-8", errors="ignore").read() for p in files)
-stale = [f for f in sorted(glob.glob(".sqlx/query-*.json")) if json.load(open(f))["query"] not in src]
+stale = [f for f in sorted(glob.glob(".sqlx/query-*.json"))
+         if f not in written and json.load(open(f))["query"] not in src]
 for f in stale:
     os.remove(f)
 print("written:", written)

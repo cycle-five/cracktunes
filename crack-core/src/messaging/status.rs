@@ -345,6 +345,11 @@ pub(crate) async fn show_now_playing_on(
 /// (`call`). Best effort: a failure is logged.
 ///
 /// 🔑 The same lock order as [`show_now_playing`]: hold no Call lock.
+///
+/// Known race: a status re-render that read the setting just before a flip can
+/// post its card after this ran, so the screen may be wrong until the next
+/// re-render. The press gate in `buttons::respond` stays authoritative: a stale
+/// button only draws a private refusal.
 pub(crate) async fn buttons_switched(
     data: &Data,
     transport: &dyn Transport,

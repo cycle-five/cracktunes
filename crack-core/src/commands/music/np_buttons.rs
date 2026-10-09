@@ -45,7 +45,10 @@ pub async fn buttons_internal(ctx: Context<'_>) -> Result<(), Error> {
     } else {
         CrackedMessage::NowPlayingButtonsOff
     };
-    courier::reply(ctx, msg).await?;
+    // A lapsed interaction must not leave the setting saved and the screen stale.
+    if let Err(err) = courier::reply(ctx, msg).await {
+        tracing::warn!("/buttons reply in {guild_id} failed: {err:?}");
+    }
     let call = connected_call(&data.songbird, guild_id, None).await;
     let transport = DiscordTransport::of(ctx.serenity_context());
     buttons_switched(&data, &transport, guild_id, on, call.as_ref()).await;

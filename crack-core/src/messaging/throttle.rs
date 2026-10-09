@@ -125,8 +125,9 @@ mod tests {
         assert!(!t.allow(0, t0 + MS));
         // At the window every stamp from t0 is stale and goes.
         assert!(t.allow(PRUNE_ABOVE + 2, t0 + W));
-        assert!(
-            t.len() < 3,
+        assert_eq!(
+            t.len(),
+            2,
             "only the stamps from t0 + 1ms and t0 + W remain"
         );
     }

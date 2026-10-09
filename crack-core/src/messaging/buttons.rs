@@ -223,7 +223,8 @@ pub(crate) struct Presser<'a> {
 /// (if the guild has echoes on) and the re-rendered status are the answer.
 /// A second press by the same person in the same server inside
 /// [`NP_PRESS_WINDOW`] is acknowledged and dropped. A server that turned the
-/// buttons off (`/buttons`) refuses every press privately.
+/// buttons off (`/buttons`) refuses a press privately, once per window (the
+/// debounce runs first).
 pub async fn handle(data: &Data, ctx: &serenity::all::Context, interaction: &ComponentInteraction) {
     let press = DiscordPress {
         http: &ctx.http,
