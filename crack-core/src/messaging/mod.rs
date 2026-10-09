@@ -10,5 +10,6 @@ pub mod render;
 pub mod status;
 #[cfg(test)]
 pub(crate) mod test_support;
+pub mod throttle;
 pub mod track_failed;
 pub mod transport;
