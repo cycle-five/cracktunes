@@ -2,7 +2,7 @@ use crate::commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt};
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
     GP_FOOLED_EVERYONE, GP_FULL_SONG, GP_GAME_OVER, GP_GUESSED_RIGHT, GP_LIKES, GP_LIKE_HINT,
-    GP_LIKE_LABEL, GP_NOBODY_GUESSED, GP_NOBODY_YET, GP_PROMPT_CLOSES_TITLE,
+    GP_LIKE_LABEL, GP_LOST, GP_NOBODY_GUESSED, GP_NOBODY_YET, GP_PROMPT_CLOSES_TITLE,
     GP_PROMPT_HOW_TO_TITLE, GP_RESULTS_GUESSED_BY, GP_RESULTS_GUESSED_COUNT,
     GP_RESULTS_NOBODY_SCORED, GP_RESULTS_THIS_ROUND, GP_RESULTS_TITLE, GP_REVEAL, GP_REVEAL_HELD,
     GP_ROUND_HINT, GP_ROUND_TITLE, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE,
@@ -1859,11 +1859,7 @@ fn round_results_embed_json() {
     };
     let v = serde_json::to_value(gp_round_results_embed(&big)).unwrap();
     let desc = v["description"].as_str().unwrap();
-    assert!(
-        desc.chars().count() <= GP_EMBED_DESCRIPTION_MAX,
-        "{}",
-        desc.len()
-    );
+    assert!(desc.chars().count() <= DESCRIPTION_MAX, "{}", desc.len());
     assert!(
         desc.contains(&format!("24 {GP_RESULTS_GUESSED_COUNT}")),
         "{desc}"
@@ -2127,7 +2123,7 @@ fn reveal_embed_json() {
     let desc = v["description"].as_str().unwrap();
     assert!(desc.contains("*Cry song.*"), "{desc}");
     assert!(
-        desc.contains("[song](https://example.invalid/song)"),
+        desc.contains("[**song**](https://example.invalid/song)"),
         "{desc}"
     );
     assert!(desc.contains(&format!("{GP_REVEAL} <@100>")), "{desc}");
@@ -2571,4 +2567,163 @@ fn a_refused_gp_command_is_logged_as_well_as_answered() {
         log.contains(&CrackedError::NoGuildId.to_string()),
         "error missing: {log}"
     );
+}
+
+// ------------------------------------------------------------------
+// Cards and the shared formatter
+// ------------------------------------------------------------------
+
+use crate::messaging::format::DESCRIPTION_MAX;
+use crate::messaging::render::{render, RenderCx, Rendered};
+
+fn cx() -> RenderCx {
+    RenderCx {
+        now_unix: NOW,
+        embed_links: true,
+    }
+}
+
+fn embed_json(r: &Rendered) -> serde_json::Value {
+    serde_json::to_value(r.embed.clone().expect("an embed")).unwrap()
+}
+
+fn description(r: &Rendered) -> String {
+    embed_json(r)["description"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// A one-round game whose only song is `title`, closed and so playing.
+fn playing_with_title(data: &Data, title: &str, reveal: GpReveal) -> GpTrackStart {
+    let opened = game_with_reveal(data, &["only"], None, reveal);
+    submit(data, B, "bob", title);
+    let closed = data
+        .gp_close_window_if(G, opened.generation, &mut rng(), NOW)
+        .unwrap();
+    match closed.next {
+        GpNext::Track(start) => *start,
+        other => panic!("expected a song, got {other:?}"),
+    }
+}
+
+#[test]
+fn every_card_renders_through_the_one_renderer() {
+    let line: CrackedMessage = GpCard::Line("hello".into()).into();
+    let r = render(&line, &cx());
+    assert_eq!(r.content.as_deref(), Some("hello"));
+    assert!(
+        r.embed.is_none(),
+        "a line is plain text, as /gp sends it today"
+    );
+    assert_eq!(line.to_string(), "hello");
+}
+
+#[test]
+fn a_song_carries_its_controls_and_a_reveal_carries_none() {
+    let data = data();
+    let start = playing_with_title(&data, "Song", GpReveal::Song);
+    let song = render_card(
+        &GpCard::Song {
+            start: start.clone(),
+            guild: G,
+        },
+        &cx(),
+    );
+    assert!(!song.components.is_empty(), "the 👍 row at least");
+    let res = data
+        .gp_reveal_and_advance(G, 0, 0, NOW)
+        .expect("the song was playing");
+    let reveal = render_card(&GpCard::Reveal(res), &cx());
+    assert!(
+        reveal.components.is_empty(),
+        "the reveal takes the dropdown away"
+    );
+    assert!(reveal.embed.is_some());
+}
+
+#[test]
+fn the_picker_has_its_rows_only_while_open() {
+    let open = render_card(
+        &GpCard::Picker {
+            text: "pick".into(),
+            picked: vec![],
+            open: true,
+        },
+        &cx(),
+    );
+    let closed = render_card(
+        &GpCard::Picker {
+            text: "done".into(),
+            picked: vec![],
+            open: false,
+        },
+        &cx(),
+    );
+    assert_eq!(open.components.len(), 2);
+    assert!(closed.components.is_empty());
+}
+
+#[test]
+fn a_lost_games_scoreboard_leads_with_the_line() {
+    let r = render_card(
+        &GpCard::Scoreboard {
+            scores: vec![(A, 3)],
+            title: GP_SCOREBOARD,
+            lead: Some(GP_LOST),
+        },
+        &cx(),
+    );
+    assert_eq!(r.content.as_deref(), Some(GP_LOST));
+    assert_eq!(embed_json(&r)["title"], GP_SCOREBOARD);
+}
+
+#[test]
+fn a_title_with_markdown_shows_literally_everywhere() {
+    let raw = "*NSYNC_`x` @everyone";
+    let escaped = "\\*NSYNC\\_\\`x\\` \\@everyone";
+    let data = data();
+    let start = playing_with_title(&data, raw, GpReveal::Round);
+    let song = render_card(&GpCard::Song { start, guild: G }, &cx());
+    assert!(
+        description(&song).contains(escaped),
+        "song: {}",
+        description(&song)
+    );
+    let res = data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+    let reveal = render_card(&GpCard::Reveal(res.clone()), &cx());
+    assert!(
+        description(&reveal).contains(escaped),
+        "reveal: {}",
+        description(&reveal)
+    );
+    let results = render_card(
+        &GpCard::RoundResults(res.round.expect("the round's last song posts results")),
+        &cx(),
+    );
+    assert!(
+        description(&results).contains(escaped),
+        "results: {}",
+        description(&results)
+    );
+}
+
+#[test]
+fn a_long_title_is_capped_and_a_real_one_is_not() {
+    let data = data();
+    let long = "a".repeat(300);
+    let start = playing_with_title(&data, &long, GpReveal::Song);
+    let d = description(&render_card(&GpCard::Song { start, guild: G }, &cx()));
+    // The test track's URL carries the title too, so look at the link text only.
+    assert!(
+        d.contains(&format!("[**{}…**]", "a".repeat(GP_TITLE_MAX))),
+        "{d}"
+    );
+
+    let data = self::data();
+    // YouTube's own limit, spelled out so lowering the cap fails here.
+    let real = "b".repeat(100);
+    let start = playing_with_title(&data, &real, GpReveal::Song);
+    let d = description(&render_card(&GpCard::Song { start, guild: G }, &cx()));
+    assert!(d.contains(&format!("[**{real}**]")), "{d}");
 }
