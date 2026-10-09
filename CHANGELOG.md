@@ -223,6 +223,16 @@
   first and posts its results and scoreboard only once that has landed, the
   way the lost scoreboard alone already did. If Discord then refuses the post,
   those results are not retried: once beats once per reconnect.
+- **A `/gp` song whose stream died part-way threw away what the room did with
+  it** (#423). A stream that dropped before 30 seconds was treated like a link
+  that never opened: guesses and 👍 actually cast on it paid nothing, and the
+  reveal said the song could not be played. Now only a stream that dies within
+  two seconds counts as never played. One cut short later than that is revealed
+  and scored as a song, except that the submitter gets no fooled-everyone bonus,
+  since too little of it played for anyone to place it.
+- **A stale `/gp end` backstop could collect the next game.** Two `/gp end`s
+  about ten seconds apart put the first one's clean-up inside the second game's
+  window. It now collects only the game it was started for.
 - **`/gp` song titles with `*`, `_`, backticks or `@` broke the song, reveal
   and results embeds' formatting.** They are now escaped like every other
   title since v0.22.0, and a pathological title is capped at 100 characters

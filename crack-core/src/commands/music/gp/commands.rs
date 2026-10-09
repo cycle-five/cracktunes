@@ -852,13 +852,7 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
     if was_playing {
         // If that `End` never reaches the handler, the parked game would outlive
         // the command and keep the guild's music commands blocked.
-        let data = data.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(GP_PARK_GRACE_SECS)).await;
-            if data.gp_remove_if_parked(guild_id) {
-                tracing::warn!("gp: parked game in {guild_id} was never collected, removing");
-            }
-        });
+        gp_spawn_park_backstop((*data).clone(), guild_id, game.started_at);
     } else {
         // Nothing was playing, so no `End` is coming to collect it.
         data.gp_remove(guild_id);
@@ -880,4 +874,16 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
         .await?;
     }
     Ok(())
+}
+
+/// Collect the game `/gp end` parked, if its `End` has not done so within
+/// [`GP_PARK_GRACE_SECS`]. Only that game: two `/gp end`s about ten seconds
+/// apart put this inside the next game's parked window (#423).
+pub(super) fn gp_spawn_park_backstop(data: crate::Data, guild_id: GuildId, started_at: i64) {
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(GP_PARK_GRACE_SECS)).await;
+        if data.gp_collect_parked(guild_id, started_at) {
+            tracing::warn!("gp: parked game in {guild_id} was never collected, removing");
+        }
+    });
 }

@@ -103,6 +103,8 @@ pub struct GpTrackRow {
     pub play_full: bool,
     /// The song never played, so it paid nothing.
     pub failed: bool,
+    /// The stream died part-way: it paid, but fooled nobody.
+    pub cut_short: bool,
     pub message_channel_id: Option<i64>,
     pub message_id: Option<i64>,
     /// (guesser, guessed submitter)
@@ -303,16 +305,17 @@ impl GpSaved {
         let durations: Vec<Option<i64>> = t.iter().map(|x| x.duration_secs).collect();
         let fulls: Vec<bool> = t.iter().map(|x| x.play_full).collect();
         let faileds: Vec<bool> = t.iter().map(|x| x.failed).collect();
+        let cut_shorts: Vec<bool> = t.iter().map(|x| x.cut_short).collect();
         let chans: Vec<Option<i64>> = t.iter().map(|x| x.message_channel_id).collect();
         let msgs: Vec<Option<i64>> = t.iter().map(|x| x.message_id).collect();
         sqlx::query!(
             r#"INSERT INTO gp_track (
                    game_id, round_idx, submitter_id, position, url, title, artist,
-                   duration_secs, play_full, failed, message_channel_id, message_id
+                   duration_secs, play_full, failed, cut_short, message_channel_id, message_id
                )
                SELECT $1, * FROM UNNEST(
                    $2::int[], $3::bigint[], $4::int[], $5::text[], $6::text[], $7::text[],
-                   $8::bigint[], $9::bool[], $10::bool[], $11::bigint[], $12::bigint[]
+                   $8::bigint[], $9::bool[], $10::bool[], $11::bool[], $12::bigint[], $13::bigint[]
                )
                ON CONFLICT (game_id, round_idx, submitter_id) DO UPDATE SET
                    position = EXCLUDED.position,
@@ -322,6 +325,7 @@ impl GpSaved {
                    duration_secs = EXCLUDED.duration_secs,
                    play_full = EXCLUDED.play_full,
                    failed = EXCLUDED.failed,
+                   cut_short = EXCLUDED.cut_short,
                    message_channel_id = EXCLUDED.message_channel_id,
                    message_id = EXCLUDED.message_id"#,
             id,
@@ -334,6 +338,7 @@ impl GpSaved {
             &durations as &[Option<i64>],
             &fulls,
             &faileds,
+            &cut_shorts,
             &chans as &[Option<i64>],
             &msgs as &[Option<i64>],
         )
@@ -499,7 +504,7 @@ impl GpSaved {
 
         let mut tracks: Vec<GpTrackRow> = sqlx::query!(
             r#"SELECT round_idx, submitter_id, position, url, title, artist, duration_secs,
-                      play_full, failed, message_channel_id, message_id
+                      play_full, failed, cut_short, message_channel_id, message_id
                FROM gp_track WHERE game_id = $1
                ORDER BY round_idx, position NULLS LAST, submitter_id"#,
             id
@@ -517,6 +522,7 @@ impl GpSaved {
             duration_secs: r.duration_secs,
             play_full: r.play_full,
             failed: r.failed,
+            cut_short: r.cut_short,
             message_channel_id: r.message_channel_id,
             message_id: r.message_id,
             guesses: Vec::new(),
@@ -679,6 +685,7 @@ mod tests {
             duration_secs: Some(200),
             play_full: false,
             failed: false,
+            cut_short: false,
             message_channel_id: None,
             message_id: None,
             guesses: Vec::new(),
@@ -769,6 +776,7 @@ mod tests {
         s.tracks[0].likes = vec![100];
         s.tracks[0].full_votes = vec![100];
         s.tracks[0].play_full = true;
+        s.tracks[0].cut_short = true;
         s.tracks[1].failed = true;
         s.rounds[0].results_posted = true;
         s.players.push(GpPlayerRow {

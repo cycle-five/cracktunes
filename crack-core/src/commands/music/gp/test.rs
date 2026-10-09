@@ -20,7 +20,7 @@ use crack_types::QueryType;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use super::commands::refuse_gp;
-use super::playback::never_played;
+use super::playback::{gp_played, gp_played_at_end};
 use super::*;
 use crate::DataInner;
 use crack_types::AuxMetadata;
@@ -125,6 +125,26 @@ pub(super) fn game_with_settings(
         reveal,
         round_results,
         NOW,
+    )
+    .unwrap()
+}
+
+/// A one-round game started at `at` instead of [`NOW`]: a game's identity is
+/// its guild and its start, so a second game in the same guild needs another.
+pub(super) fn game_started_at(data: &Data, at: i64) -> GpWindowOpened {
+    data.gp_start(
+        G,
+        A,
+        "alice".into(),
+        VC,
+        TC,
+        nostalgia(),
+        prompts(&["later"]),
+        TIMER,
+        None,
+        GpReveal::default(),
+        true,
+        at,
     )
     .unwrap()
 }
@@ -650,47 +670,118 @@ fn parked_game_is_collected_by_the_track_end_and_not_before() {
     assert!(!data.gp_remove_if_parked(G));
 }
 
-/// A dead link and a stream that dies part-way through are not the same thing.
-/// Only the first reached nobody, and only the first should skip the scoring.
+/// Two `/gp end`s about ten seconds apart put the first one's backstop inside
+/// the second game's parked window. It must collect only the game it was
+/// spawned for (#423).
 #[test]
-fn never_played_needs_errored_and_too_little_play_time() {
+fn a_stale_end_backstop_leaves_the_next_parked_game_alone() {
+    let data = data();
+    game_with(&data, &["first"]);
+    let first = data.gp_park_for_end(G, A, false).unwrap();
+    // Its `End` collected it, as it almost always does.
+    assert!(data.gp_remove_if_parked(G));
+    // A second game, started five seconds later, is ended too.
+    game_started_at(&data, NOW + 5);
+    data.gp_park_for_end(G, A, false).unwrap();
+    // The first `/gp end`'s backstop wakes now.
+    assert!(!data.gp_collect_parked(G, first.started_at));
+    assert!(
+        data.gp_is_active(G),
+        "the second game waits for its own End"
+    );
+    // Its own backstop may collect it.
+    assert!(data.gp_collect_parked(G, NOW + 5));
+    assert!(!data.gp_is_active(G));
+}
+
+/// The backstop never collects a game that is not parked, even its own.
+#[test]
+fn the_end_backstop_leaves_a_running_game_alone() {
+    let data = data();
+    game_with(&data, &["first"]);
+    assert!(!data.gp_collect_parked(G, NOW));
+    assert!(data.gp_is_active(G));
+}
+
+fn errored(play_time: Duration) -> songbird::tracks::TrackState {
     use songbird::tracks::{PlayMode, TrackState};
-    let errored = |play_time| TrackState {
+    TrackState {
         playing: PlayMode::Errored(songbird::tracks::PlayError::Create(Arc::new(
             songbird::input::AudioStreamError::Unsupported,
         ))),
         play_time,
         ..Default::default()
-    };
+    }
+}
+
+/// A dead link and a stream that dies part-way through are not the same thing
+/// (#423). Only the first reached nobody and pays nothing; the second reached
+/// the room, so its guesses and likes stand, but below the played bar nobody
+/// could have placed it, so it fools nobody.
+#[test]
+fn how_much_of_a_song_was_heard() {
+    use songbird::tracks::{PlayMode, TrackState};
+    use GpPlayed::{CutShort, Heard, Never};
     // Preparing -> Errored without mixing a frame: nobody heard it.
-    assert!(never_played(&errored(Duration::ZERO), None));
-    // Died 200ms in: a dead link as far as the room is concerned. Scoring it
-    // would hand the submitter the fooled-everyone bonus for a song nobody
-    // could have guessed.
-    assert!(never_played(&errored(Duration::from_millis(200)), None));
-    // Either side of the line.
-    assert!(never_played(
-        &errored(GP_MIN_PLAYED - Duration::from_millis(1)),
-        None
-    ));
-    assert!(!never_played(&errored(GP_MIN_PLAYED), None));
+    assert_eq!(gp_played(&errored(Duration::ZERO), None), Never);
+    // Died 200ms in, or a second in: the stream never really opened.
+    assert_eq!(gp_played(&errored(Duration::from_millis(200)), None), Never);
+    assert_eq!(gp_played(&errored(Duration::from_secs(1)), None), Never);
+    // Either side of the dead-link line.
+    assert_eq!(
+        gp_played(&errored(GP_DEAD_LINK - Duration::from_millis(1)), None),
+        Never
+    );
+    assert_eq!(gp_played(&errored(GP_DEAD_LINK), None), CutShort);
+    // Died 29 seconds in: the room heard half a minute of it. Before #423 this
+    // threw away its guesses and likes and said it could not be played.
+    assert_eq!(gp_played(&errored(Duration::from_secs(29)), None), CutShort);
+    // Either side of the played line.
+    assert_eq!(
+        gp_played(&errored(GP_MIN_PLAYED - Duration::from_millis(1)), None),
+        CutShort
+    );
+    assert_eq!(gp_played(&errored(GP_MIN_PLAYED), None), Heard);
     // Died two minutes in: the room heard it, so it scores like any other song.
-    assert!(!never_played(&errored(Duration::from_secs(120)), None));
+    assert_eq!(gp_played(&errored(Duration::from_secs(120)), None), Heard);
     // A 45s clip is judged against its own length, not the flat thirty: it
     // needs 22.5s, so 25s counts as heard where a whole song would not.
     let clip45 = Some(Duration::from_secs(45));
-    assert!(!never_played(&errored(Duration::from_secs(25)), clip45));
-    assert!(never_played(&errored(Duration::from_secs(20)), clip45));
-    // A song that simply finished is not a failure at any play time.
-    assert!(!never_played(
-        &TrackState {
-            playing: PlayMode::End,
-            play_time: Duration::ZERO,
-            ..Default::default()
-        },
-        None
-    ));
-    assert!(!never_played(&TrackState::default(), None));
+    assert_eq!(gp_played(&errored(Duration::from_secs(25)), clip45), Heard);
+    assert_eq!(
+        gp_played(&errored(Duration::from_secs(20)), clip45),
+        CutShort
+    );
+    // The dead-link line does not scale: a clip that never opened is still dead.
+    assert_eq!(gp_played(&errored(Duration::ZERO), clip45), Never);
+    // A song that simply finished is heard at any play time.
+    let ended = TrackState {
+        playing: PlayMode::End,
+        play_time: Duration::ZERO,
+        ..Default::default()
+    };
+    assert_eq!(gp_played(&ended, None), Heard);
+    assert_eq!(gp_played(&TrackState::default(), None), Heard);
+}
+
+/// What the track-end handler decides: a vote for more of the song outranks
+/// the play time, and of several states the least heard one stands.
+#[test]
+fn the_end_handler_weighs_votes_then_the_least_heard_state() {
+    use GpPlayed::{CutShort, Heard, Never};
+    let dead = errored(Duration::ZERO);
+    let short = errored(Duration::from_secs(10));
+    let fine = songbird::tracks::TrackState::default();
+    assert_eq!(gp_played_at_end(false, [&dead], None), Never);
+    assert_eq!(gp_played_at_end(false, [&short], None), CutShort);
+    assert_eq!(gp_played_at_end(false, [&fine], None), Heard);
+    assert_eq!(gp_played_at_end(false, [&fine, &short], None), CutShort);
+    assert_eq!(gp_played_at_end(false, [&short, &dead], None), Never);
+    assert_eq!(gp_played_at_end(false, [], None), Heard);
+    // Somebody asked for more of it, so it reached the room whatever the
+    // stream did afterwards.
+    assert_eq!(gp_played_at_end(true, [&dead], None), Heard);
+    assert_eq!(gp_played_at_end(true, [&short], None), Heard);
 }
 
 /// A vote to hear more of a song is first-hand evidence it was playing, and
@@ -1527,9 +1618,92 @@ fn a_song_scores_from_what_the_room_did_to_it() {
             points: vec![(A, 2 * GP_POINTS_PER_LIKE + GP_POINTS_FULL_SONG)],
         }
     );
+    // A song cut short pays its guesses and likes, but fools nobody.
+    t.play_full = false;
+    t.played = GpPlayed::CutShort;
+    assert_eq!(
+        t.score(true),
+        GpTrackScore {
+            correct: vec![B, C],
+            fooled_everyone: false,
+            points: vec![
+                (B, GP_POINTS_CORRECT),
+                (C, GP_POINTS_CORRECT),
+                (A, 2 * GP_POINTS_PER_LIKE),
+            ],
+        }
+    );
     // A song that never played pays nobody, whatever was cast on it.
-    t.failed = true;
+    t.played = GpPlayed::Never;
     assert_eq!(t.score(true), GpTrackScore::default());
+}
+
+/// Nobody guessed a song cut short, and that is not the submitter fooling the
+/// room: too little of it played for anyone to place it. The bonus is the one
+/// thing the played bar gates.
+#[test]
+fn a_song_cut_short_that_nobody_guessed_fools_nobody() {
+    let mut t = GpTrack::new(A, track("a"));
+    t.likes.insert(B);
+    t.played = GpPlayed::CutShort;
+    assert_eq!(
+        t.score(true),
+        GpTrackScore {
+            correct: vec![],
+            fooled_everyone: false,
+            points: vec![(A, GP_POINTS_PER_LIKE)],
+        }
+    );
+}
+
+/// The game end of it: a song cut short is revealed as a song, keeps what was
+/// cast on it, and the round's results -- derived again from the song as it
+/// stands -- agree with the reveal.
+#[test]
+fn a_song_cut_short_keeps_its_guesses_and_likes_and_the_results_agree() {
+    let data = data();
+    game_with_reveal(&data, &["p1"], None, GpReveal::Song);
+    submit(&data, A, "alice", "a");
+    submit(&data, B, "bob", "b");
+    data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+    let order: Vec<UserId> = game(&data).rounds[0]
+        .tracks
+        .iter()
+        .map(|t| t.submitter)
+        .collect();
+    let other = |s: UserId| if s == A { B } else { A };
+
+    // Song 0: guessed right and liked, then the stream died.
+    data.gp_record_guess(G, 0, 0, other(order[0]), "g".into(), order[0])
+        .unwrap();
+    data.gp_toggle_like(G, 0, 0, other(order[0]), "g".into())
+        .unwrap();
+    let res = data.gp_cut_short_and_advance(G, 0, 0, NOW).unwrap();
+    assert!(!res.failed, "it played; the reveal must not say otherwise");
+    assert_eq!(res.correct, vec![other(order[0])]);
+    assert_eq!(res.likes, 1);
+    let paid = |who: UserId, res: &GpTrackResult| {
+        res.scores
+            .iter()
+            .find(|(id, _)| *id == who)
+            .map(|(_, p)| *p)
+            .unwrap_or(0)
+    };
+    assert_eq!(paid(other(order[0]), &res), GP_POINTS_CORRECT);
+    assert_eq!(paid(order[0], &res), GP_POINTS_PER_LIKE);
+
+    // Song 1: nobody guessed it, then the stream died.
+    let res = data.gp_cut_short_and_advance(G, 0, 1, NOW).unwrap();
+    assert!(!res.fooled_everyone, "too little played to fool anyone");
+    let round = res.round.expect("the round's last song");
+    assert!(!round.songs[0].failed && !round.songs[1].failed);
+    assert_eq!(round.songs[0].correct, vec![other(order[0])]);
+    assert!(!round.songs[1].fooled_everyone);
+    assert_eq!(
+        game(&data).rounds[0].tracks[1].played,
+        GpPlayed::CutShort,
+        "kept on the song, so a later derivation agrees"
+    );
 }
 
 /// The round's last reveal carries the round summed up: every song, what
