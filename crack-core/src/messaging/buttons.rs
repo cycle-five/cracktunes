@@ -7,6 +7,7 @@
 //! skip the next song.
 use crate::commands::permissions::music_access;
 use crate::errors::CrackedError;
+use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::cards::Via;
 use crate::messaging::courier;
 use crate::messaging::message::CrackedMessage;
@@ -26,10 +27,15 @@ use serenity::small_fixed_array::FixedString;
 use std::borrow::Cow;
 use std::future::Future;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 /// Every now-playing button's custom id starts with this.
 pub const NP_PREFIX: &str = "np:";
+
+/// One accepted press per person per server per this long, across all the
+/// buttons. A press inside it is acknowledged and dropped.
+pub const NP_PRESS_WINDOW: Duration = Duration::from_secs(2);
 
 /// One now-playing button.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,6 +221,9 @@ pub(crate) struct Presser<'a> {
 /// inside Discord's 3-second window; every later outcome the presser needs
 /// to hear is a private follow-up. Success says nothing more: the echo line
 /// (if the guild has echoes on) and the re-rendered status are the answer.
+/// A second press by the same person in the same server inside
+/// [`NP_PRESS_WINDOW`] is acknowledged and dropped. A server that turned the
+/// buttons off (`/buttons`) refuses every press privately.
 pub async fn handle(data: &Data, ctx: &serenity::all::Context, interaction: &ComponentInteraction) {
     let press = DiscordPress {
         http: &ctx.http,
@@ -233,6 +242,7 @@ pub async fn handle(data: &Data, ctx: &serenity::all::Context, interaction: &Com
         &press,
         &interaction.data.custom_id,
         who,
+        Instant::now(),
         |guild, user, via, c| {
             remote::control(
                 data_arc,
@@ -254,6 +264,7 @@ pub(crate) async fn respond<F, Fut>(
     press: &dyn Press,
     custom_id: &str,
     who: Presser<'_>,
+    now: Instant,
     run: F,
 ) where
     F: FnOnce(GuildId, UserId, Via, Control) -> Fut,
@@ -273,6 +284,16 @@ pub(crate) async fn respond<F, Fut>(
         },
     };
     let guild = button.guild();
+    // One accepted press per person per server per window; the rest are
+    // acknowledged above and dropped here, before anything can answer them.
+    if !data.np_presses.allow((guild, who.user), now) {
+        return;
+    }
+    // A server can turn the buttons off (`/buttons`); old messages keep theirs.
+    if !data.get_now_playing_buttons(guild).await {
+        courier::answer_privately(press, &CrackedMessage::NowPlayingButtonsDisabled, &cx).await;
+        return;
+    }
     if let Err(err) = music_access(
         data,
         guild,
@@ -477,6 +498,7 @@ mod tests {
     use crate::Data;
     use serenity::all::{GenericChannelId, UserId};
     use std::sync::Mutex;
+    use std::time::Instant;
 
     const U: UserId = UserId::new(42);
     const CH: GenericChannelId = GenericChannelId::new(10);
@@ -491,21 +513,32 @@ mod tests {
         }
     }
 
-    /// Records what `respond` asked to run; answers with `answer`.
+    /// Records what `respond` asked to run; answers with `answer`; presses at `now`.
+    async fn press_at(
+        data: &Data,
+        id: &str,
+        who: Presser<'_>,
+        now: Instant,
+        answer: Result<Option<Echo>, ControlRefused>,
+    ) -> (Vec<PressOp>, Vec<(GuildId, UserId, Via, Control)>) {
+        let p = FakePress::default();
+        let ran = Mutex::new(Vec::new());
+        respond(data, &p, id, who, now, |g, u, v, c| {
+            ran.lock().unwrap().push((g, u, v, c));
+            async move { answer }
+        })
+        .await;
+        (p.ops(), ran.into_inner().unwrap())
+    }
+
+    /// [`press_at`] now.
     async fn press_with(
         data: &Data,
         id: &str,
         who: Presser<'_>,
         answer: Result<Option<Echo>, ControlRefused>,
     ) -> (Vec<PressOp>, Vec<(GuildId, UserId, Via, Control)>) {
-        let p = FakePress::default();
-        let ran = Mutex::new(Vec::new());
-        respond(data, &p, id, who, |g, u, v, c| {
-            ran.lock().unwrap().push((g, u, v, c));
-            async move { answer }
-        })
-        .await;
-        (p.ops(), ran.into_inner().unwrap())
+        press_at(data, id, who, Instant::now(), answer).await
     }
 
     fn private(text: &str) -> PressOp {
@@ -601,7 +634,6 @@ mod tests {
     /// Plan 2026-10-07-now-playing-buttons, Review Focus 1 and 2: a stale skip, and nothing playing.
     #[tokio::test]
     async fn refusals_from_the_control_are_answered_privately() {
-        let data = Data::default();
         let id = NowPlayingButton::Skip {
             guild: G,
             track: uuid(),
@@ -616,8 +648,138 @@ mod tests {
             ),
             (ControlRefused::Failed, "Fatality! Something went wrong ☹️"),
         ] {
+            let data = Data::default();
             let (ops, _) = press_with(&data, &id, presser(Some(G)), Err(refused)).await;
             assert_eq!(ops, vec![PressOp::Acknowledge, private(words)], "{refused:?}");
+        }
+    }
+
+    fn pause() -> String {
+        NowPlayingButton::Pause { guild: G }.custom_id()
+    }
+
+    async fn buttons_off(data: &Data) {
+        let mut s = crate::guild::settings::GuildSettings::new(G, None, None);
+        s.now_playing_buttons = false;
+        data.guild_settings_map.write().await.insert(G, s);
+    }
+
+    #[tokio::test]
+    async fn a_second_press_inside_the_window_is_acknowledged_and_nothing_else() {
+        let data = Data::default();
+        let t0 = Instant::now();
+        let (_, ran) = press_at(&data, &pause(), presser(Some(G)), t0, Ok(None)).await;
+        assert_eq!(ran.len(), 1);
+        let (ops, ran) = press_at(
+            &data,
+            &pause(),
+            presser(Some(G)),
+            t0 + NP_PRESS_WINDOW - Duration::from_millis(1),
+            Ok(None),
+        )
+        .await;
+        assert_eq!(ops, vec![PressOp::Acknowledge]);
+        assert!(ran.is_empty());
+        let (_, ran) = press_at(
+            &data,
+            &pause(),
+            presser(Some(G)),
+            t0 + NP_PRESS_WINDOW,
+            Ok(None),
+        )
+        .await;
+        assert_eq!(ran.len(), 1, "after the window it runs again");
+    }
+
+    /// One window across all the buttons: a Skip right after a Pause is dropped too.
+    #[tokio::test]
+    async fn the_window_covers_every_button() {
+        let data = Data::default();
+        let t0 = Instant::now();
+        press_at(&data, &pause(), presser(Some(G)), t0, Ok(None)).await;
+        let shuffle = NowPlayingButton::Shuffle { guild: G }.custom_id();
+        let (_, ran) = press_at(&data, &shuffle, presser(Some(G)), t0, Ok(None)).await;
+        assert!(ran.is_empty());
+    }
+
+    #[tokio::test]
+    async fn another_user_is_not_held_up_by_the_window() {
+        let data = Data::default();
+        let t0 = Instant::now();
+        press_at(&data, &pause(), presser(Some(G)), t0, Ok(None)).await;
+        let other = Presser {
+            user: UserId::new(43),
+            ..presser(Some(G))
+        };
+        let (_, ran) = press_at(&data, &pause(), other, t0, Ok(None)).await;
+        assert_eq!(ran.len(), 1);
+    }
+
+    /// The window is per server too: the same person pressing in another
+    /// server is not held up.
+    #[tokio::test]
+    async fn another_server_is_not_held_up_by_the_window() {
+        let data = Data::default();
+        let t0 = Instant::now();
+        press_at(&data, &pause(), presser(Some(G)), t0, Ok(None)).await;
+        let g2 = GuildId::new(222);
+        let id = NowPlayingButton::Pause { guild: g2 }.custom_id();
+        let (_, ran) = press_at(&data, &id, presser(Some(g2)), t0, Ok(None)).await;
+        assert_eq!(ran.len(), 1);
+    }
+
+    /// Review Focus 2: a press that never parses for this guild is not a press
+    /// here, and must not use up the presser's window.
+    #[tokio::test]
+    async fn an_out_of_date_press_does_not_use_up_the_window() {
+        let data = Data::default();
+        let t0 = Instant::now();
+        press_at(
+            &data,
+            "np:skip:1:not-a-uuid",
+            presser(Some(G)),
+            t0,
+            Ok(None),
+        )
+        .await;
+        let (_, ran) = press_at(&data, &pause(), presser(Some(G)), t0, Ok(None)).await;
+        assert_eq!(ran.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn with_the_buttons_off_a_press_is_refused_privately_and_runs_nothing() {
+        let data = Data::default();
+        buttons_off(&data).await;
+        let (ops, ran) = press_with(&data, &pause(), presser(Some(G)), Ok(None)).await;
+        assert_eq!(
+            ops,
+            vec![
+                PressOp::Acknowledge,
+                private("The now-playing buttons are turned off in this server.")
+            ]
+        );
+        assert!(ran.is_empty());
+    }
+
+    /// Review Focus 3: mashing an old button after `/buttons` off draws one
+    /// refusal per window, not one per press.
+    #[tokio::test]
+    async fn mashing_with_the_buttons_off_is_refused_once_per_window() {
+        let data = Data::default();
+        buttons_off(&data).await;
+        let t0 = Instant::now();
+        let (first, _) = press_at(&data, &pause(), presser(Some(G)), t0, Ok(None)).await;
+        assert_eq!(first.len(), 2, "acknowledged and refused");
+        for ms in [1, 500, 1999] {
+            let (ops, _) = press_at(
+                &data,
+                &pause(),
+                presser(Some(G)),
+                t0 + Duration::from_millis(ms),
+                Ok(None),
+            )
+            .await;
+            assert_eq!(ops, vec![PressOp::Acknowledge], "at +{ms}ms");
         }
     }
 }

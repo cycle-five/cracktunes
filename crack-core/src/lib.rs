@@ -326,6 +326,8 @@ pub struct DataInner {
         serenity::GuildId,
         Arc<tokio::sync::Mutex<crate::messaging::track_failed::NoticeSlot>>,
     >,
+    /// The now-playing buttons' press debounce; see `messaging::buttons`.
+    pub np_presses: crate::messaging::throttle::Throttle<(GuildId, UserId)>,
     pub event_log_async: EventLogAsync,
     // Why Option instead of Arc here? Certainly it's an indirection to allow for an uninitialized state
     // to exist, but why not just use a default value? If it's necessary to wrap the type is that newtype better
@@ -538,6 +540,9 @@ impl Default for DataInner {
             queue_locks: Default::default(),
             status_slots: Default::default(),
             failure_notices: Default::default(),
+            np_presses: crate::messaging::throttle::Throttle::new(
+                crate::messaging::buttons::NP_PRESS_WINDOW,
+            ),
             authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),

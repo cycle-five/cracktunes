@@ -304,6 +304,7 @@ pub enum CrackedMessage {
     ButtonOutOfDate,
     /// Every `/gp` message, rendered by `gp::render_card`.
     Gp(Box<crate::commands::music::gp::GpCard>),
+    NowPlayingButtonsDisabled,
 }
 
 impl CrackedMessage {
@@ -658,6 +659,9 @@ impl Display for CrackedMessage {
             Self::ControlEchoesOff => f.write_str(crate::messaging::messages::CONTROL_ECHOES_OFF),
             Self::ButtonOutOfDate => f.write_str(crate::messaging::messages::BUTTON_OUT_OF_DATE),
             Self::Gp(card) => write!(f, "{card}"),
+            Self::NowPlayingButtonsDisabled => {
+                f.write_str(crate::messaging::messages::NP_BUTTONS_DISABLED)
+            },
         }
     }
 }

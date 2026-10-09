@@ -102,6 +102,7 @@ pub const FAIL_NO_TRACK_PLAYING: &str = "No track playing";
 pub const OP_TRACK_ABSENT: &str = "That track is no longer queued";
 pub const OP_TRACK_PLAYING: &str = "That track is playing";
 pub const BUTTON_OUT_OF_DATE: &str = "This button is out of date.";
+pub const NP_BUTTONS_DISABLED: &str = "The now-playing buttons are turned off in this server.";
 pub const OP_TRACK_STALE: &str = "That track is no longer playing";
 pub const FAIL_EMPTY_VECTOR: &str = "⚠️ Empty vector not allowed!";
 pub const FAIL_INSERT: &str = "⚠️ Failed to insert!";

@@ -13,7 +13,7 @@ const PRUNE_ABOVE: usize = 1024;
 /// Accepts at most one event per key per `window`, measured from the last
 /// *accepted* one: a refused event does not extend the window. In memory
 /// only; a restart forgets every stamp.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Throttle<K: Eq + Hash> {
     window: Duration,
     last: DashMap<K, Instant>,
