@@ -37,6 +37,7 @@ hardcoded in `docker-compose.yml`, missing external volumes, and a missing
 | `lint_test_build_crack_voting.sh` | same, scoped to crack-voting |
 | `run_one_test.sh` | run a single test by name |
 | `reset_db.sh` | drop, recreate and re-migrate the local database, then `cargo sqlx prepare`. Hardcodes the local dev password |
+| `sqlx_sync.py` | regenerate `.sqlx` through an online build's `SQLX_OFFLINE_DIR` in the repo's format (no `origin` keys), without sqlx-cli; usage in its header |
 | `install_psql.sh` | install the postgres client |
 | `test_curl.sh` | poke the crack-voting webhook endpoint by hand |
 | `start.sh` | the container entrypoint — `COPY`d into the image by the Dockerfile, not run directly |
