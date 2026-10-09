@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO queue_snapshot (\n                   guild_id, voice_channel_id, text_channel_id, status_channel_id,\n                   status_message_id, position_ms, paused, looping, autoplay, tracks\n               )\n               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n               ON CONFLICT (guild_id) DO UPDATE SET\n                   saved_at = now(),\n                   voice_channel_id = EXCLUDED.voice_channel_id,\n                   text_channel_id = EXCLUDED.text_channel_id,\n                   status_channel_id = EXCLUDED.status_channel_id,\n                   status_message_id = EXCLUDED.status_message_id,\n                   position_ms = EXCLUDED.position_ms,\n                   paused = EXCLUDED.paused,\n                   looping = EXCLUDED.looping,\n                   autoplay = EXCLUDED.autoplay,\n                   tracks = EXCLUDED.tracks",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8",
+        "Int8",
+        "Int8",
+        "Int8",
+        "Bool",
+        "Bool",
+        "Bool",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6ebd957c4b7c10c1ff430fd34ce6be1b1f2e8f4dd0c8748a2f50047abd0398cf"
+}
