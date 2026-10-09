@@ -45,9 +45,9 @@
 //! went up -- it gets its last results and scoreboard, and its tombstone.
 
 use super::gp::{
-    gp_after_close, gp_play_track, gp_round_results_embed, gp_scoreboard_embed,
-    gp_spawn_window_timer_secs, now, GpClip, GpGame, GpPhase, GpPlayback, GpReveal, GpRound,
-    GpTrack, GP_RESUME_WINDOW_SECS,
+    gp_after_close, gp_play_track, gp_post, gp_round_results_embed, gp_scoreboard_embed,
+    gp_spawn_window_timer_secs, now, GpCard, GpClip, GpGame, GpPhase, GpPlayback, GpReveal,
+    GpRound, GpTrack, GP_RESUME_WINDOW_SECS,
 };
 use super::gp_prompts::{GpCategories, GpCategory};
 use crate::commands::music_utils::set_global_handlers_with;
@@ -59,10 +59,11 @@ use crate::messaging::messages::{
     GP_GAME_OVER, GP_LOST, GP_RESUMED, GP_RESUMED_SONG, GP_RESUMED_WINDOW,
     GP_RESUMED_WINDOW_CLOSED, GP_SCOREBOARD,
 };
+use crate::messaging::transport::DiscordTransport;
 use crate::Data;
 use ::serenity::{
     all::{ChannelId, GenericChannelId, Guild, GuildId, MessageId, UserId},
-    builder::{CreateComponent, CreateMessage, EditMessage},
+    builder::CreateMessage,
     http::Http,
 };
 use crack_testing::ResolvedTrack;
@@ -700,7 +701,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     .await;
     let pb = GpPlayback {
         data: Arc::new(data.clone()),
-        http: ctx.http.clone(),
+        transport: Arc::new(DiscordTransport::of(ctx)),
         call,
         guild_id,
     };
@@ -753,15 +754,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
             // Restore the one-live-dropdown invariant: the reveal only edits the
             // message the track remembers, which is about to be the new one.
             if let Some((c, m)) = old_message {
-                #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-                if let Err(e) = c
-                    .edit_message(
-                        &pb.http,
-                        m,
-                        EditMessage::new().components(Vec::<CreateComponent<'_>>::new()),
-                    )
-                    .await
-                {
+                if let Err(e) = pb.transport.clear_components(c, m).await {
                     tracing::warn!(
                         "gp: taking down the pre-restart song message in {guild_id}: {e}"
                     );
@@ -801,16 +794,13 @@ async fn post_owed_results(http: &Http, game: &GpGame) -> Vec<usize> {
 }
 
 async fn announce(pb: &GpPlayback, text_channel: GenericChannelId, what: &str) {
-    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    if let Err(e) = text_channel
-        .send_message(
-            &pb.http,
-            CreateMessage::new().content(format!("{GP_RESUMED} {what}")),
-        )
-        .await
-    {
-        tracing::warn!("gp: announcing the resume in {}: {e}", pb.guild_id);
-    }
+    gp_post(
+        &pb.data,
+        &*pb.transport,
+        text_channel,
+        GpCard::Line(format!("{GP_RESUMED} {what}")),
+    )
+    .await;
 }
 
 // ------------------------------------------------------------------

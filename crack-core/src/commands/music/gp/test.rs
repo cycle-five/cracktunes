@@ -23,18 +23,18 @@ use crate::DataInner;
 use crack_types::AuxMetadata;
 use rand::{rngs::StdRng, SeedableRng};
 
-const G: GuildId = GuildId::new(1);
+pub(super) const G: GuildId = GuildId::new(1);
 const VC: ChannelId = ChannelId::new(10);
-const TC: GenericChannelId = GenericChannelId::new(20);
-const A: UserId = UserId::new(100);
-const B: UserId = UserId::new(200);
+pub(super) const TC: GenericChannelId = GenericChannelId::new(20);
+pub(super) const A: UserId = UserId::new(100);
+pub(super) const B: UserId = UserId::new(200);
 const C: UserId = UserId::new(300);
 /// Never submits anything, so never a player.
 const D: UserId = UserId::new(400);
-const NOW: i64 = 1_700_000_000;
+pub(super) const NOW: i64 = 1_700_000_000;
 const TIMER: u64 = 120;
 
-fn data() -> Data {
+pub(super) fn data() -> Data {
     Data(Arc::new(DataInner {
         ..Default::default()
     }))
@@ -51,7 +51,7 @@ fn track(title: &str) -> ResolvedTrack<'static> {
     })
 }
 
-fn rng() -> StdRng {
+pub(super) fn rng() -> StdRng {
     StdRng::seed_from_u64(0)
 }
 
@@ -79,7 +79,7 @@ fn clip() -> GpClip {
 }
 
 /// A game hosted by alice with the given prompts; round 0's window is open.
-fn game_with(data: &Data, prompt_list: &[&str]) -> GpWindowOpened {
+pub(super) fn game_with(data: &Data, prompt_list: &[&str]) -> GpWindowOpened {
     game_with_clip(data, prompt_list, None)
 }
 
@@ -92,7 +92,7 @@ fn game_with_clip(data: &Data, prompt_list: &[&str], clip: Option<GpClip>) -> Gp
 }
 
 /// As [`game_with_clip`], with an explicit reveal setting.
-fn game_with_reveal(
+pub(super) fn game_with_reveal(
     data: &Data,
     prompt_list: &[&str],
     clip: Option<GpClip>,
@@ -102,7 +102,7 @@ fn game_with_reveal(
 }
 
 /// Every setting spelled out.
-fn game_with_settings(
+pub(super) fn game_with_settings(
     data: &Data,
     prompt_list: &[&str],
     clip: Option<GpClip>,
@@ -126,12 +126,12 @@ fn game_with_settings(
     .unwrap()
 }
 
-fn submit(data: &Data, user: UserId, name: &str, title: &str) -> GpSubmitOutcome {
+pub(super) fn submit(data: &Data, user: UserId, name: &str, title: &str) -> GpSubmitOutcome {
     data.gp_submit(G, user, name.into(), track(title), &[])
         .unwrap()
 }
 
-fn game(data: &Data) -> GpGame {
+pub(super) fn game(data: &Data) -> GpGame {
     data.gp_games.get(&G).unwrap().clone()
 }
 

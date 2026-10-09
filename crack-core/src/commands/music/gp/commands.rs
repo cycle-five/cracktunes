@@ -12,6 +12,7 @@ use crate::{
         GP_PICK_CANCELLED, GP_PICK_CHOSEN, GP_PICK_NOT_HOST, GP_PICK_TEXT, GP_PICK_TIMED_OUT,
         GP_SCOREBOARD, SPOTIFY_GP_ONE_SONG, SPOTIFY_NOTHING_PLAYABLE,
     },
+    messaging::transport::DiscordTransport,
     music::queue::{force_skip_top_track, stop_queue},
     music::PlaybackOwner,
     poise_ext::PoiseContextExt,
@@ -87,7 +88,7 @@ fn gp_require_player(ctx: Context<'_>, guild_id: GuildId) -> CrackedResult<Chann
 fn gp_playback(ctx: Context<'_>, call: Arc<Mutex<Call>>, guild_id: GuildId) -> GpPlayback {
     GpPlayback {
         data: ctx.data().clone(),
-        http: ctx.serenity_context().http.clone(),
+        transport: Arc::new(DiscordTransport::of(ctx.serenity_context())),
         call,
         guild_id,
     }

@@ -115,6 +115,8 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dev-dependencies]
 ctor = "1.0"
+# `#[tokio::test(start_paused = true)]`: /gp's reveal pauses five seconds.
+tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sqlx = { version = "0.9.0", features = [
   "runtime-tokio",
