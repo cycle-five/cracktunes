@@ -126,7 +126,10 @@ pub(crate) fn unavailable() -> Response {
 
 async fn picker<B: Backend>(State(s): State<WebState<B>>, session: Session) -> Response {
     let Some((user, name)) = user_id(session) else {
-        return login_redirect("/");
+        // #589: a page, not a redirect to the login. Discord's link preview
+        // follows redirects, and this one ended on Discord's OAuth page,
+        // whose card it showed instead of ours.
+        return Html(page::landing_page(&s.origin)).into_response();
     };
     let guilds = s.backend.guilds_for(user).await;
     Html(page::picker_page(&name, &guilds)).into_response()
@@ -465,20 +468,26 @@ async fn events<B: Backend>(
 }
 
 async fn asset(Path(name): Path<String>) -> Response {
-    let (body, ctype): (&'static str, &'static str) = match name.as_str() {
+    let (body, ctype): (&'static [u8], &'static str) = match name.as_str() {
         "app.js" => (
-            include_str!("../assets/app.js"),
+            include_bytes!("../assets/app.js"),
             "text/javascript; charset=utf-8",
         ),
         "sortable.min.js" => (
-            include_str!("../assets/sortable.min.js"),
+            include_bytes!("../assets/sortable.min.js"),
             "text/javascript; charset=utf-8",
         ),
         "history.js" => (
-            include_str!("../assets/history.js"),
+            include_bytes!("../assets/history.js"),
             "text/javascript; charset=utf-8",
         ),
-        "app.css" => (include_str!("../assets/app.css"), "text/css; charset=utf-8"),
+        "app.css" => (
+            include_bytes!("../assets/app.css"),
+            "text/css; charset=utf-8",
+        ),
+        // The landing page's link preview (`og:image`), 1200x630. A copy of
+        // cracktun.es's crack-tunes-og-image.webp.
+        "og.webp" => (include_bytes!("../assets/og.webp"), "image/webp"),
         _ => return not_found(),
     };
     (
@@ -590,16 +599,47 @@ mod test {
         FakeBackend::new(Membership::Member, None, QueueView::Idle)
     }
 
+    /// #589: a signed-out `/` is a landing page with its own link preview.
+    /// It used to redirect to the login, and Discord's link preview followed
+    /// that on to Discord's OAuth page and showed Discord's app card instead.
     #[tokio::test]
-    async fn signed_out_visitors_are_sent_to_login_and_back() {
+    async fn signed_out_root_is_a_landing_page_with_its_own_preview() {
         let r = get(member_viewing(), "/", None).await;
-        assert_eq!(r.status(), StatusCode::SEE_OTHER);
-        assert_eq!(r.headers()[header::LOCATION], "/auth/login?return_to=%2F");
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(r.headers().get(header::LOCATION).is_none());
+        let html = body(r).await;
+        for want in [
+            r#"<meta property="og:title" content="CrackTunes dashboard">"#,
+            r#"<meta property="og:description" content="See what&#39;s playing in your Discord server and control the queue from your browser.">"#,
+            r#"<meta property="og:url" content="https://dash.test/">"#,
+            r#"<meta property="og:image" content="https://dash.test/assets/og.webp">"#,
+            r#"<meta name="twitter:card" content="summary_large_image">"#,
+            r#"<a class="button" href="/auth/login?return_to=%2F">Sign in with Discord</a>"#,
+        ] {
+            assert!(html.contains(want), "missing {want}\n{html}");
+        }
+    }
+
+    #[tokio::test]
+    async fn signed_out_guild_pages_are_sent_to_login_and_back() {
         let r = get(member_viewing(), "/g/5", None).await;
+        assert_eq!(r.status(), StatusCode::SEE_OTHER);
         assert_eq!(
             r.headers()[header::LOCATION],
             "/auth/login?return_to=%2Fg%2F5"
         );
+    }
+
+    /// The landing page's preview image (`og:image`), served from the binary.
+    #[tokio::test]
+    async fn the_preview_image_is_served_as_webp() {
+        use http_body_util::BodyExt;
+        let r = get(member_viewing(), "/assets/og.webp", None).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.headers()[header::CONTENT_TYPE], "image/webp");
+        let bytes = r.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(&bytes[..4], b"RIFF");
+        assert_eq!(&bytes[8..12], b"WEBP");
     }
 
     #[tokio::test]

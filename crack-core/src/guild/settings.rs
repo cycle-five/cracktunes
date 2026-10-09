@@ -347,6 +347,10 @@ pub struct GuildSettings {
     /// Whether /play, /skip and /nowplaying reply ephemerally.
     #[serde(default = "default_false")]
     pub ephemeral_replies: bool,
+    /// Whether a dashboard control or a now-playing button press posts an
+    /// echo line in the channel.
+    #[serde(default = "default_true")]
+    pub control_echoes: bool,
     #[serde(default = "allow_all_domains_default")]
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
@@ -386,6 +390,7 @@ impl PartialEq for GuildSettings {
             && self.autoplay == other.autoplay
             && self.reply_with_embed == other.reply_with_embed
             && self.ephemeral_replies == other.ephemeral_replies
+            && self.control_echoes == other.control_echoes
             && self.allow_all_domains == other.allow_all_domains
             && self.allowed_domains == other.allowed_domains
             && self.banned_domains == other.banned_domains
@@ -468,6 +473,7 @@ impl From<GuildSettingsRead> for GuildSettings {
         settings.premium = settings_db.premium;
         settings.autopause = settings_db.autopause;
         settings.ephemeral_replies = settings_db.ephemeral_replies;
+        settings.control_echoes = settings_db.control_echoes;
         settings.autoplay = true; //settings_db.autoplay;
         settings.allow_all_domains = Some(settings_db.allow_all_domains);
         settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
@@ -519,6 +525,7 @@ impl GuildSettings {
             autoplay: true,
             reply_with_embed: true,
             ephemeral_replies: false,
+            control_echoes: true,
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),
@@ -620,6 +627,12 @@ impl GuildSettings {
     /// Toggle private (ephemeral) replies for the status-related commands.
     pub fn toggle_ephemeral_replies(&mut self) -> &mut Self {
         self.ephemeral_replies = !self.ephemeral_replies;
+        self
+    }
+
+    /// Toggle whether controls (dashboard, buttons) echo in the channel.
+    pub fn toggle_control_echoes(&mut self) -> &mut Self {
+        self.control_echoes = !self.control_echoes;
         self
     }
 
@@ -1286,6 +1299,7 @@ mod test {
             timeout_seconds: Some(360),
             additional_prefixes: vec![],
             ephemeral_replies: true,
+            control_echoes: true,
         };
 
         assert!(GuildSettings::from(row).ephemeral_replies);
@@ -1298,5 +1312,50 @@ mod test {
         private.ephemeral_replies = true;
 
         assert_ne!(visible, private);
+    }
+
+    #[test]
+    fn control_echoes_are_on_by_default() {
+        assert!(GuildSettings::new(GuildId::new(123), None, None).control_echoes);
+    }
+
+    #[test]
+    fn toggling_control_echoes_flips_them() {
+        let mut settings = GuildSettings::new(GuildId::new(123), None, None);
+        settings.toggle_control_echoes();
+        assert!(!settings.control_echoes);
+        settings.toggle_control_echoes();
+        assert!(settings.control_echoes);
+    }
+
+    #[test]
+    fn a_database_row_carries_control_echoes() {
+        let row = crate::db::GuildSettingsRead {
+            guild_id: 123,
+            guild_name: "guild".to_string(),
+            prefix: "r!".to_string(),
+            premium: false,
+            autopause: false,
+            allow_all_domains: true,
+            allowed_domains: vec![],
+            banned_domains: vec![],
+            ignored_channels: vec![],
+            old_volume: 1.0,
+            volume: 1.0,
+            self_deafen: true,
+            timeout_seconds: Some(360),
+            additional_prefixes: vec![],
+            ephemeral_replies: false,
+            control_echoes: false,
+        };
+        assert!(!GuildSettings::from(row).control_echoes);
+    }
+
+    #[test]
+    fn settings_differing_only_in_control_echoes_are_not_equal() {
+        let on = GuildSettings::new(GuildId::new(123), None, None);
+        let mut off = on.clone();
+        off.control_echoes = false;
+        assert_ne!(on, off);
     }
 }

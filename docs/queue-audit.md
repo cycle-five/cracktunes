@@ -1,7 +1,7 @@
 # Queue audit log
 
 Every change to a guild's queue is written to `queue_audit`: who (`actor_user_id`,
-NULL for the bot), how (`source`: slash, prefix, web, bot; `command`), where
+NULL for the bot), how (`source`: slash, prefix, web, button, bot; `command`), where
 (`voice_channel_id`, `origin_channel_id`), when (`at`), and what (`action`, with
 the details in `detail` as JSON). Design:
 `docs/superpowers/specs/2026-09-30-queue-audit-log-design.md`.
@@ -14,6 +14,8 @@ with a `warn`; commands never wait on the log.
 `/skip N` writes two rows: a `clear` for the N-1 dropped upcoming tracks, then the
 `skip`. A long playlist add is one `add` row per batch (the first track alone, then up
 to 24 per batch), not one row for the whole playlist.
+
+A now-playing button press (v0.23.0) records source `button` and command `button <op>`, for example `button skip`.
 
 ⚠️ Game rows are those with `command LIKE 'gp%'`: bot-driven ones have
 `command = 'gp'`, member-issued ones carry the qualified name (e.g. `gp start`). They

@@ -532,7 +532,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_guild_in_a_gp_game_hears_nothing_from_here() {
-        use crate::commands::music::{gp::GpReveal, gp_prompts::GpCategory};
+        use crate::commands::music::gp::GpReveal;
+        use crate::commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt};
         let data = data();
         data.gp_start(
             GUILD,
@@ -540,8 +541,11 @@ mod tests {
             "host".into(),
             serenity::all::ChannelId::new(8),
             ch(9),
-            GpCategory::Nostalgia,
-            vec!["p1".into()],
+            GpCategories::from_choice(GpCategory::Nostalgia).unwrap(),
+            vec![GpPrompt {
+                category: GpCategory::Nostalgia,
+                text: "p1".into(),
+            }],
             60,
             None,
             GpReveal::default(),

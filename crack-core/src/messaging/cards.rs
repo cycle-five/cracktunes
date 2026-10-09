@@ -1,5 +1,5 @@
-//! The structured messages: now playing, queued, the echo of a dashboard
-//! control, and their renderers.
+//! The structured messages: now playing, queued, the echo of a dashboard or
+//! button control, and their renderers.
 use crate::messaging::format::{
     clip, duration_text, http_url, progress_text, Progress, TrackLabel, AUTHOR_MAX,
     EMBED_TITLE_MAX, FIELD_MAX, INLINE_TITLE_MAX,
@@ -22,6 +22,8 @@ pub struct NowPlayingCard {
     pub thumbnail: Option<String>,
     pub requester: Option<UserId>,
     pub progress: Progress,
+    /// The buttons: only the status message has them, never a reply or a DM.
+    pub controls: Option<crate::messaging::buttons::Controls>,
 }
 
 /// A track or list added to the queue.
@@ -37,6 +39,8 @@ pub struct QueuedCard {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Via {
     Dashboard,
+    /// A now-playing button, pressed in Discord.
+    Button,
 }
 
 /// A control's echo line, with who did it and from where.
@@ -50,7 +54,7 @@ pub struct EchoLine {
 impl EchoLine {
     #[must_use]
     pub fn line(&self) -> String {
-        self.echo.line(self.user)
+        self.echo.line(self.user, self.via)
     }
 }
 
@@ -70,7 +74,7 @@ impl Echo {
     /// are cut to `INLINE_TITLE_MAX` characters, then escaped; a blank one is
     /// `(untitled)`, never `****`.
     #[must_use]
-    pub fn line(&self, user: UserId) -> String {
+    pub fn line(&self, user: UserId, via: Via) -> String {
         let (what, title) = match self {
             Self::Skipped { title } => (ECHO_SKIPPED, title.as_deref()),
             Self::Paused => (ECHO_PAUSED, None),
@@ -80,16 +84,21 @@ impl Echo {
             Self::Removed { title } => (ECHO_REMOVED, title.as_deref()),
             Self::Shuffled => (ECHO_SHUFFLED, None),
         };
+        // A press in Discord is visibly in Discord; the dashboard says so.
+        let from = match via {
+            Via::Dashboard => format!(" {ECHO_FROM_DASHBOARD}"),
+            Via::Button => String::new(),
+        };
         match title {
             Some(t) => format!(
-                "{what} **{}** {ECHO_FROM_DASHBOARD} — <@{user}>",
+                "{what} **{}**{from} — <@{user}>",
                 TrackLabel {
                     title: Some(t.to_owned()),
                     ..TrackLabel::default()
                 }
                 .title_text(INLINE_TITLE_MAX)
             ),
-            None => format!("{what} {ECHO_FROM_DASHBOARD} — <@{user}>"),
+            None => format!("{what}{from} — <@{user}>"),
         }
     }
 }
@@ -127,7 +136,11 @@ pub fn now_playing(card: &NowPlayingCard, cx: &RenderCx) -> Rendered {
     if let Some(t) = http_url(card.thumbnail.as_deref()) {
         embed = embed.thumbnail(t.to_string(), None);
     }
-    Rendered::embed(embed)
+    let out = Rendered::embed(embed);
+    match &card.controls {
+        Some(c) => out.with_components(vec![crate::messaging::buttons::now_playing_row(c)]),
+        None => out,
+    }
 }
 
 #[must_use]
@@ -194,6 +207,7 @@ mod tests {
                 position: Duration::from_secs(73),
                 duration: Some(Duration::from_secs(273)),
             },
+            controls: None,
         }
     }
 
@@ -290,6 +304,30 @@ mod tests {
         );
     }
 
+    /// Plan 2026-10-07-now-playing-buttons, Ruling 4: a press in Discord needs no "from ..."; the dashboard keeps its.
+    #[test]
+    fn a_button_echo_has_no_source_suffix() {
+        let skipped = Echo::Skipped {
+            title: Some("t0".into()),
+        };
+        assert_eq!(
+            skipped.line(UserId::new(42), Via::Button),
+            "⏭ Skipped **t0** — <@42>"
+        );
+        assert_eq!(
+            skipped.line(UserId::new(42), Via::Dashboard),
+            "⏭ Skipped **t0** from the dashboard — <@42>"
+        );
+        assert_eq!(
+            Echo::Paused.line(UserId::new(42), Via::Button),
+            "⏸ Paused — <@42>"
+        );
+        assert_eq!(
+            Echo::Repeat { on: true }.line(UserId::new(42), Via::Button),
+            "🔁 Repeat on — <@42>"
+        );
+    }
+
     /// A blank title (a members-only link queues `Some("")`) echoed as
     /// "⏭ Skipped **** …"; it is `(untitled)`, as everywhere else.
     #[test]
@@ -299,7 +337,7 @@ mod tests {
                 title: Some(blank.into()),
             };
             assert_eq!(
-                echo.line(UserId::new(42)),
+                echo.line(UserId::new(42), Via::Dashboard),
                 "⏭ Skipped **(untitled)** from the dashboard — <@42>",
                 "{blank:?}"
             );
@@ -398,5 +436,30 @@ mod tests {
         c.label.title = Some("*".repeat(300));
         let e = v(&queued(&c, &RenderCx::default()));
         assert!(e["title"].as_str().unwrap().chars().count() <= EMBED_TITLE_MAX);
+    }
+
+    #[test]
+    fn a_card_with_controls_carries_one_row_and_one_without_carries_none() {
+        use crate::messaging::buttons::Controls;
+        let mut c = card(None, None);
+        assert!(now_playing(&c, &RenderCx::default()).components.is_empty());
+        c.controls = Some(Controls {
+            guild: serenity::all::GuildId::new(1),
+            track: uuid::Uuid::nil(),
+            paused: false,
+            looping: false,
+        });
+        let r = now_playing(&c, &RenderCx::default());
+        assert_eq!(r.components.len(), 1);
+        let row = serde_json::to_value(&r.components[0]).unwrap();
+        assert_eq!(row["components"][0]["custom_id"], "np:pause:1");
+    }
+
+    /// "None on Finished": the edit to Finished clears the row.
+    #[test]
+    fn the_finished_card_has_no_buttons() {
+        assert!(finished().components.is_empty());
+        let edit = serde_json::to_value(finished().to_edit()).unwrap();
+        assert_eq!(edit["components"].as_array().map(Vec::len), Some(0));
     }
 }

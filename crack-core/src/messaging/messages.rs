@@ -101,6 +101,7 @@ pub const TRACK_FAILED_SEEK: &str = "couldn't seek in it";
 pub const FAIL_NO_TRACK_PLAYING: &str = "No track playing";
 pub const OP_TRACK_ABSENT: &str = "That track is no longer queued";
 pub const OP_TRACK_PLAYING: &str = "That track is playing";
+pub const BUTTON_OUT_OF_DATE: &str = "This button is out of date.";
 pub const OP_TRACK_STALE: &str = "That track is no longer playing";
 pub const FAIL_EMPTY_VECTOR: &str = "⚠️ Empty vector not allowed!";
 pub const FAIL_INSERT: &str = "⚠️ Failed to insert!";
@@ -225,6 +226,10 @@ pub const STATUS_FINISHED_TITLE: &str = "⏹️ Finished";
 pub const STATUS_FINISHED_DESCRIPTION: &str = "Nothing is playing. Use /play to start again.";
 pub const EPHEMERAL_REPLIES_ON: &str = "🙈 /play, /skip and /nowplaying now reply privately.";
 pub const EPHEMERAL_REPLIES_OFF: &str = "👀 /play, /skip and /nowplaying now reply in the channel.";
+pub const CONTROL_ECHOES_ON: &str =
+    "📣 Button and dashboard controls now post a line in the channel.";
+pub const CONTROL_ECHOES_OFF: &str =
+    "🔇 Button and dashboard controls no longer post a line in the channel.";
 pub const QUEUE_PAGE_OF: &str = "of";
 pub const QUEUE_PAGE: &str = "Page";
 pub const QUEUE_UP_NEXT: &str = "⌛ Up next";
@@ -382,9 +387,18 @@ pub const INVITE_URL: &str = "https://discord.com/oauth2/authorize?client_id=111
 
 // ---- `/gp` party game (`commands::music::gp`) ----
 pub const GP_TITLE: &str = "🎭 What's Your Song?";
-pub const GP_RULES_TEXT: &str = "The host picks a category. Each round the bot posts a prompt and everyone in the voice channel secretly submits a song for it. The songs then play one by one: guess whose is whose, and 👍 the ones you like. Submitters are revealed at the end of each round (or, with `reveal:song`, as each song ends), and every round ends with its results: each song, whose it was, who got it, and the scores.";
+pub const GP_RULES_TEXT: &str = "The host picks where the prompts come from: one category, several ticked from a menu, or 🎲 Random (the default), which takes each round's prompt from a different category. Each round the bot posts a prompt and everyone in the voice channel secretly submits a song for it. The songs then play one by one: guess whose is whose, and 👍 the ones you like. Submitters are revealed at the end of each round (or, with `reveal:song`, as each song ends), and every round ends with its results: each song, whose it was, who got it, and the scores.";
 pub const GP_HOW_TO_TITLE: &str = "How to play";
-pub const GP_HOW_TO: &str = "• `/gp start <category> [rounds] [timer] [reveal]` — start in your voice channel (default 5 rounds, 3 minutes to submit; `reveal:song` names each submitter as their song ends instead of at the end of the round; `results:false` skips the round-results embed)\n• `/gp submit <song>` — your song for the current prompt; only you see the reply; submitting again replaces it\n• The window closes on the timer, as soon as everyone in the voice channel is in, or when the host runs `/gp close`\n• While a song plays: pick who submitted it from the dropdown (you can change your pick until it ends) and tap 👍 if you like it\n• `/gp skip` — host ends the current song · `/gp voteskip` — a majority ends it, or pulls it outright if it is your own (votes are anonymous) · `/gp votefull` — a majority hears it in full · `/gp status` — where things stand · `/gp end` — abort\n• You need to be in the game's voice channel, and to have submitted a song, to guess, 👍 or vote\n\n**Scoring:** +100 for a correct guess · +100 if nobody guesses you · +10 for every 👍 your song gets · +50 if the room votes to hear your song in full. Up to 25 people per round.\n\nBy default each song plays as a 45-second clip starting 30 seconds in, so a round moves; `/gp start ... clips:false` plays them whole, and `clip_start`/`clip_length` tune the clip when clips are on.";
+pub const GP_HOW_TO: &str = "• `/gp start [category] [rounds] [timer] [reveal]` — start in your voice channel (default 5 rounds, 3 minutes to submit; `reveal:song` names each submitter as their song ends instead of at the end of the round; `results:false` skips the round-results embed)\n• `/gp submit <song>` — your song for the current prompt; only you see the reply; submitting again replaces it\n• The window closes on the timer, as soon as everyone in the voice channel is in, or when the host runs `/gp close`\n• While a song plays: pick who submitted it from the dropdown (you can change your pick until it ends) and tap 👍 if you like it\n• `/gp skip` — host ends the current song · `/gp voteskip` — a majority ends it, or pulls it outright if it is your own (votes are anonymous) · `/gp votefull` — a majority hears it in full · `/gp status` — where things stand · `/gp end` — abort\n• You need to be in the game's voice channel, and to have submitted a song, to guess, 👍 or vote\n\n**Scoring:** +100 for a correct guess · +100 if nobody guesses you · +10 for every 👍 your song gets · +50 if the room votes to hear your song in full. Up to 25 people per round.\n\nBy default each song plays as a 45-second clip starting 30 seconds in, so a round moves; `/gp start ... clips:false` plays them whole, and `clip_start`/`clip_length` tune the clip when clips are on.";
+pub const GP_PICK_TITLE: &str = "☑️ Pick the categories";
+pub const GP_PICK_TEXT: &str = "Tick the categories to draw prompts from, then press **Start**. Each round's prompt comes from a different one of them.";
+pub const GP_PICK_PLACEHOLDER: &str = "Categories to draw prompts from";
+pub const GP_PICK_START: &str = "Start";
+pub const GP_PICK_CANCEL: &str = "Cancel";
+pub const GP_PICK_CHOSEN: &str = "✅ Starting with";
+pub const GP_PICK_CANCELLED: &str = "Cancelled — no game started.";
+pub const GP_PICK_TIMED_OUT: &str = "⏳ Nobody pressed Start, so no game was started.";
+pub const GP_PICK_NOT_HOST: &str = "🙅 Only whoever ran `/gp start` can pick the categories.";
 pub const GP_STARTED: &str = "🎭 Game on!";
 pub const GP_STARTED_ROUNDS: &str = "rounds of";
 pub const GP_STARTED_TIMER: &str = "to submit each round.";
@@ -523,3 +537,18 @@ pub const PREMIUM_CONTROLS: &str = "Dashboard controls are a premium feature.";
 /// not in the bot's voice channel, under the disabled controls.
 pub const JOIN_VOICE_FOR_CONTROLS: &str = "Join the bot's voice channel to use the controls.";
 pub const PATREON_URL: &str = "https://patreon.com/CrackTunes";
+// The dashboard's signed-out landing page, which is also its link preview
+// (#589).
+pub const DASH_LANDING_TITLE: &str = "CrackTunes dashboard";
+pub const DASH_LANDING_DESCRIPTION: &str =
+    "See what's playing in your Discord server and control the queue from your browser.";
+pub const DASH_SIGN_IN: &str = "Sign in with Discord";
+
+// The now-playing buttons: symbols only, so the row never wraps unevenly on
+// a narrow screen (#588). Fully qualified (with U+FE0F where a symbol has a
+// text form), which is what Discord expects of a button emoji.
+pub const NP_BUTTON_PAUSE: &str = "⏸️";
+pub const NP_BUTTON_RESUME: &str = "▶️";
+pub const NP_BUTTON_SKIP: &str = "⏭️";
+pub const NP_BUTTON_REPEAT: &str = "🔁";
+pub const NP_BUTTON_SHUFFLE: &str = "🔀";

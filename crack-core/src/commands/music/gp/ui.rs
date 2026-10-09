@@ -1,15 +1,16 @@
 use super::state::*;
+use crate::commands::music::gp_prompts::GpCategory;
 use crate::messaging::messages::{
     GP_FOOLED_EVERYONE, GP_FULL_SONG, GP_FULL_SONG_NOTE, GP_GUESSED_RIGHT, GP_HOW_TO,
     GP_HOW_TO_TITLE, GP_LIKES, GP_LIKE_HINT, GP_LIKE_LABEL, GP_NOBODY_GUESSED, GP_NOBODY_YET,
-    GP_PROMPT_CLOSES_EARLY, GP_PROMPT_CLOSES_TITLE, GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE,
-    GP_RESULTS_GUESSED_BY, GP_RESULTS_GUESSED_COUNT, GP_RESULTS_NOBODY_SCORED,
-    GP_RESULTS_THIS_ROUND, GP_RESULTS_TITLE, GP_REVEAL, GP_REVEAL_HELD, GP_ROUND_HINT,
-    GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE,
-    GP_STATUS_CLOSES, GP_STATUS_GUESSED, GP_STATUS_LIKES, GP_STATUS_PLAYING, GP_STATUS_PROMPT,
-    GP_STATUS_SCORES, GP_STATUS_SUBMITTED, GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED,
-    GP_TRACK_FAILED_NOTE, GP_WINDOW_CLOSED, GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY,
-    GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN,
+    GP_PICK_CANCEL, GP_PICK_PLACEHOLDER, GP_PICK_START, GP_PICK_TITLE, GP_PROMPT_CLOSES_EARLY,
+    GP_PROMPT_CLOSES_TITLE, GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE, GP_RESULTS_GUESSED_BY,
+    GP_RESULTS_GUESSED_COUNT, GP_RESULTS_NOBODY_SCORED, GP_RESULTS_THIS_ROUND, GP_RESULTS_TITLE,
+    GP_REVEAL, GP_REVEAL_HELD, GP_ROUND_HINT, GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD,
+    GP_SELECT_PLACEHOLDER, GP_SONG_TITLE, GP_STATUS_CLOSES, GP_STATUS_GUESSED, GP_STATUS_LIKES,
+    GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SCORES, GP_STATUS_SUBMITTED,
+    GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, GP_WINDOW_CLOSED,
+    GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN,
 };
 use ::serenity::{
     all::{ButtonStyle, Colour, GuildId, Mentionable, UserId},
@@ -113,6 +114,55 @@ pub fn gp_components(
     rows
 }
 
+/// `/gp start`'s category picker: a menu of every category with `picked`
+/// ticked, then Start -- greyed out until something is -- and Cancel.
+pub fn gp_pick_components(picked: &[GpCategory]) -> Vec<CreateComponent<'static>> {
+    let options: Vec<CreateSelectMenuOption<'static>> = GpCategory::CATEGORIES
+        .iter()
+        .filter_map(|c| {
+            let key = c.key()?;
+            Some(
+                CreateSelectMenuOption::new(c.display(), key).default_selection(picked.contains(c)),
+            )
+        })
+        .collect();
+    let menu = CreateSelectMenu::new(
+        GP_PICK_MENU_ID,
+        CreateSelectMenuKind::String {
+            options: Cow::Owned(options),
+        },
+    )
+    .placeholder(GP_PICK_PLACEHOLDER)
+    .min_values(1)
+    .max_values(GpCategory::CATEGORIES.len() as u8);
+    let start = CreateButton::new(GP_PICK_START_ID)
+        .label(GP_PICK_START)
+        .style(ButtonStyle::Success)
+        .disabled(picked.is_empty());
+    let cancel = CreateButton::new(GP_PICK_CANCEL_ID)
+        .label(GP_PICK_CANCEL)
+        .style(ButtonStyle::Secondary);
+    vec![
+        CreateComponent::ActionRow(CreateActionRow::SelectMenu(menu)),
+        CreateComponent::ActionRow(CreateActionRow::Buttons(Cow::Owned(vec![start, cancel]))),
+    ]
+}
+
+/// The categories ticked in the picker's menu, from its option values.
+pub fn gp_picked<'a>(values: impl IntoIterator<Item = &'a str>) -> Vec<GpCategory> {
+    values
+        .into_iter()
+        .filter_map(GpCategory::from_key)
+        .collect()
+}
+
+pub(in crate::commands::music::gp) fn gp_pick_embed(text: &str) -> CreateEmbed<'static> {
+    CreateEmbed::new()
+        .title(GP_PICK_TITLE)
+        .description(text.to_string())
+        .colour(Colour::FOOYOO)
+}
+
 fn scores_lines(scores: &[(UserId, u32)]) -> String {
     if scores.is_empty() {
         return "-".to_string();
@@ -150,10 +200,18 @@ pub fn gp_rules_embed() -> CreateEmbed<'static> {
         .colour(Colour::FOOYOO)
 }
 
+/// The prompt in bold, under its category when there is one to show.
+fn prompt_text(prompt: &str, category: Option<GpCategory>) -> String {
+    match category {
+        Some(c) => format!("{}\n**{prompt}**", c.display()),
+        None => format!("**{prompt}**"),
+    }
+}
+
 pub fn gp_prompt_embed(w: &GpWindowOpened) -> CreateEmbed<'static> {
     CreateEmbed::new()
         .title(round_title(w.round_idx, w.total_rounds))
-        .description(format!("**{}**", w.prompt))
+        .description(prompt_text(&w.prompt, w.category))
         .field(GP_PROMPT_HOW_TO_TITLE, GP_PROMPT_HOW_TO, false)
         .field(
             GP_PROMPT_CLOSES_TITLE,
@@ -171,7 +229,10 @@ pub fn gp_prompt_closed_embed(c: &GpWindowClosed) -> CreateEmbed<'static> {
     };
     CreateEmbed::new()
         .title(round_title(c.round_idx, c.total_rounds))
-        .description(format!("**{}**\n\n{status}", c.prompt))
+        .description(format!(
+            "{}\n\n{status}",
+            prompt_text(&c.prompt, c.category)
+        ))
         .colour(Colour::DARKER_GREY)
 }
 

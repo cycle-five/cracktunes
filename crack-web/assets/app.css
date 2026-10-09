@@ -16,6 +16,8 @@ header button { background: none; border: 1px solid var(--line); color: var(--mu
                 border-radius: 6px; padding: 4px 10px; cursor: pointer; }
 main { max-width: 720px; margin: 0 auto; padding: 16px; }
 h1 { font-size: 1.4rem; margin: 8px 0 16px; overflow-wrap: anywhere; }
+a.button { display: inline-block; background: var(--accent); color: #fff; font-weight: 600;
+           text-decoration: none; padding: 10px 16px; border-radius: 8px; }
 h2 { font-size: 1rem; color: var(--muted); margin: 24px 0 8px; }
 ul.guilds, ol#upcoming { list-style: none; padding: 0; margin: 0; }
 ul.guilds li { padding: 10px 0; border-bottom: 1px solid var(--line); }

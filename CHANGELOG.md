@@ -68,7 +68,17 @@
   and when, filters by member, action, source and time, loads older entries, and
   shows new ones within 10 seconds. A running `/gp` game's entries stay hidden
   until it ends.
-
+- **`/gp start` no longer needs a category, and can take several.** Left out,
+  the game is 🎲 Random -- what was 🎲 Mixed, now at the top of the dropdown:
+  each round's prompt comes from a different category, every category comes up
+  once before any comes up again, and none twice in a row. Mixed drew from all
+  the prompts at once, so a category with twenty prompts came up nearly three
+  times as often as one with seven. `category:☑️ Pick several…` posts a menu to
+  tick the categories to draw from, then **Start**; only the host can use it,
+  and it gives up after two idle minutes. In a game of more than one category,
+  each round's category is shown above its prompt, and survives a restart with
+  the game. From a prefix command, `!gp start 5` is five Random rounds and
+  `!gp start pick` opens the menu.
 - **Every `/gp` round ends with its results.** Once a round's last song has been
   revealed, and before the next prompt goes up, a round-results embed sums the
   round up at the bottom of the channel: each song with who submitted it, who
@@ -124,6 +134,19 @@
 - `SLEEVENOTE_BASE_URL` is documented, including what its localhost default
   means in Docker Compose, where the bot's own localhost is not the sleevenote
   container.
+- **Buttons on the now-playing message.** Pause or Resume, Skip, Repeat and
+  Shuffle, as symbols only (⏸️ ▶️ ⏭️ 🔁 🔀) so the row stays on one line on a
+  phone, for anyone who may use the music commands there (the music channel
+  and `/gp` rules apply). A press posts an echo line naming who pressed it, as
+  a dashboard control does, and the status message updates below it. Skip names
+  the song it was drawn for, so an old message or two people pressing at once
+  cannot skip the next song. Buttons on an old message still work after a
+  restart. Restrictions set on individual commands under Server Settings →
+  Integrations do not cover the buttons: the bot's own music-channel and `/gp`
+  rules do.
+- **`/echoes`** (admins) turns those echo lines off or on for the server, for
+  buttons and the dashboard alike. On by default.
+- The queue history's source filter (`/auditlog`, the dashboard) has `button`.
 
 ### Changed
 
@@ -277,6 +300,15 @@
 - `spotify:album:<id>` and `spotify:playlist:<id>` URIs were rewritten into
   `/track/<id>` URLs and looked up as tracks, which found nothing. The kind is
   now read from the URI.
+- A dashboard control that changed nothing (pausing a paused song from a stale
+  tab) no longer posts an echo line.
+- Outside the music channel, the refusal now names the music channel to use,
+  not the channel you are already in.
+- Pasting the dashboard's address in Discord previewed it as Discord's own
+  "CrackTunes • Discord App" sign-in card: a signed-out visit to `/` redirected
+  to the login, and Discord followed the redirect to its OAuth page. `/` now
+  answers signed-out visitors with a landing page that carries its own preview
+  (title, description and image) and a "Sign in with Discord" link. (#589)
 
 ## TODO:
 

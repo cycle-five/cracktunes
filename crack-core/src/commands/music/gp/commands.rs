@@ -4,11 +4,14 @@ use super::ui::*;
 use crate::{
     commands::cmd_check_music,
     commands::get_call_or_join_author,
-    commands::music::gp_prompts::{draw_prompts, GpCategory},
+    commands::music::gp_prompts::{draw_prompts, GpCategories, GpCategory},
     errors::CrackedError,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
-    messaging::messages::{GP_SCOREBOARD, SPOTIFY_GP_ONE_SONG, SPOTIFY_NOTHING_PLAYABLE},
+    messaging::messages::{
+        GP_PICK_CANCELLED, GP_PICK_CHOSEN, GP_PICK_NOT_HOST, GP_PICK_TEXT, GP_PICK_TIMED_OUT,
+        GP_SCOREBOARD, SPOTIFY_GP_ONE_SONG, SPOTIFY_NOTHING_PLAYABLE,
+    },
     music::queue::{force_skip_top_track, stop_queue},
     music::PlaybackOwner,
     poise_ext::PoiseContextExt,
@@ -16,12 +19,16 @@ use crate::{
     Context, CrackedResult, Error,
 };
 use ::serenity::{
-    all::{ChannelId, GuildId, UserId},
-    builder::CreateMessage,
+    all::{ChannelId, ComponentInteraction, ComponentInteractionDataKind, GuildId, UserId},
+    builder::{
+        CreateComponent, CreateInteractionResponse, CreateInteractionResponseMessage, CreateMessage,
+    },
 };
 use crack_types::QueryType;
+use poise::serenity_prelude::CollectComponentInteractions;
+use poise::CreateReply;
 use songbird::Call;
-use std::{str::FromStr, sync::Arc, time::Duration};
+use std::{borrow::Cow, str::FromStr, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 // ------------------------------------------------------------------
@@ -110,6 +117,98 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Ask the host which categories to play: a menu to tick them, and Start. The
+/// clicks are answered here, not by [`handle_gp_component`] -- there is no game
+/// yet for it to find. `None` when the host cancels or walks away, which the
+/// picker has already said.
+#[cfg(not(tarpaulin_include))]
+async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Error> {
+    let host = ctx.author().id;
+    let mut picked: Vec<GpCategory> = Vec::new();
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+    let reply = ctx
+        .send(
+            CreateReply::default()
+                .embed(gp_pick_embed(GP_PICK_TEXT))
+                .components(Cow::Owned(gp_pick_components(&picked)))
+                .ephemeral(true),
+        )
+        .await?;
+    let message_id = reply.message().await?.id;
+    loop {
+        // A collector per click, so the timeout is how long the host has sat
+        // idle rather than how long the whole pick has taken.
+        let Some(mci) = message_id
+            .collect_component_interactions(ctx.serenity_context())
+            .timeout(Duration::from_secs(GP_PICK_TIMEOUT_SECS))
+            .next()
+            .await
+        else {
+            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+            reply
+                .edit(
+                    ctx,
+                    CreateReply::default()
+                        .embed(gp_pick_embed(GP_PICK_TIMED_OUT))
+                        .components(Cow::Owned(vec![])),
+                )
+                .await?;
+            return Ok(None);
+        };
+        // Only a prefix command's picker is public; from a slash command nobody
+        // else can see it.
+        if mci.user.id != host {
+            #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+            mci.create_response(
+                ctx.http(),
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new()
+                        .content(GP_PICK_NOT_HOST)
+                        .ephemeral(true),
+                ),
+            )
+            .await?;
+            continue;
+        }
+        let id = mci.data.custom_id.as_str();
+        if id == GP_PICK_CANCEL_ID {
+            gp_pick_update(ctx, &mci, GP_PICK_CANCELLED, vec![]).await?;
+            return Ok(None);
+        }
+        if id == GP_PICK_START_ID {
+            if let Some(categories) = GpCategories::new(picked.iter().copied()) {
+                let chosen = format!("{GP_PICK_CHOSEN} {}", categories.display());
+                gp_pick_update(ctx, &mci, &chosen, vec![]).await?;
+                return Ok(Some(categories));
+            }
+        } else if let ComponentInteractionDataKind::StringSelect { values } = &mci.data.kind {
+            picked = gp_picked(values.iter().map(String::as_str));
+        }
+        gp_pick_update(ctx, &mci, GP_PICK_TEXT, gp_pick_components(&picked)).await?;
+    }
+}
+
+/// Answer a picker click by redrawing the picker.
+#[cfg(not(tarpaulin_include))]
+async fn gp_pick_update(
+    ctx: Context<'_>,
+    mci: &ComponentInteraction,
+    text: &str,
+    components: Vec<CreateComponent<'static>>,
+) -> Result<(), Error> {
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+    mci.create_response(
+        ctx.http(),
+        CreateInteractionResponse::UpdateMessage(
+            CreateInteractionResponseMessage::new()
+                .add_embed(gp_pick_embed(text))
+                .components(Cow::Owned(components)),
+        ),
+    )
+    .await?;
+    Ok(())
+}
+
 /// Start a game in your voice channel: pick a category, rounds, and the submission timer.
 #[cfg(not(tarpaulin_include))]
 #[allow(clippy::too_many_arguments)]
@@ -123,7 +222,8 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
 )]
 pub async fn gp_start(
     ctx: Context<'_>,
-    #[description = "Prompt category (or Mixed)."] category: GpCategory,
+    #[description = "Prompt category: 🎲 Random (default), just one, or ☑️ Pick several."]
+    category: Option<GpCategory>,
     #[description = "Number of rounds (default 5)."]
     #[min = 1]
     #[max = 20]
@@ -153,6 +253,15 @@ pub async fn gp_start(
     if data.gp_is_active(guild_id) {
         return Err(CrackedError::GameAlreadyRunning.into());
     }
+    ctx.author_vc().ok_or(CrackedError::NotConnected)?;
+    let categories = match GpCategories::from_choice(category.unwrap_or(GpCategory::Random)) {
+        Some(categories) => categories,
+        None => match gp_pick_categories(ctx).await? {
+            Some(categories) => categories,
+            None => return Ok(()),
+        },
+    };
+    // Looked up again: picking can take long enough to have left the channel.
     let vc = ctx.author_vc().ok_or(CrackedError::NotConnected)?;
     let host = ctx.author().id;
     let host_name = author_display_name(ctx).await;
@@ -192,7 +301,7 @@ pub async fn gp_start(
     });
     let reveal = reveal.unwrap_or_default();
     let round_results = results.unwrap_or(true) || reveal == GpReveal::Round;
-    let prompts = draw_prompts(category, rounds, &mut rand::rng());
+    let prompts = draw_prompts(&categories, rounds, &mut rand::rng());
 
     // Create the game first so the global TrackEndHandler ignores the End
     // event that stopping an existing queue fires.
@@ -202,7 +311,7 @@ pub async fn gp_start(
         host_name,
         vc,
         ctx.channel_id(),
-        category,
+        categories.clone(),
         prompts,
         timer_secs,
         clip,
@@ -243,7 +352,7 @@ pub async fn gp_start(
 
     ctx.send_reply(
         CrackedMessage::GpStarted {
-            category: category.display(),
+            category: categories.display(),
             rounds: opened.total_rounds,
             timer_secs,
             clip,

@@ -1,6 +1,9 @@
 use crate::{
-    commands::music::gp_prompts::GpCategory, db::GpOutcome, errors::CrackedError,
-    music::PlaybackOwner, CrackedResult, Data,
+    commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt},
+    db::GpOutcome,
+    errors::CrackedError,
+    music::PlaybackOwner,
+    CrackedResult, Data,
 };
 use ::serenity::all::{ChannelId, GenericChannelId, GuildId, MessageId, UserId};
 use crack_testing::ResolvedTrack;
@@ -83,6 +86,14 @@ pub fn gp_min_played(intended: Option<Duration>) -> Duration {
 }
 /// Component custom ids look like `gp:<g|l>:<guild_id>:<round_idx>:<track_idx>`.
 pub const GP_CUSTOM_ID_PREFIX: &str = "gp:";
+/// Custom ids on `/gp start`'s category picker. Deliberately not under
+/// [`GP_CUSTOM_ID_PREFIX`]: the picker's own collector answers them, and the
+/// global handler, finding no game, would answer them first.
+pub const GP_PICK_MENU_ID: &str = "gppick:menu";
+pub const GP_PICK_START_ID: &str = "gppick:start";
+pub const GP_PICK_CANCEL_ID: &str = "gppick:cancel";
+/// How long the category picker waits on the host's next click.
+pub const GP_PICK_TIMEOUT_SECS: u64 = 120;
 /// Music commands refused while a game owns playback, because each would leave
 /// playback in a state the game's own state machine never produced: injecting or
 /// reordering tracks (`play`, `shuffle`, `remove`, ...), advancing or stalling the
@@ -368,6 +379,9 @@ impl GpTrack {
 #[derive(Clone, Debug)]
 pub struct GpRound {
     pub prompt: String,
+    /// The category the prompt was drawn from. `None` only on a round saved,
+    /// in a game of several categories, before rounds had one.
+    pub category: Option<GpCategory>,
     /// One song per player while the window is open; resubmitting replaces.
     pub submissions: HashMap<UserId, ResolvedTrack<'static>>,
     /// Filled (shuffled) when the window closes.
@@ -386,9 +400,10 @@ pub struct GpRound {
 }
 
 impl GpRound {
-    fn new(prompt: String) -> Self {
+    fn new(prompt: GpPrompt) -> Self {
         Self {
-            prompt,
+            prompt: prompt.text,
+            category: Some(prompt.category),
             submissions: HashMap::new(),
             tracks: Vec::new(),
             prompt_message: None,
@@ -442,7 +457,7 @@ pub struct GpGame {
     pub voice_channel: ChannelId,
     pub text_channel: GenericChannelId,
     pub phase: GpPhase,
-    pub category: GpCategory,
+    pub categories: GpCategories,
     /// Pre-drawn, one per prompt.
     pub rounds: Vec<GpRound>,
     pub current_round: usize,
@@ -481,8 +496,8 @@ impl GpGame {
         host: UserId,
         voice_channel: ChannelId,
         text_channel: GenericChannelId,
-        category: GpCategory,
-        prompts: Vec<String>,
+        categories: GpCategories,
+        prompts: Vec<GpPrompt>,
         timer_secs: u64,
         clip: Option<GpClip>,
         reveal: GpReveal,
@@ -496,7 +511,7 @@ impl GpGame {
             voice_channel,
             text_channel,
             phase: GpPhase::Submitting,
-            category,
+            categories,
             rounds: prompts.into_iter().map(GpRound::new).collect(),
             current_round: 0,
             current_track: 0,
@@ -651,6 +666,17 @@ impl GpGame {
         }
     }
 
+    /// The category to show with round `idx`'s prompt: only in a game of
+    /// several, where it changes from round to round. A game of one said which
+    /// when it started.
+    fn shown_category(&self, idx: usize) -> Option<GpCategory> {
+        if self.categories.as_slice().len() > 1 {
+            self.rounds[idx].category
+        } else {
+            None
+        }
+    }
+
     fn open_window(&mut self, now: i64) -> GpWindowOpened {
         self.phase = GpPhase::Submitting;
         self.current_track = 0;
@@ -658,12 +684,14 @@ impl GpGame {
         let closes_at = now + self.timer_secs as i64;
         let idx = self.current_round;
         let total_rounds = self.rounds.len();
+        let category = self.shown_category(idx);
         let round = &mut self.rounds[idx];
         round.closes_at = Some(closes_at);
         GpWindowOpened {
             round_idx: idx,
             total_rounds,
             prompt: round.prompt.clone(),
+            category,
             closes_at,
             timer_secs: self.timer_secs,
             generation: self.generation,
@@ -686,6 +714,7 @@ impl GpGame {
             .find(|r| !r.tracks.is_empty())
             .map(|r| r.tracks.iter().map(|t| t.submitter).collect())
             .unwrap_or_default();
+        let category = self.shown_category(idx);
         let round = &mut self.rounds[idx];
         // Sort before shuffling so a seeded rng gives the same order regardless
         // of HashMap iteration order.
@@ -711,6 +740,7 @@ impl GpGame {
             round_idx: idx,
             total_rounds,
             prompt,
+            category,
             prompt_message,
             count,
             text_channel: self.text_channel,
@@ -755,6 +785,9 @@ pub struct GpWindowOpened {
     pub round_idx: usize,
     pub total_rounds: usize,
     pub prompt: String,
+    /// The prompt's category, to show above it; `None` when there is nothing to
+    /// show (see `GpGame::shown_category`).
+    pub category: Option<GpCategory>,
     pub closes_at: i64,
     pub timer_secs: u64,
     pub generation: u64,
@@ -795,6 +828,8 @@ pub struct GpWindowClosed {
     pub round_idx: usize,
     pub total_rounds: usize,
     pub prompt: String,
+    /// As on [`GpWindowOpened`]: the closed embed replaces the open one.
+    pub category: Option<GpCategory>,
     pub prompt_message: Option<(GenericChannelId, MessageId)>,
     pub count: usize,
     pub text_channel: GenericChannelId,
@@ -961,8 +996,8 @@ impl Data {
         host_name: String,
         voice_channel: ChannelId,
         text_channel: GenericChannelId,
-        category: GpCategory,
-        prompts: Vec<String>,
+        categories: GpCategories,
+        prompts: Vec<GpPrompt>,
         timer_secs: u64,
         clip: Option<GpClip>,
         reveal: GpReveal,
@@ -982,7 +1017,7 @@ impl Data {
             host,
             voice_channel,
             text_channel,
-            category,
+            categories,
             prompts,
             timer_secs,
             clip,

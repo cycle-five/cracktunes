@@ -1,4 +1,4 @@
-use crate::commands::music::gp_prompts::GpCategory;
+use crate::commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt};
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
     GP_FOOLED_EVERYONE, GP_FULL_SONG, GP_GAME_OVER, GP_GUESSED_RIGHT, GP_LIKES, GP_LIKE_HINT,
@@ -55,8 +55,18 @@ fn rng() -> StdRng {
     StdRng::seed_from_u64(0)
 }
 
-fn prompts(names: &[&str]) -> Vec<String> {
-    names.iter().map(|s| s.to_string()).collect()
+fn prompts(names: &[&str]) -> Vec<GpPrompt> {
+    names
+        .iter()
+        .map(|s| GpPrompt {
+            category: GpCategory::Nostalgia,
+            text: s.to_string(),
+        })
+        .collect()
+}
+
+fn nostalgia() -> GpCategories {
+    GpCategories::from_choice(GpCategory::Nostalgia).unwrap()
 }
 
 /// A clip that never fires in the pure-state tests, but proves the setting is
@@ -105,7 +115,7 @@ fn game_with_settings(
         "alice".into(),
         VC,
         TC,
-        GpCategory::Nostalgia,
+        nostalgia(),
         prompts(prompt_list),
         TIMER,
         clip,
@@ -153,7 +163,7 @@ fn start_opens_round_one() {
             "bob".into(),
             VC,
             TC,
-            GpCategory::Mixed,
+            GpCategories::all(),
             prompts(&["x"]),
             TIMER,
             None,
@@ -171,7 +181,7 @@ fn start_opens_round_one() {
             "bob".into(),
             VC,
             TC,
-            GpCategory::Mixed,
+            GpCategories::all(),
             vec![],
             TIMER,
             None,
@@ -182,6 +192,53 @@ fn start_opens_round_one() {
         .unwrap_err(),
         CrackedError::Other("That category has no prompts.")
     );
+}
+
+#[test]
+fn a_game_of_several_categories_shows_each_rounds() {
+    let several = data();
+    let opened = several
+        .gp_start(
+            G,
+            A,
+            "alice".into(),
+            VC,
+            TC,
+            GpCategories::new([GpCategory::Car, GpCategory::Chill]).unwrap(),
+            vec![
+                GpPrompt {
+                    category: GpCategory::Car,
+                    text: "p1".into(),
+                },
+                GpPrompt {
+                    category: GpCategory::Chill,
+                    text: "p2".into(),
+                },
+            ],
+            TIMER,
+            None,
+            GpReveal::default(),
+            true,
+            NOW,
+        )
+        .unwrap();
+    assert_eq!(opened.category, Some(GpCategory::Car));
+    let closed = several.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+    assert_eq!(
+        closed.category,
+        Some(GpCategory::Car),
+        "the closed embed keeps it"
+    );
+    let GpNext::Window(next) = &closed.next else {
+        panic!("an empty round moves straight on");
+    };
+    assert_eq!(next.category, Some(GpCategory::Chill));
+    let v = serde_json::to_value(gp_prompt_embed(next)).unwrap();
+    assert_eq!(v["description"], "🌿 Altered-State / Chill\n**p2**");
+
+    // A game of one category said which when it started.
+    let one = data();
+    assert_eq!(game_with(&one, &["p1"]).category, None);
 }
 
 #[test]
@@ -1877,11 +1934,58 @@ fn components_json() {
 }
 
 #[test]
+fn category_picker_json() {
+    let v = serde_json::to_value(gp_pick_components(&[])).unwrap();
+    let menu = &v[0]["components"][0];
+    assert_eq!(menu["custom_id"], GP_PICK_MENU_ID);
+    for id in [GP_PICK_MENU_ID, GP_PICK_START_ID, GP_PICK_CANCEL_ID] {
+        assert!(
+            !id.starts_with(GP_CUSTOM_ID_PREFIX),
+            "the global gp handler must leave {id} to the picker"
+        );
+    }
+    let options = menu["options"].as_array().unwrap();
+    assert_eq!(options.len(), GpCategory::CATEGORIES.len());
+    assert_eq!(menu["max_values"], GpCategory::CATEGORIES.len());
+    assert!(options.iter().all(|o| o["default"] != true));
+    let values: Vec<&str> = options
+        .iter()
+        .map(|o| o["value"].as_str().unwrap())
+        .collect();
+    assert_eq!(gp_picked(values), GpCategory::CATEGORIES.to_vec());
+    let buttons = &v[1]["components"];
+    assert_eq!(buttons[0]["custom_id"], GP_PICK_START_ID);
+    assert_eq!(
+        buttons[0]["disabled"], true,
+        "nothing picked, nothing to start"
+    );
+    assert_eq!(buttons[1]["custom_id"], GP_PICK_CANCEL_ID);
+
+    let v =
+        serde_json::to_value(gp_pick_components(&[GpCategory::Car, GpCategory::Chill])).unwrap();
+    let ticked: Vec<&str> = v[0]["components"][0]["options"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|o| o["default"] == true)
+        .map(|o| o["value"].as_str().unwrap())
+        .collect();
+    assert_eq!(ticked, vec!["car", "chill"]);
+    assert_ne!(v[1]["components"][0]["disabled"], true);
+
+    assert_eq!(
+        gp_picked(["chill", "nope", "mixed"]),
+        vec![GpCategory::Chill]
+    );
+}
+
+#[test]
 fn prompt_embeds_json() {
     let opened = GpWindowOpened {
         round_idx: 1,
         total_rounds: 3,
         prompt: "What song do you cry to?".into(),
+        category: None,
         closes_at: NOW,
         timer_secs: TIMER,
         generation: 4,
@@ -1902,6 +2006,7 @@ fn prompt_embeds_json() {
         round_idx: 1,
         total_rounds: 3,
         prompt: "p".into(),
+        category: None,
         prompt_message: None,
         count: 4,
         text_channel: TC,
@@ -1916,6 +2021,26 @@ fn prompt_embeds_json() {
     let empty = GpWindowClosed { count: 0, ..closed };
     let v = serde_json::to_value(gp_prompt_closed_embed(&empty)).unwrap();
     assert!(v["description"].as_str().unwrap().contains(GP_WINDOW_EMPTY));
+
+    // With a category to show, it sits above the prompt, open and closed.
+    let tagged = GpWindowOpened {
+        category: Some(GpCategory::Car),
+        ..opened
+    };
+    let v = serde_json::to_value(gp_prompt_embed(&tagged)).unwrap();
+    assert_eq!(
+        v["description"],
+        "🚗 Car / Driving\n**What song do you cry to?**"
+    );
+    let tagged = GpWindowClosed {
+        category: Some(GpCategory::Car),
+        ..empty
+    };
+    let v = serde_json::to_value(gp_prompt_closed_embed(&tagged)).unwrap();
+    assert!(v["description"]
+        .as_str()
+        .unwrap()
+        .starts_with("🚗 Car / Driving\n**p**\n\n"));
 
     let w = GpWindowWarning {
         round_idx: 0,
@@ -2244,16 +2369,16 @@ fn command_registration() {
                     "results"
                 ]
             );
-            assert!(sub.parameters[0].required);
+            assert!(!sub.parameters[0].required, "no category is Random");
             let reveal = sub.parameters.iter().find(|p| p.name == "reveal").unwrap();
             assert_eq!(reveal.choices.len(), 2, "after each song, or at the end");
             assert_eq!(
                 sub.parameters[0].choices.len(),
-                crate::commands::music::gp_prompts::GP_PROMPTS.len() + 1,
-                "every category + Mixed"
+                crate::commands::music::gp_prompts::GP_PROMPTS.len() + 2,
+                "every category + Random + Pick several"
             );
-            // Only the category is required; everything else has a default.
-            assert!(sub.parameters[1..].iter().all(|p| !p.required));
+            // Nothing is required; everything has a default.
+            assert!(sub.parameters.iter().all(|p| !p.required));
         }
     }
 }
@@ -2285,7 +2410,7 @@ fn a_game(guild_id: GuildId) -> GpGame {
         A,
         VC,
         TC,
-        GpCategory::Nostalgia,
+        nostalgia(),
         prompts(&["p1"]),
         TIMER,
         None,
@@ -2304,7 +2429,7 @@ fn start_a_game(data: &Data, guild_id: GuildId) {
         "alice".into(),
         VC,
         TC,
-        GpCategory::Nostalgia,
+        nostalgia(),
         prompts(&["p1"]),
         TIMER,
         None,
