@@ -217,6 +217,12 @@
 
 ### Fixed
 
+- **A `/gp` game that could not be resumed could post its owed round results
+  again on every gateway reconnect** while the database refused writes (#469).
+  A game the resume closes out, lost or finished, now writes its tombstone
+  first and posts its results and scoreboard only once that has landed, the
+  way the lost scoreboard alone already did. If Discord then refuses the post,
+  those results are not retried: once beats once per reconnect.
 - **`/gp` song titles with `*`, `_`, backticks or `@` broke the song, reveal
   and results embeds' formatting.** They are now escaped like every other
   title since v0.22.0, and a pathological title is capped at 100 characters
