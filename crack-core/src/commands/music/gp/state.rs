@@ -57,16 +57,20 @@ pub const GP_PARK_GRACE_SECS: u64 = 10;
 /// stamps on the way down and which a hard crash leaves at the last song's end.
 pub const GP_RESUME_WINDOW_SECS: i64 = 300;
 /// How much of a song has to have played before a failure counts as a song the
-/// room actually heard, and so as something to score. Below this an `Errored`
-/// track is treated as a dead link: nobody could have guessed it, so nobody is
-/// paid for it -- including the submitter, who would otherwise collect the
-/// fooled-everyone bonus for a song that never really played.
+/// room heard in full. Below this an `Errored` track was cut short: its guesses
+/// and likes stand, but nobody could fairly have placed it, so the submitter does
+/// not collect the fooled-everyone bonus for it ([`GpPlayed::CutShort`]). Below
+/// [`GP_DEAD_LINK`] it never opened at all, and pays nothing.
 ///
 /// This is the ceiling, not the whole rule -- see [`gp_min_played`]. Thirty
 /// seconds of a four-minute song is a fair "the room heard it", but it is the
 /// entire length of a thirty-second clip, and a clip that played to its end must
 /// not be scored as a dead link.
 pub const GP_MIN_PLAYED: Duration = Duration::from_secs(30);
+/// Below this an `Errored` track never really opened: a dead link, which
+/// nobody heard and which pays nothing. Between this and [`gp_min_played`] the
+/// stream was cut short -- see [`GpPlayed::CutShort`].
+pub const GP_DEAD_LINK: Duration = Duration::from_secs(2);
 /// The share of the intended play length that has to be heard when that length is
 /// short enough for [`GP_MIN_PLAYED`] to be most or all of it.
 pub const GP_MIN_PLAYED_DIVISOR: u32 = 2;
@@ -75,9 +79,8 @@ pub const GP_MIN_PLAYED_DIVISOR: u32 = 2;
 /// capped at [`GP_MIN_PLAYED`]. A full song keeps the flat thirty seconds; a
 /// forty-five second clip needs twenty-two, not the whole thing minus fifteen.
 ///
-/// The dead-link-versus-fooled-everyone split that #423 is about is a separate
-/// question and stays where it is; this only stops clips landing on the wrong side
-/// of the existing line.
+/// It gates the fooled-everyone bonus alone; the dead link has its own line,
+/// [`GP_DEAD_LINK`], which does not scale (#423).
 pub fn gp_min_played(intended: Option<Duration>) -> Duration {
     match intended {
         Some(d) => GP_MIN_PLAYED.min(d / GP_MIN_PLAYED_DIVISOR),
@@ -296,12 +299,30 @@ pub struct GpTrack {
     /// The room voted to hear it all: the clip timer stands down and the
     /// submitter takes [`GP_POINTS_FULL_SONG`] at the reveal.
     pub play_full: bool,
-    /// The song never played -- songbird could not open the stream -- so
-    /// nothing was scored for it. Set when the song ends, and kept so the
-    /// round's results can say so and so its payout stays zero when re-derived.
-    pub failed: bool,
+    /// How much of it reached the room. Set when the song ends, and kept so the
+    /// round's results can say so and its payout comes out the same when it is
+    /// derived again.
+    pub played: GpPlayed,
     /// The song message, so the reveal can edit it in place.
     pub message: Option<(GenericChannelId, MessageId)>,
+}
+
+/// How much of a song reached the room, decided when it ends from how long
+/// songbird played it (`gp_played`). Ordered from most to least heard, so of
+/// several states the greatest is the one that stands.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum GpPlayed {
+    /// It played out, or long enough that the room heard it.
+    #[default]
+    Heard,
+    /// The stream died part-way, before [`gp_min_played`]. The room heard some
+    /// of it, so its guesses and likes stand and the reveal is a song's, but too
+    /// little for anyone to have placed it: nobody guessing it is not the
+    /// submitter fooling the room, so there is no fooled-everyone bonus.
+    CutShort,
+    /// The stream never opened, or died within [`GP_DEAD_LINK`]: nobody heard
+    /// it, nothing is paid, and the reveal says it could not be played.
+    Never,
 }
 
 /// What one song paid out, and to whom. A pure function of the song as it
@@ -329,7 +350,7 @@ impl GpTrack {
             skip_votes: HashSet::new(),
             full_votes: HashSet::new(),
             play_full: false,
-            failed: false,
+            played: GpPlayed::Heard,
             message: None,
         }
     }
@@ -338,7 +359,7 @@ impl GpTrack {
     /// has nothing to guess, so no guess or fooled points are paid. A song that
     /// never played pays nothing at all -- not even for its likes.
     pub(in crate::commands::music::gp) fn score(&self, guessable: bool) -> GpTrackScore {
-        if self.failed {
+        if self.played == GpPlayed::Never {
             return GpTrackScore::default();
         }
         let mut correct: Vec<UserId> = if guessable {
@@ -354,7 +375,9 @@ impl GpTrack {
         };
         // A stable order, so two derivations of the same song agree exactly.
         correct.sort_unstable();
-        let fooled_everyone = guessable && correct.is_empty();
+        // Too little of a song cut short played for anyone to place it, so
+        // nobody guessing it is no credit to the submitter (#423).
+        let fooled_everyone = guessable && correct.is_empty() && self.played == GpPlayed::Heard;
         let mut points: Vec<(UserId, u32)> =
             correct.iter().map(|g| (*g, GP_POINTS_CORRECT)).collect();
         let mut own = 0;
@@ -646,7 +669,7 @@ impl GpGame {
                     fooled_everyone: score.fooled_everyone,
                     likes: t.likes.len(),
                     played_full: t.play_full,
-                    failed: t.failed,
+                    failed: t.played == GpPlayed::Never,
                 }
             })
             .collect();
@@ -1461,7 +1484,20 @@ impl Data {
         track_idx: usize,
         now: i64,
     ) -> Option<GpTrackResult> {
-        self.gp_finish_track(guild_id, round_idx, track_idx, now, false)
+        self.gp_finish_track(guild_id, round_idx, track_idx, now, GpPlayed::Heard)
+    }
+
+    /// Like [`Self::gp_reveal_and_advance`], but for a song whose stream died
+    /// part-way: it is revealed and scored as a song, except that it fools
+    /// nobody (see [`GpPlayed::CutShort`]).
+    pub fn gp_cut_short_and_advance(
+        &self,
+        guild_id: GuildId,
+        round_idx: usize,
+        track_idx: usize,
+        now: i64,
+    ) -> Option<GpTrackResult> {
+        self.gp_finish_track(guild_id, round_idx, track_idx, now, GpPlayed::CutShort)
     }
 
     /// Like [`Self::gp_reveal_and_advance`], but for a song that never played:
@@ -1476,7 +1512,7 @@ impl Data {
         track_idx: usize,
         now: i64,
     ) -> Option<GpTrackResult> {
-        self.gp_finish_track(guild_id, round_idx, track_idx, now, true)
+        self.gp_finish_track(guild_id, round_idx, track_idx, now, GpPlayed::Never)
     }
 
     fn gp_finish_track(
@@ -1485,7 +1521,7 @@ impl Data {
         round_idx: usize,
         track_idx: usize,
         now: i64,
-        failed: bool,
+        played: GpPlayed,
     ) -> Option<GpTrackResult> {
         let mut game = self.gp_games.get_mut(&guild_id)?;
         if game.phase != GpPhase::Playing
@@ -1496,7 +1532,7 @@ impl Data {
         }
         let guessable = game.rounds[round_idx].guessable();
         let t = &mut game.rounds[round_idx].tracks[track_idx];
-        t.failed = failed;
+        t.played = played;
         let (submitter, likes, message) = (t.submitter, t.likes.len(), t.message);
         let played_full = t.play_full;
         let (title, url) = (t.track.get_title(), t.track.get_url());
@@ -1539,7 +1575,7 @@ impl Data {
             message,
             text_channel: game.text_channel,
             next,
-            failed,
+            failed: played == GpPlayed::Never,
             held: game.reveal == GpReveal::Round,
             round,
         })
@@ -1584,17 +1620,29 @@ impl Data {
     /// actually arrived: autoplay has been kept away, so the game's work is done.
     /// A game that is merely finished is left alone -- only `/gp end` parks.
     pub fn gp_remove_if_parked(&self, guild_id: GuildId) -> bool {
-        let parked = self
+        self.gp_remove_parked_where(guild_id, |_| true)
+    }
+
+    /// The `/gp end` backstop: remove the parked game only if it is the one that
+    /// started at `started_at`, reporting whether it did. Two `/gp end`s about
+    /// ten seconds apart put the first one's backstop inside the second game's
+    /// parked window, where it would otherwise collect that game (#423).
+    pub fn gp_collect_parked(&self, guild_id: GuildId, started_at: i64) -> bool {
+        self.gp_remove_parked_where(guild_id, |g| g.started_at == started_at)
+    }
+
+    /// Remove the guild's game if it is parked and `which` agrees, in one step,
+    /// so nothing can replace the game between the check and the remove.
+    fn gp_remove_parked_where(&self, guild_id: GuildId, which: impl Fn(&GpGame) -> bool) -> bool {
+        let Some((_, game)) = self
             .gp_games
-            .get(&guild_id)
-            .is_some_and(|g| g.parked_for_end);
-        if parked {
-            if let Some((_, game)) = self.gp_games.remove(&guild_id) {
-                self.release_playback(guild_id);
-                self.gp_mark_finished(&game, GpOutcome::Ended);
-            }
-        }
-        parked
+            .remove_if(&guild_id, |_, g| g.parked_for_end && which(g))
+        else {
+            return false;
+        };
+        self.release_playback(guild_id);
+        self.gp_mark_finished(&game, GpOutcome::Ended);
+        true
     }
 
     /// Remove the game unconditionally (game over, bot kicked from voice).

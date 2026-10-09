@@ -49,7 +49,8 @@
 
 use super::gp::{
     gp_after_close, gp_play_track, gp_post, gp_rendered, gp_spawn_window_timer_secs, now, GpCard,
-    GpClip, GpGame, GpPhase, GpPlayback, GpReveal, GpRound, GpTrack, GP_RESUME_WINDOW_SECS,
+    GpClip, GpGame, GpPhase, GpPlayback, GpPlayed, GpReveal, GpRound, GpTrack,
+    GP_RESUME_WINDOW_SECS,
 };
 use super::gp_prompts::{GpCategories, GpCategory};
 use crate::commands::music_utils::set_global_handlers_with;
@@ -273,6 +274,7 @@ impl GpGame {
                     duration_secs: saved.duration_secs(),
                     play_full: false,
                     failed: false,
+                    cut_short: false,
                     message_channel_id: None,
                     message_id: None,
                     guesses: Vec::new(),
@@ -298,7 +300,8 @@ impl GpGame {
                     artist: saved.artist.clone(),
                     duration_secs: saved.duration_secs(),
                     play_full: t.play_full,
-                    failed: t.failed,
+                    failed: t.played == GpPlayed::Never,
+                    cut_short: t.played == GpPlayed::CutShort,
                     message_channel_id: t.message.map(|(c, _)| c.get() as i64),
                     message_id: t.message.map(|(_, m)| m.get() as i64),
                     guesses,
@@ -400,6 +403,17 @@ impl GpGame {
                 GpLoadError(format!("track in round {} which has no round", t.round_idx))
             })?;
             let submitter = user(t.submitter_id);
+            let played = match (t.failed, t.cut_short) {
+                (false, false) => GpPlayed::Heard,
+                (false, true) => GpPlayed::CutShort,
+                (true, false) => GpPlayed::Never,
+                (true, true) => {
+                    return Err(GpLoadError(format!(
+                        "round {} track both never played and cut short",
+                        t.round_idx
+                    )))
+                },
+            };
             // The submitter is the game's, kept on the `GpTrack` and as the
             // submissions key; it is deliberately never put on the track itself.
             let resolved = ResolvedTrack::from_saved(&SavedTrack::from_secs(
@@ -432,7 +446,7 @@ impl GpGame {
                         skip_votes: t.skip_votes.iter().map(|u| user(*u)).collect(),
                         full_votes: t.full_votes.iter().map(|u| user(*u)).collect(),
                         play_full: t.play_full,
-                        failed: t.failed,
+                        played,
                         message: message(t.message_channel_id, t.message_id),
                     });
                 },
@@ -1254,27 +1268,22 @@ mod test {
         data.gp_close_window(G, A, &mut StdRng::seed_from_u64(0), NOW)
             .unwrap();
         data.gp_fail_and_advance(G, 0, 0, NOW).unwrap();
+        data.gp_cut_short_and_advance(G, 0, 1, NOW).unwrap();
 
         let saved = data.gp_games.get(&G).unwrap().to_saved();
         assert_eq!(saved.game.reveal, "round");
         assert!(!saved.game.round_results);
         let t0 = saved.tracks.iter().find(|t| t.position == Some(0)).unwrap();
-        assert!(t0.failed);
-        assert!(
-            !saved
-                .tracks
-                .iter()
-                .find(|t| t.position == Some(1))
-                .unwrap()
-                .failed
-        );
+        assert!(t0.failed && !t0.cut_short);
+        let t1 = saved.tracks.iter().find(|t| t.position == Some(1)).unwrap();
+        assert!(!t1.failed && t1.cut_short);
 
         let back = GpGame::from_saved(&saved).unwrap();
         assert_eq!(back.to_saved(), saved);
         assert_eq!(back.reveal, GpReveal::Round);
         assert!(!back.round_results);
-        assert!(back.rounds[0].tracks[0].failed);
-        assert!(!back.rounds[0].tracks[1].failed);
+        assert_eq!(back.rounds[0].tracks[0].played, GpPlayed::Never);
+        assert_eq!(back.rounds[0].tracks[1].played, GpPlayed::CutShort);
         // Held: the board the resumed game shows is still the empty one.
         assert!(back.visible_scores().iter().all(|(_, p)| *p == 0));
     }
@@ -1431,6 +1440,14 @@ mod test {
         let mut s = good.clone();
         s.game.reveal = "never".into();
         assert!(GpGame::from_saved(&s).is_err());
+
+        let mut s = good.clone();
+        s.tracks[0].failed = true;
+        s.tracks[0].cut_short = true;
+        assert!(
+            GpGame::from_saved(&s).is_err(),
+            "a song that never played was not cut short"
+        );
 
         let mut s = good.clone();
         s.tracks[0].round_idx = 5;

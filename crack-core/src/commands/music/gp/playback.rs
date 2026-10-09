@@ -52,52 +52,63 @@ pub struct GpTrackEndHandler {
     pub intended: Option<Duration>,
 }
 
-/// Did this song reach nobody? songbird reports a stream it could never open as
-/// an `End` whose state is still `Errored`: it goes `Preparing` -> `Errored`
-/// without mixing a frame. Both halves matter. Without the `Errored` check the
-/// game treats a dead link as a song everyone just listened to; without the
-/// play-time check it does the opposite to a stream that dies part-way through,
-/// throwing away the guesses and 👍 of a room that heard most of it.
-///
-/// The line is [`GP_MIN_PLAYED`], not "any frame at all". A stream that dies a
-/// couple of hundred milliseconds in is a dead link as far as the room is
-/// concerned, and paying the submitter the fooled-everyone bonus for a song
-/// nobody could possibly have guessed is the bug 2ed923b set out to fix.
-pub(in crate::commands::music::gp) fn never_played(
+/// How much of this song reached the room? songbird reports a stream it could
+/// never open as an `End` whose state is still `Errored`: it goes `Preparing`
+/// -> `Errored` without mixing a frame. Only an `Errored` track can fall short;
+/// one that ended any other way was heard, whatever its play time.
+pub(in crate::commands::music::gp) fn gp_played(
     state: &TrackState,
     intended: Option<Duration>,
-) -> bool {
-    matches!(state.playing, PlayMode::Errored(_)) && state.play_time < gp_min_played(intended)
+) -> GpPlayed {
+    if !matches!(state.playing, PlayMode::Errored(_)) {
+        GpPlayed::Heard
+    } else if state.play_time < GP_DEAD_LINK {
+        GpPlayed::Never
+    } else if state.play_time < gp_min_played(intended) {
+        GpPlayed::CutShort
+    } else {
+        GpPlayed::Heard
+    }
 }
 
-/// Did the song fail instead of finish? The handler is registered for both
-/// `End` and `Error`, so this decides which of the two reveal paths runs.
-fn track_errored(ctx: &EventContext<'_>, intended: Option<Duration>) -> bool {
-    match ctx {
-        EventContext::Track(states) => states
-            .iter()
-            .any(|(state, _)| never_played(state, intended)),
-        _ => false,
+/// What the track-end handler decides. A vote to hear more of this song
+/// outranks the play time: somebody asked for more of it, so it reached the
+/// room whatever the stream did afterwards. Without this a song that played,
+/// got voted up, and then dropped its stream would be revealed as one that
+/// never played, and everyone who guessed it would go unpaid. Otherwise the
+/// least heard of the event's states stands.
+pub(in crate::commands::music::gp) fn gp_played_at_end<'a>(
+    heard_by_vote: bool,
+    states: impl IntoIterator<Item = &'a TrackState>,
+    intended: Option<Duration>,
+) -> GpPlayed {
+    if heard_by_vote {
+        return GpPlayed::Heard;
     }
+    states
+        .into_iter()
+        .map(|state| gp_played(state, intended))
+        .max()
+        .unwrap_or(GpPlayed::Heard)
 }
 
 #[async_trait]
 impl EventHandler for GpTrackEndHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
-        // A vote to hear more of this song outranks the play-time bar: somebody
-        // asked for more of it, so it reached the room whatever the stream did
-        // afterwards. Without this a song that played, got voted up, and then
-        // dropped its stream would be revealed as one that never played, and
-        // everyone who guessed it would go unpaid.
-        let failed =
-            !self
-                .pb
-                .data
-                .gp_heard_by_vote(self.pb.guild_id, self.round_idx, self.track_idx)
-                && track_errored(ctx, self.intended);
+        // Registered for `End` and `Error`, which always carry the track's
+        // state; anything else has nothing to say against it having played.
+        let states = match ctx {
+            EventContext::Track(states) => *states,
+            _ => &[],
+        };
+        let voted = self
+            .pb
+            .data
+            .gp_heard_by_vote(self.pb.guild_id, self.round_idx, self.track_idx);
+        let played = gp_played_at_end(voted, states.iter().map(|(s, _)| *s), self.intended);
         // Do the reveal off the driver's event task: it edits messages, sleeps,
         // and takes the call lock to enqueue the next song.
-        gp_spawn_advance(self.pb.clone(), self.round_idx, self.track_idx, failed);
+        gp_spawn_advance(self.pb.clone(), self.round_idx, self.track_idx, played);
         Some(Event::Cancel)
     }
 }
@@ -359,7 +370,12 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
                 start.round_idx,
                 start.track_idx
             );
-            gp_spawn_advance(pb.clone(), start.round_idx, start.track_idx, true);
+            gp_spawn_advance(
+                pb.clone(),
+                start.round_idx,
+                start.track_idx,
+                GpPlayed::Never,
+            );
             return Ok(());
         },
     };
@@ -512,7 +528,12 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
                     start.track_idx,
                     clip.start
                 );
-                gp_spawn_advance(pb.clone(), start.round_idx, start.track_idx, true);
+                gp_spawn_advance(
+                    pb.clone(),
+                    start.round_idx,
+                    start.track_idx,
+                    GpPlayed::Never,
+                );
                 return Ok(());
             }
         }
@@ -584,10 +605,10 @@ impl EventHandler for GpClipStartHandler {
 
 /// Advance off the current task. Used by the track handlers and by a song that
 /// could not be built, both of which must not run the reveal inline.
-fn gp_spawn_advance(pb: GpPlayback, round_idx: usize, track_idx: usize, failed: bool) {
+fn gp_spawn_advance(pb: GpPlayback, round_idx: usize, track_idx: usize, played: GpPlayed) {
     tokio::spawn(async move {
         let guild_id = pb.guild_id;
-        if let Err(e) = gp_advance_track(pb, round_idx, track_idx, failed).await {
+        if let Err(e) = gp_advance_track(pb, round_idx, track_idx, played).await {
             tracing::warn!("gp: advancing round {round_idx} song {track_idx} in {guild_id}: {e}");
         }
     });
@@ -597,14 +618,19 @@ pub async fn gp_advance_track(
     pb: GpPlayback,
     round_idx: usize,
     track_idx: usize,
-    failed: bool,
+    played: GpPlayed,
 ) -> Result<(), Error> {
     let guild_id = pb.guild_id;
-    let advance = if failed {
-        tracing::warn!("gp: round {round_idx} song {track_idx} in {guild_id} never played");
-        Data::gp_fail_and_advance
-    } else {
-        Data::gp_reveal_and_advance
+    let advance = match played {
+        GpPlayed::Heard => Data::gp_reveal_and_advance,
+        GpPlayed::CutShort => {
+            tracing::warn!("gp: round {round_idx} song {track_idx} in {guild_id} was cut short");
+            Data::gp_cut_short_and_advance
+        },
+        GpPlayed::Never => {
+            tracing::warn!("gp: round {round_idx} song {track_idx} in {guild_id} never played");
+            Data::gp_fail_and_advance
+        },
     };
     let Some(res) = advance(&pb.data, guild_id, round_idx, track_idx, now()) else {
         return Ok(());

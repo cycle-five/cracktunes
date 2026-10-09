@@ -1,9 +1,10 @@
 //! /gp's Discord glue against the messaging fakes: what each step of a game
 //! sends, edits and gives up on. The game's rules are tested in `test.rs`.
+use super::commands::gp_spawn_park_backstop;
 use super::playback::{gp_after_close, gp_answer_component, gp_spawn_window_timer_secs};
 use super::test::{
-    data, game, game_with, game_with_reveal, game_with_settings, playing_with_title, rng, submit,
-    A, B, G, NOW, TC,
+    data, game, game_started_at, game_with, game_with_reveal, game_with_settings,
+    playing_with_title, rng, submit, A, B, G, NOW, TC,
 };
 use super::*;
 use crate::commands::music::gp_persist::{
@@ -149,12 +150,27 @@ async fn the_reveal_replaces_the_song_message_and_its_controls() {
     let data = data();
     one_song_playing(&data, &["only"]);
     let fake = Arc::new(FakeTransport::default());
-    gp_advance_track(playback(&data, &fake), 0, 0, false)
+    gp_advance_track(playback(&data, &fake), 0, 0, GpPlayed::Heard)
         .await
         .unwrap();
     assert_eq!(fake.ops()[0], Op::Edit(TC.get(), 88));
     let reveal = fake.sent.lock().unwrap()[0].clone();
     assert!(reveal.embed.is_some() && reveal.components.is_empty());
+}
+
+/// However the song ended, the advance takes that path and the song keeps it:
+/// the round's results derive the payout from it again (#423).
+#[tokio::test(start_paused = true)]
+async fn the_advance_keeps_how_much_of_the_song_was_heard() {
+    for played in [GpPlayed::Heard, GpPlayed::CutShort, GpPlayed::Never] {
+        let data = data();
+        one_song_playing(&data, &["first", "second"]);
+        let fake = Arc::new(FakeTransport::default());
+        gp_advance_track(playback(&data, &fake), 0, 0, played)
+            .await
+            .unwrap();
+        assert_eq!(game(&data).rounds[0].tracks[0].played, played);
+    }
 }
 
 #[tokio::test(start_paused = true)]
@@ -163,7 +179,7 @@ async fn a_reveal_whose_edit_fails_is_posted_instead() {
     one_song_playing(&data, &["only"]);
     let fake = Arc::new(FakeTransport::default());
     *fake.edit_error.lock().unwrap() = Some(TransportError::UnknownMessage);
-    gp_advance_track(playback(&data, &fake), 0, 0, false)
+    gp_advance_track(playback(&data, &fake), 0, 0, GpPlayed::Heard)
         .await
         .unwrap();
     assert_eq!(
@@ -177,7 +193,7 @@ async fn the_rounds_last_reveal_posts_its_results_and_marks_them() {
     let data = data();
     one_song_playing(&data, &["first", "second"]);
     let fake = Arc::new(FakeTransport::default());
-    gp_advance_track(playback(&data, &fake), 0, 0, false)
+    gp_advance_track(playback(&data, &fake), 0, 0, GpPlayed::Heard)
         .await
         .unwrap();
     // The reveal edit, the results, then round two's prompt.
@@ -198,7 +214,7 @@ async fn a_failed_results_post_leaves_the_round_owed_and_the_game_moves_on() {
     one_song_playing(&data, &["first", "second"]);
     let fake = Arc::new(FakeTransport::default());
     fail_sends(&fake, 1);
-    gp_advance_track(playback(&data, &fake), 0, 0, false)
+    gp_advance_track(playback(&data, &fake), 0, 0, GpPlayed::Heard)
         .await
         .unwrap();
     assert!(
@@ -214,7 +230,7 @@ async fn the_games_last_reveal_posts_the_final_scoreboard() {
     let data = data();
     one_song_playing(&data, &["only"]);
     let fake = Arc::new(FakeTransport::default());
-    gp_advance_track(playback(&data, &fake), 0, 0, false)
+    gp_advance_track(playback(&data, &fake), 0, 0, GpPlayed::Heard)
         .await
         .unwrap();
     let last = fake.ops().len() - 1;
@@ -234,7 +250,7 @@ async fn a_final_scoreboard_that_cannot_be_posted_is_an_error_and_the_game_is_go
     let fake = Arc::new(FakeTransport::default());
     // The reveal is an edit, so the first send is the scoreboard.
     fail_sends(&fake, 1);
-    let out = gp_advance_track(playback(&data, &fake), 0, 0, false).await;
+    let out = gp_advance_track(playback(&data, &fake), 0, 0, GpPlayed::Heard).await;
     assert!(out.is_err(), "the scoreboard's `?` propagates");
     assert!(!data.gp_is_active(G), "the game is removed before the post");
 }
@@ -312,6 +328,32 @@ async fn owed_results_that_fail_are_not_reported_posted() {
     fail_sends(&fake, 1);
     assert!(post_owed_results(&fake, &game(&data)).await.is_empty());
     assert_eq!(fake.ops(), vec![Op::Send(TC.get())], "a send was attempted");
+}
+
+/// The backstop `/gp end` leaves behind collects the game it was spawned for
+/// if that game's `End` never came, and nothing else (#423).
+#[tokio::test(start_paused = true)]
+async fn the_end_backstop_collects_its_own_game_and_only_that() {
+    let data = data();
+    game_with(&data, &["first"]);
+    let first = data.gp_park_for_end(G, A, false).unwrap();
+    gp_spawn_park_backstop(data.clone(), G, first.started_at);
+    tokio::time::sleep(Duration::from_secs(GP_PARK_GRACE_SECS + 1)).await;
+    assert!(
+        !data.gp_is_active(G),
+        "its End never came, so it is collected"
+    );
+
+    // A game parked after another `/gp end`'s backstop was spawned.
+    let data = super::test::data();
+    game_with(&data, &["first"]);
+    let first = data.gp_park_for_end(G, A, false).unwrap();
+    gp_spawn_park_backstop(data.clone(), G, first.started_at);
+    assert!(data.gp_remove_if_parked(G), "its End collects it");
+    game_started_at(&data, NOW + 5);
+    data.gp_park_for_end(G, A, false).unwrap();
+    tokio::time::sleep(Duration::from_secs(GP_PARK_GRACE_SECS + 1)).await;
+    assert!(data.gp_is_active(G), "not the game it was spawned for");
 }
 
 // A game the resume will not bring back is closed out by its tombstone, and
