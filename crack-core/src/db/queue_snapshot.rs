@@ -12,8 +12,12 @@ pub struct SnapshotTrack {
     pub title: Option<String>,
     pub artist: Option<String>,
     pub duration_secs: Option<i64>,
-    /// `None` for autoplay's picks.
+    /// Who asked for it. Autoplay's picks are recorded as user 1 (`Some(1)`);
+    /// `None` means the requester could not be read.
     pub requester: Option<i64>,
+    /// Artwork link; rows written before this field existed read as `None`.
+    #[serde(default)]
+    pub thumbnail: Option<String>,
 }
 
 /// A guild's queue at shutdown. Tracks are in play order, current first.
@@ -121,6 +125,7 @@ mod tests {
             artist: None,
             duration_secs: Some(200 + n),
             requester,
+            thumbnail: None,
         }
     }
 

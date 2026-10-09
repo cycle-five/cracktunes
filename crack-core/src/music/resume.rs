@@ -3,7 +3,7 @@
 //!
 //! Shutdown writes each playing guild's queue down ([`queue_shutdown`]); the
 //! guild-create handler claims it and, if it is worth it, rejoins and rebuilds
-//! the queue ([`queue_resume_guild`], Task 4).
+//! the queue ([`queue_resume_guild`], run from the guild-create handler).
 
 use crate::commands::music::gp_persist::vc_members;
 use crate::commands::music_utils::{join_permitted, set_global_handlers_with};
@@ -14,7 +14,7 @@ use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::courier::{post, Destination};
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::RenderCx;
-use crate::messaging::status::{note_command_channel, show_now_playing};
+use crate::messaging::status::{note_command_channel, show_now_playing_after};
 use crate::messaging::transport::{DiscordTransport, Transport};
 use crate::music::audit::{Actor, BotReason};
 use crate::music::ops::TRACK_INFO_TIMEOUT;
@@ -78,6 +78,7 @@ pub(crate) fn keep(
         artist: meta.artist,
         duration_secs: meta.duration.map(|d| d.as_secs() as i64),
         requester,
+        thumbnail: meta.thumbnail,
     })
 }
 
@@ -238,7 +239,10 @@ fn resolved(t: &SnapshotTrack) -> ResolvedTrack<'static> {
         t.artist.clone(),
         t.duration_secs,
     );
-    let r = ResolvedTrack::from_saved(&saved);
+    let mut r = ResolvedTrack::from_saved(&saved);
+    if let Some(m) = r.metadata.as_mut() {
+        m.thumbnail = t.thumbnail.clone();
+    }
     match t.requester {
         Some(id) if id > 0 => r.with_user_id(UserId::new(id as u64)),
         _ => r,
@@ -298,10 +302,14 @@ where
     }
     enqueue_resolved_tracks_back(&guard, call, rest.iter().map(resolved).collect(), http).await?;
     if snapshot.looping {
-        let _ = repeat_on(&guard, call, Some(true)).await;
+        if let Err(e) = repeat_on(&guard, call, Some(true)).await {
+            tracing::warn!("queue: restoring repeat in {guild} failed: {e:?}");
+        }
     }
     if snapshot.paused {
-        let _ = pause_on(&guard, call).await;
+        if let Err(e) = pause_on(&guard, call).await {
+            tracing::warn!("queue: restoring pause in {guild} failed: {e:?}");
+        }
     }
     drop(guard);
     data.set_autoplay(guild, snapshot.autoplay).await;
@@ -330,10 +338,8 @@ pub(crate) async fn announce_resumed(
     transport: &dyn Transport,
     guild: GuildId,
     s: &QueueSnapshot,
-) {
-    let Some(text) = s.text_channel_id else {
-        return;
-    };
+) -> Option<(GenericChannelId, MessageId)> {
+    let text = s.text_channel_id?;
     let text = GenericChannelId::new(text as u64);
     note_command_channel(data, guild, text).await;
     post(
@@ -343,7 +349,7 @@ pub(crate) async fn announce_resumed(
         &CrackedMessage::QueueResumed,
         &RenderCx::now(),
     )
-    .await;
+    .await
 }
 
 /// Bring back the guild's queue if one was written down at the last shutdown.
@@ -408,8 +414,8 @@ pub async fn queue_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guil
             tracing::warn!("queue: rebuilding the queue in {guild_id}: {e}");
             return;
         }
-        announce_resumed(&data, &*transport, guild_id, &snapshot).await;
-        show_now_playing(&data, http, cache, guild_id, &call).await;
+        let anchor = announce_resumed(&data, &*transport, guild_id, &snapshot).await;
+        show_now_playing_after(&data, http, cache, guild_id, &call, anchor).await;
     });
 }
 
@@ -464,7 +470,11 @@ mod tests {
     async fn the_resume_is_announced_in_the_text_channel() {
         let data = Data::default();
         let t = FakeTransport::default();
-        announce_resumed(&data, &t, GUILD, &snap(0, false, false, false)).await;
+        let anchor = announce_resumed(&data, &t, GUILD, &snap(0, false, false, false)).await;
+        assert_eq!(
+            anchor,
+            Some((GenericChannelId::new(20), MessageId::new(1000)))
+        );
         assert_eq!(t.ops(), vec![Op::Send(20)]);
         assert_eq!(
             t.texts(),
@@ -483,7 +493,7 @@ mod tests {
         let t = FakeTransport::default();
         let mut s = snap(0, false, false, false);
         s.text_channel_id = None;
-        announce_resumed(&data, &t, GUILD, &s).await;
+        assert_eq!(announce_resumed(&data, &t, GUILD, &s).await, None);
         assert!(t.ops().is_empty());
     }
 
@@ -582,6 +592,7 @@ mod tests {
                         artist: Some("a0".into()),
                         duration_secs: Some(100),
                         requester: Some(100),
+                        thumbnail: None,
                     },
                     SnapshotTrack {
                         url: "https://www.youtube.com/watch?v=b".into(),
@@ -590,6 +601,7 @@ mod tests {
                         duration_secs: Some(101),
                         // `new_track` records a missing requester as user 1.
                         requester: Some(1),
+                        thumbnail: None,
                     },
                 ]
             );
@@ -744,6 +756,7 @@ mod tests {
             artist: None,
             duration_secs: None,
             requester: None,
+            thumbnail: None,
         }
     }
 
@@ -770,8 +783,46 @@ mod tests {
                 artist: Some("a3".into()),
                 duration_secs: Some(103),
                 requester: Some(7),
+                thumbnail: None,
             })
         );
+    }
+
+    #[test]
+    fn keep_carries_the_thumbnail() {
+        let mut m = meta(1, Some("https://x/y"));
+        m.thumbnail = Some("https://img/1.jpg".into());
+        assert_eq!(
+            keep(Some(m), None).and_then(|t| t.thumbnail),
+            Some("https://img/1.jpg".to_string())
+        );
+    }
+
+    #[test]
+    fn resolved_carries_the_thumbnail_into_the_metadata() {
+        let mut t = row(1);
+        t.thumbnail = Some("https://img/1.jpg".into());
+        let r = resolved(&t);
+        assert_eq!(
+            r.metadata.and_then(|m| m.thumbnail),
+            Some("https://img/1.jpg".to_string())
+        );
+    }
+
+    #[test]
+    fn a_restored_non_youtube_link_plays_from_where_it_was() {
+        let mut t = row(1);
+        t.url = "https://soundcloud.com/a/b".into();
+        assert_eq!(resolved(&t).get_url(), "https://soundcloud.com/a/b");
+    }
+
+    #[test]
+    fn a_row_without_a_thumbnail_key_reads_as_none() {
+        let t: SnapshotTrack = serde_json::from_str(
+            r#"{"url":"u","title":null,"artist":null,"duration_secs":null,"requester":null}"#,
+        )
+        .unwrap();
+        assert_eq!(t.thumbnail, None);
     }
 
     #[test]
@@ -806,6 +857,7 @@ mod tests {
             artist: None,
             duration_secs: Some(200),
             requester,
+            thumbnail: None,
         }
     }
 
