@@ -587,14 +587,14 @@ fn a_long_title_is_capped_and_a_real_one_is_not() {
     let long = "a".repeat(300);
     let start = playing_with_title(&data, &long, GpReveal::Song);
     let d = description(&render_card(&GpCard::Song { start, guild: G }, &cx()));
-    assert!(d.contains(&format!("{}…", "a".repeat(GP_TITLE_MAX))));
-    assert!(!d.contains(&"a".repeat(GP_TITLE_MAX + 1)));
+    // The test track's URL carries the title too, so look at the link text only.
+    assert!(d.contains(&format!("[**{}…**]", "a".repeat(GP_TITLE_MAX))), "{d}");
 
     let data = self::data();
     let real = "b".repeat(GP_TITLE_MAX);
     let start = playing_with_title(&data, &real, GpReveal::Song);
     let d = description(&render_card(&GpCard::Song { start, guild: G }, &cx()));
-    assert!(d.contains(&real) && !d.contains(&format!("{real}…")));
+    assert!(d.contains(&format!("[**{real}**]")), "{d}");
 }
 ```
 
