@@ -49,7 +49,12 @@ Out of scope: admin, osint, settings, register and utility (follow-up 2 of the a
 - `CrackedMessage::Gp(Box<GpCard>)` is the one new variant. `render()` gets one arm: `CrackedMessage::Gp(card) => crate::commands::music::gp::render_card(card, cx)`. It is not named `render`, because `gp/mod.rs` glob-re-exports `ui`. `messaging` already depends on `/gp` (`GpClip`, `GpReveal`), so this adds no new edge.
 - `gp::ui::render_card(card, cx) -> Rendered` composes the embed, the components and the content. The `gp_*_embed` builders keep their signatures, so the existing `ui` tests keep working.
 - Its `Display` (used for logs and `to_string`) is the card's kind, for example `"gp: prompt"`. `Line` displays its text.
-- **The shared formatter runs inside the builders.** Every song title, artist and prompt that reaches an embed passes through `format::escape`. Then it is capped with `clip` on a character boundary to its slot's limit: `EMBED_TITLE_MAX`, `FIELD_MAX` or `DESCRIPTION_MAX`, with `INLINE_TITLE_MAX` for a title inside a list line. A whole description or field value is clipped to its limit as well, so 25 long titles cannot push the round results past Discord's 4096.
+- **The shared formatter runs inside the builders.** It applies to third-party text only, as `format::escape`'s own rule says.
+  - **Song titles and URLs** go through `TrackLabel::linked(GP_TITLE_MAX)`: trimmed, `(untitled)` when blank, capped, then escaped. The link is shown only for an http(s) URL. That renders `[**title**](url)`, the same as today's `**[title](url)**`.
+  - `GP_TITLE_MAX` is 100, YouTube's own title limit, so a real title is never cut. The music path's `INLINE_TITLE_MAX` (60) would cut ordinary titles in the results list.
+  - **Player display names** in `/gp status` go through `escape`.
+  - **Prompts** come from our bundled `gp_prompts.json` and are not escaped.
+  - Every description is clipped to `DESCRIPTION_MAX` and every field value to `FIELD_MAX` with `format::clip`. The round results' own hand-written cut at 4096 becomes that `clip`.
 - **Unchanged:** the `CrackedMessage::Gp*` variants that already exist (`GpStarted`, `GpSubmitted`, `GpRoundSkipped`, `GpEnded`, the vote confirmations). They already reach the courier through `send_reply` and `send_message`.
 
 ## 2. Delivery
@@ -117,7 +122,7 @@ The collector loop itself stays untested by unit tests (`cfg(not(tarpaulin_inclu
   - `Scoreboard`'s `lead` is the content.
 - **Formatter:**
   - a title with `*`, `_` and backticks comes out escaped in the song, reveal and round-results embeds;
-  - a 300-character title is capped with `…` on a character boundary;
+  - a 300-character title is capped at `GP_TITLE_MAX` with `…` on a character boundary, and a 100-character title is not cut;
   - a round of 25 long titles keeps the results description within 4096.
 - **Delivery,** against `FakeTransport` with a `GpPlayback` built over the test `Data` and `standalone_call`:
   - a round opens: the prompt is posted, and its id is recorded as the prompt message;
