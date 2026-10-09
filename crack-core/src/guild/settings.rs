@@ -351,6 +351,11 @@ pub struct GuildSettings {
     /// echo line in the channel.
     #[serde(default = "default_true")]
     pub control_echoes: bool,
+    /// Whether the now-playing status message carries its buttons. Off is
+    /// how a server that restricted the music commands under Integrations
+    /// keeps them from being reached by a button.
+    #[serde(default = "default_true")]
+    pub now_playing_buttons: bool,
     #[serde(default = "allow_all_domains_default")]
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
@@ -391,6 +396,7 @@ impl PartialEq for GuildSettings {
             && self.reply_with_embed == other.reply_with_embed
             && self.ephemeral_replies == other.ephemeral_replies
             && self.control_echoes == other.control_echoes
+            && self.now_playing_buttons == other.now_playing_buttons
             && self.allow_all_domains == other.allow_all_domains
             && self.allowed_domains == other.allowed_domains
             && self.banned_domains == other.banned_domains
@@ -474,6 +480,7 @@ impl From<GuildSettingsRead> for GuildSettings {
         settings.autopause = settings_db.autopause;
         settings.ephemeral_replies = settings_db.ephemeral_replies;
         settings.control_echoes = settings_db.control_echoes;
+        settings.now_playing_buttons = settings_db.now_playing_buttons;
         settings.autoplay = true; //settings_db.autoplay;
         settings.allow_all_domains = Some(settings_db.allow_all_domains);
         settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
@@ -526,6 +533,7 @@ impl GuildSettings {
             reply_with_embed: true,
             ephemeral_replies: false,
             control_echoes: true,
+            now_playing_buttons: true,
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),
@@ -633,6 +641,12 @@ impl GuildSettings {
     /// Toggle whether controls (dashboard, buttons) echo in the channel.
     pub fn toggle_control_echoes(&mut self) -> &mut Self {
         self.control_echoes = !self.control_echoes;
+        self
+    }
+
+    /// Toggle whether the now-playing message carries its buttons.
+    pub fn toggle_now_playing_buttons(&mut self) -> &mut Self {
+        self.now_playing_buttons = !self.now_playing_buttons;
         self
     }
 
@@ -1300,9 +1314,44 @@ mod test {
             additional_prefixes: vec![],
             ephemeral_replies: true,
             control_echoes: true,
+            now_playing_buttons: true,
         };
 
         assert!(GuildSettings::from(row).ephemeral_replies);
+    }
+
+    #[test]
+    fn a_database_row_carries_now_playing_buttons() {
+        let row = crate::db::GuildSettingsRead {
+            guild_id: 123,
+            guild_name: "guild".to_string(),
+            prefix: "r!".to_string(),
+            premium: false,
+            autopause: false,
+            allow_all_domains: true,
+            allowed_domains: vec![],
+            banned_domains: vec![],
+            ignored_channels: vec![],
+            old_volume: 1.0,
+            volume: 1.0,
+            self_deafen: true,
+            timeout_seconds: Some(360),
+            additional_prefixes: vec![],
+            ephemeral_replies: false,
+            control_echoes: true,
+            now_playing_buttons: false,
+        };
+        assert!(!GuildSettings::from(row).now_playing_buttons);
+    }
+
+    #[test]
+    fn new_settings_have_buttons_and_settings_differing_in_them_are_not_equal() {
+        let on = GuildSettings::new(GuildId::new(123), None, None);
+        assert!(on.now_playing_buttons);
+        let mut off = on.clone();
+        off.toggle_now_playing_buttons();
+        assert!(!off.now_playing_buttons);
+        assert_ne!(on, off);
     }
 
     #[test]
@@ -1347,6 +1396,7 @@ mod test {
             additional_prefixes: vec![],
             ephemeral_replies: false,
             control_echoes: false,
+            now_playing_buttons: true,
         };
         assert!(!GuildSettings::from(row).control_echoes);
     }

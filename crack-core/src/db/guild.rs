@@ -36,6 +36,7 @@ pub struct GuildSettingsRead {
     pub additional_prefixes: Vec<String>,
     pub ephemeral_replies: bool,
     pub control_echoes: bool,
+    pub now_playing_buttons: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -194,10 +195,10 @@ impl GuildEntity {
         let to_write = settings.guild_name.to_string();
         sqlx::query!(
             r#"
-            INSERT INTO guild_settings (guild_id, guild_name, prefix, premium, autopause, allow_all_domains, allowed_domains, banned_domains, ignored_channels, old_volume, volume, self_deafen, timeout_seconds, additional_prefixes, ephemeral_replies, control_echoes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::FLOAT, $11::FLOAT, $12, $13, $14, $15, $16)
+            INSERT INTO guild_settings (guild_id, guild_name, prefix, premium, autopause, allow_all_domains, allowed_domains, banned_domains, ignored_channels, old_volume, volume, self_deafen, timeout_seconds, additional_prefixes, ephemeral_replies, control_echoes, now_playing_buttons)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::FLOAT, $11::FLOAT, $12, $13, $14, $15, $16, $17)
             ON CONFLICT (guild_id)
-            DO UPDATE SET guild_name = $2, prefix = $3, premium = $4, autopause = $5, allow_all_domains = $6, allowed_domains = $7, banned_domains = $8, ignored_channels = $9, old_volume = $10::FLOAT, volume = $11::FLOAT, self_deafen = $12, timeout_seconds = $13, additional_prefixes = $14, ephemeral_replies = $15, control_echoes = $16
+            DO UPDATE SET guild_name = $2, prefix = $3, premium = $4, autopause = $5, allow_all_domains = $6, allowed_domains = $7, banned_domains = $8, ignored_channels = $9, old_volume = $10::FLOAT, volume = $11::FLOAT, self_deafen = $12, timeout_seconds = $13, additional_prefixes = $14, ephemeral_replies = $15, control_echoes = $16, now_playing_buttons = $17
             "#,
             settings.guild_id.get() as i64,
             to_write,
@@ -215,6 +216,7 @@ impl GuildEntity {
             &settings.additional_prefixes,
             settings.ephemeral_replies,
             settings.control_echoes,
+            settings.now_playing_buttons,
         )
         .execute(pool)
         .await?;
@@ -726,6 +728,38 @@ mod control_echoes_db_tests {
             .get_settings(&pool)
             .await?;
         assert!(!reloaded.control_echoes);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod now_playing_buttons_db_tests {
+    use super::*;
+    use std::str::FromStr;
+
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    /// Off must survive a restart, and a new guild starts on.
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn now_playing_buttons_survive_a_save_and_load(
+        pool: PgPool,
+    ) -> Result<(), SerenityError> {
+        let name = FixedString::from_str("buttons test").expect("a short name");
+        let (_guild, mut settings) =
+            GuildEntity::get_or_create(&pool, 454545, name, "r!".to_string()).await?;
+        assert!(settings.now_playing_buttons);
+
+        settings.now_playing_buttons = false;
+        GuildEntity::write_settings(&pool, &settings).await?;
+
+        let reloaded = GuildEntity::new_guild(454545, "buttons test".to_string())
+            .get_settings(&pool)
+            .await?;
+        assert!(!reloaded.now_playing_buttons);
         Ok(())
     }
 }
