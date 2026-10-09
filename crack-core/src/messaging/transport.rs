@@ -18,6 +18,17 @@ pub enum TransportError {
     Other(String),
 }
 
+impl std::fmt::Display for TransportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownMessage => f.write_str("unknown message"),
+            Self::Other(text) => f.write_str(text),
+        }
+    }
+}
+
+impl std::error::Error for TransportError {}
+
 impl From<serenity::Error> for TransportError {
     fn from(err: serenity::Error) -> Self {
         if is_unknown_message(&err) {
@@ -43,6 +54,13 @@ pub trait Transport: Send + Sync {
         out: Rendered,
     ) -> Result<(), TransportError>;
     async fn delete(&self, channel: GenericChannelId, id: MessageId) -> Result<(), TransportError>;
+    /// Take the components off a message and leave the rest of it as it is.
+    /// `edit` cannot: it replaces the whole message, embed included.
+    async fn clear_components(
+        &self,
+        channel: GenericChannelId,
+        id: MessageId,
+    ) -> Result<(), TransportError>;
     /// The newest message id the gateway has reported for `channel`, if the
     /// channel is cached.
     fn last_message_id(&self, guild: GuildId, channel: GenericChannelId) -> Option<MessageId>;
@@ -101,6 +119,26 @@ impl Transport for DiscordTransport {
         Ok(channel.delete_message(&self.http, id, None).await?)
     }
 
+    async fn clear_components(
+        &self,
+        channel: GenericChannelId,
+        id: MessageId,
+    ) -> Result<(), TransportError> {
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "messaging is where sends are made"
+        )]
+        channel
+            .edit_message(
+                &self.http,
+                id,
+                serenity::all::EditMessage::new()
+                    .components(Vec::<serenity::all::CreateComponent<'_>>::new()),
+            )
+            .await?;
+        Ok(())
+    }
+
     /// serenity sets `last_message_id` on every message-create for guild
     /// channels and threads (`cache/event.rs`). None when the guild or channel
     /// is not cached, which `placement` treats as "moved".
@@ -125,6 +163,11 @@ pub trait Press: Send + Sync {
     /// A deferred update: Discord stops waiting, and the message is left as is.
     async fn acknowledge(&self) -> Result<(), TransportError>;
     async fn followup(&self, out: Rendered, ephemeral: bool) -> Result<(), TransportError>;
+    /// The interaction's one response: a new message, ephemeral or not. For
+    /// an answer worked out from memory, well inside Discord's three seconds.
+    async fn respond(&self, out: Rendered, ephemeral: bool) -> Result<(), TransportError>;
+    /// The interaction's one response: redraw the message the component is on.
+    async fn update(&self, out: Rendered) -> Result<(), TransportError>;
 }
 
 /// The real Discord behind [`Press`].
@@ -155,5 +198,35 @@ impl Press for DiscordPress<'_> {
             .create_followup(self.http, out.to_followup(ephemeral))
             .await?;
         Ok(())
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
+    async fn respond(&self, out: Rendered, ephemeral: bool) -> Result<(), TransportError> {
+        Ok(self
+            .interaction
+            .create_response(
+                self.http,
+                CreateInteractionResponse::Message(
+                    out.to_interaction_message().ephemeral(ephemeral),
+                ),
+            )
+            .await?)
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
+    async fn update(&self, out: Rendered) -> Result<(), TransportError> {
+        Ok(self
+            .interaction
+            .create_response(
+                self.http,
+                CreateInteractionResponse::UpdateMessage(out.to_interaction_message()),
+            )
+            .await?)
     }
 }
