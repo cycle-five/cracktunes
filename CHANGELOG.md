@@ -154,6 +154,15 @@
   Server Settings → Integrations, which buttons do not see.
 - **One button press per person per server every 2 seconds.** A press inside
   that is ignored, so mashing a button cannot flood the channel with echo lines.
+- **The music queue survives a restart** (#595). When the bot shuts down (a
+  deploy, a clean reboot), every server that was playing writes its queue
+  down. On the way back up, within 5 minutes, the bot rejoins the voice
+  channel, re-queues every track with its requester, picks the current one up
+  a few seconds before where it was (from the top if that fails), restores
+  repeat, pause and autoplay, says it is back, and the now-playing message
+  that was on screen loses its buttons. An empty voice channel, or a longer
+  outage, is left alone. A crash is not covered: the queue is written at
+  shutdown only. `/gp` games keep their own resume.
 - The queue history's source filter (`/auditlog`, the dashboard) has `button`.
 
 ### Changed
