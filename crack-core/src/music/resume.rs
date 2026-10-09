@@ -5,19 +5,29 @@
 //! guild-create handler claims it and, if it is worth it, rejoins and rebuilds
 //! the queue ([`queue_resume_guild`], Task 4).
 
+use crate::commands::music::gp_persist::vc_members;
+use crate::commands::music_utils::{join_permitted, set_global_handlers_with};
+use crate::db::queue_snapshot::claim;
 use crate::db::queue_snapshot::{save_all, QueueSnapshot, SnapshotTrack};
 use crate::errors::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
+use crate::messaging::courier::{post, Destination};
+use crate::messaging::message::CrackedMessage;
+use crate::messaging::render::RenderCx;
+use crate::messaging::status::{note_command_channel, show_now_playing};
+use crate::messaging::transport::{DiscordTransport, Transport};
 use crate::music::audit::{Actor, BotReason};
 use crate::music::ops::TRACK_INFO_TIMEOUT;
 use crate::music::ops::{pause_on, repeat_on, SEEK_TIMEOUT};
+use crate::music::perms::ensure_can_join;
 use crate::music::queue::{self, enqueue_resolved_tracks_back};
 use crate::music::PlaybackOwner;
 use crate::utils::{get_requesting_user, get_track_handle_metadata};
 use crate::Data;
 use crack_testing::ResolvedTrack;
 use crack_types::SavedTrack;
-use serenity::all::{ChannelId, GuildId, UserId};
+use poise::serenity_prelude::Context as SerenityContext;
+use serenity::all::{ChannelId, GenericChannelId, Guild, GuildId, MessageId, UserId};
 use songbird::tracks::TrackHandle;
 use songbird::tracks::{LoopState, PlayMode, TrackState};
 use songbird::Call;
@@ -178,10 +188,6 @@ pub const QUEUE_RESUME_MIN_SEEK: Duration = Duration::from_secs(5);
 pub const QUEUE_RESUME_REWIND: Duration = Duration::from_secs(3);
 
 /// What to do with a claimed snapshot.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "wired into guild create in Task 4")
-)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResumePlan {
     Resume,
@@ -193,10 +199,6 @@ pub(crate) enum ResumePlan {
     GameRunning,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "wired into guild create in Task 4")
-)]
 pub(crate) fn plan(age_secs: i64, listeners: usize, game_running: bool) -> ResumePlan {
     if game_running {
         ResumePlan::GameRunning
@@ -210,10 +212,6 @@ pub(crate) fn plan(age_secs: i64, listeners: usize, game_running: bool) -> Resum
 }
 
 /// How a seek of the current track went.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "wired into guild create in Task 4")
-)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SeekOutcome {
     Done,
@@ -222,7 +220,6 @@ pub(crate) enum SeekOutcome {
     TimedOut,
 }
 
-#[expect(dead_code, reason = "wired into guild create in Task 4")]
 pub(crate) async fn seek_for_real(track: TrackHandle, to: Duration) -> SeekOutcome {
     match tokio::time::timeout(SEEK_TIMEOUT, track.seek(to).result_async()).await {
         Ok(Ok(_)) => SeekOutcome::Done,
@@ -234,10 +231,6 @@ pub(crate) async fn seek_for_real(track: TrackHandle, to: Duration) -> SeekOutco
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "wired into guild create in Task 4")
-)]
 fn resolved(t: &SnapshotTrack) -> ResolvedTrack<'static> {
     let saved = SavedTrack::from_secs(
         t.url.clone(),
@@ -260,10 +253,6 @@ fn resolved(t: &SnapshotTrack) -> ResolvedTrack<'static> {
 #[expect(
     clippy::disallowed_methods,
     reason = "the restore removes its own dead handle under its guard; ops::remove_on refuses the playing track"
-)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "wired into guild create in Task 4")
 )]
 pub(crate) async fn restore<F, Fut>(
     data: &Data,
@@ -319,6 +308,111 @@ where
     Ok(())
 }
 
+pub(crate) async fn retire_old_status(
+    transport: &dyn Transport,
+    guild: GuildId,
+    s: &QueueSnapshot,
+) {
+    let (Some(channel), Some(id)) = (s.status_channel_id, s.status_message_id) else {
+        return;
+    };
+    let (channel, id) = (
+        GenericChannelId::new(channel as u64),
+        MessageId::new(id as u64),
+    );
+    if let Err(e) = transport.clear_components(channel, id).await {
+        tracing::warn!("queue: taking the buttons off the pre-restart status in {guild}: {e:?}");
+    }
+}
+
+pub(crate) async fn announce_resumed(
+    data: &Data,
+    transport: &dyn Transport,
+    guild: GuildId,
+    s: &QueueSnapshot,
+) {
+    let Some(text) = s.text_channel_id else {
+        return;
+    };
+    let text = GenericChannelId::new(text as u64);
+    note_command_channel(data, guild, text).await;
+    post(
+        data,
+        transport,
+        Destination::Channel(text),
+        &CrackedMessage::QueueResumed,
+        &RenderCx::now(),
+    )
+    .await;
+}
+
+/// Bring back the guild's queue if one was written down at the last shutdown.
+/// Runs from the guild-create handler after `/gp`'s resume; the claim makes a
+/// later reconnect's call a quick no.
+pub async fn queue_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) {
+    let Some(pool) = data.database_pool.as_ref() else {
+        return;
+    };
+    let guild_id = guild.id;
+    let claimed = match claim(pool, guild_id.get() as i64).await {
+        Ok(Some(c)) => c,
+        Ok(None) => return,
+        Err(e) => {
+            tracing::warn!("queue: claiming the saved queue in {guild_id}: {e}");
+            return;
+        },
+    };
+    let snapshot = claimed.snapshot;
+    let transport: Arc<dyn Transport> = Arc::new(DiscordTransport::of(ctx));
+    retire_old_status(&*transport, guild_id, &snapshot).await;
+    let voice = ChannelId::new(snapshot.voice_channel_id as u64);
+    let me = ctx.cache.current_user().id;
+    match plan(
+        claimed.age_secs,
+        vc_members(guild, voice, me),
+        data.gp_is_active(guild_id),
+    ) {
+        ResumePlan::Resume => {},
+        other => {
+            tracing::info!("queue: not resuming the queue in {guild_id}: {other:?}");
+            return;
+        },
+    }
+    let permit = match ensure_can_join(&ctx.cache, guild_id, voice) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("queue: cannot rejoin {voice} in {guild_id} to resume: {e}");
+            return;
+        },
+    };
+    let call = match join_permitted(data, &data.songbird, permit).await {
+        Ok(call) => call,
+        Err(e) => {
+            tracing::warn!("queue: rejoining {voice} in {guild_id} to resume: {e}");
+            return;
+        },
+    };
+    let text = snapshot
+        .text_channel_id
+        .map(|c| GenericChannelId::new(c as u64))
+        .unwrap_or_else(|| GenericChannelId::new(voice.get()));
+    set_global_handlers_with(ctx, Arc::new(data.clone()), call.clone(), guild_id, text).await;
+    tracing::info!(
+        "queue: resuming {} track(s) in {guild_id}",
+        snapshot.tracks.len()
+    );
+    // The rebuild waits on a seek; the guild-create handler does not.
+    let (data, http, cache) = (data.clone(), ctx.http.clone(), ctx.cache.clone());
+    tokio::spawn(async move {
+        if let Err(e) = restore(&data, guild_id, &call, &snapshot, seek_for_real).await {
+            tracing::warn!("queue: rebuilding the queue in {guild_id}: {e}");
+            return;
+        }
+        announce_resumed(&data, &*transport, guild_id, &snapshot).await;
+        show_now_playing(&data, http, cache, guild_id, &call).await;
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,6 +425,67 @@ mod tests {
     use songbird::tracks::{LoopState, PlayMode, TrackState};
 
     const VC: ChannelId = ChannelId::new(10);
+
+    use crate::messaging::test_support::{FakeTransport, Op};
+    use crate::messaging::transport::TransportError;
+
+    fn with_status(channel: Option<i64>, id: Option<i64>) -> QueueSnapshot {
+        let mut s = snap(0, false, false, false);
+        s.status_channel_id = channel;
+        s.status_message_id = id;
+        s
+    }
+
+    #[tokio::test]
+    async fn the_old_status_message_loses_its_buttons() {
+        let t = FakeTransport::default();
+        retire_old_status(&t, GUILD, &with_status(Some(30), Some(500))).await;
+        assert_eq!(t.ops(), vec![Op::ClearComponents(30, 500)]);
+    }
+
+    #[tokio::test]
+    async fn no_status_message_nothing_to_retire() {
+        let t = FakeTransport::default();
+        retire_old_status(&t, GUILD, &with_status(None, None)).await;
+        retire_old_status(&t, GUILD, &with_status(Some(30), None)).await;
+        assert!(t.ops().is_empty());
+    }
+
+    /// Review Focus 5.
+    #[tokio::test]
+    async fn retiring_a_status_message_that_is_gone_carries_on() {
+        let t = FakeTransport::default();
+        *t.edit_error.lock().unwrap() = Some(TransportError::Other("Unknown Message".into()));
+        retire_old_status(&t, GUILD, &with_status(Some(30), Some(500))).await;
+        assert_eq!(t.ops(), vec![Op::ClearComponents(30, 500)]);
+    }
+
+    #[tokio::test]
+    async fn the_resume_is_announced_in_the_text_channel() {
+        let data = Data::default();
+        let t = FakeTransport::default();
+        announce_resumed(&data, &t, GUILD, &snap(0, false, false, false)).await;
+        assert_eq!(t.ops(), vec![Op::Send(20)]);
+        assert_eq!(
+            t.texts(),
+            vec!["♻️ Back after a restart — picking up where we left off.".to_string()]
+        );
+        assert_eq!(
+            data.status_slot(GUILD).lock().await.last_command_channel,
+            Some(GenericChannelId::new(20)),
+            "the status and later notices land there too"
+        );
+    }
+
+    #[tokio::test]
+    async fn no_text_channel_no_announce() {
+        let data = Data::default();
+        let t = FakeTransport::default();
+        let mut s = snap(0, false, false, false);
+        s.text_channel_id = None;
+        announce_resumed(&data, &t, GUILD, &s).await;
+        assert!(t.ops().is_empty());
+    }
 
     fn meta(n: usize, url: Option<&str>) -> songbird::input::AuxMetadata {
         songbird::input::AuxMetadata {

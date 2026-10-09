@@ -425,6 +425,9 @@ impl SerenityHandler {
         // A `/gp` game that was running when the bot went down comes back here,
         // per guild, for the same reason the settings do.
         crate::commands::music::gp_persist::gp_resume_guild(&self.data, &ctx, &guild).await;
+        // And an ordinary queue that was playing when the bot went down (#595).
+        // After /gp's: a guild whose game came back is not resumed twice.
+        crate::music::resume::queue_resume_guild(&self.data, &ctx, &guild).await;
     }
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
