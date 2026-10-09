@@ -123,12 +123,7 @@ async fn gp_send(
 }
 
 /// Post a card to a channel. Best effort: a failure is logged with the card.
-pub async fn gp_post(
-    _data: &Data,
-    transport: &dyn Transport,
-    channel: GenericChannelId,
-    card: GpCard,
-) {
+pub async fn gp_post(transport: &dyn Transport, channel: GenericChannelId, card: GpCard) {
     if let Err(e) = courier::post_message(transport, channel, &gp_rendered(card.clone())).await {
         tracing::warn!("gp: posting \"{card}\" to {channel} failed: {e}");
     }
@@ -212,7 +207,6 @@ async fn gp_abort(pb: &GpPlayback, text_channel: GenericChannelId, reason: &str)
     // of this send. See `stop_queue`.
     // Best effort: the channel is usually what just failed.
     gp_post(
-        &pb.data,
         &*pb.transport,
         text_channel,
         GpCard::Line(GP_ABORTED.into()),
@@ -279,7 +273,6 @@ pub fn gp_spawn_window_timer_secs(
                 return;
             };
             gp_post(
-                &pb.data,
                 &*pb.transport,
                 text_channel,
                 GpCard::Line(gp_warning_text(&warning)),

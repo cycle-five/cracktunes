@@ -42,7 +42,10 @@
 //! them: that post comes after the snapshot that ends the round, and with the
 //! reveal held to the round's end it is the only place the round's submitters
 //! are named. The same goes for a game that finished but whose ending never
-//! went up -- it gets its last results and scoreboard, and its tombstone.
+//! went up -- it gets its last results and scoreboard. A game that is not
+//! coming back, lost or finished, is tombstoned *before* any of that is
+//! posted, and only if the tombstone lands ([`close_out`]): the row stays live
+//! until it does, and the next reconnect would post it all again.
 
 use super::gp::{
     gp_after_close, gp_play_track, gp_post, gp_rendered, gp_spawn_window_timer_secs, now, GpCard,
@@ -71,6 +74,7 @@ use sqlx::PgPool;
 use std::{
     collections::{HashMap, HashSet},
     fmt,
+    future::Future,
     sync::Arc,
     time::Duration,
 };
@@ -530,7 +534,7 @@ async fn abandon_resume(
     if let Err(e) = gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await {
         tracing::warn!("gp: marking the game in {guild_id} lost: {e}");
     }
-    gp_post(data, transport, text_channel, GpCard::Line(GP_LOST.into())).await;
+    gp_post(transport, text_channel, GpCard::Line(GP_LOST.into())).await;
 }
 
 /// Bring back the guild's live game, if it has one and it is worth bringing
@@ -569,34 +573,11 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     };
     let text_channel = game.text_channel;
     let transport: Arc<dyn Transport> = Arc::new(DiscordTransport::of(ctx));
-
-    // Whatever becomes of the game, a round it moved past without its results
-    // reaching the channel is owed them, and they go up first -- before anything
-    // is said about the restart -- so they read as results arriving late.
-    let owed = post_owed_results(&*transport, &game).await;
+    let tombstone = |outcome| gp_mark_finished(pool, game_id(guild_id), started_at, outcome);
 
     if game.phase == GpPhase::Finished {
-        // The game played out, and the snapshot that finished it was written
-        // before its ending went up. The row is live because the remove that
-        // tombstones it never ran (or its write was lost), so the results and
-        // the scoreboard may or may not be in the channel. If the results were
-        // owed, so is the scoreboard -- it is posted after them. If they were
-        // not, the scoreboard may well be up, and a second one is worse than none.
         tracing::info!("gp: the game in {guild_id} had finished; posting what it still owed");
-        if !owed.is_empty() {
-            let scores = game.sorted_scores();
-            let card = GpCard::Scoreboard {
-                scores,
-                title: GP_GAME_OVER,
-                lead: None,
-            };
-            gp_post(data, &*transport, text_channel, card).await;
-        }
-        if let Err(e) =
-            gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Finished).await
-        {
-            tracing::warn!("gp: marking the game in {guild_id} finished: {e}");
-        }
+        close_out(&*transport, &game, GpCloseOut::Finished, tombstone).await;
         return;
     }
 
@@ -617,29 +598,14 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
             "the voice channel is empty".to_string()
         };
         tracing::info!("gp: not resuming the game in {guild_id}: {why}");
-        // Say so only once. `on_guild_create` runs again on every reconnect, and
-        // while the tombstone is not written the row is still live and still
-        // hopeless -- so posting regardless would put a fresh scoreboard in the
-        // channel each time the gateway blinked.
-        let marked =
-            match gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await {
-                Ok(_) => true,
-                Err(e) => {
-                    tracing::warn!("gp: marking the game in {guild_id} lost: {e}");
-                    false
-                },
-            };
-        if marked {
-            let scores = game.sorted_scores();
-            let card = GpCard::Scoreboard {
-                scores,
-                title: GP_SCOREBOARD,
-                lead: Some(GP_LOST),
-            };
-            gp_post(data, &*transport, text_channel, card).await;
-        }
+        close_out(&*transport, &game, GpCloseOut::Lost, tombstone).await;
         return;
     }
+
+    // A round the game moved past without its results reaching the channel is
+    // owed them, and they go up first -- before anything is said about the
+    // restart -- so they read as results arriving late.
+    let owed = post_owed_results(&*transport, &game).await;
 
     let (phase, voice_channel, current_round) =
         (game.phase, game.voice_channel, game.current_round);
@@ -760,6 +726,72 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     }
 }
 
+/// How a game the resume is not bringing back ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GpCloseOut {
+    /// It played out, but its ending may never have gone up.
+    Finished,
+    /// Too long an outage, or nobody left in the voice channel.
+    Lost,
+}
+
+impl GpCloseOut {
+    fn outcome(self) -> GpOutcome {
+        match self {
+            GpCloseOut::Finished => GpOutcome::Finished,
+            GpCloseOut::Lost => GpOutcome::Lost,
+        }
+    }
+}
+
+/// Close out a game the resume is not bringing back: write its tombstone, and
+/// only once that has landed post what the channel is still owed -- the
+/// results of rounds it moved past, then its scoreboard.
+///
+/// Say so only once. `on_guild_create` runs again on every reconnect, and while
+/// the tombstone is not written the row is still live, so posting first would
+/// put the same embeds up each time the gateway blinked (#469). A row that was
+/// already finished (`Ok(false)`) was closed out by whatever finished it.
+pub(crate) async fn close_out<Fut>(
+    transport: &dyn Transport,
+    game: &GpGame,
+    ending: GpCloseOut,
+    tombstone: impl FnOnce(GpOutcome) -> Fut,
+) where
+    Fut: Future<Output = sqlx::Result<bool>>,
+{
+    let guild_id = game.guild_id;
+    let outcome = ending.outcome();
+    match tombstone(outcome).await {
+        Ok(true) => {},
+        Ok(false) => return,
+        Err(e) => {
+            tracing::warn!(
+                "gp: marking the game in {guild_id} {}: {e}",
+                outcome.as_str()
+            );
+            return;
+        },
+    }
+    let owed = post_owed_results(transport, game).await;
+    let (title, lead) = match ending {
+        // The game played out, and the snapshot that finished it was written
+        // before its ending went up, so the results and the scoreboard may or
+        // may not be in the channel. If the results were owed, so is the
+        // scoreboard -- it is posted after them. If they were not, the
+        // scoreboard may well be up, and a second one is worse than none.
+        GpCloseOut::Finished if owed.is_empty() => return,
+        GpCloseOut::Finished => (GP_GAME_OVER, None),
+        GpCloseOut::Lost => (GP_SCOREBOARD, Some(GP_LOST)),
+    };
+    let card = GpCard::Scoreboard {
+        scores: game.sorted_scores(),
+        title,
+        lead,
+    };
+    gp_post(transport, game.text_channel, card).await;
+}
+
 /// Post the results of every round the game moved past without them reaching
 /// the channel (see [`GpGame::unposted_results`]). Returns the rounds posted;
 /// marking them is the caller's, since only a game back in the map can be
@@ -796,7 +828,6 @@ pub(crate) async fn take_down_components(
 
 async fn announce(pb: &GpPlayback, text_channel: GenericChannelId, what: &str) {
     gp_post(
-        &pb.data,
         &*pb.transport,
         text_channel,
         GpCard::Line(format!("{GP_RESUMED} {what}")),
