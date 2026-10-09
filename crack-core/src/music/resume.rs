@@ -6,13 +6,22 @@
 //! the queue ([`queue_resume_guild`], Task 4).
 
 use crate::db::queue_snapshot::{save_all, QueueSnapshot, SnapshotTrack};
+use crate::errors::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
+use crate::music::audit::{Actor, BotReason};
 use crate::music::ops::TRACK_INFO_TIMEOUT;
+use crate::music::ops::{pause_on, repeat_on, SEEK_TIMEOUT};
+use crate::music::queue::{self, enqueue_resolved_tracks_back};
+use crate::music::PlaybackOwner;
 use crate::utils::{get_requesting_user, get_track_handle_metadata};
 use crate::Data;
-use serenity::all::{ChannelId, GuildId};
+use crack_testing::ResolvedTrack;
+use crack_types::SavedTrack;
+use serenity::all::{ChannelId, GuildId, UserId};
+use songbird::tracks::TrackHandle;
 use songbird::tracks::{LoopState, PlayMode, TrackState};
 use songbird::Call;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -162,6 +171,152 @@ pub async fn queue_shutdown(data: &Data, budget: Duration) {
     if tokio::time::timeout(budget, work).await.is_err() {
         tracing::warn!("queue: saving queues did not finish within {budget:?}; none saved");
     }
+}
+
+pub const QUEUE_RESUME_WINDOW_SECS: i64 = 300;
+pub const QUEUE_RESUME_MIN_SEEK: Duration = Duration::from_secs(5);
+pub const QUEUE_RESUME_REWIND: Duration = Duration::from_secs(3);
+
+/// What to do with a claimed snapshot.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "wired into guild create in Task 4")
+)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResumePlan {
+    Resume,
+    /// Down longer than [`QUEUE_RESUME_WINDOW_SECS`]: the room has moved on.
+    TooLate,
+    /// Nobody (but bots) in the voice channel to hear it.
+    Empty,
+    /// A `/gp` game owns the guild.
+    GameRunning,
+}
+
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "wired into guild create in Task 4")
+)]
+pub(crate) fn plan(age_secs: i64, listeners: usize, game_running: bool) -> ResumePlan {
+    if game_running {
+        ResumePlan::GameRunning
+    } else if age_secs > QUEUE_RESUME_WINDOW_SECS {
+        ResumePlan::TooLate
+    } else if listeners == 0 {
+        ResumePlan::Empty
+    } else {
+        ResumePlan::Resume
+    }
+}
+
+/// How a seek of the current track went.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "wired into guild create in Task 4")
+)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SeekOutcome {
+    Done,
+    /// songbird documents a failed seek as fatal: it removes the track.
+    Failed,
+    TimedOut,
+}
+
+#[expect(dead_code, reason = "wired into guild create in Task 4")]
+pub(crate) async fn seek_for_real(track: TrackHandle, to: Duration) -> SeekOutcome {
+    match tokio::time::timeout(SEEK_TIMEOUT, track.seek(to).result_async()).await {
+        Ok(Ok(_)) => SeekOutcome::Done,
+        Ok(Err(e)) => {
+            tracing::warn!("queue: resuming at {to:?} failed ({e}); playing from the top");
+            SeekOutcome::Failed
+        },
+        Err(_) => SeekOutcome::TimedOut,
+    }
+}
+
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "wired into guild create in Task 4")
+)]
+fn resolved(t: &SnapshotTrack) -> ResolvedTrack<'static> {
+    let saved = SavedTrack::from_secs(
+        t.url.clone(),
+        t.title.clone(),
+        t.artist.clone(),
+        t.duration_secs,
+    );
+    let r = ResolvedTrack::from_saved(&saved);
+    match t.requester {
+        Some(id) if id > 0 => r.with_user_id(UserId::new(id as u64)),
+        _ => r,
+    }
+}
+
+/// Rebuild the queue from `snapshot` on `call`, as the bot. One guard for the
+/// whole rebuild, so nothing interleaves with it: the current track, sought to
+/// just before where it was (a failed seek has removed it, so it goes back in
+/// fresh and plays from the top), then the rest, then repeat and paused.
+/// Autoplay last, after the guard, so a refill cannot race the rebuild.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the restore removes its own dead handle under its guard; ops::remove_on refuses the playing track"
+)]
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "wired into guild create in Task 4")
+)]
+pub(crate) async fn restore<F, Fut>(
+    data: &Data,
+    guild: GuildId,
+    call: &Arc<Mutex<Call>>,
+    snapshot: &QueueSnapshot,
+    seek: F,
+) -> Result<(), CrackedError>
+where
+    F: FnOnce(TrackHandle, Duration) -> Fut,
+    Fut: Future<Output = SeekOutcome>,
+{
+    let Some((first, rest)) = snapshot.tracks.split_first() else {
+        return Ok(());
+    };
+    let guard = data
+        .lock_queue(guild, PlaybackOwner::Free, Actor::bot(BotReason::Resume))
+        .await?;
+    let http = data.http_client.clone();
+    let current =
+        enqueue_resolved_tracks_back(&guard, call, vec![resolved(first)], http.clone()).await?;
+    let position = Duration::from_millis(snapshot.position_ms.max(0) as u64);
+    if let Some(handle) = current.handles.first().cloned() {
+        if position >= QUEUE_RESUME_MIN_SEEK {
+            let to = position.saturating_sub(QUEUE_RESUME_REWIND);
+            if seek(handle.clone(), to).await == SeekOutcome::Failed {
+                // songbird may not have removed it yet; either way, it goes.
+                {
+                    let handler = call.lock().await;
+                    let at = handler
+                        .queue()
+                        .current_queue()
+                        .iter()
+                        .position(|t| t.uuid() == handle.uuid());
+                    if let Some(at) = at {
+                        queue::remove_at(&guard, &handler, at);
+                    }
+                }
+                enqueue_resolved_tracks_back(&guard, call, vec![resolved(first)], http.clone())
+                    .await?;
+            }
+        }
+    }
+    enqueue_resolved_tracks_back(&guard, call, rest.iter().map(resolved).collect(), http).await?;
+    if snapshot.looping {
+        let _ = repeat_on(&guard, call, Some(true)).await;
+    }
+    if snapshot.paused {
+        let _ = pause_on(&guard, call).await;
+    }
+    drop(guard);
+    data.set_autoplay(guild, snapshot.autoplay).await;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -462,5 +617,283 @@ mod tests {
                 requester: Some(7),
             })
         );
+    }
+
+    #[test]
+    fn the_decision() {
+        assert_eq!(plan(10, 2, false), ResumePlan::Resume);
+        assert_eq!(plan(10, 0, false), ResumePlan::Empty);
+        assert_eq!(plan(400, 2, false), ResumePlan::TooLate);
+        assert_eq!(plan(10, 2, true), ResumePlan::GameRunning);
+        assert_eq!(
+            plan(400, 0, true),
+            ResumePlan::GameRunning,
+            "the game first"
+        );
+        assert_eq!(
+            plan(400, 0, false),
+            ResumePlan::TooLate,
+            "too late before empty"
+        );
+    }
+
+    /// Review Focus 4.
+    #[test]
+    fn the_resume_window_is_inclusive_at_five_minutes() {
+        assert_eq!(plan(300, 1, false), ResumePlan::Resume);
+        assert_eq!(plan(301, 1, false), ResumePlan::TooLate);
+    }
+
+    fn saved(n: usize, requester: Option<i64>) -> SnapshotTrack {
+        SnapshotTrack {
+            url: format!("https://www.youtube.com/watch?v=s{n}"),
+            title: Some(format!("s{n}")),
+            artist: None,
+            duration_secs: Some(200),
+            requester,
+        }
+    }
+
+    fn snap(position_ms: i64, paused: bool, looping: bool, autoplay: bool) -> QueueSnapshot {
+        QueueSnapshot {
+            guild_id: GUILD.get() as i64,
+            voice_channel_id: VC.get() as i64,
+            text_channel_id: Some(20),
+            status_channel_id: None,
+            status_message_id: None,
+            position_ms,
+            paused,
+            looping,
+            autoplay,
+            tracks: vec![saved(0, Some(100)), saved(1, Some(200)), saved(2, None)],
+        }
+    }
+
+    /// What is queued now: (title, requester) in order.
+    async fn now_queued(call: &Arc<Mutex<Call>>) -> Vec<(String, u64)> {
+        let handles = call.lock().await.queue().current_queue();
+        let mut out = Vec::new();
+        for h in &handles {
+            let title = get_track_handle_metadata(h).await.unwrap().title.unwrap();
+            let who = get_requesting_user(h).await.unwrap().get();
+            out.push((title, who));
+        }
+        out
+    }
+
+    fn data_with_audit() -> (
+        Data,
+        tokio::sync::mpsc::Receiver<crate::music::audit::AuditEvent>,
+    ) {
+        let (tx, rx) = tokio::sync::mpsc::channel(64);
+        (
+            Data(Arc::new(crate::DataInner {
+                audit_tx: Some(tx),
+                ..Default::default()
+            })),
+            rx,
+        )
+    }
+
+    #[tokio::test]
+    async fn a_restore_rebuilds_the_queue_in_order_with_requesters() {
+        let (data, _rx) = data_with_audit();
+        let call = offline_call();
+        restore(
+            &data,
+            GUILD,
+            &call,
+            &snap(61_000, false, false, false),
+            |_, _| async { SeekOutcome::Done },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            now_queued(&call).await,
+            vec![("s0".into(), 100), ("s1".into(), 200), ("s2".into(), 1)]
+        );
+    }
+
+    #[tokio::test]
+    async fn the_current_track_is_sought_to_just_before_where_it_was() {
+        let (data, _rx) = data_with_audit();
+        let call = offline_call();
+        let asked = std::sync::Mutex::new(None);
+        restore(
+            &data,
+            GUILD,
+            &call,
+            &snap(61_000, false, false, false),
+            |_, to| {
+                *asked.lock().unwrap() = Some(to);
+                async { SeekOutcome::Done }
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(*asked.lock().unwrap(), Some(Duration::from_millis(58_000)));
+    }
+
+    #[tokio::test]
+    async fn no_seek_for_a_track_that_had_barely_started() {
+        let (data, _rx) = data_with_audit();
+        let call = offline_call();
+        let asked = std::sync::Mutex::new(false);
+        restore(
+            &data,
+            GUILD,
+            &call,
+            &snap(4_999, false, false, false),
+            |_, _| {
+                *asked.lock().unwrap() = true;
+                async { SeekOutcome::Done }
+            },
+        )
+        .await
+        .unwrap();
+        assert!(!*asked.lock().unwrap());
+    }
+
+    /// The 5 s threshold is inclusive: exactly 5 000 ms is sought (to 2 000).
+    #[tokio::test]
+    async fn exactly_five_seconds_is_sought() {
+        let (data, _rx) = data_with_audit();
+        let call = offline_call();
+        let asked = std::sync::Mutex::new(None);
+        restore(
+            &data,
+            GUILD,
+            &call,
+            &snap(5_000, false, false, false),
+            |_, to| {
+                *asked.lock().unwrap() = Some(to);
+                async { SeekOutcome::Done }
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(*asked.lock().unwrap(), Some(Duration::from_millis(2_000)));
+    }
+
+    /// Review Focus 3: songbird removes a track whose seek failed; the restore
+    /// puts the song back first, fresh, rather than skipping it.
+    #[tokio::test]
+    async fn a_failed_seek_requeues_the_current_track_first() {
+        let (data, _rx) = data_with_audit();
+        let call = offline_call();
+        let dead = std::sync::Mutex::new(None);
+        restore(
+            &data,
+            GUILD,
+            &call,
+            &snap(61_000, false, false, false),
+            |h, _| {
+                *dead.lock().unwrap() = Some(h.uuid());
+                async { SeekOutcome::Failed }
+            },
+        )
+        .await
+        .unwrap();
+        let ids: Vec<_> = call
+            .lock()
+            .await
+            .queue()
+            .current_queue()
+            .iter()
+            .map(|h| h.uuid())
+            .collect();
+        assert_eq!(ids.len(), 3, "the dead handle is gone, nothing doubled");
+        assert_ne!(Some(ids[0]), *dead.lock().unwrap(), "a fresh track");
+        assert_eq!(
+            now_queued(&call).await,
+            vec![("s0".into(), 100), ("s1".into(), 200), ("s2".into(), 1)]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_seek_leaves_the_track_where_it_is() {
+        let (data, _rx) = data_with_audit();
+        let call = offline_call();
+        let first = std::sync::Mutex::new(None);
+        restore(
+            &data,
+            GUILD,
+            &call,
+            &snap(61_000, false, false, false),
+            |h, _| {
+                *first.lock().unwrap() = Some(h.uuid());
+                async { SeekOutcome::TimedOut }
+            },
+        )
+        .await
+        .unwrap();
+        let ids: Vec<_> = call
+            .lock()
+            .await
+            .queue()
+            .current_queue()
+            .iter()
+            .map(|h| h.uuid())
+            .collect();
+        assert_eq!(Some(ids[0]), *first.lock().unwrap());
+        assert_eq!(ids.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn repeat_paused_and_autoplay_come_back() {
+        let (data, mut rx) = data_with_audit();
+        let call = offline_call();
+        restore(
+            &data,
+            GUILD,
+            &call,
+            &snap(0, true, true, true),
+            |_, _| async { SeekOutcome::Done },
+        )
+        .await
+        .unwrap();
+        let actions: Vec<_> = std::iter::from_fn(|| rx.try_recv().ok())
+            .map(|e| e.action)
+            .collect();
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, crate::music::audit::Action::Repeat { on: true })),
+            "{actions:?}"
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, crate::music::audit::Action::Pause)),
+            "{actions:?}"
+        );
+        assert!(data.get_autoplay(GUILD).await);
+        let (data, _rx) = data_with_audit();
+        restore(
+            &data,
+            GUILD,
+            &offline_call(),
+            &snap(0, false, false, false),
+            |_, _| async { SeekOutcome::Done },
+        )
+        .await
+        .unwrap();
+        assert!(!data.get_autoplay(GUILD).await);
+    }
+
+    #[tokio::test]
+    async fn the_restore_is_recorded_as_the_bot_resuming() {
+        let (data, mut rx) = data_with_audit();
+        restore(
+            &data,
+            GUILD,
+            &offline_call(),
+            &snap(0, false, false, false),
+            |_, _| async { SeekOutcome::Done },
+        )
+        .await
+        .unwrap();
+        let first = rx.try_recv().expect("an audit event");
+        assert_eq!(first.actor.command(), "resume");
     }
 }

@@ -45,6 +45,8 @@ pub enum BotReason {
     IdleTimeout,
     Kicked,
     JoinCleanup,
+    /// A restart's queue, rebuilt.
+    Resume,
 }
 
 impl BotReason {
@@ -56,6 +58,7 @@ impl BotReason {
             BotReason::IdleTimeout => "idle timeout",
             BotReason::Kicked => "disconnected",
             BotReason::JoinCleanup => "join cleanup",
+            BotReason::Resume => "resume",
         }
     }
 }
