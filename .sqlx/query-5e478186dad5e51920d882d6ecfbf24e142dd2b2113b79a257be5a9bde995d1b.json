@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                INSERT INTO playlist_track (playlist_id, metadata_id, guild_id, channel_id)\n                VALUES ($1, $2, $3, $4)\n                ON CONFLICT (playlist_id, metadata_id) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Int4",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5e478186dad5e51920d882d6ecfbf24e142dd2b2113b79a257be5a9bde995d1b"
+}

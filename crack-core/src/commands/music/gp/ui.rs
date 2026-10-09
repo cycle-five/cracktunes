@@ -6,7 +6,8 @@ use crate::messaging::messages::{
     GP_PICK_CANCEL, GP_PICK_PLACEHOLDER, GP_PICK_START, GP_PICK_TITLE, GP_PROMPT_CLOSES_EARLY,
     GP_PROMPT_CLOSES_TITLE, GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE, GP_RESULTS_GUESSED_BY,
     GP_RESULTS_GUESSED_COUNT, GP_RESULTS_NOBODY_SCORED, GP_RESULTS_THIS_ROUND, GP_RESULTS_TITLE,
-    GP_REVEAL, GP_REVEAL_HELD, GP_ROUND_HINT, GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD,
+    GP_REVEAL, GP_REVEAL_HELD, GP_ROUND_HINT, GP_ROUND_TITLE, GP_RULES_TEXT, GP_SAVED_EMPTY,
+    GP_SAVED_LIST, GP_SAVED_PLAY_HINT, GP_SAVED_QUEUED, GP_SAVE_HINT, GP_SAVE_LABEL, GP_SCOREBOARD,
     GP_SELECT_PLACEHOLDER, GP_SONG_TITLE, GP_STATUS_CLOSES, GP_STATUS_GUESSED, GP_STATUS_LIKES,
     GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SCORES, GP_STATUS_SUBMITTED,
     GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, GP_WINDOW_CLOSED,
@@ -166,6 +167,7 @@ fn song_name(title: &str) -> String {
 pub enum GpComponent {
     Guess,
     Like,
+    Save,
 }
 
 impl GpComponent {
@@ -173,6 +175,7 @@ impl GpComponent {
         match self {
             Self::Guess => "g",
             Self::Like => "l",
+            Self::Save => "s",
         }
     }
 }
@@ -196,6 +199,7 @@ pub fn parse_custom_id(custom_id: &str) -> Option<(GpComponent, GuildId, usize, 
     let kind = match parts.next()? {
         "g" => GpComponent::Guess,
         "l" => GpComponent::Like,
+        "s" => GpComponent::Save,
         _ => return None,
     };
     let guild = parts.next()?.parse::<u64>().ok().filter(|g| *g != 0)?;
@@ -208,7 +212,7 @@ pub fn parse_custom_id(custom_id: &str) -> Option<(GpComponent, GuildId, usize, 
 }
 
 /// The controls under a playing song: the "who submitted this?" dropdown
-/// (only when there is something to guess) and the 👍 button.
+/// (only when there is something to guess), then 👍 and 💾 Save.
 pub fn gp_components(
     guild_id: GuildId,
     round_idx: usize,
@@ -245,10 +249,43 @@ pub fn gp_components(
     .emoji('👍')
     .label(GP_LIKE_LABEL)
     .style(ButtonStyle::Secondary);
+    let save = CreateButton::new(gp_custom_id(
+        GpComponent::Save,
+        guild_id,
+        round_idx,
+        track_idx,
+    ))
+    .emoji('💾')
+    .label(GP_SAVE_LABEL)
+    .style(ButtonStyle::Secondary);
     rows.push(CreateComponent::ActionRow(CreateActionRow::Buttons(
-        Cow::Owned(vec![like]),
+        Cow::Owned(vec![like, save]),
     )));
     rows
+}
+
+/// Discord's ceiling on a message, with room for the header.
+const GP_SAVED_REPLY_MAX: usize = 1900;
+
+/// `/gp saved`'s reply. `queued` is how many were just put on the voice queue;
+/// `None` is the list on its own, with how to hear them.
+pub fn format_gp_saved_reply(titles: &[String], queued: Option<usize>) -> String {
+    if titles.is_empty() {
+        return GP_SAVED_EMPTY.to_string();
+    }
+    let mut out = match queued {
+        Some(n) => format!("{GP_SAVED_QUEUED} {n}\n"),
+        None => format!("{GP_SAVED_LIST} ({})\n{GP_SAVED_PLAY_HINT}\n", titles.len()),
+    };
+    for (i, title) in titles.iter().enumerate() {
+        let line = format!("{}. {title}\n", i + 1);
+        if out.chars().count() + line.chars().count() > GP_SAVED_REPLY_MAX {
+            out.push('…');
+            break;
+        }
+        out.push_str(&line);
+    }
+    out
 }
 
 /// `/gp start`'s category picker: a menu of every category with `picked`
@@ -383,9 +420,9 @@ pub fn gp_warning_text(w: &GpWindowWarning) -> String {
 /// The song message: prompt, title and what to do. Never the submitter.
 pub fn gp_track_embed(s: &GpTrackStart) -> CreateEmbed<'static> {
     let hint = if s.guessable {
-        format!("{GP_ROUND_HINT}\n{GP_LIKE_HINT}")
+        format!("{GP_ROUND_HINT}\n{GP_LIKE_HINT}\n{GP_SAVE_HINT}")
     } else {
-        GP_LIKE_HINT.to_string()
+        format!("{GP_LIKE_HINT}\n{GP_SAVE_HINT}")
     };
     CreateEmbed::new()
         .title(song_title(

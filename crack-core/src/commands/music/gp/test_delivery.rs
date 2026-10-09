@@ -11,7 +11,10 @@ use crate::commands::music::gp_persist::{
     close_out, post_owed_results, take_down_components, GpCloseOut,
 };
 use crate::db::GpOutcome;
-use crate::messaging::messages::{GP_ABORTED, GP_GAME_OVER, GP_SCOREBOARD, GP_WINDOW_WARNING};
+use crate::messaging::messages::{
+    GP_ABORTED, GP_ALREADY_SAVED, GP_GAME_OVER, GP_SAVED, GP_SAVED_TO, GP_SCOREBOARD,
+    GP_WINDOW_WARNING,
+};
 use crate::messaging::test_support::{FakePress, FakeTransport, Op, PressOp};
 use crate::messaging::transport::TransportError;
 use crate::music::ops::test_support::standalone_call;
@@ -299,6 +302,26 @@ async fn a_click_is_answered_once_privately_and_never_acknowledged() {
             text: "noted".into()
         }]
     );
+}
+
+/// Save uses the same one-response path as a guess or a 👍: the arm works out
+/// the line, then `gp_answer_component` sends it. No acknowledge first.
+#[tokio::test]
+async fn a_save_line_is_one_private_response() {
+    for text in [
+        format!("{GP_SAVED} **Full Song** {GP_SAVED_TO}"),
+        format!("{GP_ALREADY_SAVED} **Full Song**."),
+    ] {
+        let press = FakePress::default();
+        gp_answer_component(&press, text.clone()).await.unwrap();
+        assert_eq!(
+            press.ops(),
+            vec![PressOp::Respond {
+                ephemeral: true,
+                text,
+            }]
+        );
+    }
 }
 
 /// A two-round game whose first round has been revealed in memory but whose

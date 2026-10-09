@@ -1,12 +1,14 @@
 use super::state::*;
 use super::ui::*;
 use crate::{
+    db::{Playlist, SaveOnto, SavedTrackStatus},
     errors::CrackedError,
     messaging::{
         courier::{self, Destination},
         message::CrackedMessage,
         messages::{
-            GP_ABORTED, GP_GAME_OVER, GP_GUESS_CHANGED, GP_GUESS_RECORDED, GP_LIKED, GP_UNLIKED,
+            GP_ABORTED, GP_ALREADY_SAVED, GP_GAME_OVER, GP_GUESS_CHANGED, GP_GUESS_RECORDED,
+            GP_LIKED, GP_SAVED, GP_SAVED_TO, GP_UNLIKED,
         },
         render::RenderCx,
         transport::{DiscordPress, Press, Transport},
@@ -165,9 +167,10 @@ async fn gp_edit_or_post(
     .await;
 }
 
-/// Answer a dropdown pick or a 👍: one ephemeral response, worked out from
-/// memory before this is called -- well inside Discord's three seconds, so
-/// there is no acknowledge first (the spec, section 3).
+/// Answer a dropdown pick, a 👍, or 💾 Save: one ephemeral response. The text
+/// is worked out before this is called. A guess or a like comes from memory,
+/// well inside Discord's three seconds, so there is no acknowledge first
+/// (the spec, section 3). Save does the same with the line it just wrote.
 pub(in crate::commands::music::gp) async fn gp_answer_component(
     press: &dyn Press,
     text: String,
@@ -665,10 +668,10 @@ pub async fn gp_advance_track(
     gp_follow(pb, res.next, res.text_channel, pause).await
 }
 
-/// Handle a dropdown pick or a 👍. Called from `SerenityHandler::dispatch` for
-/// every component interaction whose custom id starts with
-/// [`GP_CUSTOM_ID_PREFIX`]. Every branch answers the interaction (ephemerally),
-/// otherwise Discord shows "This interaction failed".
+/// Handle a dropdown pick, a 👍, or 💾 Save. Called from
+/// `SerenityHandler::dispatch` for every component interaction whose custom id
+/// starts with [`GP_CUSTOM_ID_PREFIX`]. Every branch answers the interaction
+/// (ephemerally), otherwise Discord shows "This interaction failed".
 pub async fn handle_gp_component(
     data: &Data,
     ctx: &SerenityContext,
@@ -681,22 +684,32 @@ pub async fn handle_gp_component(
         return Ok(());
     }
 
-    let content = match gp_component_vc_check(data, ctx, mci, guild_id).and_then(|()| match kind {
-        GpComponent::Guess => {
-            gp_guess_outcome(data, mci, guild_id, round_idx, track_idx).map(|o| match o {
-                GpGuessOutcome::Recorded => GP_GUESS_RECORDED.to_string(),
-                GpGuessOutcome::Changed => GP_GUESS_CHANGED.to_string(),
-            })
-        },
-        GpComponent::Like => {
-            gp_like_outcome(data, mci, guild_id, round_idx, track_idx).map(|o| match o {
-                GpLikeOutcome::Liked(n) => format!("{GP_LIKED} ({n})"),
-                GpLikeOutcome::Unliked(n) => format!("{GP_UNLIKED} ({n})"),
-            })
-        },
-    }) {
-        Ok(text) => text,
+    let content = match gp_component_vc_check(data, ctx, mci, guild_id) {
         Err(e) => e.to_string(),
+        Ok(()) => match kind {
+            GpComponent::Guess => {
+                match gp_guess_outcome(data, mci, guild_id, round_idx, track_idx) {
+                    Ok(GpGuessOutcome::Recorded) => GP_GUESS_RECORDED.to_string(),
+                    Ok(GpGuessOutcome::Changed) => GP_GUESS_CHANGED.to_string(),
+                    Err(e) => e.to_string(),
+                }
+            },
+            GpComponent::Like => match gp_like_outcome(data, mci, guild_id, round_idx, track_idx) {
+                Ok(GpLikeOutcome::Liked(n)) => format!("{GP_LIKED} ({n})"),
+                Ok(GpLikeOutcome::Unliked(n)) => format!("{GP_UNLIKED} ({n})"),
+                Err(e) => e.to_string(),
+            },
+            // Written straight to Postgres, not into the game: it is the
+            // clicker's list, and it must not wait for the song-end snapshot
+            // or vanish if the bot restarts mid-song. The target is copied out
+            // under the map lock inside `gp_save_target`; the await is after.
+            //
+            // Not on `np_presses`. That two-second window belongs to `np:`
+            // buttons, where a press inside it is acknowledged and dropped.
+            // Save's second press answers "already in your list", and a like
+            // or a guess in the same window still has to answer.
+            GpComponent::Save => gp_save_reply(data, mci, guild_id, round_idx, track_idx).await,
+        },
     };
     let press = DiscordPress {
         http: &ctx.http,
@@ -761,6 +774,50 @@ fn gp_guess_outcome(
         interaction_display_name(mci),
         guessed,
     )
+}
+
+/// Save the playing song onto the clicker's private list and say which.
+async fn gp_save_reply(
+    data: &Data,
+    mci: &ComponentInteraction,
+    guild_id: GuildId,
+    round_idx: usize,
+    track_idx: usize,
+) -> String {
+    if !matches!(mci.data.kind, ComponentInteractionDataKind::Button) {
+        return CrackedError::StaleRound.to_string();
+    }
+    let target = match data.gp_save_target(guild_id, round_idx, track_idx) {
+        Ok(target) => target,
+        Err(e) => return e.to_string(),
+    };
+    let pool = match data.get_db_pool() {
+        Ok(pool) => pool,
+        Err(e) => return e.to_string(),
+    };
+    let channel_id = data
+        .gp_text_channel(guild_id)
+        .map(|c| c.get() as i64)
+        .unwrap_or(0);
+    let status = Playlist::save_onto(
+        &pool,
+        SaveOnto {
+            user_id: mci.user.id.get() as i64,
+            username: &interaction_display_name(mci),
+            playlist_name: GP_SAVED_LIST_NAME,
+            metadata: &target.metadata,
+            guild_id: guild_id.get() as i64,
+            channel_id,
+        },
+    )
+    .await;
+    match status {
+        Ok(SavedTrackStatus::Saved) => format!("{GP_SAVED} **{}** {GP_SAVED_TO}", target.title),
+        Ok(SavedTrackStatus::AlreadyThere) => {
+            format!("{GP_ALREADY_SAVED} **{}**.", target.title)
+        },
+        Err(e) => e.to_string(),
+    }
 }
 
 /// The synchronous part of a 👍.

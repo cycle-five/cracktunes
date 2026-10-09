@@ -5,6 +5,7 @@ use crate::{
     commands::cmd_check_music,
     commands::get_call_or_join_author,
     commands::music::gp_prompts::{draw_prompts, GpCategories, GpCategory},
+    db::{aux_metadata_from_db, Metadata, Playlist},
     errors::CrackedError,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
@@ -17,14 +18,15 @@ use crate::{
         render::RenderCx,
         transport::{DiscordPress, DiscordTransport, Press},
     },
-    music::queue::{force_skip_top_track, stop_queue},
+    music::queue::{enqueue_resolved_tracks_back, force_skip_top_track, stop_queue},
     music::PlaybackOwner,
     poise_ext::PoiseContextExt,
     sources::sleevenote,
     Context, CrackedResult, Error,
 };
 use ::serenity::all::{ChannelId, ComponentInteractionDataKind, GuildId, UserId};
-use crack_types::QueryType;
+use crack_testing::ResolvedTrack;
+use crack_types::{AuxMetadata, QueryType};
 use poise::serenity_prelude::CollectComponentInteractions;
 use songbird::Call;
 use std::{str::FromStr, sync::Arc, time::Duration};
@@ -108,6 +110,7 @@ fn gp_playback(ctx: Context<'_>, call: Arc<Mutex<Call>>, guild_id: GuildId) -> G
         "gp_voteskip",
         "gp_votefull",
         "gp_status",
+        "gp_saved",
         "gp_end"
     )
 )]
@@ -795,6 +798,101 @@ pub async fn gp_status(ctx: Context<'_>) -> Result<(), Error> {
     let status = ctx.data().gp_status(guild_id)?;
     courier::reply_as(ctx, GpCard::Status(status).into(), false).await?;
     Ok(())
+}
+
+/// A saved row as a track the normal queue can play from the start. The clip
+/// the game used is not stored, and `start_time` from the row (always zero for
+/// a Save) is dropped so nothing seeks into the song.
+pub(in crate::commands::music::gp) fn track_from_saved_row(
+    meta: &Metadata,
+    user: UserId,
+) -> Option<ResolvedTrack<'static>> {
+    let aux = aux_metadata_from_db(meta).ok()?;
+    let url = aux.source_url.clone().filter(|u| !u.is_empty())?;
+    let aux = AuxMetadata {
+        start_time: None,
+        ..aux
+    };
+    Some(
+        ResolvedTrack::new(QueryType::VideoLink(url))
+            .with_metadata(aux)
+            .with_user_id(user),
+    )
+}
+
+fn saved_titles(metas: &[Metadata]) -> Vec<String> {
+    metas
+        .iter()
+        .map(|m| {
+            m.title.clone().unwrap_or_else(|| {
+                m.source_url
+                    .clone()
+                    .unwrap_or_else(|| "Untitled".to_string())
+            })
+        })
+        .collect()
+}
+
+/// Songs you saved from a game. Set play to queue them in full.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(
+    rename = "saved",
+    category = "Games",
+    slash_command,
+    guild_only,
+    ephemeral,
+    check = "cmd_check_music"
+)]
+pub async fn gp_saved(
+    ctx: Context<'_>,
+    #[description = "Queue the list into your voice channel and play every song in full."]
+    play: Option<bool>,
+) -> Result<(), Error> {
+    match gp_saved_inner(ctx, play.unwrap_or(false)).await {
+        Ok(text) => {
+            courier::reply_as(ctx, GpCard::Line(text).into(), true).await?;
+        },
+        Err(e) => {
+            let msg = refuse_gp("saved", ctx.author().id, ctx.guild_id(), e);
+            courier::reply_as(ctx, msg, true).await?;
+        },
+    }
+    Ok(())
+}
+
+async fn gp_saved_inner(ctx: Context<'_>, play: bool) -> CrackedResult<String> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let data = ctx.data();
+    let pool = data.get_db_pool()?;
+    let metas =
+        Playlist::load_for_user(&pool, GP_SAVED_LIST_NAME, ctx.author().id.get() as i64).await?;
+    let titles = saved_titles(&metas);
+    if !play || titles.is_empty() {
+        return Ok(format_gp_saved_reply(&titles, None));
+    }
+    // The game owns the queue until its scoreboard. Queueing into it would
+    // play these songs in the middle of a round.
+    if data.gp_is_active(guild_id) {
+        return Err(CrackedError::GameInProgress);
+    }
+    let resolved: Vec<ResolvedTrack<'static>> = metas
+        .iter()
+        .filter_map(|m| track_from_saved_row(m, ctx.author().id))
+        .collect();
+    if resolved.is_empty() {
+        return Err(CrackedError::NoMetadata);
+    }
+    let call = get_call_or_join_author(ctx).await?;
+    let guard = data
+        .lock_queue(
+            guild_id,
+            PlaybackOwner::Free,
+            crate::music::audit::Actor::from_ctx(&ctx),
+        )
+        .await?;
+    let inserted =
+        enqueue_resolved_tracks_back(&guard, &call, resolved, data.http_client.clone()).await?;
+    Ok(format_gp_saved_reply(&titles, Some(inserted.count())))
 }
 
 /// Abort the game (host, or anyone who can manage the server).

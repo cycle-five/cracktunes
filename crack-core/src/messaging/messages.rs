@@ -429,11 +429,22 @@ pub const GP_CLOSED_BY_HOST: &str = "🔒 Submissions closed by the host —";
 pub const GP_ROUND_HINT: &str =
     "Whose song is this? Pick a name below — you can change your pick until it ends.";
 pub const GP_LIKE_HINT: &str = "Tap 👍 if you like it (+10 to whoever submitted it).";
+pub const GP_SAVE_HINT: &str =
+    "Tap 💾 Save to keep the whole song. Hear it later with `/gp saved`.";
 pub const GP_SELECT_PLACEHOLDER: &str = "Whose song is this?";
 pub const GP_LIKE_LABEL: &str = "Like";
+pub const GP_SAVE_LABEL: &str = "Save";
 pub const GP_LIKED: &str = "👍 Liked";
 pub const GP_UNLIKED: &str = "👍 Like removed";
 pub const GP_LIKES: &str = "👍 Likes";
+pub const GP_SAVED: &str = "💾 Saved";
+pub const GP_SAVED_TO: &str = "to your list.";
+pub const GP_ALREADY_SAVED: &str = "💾 Already in your list:";
+pub const GP_SAVED_EMPTY: &str =
+    "💾 Nothing saved yet. Tap Save on a song during a game to keep it.";
+pub const GP_SAVED_LIST: &str = "💾 Your saved songs";
+pub const GP_SAVED_QUEUED: &str = "💾 Queued";
+pub const GP_SAVED_PLAY_HINT: &str = "Hear them in full with `/gp saved play:True`.";
 pub const GP_GUESS_RECORDED: &str = "🤫 Guess locked in. You can change it until the song ends.";
 pub const GP_GUESS_CHANGED: &str = "🔁 Guess changed.";
 pub const GP_REVEAL: &str = "🎉 It was";

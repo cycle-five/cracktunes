@@ -1,4 +1,5 @@
 use crate::commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt};
+use crate::db::Metadata;
 use crate::messaging::format::DESCRIPTION_MAX;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
@@ -6,8 +7,9 @@ use crate::messaging::messages::{
     GP_LIKE_LABEL, GP_LOST, GP_NOBODY_GUESSED, GP_NOBODY_YET, GP_PROMPT_CLOSES_TITLE,
     GP_PROMPT_HOW_TO_TITLE, GP_RESULTS_GUESSED_BY, GP_RESULTS_GUESSED_COUNT,
     GP_RESULTS_NOBODY_SCORED, GP_RESULTS_THIS_ROUND, GP_RESULTS_TITLE, GP_REVEAL, GP_REVEAL_HELD,
-    GP_ROUND_HINT, GP_ROUND_TITLE, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE,
-    GP_STATUS_GUESSED, GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SUBMITTED,
+    GP_ROUND_HINT, GP_ROUND_TITLE, GP_SAVED_EMPTY, GP_SAVED_LIST, GP_SAVED_PLAY_HINT,
+    GP_SAVED_QUEUED, GP_SAVE_HINT, GP_SAVE_LABEL, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER,
+    GP_SONG_TITLE, GP_STATUS_GUESSED, GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SUBMITTED,
     GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, GP_WINDOW_CLOSED,
     GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING,
 };
@@ -1177,6 +1179,134 @@ fn guesses_likes_and_scoring() {
     );
 }
 
+/// Save keeps the playing song and nothing else. It works on your own song and
+/// for someone who never submitted, it ignores the clip offset, it stores the
+/// URL that actually plays rather than a Spotify link, and it does not move
+/// likes or scores. A second read is the same song. Once the song has ended
+/// the id is stale.
+#[test]
+fn save_keeps_the_playing_track_and_does_not_score() {
+    let data = data();
+    game_with(&data, &["p1"]);
+    // Still taking submissions: nothing is playing yet.
+    assert_eq!(
+        data.gp_save_target(G, 0, 0).unwrap_err(),
+        CrackedError::GameNotPlaying
+    );
+
+    let played = "https://www.youtube.com/watch?v=played";
+    let spotify = ResolvedTrack::new(QueryType::SpotifyLink(
+        "https://open.spotify.com/track/abc".into(),
+    ))
+    .with_metadata(AuxMetadata {
+        title: Some("Played".into()),
+        artist: Some("Artist".into()),
+        source_url: Some(played.into()),
+        duration: Some(Duration::from_secs(200)),
+        // What a clip would look like if it had been written onto the track.
+        start_time: Some(Duration::from_secs(30)),
+        ..AuxMetadata::default()
+    });
+    data.gp_submit(G, A, "alice".into(), spotify, &[]).unwrap();
+    data.gp_submit(G, B, "bob".into(), track("other"), &[])
+        .unwrap();
+    data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+
+    // 👍 refuses a listener and the submitter. Save has no such check: the
+    // target is the song, not a vote, so either of them can keep it.
+    let g = game(&data);
+    let submitter = g.rounds[0].tracks[0].submitter;
+    assert_eq!(
+        data.gp_toggle_like(G, 0, 0, D, "dave".into()).unwrap_err(),
+        CrackedError::NotAGamePlayer
+    );
+    assert_eq!(
+        data.gp_toggle_like(G, 0, 0, submitter, "self".into())
+            .unwrap_err(),
+        CrackedError::CannotLikeOwnSong
+    );
+
+    let likes_before = game(&data).rounds[0].tracks[0].likes.clone();
+    let scores_before = game(&data).scores.clone();
+    let saved = data.gp_save_target(G, 0, 0).unwrap();
+    let again = data.gp_save_target(G, 0, 0).unwrap();
+    assert_eq!(saved.metadata.source_url, again.metadata.source_url);
+    assert_eq!(saved.title, again.title);
+
+    let g = game(&data);
+    assert_eq!(g.rounds[0].tracks[0].likes, likes_before);
+    assert_eq!(g.scores, scores_before);
+    assert!(
+        !g.players.contains_key(&D),
+        "reading a save target must not enrol the listener"
+    );
+
+    // The shuffle decides which song is first. Whichever it is, a Spotify
+    // submission comes back as the YouTube URL that resolved, with no clip.
+    let spotify_at = g.rounds[0]
+        .tracks
+        .iter()
+        .position(|t| t.track.get_metadata().unwrap().source_url.as_deref() == Some(played))
+        .unwrap();
+    if spotify_at != 0 {
+        data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+    }
+    let saved = data.gp_save_target(G, 0, spotify_at).unwrap();
+    assert_eq!(saved.metadata.source_url.as_deref(), Some(played));
+    assert_eq!(saved.title, "Played");
+    assert_eq!(saved.metadata.artist.as_deref(), Some("Artist"));
+    assert_eq!(saved.metadata.duration, Some(Duration::from_secs(200)));
+    assert_eq!(
+        saved.metadata.start_time, None,
+        "the clip offset is not kept"
+    );
+
+    assert_eq!(
+        data.gp_save_target(G, 1, 0).unwrap_err(),
+        CrackedError::StaleRound
+    );
+    data.gp_reveal_and_advance(G, 0, spotify_at, NOW).unwrap();
+    // The last song of the round ends the playing phase, so the error is
+    // "nothing is playing" rather than "stale". Either way Save is gone.
+    let err = data.gp_save_target(G, 0, spotify_at).unwrap_err();
+    assert!(
+        matches!(err, CrackedError::StaleRound | CrackedError::GameNotPlaying),
+        "Save does not survive the reveal, got {err:?}"
+    );
+}
+
+#[test]
+fn saved_list_reply_and_full_track_rebuild() {
+    assert_eq!(format_gp_saved_reply(&[], None), GP_SAVED_EMPTY);
+    let listed = format_gp_saved_reply(&["One".into(), "Two".into()], None);
+    assert!(listed.starts_with(&format!("{GP_SAVED_LIST} (2)")));
+    assert!(listed.contains(GP_SAVED_PLAY_HINT));
+    assert!(listed.contains("1. One"));
+    assert!(listed.contains("2. Two"));
+    let queued = format_gp_saved_reply(&["One".into()], Some(1));
+    assert!(queued.starts_with(&format!("{GP_SAVED_QUEUED} 1")));
+    assert!(!queued.contains(GP_SAVED_PLAY_HINT));
+
+    let row = Metadata {
+        title: Some("Full Song".into()),
+        artist: Some("Someone".into()),
+        source_url: Some("https://www.youtube.com/watch?v=fullsong".into()),
+        duration: 214,
+        start_time: 0,
+        ..Metadata::default()
+    };
+    let track = track_from_saved_row(&row, A).unwrap();
+    assert_eq!(track.get_url(), "https://www.youtube.com/watch?v=fullsong");
+    let meta = track.get_metadata().unwrap();
+    assert_eq!(meta.start_time, None, "queued from the beginning");
+    assert_eq!(meta.duration, Some(Duration::from_secs(214)));
+    assert_eq!(meta.title.as_deref(), Some("Full Song"));
+    assert_eq!(track.get_requesting_user(), A);
+
+    let blank = Metadata::default();
+    assert!(track_from_saved_row(&blank, A).is_none());
+}
+
 /// A song that never played must not be scored. songbird reports a stream
 /// it could not open as an `End` whose state is still `Errored`, and before
 /// this the game happily revealed it and paid out guesses and likes for a
@@ -2055,8 +2185,16 @@ fn custom_ids() {
         Some((GpComponent::Like, GuildId::new(1), 2, 7))
     );
     assert_eq!(
+        parse_custom_id("gp:s:1:2:7"),
+        Some((GpComponent::Save, GuildId::new(1), 2, 7))
+    );
+    assert_eq!(
         parse_custom_id(&gp_custom_id(GpComponent::Guess, G, 3, 4)),
         Some((GpComponent::Guess, G, 3, 4))
+    );
+    assert_eq!(
+        parse_custom_id(&gp_custom_id(GpComponent::Save, G, 3, 4)),
+        Some((GpComponent::Save, G, 3, 4))
     );
     assert_eq!(parse_custom_id("gp:x:1:0:0"), None);
     assert_eq!(parse_custom_id("gp:g:0:0:0"), None);
@@ -2067,7 +2205,7 @@ fn custom_ids() {
 }
 
 /// The controls as Discord will receive them: a string select (only when
-/// guessable) and a 👍 button, each in its own action row.
+/// guessable) and, in the next row, 👍 beside 💾 Save.
 #[test]
 fn components_json() {
     let players = vec![(B, "bob".to_string()), (A, "alice".to_string())];
@@ -2083,17 +2221,23 @@ fn components_json() {
     assert_eq!(options.len(), 2);
     assert_eq!(options[0]["label"], "bob");
     assert_eq!(options[0]["value"], "200");
-    let button = &v[1]["components"][0];
-    assert_eq!(button["custom_id"], "gp:l:1:1:2");
-    assert_eq!(button["label"], GP_LIKE_LABEL);
-    assert_eq!(button["emoji"]["name"], "👍");
-    assert_eq!(button["style"], 2, "secondary");
+    let buttons = v[1]["components"].as_array().unwrap();
+    assert_eq!(buttons.len(), 2);
+    assert_eq!(buttons[0]["custom_id"], "gp:l:1:1:2");
+    assert_eq!(buttons[0]["label"], GP_LIKE_LABEL);
+    assert_eq!(buttons[0]["emoji"]["name"], "👍");
+    assert_eq!(buttons[0]["style"], 2, "secondary");
+    assert_eq!(buttons[1]["custom_id"], "gp:s:1:1:2");
+    assert_eq!(buttons[1]["label"], GP_SAVE_LABEL);
+    assert_eq!(buttons[1]["emoji"]["name"], "💾");
+    assert_eq!(buttons[1]["style"], 2, "secondary");
 
-    // Not guessable: only the like button.
+    // Not guessable: the like and save buttons, and nothing else.
     let rows = gp_components(G, 0, 0, &players, false);
     assert_eq!(rows.len(), 1);
     let v = serde_json::to_value(&rows).unwrap();
     assert_eq!(v[0]["components"][0]["custom_id"], "gp:l:1:0:0");
+    assert_eq!(v[0]["components"][1]["custom_id"], "gp:s:1:0:0");
 
     // Options are capped at 25.
     let many: Vec<(UserId, String)> = (1..=40u64)
@@ -2254,6 +2398,7 @@ fn track_embed_hides_submitter() {
     assert!(desc.contains("secret"), "{desc}");
     assert!(desc.contains(GP_ROUND_HINT), "{desc}");
     assert!(desc.contains(GP_LIKE_HINT), "{desc}");
+    assert!(desc.contains(GP_SAVE_HINT), "{desc}");
     assert!(!desc.contains("<@"), "must not mention anyone: {desc}");
 
     let solo = GpTrackStart {
@@ -2266,6 +2411,7 @@ fn track_embed_hides_submitter() {
         .to_string();
     assert!(!desc.contains(GP_ROUND_HINT), "{desc}");
     assert!(desc.contains(GP_LIKE_HINT), "{desc}");
+    assert!(desc.contains(GP_SAVE_HINT), "{desc}");
 }
 
 #[test]
@@ -2494,7 +2640,7 @@ fn command_registration() {
     names.sort_unstable();
     assert_eq!(
         names,
-        vec!["close", "end", "skip", "start", "status", "submit", "votefull", "voteskip"]
+        vec!["close", "end", "saved", "skip", "start", "status", "submit", "votefull", "voteskip"]
     );
     for sub in &cmd.subcommands {
         assert!(sub.guild_only, "{} must be guild_only", sub.name);
@@ -2508,11 +2654,12 @@ fn command_registration() {
             "{} needs a slash form",
             sub.name
         );
-        if sub.name == "submit" {
-            assert!(sub.ephemeral, "submit replies must be ephemeral");
+        if sub.name == "submit" || sub.name == "saved" {
+            assert!(sub.ephemeral, "{} replies must be ephemeral", sub.name);
             assert!(
                 sub.prefix_action.is_none(),
-                "submit must be slash-only so the query never lands in the channel"
+                "{0} must be slash-only so it never lands in the channel",
+                sub.name
             );
         } else {
             assert!(
@@ -2552,6 +2699,11 @@ fn command_registration() {
             );
             // Nothing is required; everything has a default.
             assert!(sub.parameters.iter().all(|p| !p.required));
+        }
+        if sub.name == "saved" {
+            let params: Vec<&str> = sub.parameters.iter().map(|p| p.name.as_ref()).collect();
+            assert_eq!(params, vec!["play"]);
+            assert!(!sub.parameters[0].required, "listing does not queue");
         }
     }
 }
@@ -2938,7 +3090,9 @@ fn a_song_carries_its_controls_and_a_reveal_carries_none() {
         },
         &cx(),
     );
-    assert!(!song.components.is_empty(), "the 👍 row at least");
+    let rows = serde_json::to_string(&song.components).unwrap();
+    assert!(rows.contains("gp:l:"), "the like button, got {rows}");
+    assert!(rows.contains("gp:s:"), "the save button, got {rows}");
     let res = data
         .gp_reveal_and_advance(G, 0, 0, NOW)
         .expect("the song was playing");

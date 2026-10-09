@@ -1,0 +1,173 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                SELECT\n                    metadata.id, track, artist, album, date, channels, channel, start_time, duration, sample_rate, source_url, title, thumbnail\n                FROM\n                    metadata\n                    INNER JOIN playlist_track ON playlist_track.metadata_id = metadata.id\n                    INNER JOIN playlist ON playlist_track.playlist_id = playlist.id\n                WHERE playlist.name = $1 AND playlist.user_id = $2\n                ORDER BY playlist_track.id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "track",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "track"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "artist",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "artist"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "album",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "album"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "date",
+        "type_info": "Date",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "date"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "channels",
+        "type_info": "Int2",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "channels"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "channel",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "channel"
+          }
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "start_time",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "start_time"
+          }
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "duration",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "duration"
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "sample_rate",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "sample_rate"
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "source_url",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "source_url"
+          }
+        }
+      },
+      {
+        "ordinal": 11,
+        "name": "title",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "ordinal": 12,
+        "name": "thumbnail",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "metadata",
+            "name": "thumbnail"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "cdd8cc27429abf26d60ca19105b822aebbccf17f8d6d0c287e7887b2895f293c"
+}

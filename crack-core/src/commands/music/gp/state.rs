@@ -7,6 +7,7 @@ use crate::{
 };
 use ::serenity::all::{ChannelId, GenericChannelId, GuildId, MessageId, UserId};
 use crack_testing::ResolvedTrack;
+use crack_types::AuxMetadata;
 use rand::{seq::SliceRandom, Rng};
 use std::{
     collections::{HashMap, HashSet},
@@ -87,8 +88,11 @@ pub fn gp_min_played(intended: Option<Duration>) -> Duration {
         None => GP_MIN_PLAYED,
     }
 }
-/// Component custom ids look like `gp:<g|l>:<guild_id>:<round_idx>:<track_idx>`.
+/// Component custom ids look like `gp:<g|l|s>:<guild_id>:<round_idx>:<track_idx>`.
 pub const GP_CUSTOM_ID_PREFIX: &str = "gp:";
+/// The one list Save writes to. One per user, private, the same list in every
+/// server. Created the first time they press Save.
+pub const GP_SAVED_LIST_NAME: &str = "gp saved";
 /// Custom ids on `/gp start`'s category picker. Deliberately not under
 /// [`GP_CUSTOM_ID_PREFIX`]: the picker's own collector answers them, and the
 /// global handler, finding no game, would answer them first.
@@ -916,6 +920,45 @@ pub enum GpLikeOutcome {
     Unliked(usize),
 }
 
+/// The playing song, copied out of the game so it can be written down without
+/// holding the map lock. `metadata.start_time` is always `None`: this is the
+/// whole track.
+#[derive(Clone, Debug)]
+pub struct GpSaveTarget {
+    pub title: String,
+    pub metadata: AuxMetadata,
+}
+
+/// The URL and tags to store. Prefers the resolved `source_url` over
+/// [`ResolvedTrack::get_url`], which rewrites anything that is not already a
+/// YouTube link into a `watch?v=` URL and would mangle a Spotify link that
+/// never got resolved.
+fn playable_metadata(track: &ResolvedTrack<'static>) -> CrackedResult<AuxMetadata> {
+    let mut meta = track.get_metadata().unwrap_or_default();
+    let url = meta
+        .source_url
+        .clone()
+        .filter(|u| !u.is_empty())
+        .or_else(|| {
+            let fallback = track.get_url();
+            if fallback.is_empty() {
+                None
+            } else {
+                Some(fallback)
+            }
+        })
+        .ok_or(CrackedError::NoMetadata)?;
+    if meta.title.as_deref().unwrap_or("").is_empty() {
+        let title = track.get_title();
+        if !title.is_empty() {
+            meta.title = Some(title);
+        }
+    }
+    meta.source_url = Some(url);
+    meta.start_time = None;
+    Ok(meta)
+}
+
 /// Everything the reveal needs, cloned out of the map so no lock is held.
 #[derive(Clone, Debug)]
 pub struct GpTrackResult {
@@ -1295,6 +1338,46 @@ impl Data {
         } else {
             t.likes.insert(liker);
             GpLikeOutcome::Liked(t.likes.len())
+        })
+    }
+
+    /// The song that is playing, as something to keep. Read-only: it does not
+    /// touch likes or scores, it does not care who submitted the song, and it
+    /// does not require the clicker to have submitted. The caller has already
+    /// checked they are in the game's voice channel.
+    ///
+    /// Only the song that is playing. Once the reveal has moved on, the id is
+    /// stale and this refuses -- Save does not stay on the revealed message.
+    ///
+    /// What comes back is the whole track. The clip is how the game is playing
+    /// it, not part of the song, so `start_time` is cleared. The URL is the one
+    /// that resolved for playback (`source_url`), not the query the submitter
+    /// typed, which may have been a Spotify link.
+    pub fn gp_save_target(
+        &self,
+        guild_id: GuildId,
+        round_idx: usize,
+        track_idx: usize,
+    ) -> CrackedResult<GpSaveTarget> {
+        let game = self
+            .gp_games
+            .get(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        if game.phase != GpPhase::Playing {
+            return Err(CrackedError::GameNotPlaying);
+        }
+        if round_idx != game.current_round || track_idx != game.current_track {
+            return Err(CrackedError::StaleRound);
+        }
+        let track = game
+            .rounds
+            .get(round_idx)
+            .and_then(|r| r.tracks.get(track_idx))
+            .ok_or(CrackedError::StaleRound)?;
+        let metadata = playable_metadata(&track.track)?;
+        Ok(GpSaveTarget {
+            title: track.track.get_title(),
+            metadata,
         })
     }
 
