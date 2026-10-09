@@ -45,6 +45,30 @@ pub(crate) fn current_state(
     }
 }
 
+/// One handle's row, or `None` when a resume could not play it: no metadata,
+/// or no source URL (a local file, an attachment that never resolved).
+pub(crate) fn keep(
+    meta: Option<songbird::input::AuxMetadata>,
+    requester: Option<i64>,
+) -> Option<SnapshotTrack> {
+    let meta = meta?;
+    let url = meta.source_url.filter(|u| !u.is_empty())?;
+    Some(SnapshotTrack {
+        url,
+        title: meta.title,
+        artist: meta.artist,
+        duration_secs: meta.duration.map(|d| d.as_secs() as i64),
+        requester,
+    })
+}
+
+/// The kept rows in order, and whether the current track (index 0) is among
+/// them.
+pub(crate) fn gather(per_handle: Vec<Option<SnapshotTrack>>) -> (Vec<SnapshotTrack>, bool) {
+    let first_kept = matches!(per_handle.first(), Some(Some(_)));
+    (per_handle.into_iter().flatten().collect(), first_kept)
+}
+
 /// The guild's queue as a [`QueueSnapshot`]. `None` when there is nothing a
 /// resume could play, or when a `/gp` game owns the guild (its own resume
 /// brings it back).
@@ -60,24 +84,13 @@ pub(crate) async fn snapshot_call(
     // 🔑 Clone the handles and let go of the call before any await on them.
     let handles = call.lock().await.queue().current_queue();
     let first = handles.first()?.clone();
-    let mut tracks = Vec::with_capacity(handles.len());
-    let mut first_kept = false;
-    for (i, h) in handles.iter().enumerate() {
-        let Ok(meta) = get_track_handle_metadata(h).await else {
-            continue;
-        };
-        let Some(url) = meta.source_url.filter(|u| !u.is_empty()) else {
-            continue;
-        };
-        first_kept |= i == 0;
-        tracks.push(SnapshotTrack {
-            url,
-            title: meta.title,
-            artist: meta.artist,
-            duration_secs: meta.duration.map(|d| d.as_secs() as i64),
-            requester: get_requesting_user(h).await.ok().map(|u| u.get() as i64),
-        });
+    let mut per_handle = Vec::with_capacity(handles.len());
+    for h in &handles {
+        let meta = get_track_handle_metadata(h).await.ok();
+        let requester = get_requesting_user(h).await.ok().map(|u| u.get() as i64);
+        per_handle.push(keep(meta, requester));
     }
+    let (tracks, first_kept) = gather(per_handle);
     if tracks.is_empty() {
         return None;
     }
@@ -398,7 +411,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_snapshot_whose_current_track_was_dropped_starts_at_the_top() {
+    async fn a_snapshot_whose_current_track_was_dropped_keeps_the_rest() {
         tokio::time::timeout(Duration::from_secs(5), async {
             let (data, call) = queued(&[
                 (None, Some(100)),
@@ -406,10 +419,48 @@ mod tests {
             ])
             .await;
             let s = snapshot_call(&data, GUILD, VC, &call).await.unwrap();
-            assert_eq!((s.position_ms, s.looping), (0, false));
+            // Offline `get_info` reads defaults, so position is pinned by the
+            // pure `current_state` and `gather` tests, not here.
             assert_eq!(s.tracks.len(), 1);
         })
         .await
         .expect("get_info is bounded");
+    }
+
+    fn row(n: usize) -> SnapshotTrack {
+        SnapshotTrack {
+            url: format!("u{n}"),
+            title: None,
+            artist: None,
+            duration_secs: None,
+            requester: None,
+        }
+    }
+
+    #[test]
+    fn gather_says_whether_the_current_track_was_kept() {
+        assert_eq!(gather(vec![None, Some(row(1))]), (vec![row(1)], false));
+        assert_eq!(
+            gather(vec![Some(row(0)), None, Some(row(2))]),
+            (vec![row(0), row(2)], true)
+        );
+        assert_eq!(gather(vec![]), (vec![], false));
+    }
+
+    #[test]
+    fn keep_needs_a_source_url() {
+        assert_eq!(keep(None, Some(1)), None, "no metadata");
+        assert_eq!(keep(Some(meta(0, None)), Some(1)), None);
+        assert_eq!(keep(Some(meta(0, Some(""))), Some(1)), None);
+        assert_eq!(
+            keep(Some(meta(3, Some("https://x/y"))), Some(7)),
+            Some(SnapshotTrack {
+                url: "https://x/y".into(),
+                title: Some("t3".into()),
+                artist: Some("a3".into()),
+                duration_secs: Some(103),
+                requester: Some(7),
+            })
+        );
     }
 }
