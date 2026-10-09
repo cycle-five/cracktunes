@@ -146,6 +146,13 @@
   rules do.
 - **`/echoes`** (admins) turns those echo lines off or on for the server, for
   buttons and the dashboard alike. On by default.
+- **`/buttons`** (admins) turns the now-playing message's buttons off or on for
+  the server. On by default. Off takes them off the message on screen at once,
+  and a press on an older message is answered privately that they are off.
+  This is the switch for a server that restricted the music commands under
+  Server Settings → Integrations, which buttons do not see.
+- **One button press per person per server every 2 seconds.** A press inside
+  that is ignored, so mashing a button cannot flood the channel with echo lines.
 - The queue history's source filter (`/auditlog`, the dashboard) has `button`.
 
 ### Changed
