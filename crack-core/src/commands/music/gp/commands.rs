@@ -158,12 +158,12 @@ async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Er
             .await?;
             return Ok(None);
         };
-        // Only a prefix command's picker is public; from a slash command nobody
-        // else can see it.
         let press = DiscordPress {
             http: ctx.http(),
             interaction: &mci,
         };
+        // Only a prefix command's picker is public; from a slash command nobody
+        // else can see it.
         if mci.user.id != host {
             courier::respond(
                 &press,

@@ -1,8 +1,12 @@
 //! /gp's Discord glue against the messaging fakes: what each step of a game
 //! sends, edits and gives up on. The game's rules are tested in `test.rs`.
 use super::playback::{gp_after_close, gp_answer_component, gp_spawn_window_timer_secs};
-use super::test::{data, game, game_with, game_with_reveal, rng, submit, A, B, G, NOW, TC};
+use super::test::{
+    data, game, game_with, game_with_reveal, game_with_settings, playing_with_title, rng, submit,
+    A, B, G, NOW, TC,
+};
 use super::*;
+use crate::commands::music::gp_persist::{post_owed_results, take_down_components};
 use crate::messaging::messages::{GP_ABORTED, GP_GAME_OVER, GP_WINDOW_WARNING};
 use crate::messaging::test_support::{FakePress, FakeTransport, Op, PressOp};
 use crate::messaging::transport::TransportError;
@@ -216,6 +220,38 @@ async fn the_games_last_reveal_posts_the_final_scoreboard() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_final_scoreboard_that_cannot_be_posted_is_an_error_and_the_game_is_gone() {
+    let data = data();
+    let opened = game_with_settings(&data, &["only"], None, GpReveal::Song, false);
+    submit(&data, B, "bob", "Song");
+    data.gp_close_window_if(G, opened.generation, &mut rng(), NOW)
+        .unwrap();
+    data.gp_set_track_message(G, 0, 0, TC, MessageId::new(88))
+        .unwrap();
+    let fake = Arc::new(FakeTransport::default());
+    // The reveal is an edit, so the first send is the scoreboard.
+    fail_sends(&fake, 1);
+    let out = gp_advance_track(playback(&data, &fake), 0, 0, false).await;
+    assert!(out.is_err(), "the scoreboard's `?` propagates");
+    assert!(!data.gp_is_active(G), "the game is removed before the post");
+}
+
+#[tokio::test]
+async fn a_song_that_fails_to_post_twice_aborts_the_game() {
+    let data = data();
+    let start = playing_with_title(&data, "Song", GpReveal::Song);
+    let fake = Arc::new(FakeTransport::default());
+    fail_sends(&fake, 2);
+    gp_play_track(&playback(&data, &fake), start).await.unwrap();
+    assert_eq!(
+        fake.ops(),
+        vec![Op::Send(TC.get()), Op::Send(TC.get()), Op::Send(TC.get())]
+    );
+    assert_eq!(fake.texts().last().unwrap(), GP_ABORTED);
+    assert!(!data.gp_is_active(G));
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_window_warning_is_a_line() {
     let data = data();
     let opened = game_with(&data, &["first"]);
@@ -246,8 +282,6 @@ async fn a_click_is_answered_once_privately_and_never_acknowledged() {
     );
 }
 
-use crate::commands::music::gp_persist::{post_owed_results, take_down_components};
-
 /// A two-round game whose first round has been revealed in memory but whose
 /// results never reached the channel.
 fn round_one_owed(data: &Data) {
@@ -274,6 +308,7 @@ async fn owed_results_that_fail_are_not_reported_posted() {
     let fake = FakeTransport::default();
     fail_sends(&fake, 1);
     assert!(post_owed_results(&fake, &game(&data)).await.is_empty());
+    assert_eq!(fake.ops(), vec![Op::Send(TC.get())], "a send was attempted");
 }
 
 #[tokio::test]

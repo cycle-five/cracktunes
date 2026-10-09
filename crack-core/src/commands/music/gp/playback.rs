@@ -122,21 +122,16 @@ async fn gp_send(
     Ok(courier::post_message(&*pb.transport, channel, &out).await?)
 }
 
-/// Post a card to a channel. Best effort: the courier logs a failure.
+/// Post a card to a channel. Best effort: a failure is logged with the card.
 pub async fn gp_post(
-    data: &Data,
+    _data: &Data,
     transport: &dyn Transport,
     channel: GenericChannelId,
     card: GpCard,
 ) {
-    courier::post(
-        data,
-        transport,
-        Destination::Channel(channel),
-        &card.into(),
-        &RenderCx::now(),
-    )
-    .await;
+    if let Err(e) = courier::post_message(transport, channel, &gp_rendered(card.clone())).await {
+        tracing::warn!("gp: posting \"{card}\" to {channel} failed: {e}");
+    }
 }
 
 /// Edit `card` into `message`, or post it if there is no message or the edit

@@ -36,7 +36,7 @@ pub const GP_TITLE_MAX: usize = 100;
 #[derive(Debug, Clone)]
 #[expect(
     clippy::large_enum_variant,
-    reason = "a card is built once and boxed inside CrackedMessage; boxing Song's payload would change every call site for nothing"
+    reason = "Song carries a ResolvedTrack (~2.4KB); a card is built once per message and travels boxed inside CrackedMessage::Gp"
 )]
 pub enum GpCard {
     Rules,

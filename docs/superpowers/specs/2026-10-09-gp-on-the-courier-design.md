@@ -77,6 +77,8 @@ Every send keeps today's failure behaviour; only the wire changes:
 
 `FakeTransport` also gains a queue of per-send results, so a test can fail the first send and let the second through (`gp_send`'s retry). Its single `send_error`, which fails every send, stays as it is.
 
+The prefix picker now carries `.reply(true)` like every courier reply since v0.22.0: it threads under the invoking message and pings nobody.
+
 ## 3. Interactions
 
 `/gp` answers three kinds of component click:
@@ -143,9 +145,9 @@ The collector loop itself stays untested by unit tests (`cfg(not(tarpaulin_inclu
 **Release.** A patch: **v0.24.1**. There is no new feature; the visible change is the title formatting fix. CHANGELOG entry under 0.24.1. The PR gets a TuneTitan checklist:
 
 1. `/gp start` with the picker: tick categories, Start; again with Cancel; again left to time out, after which the buttons are gone.
-2. A prefix `!gp start`: a second user's click on the picker is refused privately.
+2. `@CrackTunes gp start` (the mention prefix: the bot has no message-content intent, so `!gp` never arrives): a second user's click on the picker is refused privately, and the picker shows as a non-pinging reply to the invoking message.
 3. A full round: the prompt, the 30 s warning, the close edit, then each song with its dropdown and 👍. Guess and like answers stay private. The reveal replaces the dropdown, then the results, then the final scoreboard.
 4. A song whose title has markdown in it (for example `*NSYNC`) shows the asterisk.
-5. `/gp voteskip` from slash, and from prefix (a DM plus the room line).
+5. `/gp voteskip` from slash, and `@CrackTunes gp voteskip` from prefix (a DM plus the room line).
 6. Restart the bot mid-song: the resumed line is posted, the old message loses its dropdown and keeps its embed, and the song restarts.
 7. `/gp status`, `/gp end` (with its scoreboard), and `/gp` (the rules).
