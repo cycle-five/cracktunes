@@ -102,6 +102,7 @@ pub const FAIL_NO_TRACK_PLAYING: &str = "No track playing";
 pub const OP_TRACK_ABSENT: &str = "That track is no longer queued";
 pub const OP_TRACK_PLAYING: &str = "That track is playing";
 pub const BUTTON_OUT_OF_DATE: &str = "This button is out of date.";
+pub const NP_BUTTONS_DISABLED: &str = "The now-playing buttons are turned off in this server.";
 pub const OP_TRACK_STALE: &str = "That track is no longer playing";
 pub const FAIL_EMPTY_VECTOR: &str = "⚠️ Empty vector not allowed!";
 pub const FAIL_INSERT: &str = "⚠️ Failed to insert!";
@@ -230,6 +231,9 @@ pub const CONTROL_ECHOES_ON: &str =
     "📣 Button and dashboard controls now post a line in the channel.";
 pub const CONTROL_ECHOES_OFF: &str =
     "🔇 Button and dashboard controls no longer post a line in the channel.";
+pub const NP_BUTTONS_ON: &str = "🎛️ The now-playing message now has buttons.";
+pub const NP_BUTTONS_OFF: &str =
+    "🚫 The now-playing message no longer has buttons. The commands still work.";
 pub const QUEUE_PAGE_OF: &str = "of";
 pub const QUEUE_PAGE: &str = "Page";
 pub const QUEUE_UP_NEXT: &str = "⌛ Up next";

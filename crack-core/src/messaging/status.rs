@@ -318,7 +318,11 @@ pub(crate) async fn show_now_playing_on(
         return None;
     }
     let track = call.lock().await.queue().current()?;
-    let card = now_playing_status_card(&track, guild).await;
+    let mut card = now_playing_status_card(&track, guild).await;
+    // A server can turn the buttons off (`/buttons`).
+    if !data.get_now_playing_buttons(guild).await {
+        card.controls = None;
+    }
     let msg = CrackedMessage::NowPlayingCard(Box::new(card));
     post(
         data,
@@ -333,6 +337,43 @@ pub(crate) async fn show_now_playing_on(
         id,
         phase: Phase::Playing,
     })
+}
+
+/// Bring the screen in line with a change to the server's now-playing buttons
+/// setting. Off takes the buttons off the status on screen now, leaving its
+/// embed; on re-renders the status, buttons and all, when something is playing
+/// (`call`). Best effort: a failure is logged.
+///
+/// 🔑 The same lock order as [`show_now_playing`]: hold no Call lock.
+///
+/// Known race: a status re-render that read the setting just before a flip can
+/// post its card after this ran, so the screen may be wrong until the next
+/// re-render. The press gate in `buttons::respond` stays authoritative: a stale
+/// button only draws a private refusal.
+pub(crate) async fn buttons_switched(
+    data: &Data,
+    transport: &dyn Transport,
+    guild: GuildId,
+    on: bool,
+    call: Option<&Arc<Mutex<Call>>>,
+) {
+    if on {
+        if let Some(call) = call {
+            show_now_playing_on(data, transport, guild, call, None).await;
+        }
+        return;
+    }
+    let shown = data.status_slot(guild).lock().await.message;
+    if let Some(StatusMessage {
+        channel,
+        id,
+        phase: Phase::Playing,
+    }) = shown
+    {
+        if let Err(err) = transport.clear_components(channel, id).await {
+            tracing::warn!("taking the buttons off the status in {guild}: {err:?}");
+        }
+    }
 }
 
 /// Show that playback finished. The message stays tracked, so the next
@@ -973,6 +1014,100 @@ mod tests {
             let shown = show_now_playing_on(&data, &t, GUILD, &call, None).await;
 
             assert!(shown.is_some());
+            assert_eq!(t.ops(), vec![Op::Send(10)]);
+            let sent = t.sent.lock().unwrap();
+            let row = serde_json::to_value(&sent[0].components[0]).unwrap();
+            assert_eq!(row["components"][0]["custom_id"], "np:pause:1");
+        })
+        .await
+        .expect("get_info is bounded, so the render finishes");
+    }
+
+    async fn buttons_off(data: &crate::Data) {
+        let mut s = crate::guild::settings::GuildSettings::new(GUILD, None, None);
+        s.now_playing_buttons = false;
+        data.guild_settings_map.write().await.insert(GUILD, s);
+    }
+
+    /// A server that turned the buttons off gets the card without them.
+    #[tokio::test]
+    async fn the_now_playing_status_has_no_buttons_when_the_server_turned_them_off() {
+        use crate::music::ops::test_support::queue_of;
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let (data, call, _ids, _rx) = queue_of(1).await;
+            buttons_off(&data).await;
+            note_command_channel(&data, GUILD, ch(10)).await;
+            let t = FakeTransport::default();
+
+            assert!(show_now_playing_on(&data, &t, GUILD, &call, None)
+                .await
+                .is_some());
+            let sent = t.sent.lock().unwrap();
+            assert!(sent[0].components.is_empty());
+            assert!(sent[0].embed.is_some(), "still the now-playing card");
+        })
+        .await
+        .expect("get_info is bounded, so the render finishes");
+    }
+
+    async fn track_status(data: &crate::Data, phase: Phase) {
+        data.status_slot(GUILD).lock().await.message = Some(StatusMessage {
+            channel: ch(10),
+            id: MessageId::new(500),
+            phase,
+        });
+    }
+
+    #[tokio::test]
+    async fn off_takes_the_buttons_off_the_status_on_screen_and_nothing_else() {
+        let data = crate::Data::default();
+        track_status(&data, Phase::Playing).await;
+        let t = FakeTransport::default();
+        buttons_switched(&data, &t, GUILD, false, None).await;
+        assert_eq!(t.ops(), vec![Op::ClearComponents(10, 500)]);
+    }
+
+    /// Review Focus 5.
+    #[tokio::test]
+    async fn off_with_a_finished_or_empty_status_does_nothing() {
+        let data = crate::Data::default();
+        let t = FakeTransport::default();
+        buttons_switched(&data, &t, GUILD, false, None).await;
+        track_status(&data, Phase::Finished).await;
+        buttons_switched(&data, &t, GUILD, false, None).await;
+        assert!(t.ops().is_empty());
+    }
+
+    /// Review Focus 4: the message was deleted by hand; the clear fails and
+    /// that is all.
+    #[tokio::test]
+    async fn off_survives_a_status_message_that_is_gone() {
+        let data = crate::Data::default();
+        track_status(&data, Phase::Playing).await;
+        let t = FakeTransport::default();
+        *t.edit_error.lock().unwrap() = Some(TransportError::Other("Unknown Message".into()));
+        buttons_switched(&data, &t, GUILD, false, None).await;
+        assert_eq!(t.ops(), vec![Op::ClearComponents(10, 500)]);
+    }
+
+    #[tokio::test]
+    async fn on_with_nothing_playing_does_nothing() {
+        let data = crate::Data::default();
+        track_status(&data, Phase::Playing).await;
+        let t = FakeTransport::default();
+        buttons_switched(&data, &t, GUILD, true, None).await;
+        assert!(t.ops().is_empty());
+    }
+
+    /// On re-renders the status with its buttons.
+    #[tokio::test]
+    async fn on_with_a_song_playing_shows_the_status_with_its_buttons() {
+        use crate::music::ops::test_support::queue_of;
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            let (data, call, _ids, _rx) = queue_of(1).await;
+            note_command_channel(&data, GUILD, ch(10)).await;
+            let t = FakeTransport::default();
+            buttons_switched(&data, &t, GUILD, true, Some(&call)).await;
             assert_eq!(t.ops(), vec![Op::Send(10)]);
             let sent = t.sent.lock().unwrap();
             let row = serde_json::to_value(&sent[0].components[0]).unwrap();

@@ -72,6 +72,11 @@ pub trait GuildSettingsOperations {
         &self,
         guild_id: GuildId,
     ) -> impl Future<Output = Result<bool, CrackedError>>;
+    fn get_now_playing_buttons(&self, guild_id: GuildId) -> impl Future<Output = bool>;
+    fn toggle_now_playing_buttons(
+        &self,
+        guild_id: GuildId,
+    ) -> impl Future<Output = Result<bool, CrackedError>>;
 }
 
 /// Implementation of the guild settings operations.
@@ -517,6 +522,44 @@ impl GuildSettingsOperations for Data {
             settings.save(pool).await?;
         }
         Ok(settings.control_echoes)
+    }
+
+    /// Whether the now-playing message carries its buttons. On when the guild
+    /// has no settings loaded: the buttons were always shown before v0.25.0.
+    async fn get_now_playing_buttons(&self, guild_id: GuildId) -> bool {
+        self.guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .is_none_or(|settings| settings.now_playing_buttons)
+    }
+
+    /// Flip whether the now-playing message carries its buttons, save it, and
+    /// return the new value.
+    ///
+    /// 🔑 As with `toggle_control_echoes`: load the stored row first, or the
+    /// full-row upsert writes defaults over it.
+    async fn toggle_now_playing_buttons(&self, guild_id: GuildId) -> Result<bool, CrackedError> {
+        self.ensure_settings_loaded(guild_id).await?;
+        let settings = self
+            .guild_settings_map
+            .write()
+            .await
+            .entry(guild_id)
+            .and_modify(|settings| {
+                settings.toggle_now_playing_buttons();
+            })
+            .or_insert_with(|| {
+                let mut settings =
+                    GuildSettings::new(guild_id, Some(&self.bot_settings.get_prefix()), None);
+                settings.toggle_now_playing_buttons();
+                settings
+            })
+            .clone();
+        if let Some(pool) = self.database_pool.as_ref() {
+            settings.save(pool).await?;
+        }
+        Ok(settings.now_playing_buttons)
     }
 }
 
@@ -1158,5 +1201,34 @@ mod test {
         assert!(!data.get_control_echoes(guild_id).await);
         assert!(data.toggle_control_echoes(guild_id).await.unwrap());
         assert!(data.get_control_echoes(guild_id).await);
+    }
+
+    #[tokio::test]
+    async fn now_playing_buttons_are_on_for_a_guild_with_no_settings() {
+        let data = crate::Data::default();
+        assert!(data.get_now_playing_buttons(GuildId::new(123)).await);
+    }
+
+    #[tokio::test]
+    async fn now_playing_buttons_follow_the_guild_setting() {
+        let data = crate::Data::default();
+        let guild_id = GuildId::new(123);
+        let mut settings = GuildSettings::new(guild_id, None, None);
+        settings.now_playing_buttons = false;
+        data.guild_settings_map
+            .write()
+            .await
+            .insert(guild_id, settings);
+        assert!(!data.get_now_playing_buttons(guild_id).await);
+    }
+
+    #[tokio::test]
+    async fn toggling_now_playing_buttons_flips_it_and_reports_the_new_value() {
+        let data = crate::Data::default();
+        let guild_id = GuildId::new(123);
+        assert!(!data.toggle_now_playing_buttons(guild_id).await.unwrap());
+        assert!(!data.get_now_playing_buttons(guild_id).await);
+        assert!(data.toggle_now_playing_buttons(guild_id).await.unwrap());
+        assert!(data.get_now_playing_buttons(guild_id).await);
     }
 }

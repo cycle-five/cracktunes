@@ -304,6 +304,9 @@ pub enum CrackedMessage {
     ButtonOutOfDate,
     /// Every `/gp` message, rendered by `gp::render_card`.
     Gp(Box<crate::commands::music::gp::GpCard>),
+    NowPlayingButtonsDisabled,
+    NowPlayingButtonsOn,
+    NowPlayingButtonsOff,
 }
 
 impl CrackedMessage {
@@ -658,6 +661,11 @@ impl Display for CrackedMessage {
             Self::ControlEchoesOff => f.write_str(crate::messaging::messages::CONTROL_ECHOES_OFF),
             Self::ButtonOutOfDate => f.write_str(crate::messaging::messages::BUTTON_OUT_OF_DATE),
             Self::Gp(card) => write!(f, "{card}"),
+            Self::NowPlayingButtonsDisabled => {
+                f.write_str(crate::messaging::messages::NP_BUTTONS_DISABLED)
+            },
+            Self::NowPlayingButtonsOn => f.write_str(crate::messaging::messages::NP_BUTTONS_ON),
+            Self::NowPlayingButtonsOff => f.write_str(crate::messaging::messages::NP_BUTTONS_OFF),
         }
     }
 }
@@ -777,6 +785,18 @@ mod test {
         assert_eq!(
             CrackedMessage::ControlEchoesOff.to_string(),
             "🔇 Button and dashboard controls no longer post a line in the channel."
+        );
+    }
+
+    #[test]
+    fn now_playing_buttons_messages_say_what_changed() {
+        assert_eq!(
+            CrackedMessage::NowPlayingButtonsOn.to_string(),
+            "🎛️ The now-playing message now has buttons."
+        );
+        assert_eq!(
+            CrackedMessage::NowPlayingButtonsOff.to_string(),
+            "🚫 The now-playing message no longer has buttons. The commands still work."
         );
     }
 

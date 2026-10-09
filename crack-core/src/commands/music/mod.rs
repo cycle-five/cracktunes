@@ -18,6 +18,7 @@ pub mod leave;
 pub mod lyrics;
 pub mod manage_sources;
 pub mod nowplaying;
+pub mod np_buttons;
 pub mod pause;
 pub mod playlog;
 pub mod queue;
@@ -50,6 +51,7 @@ pub use leave::*;
 pub use lyrics::*;
 pub use manage_sources::*;
 pub use nowplaying::*;
+pub use np_buttons::*;
 pub use pause::*;
 pub use playlog::*;
 pub use queue::*;
@@ -71,6 +73,7 @@ pub fn music_commands() -> Vec<crate::Command> {
         vec![
             autopause(),
             autoplay(),
+            buttons(),
             // `ephemeral::ephemeral()` is deliberately absent: the setting it
             // toggles cannot take effect while every music command defers
             // publicly before it replies (#535).

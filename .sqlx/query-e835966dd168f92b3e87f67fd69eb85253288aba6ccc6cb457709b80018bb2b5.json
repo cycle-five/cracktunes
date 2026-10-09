@@ -82,6 +82,11 @@
         "ordinal": 15,
         "name": "control_echoes",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 16,
+        "name": "now_playing_buttons",
+        "type_info": "Bool"
       }
     ],
     "parameters": {
@@ -92,6 +97,7 @@
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       false,
