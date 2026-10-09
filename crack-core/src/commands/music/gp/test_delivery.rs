@@ -245,3 +245,44 @@ async fn a_click_is_answered_once_privately_and_never_acknowledged() {
         }]
     );
 }
+
+use crate::commands::music::gp_persist::{post_owed_results, take_down_components};
+
+/// A two-round game whose first round has been revealed in memory but whose
+/// results never reached the channel.
+fn round_one_owed(data: &Data) {
+    let opened = game_with_reveal(data, &["first", "second"], None, GpReveal::Round);
+    submit(data, B, "bob", "Song");
+    data.gp_close_window_if(G, opened.generation, &mut rng(), NOW)
+        .unwrap();
+    data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
+}
+
+#[tokio::test]
+async fn owed_results_are_posted_and_reported() {
+    let data = data();
+    round_one_owed(&data);
+    let fake = FakeTransport::default();
+    assert_eq!(post_owed_results(&fake, &game(&data)).await, vec![0]);
+    assert_eq!(fake.ops(), vec![Op::Send(TC.get())]);
+}
+
+#[tokio::test]
+async fn owed_results_that_fail_are_not_reported_posted() {
+    let data = data();
+    round_one_owed(&data);
+    let fake = FakeTransport::default();
+    fail_sends(&fake, 1);
+    assert!(post_owed_results(&fake, &game(&data)).await.is_empty());
+}
+
+#[tokio::test]
+async fn taking_down_the_old_dropdown_clears_components_and_nothing_else() {
+    let fake = FakeTransport::default();
+    take_down_components(&fake, G, TC, MessageId::new(88)).await;
+    assert_eq!(fake.ops(), vec![Op::ClearComponents(TC.get(), 88)]);
+    assert!(
+        fake.sent.lock().unwrap().is_empty(),
+        "the embed is left alone"
+    );
+}
