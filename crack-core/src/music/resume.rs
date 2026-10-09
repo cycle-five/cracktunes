@@ -30,6 +30,21 @@ pub(crate) fn read_state(info: Option<&TrackState>) -> (Duration, bool, bool) {
     }
 }
 
+/// Position and repeat belong to the current track alone; `paused` is the
+/// playback's. When the current track did not make it into the snapshot, the
+/// next one starts from the top and does not loop.
+pub(crate) fn current_state(
+    first_kept: bool,
+    state: (Duration, bool, bool),
+) -> (Duration, bool, bool) {
+    let (position, paused, looping) = state;
+    if first_kept {
+        (position, paused, looping)
+    } else {
+        (Duration::ZERO, paused, false)
+    }
+}
+
 /// The guild's queue as a [`QueueSnapshot`]. `None` when there is nothing a
 /// resume could play, or when a `/gp` game owns the guild (its own resume
 /// brings it back).
@@ -46,13 +61,15 @@ pub(crate) async fn snapshot_call(
     let handles = call.lock().await.queue().current_queue();
     let first = handles.first()?.clone();
     let mut tracks = Vec::with_capacity(handles.len());
-    for h in &handles {
+    let mut first_kept = false;
+    for (i, h) in handles.iter().enumerate() {
         let Ok(meta) = get_track_handle_metadata(h).await else {
             continue;
         };
         let Some(url) = meta.source_url.filter(|u| !u.is_empty()) else {
             continue;
         };
+        first_kept |= i == 0;
         tracks.push(SnapshotTrack {
             url,
             title: meta.title,
@@ -68,7 +85,7 @@ pub(crate) async fn snapshot_call(
         .await
         .ok()
         .and_then(Result::ok);
-    let (position, paused, looping) = read_state(info.as_ref());
+    let (position, paused, looping) = current_state(first_kept, read_state(info.as_ref()));
     let (status, last_command) = {
         let slot = data.status_slot(guild);
         let slot = slot.lock().await;
@@ -368,6 +385,29 @@ mod tests {
             let s = snapshot_call(&data, GUILD, VC, &call).await.unwrap();
             assert_eq!(s.text_channel_id, Some(20));
             assert_eq!(s.status_channel_id, Some(30));
+        })
+        .await
+        .expect("get_info is bounded");
+    }
+
+    #[test]
+    fn a_dropped_current_track_does_not_lend_its_position_to_the_next() {
+        let state = (Duration::from_secs(61), true, true);
+        assert_eq!(current_state(true, state), state);
+        assert_eq!(current_state(false, state), (Duration::ZERO, true, false));
+    }
+
+    #[tokio::test]
+    async fn a_snapshot_whose_current_track_was_dropped_starts_at_the_top() {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let (data, call) = queued(&[
+                (None, Some(100)),
+                (Some("https://www.youtube.com/watch?v=b"), Some(200)),
+            ])
+            .await;
+            let s = snapshot_call(&data, GUILD, VC, &call).await.unwrap();
+            assert_eq!((s.position_ms, s.looping), (0, false));
+            assert_eq!(s.tracks.len(), 1);
         })
         .await
         .expect("get_info is bounded");
