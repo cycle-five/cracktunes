@@ -518,7 +518,7 @@ fn sorted_users(set: &HashSet<UserId>) -> Vec<i64> {
 /// from the session that just died is usually still in the payload, and counting
 /// it would let the "nobody is left in the channel" check pass on the bot's own
 /// ghost -- resuming the game to an empty room.
-fn vc_members(guild: &Guild, vc: ChannelId, me: UserId) -> usize {
+pub(crate) fn vc_members(guild: &Guild, vc: ChannelId, me: UserId) -> usize {
     guild
         .voice_states
         .iter()

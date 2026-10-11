@@ -11,6 +11,7 @@ pub mod perms;
 pub(crate) mod query;
 pub(crate) mod queue;
 pub mod remote;
+pub mod resume;
 
 pub use context::QueryContext;
 pub use lease::{PlaybackOwner, QueueGuard};

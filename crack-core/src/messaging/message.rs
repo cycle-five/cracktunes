@@ -307,6 +307,7 @@ pub enum CrackedMessage {
     NowPlayingButtonsDisabled,
     NowPlayingButtonsOn,
     NowPlayingButtonsOff,
+    QueueResumed,
 }
 
 impl CrackedMessage {
@@ -666,6 +667,7 @@ impl Display for CrackedMessage {
             },
             Self::NowPlayingButtonsOn => f.write_str(crate::messaging::messages::NP_BUTTONS_ON),
             Self::NowPlayingButtonsOff => f.write_str(crate::messaging::messages::NP_BUTTONS_OFF),
+            Self::QueueResumed => f.write_str(crate::messaging::messages::QUEUE_RESUMED),
         }
     }
 }
@@ -1076,6 +1078,14 @@ mod test {
                 name: "test".to_string(),
                 size: 1,
             }
+        );
+    }
+
+    #[test]
+    fn the_queue_resumed_line() {
+        assert_eq!(
+            CrackedMessage::QueueResumed.to_string(),
+            "♻️ Back after a restart — picking up where we left off."
         );
     }
 }

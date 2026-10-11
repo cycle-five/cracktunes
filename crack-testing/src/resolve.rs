@@ -126,7 +126,9 @@ impl ResolvedTrack<'_> {
             UNKNOWN_URL.to_string()
         };
 
-        if url.contains("youtube.com") {
+        // Only a bare video id gets wrapped; any link (YouTube, youtu.be,
+        // SoundCloud, Bandcamp, ...) is already where it plays from.
+        if url.starts_with("http://") || url.starts_with("https://") {
             url
         } else {
             format!("https://www.youtube.com/watch?v={}", url)
@@ -439,5 +441,47 @@ mod suggest_string_tests {
                 assert!(s.len() <= 100, "{ch:?} at shift {shift}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod get_url_tests {
+    use super::*;
+    use crack_types::AuxMetadata;
+
+    fn url_of(source_url: &str) -> String {
+        ResolvedTrack::default()
+            .with_metadata(AuxMetadata {
+                source_url: Some(source_url.to_string()),
+                ..Default::default()
+            })
+            .get_url()
+    }
+
+    #[test]
+    fn a_youtube_url_is_unchanged() {
+        let u = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+        assert_eq!(url_of(u), u);
+    }
+
+    #[test]
+    fn a_soundcloud_url_is_unchanged() {
+        assert_eq!(
+            url_of("https://soundcloud.com/a/b"),
+            "https://soundcloud.com/a/b"
+        );
+    }
+
+    #[test]
+    fn a_youtu_be_url_is_unchanged() {
+        assert_eq!(url_of("https://youtu.be/x"), "https://youtu.be/x");
+    }
+
+    #[test]
+    fn a_bare_id_is_wrapped() {
+        assert_eq!(
+            url_of("dQw4w9WgXcQ"),
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        );
     }
 }

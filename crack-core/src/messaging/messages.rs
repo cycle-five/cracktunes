@@ -556,3 +556,4 @@ pub const NP_BUTTON_RESUME: &str = "▶️";
 pub const NP_BUTTON_SKIP: &str = "⏭️";
 pub const NP_BUTTON_REPEAT: &str = "🔁";
 pub const NP_BUTTON_SHUFFLE: &str = "🔀";
+pub const QUEUE_RESUMED: &str = "♻️ Back after a restart — picking up where we left off.";

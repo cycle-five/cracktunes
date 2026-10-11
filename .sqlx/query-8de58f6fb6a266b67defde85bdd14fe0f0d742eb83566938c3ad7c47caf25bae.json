@@ -1,0 +1,82 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM queue_snapshot WHERE guild_id = $1\n           RETURNING guild_id, voice_channel_id, text_channel_id, status_channel_id,\n                     status_message_id, position_ms, paused, looping, autoplay,\n                     tracks AS \"tracks!: Json<Vec<SnapshotTrack>>\",\n                     EXTRACT(EPOCH FROM now() - saved_at)::BIGINT AS \"age_secs!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "guild_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "voice_channel_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "text_channel_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "status_channel_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "status_message_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "position_ms",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "paused",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "looping",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "autoplay",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "tracks!: Json<Vec<SnapshotTrack>>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 10,
+        "name": "age_secs!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "8de58f6fb6a266b67defde85bdd14fe0f0d742eb83566938c3ad7c47caf25bae"
+}

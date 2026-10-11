@@ -421,6 +421,9 @@ pub async fn poise_framework(
         // is closed below, and a game written down is one a redeploy does not
         // end. Bounded, because Docker's stop grace is ten seconds in total.
         data2.gp_shutdown(Duration::from_secs(5)).await;
+        // Every guild playing right now writes its queue down, so the restart
+        // picks it back up (#595). Before the pool closes, like /gp's.
+        crate::music::resume::queue_shutdown(&data2, Duration::from_secs(3)).await;
         let guilds = data2.guild_settings_map.read().await.clone();
         let pool = data2.clone().database_pool.clone();
         let mut saved_guilds = Vec::with_capacity(guilds.len());
