@@ -206,8 +206,8 @@ credentials this is a non-issue.
 
 ## Pending issues to file
 
-Two drafts, deliberately **not** in this branch — the PR stays scoped to the library
-upgrade:
+Drafts, deliberately **not** filed yet. The first two were kept out of the
+modernization PR, which stayed scoped to the library upgrade:
 
 - `issue-playlist-limit.md` — make `PLAYLIST_PLAY_LIMIT` (currently 100) a guild
   setting and raise the default. Now ~600 ms per 100 tracks, so the limit is close
@@ -222,6 +222,30 @@ upgrade:
   "switch at runtime" realistically means per-guild at connect time. There's a
   tempting metadata-only split that probably doesn't work — the stream URL still has
   to be fetched from the bot-checked IP — worth confirming before designing around it.
+- **Voice connection that never notices it is deaf** (noted 2026-10-12; the owner
+  said note it, don't file yet). songbird keeps a voice connection "up" with no
+  inbound UDP indefinitely.
+  - **Observed in production:** after a homelab router reboot, one voice
+    connection from the bots VM (`192.168.30.30`, local UDP `46933` → Discord
+    voice `104.29.152.193:19326`) sent its 5-second keepalive for about 2h11m
+    with **zero packets back**.
+  - **Two causes, one after the other:**
+    - First, a router-side firewall state stranded during the reboot: no NAT,
+      next hop `0.0.0.0` (homelab#135, `homelab-infra.md` › "A reboot can
+      strand a long-lived UDP flow").
+    - Once that was cleared, Discord **still** never answered: the session was
+      stale on Discord's side.
+  - The bot's other voice connections were receiving audio normally. Nothing
+    in the bot noticed, and only a rejoin recovers it.
+  - **Idea:** a per-driver watchdog that reconnects or rejoins after N minutes
+    with no inbound UDP while connected. The queue already survives a restart
+    since v0.26.0 (#599).
+  - **Settle first:**
+    - Does Discord answer songbird's UDP keepalives? A quiet channel carries no
+      RTP, so silence is only a signal if keepalives are echoed.
+    - Is there a songbird event or SSRC timeout to hook rather than poll?
+    - How does this interact with the known ghost-in-VC after a non-rejoining
+      restart?
 
 ## Deliberately out of scope
 
