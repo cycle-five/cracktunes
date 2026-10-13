@@ -70,6 +70,7 @@ pub const FAIL_PAUSE: &str = "Failed to pause";
 pub const FAIL_SEEK_OP: &str = "Failed to seek";
 /// The driver did not confirm a seek within `ops::SEEK_TIMEOUT`.
 pub const FAIL_SEEK_TIMED_OUT: &str = "The seek did not finish in time";
+pub const ADD_UNPLAYABLE: &str = "That track could not be queued.";
 pub const FAIL_SKIP: &str = "Failed to skip";
 
 // The one-line echo the dashboard posts in Discord after a control.
