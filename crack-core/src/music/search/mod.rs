@@ -8,6 +8,7 @@ use futures::future::BoxFuture;
 use songbird::input::AuxMetadata;
 use std::{future::Future, time::Duration};
 
+mod history;
 mod queue;
 
 pub use crack_types::SavedTrack;
