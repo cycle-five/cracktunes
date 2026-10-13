@@ -41,6 +41,8 @@ a.title:hover { text-decoration: underline; }
 #controls button[disabled], .remove[disabled] { opacity: 0.45; cursor: not-allowed; }
 .remove { padding: 0 6px; font-size: 0.85rem; line-height: 1.6; margin-left: auto; }
 .track.now .remove { display: none; }
+.hit .meta { white-space: normal; overflow-wrap: anywhere; }
+#add-reason { color: var(--muted); font-size: 0.9rem; margin: 0 0 8px; }
 @media (max-width: 480px) { .track { flex-wrap: wrap; } .meta { width: 100%; order: 1; } }
 
 .links { margin: 0 0 1rem; }

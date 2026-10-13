@@ -66,8 +66,37 @@
     return null;
   }
 
+  // The Patreon link the page already carries, so there is one copy of the URL.
+  function patreonHref() {
+    const a = document.querySelector("#premium-controls a");
+    return a ? a.getAttribute("href") : null;
+  }
+
+  // One visible reason, at the top of the results, while Add is off. A title
+  // is no help on a touch screen, and the page's own notes show only while a
+  // track is playing.
+  function refreshReason(blocked) {
+    const old = document.getElementById("add-reason");
+    if (old) old.remove();
+    if (!blocked || !results.querySelector(".hit")) return;
+    const p = el("p", "reason", blocked);
+    p.id = "add-reason";
+    if (dash.state().plan !== "premium") {
+      const href = patreonHref();
+      if (href) {
+        const a = el("a", null, "CrackTunes Patreon");
+        a.href = href;
+        a.rel = "noopener noreferrer";
+        p.appendChild(document.createTextNode(" "));
+        p.appendChild(a);
+      }
+    }
+    results.insertBefore(p, results.firstChild);
+  }
+
   function refreshButtons() {
     const blocked = addBlocked();
+    refreshReason(blocked);
     for (const b of results.querySelectorAll("button.add")) {
       if (b.dataset.busy !== "1") b.disabled = !!blocked;
       if (blocked) b.title = blocked; else b.removeAttribute("title");

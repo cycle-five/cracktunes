@@ -76,8 +76,8 @@ Pasted links, saved playlists and Spotify are not searched.
 
 Any member who can view the server may search, at 5 searches per 30 s each
 (`GET /g/<id>/search`; the sixth gets 429). External searches (YouTube, SoundCloud)
-share a bot-wide cap of 4 at once; a source that is busy or slow is skipped and the
-rest still answer.
+share a bot-wide cap of 4 at once; a source that is busy or slow is reported as "took too long" (or "did not
+answer") while the other sources still answer.
 
 Each hit has **Add** (end of the queue) and **Play next**. These follow the controls'
 rule: the member must be in the bot's voice channel and the server must be premium.
