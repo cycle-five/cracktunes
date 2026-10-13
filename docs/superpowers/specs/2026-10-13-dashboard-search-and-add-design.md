@@ -284,3 +284,36 @@ v0.26.0 is the bot image alone.
 - Streaming results per source as each answers, instead of one answer bounded
   by the slowest source.
 - The `play_log (guild_id, created_at)` index, if production says so.
+
+## Plan-time amendments (2026-10-13)
+
+Found while writing the plan; each overrides the section it names.
+
+1. **§1 SoundCloud and the yt-dlp fallback.** `clippy.toml` bans
+   `YoutubeDl::new` (it is the v0.17.2 injection door). SoundCloud search gets
+   a second sanctioned constructor next to `ytdl_for_url` in crack-types,
+   `ytdl_search(client, Site, &str, n)`, which always builds
+   `"{ytsearch|scsearch}{n}:{query}"` and carries the `#[expect]`. yt-dlp runs
+   a full extraction per hit (songbird's output parse needs `webpage_url`,
+   which `--flat-playlist` omits), so SoundCloud and the yt-dlp YouTube
+   fallback ask for **5** hits; rusty_ytdl's search stays at 10.
+2. **§1 Queue source.** `remote::TrackSummary` carries no artist. It gains
+   `artist: Option<String>` (read from the same metadata) so the queue source
+   can match title **and** artist as specified.
+3. **§2 Play next.** There is no context-free "play next" primitive. One new
+   primitive, `enqueue_resolved_track_next` in `music::queue`, enqueues and
+   moves to index 1 under one call lock and records `AddAt::Front`. It is
+   added to the pinned enqueue surface as a `Primitive` whose caller
+   (`ops::add`) writes the play log itself. The spec's "no new
+   `pub async fn enqueue_*`" is withdrawn; the surface test is honoured, not
+   dodged.
+4. **§2 play_log.** `User::insert_or_update_user` overwrites the stored
+   username with whatever it is given, so a `MetadataMsg` with no name would
+   blank the member's. `ops::add` takes the member's name (the session's
+   Discord username) and sends it; `remote::add` and `Backend::add` carry it.
+   The message's `channel_id` is the bot's voice channel (the web has no text
+   channel).
+5. **§1 History.** `play_log.created_at` is `TIMESTAMP` without a time zone
+   (written as UTC by `CURRENT_TIMESTAMP` on a UTC server); the window is
+   compared as naive UTC and `last` read back with `.and_utc()`.
+   `metadata.duration` is whole seconds, `0` meaning unknown.
