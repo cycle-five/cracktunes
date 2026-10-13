@@ -21,7 +21,8 @@ use axum::{
 };
 use crack_core::guild::plan::Plan;
 use crack_core::messaging::messages::{
-    SEARCH_CONTROL, SEARCH_NO_SOURCES, SEARCH_TOO_LONG, SEARCH_TOO_SHORT, SEARCH_UNKNOWN_SOURCE,
+    QUEUE_NO_TITLE, SEARCH_CONTROL, SEARCH_NO_SOURCES, SEARCH_TOO_LONG, SEARCH_TOO_SHORT,
+    SEARCH_UNKNOWN_SOURCE, SEARCH_UNREADABLE,
 };
 use crack_core::music::remote::{AddRefused, At};
 use crack_core::music::search::{
@@ -103,7 +104,7 @@ pub(crate) fn hit_view(id: Uuid, h: &Hit) -> HitView {
             .track
             .title
             .clone()
-            .unwrap_or_else(|| "Unknown title".to_owned()),
+            .unwrap_or_else(|| QUEUE_NO_TITLE.to_owned()),
         artist: h.track.artist.clone(),
         duration_secs: h.track.duration.map(|d| d.as_secs()),
         url: h.track.url.clone(),
@@ -128,8 +129,8 @@ struct RawSearch {
 
 /// `q` and `src` from the query string.
 pub(crate) fn parse_search(raw: Option<&str>) -> Result<(Query, SourceSet), BadQuery> {
-    let raw: RawSearch = serde_urlencoded::from_str(raw.unwrap_or(""))
-        .map_err(|_| BadQuery("the query string could not be read"))?;
+    let raw: RawSearch =
+        serde_urlencoded::from_str(raw.unwrap_or("")).map_err(|_| BadQuery(SEARCH_UNREADABLE))?;
     let q = Query::new(raw.q.as_deref().unwrap_or("")).map_err(|r| {
         BadQuery(match r {
             QueryRefused::TooShort => SEARCH_TOO_SHORT,
@@ -212,14 +213,9 @@ fn answer_search(
     g: GuildId,
     results: Vec<(Source, SourceResult)>,
 ) -> SearchResult {
-    let tracks: Vec<SavedTrack> = results
-        .iter()
-        .flat_map(|(_, r)| match r {
-            SourceResult::Hits(h) => h.iter().map(|x| x.track.clone()).collect(),
-            _ => Vec::new(),
-        })
-        .collect();
-    let mut ids = memo.store(user, g, tracks, Instant::now()).into_iter();
+    // One pass: each hit gets its id and its view together, so an id can
+    // never name a different hit than the view it travels with.
+    let mut stored: Vec<(Uuid, SavedTrack)> = Vec::new();
     let sources = results
         .into_iter()
         .map(|(source, r)| {
@@ -227,7 +223,11 @@ fn answer_search(
                 SourceResult::Hits(h) => (
                     StatusView::Ok,
                     h.iter()
-                        .map(|x| hit_view(ids.next().expect("one id per hit"), x))
+                        .map(|x| {
+                            let id = Uuid::new_v4();
+                            stored.push((id, x.track.clone()));
+                            hit_view(id, x)
+                        })
                         .collect(),
                 ),
                 SourceResult::Hidden => (StatusView::Hidden, Vec::new()),
@@ -242,6 +242,7 @@ fn answer_search(
             }
         })
         .collect();
+    memo.store(user, g, stored, Instant::now());
     SearchResult { sources }
 }
 
@@ -388,7 +389,7 @@ mod wire_test {
             detail: HitDetail::Queue { position: 3 },
         };
         let v = hit_view(Uuid::from_u128(1), &hit);
-        assert_eq!(v.title, "Unknown title");
+        assert_eq!(v.title, QUEUE_NO_TITLE);
         assert_eq!(v.duration_secs, Some(61));
         assert_eq!(
             serde_json::to_string(&v.detail).unwrap(),
@@ -588,6 +589,19 @@ mod route_test {
     }
 
     #[tokio::test]
+    async fn a_refused_query_answers_with_an_error_body() {
+        let fake = FakeBackend::new(Membership::Member, None, QueueView::Idle);
+        let r = get_search(fake, "/g/5/search?q=a&src=queue", Some(&session(9))).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        #[derive(serde::Deserialize)]
+        struct ErrorAnswer {
+            error: String,
+        }
+        let e: ErrorAnswer = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(e.error, SEARCH_TOO_SHORT);
+    }
+
+    #[tokio::test]
     async fn the_history_window_follows_the_plan() {
         for (plan, windowed) in [(PlanView::Free, true), (PlanView::Premium, false)] {
             let fake = FakeBackend::new(Membership::Member, None, QueueView::Idle);
@@ -628,6 +642,11 @@ mod route_test {
                 .unwrap()
                 .status(),
             StatusCode::TOO_MANY_REQUESTS
+        );
+        assert_eq!(
+            fake.searches.lock().unwrap().len(),
+            crate::limit::SEARCHES_PER_WINDOW,
+            "the limited search never reached the backend"
         );
         // The controls limiter is untouched: a control still goes through.
         let r = app.clone().oneshot(control_req(&session(9))).await.unwrap();
@@ -942,6 +961,246 @@ mod route_test {
             assert_eq!(r.status(), status, "{refused:?}");
             let a: AddAnswer = serde_json::from_str(&body(r).await).unwrap();
             assert_eq!(a.result, result);
+        }
+    }
+
+    /// Search as member 9 and return every hit with its source.
+    async fn search_all(app: &axum::Router) -> Vec<(String, HitAnswer)> {
+        let r = app
+            .clone()
+            .oneshot(search_req(Q, &session(9)))
+            .await
+            .unwrap();
+        let a: SearchAnswer = serde_json::from_str(&body(r).await).unwrap();
+        a.sources
+            .into_iter()
+            .flat_map(|s| s.hits.into_iter().map(move |h| (s.source.clone(), h)))
+            .collect()
+    }
+
+    async fn add_hit(app: &axum::Router, id: Uuid, at: &str) -> axum::response::Response {
+        app.clone()
+            .oneshot(add_req(
+                &session(9),
+                &format!(r#"{{"hit":"{id}","at":"{at}"}}"#),
+            ))
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn every_hit_of_every_source_adds_its_own_track() {
+        let fake = FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing());
+        *fake.search_result.lock().unwrap() = vec![
+            (
+                Source::Queue,
+                SourceResult::Hits(vec![found("https://q/1"), found("https://q/2")]),
+            ),
+            (
+                Source::YouTube,
+                SourceResult::Hits(vec![found("https://y/1"), found("https://y/2")]),
+            ),
+        ];
+        let app = router(state(fake.clone()));
+        let hits = search_all(&app).await;
+        assert_eq!(hits.len(), 4);
+        for (source, h) in &hits {
+            let before = fake.adds.lock().unwrap().len();
+            assert_eq!(add_hit(&app, h.id, "end").await.status(), StatusCode::OK);
+            let adds = fake.adds.lock().unwrap();
+            assert_eq!(adds.len(), before + 1);
+            assert_eq!(adds[before].3.url, h.url, "{source} {}", h.url);
+        }
+    }
+
+    fn after_add() -> QueueView {
+        let mut v = playing();
+        if let QueueView::Playing { upcoming, rev, .. } = &mut v {
+            upcoming.pop();
+            *rev += 1;
+        }
+        v
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_add_answers_with_the_new_view_and_reaches_open_watchers_at_once() {
+        use crate::watch::TICK;
+        let fake = FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing());
+        one_hit(&fake);
+        *fake.view_after_add.lock().unwrap() = Some(after_add());
+        let st = state(fake.clone());
+        let app = router(st.clone());
+        let id = first_hit(&app).await;
+        let mut rx = st.hub.subscribe(GuildId::new(5)).await;
+        rx.borrow_and_update();
+        let r = add_hit(&app, id, "end").await;
+        assert_eq!(r.status(), StatusCode::OK);
+        #[derive(serde::Deserialize)]
+        struct Added {
+            result: String,
+            view: QueueView,
+        }
+        let a: Added = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(a.result, "added");
+        assert_eq!(a.view, after_add(), "the answer is read after the add");
+        tokio::time::timeout(TICK / 2, rx.changed())
+            .await
+            .expect("published without waiting for a tick")
+            .unwrap();
+        assert_eq!(**rx.borrow(), after_add(), "watchers see the new queue");
+    }
+
+    #[tokio::test]
+    async fn an_add_spends_the_controls_budget() {
+        let fake = controller();
+        one_hit(&fake);
+        let app = router(state(fake.clone()));
+        let id = first_hit(&app).await;
+        for _ in 0..crate::limit::CONTROLS_PER_WINDOW {
+            let r = app.clone().oneshot(control_req(&session(9))).await.unwrap();
+            assert_eq!(r.status(), StatusCode::OK);
+        }
+        let r = add_hit(&app, id, "end").await;
+        assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+        let a: AddAnswer = serde_json::from_str(&body(r).await).unwrap();
+        assert_eq!(a.result, "too_many");
+        assert!(fake.adds.lock().unwrap().is_empty());
+    }
+
+    /// Rows that break two gates at once: the earlier gate answers.
+    #[tokio::test]
+    async fn the_earlier_of_two_broken_gates_answers() {
+        let json = Some("application/json");
+        let bad = "not json";
+        let unknown = "00000000-0000-0000-0000-0000000000ff";
+        // (what, cookie, ctype, origin, body, in voice, plan, exhaust limiter, status, result)
+        type Row = (
+            &'static str,
+            bool,
+            Option<&'static str>,
+            Option<&'static str>,
+            String,
+            bool,
+            PlanView,
+            bool,
+            StatusCode,
+            Option<&'static str>,
+        );
+        let rows: Vec<Row> = vec![
+            (
+                "no session beats a bad content type",
+                false,
+                Some("text/plain"),
+                Some(ORIGIN),
+                bad.into(),
+                true,
+                PlanView::Premium,
+                false,
+                StatusCode::UNAUTHORIZED,
+                None,
+            ),
+            (
+                "content type beats origin",
+                true,
+                Some("text/plain"),
+                Some("https://evil.example"),
+                bad.into(),
+                true,
+                PlanView::Premium,
+                false,
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                None,
+            ),
+            (
+                "origin beats the body",
+                true,
+                json,
+                Some("https://evil.example"),
+                bad.into(),
+                true,
+                PlanView::Premium,
+                false,
+                StatusCode::FORBIDDEN,
+                None,
+            ),
+            (
+                "view-only beats premium",
+                true,
+                json,
+                Some(ORIGIN),
+                "HIT".into(),
+                false,
+                PlanView::Free,
+                false,
+                StatusCode::FORBIDDEN,
+                Some("not_allowed"),
+            ),
+            (
+                "the limiter beats premium",
+                true,
+                json,
+                Some(ORIGIN),
+                "HIT".into(),
+                true,
+                PlanView::Free,
+                true,
+                StatusCode::TOO_MANY_REQUESTS,
+                Some("too_many"),
+            ),
+            (
+                "premium beats an unknown hit",
+                true,
+                json,
+                Some(ORIGIN),
+                format!(r#"{{"hit":"{unknown}","at":"end"}}"#),
+                true,
+                PlanView::Free,
+                false,
+                StatusCode::FORBIDDEN,
+                Some("premium_required"),
+            ),
+            (
+                "an unknown hit is gone, not a premium problem",
+                true,
+                json,
+                Some(ORIGIN),
+                format!(r#"{{"hit":"{unknown}","at":"end"}}"#),
+                true,
+                PlanView::Premium,
+                false,
+                StatusCode::GONE,
+                Some("expired"),
+            ),
+        ];
+        for (what, cookie, ctype, origin, text, in_voice, plan, exhaust, want, result) in rows {
+            let fake = FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing());
+            one_hit(&fake);
+            let app = router(state(fake.clone()));
+            let id = first_hit(&app).await;
+            if exhaust {
+                for _ in 0..crate::limit::CONTROLS_PER_WINDOW {
+                    app.clone().oneshot(control_req(&session(9))).await.unwrap();
+                }
+            }
+            *fake.user_channel.lock().unwrap() = in_voice.then_some(BOT_CHANNEL);
+            *fake.plan.lock().unwrap() = plan;
+            let s9 = session(9);
+            let req = raw_add(
+                cookie.then_some(s9.as_str()),
+                ctype,
+                origin,
+                &text.replace("HIT", &format!(r#"{{"hit":"{id}","at":"end"}}"#)),
+            );
+            let r = app.clone().oneshot(req).await.unwrap();
+            assert_eq!(r.status(), want, "{what}");
+            if let Some(result) = result {
+                let a: AddAnswer = serde_json::from_str(&body(r).await).unwrap();
+                assert_eq!(a.result, result, "{what}");
+            }
+            assert!(
+                fake.adds.lock().unwrap().is_empty(),
+                "{what}: nothing added"
+            );
         }
     }
 }

@@ -34,28 +34,16 @@ impl HitMemo {
         }
     }
 
-    /// Replace `user`'s hits in `guild` with `tracks`; their ids, in order.
-    pub fn store(
-        &self,
-        user: UserId,
-        guild: GuildId,
-        tracks: Vec<SavedTrack>,
-        now: Instant,
-    ) -> Vec<Uuid> {
+    /// Replace `user`'s hits in `guild` with `hits`, each under the id the
+    /// caller minted for it (so an id and the view built with it cannot drift).
+    pub fn store(&self, user: UserId, guild: GuildId, hits: Vec<(Uuid, SavedTrack)>, now: Instant) {
         // 🔑 Before this entry is taken: `retain` locks every shard.
         if self.entries.len() > self.sweep_at {
             self.entries
                 .retain(|_, (at, _)| now.saturating_duration_since(*at) < self.ttl);
         }
-        let mut ids = Vec::with_capacity(tracks.len());
-        let mut map = HashMap::with_capacity(tracks.len());
-        for t in tracks {
-            let id = Uuid::new_v4();
-            ids.push(id);
-            map.insert(id, t);
-        }
-        self.entries.insert((user, guild), (now, map));
-        ids
+        self.entries
+            .insert((user, guild), (now, hits.into_iter().collect()));
     }
 
     /// The hit `id` from `user`'s last search in `guild`, if it is still fresh.
@@ -84,6 +72,10 @@ mod test {
             ..Default::default()
         }
     }
+    /// `tracks` under fresh ids, as `answer_search` mints them.
+    fn minted(tracks: Vec<SavedTrack>) -> Vec<(Uuid, SavedTrack)> {
+        tracks.into_iter().map(|t| (Uuid::new_v4(), t)).collect()
+    }
     const U: UserId = UserId::new(1);
     const G: GuildId = GuildId::new(5);
 
@@ -91,9 +83,9 @@ mod test {
     fn a_hit_resolves_for_its_user_and_guild_only() {
         let memo = HitMemo::new(HIT_TTL);
         let now = Instant::now();
-        let ids = memo.store(U, G, vec![t(1), t(2)], now);
-        assert_eq!(ids.len(), 2);
-        assert_ne!(ids[0], ids[1]);
+        let pairs = minted(vec![t(1), t(2)]);
+        let ids: Vec<Uuid> = pairs.iter().map(|(id, _)| *id).collect();
+        memo.store(U, G, pairs, now);
         assert_eq!(memo.get(U, G, ids[1], now), Some(t(2)));
         assert_eq!(
             memo.get(UserId::new(2), G, ids[1], now),
@@ -116,8 +108,10 @@ mod test {
     fn a_new_search_replaces_the_old_hits_and_they_expire() {
         let memo = HitMemo::new(HIT_TTL);
         let now = Instant::now();
-        let old = memo.store(U, G, vec![t(1)], now);
-        let new = memo.store(U, G, vec![t(3)], now);
+        let (old, new) = (minted(vec![t(1)]), minted(vec![t(3)]));
+        let (old, new) = ([old[0].0], [new[0].0]);
+        memo.store(U, G, vec![(old[0], t(1))], now);
+        memo.store(U, G, vec![(new[0], t(3))], now);
         assert_eq!(memo.get(U, G, old[0], now), None);
         assert_eq!(memo.get(U, G, new[0], now), Some(t(3)));
         assert_eq!(memo.get(U, G, new[0], now + HIT_TTL), None);
@@ -128,9 +122,9 @@ mod test {
         let memo = HitMemo::with_sweep(HIT_TTL, 2);
         let now = Instant::now();
         for u in 1..=3 {
-            memo.store(UserId::new(u), G, vec![t(1)], now);
+            memo.store(UserId::new(u), G, minted(vec![t(1)]), now);
         }
-        memo.store(UserId::new(9), G, vec![t(1)], now + HIT_TTL);
+        memo.store(UserId::new(9), G, minted(vec![t(1)]), now + HIT_TTL);
         assert_eq!(memo.len(), 1);
     }
 }
