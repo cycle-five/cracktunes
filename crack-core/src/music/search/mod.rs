@@ -8,6 +8,8 @@ use futures::future::BoxFuture;
 use songbird::input::AuxMetadata;
 use std::{future::Future, time::Duration};
 
+mod queue;
+
 pub use crack_types::SavedTrack;
 
 /// The most hits one source returns.

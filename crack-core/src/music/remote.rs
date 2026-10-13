@@ -39,6 +39,8 @@ pub enum Requester {
 pub struct TrackSummary {
     pub id: Uuid,
     pub title: Option<String>,
+    /// The artist or uploader, as the track's metadata names it.
+    pub artist: Option<String>,
     pub url: Option<String>,
     pub duration: Option<Duration>,
     pub requester: Option<Requester>,
@@ -157,6 +159,7 @@ pub(crate) async fn summary_of(handle: &TrackHandle, meta: AuxMetadata) -> Track
     TrackSummary {
         id: handle.uuid(),
         title: meta.title,
+        artist: meta.artist,
         url: meta.source_url,
         duration: meta.duration,
         requester,

@@ -206,6 +206,7 @@ mod test {
         TrackSummary {
             id: Uuid::from_u128(n),
             title: title.map(str::to_owned),
+            artist: None,
             url: Some(format!("https://example.com/{n}")),
             duration: Some(Duration::from_secs(61)),
             requester,

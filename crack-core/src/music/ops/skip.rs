@@ -23,6 +23,10 @@ pub struct Skipped {
 
 /// A vote: counted, or it carried and the track was skipped.
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "a short-lived return value; TrackSummary gained the artist"
+)]
 pub enum Vote {
     Voted { missing: usize },
     Skipped(Skipped),
@@ -242,6 +246,7 @@ mod test {
         let next = TrackSummary {
             id: uuid::Uuid::nil(),
             title: Some("x".into()),
+            artist: None,
             url: Some("https://e/x".into()),
             duration: None,
             requester: None,
