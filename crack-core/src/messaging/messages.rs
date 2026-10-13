@@ -560,3 +560,9 @@ pub const NP_BUTTON_SKIP: &str = "⏭️";
 pub const NP_BUTTON_REPEAT: &str = "🔁";
 pub const NP_BUTTON_SHUFFLE: &str = "🔀";
 pub const QUEUE_RESUMED: &str = "♻️ Back after a restart — picking up where we left off.";
+
+pub const SEARCH_TOO_SHORT: &str = "Type at least two characters to search.";
+pub const SEARCH_TOO_LONG: &str = "That search is too long (100 characters at most).";
+pub const SEARCH_CONTROL: &str = "That search has characters it cannot use.";
+pub const SEARCH_NO_SOURCES: &str = "Pick at least one place to search.";
+pub const SEARCH_UNKNOWN_SOURCE: &str = "That is not a place the dashboard can search.";
