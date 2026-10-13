@@ -59,6 +59,40 @@ Each one is recorded in `queue_audit` with source `web` and command
 
 Design: `docs/superpowers/specs/2026-10-04-ops-layer-and-dashboard-controls-design.md`.
 
+## Search and add
+
+The queue page has a "Find a track" panel. One query (2 to 100 characters) searches
+four sources at once and lists up to 10 hits from each, labelled by source:
+
+- **Queue**: tracks in the server's queue now, by title or artist.
+- **History**: tracks the server has played (`play_log`), one row per track with its
+  play count and when it was last queued. It shows tracks, never who queued them.
+  Free servers search the last 24 hours; premium servers search all of it.
+- **YouTube** and **SoundCloud**: searched live. SoundCloud and the yt-dlp YouTube
+  fallback return 5 hits each, through our own flat yt-dlp runner
+  (`crack_types::ytdl_search`) that tolerates one bad hit and is killed on timeout.
+
+Pasted links, saved playlists and Spotify are not searched.
+
+Any member who can view the server may search, at 5 searches per 30 s each
+(`GET /g/<id>/search`; the sixth gets 429). External searches (YouTube, SoundCloud)
+share a bot-wide cap of 4 at once; a source that is busy or slow is skipped and the
+rest still answer.
+
+Each hit has **Add** (end of the queue) and **Play next**. These follow the controls'
+rule: the member must be in the bot's voice channel and the server must be premium.
+Free servers see them disabled with the Patreon note; otherwise 403 (`not_allowed`).
+They post to `POST /g/<id>/add`. The bot keeps the hits a search found for 10
+minutes, or until that member searches again, and an add names a hit by its id, so the
+browser never supplies a link; an expired id is refused. An add during a `/gp` game, or
+after the bot has left voice, is refused and nothing is queued.
+
+Each add posts one line in Discord, where the controls' lines go, unless the server has
+turned echoes off (`/echoes`). Adds now reach `play_log` as the member, like a slash
+command's, so they count toward history and play counts.
+
+Design: `docs/superpowers/specs/2026-10-13-dashboard-search-and-add-design.md`.
+
 ## Queue history
 
 `/g/<id>/history` shows the server's queue history (the `queue_audit` table):

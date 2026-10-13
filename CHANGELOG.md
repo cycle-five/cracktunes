@@ -42,6 +42,24 @@
 
 ### Added
 
+- **The dashboard can search for a track and add it.** The queue page has a "Find a
+  track" panel that searches the server's queue, the server's history, YouTube and
+  SoundCloud at once, and shows each hit with its source. Any member who can view the
+  server may search (5 searches per 30 s each; external searches share a bot-wide cap).
+  **Add** and **Play next** work like the other dashboard controls: the member must be
+  in the bot's voice channel and the server must be premium; free servers see them
+  disabled with the Patreon note. Search results are held by the bot for 10 minutes (or
+  until the member's next search) and an add names a hit by id, so the browser never
+  supplies a link. History hits are tracks only, never who queued them, and free
+  servers' history search covers the last 24 hours. An add posts an echo line in
+  Discord, unless the server has turned echoes off (`/echoes`).
+- **`ops::add`**, the operation behind Add and Play next, and `remote::add` for the
+  dashboard. It refuses while a `/gp` game is running or the bot is not in the member's
+  voice channel, and puts a track at the end or next in line.
+- **SoundCloud and yt-dlp YouTube searches run through `crack_types::ytdl_search`**,
+  flat, tolerant of one bad hit and killed on timeout, instead of songbird's
+  `YoutubeDl::search`.
+
 - **`/status`**, for anyone in a server, shows privately: the server's plan
   (premium, or free with its 24 hours of queue history); the bot's version and uptime;
   what's playing here (channel, title, length and how many more are queued, or idle,
