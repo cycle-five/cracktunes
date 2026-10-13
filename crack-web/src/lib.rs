@@ -365,10 +365,10 @@ pub fn spawn_if_configured(deps: WebDeps) -> Option<tokio::task::JoinHandle<()>>
 }
 
 async fn serve(env: WebEnv, deps: WebDeps) -> std::io::Result<()> {
-    let auth = Arc::new(catacombs::AppState::new(
-        env.catacombs_config(),
-        catacombs::MemoryStorage::new(),
-    ));
+    let auth = Arc::new(
+        catacombs::Auth::new(env.catacombs_config(), catacombs::MemoryStorage::new())
+            .map_err(std::io::Error::other)?,
+    );
     let backend = Arc::new(LiveBackend {
         deps,
         memo: MemberMemo::new(MEMBER_TTL),

@@ -131,15 +131,16 @@ Design: `docs/superpowers/specs/2026-10-02-dashboard-history-design.md` and `doc
 **In the bot's memory:** for each user who has signed in since the bot
 started, what Discord returned at sign-in (scope `identify` only): the user
 id, username, global (display) name, avatar URL, and the Discord OAuth
-refresh token with its expiry. catacombs' `MemoryStorage` keeps these in
-plaintext: it ignores the encryption key it is handed. Logging out clears the
-refresh token; the profile stays. All of it goes when the process restarts.
+refresh token with its expiry. catacombs encrypts the refresh token before
+`MemoryStorage` sees it, with a key made fresh at each start. Logging out
+clears the refresh token; the profile stays. All of it goes when the process
+restarts.
 Additionally:
 - each viewer's role ids, read from Discord when the member isn't cached, kept for 5 minutes;
 - the display names of members shown in a history page, kept for 1 hour.
 
 **In the log:** each move and control is logged with the member's user id; catacombs logs
-the username and user id at sign-in and log-out.
+the user id at sign-in (or why a sign-in failed), and the username and user id at log-out.
 
 The dashboard keeps nothing of its own in the database: moves and controls are
 recorded in `queue_audit` like any other queue change, and the history page reads it. Restarting the bot invalidates no session: sessions are JWTs signed with `WEB_JWT_SECRET`; rotate that to sign
