@@ -479,6 +479,10 @@ async fn asset(Path(name): Path<String>) -> Response {
             include_bytes!("../assets/app.js"),
             "text/javascript; charset=utf-8",
         ),
+        "find.js" => (
+            include_bytes!("../assets/find.js"),
+            "text/javascript; charset=utf-8",
+        ),
         "sortable.min.js" => (
             include_bytes!("../assets/sortable.min.js"),
             "text/javascript; charset=utf-8",
@@ -832,6 +836,16 @@ mod test {
             assert_eq!(r.headers()["x-content-type-options"], "nosniff", "{uri}");
             assert_eq!(r.headers()["referrer-policy"], "same-origin", "{uri}");
         }
+    }
+
+    #[tokio::test]
+    async fn find_js_is_served_as_javascript() {
+        let r = get(member_viewing(), "/assets/find.js", None).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(
+            r.headers()[header::CONTENT_TYPE],
+            "text/javascript; charset=utf-8"
+        );
     }
 
     #[tokio::test]

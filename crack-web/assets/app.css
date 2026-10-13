@@ -61,3 +61,16 @@ a.title:hover { text-decoration: underline; }
 #rows .empty { color: var(--muted); padding: 1rem 0; }
 #older { margin: 1rem 0; }
 [hidden] { display: none !important; }
+
+#find { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+#find-q { flex: 1 1 14rem; min-width: 0; padding: 6px 10px; font: inherit; color: var(--fg);
+          background: var(--card); border: 1px solid var(--line); border-radius: 6px; }
+#find-go, .hit .add { background: none; border: 1px solid var(--line); color: var(--muted);
+                      border-radius: 6px; padding: 4px 10px; cursor: pointer; font: inherit; }
+#find-go[disabled], .hit .add[disabled] { opacity: 0.45; cursor: not-allowed; }
+#find-src { display: flex; flex-wrap: wrap; gap: 6px; border: 0; padding: 0; margin: 0; flex-basis: 100%; }
+#find-src legend { color: var(--muted); font-size: 0.85rem; padding: 0; margin-right: 6px; float: left; }
+#results .source h2 { margin: 12px 0 6px; }
+#results ol.hits { list-style: none; padding: 0; margin: 0; }
+.hit .add { padding: 0 8px; font-size: 0.85rem; line-height: 1.6; }
+.hit .add:first-of-type { margin-left: auto; }

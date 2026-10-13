@@ -46,6 +46,8 @@
   const shuffleBtn = document.getElementById("c-shuffle");
   const repeatBtn = document.getElementById("c-repeat");
 
+  // Declared before the first render(), which calls them.
+  const listeners = [];
   let state = JSON.parse(document.getElementById("initial").textContent);
   let dragging = false;
   // The newest state the stream sent while it could not be drawn. It is kept
@@ -129,6 +131,7 @@
     }
     sortable.option("disabled", !(state.can_control && v.state === "playing"));
     root.classList.toggle("can-control", !!state.can_control);
+    for (const fn of listeners) fn(state);
   }
 
   async function move(id, to) {
@@ -256,6 +259,15 @@
       ? "Disconnected — reload the page."
       : "Reconnecting…";
     badge.hidden = false;
+  };
+
+  // find.js reads the live state (can_control, plan, view) and hands add
+  // answers back to be drawn: one renderer, one state.
+  window.crackDash = {
+    state: () => state,
+    onState: (fn) => { listeners.push(fn); },
+    settle: (body) => settle(body),
+    say,
   };
 
   render();
