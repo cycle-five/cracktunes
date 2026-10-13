@@ -267,7 +267,7 @@ mod test {
             1,
             "https://y/null",
             None,
-            Some("Hundred% Club"),
+            Some("100% Club"),
             1,
             &[10],
         )
@@ -279,13 +279,13 @@ mod test {
         let urls: Vec<&str> = got.iter().map(|t| t.url.as_str()).collect();
         assert_eq!(
             urls,
-            ["https://y/recent"],
-            "the % is literal and the window holds"
+            ["https://y/null", "https://y/recent"],
+            "the % is literal, the window holds, and a NULL title still matches by artist"
         );
         let all = search_play_log(&pool, GuildId::new(1), "100%", None, 10)
             .await
             .unwrap();
-        assert_eq!(all.len(), 2);
+        assert_eq!(all.len(), 3);
         let one = search_play_log(&pool, GuildId::new(1), "100%", None, 1)
             .await
             .unwrap();
