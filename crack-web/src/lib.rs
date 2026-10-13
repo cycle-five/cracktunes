@@ -5,7 +5,9 @@
 pub mod access;
 pub mod backend;
 pub mod config;
+pub mod find;
 pub mod history;
+pub mod hits;
 pub mod limit;
 pub mod page;
 pub mod routes;
@@ -16,13 +18,17 @@ pub mod watch;
 
 use crate::{
     access::{HistoryAccess, MemberMemo, Membership, Presence, MEMBER_TTL},
-    backend::{Backend, Control, ControlRefused, GuildEntry, HistoryError, MoveRefused},
+    backend::{
+        AddRefused, At, Backend, Control, ControlRefused, GuildEntry, HistoryError, MoveRefused,
+        Query, SavedTrack, Source, SourceResult, SourceSet,
+    },
     config::WebEnv,
     history::{HistoryPage, HistoryQuery},
     routes::WebState,
     view::{view_from_state, PlanView, QueueView},
     watch::{Hub, ViewSource, LINGER, TICK},
 };
+use chrono::{DateTime, Utc};
 use crack_core::{
     db::queue_audit::{audit_page, AuditFilter},
     guild::{operations::GuildSettingsOperations, plan::Plan},
@@ -256,6 +262,40 @@ impl Backend for LiveBackend {
         access::decide_history(false, membership, manages)
     }
 
+    async fn search(
+        &self,
+        g: GuildId,
+        q: &Query,
+        sources: SourceSet,
+        since: Option<DateTime<Utc>>,
+    ) -> Vec<(Source, SourceResult)> {
+        crack_core::music::search::search(&self.deps.data, g, q, sources, since).await
+    }
+
+    async fn add(
+        &self,
+        user: UserId,
+        name: &str,
+        g: GuildId,
+        track: SavedTrack,
+        at: At,
+    ) -> Result<(), AddRefused> {
+        // The echo line is already spawned in core.
+        remote::add(
+            self.deps.data.clone(),
+            self.deps.http.clone(),
+            self.deps.cache.clone(),
+            g,
+            user,
+            name.to_owned(),
+            crack_core::messaging::cards::Via::Dashboard,
+            track,
+            at,
+        )
+        .await
+        .map(|_| ())
+    }
+
     async fn history(&self, g: GuildId, q: &HistoryQuery) -> Result<HistoryPage, HistoryError> {
         let Some(pool) = self.deps.data.database_pool.clone() else {
             return Err(HistoryError::NoDatabase);
@@ -344,6 +384,11 @@ async fn serve(env: WebEnv, deps: WebDeps) -> std::io::Result<()> {
         limiter: Arc::new(limit::RateLimit::new(
             limit::CONTROLS_PER_WINDOW,
             limit::CONTROL_WINDOW,
+        )),
+        hits: Arc::new(hits::HitMemo::new(hits::HIT_TTL)),
+        search_limiter: Arc::new(limit::RateLimit::new(
+            limit::SEARCHES_PER_WINDOW,
+            limit::SEARCH_WINDOW,
         )),
     };
     let listener = tokio::net::TcpListener::bind(&env.bind).await?;

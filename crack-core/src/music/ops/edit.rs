@@ -311,6 +311,7 @@ mod test {
         let blank = TrackSummary {
             id: uuid::Uuid::nil(),
             title: None,
+            artist: None,
             url: None,
             duration: None,
             requester: None,
@@ -322,6 +323,7 @@ mod test {
         let first = TrackSummary {
             id: uuid::Uuid::nil(),
             title: title.map(str::to_owned),
+            artist: None,
             url: url.map(str::to_owned),
             duration: None,
             requester: None,
@@ -335,6 +337,7 @@ mod test {
         let first = TrackSummary {
             id: uuid::Uuid::nil(),
             title: Some("t".into()),
+            artist: None,
             url: None,
             duration: None,
             requester: None,

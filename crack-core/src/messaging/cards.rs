@@ -6,9 +6,9 @@ use crate::messaging::format::{
 };
 use crate::messaging::interface::requesting_user_to_string;
 use crate::messaging::messages::{
-    ECHO_FROM_DASHBOARD, ECHO_PAUSED, ECHO_REMOVED, ECHO_REPEAT_OFF, ECHO_REPEAT_ON, ECHO_RESUMED,
-    ECHO_SHUFFLED, ECHO_SKIPPED, PROGRESS, QUEUE_NOW_PLAYING, REQUESTED_BY, TRACK_DURATION,
-    TRACK_TIME_TO_PLAY,
+    ECHO_ADDED, ECHO_ADDED_NEXT, ECHO_FROM_DASHBOARD, ECHO_PAUSED, ECHO_REMOVED, ECHO_REPEAT_OFF,
+    ECHO_REPEAT_ON, ECHO_RESUMED, ECHO_SHUFFLED, ECHO_SKIPPED, PROGRESS, QUEUE_NOW_PLAYING,
+    REQUESTED_BY, TRACK_DURATION, TRACK_TIME_TO_PLAY,
 };
 use crate::messaging::render::{RenderCx, Rendered};
 use crate::utils::build_footer_info;
@@ -67,6 +67,8 @@ pub enum Echo {
     Repeat { on: bool },
     Removed { title: Option<String> },
     Shuffled,
+    Added { title: Option<String> },
+    AddedNext { title: Option<String> },
 }
 
 impl Echo {
@@ -83,6 +85,8 @@ impl Echo {
             Self::Repeat { on: false } => (ECHO_REPEAT_OFF, None),
             Self::Removed { title } => (ECHO_REMOVED, title.as_deref()),
             Self::Shuffled => (ECHO_SHUFFLED, None),
+            Self::Added { title } => (ECHO_ADDED, title.as_deref()),
+            Self::AddedNext { title } => (ECHO_ADDED_NEXT, title.as_deref()),
         };
         // A press in Discord is visibly in Discord; the dashboard says so.
         let from = match via {
@@ -326,6 +330,40 @@ mod tests {
             Echo::Repeat { on: true }.line(UserId::new(42), Via::Button),
             "🔁 Repeat on — <@42>"
         );
+    }
+
+    #[test]
+    fn add_echoes_name_the_track_where_it_went_and_who() {
+        let u = UserId::new(5);
+        assert_eq!(
+            Echo::Added {
+                title: Some("Waterloo".into())
+            }
+            .line(u, Via::Dashboard),
+            format!("{ECHO_ADDED} **Waterloo** {ECHO_FROM_DASHBOARD} — <@5>")
+        );
+        assert_eq!(
+            Echo::AddedNext {
+                title: Some("Waterloo".into())
+            }
+            .line(u, Via::Dashboard),
+            format!("{ECHO_ADDED_NEXT} **Waterloo** {ECHO_FROM_DASHBOARD} — <@5>")
+        );
+        let hostile = Echo::Added {
+            title: Some("**x** @everyone".into()),
+        }
+        .line(u, Via::Dashboard);
+        assert!(
+            !hostile.contains("**x**"),
+            "the title is escaped: {hostile}"
+        );
+        for blank in ["", "   "] {
+            let line = Echo::AddedNext {
+                title: Some(blank.into()),
+            }
+            .line(u, Via::Dashboard);
+            assert!(line.contains("**(untitled)**"), "{blank:?}: {line}");
+        }
     }
 
     /// A blank title (a members-only link queues `Some("")`) echoed as

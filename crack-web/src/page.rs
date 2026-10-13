@@ -36,7 +36,7 @@ pub fn inline_json<T: Serialize>(v: &T) -> String {
 }
 
 /// Scripts every page but the history page loads.
-const QUEUE_SCRIPTS: &[&str] = &["sortable.min.js", "app.js"];
+const QUEUE_SCRIPTS: &[&str] = &["sortable.min.js", "app.js", "find.js"];
 /// The history page: `app.js` for the logout button, `history.js` for the rest.
 const HISTORY_SCRIPTS: &[&str] = &["app.js", "history.js"];
 
@@ -141,6 +141,16 @@ pub fn queue_page(
 </div>\
 <p id=\"premium-controls\" hidden>{premium} <a href=\"{patreon}\">CrackTunes Patreon</a></p>\
 <p id=\"voice-controls\" hidden>{voice}</p>\
+<form id=\"find\" role=\"search\" autocomplete=\"off\">\
+<input type=\"search\" id=\"find-q\" name=\"q\" minlength=\"2\" maxlength=\"100\" \
+placeholder=\"Find a track\" aria-label=\"Find a track\">\
+<button type=\"submit\" id=\"find-go\">Search</button>\
+<fieldset id=\"find-src\"><legend>Search in</legend>\
+<label class=\"chip\"><input type=\"checkbox\" value=\"queue\" checked> Queue</label>\
+<label class=\"chip\"><input type=\"checkbox\" value=\"history\" checked> History</label>\
+<label class=\"chip\"><input type=\"checkbox\" value=\"youtube\" checked> YouTube</label>\
+<label class=\"chip\"><input type=\"checkbox\" value=\"soundcloud\" checked> SoundCloud</label>\
+</fieldset></form><div id=\"results\" aria-live=\"polite\"></div>\
 <div id=\"now\"></div><h2>Up next</h2><ol id=\"upcoming\"></ol></section>\
 <script type=\"application/json\" id=\"initial\">{json}</script>",
             name = esc(guild_name),
@@ -247,8 +257,8 @@ mod test {
         );
         assert_eq!(
             html.matches("</script>").count(),
-            3,
-            "only the three real closers: {html}"
+            4,
+            "only the four real closers: {html}"
         );
         assert!(!html.contains("<img"));
         // And the JSON still parses back to the same title.
@@ -305,6 +315,32 @@ mod test {
         let open = HistoryPage::default();
         let html = history_page("S", GuildId::new(5), &open);
         assert!(html.contains("<p id=\"premium-note\" hidden>"), "{html}");
+    }
+
+    #[test]
+    fn the_queue_page_carries_the_find_panel_and_its_script() {
+        let view = QueueView::Idle;
+        let state = PageState {
+            view: &view,
+            can_control: false,
+            plan: crate::view::PlanView::Free,
+        };
+        let html = queue_page("G", GuildId::new(5), &state, false);
+        for needle in [
+            "<form id=\"find\"",
+            "<input type=\"search\" id=\"find-q\" name=\"q\" minlength=\"2\" maxlength=\"100\"",
+            "id=\"find-src\"",
+            "value=\"queue\"",
+            "value=\"history\"",
+            "value=\"youtube\"",
+            "value=\"soundcloud\"",
+            "<div id=\"results\"",
+            "<script src=\"/assets/find.js\"></script>",
+        ] {
+            assert!(html.contains(needle), "missing {needle}: {html}");
+        }
+        // find.js runs after app.js, which it reads the live state from.
+        assert!(html.find("app.js").unwrap() < html.find("find.js").unwrap());
     }
 
     #[test]

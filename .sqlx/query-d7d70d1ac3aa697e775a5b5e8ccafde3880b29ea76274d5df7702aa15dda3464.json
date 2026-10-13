@@ -1,0 +1,55 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT m.source_url AS \"url!\",\n                  (array_agg(m.title ORDER BY p.created_at DESC))[1] AS title,\n                  (array_agg(m.artist ORDER BY p.created_at DESC))[1] AS artist,\n                  (array_agg(m.duration ORDER BY p.created_at DESC))[1] AS \"duration!\",\n                  count(*) AS \"plays!\",\n                  max(p.created_at) AS \"last!\"\n           FROM play_log p\n           JOIN metadata m ON m.id = p.metadata_id\n           WHERE p.guild_id = $1\n             AND m.source_url IS NOT NULL\n             AND ($3::timestamp IS NULL OR p.created_at >= $3)\n             AND (m.title ILIKE $2 OR m.artist ILIKE $2)\n           GROUP BY m.source_url\n           ORDER BY max(p.created_at) DESC\n           LIMIT $4",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "url!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "artist",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "duration!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 4,
+        "name": "plays!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "last!",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Timestamp",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "d7d70d1ac3aa697e775a5b5e8ccafde3880b29ea76274d5df7702aa15dda3464"
+}

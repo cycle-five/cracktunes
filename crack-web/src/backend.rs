@@ -8,7 +8,9 @@ use crate::{
     view::PlanView,
     watch::ViewSource,
 };
-pub use crack_core::music::remote::{Control, ControlRefused, MoveRefused};
+use chrono::{DateTime, Utc};
+pub use crack_core::music::remote::{AddRefused, At, Control, ControlRefused, MoveRefused};
+pub use crack_core::music::search::{Query, SavedTrack, Source, SourceResult, SourceSet};
 use serenity::all::{GuildId, UserId};
 use std::future::Future;
 use uuid::Uuid;
@@ -55,4 +57,19 @@ pub trait Backend: ViewSource {
         g: GuildId,
         q: &HistoryQuery,
     ) -> impl Future<Output = Result<HistoryPage, HistoryError>> + Send;
+    fn search(
+        &self,
+        g: GuildId,
+        q: &Query,
+        sources: SourceSet,
+        since: Option<DateTime<Utc>>,
+    ) -> impl Future<Output = Vec<(Source, SourceResult)>> + Send;
+    fn add(
+        &self,
+        user: UserId,
+        name: &str,
+        g: GuildId,
+        track: SavedTrack,
+        at: At,
+    ) -> impl Future<Output = Result<(), AddRefused>> + Send;
 }

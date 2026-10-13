@@ -10,6 +10,9 @@ use std::{
 /// Controls one user may make in one window, across all servers.
 pub const CONTROLS_PER_WINDOW: usize = 5;
 pub const CONTROL_WINDOW: Duration = Duration::from_secs(10);
+/// Searches one user may make in one window, across all servers.
+pub const SEARCHES_PER_WINDOW: usize = 5;
+pub const SEARCH_WINDOW: Duration = Duration::from_secs(30);
 /// Past this many users on the ledger, a hit first drops every user whose
 /// newest hit has left the window.
 const SWEEP_AT: usize = 1024;

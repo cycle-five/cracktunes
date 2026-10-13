@@ -39,6 +39,8 @@ pub enum Requester {
 pub struct TrackSummary {
     pub id: Uuid,
     pub title: Option<String>,
+    /// The artist or uploader, as the track's metadata names it.
+    pub artist: Option<String>,
     pub url: Option<String>,
     pub duration: Option<Duration>,
     pub requester: Option<Requester>,
@@ -157,6 +159,7 @@ pub(crate) async fn summary_of(handle: &TrackHandle, meta: AuxMetadata) -> Track
     TrackSummary {
         id: handle.uuid(),
         title: meta.title,
+        artist: meta.artist,
         url: meta.source_url,
         duration: meta.duration,
         requester,
@@ -285,6 +288,8 @@ impl From<&ops::OpRefused> for ControlRefused {
 }
 
 pub use crate::messaging::cards::Echo;
+pub use crate::music::ops::At;
+use crack_types::SavedTrack;
 
 /// The audit actor for a control from `via`.
 pub(crate) fn actor_for(via: Via, user: UserId, op: &'static str) -> Actor {
@@ -386,6 +391,96 @@ pub async fn control(
     Ok(echo)
 }
 
+/// Why an add was not made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddRefused {
+    /// The bot is not connected in this guild.
+    NotPlaying,
+    /// A `/gp` game owns playback.
+    GameInProgress,
+    Failed,
+}
+
+impl From<&ops::OpRefused> for AddRefused {
+    fn from(r: &ops::OpRefused) -> Self {
+        match r {
+            ops::OpRefused::GameInProgress => Self::GameInProgress,
+            ops::OpRefused::NotConnected => Self::NotPlaying,
+            other => {
+                tracing::warn!("dashboard add refused: {other:?}");
+                Self::Failed
+            },
+        }
+    }
+}
+
+/// The echo for an add that went `at`.
+pub(crate) fn add_echo(added: &ops::Added, at: At) -> Echo {
+    match at {
+        At::End => Echo::Added {
+            title: added.title.clone(),
+        },
+        At::Next => Echo::AddedNext {
+            title: added.title.clone(),
+        },
+    }
+}
+
+/// Add `track` for `user`, from the dashboard. The echo is returned at once;
+/// posting it (if the guild's `control_echoes` is on) and settling run in the
+/// background, the settle anchored after the echo, as `control` does.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors control(): the surface hands over its whole context"
+)]
+pub async fn add(
+    data: Arc<Data>,
+    http: Arc<Http>,
+    cache: Arc<Cache>,
+    guild_id: GuildId,
+    user: UserId,
+    member_name: String,
+    via: Via,
+    track: SavedTrack,
+    at: At,
+) -> Result<Option<Echo>, AddRefused> {
+    let cx = ops::OpCx {
+        data,
+        http,
+        cache,
+        guild_id,
+        actor: actor_for(via, user, "add"),
+    };
+    let done = ops::add(&cx, track, at, &member_name)
+        .await
+        .map_err(|r| AddRefused::from(&r))?;
+    let echo = add_echo(done.outcome(), at);
+    let (_, settle, call) = done.into_parts();
+    let posted = echo.clone();
+    // The lease was released inside `ops::add`; announcing and settling run without it.
+    tokio::spawn(async move {
+        let transport = DiscordTransport {
+            http: cx.http.clone(),
+            cache: cx.cache.clone(),
+        };
+        let line = EchoLine {
+            echo: posted,
+            user,
+            via,
+        };
+        let anchor = courier::post(
+            &cx.data,
+            &transport,
+            Destination::Echo(guild_id),
+            &CrackedMessage::Echo(Box::new(line)),
+            &RenderCx::now(),
+        )
+        .await;
+        settle.after(&cx, call.as_ref(), anchor).await;
+    });
+    Ok(Some(echo))
+}
+
 /// Run `c` under `guard` on `call`: the op, and what to echo (`None` when it
 /// changed nothing). No Discord.
 pub(crate) async fn run_control(
@@ -449,6 +544,36 @@ mod test {
     use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
+
+    #[test]
+    fn add_refusals_map_to_what_the_dashboard_says() {
+        use crate::music::ops::OpRefused as R;
+        assert_eq!(
+            AddRefused::from(&R::GameInProgress),
+            AddRefused::GameInProgress
+        );
+        assert_eq!(AddRefused::from(&R::NotConnected), AddRefused::NotPlaying);
+        assert_eq!(AddRefused::from(&R::Invalid("x")), AddRefused::Failed);
+    }
+
+    #[test]
+    fn the_echo_follows_where_the_track_went() {
+        let added = crate::music::ops::Added {
+            title: Some("t".into()),
+        };
+        assert_eq!(
+            add_echo(&added, At::End),
+            Echo::Added {
+                title: Some("t".into())
+            }
+        );
+        assert_eq!(
+            add_echo(&added, At::Next),
+            Echo::AddedNext {
+                title: Some("t".into())
+            }
+        );
+    }
 
     /// What the channel reads: the echo, rendered the way `control` posts it.
     fn line(echo: Echo, user: UserId) -> String {

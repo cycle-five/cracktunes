@@ -3,10 +3,12 @@
 //! over it: they build an [`OpCx`], call an op, render its outcome and settle.
 //! Spec: docs/superpowers/specs/2026-10-04-ops-layer-and-dashboard-controls-design.md
 
+mod add;
 mod edit;
 mod end;
 mod playback;
 mod skip;
+pub use add::*;
 pub use edit::*;
 pub use end::*;
 pub use playback::*;

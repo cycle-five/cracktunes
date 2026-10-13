@@ -64,6 +64,10 @@ pub struct WebState<B: Backend> {
     pub origin: Arc<str>,
     /// Dashboard controls, per user.
     pub limiter: Arc<RateLimit>,
+    /// Each member's last search results.
+    pub hits: Arc<crate::hits::HitMemo>,
+    /// Searches, per user; separate from `limiter` so searching never spends a control.
+    pub search_limiter: Arc<RateLimit>,
 }
 
 impl<B: Backend> Clone for WebState<B> {
@@ -74,6 +78,8 @@ impl<B: Backend> Clone for WebState<B> {
             hub: self.hub.clone(),
             origin: self.origin.clone(),
             limiter: self.limiter.clone(),
+            hits: self.hits.clone(),
+            search_limiter: self.search_limiter.clone(),
         }
     }
 }
@@ -85,9 +91,9 @@ impl<B: Backend> FromRef<WebState<B>> for Arc<catacombs::AppState> {
 }
 
 /// The session's user, or `None` if the session is missing or invalid.
-type Session = Result<AuthenticatedUser, StatusCode>;
+pub(crate) type Session = Result<AuthenticatedUser, StatusCode>;
 
-fn user_id(s: Session) -> Option<(UserId, String)> {
+pub(crate) fn user_id(s: Session) -> Option<(UserId, String)> {
     let u = s.ok()?;
     let id = NonZeroU64::new(u64::try_from(u.user_id).ok()?)?;
     Some((UserId::new(id.get()), u.username))
@@ -178,7 +184,7 @@ fn forbidden_page() -> Response {
         .into_response()
 }
 
-fn error_json(status: StatusCode, error: &'static str) -> Response {
+pub(crate) fn error_json(status: StatusCode, error: &'static str) -> Response {
     (status, Json(ErrorBody { error })).into_response()
 }
 
@@ -245,7 +251,7 @@ async fn history_json<B: Backend>(
     }
 }
 
-fn is_json(headers: &HeaderMap) -> bool {
+pub(crate) fn is_json(headers: &HeaderMap) -> bool {
     headers
         .get(header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
@@ -374,7 +380,7 @@ async fn control<B: Backend>(
 /// The plan, or `Free` if it is not read within [`PRESENCE_TIMEOUT`]: the page
 /// and a stream's first event are drawn regardless, and the stream's next
 /// recheck corrects it.
-async fn plan_or_free<B: Backend>(backend: &B, g: GuildId) -> PlanView {
+pub(crate) async fn plan_or_free<B: Backend>(backend: &B, g: GuildId) -> PlanView {
     tokio::time::timeout(PRESENCE_TIMEOUT, backend.plan(g))
         .await
         .unwrap_or(PlanView::Free)
@@ -473,6 +479,10 @@ async fn asset(Path(name): Path<String>) -> Response {
             include_bytes!("../assets/app.js"),
             "text/javascript; charset=utf-8",
         ),
+        "find.js" => (
+            include_bytes!("../assets/find.js"),
+            "text/javascript; charset=utf-8",
+        ),
         "sortable.min.js" => (
             include_bytes!("../assets/sortable.min.js"),
             "text/javascript; charset=utf-8",
@@ -546,6 +556,8 @@ pub fn router<B: Backend>(state: WebState<B>) -> Router {
         .route("/g/{guild}", get(guild_page::<B>))
         .route("/g/{guild}/move", post(move_track::<B>))
         .route("/g/{guild}/control", post(control::<B>))
+        .route("/g/{guild}/search", get(crate::find::search::<B>))
+        .route("/g/{guild}/add", post(crate::find::add::<B>))
         .route("/g/{guild}/history", get(history_page::<B>))
         .route("/g/{guild}/history.json", get(history_json::<B>))
         .route_layer(axum::middleware::map_response(no_store));
@@ -827,6 +839,16 @@ mod test {
     }
 
     #[tokio::test]
+    async fn find_js_is_served_as_javascript() {
+        let r = get(member_viewing(), "/assets/find.js", None).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(
+            r.headers()[header::CONTENT_TYPE],
+            "text/javascript; charset=utf-8"
+        );
+    }
+
+    #[tokio::test]
     async fn assets_are_served_by_name_only() {
         let r = get(member_viewing(), "/assets/app.js", None).await;
         assert_eq!(r.status(), StatusCode::OK);
@@ -847,30 +869,8 @@ mod test {
 
     use crate::backend::MoveRefused;
     use crate::routes::RECHECK;
-    use crate::view::TrackView;
     use serenity::all::GuildId;
     use uuid::Uuid;
-
-    fn playing() -> QueueView {
-        let t = |n| TrackView {
-            id: Uuid::from_u128(n),
-            title: format!("t{n}"),
-            url: None,
-            duration_secs: None,
-            requester: None,
-        };
-        QueueView::Playing {
-            now: t(1),
-            upcoming: vec![t(2), t(3)],
-            rev: 7,
-            paused: false,
-            looping: false,
-        }
-    }
-
-    fn controller() -> std::sync::Arc<FakeBackend> {
-        FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing())
-    }
 
     const MOVE: &str = r#"{"id":"00000000-0000-0000-0000-000000000003","to":0}"#;
 

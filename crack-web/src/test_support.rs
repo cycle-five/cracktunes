@@ -3,9 +3,12 @@
 
 use crate::{
     access::{Membership, Presence},
-    backend::{Backend, Control, ControlRefused, GuildEntry, MoveRefused},
+    backend::{
+        AddRefused, At, Backend, Control, ControlRefused, GuildEntry, MoveRefused, Query,
+        SavedTrack, Source, SourceResult, SourceSet,
+    },
     routes::{router, WebState},
-    view::{PlanView, QueueView},
+    view::{PlanView, QueueView, TrackView},
     watch::ViewSource,
 };
 use axum::Router;
@@ -19,6 +22,16 @@ use uuid::Uuid;
 pub const ORIGIN: &str = "https://dash.test";
 pub const JWT_SECRET: &str = "test-secret-test-secret-test-secret!";
 pub const BOT_CHANNEL: ChannelId = ChannelId::new(77);
+
+/// A search the routes made: (guild, query text, sources, since).
+pub type SearchCall = (
+    GuildId,
+    String,
+    SourceSet,
+    Option<chrono::DateTime<chrono::Utc>>,
+);
+/// An add the routes asked for: (guild, user, name, track, at).
+pub type AddCall = (GuildId, UserId, String, SavedTrack, At);
 
 pub struct FakeBackend {
     pub membership: Mutex<Membership>,
@@ -53,6 +66,15 @@ pub struct FakeBackend {
     pub history_result: Mutex<Result<crate::history::HistoryPage, crate::backend::HistoryError>>,
     /// Every history query the routes made.
     pub history_queries: Mutex<Vec<crate::history::HistoryQuery>>,
+    /// What `search` answers.
+    pub search_result: Mutex<Vec<(Source, SourceResult)>>,
+    /// Every search the routes made: (guild, query text, sources, since).
+    pub searches: Mutex<Vec<SearchCall>>,
+    pub add_result: Mutex<Result<(), AddRefused>>,
+    /// Every add the routes asked for: (guild, user, name, track, at).
+    pub adds: Mutex<Vec<AddCall>>,
+    /// What `view` becomes once an add succeeds; `None` leaves it as it was.
+    pub view_after_add: Mutex<Option<QueueView>>,
 }
 
 impl FakeBackend {
@@ -76,6 +98,11 @@ impl FakeBackend {
             history_access_hangs: AtomicBool::new(false),
             history_result: Mutex::new(Ok(crate::history::HistoryPage::default())),
             history_queries: Mutex::new(Vec::new()),
+            search_result: Mutex::new(Vec::new()),
+            searches: Mutex::new(Vec::new()),
+            add_result: Mutex::new(Ok(())),
+            adds: Mutex::new(Vec::new()),
+            view_after_add: Mutex::new(None),
             plan: Mutex::new(PlanView::Premium),
             control_result: Mutex::new(Ok(())),
             controls: Mutex::new(Vec::new()),
@@ -187,6 +214,42 @@ impl Backend for FakeBackend {
         self.history_queries.lock().unwrap().push(q.clone());
         self.history_result.lock().unwrap().clone()
     }
+
+    async fn search(
+        &self,
+        g: GuildId,
+        q: &Query,
+        sources: SourceSet,
+        since: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> Vec<(Source, SourceResult)> {
+        self.searches
+            .lock()
+            .unwrap()
+            .push((g, q.as_str().to_owned(), sources, since));
+        self.search_result.lock().unwrap().clone()
+    }
+
+    async fn add(
+        &self,
+        user: UserId,
+        name: &str,
+        g: GuildId,
+        track: SavedTrack,
+        at: At,
+    ) -> Result<(), AddRefused> {
+        self.adds
+            .lock()
+            .unwrap()
+            .push((g, user, name.to_owned(), track, at));
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        let result = *self.add_result.lock().unwrap();
+        if result.is_ok() {
+            if let Some(v) = self.view_after_add.lock().unwrap().take() {
+                *self.view.lock().unwrap() = v;
+            }
+        }
+        result
+    }
 }
 
 pub fn state(fake: Arc<FakeBackend>) -> WebState<FakeBackend> {
@@ -212,6 +275,11 @@ pub fn state(fake: Arc<FakeBackend>) -> WebState<FakeBackend> {
             crate::limit::CONTROLS_PER_WINDOW,
             crate::limit::CONTROL_WINDOW,
         )),
+        hits: Arc::new(crate::hits::HitMemo::new(crate::hits::HIT_TTL)),
+        search_limiter: Arc::new(crate::limit::RateLimit::new(
+            crate::limit::SEARCHES_PER_WINDOW,
+            crate::limit::SEARCH_WINDOW,
+        )),
     }
 }
 
@@ -229,4 +297,27 @@ pub async fn body(resp: axum::response::Response) -> String {
     use http_body_util::BodyExt;
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     String::from_utf8(bytes.to_vec()).unwrap()
+}
+
+/// A queue with a playing track and two upcoming.
+pub fn playing() -> QueueView {
+    let t = |n| TrackView {
+        id: Uuid::from_u128(n),
+        title: format!("t{n}"),
+        url: None,
+        duration_secs: None,
+        requester: None,
+    };
+    QueueView::Playing {
+        now: t(1),
+        upcoming: vec![t(2), t(3)],
+        rev: 7,
+        paused: false,
+        looping: false,
+    }
+}
+
+/// A member in the bot's channel, with [`playing`] on.
+pub fn controller() -> Arc<FakeBackend> {
+    FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing())
 }

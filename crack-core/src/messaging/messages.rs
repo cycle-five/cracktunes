@@ -70,6 +70,7 @@ pub const FAIL_PAUSE: &str = "Failed to pause";
 pub const FAIL_SEEK_OP: &str = "Failed to seek";
 /// The driver did not confirm a seek within `ops::SEEK_TIMEOUT`.
 pub const FAIL_SEEK_TIMED_OUT: &str = "The seek did not finish in time";
+pub const ADD_UNPLAYABLE: &str = "That track could not be queued.";
 pub const FAIL_SKIP: &str = "Failed to skip";
 
 // The one-line echo the dashboard posts in Discord after a control.
@@ -79,6 +80,8 @@ pub const ECHO_RESUMED: &str = "▶ Resumed";
 pub const ECHO_REPEAT_ON: &str = "🔁 Repeat on";
 pub const ECHO_REPEAT_OFF: &str = "🔁 Repeat off";
 pub const ECHO_REMOVED: &str = "🗑 Removed";
+pub const ECHO_ADDED: &str = "➕ Added";
+pub const ECHO_ADDED_NEXT: &str = "⏭ Up next:";
 pub const ECHO_SHUFFLED: &str = "🔀 Shuffled the queue";
 pub const ECHO_FROM_DASHBOARD: &str = "from the dashboard";
 pub const TRACK_FAILED: &str = "⚠️ Couldn't play";
@@ -557,3 +560,10 @@ pub const NP_BUTTON_SKIP: &str = "⏭️";
 pub const NP_BUTTON_REPEAT: &str = "🔁";
 pub const NP_BUTTON_SHUFFLE: &str = "🔀";
 pub const QUEUE_RESUMED: &str = "♻️ Back after a restart — picking up where we left off.";
+
+pub const SEARCH_TOO_SHORT: &str = "Type at least two characters to search.";
+pub const SEARCH_TOO_LONG: &str = "That search is too long (100 characters at most).";
+pub const SEARCH_UNREADABLE: &str = "The query string could not be read.";
+pub const SEARCH_CONTROL: &str = "That search has characters it cannot use.";
+pub const SEARCH_NO_SOURCES: &str = "Pick at least one place to search.";
+pub const SEARCH_UNKNOWN_SOURCE: &str = "That is not a place the dashboard can search.";

@@ -185,6 +185,41 @@ pub async fn enqueue_resolved_tracks_back(
     Ok(Inserted { handles })
 }
 
+/// Queue one resolved track to play next: behind the playing track, ahead of
+/// everything else. Returns its handle.
+///
+/// The move happens under the same call lock as the enqueue, so nothing can
+/// land between them. With nothing after the playing track (or nothing
+/// playing) the new track is already next, and stays where it went in, as
+/// `/playnext` does.
+///
+/// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
+/// guild. Takes no ctx and so cannot log; its caller, `ops::add`, sends its
+/// own play-log message.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "an audited primitive: records below; see clippy.toml"
+)]
+pub async fn enqueue_resolved_track_next(
+    guard: &QueueGuard,
+    call: &Arc<Mutex<Call>>,
+    track: ResolvedTrack<'static>,
+    http_client: reqwest::Client,
+) -> Result<TrackHandle, CrackedError> {
+    let built = build_track(&track, &http_client)?;
+    let mut handler = call.lock().await;
+    let handle = enqueue(&mut handler, built, preload_time(&track));
+    if handler.queue().len() >= 3 {
+        handler.queue().modify_queue(|q| {
+            if let Some(back) = q.pop_back() {
+                q.insert(1, back);
+            }
+        });
+    }
+    record_add(guard, &handler, std::slice::from_ref(&handle), AddAt::Front);
+    Ok(handle)
+}
+
 /// Data needed to queue a track.
 /// TODO: This is mostly become redundant with ResolvedTrack, need to clean this up.
 pub struct TrackReadyData {
@@ -1965,7 +2000,14 @@ mod play_history_wiring_tests {
         ),
         (
             "enqueue_resolved_tracks_back",
-            Primitive("callers: queue_vec_query_type, queue_resolved_list_back"),
+            Primitive(
+                "callers: queue_vec_query_type, queue_resolved_list_back, ops::add \
+                 (which sends its own play-log message)",
+            ),
+        ),
+        (
+            "enqueue_resolved_track_next",
+            Primitive("caller: ops::add, which sends its own play-log message"),
         ),
         (
             "enqueue_track_back",

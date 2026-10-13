@@ -329,6 +329,30 @@ impl<'a> CrackTrackClient<'a> {
         self.resolve_track(query).await
     }
 
+    /// rusty_ytdl's video results for `query`, as metadata, up to `limit`.
+    /// One request: a search hit already carries title, channel, duration and
+    /// url, so nothing is resolved further.
+    pub async fn search_metadata(
+        &self,
+        query: &str,
+        limit: u64,
+    ) -> Result<Vec<crack_types::AuxMetadata>, Error> {
+        let options = rusty_ytdl::search::SearchOptions {
+            limit,
+            ..Default::default()
+        };
+        let results = self.yt_client.search(query, Some(&options)).await?;
+        Ok(results
+            .into_iter()
+            .filter_map(|r| match r {
+                SearchResult::Video(video) => {
+                    Some(crack_types::metadata::search_video_to_aux_metadata(&video))
+                },
+                _ => None,
+            })
+            .collect())
+    }
+
     /// Resolve a search query and return a queue of tracks.
     pub async fn resolve_search(&self, query: &str) -> Result<Vec<ResolvedTrack<'a>>, Error> {
         let search_options = rusty_ytdl::search::SearchOptions {
@@ -693,6 +717,16 @@ mod tests {
     // have. Two of them also carried an `else` branch behind a second CI check
     // that the early return had already made unreachable. Do not reintroduce
     // the pattern -- an honest `ignored` beats a vacuous `ok`.
+
+    #[tokio::test]
+    #[ignore = "hits live YouTube"]
+    async fn search_metadata_finds_videos_with_urls() {
+        let hits = CrackTrackClient::new()
+            .search_metadata("abba waterloo", 5)
+            .await
+            .unwrap();
+        assert!(!hits.is_empty() && hits.iter().all(|m| m.source_url.is_some()));
+    }
 
     #[ignore = "hits live YouTube"]
     #[tokio::test]

@@ -91,6 +91,122 @@ pub fn ytdl_for_url(
     Ok(ytdl)
 }
 
+/// Which site a yt-dlp search asks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Site {
+    YouTube,
+    SoundCloud,
+}
+
+/// A yt-dlp search that produced nothing usable.
+#[derive(crate::ThisError, Debug)]
+#[error("yt-dlp search failed: {0}")]
+pub struct YtdlSearchFailed(pub String);
+
+/// 🔒 The argv for a yt-dlp search. The member's text is the LAST argument,
+/// as `"{ytsearch|scsearch}{n}:{text}"`, right after `--`: the prefix means it
+/// starts with a letter and `--` ends option parsing, so yt-dlp can never read
+/// the text as an option (the v0.17.2 class). Flat mode: one request, no
+/// per-hit extraction, so a DRM-protected or deleted hit cannot fail the search.
+#[must_use]
+pub fn ytdl_search_args(site: Site, query: &str, n: usize) -> Vec<String> {
+    let prefix = match site {
+        Site::YouTube => "ytsearch",
+        Site::SoundCloud => "scsearch",
+    };
+    vec![
+        "-j".to_owned(),
+        "--flat-playlist".to_owned(),
+        "--no-playlist".to_owned(),
+        "--ignore-errors".to_owned(),
+        "--".to_owned(),
+        format!("{prefix}{n}:{query}"),
+    ]
+}
+
+/// One line of yt-dlp's `-j` output; every field may be missing.
+#[derive(serde::Deserialize)]
+struct SearchLine {
+    title: Option<String>,
+    url: Option<String>,
+    webpage_url: Option<String>,
+    duration: Option<f64>,
+    uploader: Option<String>,
+    artist: Option<String>,
+    channel: Option<String>,
+}
+
+impl SearchLine {
+    fn into_metadata(self) -> crate::AuxMetadata {
+        let is_web = |u: &String| u.starts_with("http://") || u.starts_with("https://");
+        crate::AuxMetadata {
+            title: self.title,
+            source_url: self
+                .webpage_url
+                .filter(is_web)
+                .or_else(|| self.url.filter(is_web)),
+            artist: self.artist.or(self.uploader).or(self.channel),
+            duration: self
+                .duration
+                .filter(|d| d.is_finite() && *d >= 0.0)
+                .and_then(|d| std::time::Duration::try_from_secs_f64(d).ok()),
+            ..Default::default()
+        }
+    }
+}
+
+/// What a finished yt-dlp search amounts to: every line that parsed, even when
+/// the exit was non-zero (yt-dlp exits 1 if any one hit failed). `Err` only
+/// when nothing parsed AND the exit failed.
+pub fn search_outcome(
+    exit_ok: bool,
+    stdout: &[u8],
+    stderr_tail: &str,
+) -> Result<Vec<crate::AuxMetadata>, YtdlSearchFailed> {
+    let metas: Vec<_> = String::from_utf8_lossy(stdout)
+        .lines()
+        .filter_map(|l| serde_json::from_str::<SearchLine>(l).ok())
+        .map(SearchLine::into_metadata)
+        .collect();
+    if metas.is_empty() && !exit_ok {
+        return Err(YtdlSearchFailed(stderr_tail.to_owned()));
+    }
+    Ok(metas)
+}
+
+/// Run a yt-dlp search for `query` and return its hits.
+///
+/// We spawn yt-dlp ourselves rather than use songbird's `YoutubeDl::search`
+/// for two reasons: songbird throws away every result when yt-dlp exits
+/// non-zero (one bad hit), and its `Command::output()` has no `kill_on_drop`,
+/// so a timed-out search would leave yt-dlp running. Here dropping the future
+/// kills the child.
+pub async fn ytdl_search(
+    site: Site,
+    query: &str,
+    n: usize,
+) -> Result<Vec<crate::AuxMetadata>, YtdlSearchFailed> {
+    use std::process::Stdio;
+    let output = tokio::process::Command::new("yt-dlp")
+        .args(ytdl_search_args(site, query, n))
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(|e| YtdlSearchFailed(format!("could not run yt-dlp: {e}")))?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let tail: String = stderr
+        .lines()
+        .last()
+        .unwrap_or_default()
+        .chars()
+        .take(300)
+        .collect();
+    search_outcome(output.status.success(), &output.stdout, &tail)
+}
+
 /// SoundCloud's format sort: MP3 first.
 ///
 /// 🪤 SoundCloud's best audio is AAC over HLS (`hls_aac_160k`), and symphonia
@@ -224,6 +340,70 @@ pub async fn resolve_final_url2(client: Client, url: Url) -> Result<Url, Error> 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn search_text_reaches_yt_dlp_only_behind_its_prefix_and_a_double_dash() {
+        for (site, prefix) in [(Site::YouTube, "ytsearch"), (Site::SoundCloud, "scsearch")] {
+            for text in ["abba", "-rf --exec rm", "--batch-file=/proc/self/environ"] {
+                let args = ytdl_search_args(site, text, 5);
+                let tail = &args[args.len() - 2..];
+                assert_eq!(
+                    tail,
+                    ["--".to_owned(), format!("{prefix}5:{text}")],
+                    "{site:?} {text:?}"
+                );
+                assert_eq!(
+                    args.iter().filter(|a| a.contains(text)).count(),
+                    1,
+                    "the text appears in exactly one argument: {args:?}"
+                );
+            }
+        }
+    }
+
+    fn line(title: &str, url: &str) -> String {
+        format!(r#"{{"title":"{title}","webpage_url":"{url}","duration":216.5,"uploader":"Up"}}"#)
+    }
+
+    #[test]
+    fn a_failed_exit_keeps_whatever_parsed() {
+        let out = format!("{}\nnot json at all\n\n", line("Good", "https://x/1"));
+        let metas = search_outcome(false, out.as_bytes(), "ERROR: DRM").unwrap();
+        assert_eq!(metas.len(), 1);
+        assert_eq!(metas[0].title.as_deref(), Some("Good"));
+        assert_eq!(metas[0].source_url.as_deref(), Some("https://x/1"));
+        assert_eq!(metas[0].artist.as_deref(), Some("Up"));
+        assert_eq!(
+            metas[0].duration,
+            Some(std::time::Duration::from_secs_f64(216.5))
+        );
+    }
+
+    #[test]
+    fn a_huge_finite_duration_is_dropped_not_a_panic() {
+        let out = br#"{"url":"https://x/1","title":"T","duration":1e300}"#;
+        let m = &search_outcome(true, out, "").unwrap()[0];
+        assert_eq!(m.title.as_deref(), Some("T"));
+        assert_eq!(m.duration, None);
+    }
+
+    #[test]
+    fn nothing_parsed_is_an_error_only_when_the_exit_failed() {
+        assert!(search_outcome(false, b"", "ERROR: boom").is_err());
+        assert!(search_outcome(false, b"garbage\n", "x").is_err());
+        assert_eq!(search_outcome(true, b"", "").unwrap(), vec![]);
+    }
+
+    #[test]
+    fn a_flat_youtube_entry_uses_url_and_channel() {
+        let out = br#"{"_type":"url","url":"https://www.youtube.com/watch?v=x","title":"T","duration":233,"channel":"ABBA","uploader":null}"#;
+        let m = &search_outcome(true, out, "").unwrap()[0];
+        assert_eq!(
+            m.source_url.as_deref(),
+            Some("https://www.youtube.com/watch?v=x")
+        );
+        assert_eq!(m.artist.as_deref(), Some("ABBA"));
+    }
 
     #[test]
     fn soundcloud_links_ask_yt_dlp_for_mp3() {
