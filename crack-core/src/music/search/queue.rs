@@ -7,7 +7,6 @@ use crate::Data;
 use serenity::all::GuildId;
 
 /// The queue in `guild`, searched for `q`.
-#[expect(dead_code, reason = "wired into search() in Task 4")]
 pub(crate) async fn search_queue(data: &Data, guild: GuildId, q: &Query) -> SourceResult {
     queue_hits(remote::queue_state(data, guild).await, q)
 }

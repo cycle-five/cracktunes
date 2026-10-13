@@ -9,7 +9,6 @@ use serenity::all::GuildId;
 use std::time::Duration;
 
 /// History hits for `q` in `guild` since `since` (`None`: all of it).
-#[cfg_attr(not(test), expect(dead_code, reason = "wired into search() in Task 4"))]
 pub(crate) async fn search_history(
     data: &Data,
     guild: GuildId,
@@ -29,7 +28,6 @@ pub(crate) async fn search_history(
 }
 
 /// Rows as hits; a row without an http(s) URL is left out.
-#[cfg_attr(not(test), expect(dead_code, reason = "wired into search() in Task 4"))]
 pub(crate) fn history_hits(rows: Vec<HistoryTrack>) -> SourceResult {
     SourceResult::Hits(
         rows.into_iter()

@@ -100,8 +100,8 @@ disallowed-methods = [
     # bot's environment to Discord this way (v0.17.2). Links go through
     # `crack_types::ytdl_for_url`, which only accepts http(s) URLs; search text goes
     # through `YoutubeDl::new_search`, whose `ytsearchN:` prefix it cannot escape.
-    { path = "songbird::input::YoutubeDl::new", reason = "yt-dlp reads a string starting with `-` as an option; use crack_types::ytdl_for_url for links or YoutubeDl::new_search for search text" },
-    { path = "songbird::input::YoutubeDl::new_ytdl_like", reason = "yt-dlp reads a string starting with `-` as an option; use crack_types::ytdl_for_url for links or YoutubeDl::new_search for search text" },
+    { path = "songbird::input::YoutubeDl::new", reason = "yt-dlp reads a string starting with `-` as an option; use crack_types::ytdl_for_url for links, YoutubeDl::new_search or crack_types::ytdl_search for search text" },
+    { path = "songbird::input::YoutubeDl::new_ytdl_like", reason = "yt-dlp reads a string starting with `-` as an option; use crack_types::ytdl_for_url for links, YoutubeDl::new_search or crack_types::ytdl_search for search text" },
     # 🔒 Every user-initiated playback/queue change is orchestrated in music::ops
     # (spec 2026-10-04): it takes the lease, makes the call, records the audit
     # row. These are its primitives. /gp (the game owner) and autopause (the bot)

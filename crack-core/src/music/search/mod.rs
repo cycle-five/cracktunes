@@ -10,6 +10,8 @@ use std::{future::Future, time::Duration};
 
 mod history;
 mod queue;
+mod soundcloud;
+mod youtube;
 
 pub use crack_types::SavedTrack;
 
@@ -147,7 +149,6 @@ pub enum SourceResult {
 
 /// A hit's track from search metadata, or `None` without an http(s) URL: a
 /// hit must be both a safe link and something `build_track` will play.
-#[cfg_attr(not(test), expect(dead_code, reason = "wired into search() in Task 4"))]
 pub(crate) fn saved_from_metadata(meta: &AuxMetadata) -> Option<SavedTrack> {
     let url = crack_types::ytdl_url(meta.source_url.as_deref()?).ok()?;
     Some(SavedTrack {
@@ -159,13 +160,11 @@ pub(crate) fn saved_from_metadata(meta: &AuxMetadata) -> Option<SavedTrack> {
 }
 
 /// A source's search, its bound, and which source it is.
-#[cfg_attr(not(test), expect(dead_code, reason = "wired into search() in Task 4"))]
 pub(crate) type Job<'a> = (Source, Duration, BoxFuture<'a, SourceResult>);
 
 /// Run every job at once, each under its own bound, and answer in the fixed
 /// source order. A source that hangs is `TimedOut`; nothing one source does
 /// changes another's answer.
-#[cfg_attr(not(test), expect(dead_code, reason = "wired into search() in Task 4"))]
 pub(crate) async fn gather(jobs: Vec<Job<'_>>) -> Vec<(Source, SourceResult)> {
     let runs = jobs.into_iter().map(|(source, bound, job)| async move {
         match tokio::time::timeout(bound, job).await {
@@ -181,13 +180,53 @@ pub(crate) async fn gather(jobs: Vec<Job<'_>>) -> Vec<(Source, SourceResult)> {
     out
 }
 
+/// Search `query` over `sources` in `guild`. Every source runs at once under
+/// its own bound; the answer is in [`Source`] order, one entry per source
+/// asked. `history_since` is the plan's window (`None`: all of it).
+pub async fn search(
+    data: &crate::Data,
+    guild: serenity::all::GuildId,
+    query: &Query,
+    sources: SourceSet,
+    history_since: Option<DateTime<Utc>>,
+) -> Vec<(Source, SourceResult)> {
+    let mut jobs: Vec<Job<'_>> = Vec::new();
+    if sources.contains(Source::Queue) {
+        jobs.push((
+            Source::Queue,
+            LOCAL_TIMEOUT,
+            Box::pin(queue::search_queue(data, guild, query)),
+        ));
+    }
+    if sources.contains(Source::History) {
+        jobs.push((
+            Source::History,
+            LOCAL_TIMEOUT,
+            Box::pin(history::search_history(data, guild, query, history_since)),
+        ));
+    }
+    if sources.contains(Source::YouTube) {
+        jobs.push((
+            Source::YouTube,
+            EXTERNAL_TIMEOUT,
+            Box::pin(youtube::search_youtube(data, query)),
+        ));
+    }
+    if sources.contains(Source::SoundCloud) {
+        jobs.push((
+            Source::SoundCloud,
+            EXTERNAL_TIMEOUT,
+            Box::pin(soundcloud::search_soundcloud(query)),
+        ));
+    }
+    gather(jobs).await
+}
+
 /// The bot-wide gate on external searches.
-#[expect(dead_code, reason = "wired into search() in Task 4")]
 pub(crate) static EXTERNAL: tokio::sync::Semaphore =
     tokio::sync::Semaphore::const_new(EXTERNAL_SEARCHES);
 
 /// Run `fut` holding one of `gate`'s permits.
-#[cfg_attr(not(test), expect(dead_code, reason = "wired into search() in Task 4"))]
 pub(crate) async fn gated<T>(gate: &tokio::sync::Semaphore, fut: impl Future<Output = T>) -> T {
     let _permit = gate
         .acquire()
@@ -340,6 +379,38 @@ mod test {
                 (Source::History, SourceResult::TimedOut),
                 (Source::YouTube, hits(1))
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn search_runs_only_what_was_asked_and_answers_in_order() {
+        let data = crate::Data::default(); // no call, no pool
+        let q = Query::new("abba").unwrap();
+        let out = search(
+            &data,
+            serenity::all::GuildId::new(1),
+            &q,
+            SourceSet::empty().with(Source::History).with(Source::Queue),
+            None,
+        )
+        .await;
+        assert_eq!(
+            out,
+            vec![
+                (Source::Queue, SourceResult::Hits(vec![])),
+                (Source::History, SourceResult::NoDatabase),
+            ]
+        );
+        assert_eq!(
+            search(
+                &data,
+                serenity::all::GuildId::new(1),
+                &q,
+                SourceSet::empty(),
+                None
+            )
+            .await,
+            vec![]
         );
     }
 

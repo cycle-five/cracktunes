@@ -91,6 +91,39 @@ pub fn ytdl_for_url(
     Ok(ytdl)
 }
 
+/// Which site a yt-dlp search asks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Site {
+    YouTube,
+    SoundCloud,
+}
+
+/// 🔒 The one way to hand yt-dlp search text: `"{ytsearch|scsearch}{n}:{text}"`
+/// as a single argument. The prefix means the string starts with a letter, so
+/// yt-dlp can never read the member's text as an option (the v0.17.2 class).
+/// songbird's own `new_search` hardcodes `ytsearch`, so SoundCloud needs this.
+#[must_use]
+pub fn ytdl_search(
+    client: Client,
+    site: Site,
+    query: &str,
+    n: usize,
+) -> songbird::input::YoutubeDl<'static> {
+    let (prefix, args) = match site {
+        Site::YouTube => ("ytsearch", Vec::new()),
+        Site::SoundCloud => (
+            "scsearch",
+            vec!["-S".to_owned(), SOUNDCLOUD_FORMAT_SORT.to_owned()],
+        ),
+    };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the second sanctioned call: the string starts with `ytsearchN:` or `scsearchN:`, never `-`"
+    )]
+    let ytdl = songbird::input::YoutubeDl::new(client, format!("{prefix}{n}:{query}"));
+    ytdl.user_args(args)
+}
+
 /// SoundCloud's format sort: MP3 first.
 ///
 /// 🪤 SoundCloud's best audio is AAC over HLS (`hls_aac_160k`), and symphonia
@@ -224,6 +257,35 @@ pub async fn resolve_final_url2(client: Client, url: Url) -> Result<Url, Error> 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn search_text_reaches_yt_dlp_only_behind_its_prefix() {
+        let client = reqwest::Client::new();
+        for (site, prefix) in [
+            (Site::YouTube, "ytsearch5:"),
+            (Site::SoundCloud, "scsearch5:"),
+        ] {
+            for text in ["abba", "-rf --exec rm", "--batch-file=/proc/self/environ"] {
+                let dbg = format!("{:?}", ytdl_search(client.clone(), site, text, 5));
+                assert!(
+                    dbg.contains(&format!("\"{prefix}{text}\"")),
+                    "{site:?} {text:?} must be one string starting with {prefix}: {dbg}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn soundcloud_search_sorts_to_mp3_as_its_playback_does() {
+        let client = reqwest::Client::new();
+        let sc = format!(
+            "{:?}",
+            ytdl_search(client.clone(), Site::SoundCloud, "abba", 5)
+        );
+        assert!(sc.contains(SOUNDCLOUD_FORMAT_SORT), "{sc}");
+        let yt = format!("{:?}", ytdl_search(client, Site::YouTube, "abba", 5));
+        assert!(!yt.contains(SOUNDCLOUD_FORMAT_SORT), "{yt}");
+    }
 
     #[test]
     fn soundcloud_links_ask_yt_dlp_for_mp3() {
