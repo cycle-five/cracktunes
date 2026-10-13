@@ -231,7 +231,7 @@ the two handlers and their wire types live in a new `crack-web/src/find.rs`
 **Errors.** Each source reports its own status; the page always renders
 whatever answered. A search with every source failed is still a 200 with
 statuses, not a 5xx. Add refusals map one-to-one to `AddResult`. Logs: one
-`info` per add (`guild`, `user`, `source`, `at`), one `warn` per failed or
+`info` per add (`guild`, `user`, `at`; the memo keeps the track, not its source), one `warn` per failed or
 timed-out source with its reason. No title or query text at `info`.
 
 **Tests** (TDD; every test watched failing first, and its claim sabotaged
