@@ -691,8 +691,9 @@ dependencies = [
 
 [[package]]
 name = "catacombs"
-version = "0.1.0"
-source = "git+https://github.com/cycle-five/catacombs?tag=v0.1.0#d9dad774e39877deb6141a83ec2157930b8ff030"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5307357908ed1597c8fcb3474179a4445bab7a2ec62711855dcabf1bf76369d4"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -877,7 +878,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1051,7 +1052,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.27.0"
+version = "0.27.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1106,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "crack-musicreco"
-version = "0.27.0"
+version = "0.27.1"
 dependencies = [
  "async-trait",
  "reqwest 0.12.28",
@@ -1133,7 +1134,7 @@ dependencies = [
 
 [[package]]
 name = "crack-sleevenote"
-version = "0.27.0"
+version = "0.27.1"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -1146,7 +1147,7 @@ dependencies = [
 
 [[package]]
 name = "crack-testing"
-version = "0.27.0"
+version = "0.27.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1169,7 +1170,7 @@ dependencies = [
 
 [[package]]
 name = "crack-types"
-version = "0.27.0"
+version = "0.27.1"
 dependencies = [
  "humantime",
  "poise",
@@ -1189,7 +1190,7 @@ dependencies = [
 
 [[package]]
 name = "crack-voting"
-version = "0.27.0"
+version = "0.27.1"
 dependencies = [
  "chrono",
  "dbl-rs",
@@ -1204,7 +1205,7 @@ dependencies = [
 
 [[package]]
 name = "crack-web"
-version = "0.27.0"
+version = "0.27.1"
 dependencies = [
  "axum",
  "catacombs",
@@ -1227,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.27.0"
+version = "0.27.1"
 dependencies = [
  "config-file",
  "crack-core",
@@ -4654,7 +4655,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -4693,7 +4694,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -6831,7 +6832,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
  "windows-sys 0.61.2",
@@ -7929,7 +7930,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

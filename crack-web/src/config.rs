@@ -14,7 +14,6 @@ pub struct WebEnv {
     /// redirect and is the only `Origin` a move is accepted from.
     pub public_origin: String,
     pub jwt_secret: String,
-    pub bot_token: String,
     pub bind: String,
 }
 
@@ -66,10 +65,6 @@ impl WebEnv {
             Some(s) if s.len() < 32 => missing.push("WEB_JWT_SECRET (32+ characters)"),
             Some(_) => {},
         }
-        let bot_token = val("DISCORD_TOKEN");
-        if bot_token.is_none() {
-            missing.push("DISCORD_TOKEN");
-        }
         if !missing.is_empty() {
             return Err(missing);
         }
@@ -78,7 +73,6 @@ impl WebEnv {
             client_secret: client_secret.unwrap(),
             public_origin: public_origin.unwrap(),
             jwt_secret: jwt_secret.unwrap(),
-            bot_token: bot_token.unwrap(),
             bind: val("WEB_BIND").unwrap_or_else(|| DEFAULT_BIND.to_owned()),
         })
     }
@@ -96,21 +90,17 @@ impl WebEnv {
                 client_id: self.client_id.clone(),
                 client_secret: self.client_secret.clone(),
                 redirect_uri: self.redirect_uri(),
-                bot_token: self.bot_token.clone(),
-                premium_sku_id: None,
+                // The dashboard has no premium check, so no SKU and no bot token.
+                premium: None,
                 api_base: catacombs::config::default_api_base(),
             },
             security: catacombs::SecurityConfig {
                 jwt_secret: self.jwt_secret.clone(),
-                // Memory storage keeps nothing encrypted; the field is
-                // required, so it gets a per-process random value.
-                encryption_key: format!(
-                    "{}{}",
-                    uuid::Uuid::new_v4().simple(),
-                    uuid::Uuid::new_v4().simple()
-                ),
+                // Refresh tokens are encrypted before memory storage sees
+                // them. Memory storage dies with the process, so a key that
+                // dies with it too is enough.
+                encryption_key: catacombs::encryption::generate_key(),
             },
-            server: catacombs::ServerConfig::default(),
             web: catacombs::WebConfig::default(),
         }
     }
@@ -205,5 +195,23 @@ mod test {
         let mut e = full();
         e.insert("WEB_BIND", "127.0.0.1:9000".to_string());
         assert_eq!(load(&e).unwrap().bind, "127.0.0.1:9000");
+    }
+
+    /// catacombs 0.2 refuses a key that is not 32 base64 bytes. 0.1's two
+    /// hex UUIDs decode to 48, so a bad key means no dashboard at all.
+    #[test]
+    fn the_catacombs_config_is_accepted_by_auth() {
+        let c = load(&full()).unwrap().catacombs_config();
+        assert!(catacombs::Auth::new(c, catacombs::MemoryStorage::new()).is_ok());
+    }
+
+    /// The bot token only fed catacombs' premium check, which the dashboard
+    /// does not use.
+    #[test]
+    fn the_dashboard_loads_without_a_bot_token() {
+        let mut e = full();
+        e.remove("DISCORD_TOKEN");
+        let c = load(&e).unwrap().catacombs_config();
+        assert!(c.discord.premium.is_none());
     }
 }

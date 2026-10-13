@@ -258,16 +258,12 @@ pub fn state(fake: Arc<FakeBackend>) -> WebState<FakeBackend> {
         client_secret: "s".into(),
         public_origin: ORIGIN.into(),
         jwt_secret: JWT_SECRET.into(),
-        bot_token: "t".into(),
         bind: "127.0.0.1:0".into(),
     }
     .catacombs_config();
     config.security.jwt_secret = JWT_SECRET.into();
     WebState {
-        auth: Arc::new(catacombs::AppState::new(
-            config,
-            catacombs::MemoryStorage::new(),
-        )),
+        auth: Arc::new(catacombs::Auth::new(config, catacombs::MemoryStorage::new()).unwrap()),
         hub: crate::watch::Hub::new(fake.clone(), crate::watch::TICK, crate::watch::LINGER),
         backend: fake,
         origin: ORIGIN.into(),

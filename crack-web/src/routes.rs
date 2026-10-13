@@ -15,7 +15,7 @@ use crate::{
 };
 use axum::{
     body::Bytes,
-    extract::{FromRef, Path, RawQuery, State},
+    extract::{Path, RawQuery, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{
         sse::{Event, KeepAlive, Sse},
@@ -57,7 +57,7 @@ pub const PRESENCE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const HISTORY_LINK_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub struct WebState<B: Backend> {
-    pub auth: Arc<catacombs::AppState>,
+    pub auth: Arc<catacombs::Auth>,
     pub backend: Arc<B>,
     pub hub: Arc<Hub<B>>,
     /// The only `Origin` a move is accepted from.
@@ -84,9 +84,9 @@ impl<B: Backend> Clone for WebState<B> {
     }
 }
 
-impl<B: Backend> FromRef<WebState<B>> for Arc<catacombs::AppState> {
-    fn from_ref(s: &WebState<B>) -> Self {
-        s.auth.clone()
+impl<B: Backend> catacombs::HasAuth for WebState<B> {
+    fn auth(&self) -> &catacombs::Auth {
+        &self.auth
     }
 }
 
@@ -573,9 +573,10 @@ pub fn router<B: Backend>(state: WebState<B>) -> Router {
         .merge(timed)
         .nest(
             "/auth",
-            // /auth/callback and /auth/exchange call Discord through a client
-            // with no timeout of its own, so this layer is the only bound.
-            catacombs::routes::auth_router()
+            // The website flow only: /login, /callback, /logout. /callback
+            // calls Discord; catacombs' client gives up at 15 s, and this
+            // layer bounds the whole request.
+            catacombs::router::<Arc<catacombs::Auth>>(catacombs::Flows::Web)
                 .with_state(state.auth.clone())
                 .layer(timeout),
         )
@@ -835,6 +836,25 @@ mod test {
             );
             assert_eq!(r.headers()["x-content-type-options"], "nosniff", "{uri}");
             assert_eq!(r.headers()["referrer-policy"], "same-origin", "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn auth_mounts_the_website_flow_only() {
+        let r = get(member_viewing(), "/auth/login?return_to=%2F", None).await;
+        assert!(r.status().is_redirection(), "{}", r.status());
+        assert!(r.headers()[header::LOCATION]
+            .to_str()
+            .unwrap()
+            .starts_with("https://discord.com/"));
+        // The dashboard never posts a code, so the Activity flow's routes are
+        // not mounted at all.
+        for uri in ["/auth/exchange", "/auth/refresh", "/auth/revoke"] {
+            let r = app(member_viewing())
+                .oneshot(Request::post(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::NOT_FOUND, "{uri}");
         }
     }
 
