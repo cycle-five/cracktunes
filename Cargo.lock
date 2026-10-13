@@ -1176,6 +1176,8 @@ dependencies = [
  "reqwest 0.12.28",
  "rspotify",
  "rusty_ytdl",
+ "serde",
+ "serde_json",
  "serenity",
  "songbird",
  "thiserror 2.0.21",

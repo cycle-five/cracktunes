@@ -7,7 +7,7 @@ use super::{
 use crate::Data;
 use songbird::input::AuxMetadata;
 
-/// How many hits the yt-dlp fallback asks for: it extracts each one in full.
+/// How many hits the yt-dlp fallback asks for.
 pub(crate) const YTDLP_HITS: usize = 5;
 
 pub(crate) async fn search_youtube(data: &Data, q: &Query) -> SourceResult {
@@ -20,14 +20,10 @@ pub(crate) async fn search_youtube(data: &Data, q: &Query) -> SourceResult {
             Ok(metas) => found(metas),
             Err(e) => {
                 tracing::warn!("search: rusty_ytdl failed, asking yt-dlp: {e}");
-                let mut ytdl = crack_types::ytdl_search(
-                    crate::http_utils::get_client_old().clone(),
-                    crack_types::Site::YouTube,
-                    q.as_str(),
-                    YTDLP_HITS,
-                );
-                match ytdl.search(Some(YTDLP_HITS)).await {
-                    Ok(metas) => found(metas.collect()),
+                match crack_types::ytdl_search(crack_types::Site::YouTube, q.as_str(), YTDLP_HITS)
+                    .await
+                {
+                    Ok(metas) => found(metas),
                     Err(e) => {
                         tracing::warn!("search: yt-dlp YouTube search failed: {e}");
                         SourceResult::Failed

@@ -3,19 +3,15 @@
 
 use super::{gated, youtube::found, Query, SourceResult, EXTERNAL};
 
-/// yt-dlp extracts each hit in full, so SoundCloud asks for five.
+/// SoundCloud asks for five, as the YouTube fallback does.
 pub(crate) const SOUNDCLOUD_HITS: usize = 5;
 
 pub(crate) async fn search_soundcloud(q: &Query) -> SourceResult {
     gated(&EXTERNAL, async {
-        let mut ytdl = crack_types::ytdl_search(
-            crate::http_utils::get_client_old().clone(),
-            crack_types::Site::SoundCloud,
-            q.as_str(),
-            SOUNDCLOUD_HITS,
-        );
-        match ytdl.search(Some(SOUNDCLOUD_HITS)).await {
-            Ok(metas) => found(metas.collect()),
+        match crack_types::ytdl_search(crack_types::Site::SoundCloud, q.as_str(), SOUNDCLOUD_HITS)
+            .await
+        {
+            Ok(metas) => found(metas),
             Err(e) => {
                 tracing::warn!("search: yt-dlp SoundCloud search failed: {e}");
                 SourceResult::Failed
