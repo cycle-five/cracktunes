@@ -34,6 +34,15 @@ pub async fn add(
     member_name: &str,
 ) -> Result<Done<Added>, OpRefused> {
     let user = cx.actor.user().ok_or(OpRefused::Invalid(ADD_UNPLAYABLE))?;
+    // History hits come from play_log rows that may predate the guard /play
+    // applies: a re-add must not hand a LAN link to yt-dlp's generic extractor.
+    let public = match url::Url::parse(&track.url) {
+        Ok(u) => crack_types::is_public_http_url(&u).await,
+        Err(_) => false,
+    };
+    if !public {
+        return Err(OpRefused::Invalid(ADD_UNPLAYABLE));
+    }
     let (g, call) = begin(cx).await?;
     add_with(cx, &g, &call, &track, at, user, member_name).await
 }
@@ -86,7 +95,7 @@ pub(crate) async fn add_on(
         At::End => {
             let inserted = enqueue_resolved_tracks_back(guard, call, vec![resolved], http)
                 .await
-                .map_err(|_| OpRefused::Invalid(ADD_UNPLAYABLE))?;
+                .map_err(unplayable)?;
             if inserted.count() == 0 {
                 return Err(OpRefused::Invalid(ADD_UNPLAYABLE));
             }
@@ -94,12 +103,18 @@ pub(crate) async fn add_on(
         At::Next => {
             enqueue_resolved_track_next(guard, call, resolved, http)
                 .await
-                .map_err(|_| OpRefused::Invalid(ADD_UNPLAYABLE))?;
+                .map_err(unplayable)?;
         },
     }
     Ok(Added {
         title: track.title.clone(),
     })
+}
+
+/// An enqueue error as the refusal the member sees; the cause goes to the log.
+fn unplayable(e: CrackedError) -> OpRefused {
+    tracing::warn!("add: could not enqueue the track: {e}");
+    OpRefused::Invalid(ADD_UNPLAYABLE)
 }
 
 /// The play-log write for an add: the track as metadata, the member, and the
@@ -224,6 +239,32 @@ mod test {
             add(&cx, song(1), At::End, "m").await,
             Err(OpRefused::NotConnected)
         ));
+    }
+
+    /// Ruling 6: a LAN or loopback link is refused before any lease or
+    /// enqueue (`Invalid`, not `NotConnected`). IP literals, so no DNS.
+    #[tokio::test]
+    async fn add_refuses_a_non_public_url_before_the_lease() {
+        let cx = super::super::test_support::cx_without_call();
+        for url in [
+            "http://127.0.0.1/x",
+            "http://192.168.1.5/x",
+            "http://[::1]/x",
+            "file:///etc/passwd",
+            "not a url",
+        ] {
+            let track = SavedTrack {
+                url: url.into(),
+                ..song(1)
+            };
+            assert!(
+                matches!(
+                    add(&cx, track, At::End, "m").await,
+                    Err(OpRefused::Invalid(_))
+                ),
+                "{url}"
+            );
+        }
     }
 
     #[tokio::test]

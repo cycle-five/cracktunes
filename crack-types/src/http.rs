@@ -149,7 +149,7 @@ impl SearchLine {
             duration: self
                 .duration
                 .filter(|d| d.is_finite() && *d >= 0.0)
-                .map(std::time::Duration::from_secs_f64),
+                .and_then(|d| std::time::Duration::try_from_secs_f64(d).ok()),
             ..Default::default()
         }
     }
@@ -377,6 +377,14 @@ mod test {
             metas[0].duration,
             Some(std::time::Duration::from_secs_f64(216.5))
         );
+    }
+
+    #[test]
+    fn a_huge_finite_duration_is_dropped_not_a_panic() {
+        let out = br#"{"url":"https://x/1","title":"T","duration":1e300}"#;
+        let m = &search_outcome(true, out, "").unwrap()[0];
+        assert_eq!(m.title.as_deref(), Some("T"));
+        assert_eq!(m.duration, None);
     }
 
     #[test]

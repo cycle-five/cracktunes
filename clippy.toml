@@ -99,7 +99,9 @@ disallowed-methods = [
     # as an option. A playlist id of `--batch-file=/proc/self/environ` leaked the
     # bot's environment to Discord this way (v0.17.2). Links go through
     # `crack_types::ytdl_for_url`, which only accepts http(s) URLs; search text goes
-    # through `YoutubeDl::new_search`, whose `ytsearchN:` prefix it cannot escape.
+    # through `YoutubeDl::new_search` for /play (its `ytsearchN:` prefix it cannot
+    # escape), and the dashboard's search text through `crack_types::ytdl_search`,
+    # which runs yt-dlp itself behind `--` and a `ytsearchN:`/`scsearchN:` prefix.
     { path = "songbird::input::YoutubeDl::new", reason = "yt-dlp reads a string starting with `-` as an option; use crack_types::ytdl_for_url for links; search text goes through crack_types::ytdl_search, which runs yt-dlp itself behind `--` and a ytsearchN:/scsearchN: prefix" },
     { path = "songbird::input::YoutubeDl::new_ytdl_like", reason = "yt-dlp reads a string starting with `-` as an option; use crack_types::ytdl_for_url for links; search text goes through crack_types::ytdl_search, which runs yt-dlp itself behind `--` and a ytsearchN:/scsearchN: prefix" },
     # 🔒 Every user-initiated playback/queue change is orchestrated in music::ops

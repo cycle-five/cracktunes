@@ -35,6 +35,22 @@ pub fn contains_pattern(q: &str) -> String {
     out
 }
 
+/// How long the history query may run in the database, in milliseconds. Matches
+/// `music::search::LOCAL_TIMEOUT` (2 s): `play_log` has no guild index, and a
+/// dropped sqlx future does not cancel its statement, so without this a timed-out
+/// scan would keep a pooled connection busy after the member was told so.
+pub(crate) const HISTORY_STATEMENT_TIMEOUT_MS: u32 = 2000;
+
+/// `SET LOCAL` takes no bind parameter; the value is our const, not input.
+async fn set_local_timeout(tx: &mut sqlx::PgConnection) -> sqlx::Result<()> {
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "SET LOCAL statement_timeout = '{HISTORY_STATEMENT_TIMEOUT_MS}ms'"
+    )))
+    .execute(tx)
+    .await
+    .map(|_| ())
+}
+
 /// Tracks queued in `guild` whose title or artist contains `q`, one row per
 /// URL, newest first. `since` bounds the window (a free server's 24 hours).
 /// No member column is read: a search shows tracks, never who queued them.
@@ -50,6 +66,8 @@ pub async fn search_play_log(
 ) -> sqlx::Result<Vec<HistoryTrack>> {
     let pattern = contains_pattern(q);
     let since = since.map(|t| t.naive_utc());
+    let mut tx = pool.begin().await?;
+    set_local_timeout(&mut tx).await?;
     let rows = sqlx::query!(
         r#"SELECT m.source_url AS "url!",
                   (array_agg(m.title ORDER BY p.created_at DESC))[1] AS title,
@@ -71,8 +89,10 @@ pub async fn search_play_log(
         since,
         limit,
     )
-    .fetch_all(pool)
+    .fetch_all(&mut *tx)
     .await?;
+    // Read-only: nothing to commit, and dropping `tx` rolls it back.
+    tx.rollback().await?;
     Ok(rows
         .into_iter()
         .map(|r| HistoryTrack {
@@ -242,7 +262,16 @@ mod test {
             &[10],
         )
         .await;
-        played(&pool, 1, "https://y/null", None, None, 1, &[10]).await;
+        played(
+            &pool,
+            1,
+            "https://y/null",
+            None,
+            Some("Hundred% Club"),
+            1,
+            &[10],
+        )
+        .await;
         let since = Some(Utc::now() - chrono::Duration::hours(24));
         let got = search_play_log(&pool, GuildId::new(1), "100%", since, 10)
             .await
@@ -261,5 +290,47 @@ mod test {
             .await
             .unwrap();
         assert_eq!(one.len(), 1);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn non_ascii_case_folds_and_a_null_title_still_matches_by_artist(pool: PgPool) {
+        played(&pool, 1, "https://y/b", Some("Björk Song"), None, 1, &[1]).await;
+        played(&pool, 1, "https://y/n", None, Some("BJÖRK"), 1, &[2]).await;
+        let got = search_play_log(&pool, GuildId::new(1), "BJÖRK", None, 10)
+            .await
+            .unwrap();
+        let urls: Vec<&str> = got.iter().map(|t| t.url.as_str()).collect();
+        assert_eq!(urls, ["https://y/b", "https://y/n"]);
+    }
+
+    /// The query runs under the statement timeout (Ruling 5): `SET LOCAL`
+    /// reaches the same connection the query uses, and ends with the transaction.
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn the_statement_timeout_is_local_to_the_search_transaction(pool: PgPool) {
+        let mut tx = pool.begin().await.unwrap();
+        set_local_timeout(&mut tx).await.unwrap();
+        let (t,): (String,) = sqlx::query_as("SHOW statement_timeout")
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap();
+        assert_eq!(t, "2s");
+        tx.rollback().await.unwrap();
+        // Back on the pool: no leftover timeout.
+        search_play_log(&pool, GuildId::new(1), "x", None, 1)
+            .await
+            .unwrap();
+        let (t,): (String,) = sqlx::query_as("SHOW statement_timeout")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(t, "0");
     }
 }

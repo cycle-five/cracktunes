@@ -12,27 +12,46 @@ pub(crate) const YTDLP_HITS: usize = 5;
 
 pub(crate) async fn search_youtube(data: &Data, q: &Query) -> SourceResult {
     gated(&EXTERNAL, async {
-        match data
+        let rusty = data
             .ct_client
             .search_metadata(q.as_str(), HITS_PER_SOURCE as u64)
-            .await
-        {
+            .await;
+        if let Some(done) = from_rusty(rusty) {
+            return done;
+        }
+        match crack_types::ytdl_search(crack_types::Site::YouTube, q.as_str(), YTDLP_HITS).await {
             Ok(metas) => found(metas),
             Err(e) => {
-                tracing::warn!("search: rusty_ytdl failed, asking yt-dlp: {e}");
-                match crack_types::ytdl_search(crack_types::Site::YouTube, q.as_str(), YTDLP_HITS)
-                    .await
-                {
-                    Ok(metas) => found(metas),
-                    Err(e) => {
-                        tracing::warn!("search: yt-dlp YouTube search failed: {e}");
-                        SourceResult::Failed
-                    },
-                }
+                tracing::warn!("search: yt-dlp YouTube search failed: {e}");
+                SourceResult::Failed
             },
         }
     })
     .await
+}
+
+/// What rusty_ytdl's answer amounts to: `Some` to use it, `None` to ask
+/// yt-dlp instead. rusty_ytdl returns `Ok(vec![])` when YouTube's markup
+/// changes (it skips shapes it does not recognise), so an answer with no
+/// usable hit is a failure too, not "no matches".
+pub(crate) fn from_rusty<E: std::fmt::Display>(
+    rusty: Result<Vec<AuxMetadata>, E>,
+) -> Option<SourceResult> {
+    match rusty {
+        Ok(metas) => {
+            let hits = found(metas);
+            if matches!(&hits, SourceResult::Hits(h) if h.is_empty()) {
+                tracing::warn!("search: rusty_ytdl found nothing usable, asking yt-dlp");
+                None
+            } else {
+                Some(hits)
+            }
+        },
+        Err(e) => {
+            tracing::warn!("search: rusty_ytdl failed, asking yt-dlp: {e}");
+            None
+        },
+    }
 }
 
 /// Search metadata as `Found` hits, in order, web URLs only, capped.
@@ -76,6 +95,18 @@ mod test {
             ("https://y/a", "https://y/b")
         );
         assert!(hits.iter().all(|h| h.detail == HitDetail::Found));
+    }
+
+    #[test]
+    fn rusty_ytdl_answers_are_used_unless_empty_or_failed() {
+        let used = from_rusty::<String>(Ok(vec![m(Some("https://y/a"))]));
+        assert!(matches!(used, Some(SourceResult::Hits(h)) if h.len() == 1));
+        assert!(from_rusty::<String>(Ok(vec![])).is_none(), "Ok(empty)");
+        assert!(
+            from_rusty::<String>(Ok(vec![m(None)])).is_none(),
+            "nothing with a web URL"
+        );
+        assert!(from_rusty::<String>(Err("boom".into())).is_none(), "Err");
     }
 
     #[tokio::test]
