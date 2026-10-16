@@ -47,8 +47,15 @@ impl EventHandler for SerenityHandler {
                     .await;
             },
             FullEvent::VoiceStateUpdate { old, new } => {
+                // Voice rooms first: the handler below returns early for
+                // anyone but the bot.
+                crate::rooms::lifecycle::on_voice_state(&self.data, ctx, old.as_ref(), new).await;
                 self.on_voice_state_update(ctx.clone(), old.clone(), new.clone())
                     .await;
+            },
+            // A voice room deleted by hand drops its row and its timer.
+            FullEvent::ChannelDelete { channel, .. } => {
+                crate::rooms::lifecycle::on_channel_delete(&self.data, channel.id).await;
             },
             FullEvent::CacheReady { guilds } => {
                 self.on_cache_ready(ctx.clone(), guilds.clone()).await;
@@ -422,12 +429,28 @@ impl SerenityHandler {
             .insert(guild.id, settings);
         tracing::info!("Loaded settings for guild {} ({})", guild.id, guild.name);
 
+        // Voice room settings live in their own table; with no database,
+        // rooms stay off.
+        if let Some(pool) = self.data.database_pool.as_ref() {
+            match crate::db::rooms::load_settings(pool, guild.id).await {
+                Ok(Some(rooms)) => self.data.rooms.set_settings(rooms),
+                Ok(None) => {},
+                Err(err) => tracing::warn!(
+                    "rooms: loading the room settings of {} failed: {err}",
+                    guild.id
+                ),
+            }
+        }
+
         // A `/gp` game that was running when the bot went down comes back here,
         // per guild, for the same reason the settings do.
         crate::commands::music::gp_persist::gp_resume_guild(&self.data, &ctx, &guild).await;
         // And an ordinary queue that was playing when the bot went down (#595).
         // After /gp's: a guild whose game came back is not resumed twice.
         crate::music::resume::queue_resume_guild(&self.data, &ctx, &guild).await;
+        // Voice rooms: drop rows for vanished channels, sweep empty rooms,
+        // give the hub's occupants rooms. Runs on every reconnect too.
+        crate::rooms::lifecycle::reconcile_guild(&self.data, &ctx, &guild).await;
     }
 
     // We use the cache_ready event just in case some cache operation is required in whatever use

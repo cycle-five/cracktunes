@@ -130,8 +130,8 @@ impl RoomRegistry {
     /// is refused rather than run on a room nobody can find.
     ///
     /// 🪤 A timer task that calls this aborts itself at its next `.await`:
-    /// take the handle out with [`Self::disarm_timer`] first, or call this
-    /// last.
+    /// take its own handle out with [`Self::release_timer`] first
+    /// ([`Self::disarm_timer`] aborts it too), or call this last.
     pub fn remove(&self, ch: ChannelId) -> Option<Arc<Mutex<LiveRoom>>> {
         let removed = self.rooms.remove(&ch).map(|(_, (_, room))| room);
         self.owners.retain(|_, room| *room != ch);
@@ -152,6 +152,28 @@ impl RoomRegistry {
     /// How many rooms live in the server.
     pub fn count_in(&self, g: GuildId) -> usize {
         self.rooms.iter().filter(|e| e.value().0 == g).count()
+    }
+
+    /// The server's rooms.
+    pub fn rooms_in(&self, g: GuildId) -> Vec<ChannelId> {
+        self.rooms
+            .iter()
+            .filter(|e| e.value().0 == g)
+            .map(|e| *e.key())
+            .collect()
+    }
+
+    /// Whether a deletion is pending for the room: armed, and not yet run
+    /// to its end.
+    pub fn timer_pending(&self, ch: ChannelId) -> bool {
+        self.timers.get(&ch).is_some_and(|h| !h.is_finished())
+    }
+
+    /// A timer task taking its own handle out of the map, unaborted, before
+    /// it deletes the room ([`Self::remove`] would otherwise abort it mid-way).
+    /// Only the handle of task `id` goes: one armed since stays.
+    pub fn release_timer(&self, ch: ChannelId, id: tokio::task::Id) {
+        self.timers.remove_if(&ch, |_, h| h.id() == id);
     }
 
     /// Hold `handle` as the room's pending deletion, aborting any earlier one.
@@ -325,6 +347,65 @@ mod tests {
         let err = cancelled(task).await;
         assert!(err.is_cancelled());
         assert!(!reg.disarm_timer(ChannelId::new(10)), "and forgets it");
+    }
+
+    #[test]
+    fn rooms_in_lists_only_that_servers_rooms() {
+        let reg = RoomRegistry::default();
+        reg.insert(room(10, G, 1));
+        reg.insert(room(11, G, 2));
+        reg.insert(room(20, GuildId::new(200), 1));
+        let mut got = reg.rooms_in(G);
+        got.sort();
+        assert_eq!(got, vec![ChannelId::new(10), ChannelId::new(11)]);
+        assert!(reg.rooms_in(GuildId::new(300)).is_empty());
+    }
+
+    #[tokio::test]
+    async fn timer_pending_is_false_once_the_task_ends_or_is_disarmed() {
+        let reg = RoomRegistry::default();
+        let ch = ChannelId::new(10);
+        assert!(!reg.timer_pending(ch));
+        let task = tokio::spawn(std::future::pending::<()>());
+        reg.arm_timer(ch, task.abort_handle());
+        assert!(reg.timer_pending(ch));
+        reg.disarm_timer(ch);
+        assert!(!reg.timer_pending(ch));
+
+        // A handle whose task already ran to its end is not pending.
+        let done = tokio::spawn(async {});
+        let handle = done.abort_handle();
+        done.await.unwrap();
+        reg.arm_timer(ch, handle);
+        assert!(!reg.timer_pending(ch));
+    }
+
+    #[tokio::test]
+    async fn release_timer_takes_out_only_that_tasks_handle_without_aborting_it() {
+        let reg = Arc::new(RoomRegistry::default());
+        let ch = ChannelId::new(10);
+        let (go, wait) = tokio::sync::oneshot::channel::<()>();
+        let r = reg.clone();
+        let task = tokio::spawn(async move {
+            wait.await.unwrap();
+            r.release_timer(ch, tokio::task::id());
+            // Still running after the release: the next await is reached.
+            tokio::task::yield_now().await;
+            7
+        });
+        reg.arm_timer(ch, task.abort_handle());
+        go.send(()).unwrap();
+        assert_eq!(task.await.expect("not aborted"), 7);
+        assert!(!reg.timer_pending(ch));
+        assert!(!reg.disarm_timer(ch), "the handle was taken out");
+
+        // Another task's handle stays put.
+        let other = tokio::spawn(std::future::pending::<()>());
+        reg.arm_timer(ch, other.abort_handle());
+        let stranger = tokio::spawn(async { tokio::task::id() }).await.unwrap();
+        reg.release_timer(ch, stranger);
+        assert!(reg.timer_pending(ch));
+        assert!(reg.disarm_timer(ch));
     }
 
     #[tokio::test]

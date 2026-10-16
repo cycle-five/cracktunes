@@ -4,6 +4,7 @@ pub mod discord;
 pub mod facts;
 pub mod guard;
 pub mod ids;
+pub mod lifecycle;
 pub mod ops;
 pub mod overwrites;
 pub mod preflight;
