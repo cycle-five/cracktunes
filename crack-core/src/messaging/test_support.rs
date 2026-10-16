@@ -181,9 +181,20 @@ impl ReplySink for FakeReplies {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PressOp {
     Acknowledge,
-    Followup { ephemeral: bool, text: String },
-    Respond { ephemeral: bool, text: String },
-    Update { text: String, rows: usize },
+    Followup {
+        ephemeral: bool,
+        text: String,
+    },
+    Respond {
+        ephemeral: bool,
+        text: String,
+    },
+    Update {
+        text: String,
+        rows: usize,
+    },
+    /// A modal opened, by its custom id.
+    Modal(String),
 }
 
 /// A stand-in for one button press.
@@ -191,6 +202,8 @@ pub enum PressOp {
 pub struct FakePress {
     pub ops: Mutex<Vec<PressOp>>,
     pub ack_error: Mutex<Option<TransportError>>,
+    /// Every modal opened, whole, for inspection.
+    pub modals: Mutex<Vec<serenity::all::CreateModal<'static>>>,
 }
 
 impl FakePress {
@@ -228,5 +241,34 @@ impl super::transport::Press for FakePress {
             rows: out.components.len(),
         });
         Ok(())
+    }
+    async fn open_modal(
+        &self,
+        modal: serenity::all::CreateModal<'static>,
+    ) -> Result<(), TransportError> {
+        // The builder's fields are private; its payload is a third-party shape.
+        let payload = serde_json::to_value(&modal).expect("a modal serializes");
+        let custom_id = payload["custom_id"].as_str().unwrap_or_default().to_owned();
+        self.ops.lock().unwrap().push(PressOp::Modal(custom_id));
+        self.modals.lock().unwrap().push(modal);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod press_tests {
+    use super::*;
+    use crate::messaging::transport::Press;
+    use serenity::all::CreateModal;
+
+    #[tokio::test]
+    async fn fake_press_records_an_opened_modal() {
+        let press = FakePress::default();
+        press
+            .open_modal(CreateModal::new("rooms:rename", "Rename"))
+            .await
+            .unwrap();
+        assert_eq!(press.ops(), vec![PressOp::Modal("rooms:rename".into())]);
+        assert_eq!(press.modals.lock().unwrap().len(), 1);
     }
 }
