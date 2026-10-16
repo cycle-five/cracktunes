@@ -175,6 +175,26 @@ mod tests {
     }
 
     #[test]
+    fn another_users_member_overwrite_is_ignored() {
+        let roles: HashMap<_, _> = HashMap::new();
+        let ovs = [ow(
+            OverwriteTarget::Member {
+                id: UserId::new(999),
+            },
+            Permissions::empty(),
+            Permissions::CONNECT,
+        )];
+        let v = BaselineView {
+            guild: GUILD,
+            everyone: base(),
+            role_perms: &roles,
+            overwrites: &ovs,
+        };
+        assert!(member_permissions(&v, ME, &[]).contains(Permissions::CONNECT));
+        assert!(!member_permissions(&v, UserId::new(999), &[]).contains(Permissions::CONNECT));
+    }
+
+    #[test]
     fn role_allow_beats_everyone_deny() {
         let roles: HashMap<_, _> = [(ADULT, Permissions::empty())].into();
         let ovs = [

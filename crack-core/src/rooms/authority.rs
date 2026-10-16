@@ -136,7 +136,7 @@ fn helper_may(action: &RoomAction) -> bool {
 /// Whether `who` may attempt `action` at all (targets are checked by [`target_ok`]).
 pub fn may(who: Standing, action: &RoomAction, owner_present: bool) -> Result<(), RoomRefusal> {
     if who == Standing::Outsider {
-        return Err(RoomRefusal::NotInRoom);
+        return Err(RoomRefusal::NotAllowed);
     }
     if matches!(action, RoomAction::Claim) {
         return match who {
@@ -321,7 +321,7 @@ mod tests {
     fn outsider_may_nothing() {
         for a in all_actions() {
             let r = may(Standing::Outsider, &a, false);
-            assert_eq!(r, Err(RoomRefusal::NotInRoom), "{a:?}");
+            assert_eq!(r, Err(RoomRefusal::NotAllowed), "{a:?}");
         }
     }
 
