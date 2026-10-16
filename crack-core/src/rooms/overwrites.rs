@@ -35,12 +35,14 @@ fn deny(map: &mut BTreeMap<OverwriteTarget, Bits>, t: OverwriteTarget, p: Permis
     e.1 |= p;
 }
 
-/// Move `p` from allow to deny on `@everyone` and every role entry.
+/// Move `p` from allow to deny on `@everyone` (created if absent) and on every
+/// other role overwrite that allows it; other role entries are left alone.
 fn lock_roles(map: &mut BTreeMap<OverwriteTarget, Bits>, everyone: RoleId, p: Permissions) {
     map.entry(OverwriteTarget::Role { id: everyone })
         .or_default();
     for (t, bits) in map.iter_mut() {
-        if matches!(t, OverwriteTarget::Role { .. }) {
+        let is_everyone = *t == OverwriteTarget::Role { id: everyone };
+        if is_everyone || (matches!(t, OverwriteTarget::Role { .. }) && bits.0.intersects(p)) {
             bits.0 &= !p;
             bits.1 |= p;
         }
@@ -337,6 +339,40 @@ mod tests {
                 OverwriteChange::Put(ow(r(3), Permissions::empty(), C)),
             ]
         );
+    }
+
+    #[test]
+    fn lock_leaves_roles_that_do_not_allow_connect_untouched() {
+        let mm = Permissions::MANAGE_MESSAGES;
+        let base = vec![
+            ow(r(40), mm, Permissions::empty()),
+            ow(r(41), Permissions::empty(), V),
+        ];
+        let unlocked = room_overwrites(G, &base, &state());
+        let mut s = state();
+        s.locked = true;
+        s.chat_locked = true;
+        let out = room_overwrites(G, &base, &s);
+        assert_eq!(get(&out, r(40)), Some((mm, Permissions::empty())));
+        assert_eq!(get(&out, r(41)), Some((Permissions::empty(), V)));
+        let touched: Vec<_> = diff(&unlocked, &out)
+            .into_iter()
+            .filter(
+                |c| matches!(c, OverwriteChange::Put(o) if o.target == r(40) || o.target == r(41)),
+            )
+            .collect();
+        assert!(touched.is_empty(), "{touched:?}");
+    }
+
+    #[test]
+    fn locked_and_chat_locked_permitted_role_gets_connect_allow_and_send_deny() {
+        let base = vec![ow(r(18), C | S, Permissions::empty())];
+        let mut s = state();
+        s.locked = true;
+        s.chat_locked = true;
+        s.permitted_roles.insert(RoleId::new(18));
+        let out = room_overwrites(G, &base, &s);
+        assert_eq!(get(&out, r(18)), Some((C, S)));
     }
 
     #[test]
