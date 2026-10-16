@@ -102,9 +102,15 @@ pub fn room_overwrites(
         .collect()
 }
 
-/// What to write to turn `before` into `after`; sorted by target.
+/// What to write to turn `before` into `after`; sorted by target. An entry
+/// of `before` with no bits set counts as absent: there is nothing on it to
+/// delete.
 pub fn diff(before: &[StoredOverwrite], after: &[StoredOverwrite]) -> Vec<OverwriteChange> {
-    let b: BTreeMap<_, _> = before.iter().map(|o| (o.target, *o)).collect();
+    let b: BTreeMap<_, _> = before
+        .iter()
+        .filter(|o| !(o.allow.is_empty() && o.deny.is_empty()))
+        .map(|o| (o.target, *o))
+        .collect();
     let a: BTreeMap<_, _> = after.iter().map(|o| (o.target, *o)).collect();
     let mut out: Vec<(OverwriteTarget, OverwriteChange)> = Vec::new();
     for (t, o) in &a {
@@ -379,6 +385,21 @@ mod tests {
     fn diff_of_equal_sets_is_empty() {
         let a = baseline();
         assert!(diff(&a, &a).is_empty());
+    }
+
+    #[test]
+    fn diff_treats_a_neutral_entry_in_before_as_absent() {
+        // A role added to the category with nothing set: no bits to clear,
+        // so nothing to send.
+        let neutral = ow(r(50), Permissions::empty(), Permissions::empty());
+        let mut before = baseline();
+        before.push(neutral);
+        assert_eq!(diff(&before, &baseline()), vec![]);
+        // Given bits again, it is put as any change would be.
+        let set = ow(r(50), C, Permissions::empty());
+        let mut after = baseline();
+        after.push(set);
+        assert_eq!(diff(&before, &after), vec![OverwriteChange::Put(set)]);
     }
 
     #[test]

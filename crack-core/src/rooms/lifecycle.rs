@@ -18,12 +18,21 @@ use crate::Data;
 use dashmap::DashSet;
 use serenity::all::{Cache, ChannelId, Context, Guild, GuildId, UserId, VoiceState};
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::MutexGuard;
 
 /// At most this many live rooms per server.
 pub const MAX_ROOMS: usize = 50;
+/// How long a refused channel delete waits before it is tried again.
+const DELETE_RETRY: Duration = Duration::from_secs(60);
+/// Tries at deleting a room's channel, the first included.
+const DELETE_ATTEMPTS: u32 = 3;
+/// The least a room just made waits before it is swept: the gateway's
+/// voice update for the move into it can land after the join returns.
+const SETTLE: Duration = Duration::from_secs(10);
 
 // Why a hub join made no room. Logged, never shown to anyone.
 const MOVE_TO_OWN_FAILED: &str = "moving them into their own room failed";
@@ -114,8 +123,14 @@ pub struct ExistingChannel {
 }
 
 /// Spec 1.3's hub join, steps 1 to 9, with the sync check after step 5.
+///
+/// The room is registered, and marked in flight, as soon as its channel
+/// exists, so a reconcile running meanwhile sees it as live and leaves it
+/// alone. The join holds the room's lock until it is set up. A failure after
+/// that takes the room out again and deletes its channel and row, retrying.
 pub async fn hub_join(
     cx: &RoomCx<'_>,
+    sweep: &Sweep,
     facts: &GuildFacts,
     settings: &RoomSettings,
     hub: &Hub,
@@ -125,8 +140,12 @@ pub async fn hub_join(
     let data = cx.data;
     let guild = facts.guild;
 
-    // 1. Their own room, if they have one.
-    if let Some(room) = data.rooms.owned_by(guild, user) {
+    // 1. Their own room, if they have one that is set up.
+    let own = data
+        .rooms
+        .owned_by(guild, user)
+        .filter(|room| !data.rooms.creating.contains(room));
+    if let Some(room) = own {
         // So the deletion cannot fire while they are on the way.
         data.rooms.disarm_timer(room);
         match cx.discord.move_member(guild, user, Some(room)).await {
@@ -148,7 +167,7 @@ pub async fn hub_join(
     }
     // A room still being made for them (Discord can be slower than the
     // cooldown): wait, and the re-check finds the room or makes one.
-    let Some(_creating) = Creating::claim(&data.rooms.hub_creating, key) else {
+    let Some(_creating) = Held::claim(&data.rooms.hub_creating, key) else {
         let wait = data.rooms.cooldown.remaining(&key, now);
         return HubOutcome::CoolingDown(wait.unwrap_or_default());
     };
@@ -180,52 +199,64 @@ pub async fn hub_join(
         Err(err) => return refused(guild, "creating a room", err, CREATE_FAILED),
     };
     let room = created.channel;
+    // In flight before it is registered: reconcile must never see one
+    // without the other.
+    let _in_flight = Held::claim(&data.rooms.creating, room);
+    let handle = data.rooms.insert(LiveRoom {
+        guild,
+        channel: room,
+        name,
+        state: RoomState::new(user),
+        baseline: created.overwrites.clone(),
+        limit: settings.default_limit,
+        renames: RenameWindow::default(),
+    });
+    let mut live = handle.lock().await;
+
     // The sync check: never a room more open than its category.
-    let Some(baseline) = sync_check(cx.discord, room, created.overwrites, hub).await else {
-        if let Err(err) = cx.discord.delete_channel(room).await {
-            tracing::error!(
-                "rooms: room {room} in {guild} lacks its category's overwrites and could not be \
-                 deleted; delete it by hand: {err:?}"
-            );
-        }
-        return HubOutcome::Refused(COPY_FAILED);
-    };
+    match sync_check(cx.discord, room, &created.overwrites, hub).await {
+        Some(baseline) => live.baseline = baseline,
+        None => {
+            abandon(data, sweep, live).await;
+            return HubOutcome::Refused(COPY_FAILED);
+        },
+    }
 
     // 6. The row.
-    let state = RoomState::new(user);
     if let Some(pool) = data.database_pool.as_ref() {
         let row = StoredRoom {
             channel: room,
             guild,
             owner: user,
-            state: state.clone(),
-            baseline: baseline.clone(),
+            state: live.state.clone(),
+            baseline: live.baseline.clone(),
         };
         if let Err(err) = crate::db::rooms::insert_room(pool, &row).await {
             tracing::warn!("rooms: storing room {room} in {guild} failed: {err}");
-            if let Err(err) = cx.discord.delete_channel(room).await {
-                tracing::warn!("rooms: deleting unstored room {room} failed: {err:?}");
-            }
+            abandon(data, sweep, live).await;
             return HubOutcome::Refused(STORE_FAILED);
         }
     }
 
-    // 7. The managed layer.
-    for change in diff(&baseline, &room_overwrites(guild, &baseline, &state)) {
+    // 7. The managed layer. A new room's state adds nothing to its baseline
+    // today (R6), so this sends nothing; it keeps the order honest if that
+    // changes.
+    let wanted = room_overwrites(guild, &live.baseline, &live.state);
+    for change in diff(&live.baseline, &wanted) {
         let written = match &change {
             OverwriteChange::Put(o) => cx.discord.put_overwrite(room, o).await,
             OverwriteChange::Delete(t) => cx.discord.delete_overwrite(room, *t).await,
         };
         if let Err(err) = written {
             tracing::warn!("rooms: setting up room {room}'s overwrites failed: {err:?}");
-            delete_room(data, cx.discord, room).await;
+            abandon(data, sweep, live).await;
             return HubOutcome::Refused(OVERWRITES_FAILED);
         }
     }
 
     // 8. Into the room. If they are gone, so is the room.
     if let Err(err) = cx.discord.move_member(guild, user, Some(room)).await {
-        delete_room(data, cx.discord, room).await;
+        abandon(data, sweep, live).await;
         return refused(
             guild,
             "moving a member into their new room",
@@ -234,16 +265,7 @@ pub async fn hub_join(
         );
     }
 
-    // 9. The panel, then the registry.
-    let mut live = LiveRoom {
-        guild,
-        channel: room,
-        name,
-        state,
-        baseline,
-        limit: settings.default_limit,
-        renames: RenameWindow::default(),
-    };
+    // 9. The panel.
     if post_panel(cx, &mut live).await.is_some() {
         if let Some(pool) = data.database_pool.as_ref() {
             let saved = crate::db::rooms::save_state(pool, room, user, &live.state).await;
@@ -252,37 +274,38 @@ pub async fn hub_join(
             }
         }
     }
-    data.rooms.insert(live);
     HubOutcome::Created(room)
 }
 
-/// A member's claim on a room being made, let go however the join ends.
-struct Creating<'a> {
-    set: &'a DashSet<(GuildId, UserId)>,
-    key: (GuildId, UserId),
+/// A key held in a set for as long as this lives, let go however the holder
+/// ends.
+struct Held<'a, K: Eq + Hash> {
+    set: &'a DashSet<K>,
+    key: K,
 }
 
-impl<'a> Creating<'a> {
-    fn claim(set: &'a DashSet<(GuildId, UserId)>, key: (GuildId, UserId)) -> Option<Self> {
+impl<'a, K: Eq + Hash + Copy> Held<'a, K> {
+    fn claim(set: &'a DashSet<K>, key: K) -> Option<Self> {
         // `then`, not `then_some`: a guard built for a lost claim would let go
         // of the winner's on drop.
         set.insert(key).then(|| Self { set, key })
     }
 }
 
-impl Drop for Creating<'_> {
+impl<K: Eq + Hash> Drop for Held<'_, K> {
     fn drop(&mut self) {
         self.set.remove(&self.key);
     }
 }
 
 /// Spec 5 guesses that Discord gives a new channel its category's overwrites.
-/// When the channel came back with others, the category's are copied onto
-/// it. The room's baseline, or `None` when a copy was refused.
+/// When the channel came back with others, the category's are merged onto
+/// it ([`merge`]). The overwrites the room then carries, which are its
+/// baseline, or `None` when a put was refused.
 async fn sync_check(
     discord: &dyn RoomsDiscord,
     room: ChannelId,
-    created: Vec<StoredOverwrite>,
+    created: &[StoredOverwrite],
     hub: &Hub,
 ) -> Option<Vec<StoredOverwrite>> {
     let sorted = |v: &[StoredOverwrite]| {
@@ -290,27 +313,61 @@ async fn sync_check(
         v.sort_by_key(|o| o.target);
         v
     };
-    if sorted(&created) == sorted(&hub.category_overwrites) {
-        return Some(created);
+    if sorted(created) == sorted(&hub.category_overwrites) {
+        return Some(created.to_vec());
     }
     static WARNED: AtomicBool = AtomicBool::new(false);
     if WARNED.swap(true, Ordering::Relaxed) {
-        tracing::debug!("rooms: room {room} was not synced to its category; copying");
+        tracing::debug!("rooms: room {room} was not synced to its category; merging");
     } else {
         tracing::warn!(
             "rooms: Discord did not sync new room {room} to its category ({} overwrites, the \
-             category has {}); copying the category's. Logged once.",
+             category has {}); merging the category's in. Logged once.",
             created.len(),
             hub.category_overwrites.len()
         );
     }
-    for o in &hub.category_overwrites {
+    let (baseline, puts) = merge(created, &hub.category_overwrites);
+    for o in &puts {
         if let Err(err) = discord.put_overwrite(room, o).await {
             tracing::warn!("rooms: copying the category's overwrites onto {room} failed: {err:?}");
             return None;
         }
     }
-    Some(hub.category_overwrites.clone())
+    Some(baseline)
+}
+
+/// The category's overwrites laid over a new channel's, never opener than
+/// either side: for a target both have, allow is what both allow and deny is
+/// what either denies (a stale cached category cannot drop a fresh deny). A
+/// target only the category has is copied; one only the channel has is kept.
+/// The overwrites the channel ends up with, and the puts that get it there.
+fn merge(
+    created: &[StoredOverwrite],
+    category: &[StoredOverwrite],
+) -> (Vec<StoredOverwrite>, Vec<StoredOverwrite>) {
+    let mut result = created.to_vec();
+    let mut puts = Vec::new();
+    for c in category {
+        match result.iter_mut().find(|o| o.target == c.target) {
+            Some(o) => {
+                let merged = StoredOverwrite {
+                    target: c.target,
+                    allow: o.allow & c.allow,
+                    deny: o.deny | c.deny,
+                };
+                if merged != *o {
+                    *o = merged;
+                    puts.push(merged);
+                }
+            },
+            None => {
+                result.push(*c);
+                puts.push(*c);
+            },
+        }
+    }
+    (result, puts)
 }
 
 /// Log a failed create or move, and say why for the outcome.
@@ -319,6 +376,67 @@ fn refused(guild: GuildId, what: &str, err: DiscordError, otherwise: &'static st
     match err {
         DiscordError::MissingPermissions => HubOutcome::Refused(MISSING_PERMISSIONS),
         _ => HubOutcome::Refused(otherwise),
+    }
+}
+
+/// A room whose setup failed: out of the registry under its lock (handed
+/// over by the caller), then its channel and row deleted.
+async fn abandon(data: &Data, sweep: &Sweep, live: MutexGuard<'_, LiveRoom>) {
+    let room = live.channel;
+    data.rooms.remove(room);
+    drop(live);
+    discard(data, sweep, room).await;
+}
+
+/// Delete a channel the registry no longer holds, then its row, whoever is
+/// in it. A refusal is retried every [`DELETE_RETRY`], up to
+/// [`DELETE_ATTEMPTS`] in all, in a task of its own: a join must not cancel
+/// the deletion of a room that was never set up.
+async fn discard(data: &Data, sweep: &Sweep, room: ChannelId) {
+    if destroy(data, &*sweep.discord, room, 1).await {
+        return;
+    }
+    let (data, discord) = (data.clone(), sweep.discord.clone());
+    // Counted from now, not from whenever the task first runs.
+    let start = tokio::time::Instant::now();
+    tokio::spawn(async move {
+        let mut at = start;
+        for attempt in 2..=DELETE_ATTEMPTS {
+            at += DELETE_RETRY;
+            tokio::time::sleep_until(at).await;
+            if destroy(&data, &*discord, room, attempt).await {
+                return;
+            }
+        }
+    });
+}
+
+/// One try at deleting a channel, then its row. Whether it is gone.
+async fn destroy(data: &Data, discord: &dyn RoomsDiscord, room: ChannelId, attempt: u32) -> bool {
+    match discord.delete_channel(room).await {
+        Ok(()) | Err(DiscordError::UnknownChannel) => {
+            drop_row(data, room).await;
+            true
+        },
+        Err(err) => {
+            give_up_or_retry(room, attempt, &err);
+            false
+        },
+    }
+}
+
+fn give_up_or_retry(room: ChannelId, attempt: u32, err: &DiscordError) {
+    if attempt < DELETE_ATTEMPTS {
+        tracing::warn!(
+            "rooms: deleting room {room} failed (attempt {attempt} of {DELETE_ATTEMPTS}); \
+             retrying in {}s: {err:?}",
+            DELETE_RETRY.as_secs()
+        );
+    } else {
+        tracing::warn!(
+            "rooms: deleting room {room} failed {DELETE_ATTEMPTS} times; giving up until the \
+             next reconcile, or delete it by hand: {err:?}"
+        );
     }
 }
 
@@ -338,49 +456,72 @@ pub fn schedule_if_empty(
     if data.rooms.timer_pending(room) {
         return;
     }
+    let sweep = Sweep { discord, occupancy };
+    arm_deletion(data, &sweep, guild, room, grace, 1);
+}
+
+/// Arm the room's pending deletion: attempt number `attempt`, after `wait`.
+/// A join to the room aborts it.
+fn arm_deletion(
+    data: &Data,
+    sweep: &Sweep,
+    guild: GuildId,
+    room: ChannelId,
+    wait: Duration,
+    attempt: u32,
+) {
     // From now, not from whenever the task first runs.
-    let deadline = tokio::time::Instant::now() + grace;
+    let deadline = tokio::time::Instant::now() + wait;
     let (armed, is_armed) = tokio::sync::oneshot::channel::<()>();
-    let data_for_timer = data.clone();
+    let (data_for_timer, sweep_for_timer) = (data.clone(), sweep.clone());
     let timer = tokio::spawn(async move {
-        let data = data_for_timer;
+        let (data, sweep) = (data_for_timer, sweep_for_timer);
         // Not a step before `arm_timer` below holds this task's handle, so
         // the release further down always finds it.
         if is_armed.await.is_err() {
             return;
         }
         tokio::time::sleep_until(deadline).await;
-        // Out of the map unaborted: `delete_room` removes the room, and that
+        // Out of the map unaborted: the deletion removes the room, and that
         // would abort this very task at its next await.
         data.rooms.release_timer(room, tokio::task::id());
-        if occupancy.humans_in(guild, room) > 0 {
-            return;
-        }
-        delete_room(&data, &*discord, room).await;
+        delete_attempt(&data, &sweep, guild, room, attempt).await;
     });
     data.rooms.arm_timer(room, timer.abort_handle());
     let _ = armed.send(());
 }
 
-/// Delete the room's channel, then forget it and drop its row. A channel
-/// already gone counts as deleted. Any other failure keeps all of it, for
-/// reconcile to finish at the next `GuildCreate`. Works on a room the
-/// registry does not hold (yet) too.
-pub async fn delete_room(data: &Data, discord: &dyn RoomsDiscord, room: ChannelId) {
+/// Delete an empty room: its channel, then its registry entry and row. A
+/// channel already gone counts as deleted. Any other failure keeps it all
+/// and retries ([`DELETE_RETRY`], [`DELETE_ATTEMPTS`] in all), then leaves
+/// it to the next reconcile. Works on a room the registry does not hold too.
+pub async fn delete_room(data: &Data, sweep: &Sweep, guild: GuildId, room: ChannelId) {
+    delete_attempt(data, sweep, guild, room, 1).await;
+}
+
+async fn delete_attempt(data: &Data, sweep: &Sweep, guild: GuildId, room: ChannelId, attempt: u32) {
     let handle = data.rooms.get(room);
     // `RoomRegistry::remove` is called under the room's lock.
     let _held = match &handle {
         Some(h) => Some(h.lock().await),
         None => None,
     };
-    match discord.delete_channel(room).await {
+    // Under the lock, just before the delete: whoever came in while this
+    // waited keeps the room.
+    if sweep.occupancy.humans_in(guild, room) > 0 {
+        return;
+    }
+    match sweep.discord.delete_channel(room).await {
         Ok(()) | Err(DiscordError::UnknownChannel) => {
             data.rooms.remove(room);
             drop_row(data, room).await;
         },
-        Err(err) => tracing::warn!(
-            "rooms: deleting room {room} failed; it stays until the next reconcile: {err:?}"
-        ),
+        Err(err) => {
+            give_up_or_retry(room, attempt, &err);
+            if attempt < DELETE_ATTEMPTS {
+                arm_deletion(data, sweep, guild, room, DELETE_RETRY, attempt + 1);
+            }
+        },
     }
 }
 
@@ -413,9 +554,8 @@ fn grace_of(settings: &RoomSettings) -> Duration {
     Duration::from_secs(settings.empty_grace_secs.into())
 }
 
-/// Sweep `room` if it is empty, with its server's grace.
-fn sweep_if_empty(data: &Data, sweep: &Sweep, guild: GuildId, room: ChannelId) {
-    let grace = grace_of(&data.rooms.settings(guild));
+/// Sweep `room` if it is empty, after `grace`.
+fn sweep_after(data: &Data, sweep: &Sweep, guild: GuildId, room: ChannelId, grace: Duration) {
     schedule_if_empty(
         data,
         sweep.discord.clone(),
@@ -426,21 +566,27 @@ fn sweep_if_empty(data: &Data, sweep: &Sweep, guild: GuildId, room: ChannelId) {
     );
 }
 
-/// The rooms side of a human's voice change: a room they left is swept if
-/// now empty, a room they joined is no longer. The channel they joined, for
-/// the hub check.
+/// The rooms side of one member's voice change: a room left is swept if now
+/// empty (bots included: their leave can be the last word on a room), and,
+/// for a human, a room joined is no longer. The channel a human joined, for
+/// the hub check; `None` for a bot.
 pub fn room_voice_change(
     data: &Data,
     sweep: &Sweep,
     guild: GuildId,
     change: VoiceChange,
+    bot: bool,
 ) -> Option<ChannelId> {
     // Whether or not rooms are on: turning them off leaves live rooms to
     // empty out.
     if let Some(from) = change.left() {
         if data.rooms.get(from).is_some() {
-            sweep_if_empty(data, sweep, guild, from);
+            let grace = grace_of(&data.rooms.settings(guild));
+            sweep_after(data, sweep, guild, from, grace);
         }
+    }
+    if bot {
+        return None;
     }
     let to = change.joined()?;
     data.rooms.disarm_timer(to);
@@ -448,15 +594,17 @@ pub fn room_voice_change(
 }
 
 /// What a hub join leaves to sweep. A room made for someone who left before
-/// it was registered saw no leave; a failed move into their own room left it
-/// as empty as it was.
+/// the move's voice update arrived saw no leave, so it is swept, given at
+/// least [`SETTLE`] for that update to land and cancel it. A failed move into
+/// their own room left it as empty as it was.
 fn after_hub_join(data: &Data, sweep: &Sweep, guild: GuildId, user: UserId, outcome: HubOutcome) {
+    let grace = grace_of(&data.rooms.settings(guild));
     match outcome {
-        HubOutcome::Created(room) => sweep_if_empty(data, sweep, guild, room),
+        HubOutcome::Created(room) => sweep_after(data, sweep, guild, room, grace.max(SETTLE)),
         HubOutcome::Refused(why) => {
             tracing::debug!("rooms: no room for {user} in {guild}: {why}");
             if let Some(room) = data.rooms.owned_by(guild, user) {
-                sweep_if_empty(data, sweep, guild, room);
+                sweep_after(data, sweep, guild, room, grace);
             }
         },
         HubOutcome::MovedToOwn(_) | HubOutcome::CoolingDown(_) => {},
@@ -480,7 +628,9 @@ pub async fn reconcile(
     let mut rooms = data.rooms.rooms_in(guild);
     for row in stored {
         let ch = row.channel;
-        if data.rooms.get(ch).is_some() {
+        // Live, or a hub join's: being set up, or being deleted after a
+        // failed setup.
+        if data.rooms.get(ch).is_some() || data.rooms.creating.contains(&ch) {
             continue;
         }
         match existing.get(&ch) {
@@ -500,15 +650,13 @@ pub async fn reconcile(
         }
     }
     for ch in rooms {
+        // A hub join is still setting it up, and the cache may not list
+        // its channel yet: it is live, and its join sees to it.
+        if data.rooms.creating.contains(&ch) {
+            continue;
+        }
         if existing.contains_key(&ch) {
-            schedule_if_empty(
-                data,
-                sweep.discord.clone(),
-                sweep.occupancy.clone(),
-                guild,
-                ch,
-                grace_of(settings),
-            );
+            sweep_after(data, sweep, guild, ch, grace_of(settings));
         } else {
             forget(data, ch).await;
         }
@@ -519,7 +667,7 @@ pub async fn reconcile(
         return;
     };
     for user in facts.humans_in(hub.channel) {
-        let outcome = hub_join(cx, facts, settings, hub, user, Instant::now()).await;
+        let outcome = hub_join(cx, sweep, facts, settings, hub, user, Instant::now()).await;
         after_hub_join(data, sweep, guild, user, outcome);
     }
 }
@@ -633,12 +781,11 @@ pub async fn on_voice_state(
     let Some(change) = classify(old.and_then(|o| o.channel_id), new.channel_id) else {
         return;
     };
-    // Bots, CrackTunes among them, neither get rooms nor keep one alive.
-    if is_bot(&ctx.cache, guild, new) {
-        return;
-    }
+    // Bots, CrackTunes among them, neither get rooms nor keep one alive,
+    // but a bot's leave sweeps the room it left.
+    let bot = is_bot(&ctx.cache, guild, new);
     let sweep = Sweep::live(ctx);
-    let Some(joined) = room_voice_change(data, &sweep, guild, change) else {
+    let Some(joined) = room_voice_change(data, &sweep, guild, change, bot) else {
         return;
     };
     let settings = data.rooms.settings(guild);
@@ -690,7 +837,7 @@ async fn hub_join_live(
         discord: &*sweep.discord,
         transport: &transport,
     };
-    let outcome = hub_join(&cx, &facts, &settings, &hub, user, Instant::now()).await;
+    let outcome = hub_join(&cx, sweep, &facts, &settings, &hub, user, Instant::now()).await;
     if outcome == HubOutcome::Refused(MISSING_PERMISSIONS) {
         if let Some(findings) = super::preflight::for_guild(&ctx.cache, guild, hub_id) {
             tracing::warn!("rooms: what CrackTunes is missing in {guild}: {findings:?}");
@@ -734,33 +881,64 @@ fn voice_channel_of(cache: &Cache, guild: GuildId, user: UserId) -> Option<Chann
 }
 
 /// Reconcile a server's rooms as its `GuildCreate` arrives: at startup, after
-/// an outage, and on every gateway reconnect.
+/// an outage, and on every gateway reconnect. When the rows cannot be read,
+/// it is tried once more a minute later.
 pub async fn reconcile_guild(data: &Data, ctx: &Context, guild: &Guild) {
-    let stored = match data.database_pool.as_ref() {
-        Some(pool) => match crate::db::rooms::rooms_in(pool, guild.id).await {
-            Ok(rows) => rows,
-            Err(err) => {
-                tracing::warn!("rooms: loading the rooms of {} failed: {err}", guild.id);
-                return;
-            },
+    let id = guild.id;
+    match load_rooms(data, id).await {
+        Ok(stored) => reconcile_with(data, ctx, id, stored).await,
+        Err(err) => {
+            tracing::warn!("rooms: loading the rooms of {id} failed; retrying in a minute: {err}");
+            let (data, ctx) = (data.clone(), ctx.clone());
+            tokio::spawn(async move {
+                tokio::time::sleep(RECONCILE_RETRY).await;
+                match load_rooms(&data, id).await {
+                    Ok(stored) => reconcile_with(&data, &ctx, id, stored).await,
+                    Err(err) => tracing::warn!(
+                        "rooms: loading the rooms of {id} failed again; no reconcile until its \
+                         next GuildCreate: {err}"
+                    ),
+                }
+            });
         },
-        None => Vec::new(),
-    };
-    let Some(facts) = gather(&ctx.cache, &ctx.http, guild.id, &[]).await else {
-        tracing::debug!("rooms: {} is not cached; no reconcile", guild.id);
-        return;
-    };
-    let settings = data.rooms.settings(guild.id);
+    }
+}
+
+/// How long a reconcile whose rows could not be read waits to try again.
+const RECONCILE_RETRY: Duration = Duration::from_secs(60);
+
+async fn load_rooms(data: &Data, guild: GuildId) -> sqlx::Result<Vec<StoredRoom>> {
+    match data.database_pool.as_ref() {
+        Some(pool) => crate::db::rooms::rooms_in(pool, guild).await,
+        None => Ok(Vec::new()),
+    }
+}
+
+async fn reconcile_with(data: &Data, ctx: &Context, guild: GuildId, stored: Vec<StoredRoom>) {
+    let settings = data.rooms.settings(guild);
     // The channels as the cache has them now, after the rows were read, not
     // as the payload had them: a room a hub join made since the payload has
     // a row, and must not lose it for a channel the payload never listed.
-    let read = ctx.cache.guild(guild.id).map(|g| {
+    let read = ctx.cache.guild(guild).map(|g| {
+        let occupants: Vec<UserId> = g
+            .voice_states
+            .iter()
+            .filter(|vs| vs.channel_id.is_some() && vs.channel_id == settings.hub)
+            .map(|vs| vs.user_id)
+            .collect();
         (
             existing_channels(&g),
             settings.hub.and_then(|h| hub_in(&g, h)),
+            occupants,
         )
     });
-    let Some((existing, hub)) = read else {
+    let Some((existing, hub, occupants)) = read else {
+        tracing::debug!("rooms: {guild} is not cached; no reconcile");
+        return;
+    };
+    // The hub's occupants by name: each may get a room, and the joiner
+    // guard needs their roles.
+    let Some(facts) = gather(&ctx.cache, &ctx.http, guild, &occupants).await else {
         return;
     };
     let sweep = Sweep::live(ctx);
@@ -961,7 +1139,29 @@ mod tests {
         }
 
         async fn join(&self, facts: &GuildFacts, user: UserId, now: Instant) -> HubOutcome {
-            hub_join(&self.cx(), facts, &settings(), &hub(), user, now).await
+            self.join_at(&hub(), facts, user, now).await
+        }
+
+        async fn join_at(
+            &self,
+            hub: &Hub,
+            facts: &GuildFacts,
+            user: UserId,
+            now: Instant,
+        ) -> HubOutcome {
+            let settings = self.data.rooms.settings(G);
+            hub_join(&self.cx(), &self.sweep(), facts, &settings, hub, user, now).await
+        }
+
+        /// A hub join as the glue runs it, with what it leaves to sweep.
+        async fn join_live(&self, facts: &GuildFacts, user: UserId) -> HubOutcome {
+            let outcome = self.join(facts, user, Instant::now()).await;
+            after_hub_join(&self.data, &self.sweep(), G, user, outcome);
+            outcome
+        }
+
+        async fn delete(&self, room: ChannelId) {
+            delete_room(&self.data, &self.sweep(), G, room).await;
         }
 
         async fn room(&self, ch: ChannelId) -> Option<LiveRoom> {
@@ -972,7 +1172,19 @@ mod tests {
         }
 
         fn voice(&self, change: VoiceChange) -> Option<ChannelId> {
-            room_voice_change(&self.data, &self.sweep(), G, change)
+            room_voice_change(&self.data, &self.sweep(), G, change, false)
+        }
+
+        fn bot_voice(&self, change: VoiceChange) -> Option<ChannelId> {
+            room_voice_change(&self.data, &self.sweep(), G, change, true)
+        }
+
+        fn deletes(&self) -> usize {
+            self.discord
+                .calls()
+                .iter()
+                .filter(|c| c.kind() == CallKind::Delete)
+                .count()
         }
 
         async fn reconcile(
@@ -1089,6 +1301,7 @@ mod tests {
         assert_eq!(room.limit, 4);
         assert_eq!(w.data.rooms.owned_by(G, JOINER), Some(NEW));
         assert!(w.data.rooms.hub_creating.is_empty(), "the guard is let go");
+        assert!(w.data.rooms.creating.is_empty(), "no longer in flight");
     }
 
     #[tokio::test]
@@ -1155,6 +1368,7 @@ mod tests {
         assert_eq!(w.transport.ops(), vec![]);
         assert!(w.data.rooms.get(NEW).is_none());
         assert_eq!(w.data.rooms.owned_by(G, JOINER), None);
+        assert!(w.data.rooms.creating.is_empty());
     }
 
     #[tokio::test]
@@ -1175,64 +1389,400 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_managed_layer_is_applied_before_the_move() {
-        // A neutral entry in the category (a role added, nothing set) is not
-        // part of the managed set, so the diff clears it on the room.
-        let neutral = OverwriteTarget::Role {
-            id: RoleId::new(50),
-        };
+    async fn a_neutral_category_entry_is_left_alone() {
+        // A role added to the category with nothing set: no bits, so nothing
+        // to clear on the room.
+        let neutral = ow(
+            OverwriteTarget::Role {
+                id: RoleId::new(50),
+            },
+            NONE,
+            NONE,
+        );
         let mut category = gate();
-        category.push(ow(neutral, NONE, NONE));
+        category.push(neutral);
         let w = World::with(FakeRoomsDiscord::default().with_created_overwrites(category.clone()));
+        let hub = Hub {
+            category_overwrites: category.clone(),
+            ..hub()
+        };
+        let got = w.join_at(&hub, &facts(), JOINER, Instant::now()).await;
+        assert_eq!(got, HubOutcome::Created(NEW));
+        assert_eq!(
+            w.discord.calls(),
+            vec![
+                Call::Create(new_room()),
+                Call::Move(JOINER.get(), Some(NEW.get())),
+                Call::Pin(NEW.get(), PANEL.get()),
+            ]
+        );
+        assert_eq!(w.room(NEW).await.unwrap().baseline, category);
+    }
+
+    #[test]
+    fn the_sync_merge_never_opens_more_than_either_side() {
+        let r = |id| OverwriteTarget::Role {
+            id: RoleId::new(id),
+        };
+        let created = vec![
+            ow(everyone(), NONE, V), // a deny the cached category lacks
+            ow(r(18), V | C, NONE),  // both have it; the channel allows more
+            ow(r(30), C, NONE),      // only the channel has it
+        ];
+        let category = vec![
+            ow(everyone(), V, NONE), // stale: allows view
+            ow(r(18), V, C),         // denies connect
+            ow(r(40), NONE, V),      // only the category has it
+        ];
+        let (result, puts) = merge(&created, &category);
+        assert_eq!(
+            result,
+            vec![
+                ow(everyone(), NONE, V),
+                ow(r(18), V, C),
+                ow(r(30), C, NONE),
+                ow(r(40), NONE, V),
+            ]
+        );
+        assert_eq!(
+            puts,
+            vec![ow(r(18), V, C), ow(r(40), NONE, V)],
+            "@everyone is already as shut as the merge: no put"
+        );
+        for t in [everyone(), r(18)] {
+            let got = result.iter().find(|o| o.target == t).unwrap();
+            for side in [&created, &category] {
+                let s = side.iter().find(|o| o.target == t).unwrap();
+                assert!(
+                    s.allow.contains(got.allow),
+                    "{t:?} allows no more than {s:?}"
+                );
+                assert!(got.deny.contains(s.deny), "{t:?} denies all {s:?} denies");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_stale_category_never_opens_the_room() {
+        // Discord synced the room to the category as it is now: hidden from
+        // @everyone. The cache still holds it from before that deny, with a
+        // deny for a role the room did not get.
+        let other_role = OverwriteTarget::Role {
+            id: RoleId::new(40),
+        };
+        let stale = vec![
+            ow(everyone(), NONE, NONE),
+            ow(OverwriteTarget::Role { id: ADULT }, V | C, NONE),
+            ow(other_role, NONE, V),
+        ];
+        let w = World::new();
+        let hub = Hub {
+            category_overwrites: stale,
+            ..hub()
+        };
+        let got = w.join_at(&hub, &facts(), JOINER, Instant::now()).await;
+        assert_eq!(got, HubOutcome::Created(NEW));
+        assert_eq!(
+            w.discord.calls(),
+            vec![
+                Call::Create(new_room()),
+                Call::Put(NEW.get(), ow(other_role, NONE, V)),
+                Call::Move(JOINER.get(), Some(NEW.get())),
+                Call::Pin(NEW.get(), PANEL.get()),
+            ],
+            "nothing put on @everyone; the category's other deny copied"
+        );
+        let baseline = w.room(NEW).await.unwrap().baseline;
+        assert!(baseline.contains(&ow(everyone(), NONE, V)), "{baseline:?}");
+    }
+
+    /// Records, at each put and move, whether the new room is registered and
+    /// in flight.
+    struct Probe {
+        inner: Arc<FakeRoomsDiscord>,
+        data: Data,
+        seen: Mutex<Vec<(bool, bool)>>,
+    }
+
+    impl Probe {
+        fn look(&self) {
+            let registered = self.data.rooms.get(NEW).is_some();
+            let in_flight = self.data.rooms.creating.contains(&NEW);
+            self.seen.lock().unwrap().push((registered, in_flight));
+        }
+    }
+
+    #[serenity::async_trait]
+    impl RoomsDiscord for Probe {
+        async fn create_voice_channel(
+            &self,
+            r: &NewRoom,
+        ) -> Result<super::super::discord::CreatedRoom, DiscordError> {
+            self.inner.create_voice_channel(r).await
+        }
+        async fn delete_channel(&self, ch: ChannelId) -> Result<(), DiscordError> {
+            self.inner.delete_channel(ch).await
+        }
+        async fn put_overwrite(
+            &self,
+            ch: ChannelId,
+            o: &StoredOverwrite,
+        ) -> Result<(), DiscordError> {
+            self.look();
+            self.inner.put_overwrite(ch, o).await
+        }
+        async fn delete_overwrite(
+            &self,
+            ch: ChannelId,
+            t: OverwriteTarget,
+        ) -> Result<(), DiscordError> {
+            self.inner.delete_overwrite(ch, t).await
+        }
+        async fn set_user_limit(&self, ch: ChannelId, limit: u8) -> Result<(), DiscordError> {
+            self.inner.set_user_limit(ch, limit).await
+        }
+        async fn rename(&self, ch: ChannelId, name: &str) -> Result<(), DiscordError> {
+            self.inner.rename(ch, name).await
+        }
+        async fn move_member(
+            &self,
+            guild: GuildId,
+            user: UserId,
+            to: Option<ChannelId>,
+        ) -> Result<(), DiscordError> {
+            self.look();
+            self.inner.move_member(guild, user, to).await
+        }
+        async fn pin(&self, ch: ChannelId, msg: MessageId) -> Result<(), DiscordError> {
+            self.inner.pin(ch, msg).await
+        }
+    }
+
+    #[tokio::test]
+    async fn a_room_is_registered_and_in_flight_from_its_creation_on() {
+        // Unsynced, so the sync check puts too.
+        let w = World::with(FakeRoomsDiscord::default());
+        let probe = Probe {
+            inner: w.discord.clone(),
+            data: w.data.clone(),
+            seen: Mutex::default(),
+        };
+        let cx = RoomCx {
+            data: &w.data,
+            discord: &probe,
+            transport: &w.transport,
+        };
         let got = hub_join(
-            &w.cx(),
+            &cx,
+            &w.sweep(),
             &facts(),
             &settings(),
-            &Hub {
-                category_overwrites: category,
-                ..hub()
-            },
+            &hub(),
             JOINER,
             Instant::now(),
         )
         .await;
         assert_eq!(got, HubOutcome::Created(NEW));
         assert_eq!(
+            *probe.seen.lock().unwrap(),
+            vec![(true, true); 3],
+            "both puts and the move: registered, and in flight"
+        );
+        assert!(w.data.rooms.creating.is_empty(), "no longer in flight");
+        assert!(w.data.rooms.get(NEW).is_some());
+    }
+
+    #[tokio::test]
+    async fn a_join_while_the_room_is_in_flight_waits() {
+        // The member's first join is still setting their room up.
+        let w = World::new();
+        w.data.rooms.creating.insert(ROOM);
+        w.data.rooms.insert(live(ROOM, JOINER));
+        w.data.rooms.hub_creating.insert((G, JOINER));
+        let got = w.join(&facts(), JOINER, Instant::now()).await;
+        assert_eq!(got, HubOutcome::CoolingDown(NEW_ROOM_COOLDOWN));
+        assert_eq!(
             w.discord.calls(),
-            vec![
-                Call::Create(new_room()),
-                Call::DeleteOverwrite(NEW.get(), neutral),
-                Call::Move(JOINER.get(), Some(NEW.get())),
-                Call::Pin(NEW.get(), PANEL.get()),
-            ]
+            vec![],
+            "not moved into a room still being set up"
         );
     }
 
     #[tokio::test]
-    async fn a_room_whose_overwrites_cannot_be_set_is_deleted() {
-        let neutral = OverwriteTarget::Role {
-            id: RoleId::new(50),
-        };
-        let mut category = gate();
-        category.push(ow(neutral, NONE, NONE));
-        let w = World::with(FakeRoomsDiscord::default().with_created_overwrites(category.clone()));
+    async fn step_one_with_a_vanished_room_forgets_it_and_makes_a_new_one() {
+        let w = World::new();
+        w.data.rooms.insert(live(ROOM, JOINER));
         w.discord
-            .fail_next(CallKind::DeleteOverwrite, DiscordError::MissingPermissions);
-        let hub = Hub {
-            category_overwrites: category,
-            ..hub()
-        };
-        let got = hub_join(&w.cx(), &facts(), &settings(), &hub, JOINER, Instant::now()).await;
-        assert_eq!(got, HubOutcome::Refused(OVERWRITES_FAILED));
+            .fail_next(CallKind::Move, DiscordError::UnknownChannel);
+        let got = w.join(&facts(), JOINER, Instant::now()).await;
+        assert_eq!(got, HubOutcome::Created(NEW));
         assert_eq!(
             w.discord.calls(),
             vec![
+                Call::Move(JOINER.get(), Some(ROOM.get())),
                 Call::Create(new_room()),
-                Call::DeleteOverwrite(NEW.get(), neutral),
-                Call::Delete(NEW.get()),
+                Call::Move(JOINER.get(), Some(NEW.get())),
+                Call::Pin(NEW.get(), PANEL.get()),
             ]
         );
-        assert!(w.data.rooms.get(NEW).is_none());
+        assert!(
+            w.data.rooms.get(ROOM).is_none(),
+            "the vanished room is forgotten"
+        );
+        assert_eq!(w.data.rooms.owned_by(G, JOINER), Some(NEW));
+    }
+
+    #[tokio::test]
+    async fn a_refused_create_leaves_nothing_behind() {
+        let w = World::new();
+        w.discord
+            .fail_next(CallKind::Create, DiscordError::MissingPermissions);
+        let got = w.join(&facts(), JOINER, Instant::now()).await;
+        // The outcome the glue logs the preflight's findings on.
+        assert_eq!(got, HubOutcome::Refused(MISSING_PERMISSIONS));
+        assert_eq!(w.discord.calls(), vec![Call::Create(new_room())]);
+        assert_eq!(w.data.rooms.count_in(G), 0);
+        assert_eq!(w.data.rooms.owned_by(G, JOINER), None);
+        assert!(w.data.rooms.creating.is_empty());
+        assert!(w.data.rooms.hub_creating.is_empty());
+        assert_eq!(w.transport.ops(), vec![]);
+
+        let w = World::new();
+        w.discord
+            .fail_next(CallKind::Create, DiscordError::Other("500".into()));
+        let got = w.join(&facts(), JOINER, Instant::now()).await;
+        assert_eq!(got, HubOutcome::Refused(CREATE_FAILED));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_broken_room_whose_delete_fails_is_retried() {
+        let w = World::with(FakeRoomsDiscord::default());
+        w.discord
+            .fail_next(CallKind::Put, DiscordError::MissingPermissions);
+        w.discord
+            .fail_next(CallKind::Delete, DiscordError::Other("busy".into()));
+        let got = w.join(&facts(), JOINER, Instant::now()).await;
+        assert_eq!(got, HubOutcome::Refused(COPY_FAILED));
+        assert_eq!(w.deletes(), 1);
+        assert!(
+            w.data.rooms.get(NEW).is_none(),
+            "out of the registry at once"
+        );
+        assert!(w.data.rooms.creating.is_empty());
+        // Somebody wanders into it: that must not cancel the retry.
+        w.occupancy.set(NEW, 1);
+        w.voice(VoiceChange::Joined(NEW));
+
+        after(59 * SEC).await;
+        assert_eq!(w.deletes(), 1);
+        after(2 * SEC).await;
+        assert_eq!(w.deletes(), 2);
+        assert_eq!(w.discord.calls().last(), Some(&Call::Delete(NEW.get())));
+        after(600 * SEC).await;
+        assert_eq!(w.deletes(), 2, "deleted: no more tries");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_broken_room_is_given_up_after_three_attempts() {
+        let w = World::with(FakeRoomsDiscord::default());
+        w.discord
+            .fail_next(CallKind::Put, DiscordError::MissingPermissions);
+        for _ in 0..3 {
+            w.discord
+                .fail_next(CallKind::Delete, DiscordError::Other("busy".into()));
+        }
+        w.join(&facts(), JOINER, Instant::now()).await;
+        assert_eq!(w.deletes(), 1);
+        after(61 * SEC).await;
+        assert_eq!(w.deletes(), 2);
+        after(60 * SEC).await;
+        assert_eq!(w.deletes(), 3);
+        after(600 * SEC).await;
+        assert_eq!(w.deletes(), 3, "no fourth attempt");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_empty_room_delete_is_retried_then_given_up() {
+        let w = World::new();
+        w.data.rooms.insert(live(ROOM, JOINER));
+        for _ in 0..3 {
+            w.discord
+                .fail_next(CallKind::Delete, DiscordError::MissingPermissions);
+        }
+        w.voice(VoiceChange::Left(ROOM));
+        after(31 * SEC).await;
+        assert_eq!(w.deletes(), 1);
+        assert!(w.data.rooms.get(ROOM).is_some(), "kept");
+        assert!(w.data.rooms.timer_pending(ROOM), "a retry is armed");
+        after(60 * SEC).await;
+        assert_eq!(w.deletes(), 2);
+        after(60 * SEC).await;
+        assert_eq!(w.deletes(), 3);
+        after(600 * SEC).await;
+        assert_eq!(w.deletes(), 3, "no fourth attempt");
+        assert!(w.data.rooms.get(ROOM).is_some(), "left to reconcile");
+        assert!(!w.data.rooms.timer_pending(ROOM));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_new_room_gets_ten_seconds_before_it_is_swept() {
+        let w = World::new();
+        w.data.rooms.set_settings(RoomSettings {
+            empty_grace_secs: 0,
+            ..settings()
+        });
+        assert_eq!(
+            w.join_live(&facts(), JOINER).await,
+            HubOutcome::Created(NEW)
+        );
+        // The cache has not seen them arrive yet.
+        assert!(w.data.rooms.timer_pending(NEW));
+        after(9 * SEC).await;
+        assert_eq!(w.deletes(), 0, "not before ten seconds, whatever the grace");
+        // Their voice update has landed by now, though no join was seen.
+        w.occupancy.set(NEW, 1);
+        after(2 * SEC).await;
+        assert_eq!(w.deletes(), 0);
+        assert!(w.data.rooms.get(NEW).is_some());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_bots_leave_sweeps_but_its_join_cancels_nothing() {
+        let w = World::new();
+        w.data.rooms.insert(live(ROOM, JOINER));
+        // CrackTunes leaves a room no human is in.
+        assert_eq!(w.bot_voice(VoiceChange::Left(ROOM)), None);
+        assert!(w.data.rooms.timer_pending(ROOM));
+        // A bot coming in does not keep it alive.
+        assert_eq!(w.bot_voice(VoiceChange::Joined(ROOM)), None);
+        assert!(w.data.rooms.timer_pending(ROOM));
+        // Nor is a bot in the hub a hub join.
+        assert_eq!(
+            w.bot_voice(VoiceChange::Moved {
+                from: ChannelId::new(42),
+                to: HUB
+            }),
+            None
+        );
+        after(31 * SEC).await;
+        assert_eq!(w.discord.calls(), vec![Call::Delete(ROOM.get())]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_timer_rechecks_occupancy_under_the_lock() {
+        let w = World::new();
+        let handle = w.data.rooms.insert(live(ROOM, JOINER));
+        w.voice(VoiceChange::Left(ROOM));
+        // An action holds the room when the timer fires.
+        let held = handle.lock().await;
+        after(31 * SEC).await;
+        assert!(!w.data.rooms.timer_pending(ROOM), "the timer has fired");
+        // Someone came in while it waited; no join was seen.
+        w.occupancy.set(ROOM, 1);
+        drop(held);
+        settle().await;
+        assert_eq!(w.discord.calls(), vec![]);
+        assert!(w.data.rooms.get(ROOM).is_some());
     }
 
     #[tokio::test]
@@ -1505,9 +2055,10 @@ mod tests {
         w.data.rooms.insert(live(ROOM, JOINER));
         w.discord
             .fail_next(CallKind::Delete, DiscordError::MissingPermissions);
-        delete_room(&w.data, &*w.discord, ROOM).await;
+        w.delete(ROOM).await;
         assert_eq!(w.discord.calls(), vec![Call::Delete(ROOM.get())]);
-        assert!(w.data.rooms.get(ROOM).is_some(), "kept for reconcile");
+        assert!(w.data.rooms.get(ROOM).is_some(), "kept");
+        assert!(w.data.rooms.timer_pending(ROOM), "and a retry armed");
     }
 
     #[tokio::test(start_paused = true)]
@@ -1661,6 +2212,23 @@ mod tests {
         );
         after(31 * SEC).await;
         assert!(w.data.rooms.get(ROOM).is_none());
+    }
+
+    #[tokio::test]
+    async fn reconcile_leaves_a_room_being_abandoned_alone() {
+        // A hub join's setup failed: the room is out of the registry and
+        // its channel and row are being deleted.
+        let w = World::new();
+        w.data.rooms.creating.insert(NEW);
+        w.reconcile(
+            &facts(),
+            vec![stored(NEW, JOINER)],
+            &existing(&[NEW]),
+            &RoomSettings::off(G),
+        )
+        .await;
+        assert!(w.data.rooms.get(NEW).is_none(), "not loaded back");
+        assert!(!w.data.rooms.timer_pending(NEW));
     }
 
     #[tokio::test]
@@ -1853,7 +2421,7 @@ mod tests {
             w.data.rooms.insert(live(ROOM, JOINER));
             w.discord
                 .fail_next(CallKind::Delete, DiscordError::UnknownChannel);
-            delete_room(&w.data, &*w.discord, ROOM).await;
+            w.delete(ROOM).await;
             assert_eq!(w.discord.calls(), vec![Call::Delete(ROOM.get())]);
             assert!(w.data.rooms.get(ROOM).is_none());
             assert!(rooms_in(&pool, G).await?.is_empty());
@@ -1871,7 +2439,7 @@ mod tests {
             w.data.rooms.insert(live(ROOM, JOINER));
             w.discord
                 .fail_next(CallKind::Delete, DiscordError::MissingPermissions);
-            delete_room(&w.data, &*w.discord, ROOM).await;
+            w.delete(ROOM).await;
             assert!(w.data.rooms.get(ROOM).is_some());
             assert_eq!(rooms_in(&pool, G).await?, vec![stored(ROOM, JOINER)]);
             Ok(())
@@ -1887,8 +2455,47 @@ mod tests {
         ) -> sqlx::Result<()> {
             insert_room(&pool, &stored(ROOM, JOINER)).await?;
             let w = world(&pool, synced());
-            delete_room(&w.data, &*w.discord, ROOM).await;
+            w.delete(ROOM).await;
             assert_eq!(w.discord.calls(), vec![Call::Delete(ROOM.get())]);
+            assert!(rooms_in(&pool, G).await?.is_empty());
+            Ok(())
+        }
+
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
+        async fn reconcile_leaves_a_room_in_flight_alone(pool: PgPool) -> sqlx::Result<()> {
+            // A hub join has made the room and stored its row; the cache has
+            // not seen its channel yet.
+            insert_room(&pool, &stored(NEW, JOINER)).await?;
+            let w = world(&pool, synced());
+            w.data.rooms.creating.insert(NEW);
+            w.data.rooms.insert(live(NEW, JOINER));
+            let rows = rooms_in(&pool, G).await?;
+            let off = RoomSettings::off(G);
+            w.reconcile(&facts(), rows.clone(), &existing(&[]), &off)
+                .await;
+            assert!(w.data.rooms.get(NEW).is_some(), "not forgotten");
+            assert_eq!(rooms_in(&pool, G).await?, vec![stored(NEW, JOINER)]);
+            // Nor swept, once the cache lists it, while it is still empty.
+            w.reconcile(&facts(), rows, &existing(&[NEW]), &off).await;
+            assert!(!w.data.rooms.timer_pending(NEW));
+            assert_eq!(w.discord.calls(), vec![]);
+            Ok(())
+        }
+
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
+        async fn a_refused_create_stores_no_row(pool: PgPool) -> sqlx::Result<()> {
+            let w = world(&pool, synced());
+            w.discord
+                .fail_next(CallKind::Create, DiscordError::MissingPermissions);
+            w.join(&facts(), JOINER, Instant::now()).await;
             assert!(rooms_in(&pool, G).await?.is_empty());
             Ok(())
         }

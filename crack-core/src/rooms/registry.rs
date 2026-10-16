@@ -79,6 +79,10 @@ pub struct RoomRegistry {
     /// Members whose room is being created right now, so a doubled voice
     /// event cannot make two.
     pub hub_creating: DashSet<(GuildId, UserId)>,
+    /// Rooms a hub join has registered but is still setting up. Reconcile
+    /// leaves them alone (the cache may not have seen their channel yet),
+    /// and the hub does not move their owner into them.
+    pub creating: DashSet<ChannelId>,
 }
 
 impl Default for RoomRegistry {
@@ -90,6 +94,7 @@ impl Default for RoomRegistry {
             timers: DashMap::new(),
             cooldown: Throttle::new(NEW_ROOM_COOLDOWN),
             hub_creating: DashSet::new(),
+            creating: DashSet::new(),
         }
     }
 }
@@ -113,12 +118,14 @@ impl RoomRegistry {
 
     /// Register a room and index it under its owner. A room already
     /// registered under the channel is replaced, and its owner entry dropped.
-    pub fn insert(&self, room: LiveRoom) {
+    /// The registered room's handle.
+    pub fn insert(&self, room: LiveRoom) -> Arc<Mutex<LiveRoom>> {
         let (guild, channel, owner) = (room.guild, room.channel, room.state.owner);
         self.owners.retain(|_, room| *room != channel);
         self.owners.insert((guild, owner), channel);
-        self.rooms
-            .insert(channel, (guild, Arc::new(Mutex::new(room))));
+        let handle = Arc::new(Mutex::new(room));
+        self.rooms.insert(channel, (guild, handle.clone()));
+        handle
     }
 
     /// Forget a room: its owner index entry goes, and a pending deletion timer
