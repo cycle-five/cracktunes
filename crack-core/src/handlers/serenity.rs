@@ -79,6 +79,26 @@ impl EventHandler for SerenityHandler {
             {
                 crate::messaging::buttons::handle(&self.data, ctx, mci).await;
             },
+            // Voice room panel buttons (`room:`), and the modals some of them
+            // open (`roomm:`). Neither prefix starts with the other.
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Component(mci),
+            } if mci
+                .data
+                .custom_id
+                .starts_with(crate::rooms::ids::ROOM_PREFIX) =>
+            {
+                crate::rooms::interact::handle_press(&self.data, ctx, mci).await;
+            },
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Modal(mi),
+            } if mi
+                .data
+                .custom_id
+                .starts_with(crate::rooms::ids::ROOM_MODAL_PREFIX) =>
+            {
+                crate::rooms::interact::handle_submit(&self.data, ctx, mi).await;
+            },
             _ => {},
         }
 

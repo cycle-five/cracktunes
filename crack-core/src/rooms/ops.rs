@@ -283,7 +283,8 @@ fn authorize(
 }
 
 /// Check the action's own input; a rename comes back with its name trimmed.
-fn validate(action: RoomAction) -> Result<RoomAction, RoomRefusal> {
+/// `interact::action_for` runs it on a modal's input, so both say the same.
+pub(crate) fn validate(action: RoomAction) -> Result<RoomAction, RoomRefusal> {
     match action {
         RoomAction::Limit(n) if n > 99 => Err(RoomRefusal::BadLimit),
         RoomAction::Rename(raw) => {

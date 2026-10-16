@@ -668,6 +668,39 @@ pub const ROOM_MISSING_PERMISSIONS: &str = "CrackTunes is missing a permission o
 pub const ROOM_DISCORD_FAILED: &str = "Discord refused that. Try again in a moment.";
 pub const ROOM_NO_DATABASE: &str = "Voice rooms need a database, and this CrackTunes has none.";
 pub const ROOM_ROOMS_OFF: &str = "Voice rooms aren't turned on in this server.";
+pub const ROOM_NOBODY_MUTED: &str = "Nobody in this room is muted.";
+
+// The panel's modals. Discord caps a modal title and a field label at 45
+// characters, and a placeholder at 100.
+pub const ROOM_MODAL_KICK: &str = "Kick someone";
+pub const ROOM_MODAL_MUTE: &str = "Mute someone";
+pub const ROOM_MODAL_UNMUTE: &str = "Unmute someone";
+pub const ROOM_MODAL_LET_IN: &str = "Let someone back in";
+pub const ROOM_MODAL_LIMIT: &str = "Member limit";
+pub const ROOM_MODAL_RENAME: &str = "Rename the room";
+pub const ROOM_MODAL_TRANSFER: &str = "Hand the room over";
+pub const ROOM_MODAL_HELPERS: &str = "Helpers";
+pub const ROOM_MODAL_WHO_CAN_JOIN: &str = "Who can join";
+pub const ROOM_LABEL_MEMBER: &str = "Who";
+pub const ROOM_LABEL_REASON: &str = "Reason";
+pub const ROOM_LABEL_REASON_OPTIONAL: &str = "Reason (optional)";
+pub const ROOM_LABEL_LIMIT: &str = "How many people (0 means no limit)";
+pub const ROOM_LABEL_NAME: &str = "New name";
+pub const ROOM_LABEL_MODE: &str = "What to do";
+pub const ROOM_LABEL_USER_OPTIONAL: &str = "Person (to let a person in)";
+pub const ROOM_LABEL_ROLE_OPTIONAL: &str = "Role (for the role choices)";
+pub const ROOM_PICK_MEMBER: &str = "Pick someone";
+pub const ROOM_PICK_ROLE: &str = "Pick a role";
+pub const ROOM_PICK_MODE: &str = "Pick one";
+pub const ROOM_PLACEHOLDER_REASON: &str = "Why? Up to 200 characters.";
+pub const ROOM_PLACEHOLDER_LIMIT: &str = "0 to 99";
+pub const ROOM_PLACEHOLDER_NAME: &str = "Up to 100 characters";
+pub const ROOM_MODE_HELPER_ADD: &str = "Add a helper";
+pub const ROOM_MODE_HELPER_REMOVE: &str = "Remove a helper";
+pub const ROOM_MODE_ALLOW_USER: &str = "Let a person in";
+pub const ROOM_MODE_ALLOW_ROLE: &str = "Let a role in";
+pub const ROOM_MODE_BLOCK_ROLE: &str = "Keep a role out";
+pub const ROOM_MODE_UNBLOCK_ROLE: &str = "Stop keeping a role out";
 
 // Confirmations.
 pub const ROOM_DONE_KICKED: &str = "Kicked";

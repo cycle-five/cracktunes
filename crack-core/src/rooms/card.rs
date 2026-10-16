@@ -28,6 +28,8 @@ pub enum RoomRefusal {
     TargetNotInRoom,
     /// The target is not blocked from this room.
     NotBlocked,
+    /// Unmute was pressed, and nobody in the room is muted.
+    NobodyMuted,
     /// The server's own permissions keep the member or role out of this room.
     CannotJoinHere,
     /// Renaming is rate limited; try again after the wait.
@@ -348,6 +350,7 @@ fn refusal_text(refusal: RoomRefusal) -> String {
         RoomRefusal::ProtectedTarget => ROOM_PROTECTED_TARGET.to_string(),
         RoomRefusal::TargetNotInRoom => ROOM_TARGET_NOT_IN_ROOM.to_string(),
         RoomRefusal::NotBlocked => ROOM_NOT_BLOCKED.to_string(),
+        RoomRefusal::NobodyMuted => ROOM_NOBODY_MUTED.to_string(),
         RoomRefusal::CannotJoinHere => ROOM_CANNOT_JOIN_HERE.to_string(),
         RoomRefusal::RenameLimited { wait_secs } => {
             format!("{ROOM_RENAME_LIMITED} {wait_secs}s.")
@@ -685,6 +688,7 @@ mod tests {
             ProtectedTarget,
             TargetNotInRoom,
             NotBlocked,
+            NobodyMuted,
             CannotJoinHere,
             RenameLimited { wait_secs: 42 },
             BadLimit,
