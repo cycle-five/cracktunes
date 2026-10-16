@@ -172,7 +172,7 @@ pub fn render_card(card: &RoomCard, _cx: &RenderCx) -> Rendered {
 }
 
 /// Every control, one line each, then the two facts worth knowing.
-fn reference_lines() -> [&'static str; 17] {
+fn reference_lines() -> [&'static str; 18] {
     [
         ROOM_REF_KICK,
         ROOM_REF_MUTE,
@@ -189,14 +189,23 @@ fn reference_lines() -> [&'static str; 17] {
         ROOM_REF_PANEL,
         ROOM_REF_HELP,
         "",
+        ROOM_GUIDE_WHO,
         ROOM_REF_DELETED,
         ROOM_REF_NO_DEAFEN,
     ]
 }
 
+/// The reference block under its heading.
+fn reference_text() -> String {
+    format!(
+        "**{ROOM_FIELD_REFERENCE}**\n{}",
+        reference_lines().join("\n")
+    )
+}
+
 fn guide_text() -> String {
-    let mut out = format!("{ROOM_GUIDE_INTRO}\n\n{ROOM_GUIDE_WHO}\n{ROOM_GUIDE_RUN}\n\n");
-    out.push_str(&reference_lines().join("\n"));
+    let mut out = format!("{ROOM_GUIDE_INTRO}\n{ROOM_GUIDE_RUN}\n\n");
+    out.push_str(&reference_text());
     out
 }
 
@@ -241,7 +250,7 @@ fn panel(view: &PanelView) -> Rendered {
             &format!("{ROOM_PANEL_TITLE_PREFIX} {}", view.name),
             EMBED_TITLE_MAX,
         ))
-        .description(clip(&reference_lines().join("\n"), DESCRIPTION_MAX))
+        .description(clip(&reference_text(), DESCRIPTION_MAX))
         .field(ROOM_FIELD_OWNER, mention(view.owner), true)
         .field(ROOM_FIELD_HELPERS, helpers, true)
         .field(ROOM_FIELD_ACCESS, access, true)
@@ -516,6 +525,25 @@ mod tests {
     }
 
     #[test]
+    fn panel_buttons_fit_discords_limits_in_every_lock_state() {
+        for (locked, chat_locked) in [(false, false), (true, false), (false, true), (true, true)] {
+            let r = render(&RoomCard::Panel(PanelView {
+                room: ChannelId::new(u64::MAX - 1),
+                locked,
+                chat_locked,
+                ..view()
+            }));
+            for row in rows(&r) {
+                assert!(row.len() <= 5, "row of {}", row.len());
+                for (id, label) in row {
+                    assert!(id.len() <= 100, "{id} is {} bytes", id.len());
+                    assert!(label.chars().count() <= 80, "{label}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn panel_draws_unlock_when_locked_and_lock_when_not() {
         let kinds = |v: PanelView| -> Vec<RoomButton> {
             rows(&render(&RoomCard::Panel(v)))
@@ -590,6 +618,8 @@ mod tests {
         ] {
             assert!(d.contains(cmd), "missing {cmd}");
         }
+        assert!(d.contains("What the buttons do"));
+        assert!(d.contains("moderators") && d.contains("claim it"));
         assert!(d.contains("This room is deleted when everyone leaves."));
         assert!(d.contains("Discord can't deafen someone in just one channel"));
         assert!(d.contains("disconnect someone and keep them out; asks for a reason."));
@@ -696,7 +726,11 @@ mod tests {
             .unwrap()
             .contains("removed"));
         let guide = description(&render(&RoomCard::Guide));
-        assert!(guide.contains("/room kick") && guide.contains("owner and the helpers"));
+        assert!(guide.contains("/room kick"));
+        assert!(
+            guide.contains("claim") && guide.contains("moderators"),
+            "{guide}"
+        );
         assert!(render(&RoomCard::Switched { on: true }).content.is_some());
     }
 }

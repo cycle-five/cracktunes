@@ -637,7 +637,7 @@ pub const ROOM_REF_NO_DEAFEN: &str =
 // The long private guide.
 pub const ROOM_GUIDE_TITLE: &str = "How rooms work";
 pub const ROOM_GUIDE_INTRO: &str = "Join the hub channel and CrackTunes makes you a voice room of your own. You own it, and you can share the controls with helpers. Every control is a button on the room's panel and a `/room` command; either works.";
-pub const ROOM_GUIDE_WHO: &str = "Only the owner and the helpers can use these controls. Everyone else sees the panel but can't press anything.";
+pub const ROOM_GUIDE_WHO: &str = "The owner and helpers — and server moderators — can use these controls. If the owner has left, anyone in the room can claim it.";
 pub const ROOM_GUIDE_RUN: &str =
     "Run `/room` commands from the room's voice channel or from its chat.";
 
