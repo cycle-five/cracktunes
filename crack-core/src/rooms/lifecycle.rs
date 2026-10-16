@@ -16,8 +16,8 @@ use crate::messaging::messages::ROOM_NAME_FALLBACK;
 use crate::messaging::transport::DiscordTransport;
 use crate::Data;
 use dashmap::DashSet;
-use serenity::all::{Cache, ChannelId, Context, Guild, GuildId, UserId, VoiceState};
-use std::collections::HashMap;
+use serenity::all::{Cache, ChannelId, Context, Guild, GuildId, Timestamp, UserId, VoiceState};
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -120,6 +120,26 @@ pub struct Sweep {
 pub struct ExistingChannel {
     pub name: String,
     pub limit: u8,
+}
+
+/// The server's channels as reconcile read them from the cache, and when.
+#[derive(Debug, Clone)]
+pub struct Channels {
+    pub listed: HashMap<ChannelId, ExistingChannel>,
+    pub read_at: Timestamp,
+}
+
+/// How long a channel may be missing from the cache's list before reconcile
+/// takes it as gone: its ChannelCreate may not have arrived yet.
+const UNLISTED_GRACE_MS: i64 = 30_000;
+
+impl Channels {
+    /// Unlisted, and too old for that to mean its ChannelCreate is late.
+    fn gone(&self, ch: ChannelId) -> bool {
+        let made = ch.created_at().unix_timestamp_millis();
+        !self.listed.contains_key(&ch)
+            && made <= self.read_at.unix_timestamp_millis() - UNLISTED_GRACE_MS
+    }
 }
 
 /// Spec 1.3's hub join, steps 1 to 9, with the sync check after step 5.
@@ -617,15 +637,23 @@ pub async fn reconcile(
     sweep: &Sweep,
     facts: &GuildFacts,
     stored: Vec<StoredRoom>,
-    existing: &HashMap<ChannelId, ExistingChannel>,
+    channels: &Channels,
     settings: &RoomSettings,
     hub: Option<&Hub>,
 ) {
     let data = cx.data;
     let guild = facts.guild;
     // Run again on every gateway reconnect: a room still in the registry is
-    // live, and its state wins over its row.
+    // live, and its state wins over its row. Which rooms are in flight is
+    // read now, with the rooms, before anything here awaits: a join that
+    // ends while this runs must not turn its room into one whose channel
+    // looks gone from a list read before the room was made.
     let mut rooms = data.rooms.rooms_in(guild);
+    let in_flight: HashSet<ChannelId> = rooms
+        .iter()
+        .copied()
+        .filter(|ch| data.rooms.creating.contains(ch))
+        .collect();
     for row in stored {
         let ch = row.channel;
         // Live, or a hub join's: being set up, or being deleted after a
@@ -633,8 +661,10 @@ pub async fn reconcile(
         if data.rooms.get(ch).is_some() || data.rooms.creating.contains(&ch) {
             continue;
         }
-        match existing.get(&ch) {
-            None => drop_row(data, ch).await,
+        match channels.listed.get(&ch) {
+            None if channels.gone(ch) => drop_row(data, ch).await,
+            // Too new to tell: left for the next reconcile.
+            None => {},
             Some(channel) => {
                 data.rooms.insert(LiveRoom {
                     guild,
@@ -649,15 +679,17 @@ pub async fn reconcile(
             },
         }
     }
+    rooms.sort();
     for ch in rooms {
-        // A hub join is still setting it up, and the cache may not list
-        // its channel yet: it is live, and its join sees to it.
-        if data.rooms.creating.contains(&ch) {
+        // A hub join is (or was, when this began) setting it up, and the
+        // cache may not list its channel yet: it is live, and its join sees
+        // to it.
+        if in_flight.contains(&ch) || data.rooms.creating.contains(&ch) {
             continue;
         }
-        if existing.contains_key(&ch) {
+        if channels.listed.contains_key(&ch) {
             sweep_after(data, sweep, guild, ch, grace_of(settings));
-        } else {
+        } else if channels.gone(ch) {
             forget(data, ch).await;
         }
     }
@@ -916,30 +948,37 @@ async fn load_rooms(data: &Data, guild: GuildId) -> sqlx::Result<Vec<StoredRoom>
 
 async fn reconcile_with(data: &Data, ctx: &Context, guild: GuildId, stored: Vec<StoredRoom>) {
     let settings = data.rooms.settings(guild);
-    // The channels as the cache has them now, after the rows were read, not
-    // as the payload had them: a room a hub join made since the payload has
-    // a row, and must not lose it for a channel the payload never listed.
-    let read = ctx.cache.guild(guild).map(|g| {
-        let occupants: Vec<UserId> = g
-            .voice_states
+    // The hub's occupants by name, first: each may get a room, the joiner
+    // guard needs their roles, and fetching them may wait on Discord.
+    let occupants: Option<Vec<UserId>> = ctx.cache.guild(guild).map(|g| {
+        g.voice_states
             .iter()
             .filter(|vs| vs.channel_id.is_some() && vs.channel_id == settings.hub)
             .map(|vs| vs.user_id)
-            .collect();
-        (
-            existing_channels(&g),
-            settings.hub.and_then(|h| hub_in(&g, h)),
-            occupants,
-        )
+            .collect()
     });
-    let Some((existing, hub, occupants)) = read else {
+    let Some(occupants) = occupants else {
         tracing::debug!("rooms: {guild} is not cached; no reconcile");
         return;
     };
-    // The hub's occupants by name: each may get a room, and the joiner
-    // guard needs their roles.
     let Some(facts) = gather(&ctx.cache, &ctx.http, guild, &occupants).await else {
         return;
+    };
+    // Then the channels, as the cache has them now (after the rows were
+    // read, and not as the payload had them), with nothing awaited between
+    // this read and `reconcile` taking its snapshot of the rooms in flight.
+    let read = ctx.cache.guild(guild).map(|g| {
+        (
+            existing_channels(&g),
+            settings.hub.and_then(|h| hub_in(&g, h)),
+        )
+    });
+    let Some((listed, hub)) = read else {
+        return;
+    };
+    let channels = Channels {
+        listed,
+        read_at: Timestamp::now(),
     };
     let sweep = Sweep::live(ctx);
     let transport = DiscordTransport::of(ctx);
@@ -953,7 +992,7 @@ async fn reconcile_with(data: &Data, ctx: &Context, guild: GuildId, stored: Vec<
         &sweep,
         &facts,
         stored,
-        &existing,
+        &channels,
         &settings,
         hub.as_ref(),
     )
@@ -1191,7 +1230,7 @@ mod tests {
             &self,
             facts: &GuildFacts,
             stored: Vec<StoredRoom>,
-            existing: &HashMap<ChannelId, ExistingChannel>,
+            existing: &Channels,
             settings: &RoomSettings,
         ) {
             let hub = hub();
@@ -1231,8 +1270,10 @@ mod tests {
         }
     }
 
-    fn existing(channels: &[ChannelId]) -> HashMap<ChannelId, ExistingChannel> {
-        channels
+    /// The cache's channel list, read now. The tests' small channel ids are
+    /// from 2015: long old enough to be listed.
+    fn existing(channels: &[ChannelId]) -> Channels {
+        let listed = channels
             .iter()
             .map(|c| {
                 (
@@ -1243,7 +1284,28 @@ mod tests {
                     },
                 )
             })
-            .collect()
+            .collect();
+        Channels {
+            listed,
+            read_at: Timestamp::now(),
+        }
+    }
+
+    /// When the tests' late channel lists were read (Unix milliseconds).
+    const T: i64 = 1_800_000_000_000;
+
+    /// A channel id Discord would have given a channel made at `ms`.
+    fn made_at(ms: i64) -> ChannelId {
+        const DISCORD_EPOCH_MS: i64 = 1_420_070_400_000;
+        ChannelId::new(((ms - DISCORD_EPOCH_MS) as u64) << 22)
+    }
+
+    /// An empty channel list, read at `T`.
+    fn none_listed_at_t() -> Channels {
+        Channels {
+            listed: HashMap::new(),
+            read_at: Timestamp::from_millis(T).unwrap(),
+        }
     }
 
     // --- classify
@@ -2111,13 +2173,16 @@ mod tests {
         row.state.helpers.insert(OTHER);
         row.state.locked = true;
         row.state.panel = Some(MessageId::new(77));
-        let channels = HashMap::from([(
-            ROOM,
-            ExistingChannel {
-                name: "Owner's room".into(),
-                limit: 5,
-            },
-        )]);
+        let channels = Channels {
+            listed: HashMap::from([(
+                ROOM,
+                ExistingChannel {
+                    name: "Owner's room".into(),
+                    limit: 5,
+                },
+            )]),
+            read_at: Timestamp::now(),
+        };
         w.occupancy.set(ROOM, 1);
         let off = RoomSettings::off(G);
         w.reconcile(&facts(), vec![row.clone()], &channels, &off)
@@ -2229,6 +2294,36 @@ mod tests {
         .await;
         assert!(w.data.rooms.get(NEW).is_none(), "not loaded back");
         assert!(!w.data.rooms.timer_pending(NEW));
+    }
+
+    #[test]
+    fn made_at_makes_the_snowflake_for_that_time() {
+        assert_eq!(made_at(T).created_at().unix_timestamp_millis(), T);
+    }
+
+    #[tokio::test]
+    async fn reconcile_keeps_an_unlisted_room_too_new_to_be_listed() {
+        // A room whose setup finished just before reconcile read the list,
+        // with its ChannelCreate still on the way; and an old one, gone.
+        let w = World::new();
+        let young = made_at(T - 29_000);
+        let old = made_at(T - 31_000);
+        w.data.rooms.insert(live(young, JOINER));
+        w.data.rooms.insert(live(old, OTHER));
+        let off = RoomSettings::off(G);
+        w.reconcile(&facts(), vec![], &none_listed_at_t(), &off)
+            .await;
+        assert!(
+            w.data.rooms.get(young).is_some(),
+            "its ChannelCreate may be late"
+        );
+        assert_eq!(w.data.rooms.owned_by(G, JOINER), Some(young));
+        assert!(
+            !w.data.rooms.timer_pending(young),
+            "and not swept on a guess"
+        );
+        assert!(w.data.rooms.get(old).is_none(), "the old one is gone");
+        assert_eq!(w.data.rooms.owned_by(G, OTHER), None);
     }
 
     #[tokio::test]
@@ -2497,6 +2592,66 @@ mod tests {
                 .fail_next(CallKind::Create, DiscordError::MissingPermissions);
             w.join(&facts(), JOINER, Instant::now()).await;
             assert!(rooms_in(&pool, G).await?.is_empty());
+            Ok(())
+        }
+
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
+        async fn reconcile_keeps_a_room_whose_join_ends_while_it_runs(
+            pool: PgPool,
+        ) -> sqlx::Result<()> {
+            // ROOM's hub join is in flight when reconcile reads the channel
+            // list, before ROOM's ChannelCreate reached the cache. `gone` is
+            // an old room whose channel did go; forgetting it waits on its
+            // lock, and the join ends during that wait.
+            let gone = ChannelId::new(590);
+            insert_room(&pool, &stored(ROOM, JOINER)).await?;
+            insert_room(&pool, &stored(gone, OTHER)).await?;
+            let w = world(&pool, synced());
+            w.data.rooms.creating.insert(ROOM);
+            w.data.rooms.insert(live(ROOM, JOINER));
+            let busy = w.data.rooms.insert(live(gone, OTHER));
+            let held = busy.lock().await;
+            let rows = rooms_in(&pool, G).await?;
+            let off = RoomSettings::off(G);
+            let listed_too_early = existing(&[]);
+            let f = facts();
+            let reconciling = w.reconcile(&f, rows, &listed_too_early, &off);
+            let join_ends = async {
+                settle().await;
+                w.data.rooms.creating.remove(&ROOM);
+                drop(held);
+            };
+            tokio::join!(reconciling, join_ends);
+            assert!(w.data.rooms.get(ROOM).is_some(), "not forgotten");
+            assert_eq!(w.data.rooms.owned_by(G, JOINER), Some(ROOM));
+            assert!(w.data.rooms.get(gone).is_none());
+            assert_eq!(rooms_in(&pool, G).await?, vec![stored(ROOM, JOINER)]);
+            Ok(())
+        }
+
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
+        async fn reconcile_keeps_the_row_of_a_channel_too_new_to_be_listed(
+            pool: PgPool,
+        ) -> sqlx::Result<()> {
+            let young = made_at(T - 5_000);
+            insert_room(&pool, &stored(young, JOINER)).await?;
+            let w = world(&pool, synced());
+            let rows = rooms_in(&pool, G).await?;
+            let off = RoomSettings::off(G);
+            w.reconcile(&facts(), rows, &none_listed_at_t(), &off).await;
+            assert_eq!(rooms_in(&pool, G).await?, vec![stored(young, JOINER)]);
+            assert!(
+                w.data.rooms.get(young).is_none(),
+                "not loaded without its channel"
+            );
             Ok(())
         }
 
