@@ -161,6 +161,10 @@ enabled):
    `permission_overwrites`, so Discord syncs the category's (see 1.5). Name:
    the template rendered and capped at 100 characters. `user_limit`: the
    default.
+   **Sync check:** if the new channel's overwrites differ from the
+   category's, copy the category's onto it. If that fails, delete the channel.
+   A wrong guess about Discord's syncing must never leave a room open to
+   everyone in an 18+ category.
 6. Insert the `rooms` row. If that fails, delete the channel and stop.
 7. Apply the managed layer (1.5): the owner's member overwrite.
 8. Move the member into the room. If that fails (they left the hub), delete
@@ -468,7 +472,7 @@ dashboard Settings page links to it.
 
 | Assumption | If wrong |
 |---|---|
-| A channel created in a category without overwrites is synced to it | Create with the category's overwrites copied, after the preflight confirms the bot holds every bit in them |
+| A channel created in a category without overwrites is synced to it | The sync check (1.3 step 5) copies them; the room is deleted if it cannot |
 | A member-level Speak deny mutes someone already connected, at once | Mute becomes a server mute plus a tracked undo on leave (stored in `RoomState`, reconciled at startup) |
 | Pins work in a voice channel's chat | Nothing breaks: the panel is the chat's first message, and `/room panel` re-posts it |
 | `MEMBER_DISCONNECT`/`MEMBER_MOVE` entries lack a target and aggregate | Attribution already pairs exactly when a target is present |
