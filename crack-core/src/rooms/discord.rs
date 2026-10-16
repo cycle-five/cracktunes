@@ -20,6 +20,8 @@ pub enum DiscordError {
     MissingPermissions,
     /// Discord code 10003: the channel is gone.
     UnknownChannel,
+    /// Discord code 40032: the member to move or disconnect is not in voice.
+    NotConnected,
     Other(String),
 }
 
@@ -29,6 +31,7 @@ impl From<serenity::Error> for DiscordError {
             match response.error.code {
                 JsonErrorCode::LackPermissionsForAction => return Self::MissingPermissions,
                 JsonErrorCode::UnknownChannel => return Self::UnknownChannel,
+                JsonErrorCode::TargetUserNotConnectedToVoice => return Self::NotConnected,
                 _ => {},
             }
         }
@@ -187,7 +190,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discord_error_maps_50013_and_10003() {
+    async fn discord_error_maps_50013_10003_and_40032() {
         assert_eq!(
             DiscordError::from(http_error(50013).await),
             DiscordError::MissingPermissions
@@ -195,6 +198,10 @@ mod tests {
         assert_eq!(
             DiscordError::from(http_error(10003).await),
             DiscordError::UnknownChannel
+        );
+        assert_eq!(
+            DiscordError::from(http_error(40032).await),
+            DiscordError::NotConnected
         );
         // Anything else keeps its text.
         match DiscordError::from(http_error(10008).await) {

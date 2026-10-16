@@ -659,6 +659,9 @@ pub const ROOM_REASON_TOO_LONG: &str = "That reason is too long (200 characters 
 pub const ROOM_MISSING_CHOICE: &str = "Pick who or what this is for, then submit again.";
 pub const ROOM_OWNER_PRESENT: &str = "The owner is still in the room, so it can't be claimed.";
 pub const ROOM_ALREADY_OWNER: &str = "You already own this room.";
+pub const ROOM_OWNS_ANOTHER_ROOM: &str = "That member already owns a room.";
+pub const ROOM_CANNOT_BLOCK_ROLE: &str =
+    "That role can't be blocked: it would lock the room's owner out. Use Lock instead.";
 pub const ROOM_TOO_MANY_FOR_MENU: &str =
     "There are too many people to pick from here. Use the `/room` command instead.";
 pub const ROOM_MISSING_PERMISSIONS: &str = "CrackTunes is missing a permission on this room's category. An admin can run `/rooms status` to see which.";

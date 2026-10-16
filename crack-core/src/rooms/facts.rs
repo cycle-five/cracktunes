@@ -3,8 +3,8 @@
 
 use super::guard::{member_can_join, BaselineView};
 use super::state::StoredOverwrite;
-use serenity::all::{Cache, ChannelId, GuildId, Http, Permissions, RoleId, UserId};
-use std::collections::HashMap;
+use serenity::all::{Cache, ChannelId, GuildId, Http, Member, Permissions, RoleId, UserId};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GuildFacts {
@@ -24,12 +24,13 @@ pub struct GuildFacts {
 }
 
 impl GuildFacts {
-    /// The humans in `ch`, sorted. Bots, CrackTunes included, do not count.
+    /// The humans in `ch`, sorted. Bots do not count, and CrackTunes never
+    /// does, whatever its voice state says.
     pub fn humans_in(&self, ch: ChannelId) -> Vec<UserId> {
         let mut out: Vec<UserId> = self
             .voice
             .iter()
-            .filter(|(_, (c, is_bot))| *c == ch && !is_bot)
+            .filter(|(u, (c, is_bot))| *c == ch && !is_bot && **u != self.bot)
             .map(|(u, _)| *u)
             .collect();
         out.sort();
@@ -82,23 +83,31 @@ impl GuildFacts {
     }
 }
 
-/// Read the facts for `guild` from the cache. Members in `extra` the cache
-/// does not hold are fetched over HTTP (a modal's target, say); one that
-/// cannot be fetched is left out, and counts as holding only `@everyone`.
-/// `None` when the guild is not cached.
+/// Read the facts for `guild` from the cache. Roles and display names are
+/// copied only for the people a decision can be about: everyone in one of the
+/// guild's voice channels, the guild's owner, and `extra`. Put in `extra`
+/// whoever else the decision needs, such as the actor, a modal's target, or
+/// the room's owner (Block role checks the owner's roles). An `extra` member
+/// the cache does not hold is fetched over HTTP; one that cannot be fetched
+/// is left out, and counts as holding only `@everyone`. `None` when the guild
+/// is not cached.
 pub async fn gather(
     cache: &Cache,
     http: &Http,
     guild: GuildId,
     extra: &[UserId],
 ) -> Option<GuildFacts> {
-    let mut facts = {
+    let mut seen = HashSet::new();
+    let extra: Vec<UserId> = extra.iter().copied().filter(|u| seen.insert(*u)).collect();
+    // The cache guard lives only in this block: nothing here awaits.
+    let (mut facts, missing) = {
         let g = cache.guild(guild)?;
+        let bot = cache.current_user().id;
         let everyone_id = RoleId::new(guild.get());
         let mut facts = GuildFacts {
             guild,
             owner: g.owner_id,
-            bot: cache.current_user().id,
+            bot,
             everyone: g
                 .roles
                 .get(&everyone_id)
@@ -109,43 +118,42 @@ pub async fn gather(
             voice: HashMap::new(),
             display: HashMap::new(),
         };
-        for m in g.members.iter() {
-            facts.roles.insert(m.user.id, m.roles.to_vec());
-            facts
-                .display
-                .insert(m.user.id, m.display_name().to_string());
-        }
         for vs in g.voice_states.iter() {
             let Some(ch) = vs.channel_id else { continue };
             let member = vs.member.as_ref().or_else(|| g.members.get(&vs.user_id));
-            let is_bot = member.is_some_and(|m| m.user.bot());
+            let is_bot = vs.user_id == bot || member.is_some_and(|m| m.user.bot());
             if let Some(m) = member {
-                facts
-                    .roles
-                    .entry(vs.user_id)
-                    .or_insert_with(|| m.roles.to_vec());
-                facts
-                    .display
-                    .entry(vs.user_id)
-                    .or_insert_with(|| m.display_name().to_string());
+                remember(&mut facts, vs.user_id, m);
             }
             facts.voice.insert(vs.user_id, (ch, is_bot));
         }
-        facts
-    };
-    for u in extra {
-        if facts.roles.contains_key(u) {
-            continue;
+        for u in std::iter::once(g.owner_id).chain(extra.iter().copied()) {
+            if let Some(m) = g.members.get(&u) {
+                remember(&mut facts, u, m);
+            }
         }
-        match http.get_member(guild, *u).await {
-            Ok(m) => {
-                facts.roles.insert(*u, m.roles.to_vec());
-                facts.display.insert(*u, m.display_name().to_string());
-            },
+        let missing: Vec<UserId> = extra
+            .into_iter()
+            .filter(|u| !facts.roles.contains_key(u))
+            .collect();
+        (facts, missing)
+    };
+    for u in missing {
+        match http.get_member(guild, u).await {
+            Ok(m) => remember(&mut facts, u, &m),
             Err(err) => tracing::debug!("rooms: member {u} of {guild} not fetched: {err}"),
         }
     }
     Some(facts)
+}
+
+/// Keep a member's roles and display name, unless already known.
+fn remember(facts: &mut GuildFacts, u: UserId, m: &Member) {
+    facts.roles.entry(u).or_insert_with(|| m.roles.to_vec());
+    facts
+        .display
+        .entry(u)
+        .or_insert_with(|| m.display_name().to_string());
 }
 
 #[cfg(test)]
@@ -207,6 +215,16 @@ pub(crate) mod tests {
         assert!(!f.in_room(UserId::new(4), a));
         assert!(!f.in_room(UserId::new(6), a), "not in voice at all");
         assert!(f.humans_in(ChannelId::new(12)).is_empty());
+    }
+
+    #[test]
+    fn crack_tunes_is_never_a_human() {
+        let mut f = facts();
+        let room = ChannelId::new(10);
+        // Even a voice state that does not say it is a bot.
+        f.voice = [(f.bot, (room, false))].into();
+        assert!(f.humans_in(room).is_empty());
+        assert!(f.in_room(f.bot, room), "it is still in the room");
     }
 
     #[test]

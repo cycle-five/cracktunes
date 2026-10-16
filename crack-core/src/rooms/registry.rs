@@ -111,18 +111,27 @@ impl RoomRegistry {
         self.rooms.get(&ch).map(|e| e.value().1.clone())
     }
 
-    /// Register a room and index it under its owner.
+    /// Register a room and index it under its owner. A room already
+    /// registered under the channel is replaced, and its owner entry dropped.
     pub fn insert(&self, room: LiveRoom) {
         let (guild, channel, owner) = (room.guild, room.channel, room.state.owner);
+        self.owners.retain(|_, room| *room != channel);
         self.owners.insert((guild, owner), channel);
         self.rooms
             .insert(channel, (guild, Arc::new(Mutex::new(room))));
     }
 
     /// Forget a room: its owner index entry goes, and a pending deletion timer
-    /// is aborted. 🪤 A timer task that calls this aborts itself at its next
-    /// `.await`: take the handle out with [`Self::disarm_timer`] first, or
-    /// call this last.
+    /// is aborted.
+    ///
+    /// Callers must hold the room's mutex while removing it. `ops::act` takes
+    /// the room and then waits for that lock; once it has the lock it checks
+    /// the room is still the registered one, and an action that lost the race
+    /// is refused rather than run on a room nobody can find.
+    ///
+    /// 🪤 A timer task that calls this aborts itself at its next `.await`:
+    /// take the handle out with [`Self::disarm_timer`] first, or call this
+    /// last.
     pub fn remove(&self, ch: ChannelId) -> Option<Arc<Mutex<LiveRoom>>> {
         let removed = self.rooms.remove(&ch).map(|(_, (_, room))| room);
         self.owners.retain(|_, room| *room != ch);
@@ -266,6 +275,16 @@ mod tests {
         );
         assert_eq!(reg.count_in(G), 1);
         assert!(reg.remove(ChannelId::new(10)).is_none());
+    }
+
+    #[test]
+    fn reinserting_a_channel_drops_its_old_owner_entry() {
+        let reg = RoomRegistry::default();
+        reg.insert(room(10, G, 1));
+        reg.insert(room(10, G, 2));
+        assert_eq!(reg.owned_by(G, UserId::new(1)), None);
+        assert_eq!(reg.owned_by(G, UserId::new(2)), Some(ChannelId::new(10)));
+        assert_eq!(reg.count_in(G), 1);
     }
 
     #[test]

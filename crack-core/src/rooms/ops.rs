@@ -17,7 +17,8 @@ use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::messaging::transport::{Transport, TransportError};
 use crate::Data;
-use serenity::all::{ChannelId, MessageId, UserId};
+use serenity::all::{ChannelId, MessageId, RoleId, UserId};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// What an action needs besides its inputs.
@@ -39,7 +40,11 @@ pub async fn act(
     // 1. The room, under its lock: two presses on one room run in turn.
     let handle = cx.data.rooms.get(room).ok_or(RoomRefusal::NotInRoom)?;
     let mut live = handle.lock().await;
-    if live.guild != facts.guild {
+    // `RoomRegistry::remove` runs under this lock. A room removed while we
+    // waited is gone: acting on it would write to a dead channel, and a
+    // transfer would index its new owner under it again.
+    let registered = cx.data.rooms.get(room);
+    if !registered.is_some_and(|r| Arc::ptr_eq(&r, &handle)) || live.guild != facts.guild {
         return Err(RoomRefusal::NotInRoom);
     }
     let guild = live.guild;
@@ -47,6 +52,19 @@ pub async fn act(
     // 2. Authority, then the input itself.
     authorize(facts, &live.state, room, actor, &action)?;
     let action = validate(action)?;
+    // One room per member per server.
+    let new_owner = match &action {
+        RoomAction::Transfer { target } => Some(*target),
+        RoomAction::Claim => Some(actor),
+        _ => None,
+    };
+    if new_owner
+        .and_then(|u| cx.data.rooms.owned_by(guild, u))
+        .is_some_and(|other| other != room)
+    {
+        return Err(RoomRefusal::OwnsAnotherRoom);
+    }
+    owner_kept_in(facts, &live.state, &action)?;
 
     // 3. Never widen: whoever is let in must already be able to get in.
     guard(facts, &live.baseline, &action)?;
@@ -58,10 +76,11 @@ pub async fn act(
     // 5-6. Discord. Any failure returns here, with nothing persisted.
     if let RoomAction::Kick { target, .. } = &action {
         if facts.in_room(*target, room) {
-            cx.discord
-                .move_member(guild, *target, None)
-                .await
-                .map_err(|e| refusal(room, e))?;
+            match cx.discord.move_member(guild, *target, None).await {
+                // Left voice since the snapshot: nobody to disconnect.
+                Ok(()) | Err(DiscordError::NotConnected) => {},
+                Err(e) => return Err(refusal(room, e)),
+            }
         }
     }
     let before = room_overwrites(guild, &live.baseline, &live.state);
@@ -280,6 +299,29 @@ fn validate(action: RoomAction) -> Result<RoomAction, RoomRefusal> {
     }
 }
 
+/// Blocking a role must not lock the room's owner out: not `@everyone`, and
+/// not a role the owner holds (as far as `facts` knows their roles).
+fn owner_kept_in(
+    facts: &GuildFacts,
+    state: &RoomState,
+    action: &RoomAction,
+) -> Result<(), RoomRefusal> {
+    let RoomAction::BlockRole { role } = action else {
+        return Ok(());
+    };
+    let everyone = RoleId::new(facts.guild.get());
+    let owners = facts
+        .roles
+        .get(&state.owner)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if *role == everyone || owners.contains(role) {
+        Err(RoomRefusal::CannotBlockRole)
+    } else {
+        Ok(())
+    }
+}
+
 /// Every member or role the action would let connect must already be able to.
 fn guard(
     facts: &GuildFacts,
@@ -305,6 +347,8 @@ fn apply(s: &mut RoomState, action: &RoomAction, actor: UserId) -> RoomDone {
     match action {
         RoomAction::Kick { target, .. } => {
             s.blocked.insert(*target);
+            s.helpers.remove(target);
+            s.permitted_users.remove(target);
             RoomDone::Kicked(*target)
         },
         RoomAction::LetIn { target } => {
@@ -435,7 +479,9 @@ fn refusal(room: ChannelId, err: DiscordError) -> RoomRefusal {
     tracing::warn!("rooms: a Discord call for room {room} failed: {err:?}");
     match err {
         DiscordError::MissingPermissions => RoomRefusal::MissingPermissions,
-        DiscordError::UnknownChannel | DiscordError::Other(_) => RoomRefusal::DiscordFailed,
+        DiscordError::UnknownChannel | DiscordError::NotConnected | DiscordError::Other(_) => {
+            RoomRefusal::DiscordFailed
+        },
     }
 }
 
@@ -607,7 +653,10 @@ mod tests {
 
     #[tokio::test]
     async fn kick_disconnects_then_denies_and_returns_kicked() {
-        let w = World::new(live(vec![]));
+        let mut room = live(vec![]);
+        room.state.helpers.insert(TARGET);
+        room.state.permitted_users.insert(TARGET);
+        let w = World::new(room);
         let got = w.act(&facts(), OWNER, kick(TARGET)).await;
         assert_eq!(got, Ok(RoomDone::Kicked(TARGET)));
         assert_eq!(
@@ -617,8 +666,45 @@ mod tests {
                 Call::Put(ROOM.get(), ow(member(TARGET), NONE, V | C)),
             ]
         );
-        assert!(w.room().await.state.blocked.contains(&TARGET));
+        let state = w.room().await.state;
+        assert!(state.blocked.contains(&TARGET));
+        assert!(
+            !state.helpers.contains(&TARGET),
+            "a kicked helper is not one"
+        );
+        assert!(!state.permitted_users.contains(&TARGET), "nor permitted");
+        assert!(state.helpers.contains(&HELPER));
         assert_eq!(w.transport.ops(), vec![Op::Edit(ROOM.get(), PANEL.get())]);
+    }
+
+    #[tokio::test]
+    async fn kick_of_someone_already_gone_from_voice_still_blocks_them() {
+        let w = World::new(live(vec![]));
+        w.discord
+            .fail_next(CallKind::Move, DiscordError::NotConnected);
+        assert_eq!(
+            w.act(&facts(), OWNER, kick(TARGET)).await,
+            Ok(RoomDone::Kicked(TARGET))
+        );
+        assert_eq!(
+            w.discord.calls(),
+            vec![
+                Call::Move(TARGET.get(), None),
+                Call::Put(ROOM.get(), ow(member(TARGET), NONE, V | C)),
+            ]
+        );
+        assert!(w.room().await.state.blocked.contains(&TARGET));
+
+        // Any other refusal of the disconnect still stops the kick.
+        let w = World::new(live(vec![]));
+        w.discord
+            .fail_next(CallKind::Move, DiscordError::MissingPermissions);
+        assert_eq!(
+            w.act(&facts(), OWNER, kick(TARGET)).await,
+            Err(RoomRefusal::MissingPermissions)
+        );
+        assert_eq!(w.discord.calls(), vec![Call::Move(TARGET.get(), None)]);
+        assert!(w.room().await.state.blocked.is_empty());
     }
 
     #[tokio::test]
@@ -1235,6 +1321,90 @@ mod tests {
             Err(RoomRefusal::NotInRoom)
         );
         assert_eq!(w.discord.calls(), vec![]);
+    }
+
+    #[tokio::test]
+    async fn a_room_removed_while_an_action_waits_for_its_lock_refuses() {
+        let w = World::new(live(vec![]));
+        let handle = w.data.rooms.get(ROOM).expect("registered");
+        let held = handle.lock().await;
+        let f = facts();
+        let action = w.act(&f, OWNER, RoomAction::Transfer { target: TARGET });
+        let remover = async {
+            // The action reaches the lock first, then the room goes, under it.
+            tokio::task::yield_now().await;
+            tokio::task::yield_now().await;
+            w.data.rooms.remove(ROOM);
+            drop(held);
+        };
+        let (got, ()) = tokio::join!(action, remover);
+        assert_eq!(got, Err(RoomRefusal::NotInRoom));
+        assert_eq!(w.discord.calls(), vec![]);
+        assert_eq!(w.transport.ops(), vec![]);
+        assert_eq!(w.data.rooms.owned_by(G, TARGET), None, "not indexed again");
+        assert_eq!(w.data.rooms.owned_by(G, OWNER), None);
+    }
+
+    /// Another room of `owner`'s in the same server.
+    fn other_room_of(owner: UserId) -> LiveRoom {
+        LiveRoom {
+            channel: ChannelId::new(600),
+            state: RoomState::new(owner),
+            ..live(vec![])
+        }
+    }
+
+    #[tokio::test]
+    async fn transfer_to_someone_with_a_room_of_their_own_refuses() {
+        let w = World::new(live(vec![]));
+        w.data.rooms.insert(other_room_of(TARGET));
+        assert_eq!(
+            w.act(&facts(), OWNER, RoomAction::Transfer { target: TARGET })
+                .await,
+            Err(RoomRefusal::OwnsAnotherRoom)
+        );
+        assert_eq!(w.discord.calls(), vec![]);
+        assert_eq!(w.room().await.state.owner, OWNER);
+        assert_eq!(w.data.rooms.owned_by(G, TARGET), Some(ChannelId::new(600)));
+        assert_eq!(w.data.rooms.owned_by(G, OWNER), Some(ROOM));
+    }
+
+    #[tokio::test]
+    async fn claim_by_someone_with_a_room_of_their_own_refuses() {
+        let w = World::new(live(vec![]));
+        w.data.rooms.insert(other_room_of(TARGET));
+        let mut f = facts();
+        f.voice.remove(&OWNER);
+        assert_eq!(
+            w.act(&f, TARGET, RoomAction::Claim).await,
+            Err(RoomRefusal::OwnsAnotherRoom)
+        );
+        assert_eq!(w.room().await.state.owner, OWNER);
+        assert_eq!(w.data.rooms.owned_by(G, TARGET), Some(ChannelId::new(600)));
+        assert_eq!(w.transport.ops(), vec![]);
+    }
+
+    #[tokio::test]
+    async fn block_role_refuses_everyone_and_the_owners_roles() {
+        let w = World::new(live(vec![]));
+        let mut f = facts();
+        let owners_role = RoleId::new(40);
+        f.roles.insert(OWNER, vec![owners_role]);
+        for role in [RoleId::new(G.get()), owners_role] {
+            assert_eq!(
+                w.act(&f, OWNER, RoomAction::BlockRole { role }).await,
+                Err(RoomRefusal::CannotBlockRole),
+                "{role}"
+            );
+        }
+        assert_eq!(w.discord.calls(), vec![]);
+        assert!(w.room().await.state.blocked_roles.is_empty());
+        let other = RoleId::new(41);
+        assert_eq!(
+            w.act(&f, OWNER, RoomAction::BlockRole { role: other })
+                .await,
+            Ok(RoomDone::RoleBlocked(other))
+        );
     }
 
     #[tokio::test]
