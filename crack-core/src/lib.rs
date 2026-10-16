@@ -363,6 +363,8 @@ pub struct DataInner {
     /// Pending autoplay recommendations per guild. One call yields up to 20
     /// tracks, which is what keeps musicatlas inside its daily budget.
     pub autoplay_buffer: Arc<crate::music::autoplay::AutoplayBuffer>,
+    /// The live voice rooms; see `rooms::registry`.
+    pub rooms: crate::rooms::registry::RoomRegistry,
 }
 
 impl std::fmt::Debug for DataInner {
@@ -559,6 +561,7 @@ impl Default for DataInner {
             db_channel: None,
             musicreco: None,
             autoplay_buffer: Arc::default(),
+            rooms: Default::default(),
         }
     }
 }
