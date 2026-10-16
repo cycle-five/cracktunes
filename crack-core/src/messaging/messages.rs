@@ -567,3 +567,7 @@ pub const SEARCH_UNREADABLE: &str = "The query string could not be read.";
 pub const SEARCH_CONTROL: &str = "That search has characters it cannot use.";
 pub const SEARCH_NO_SOURCES: &str = "Pick at least one place to search.";
 pub const SEARCH_UNKNOWN_SOURCE: &str = "That is not a place the dashboard can search.";
+
+// Voice rooms
+/// Used when a rendered room name would otherwise be empty.
+pub const ROOM_NAME_FALLBACK: &str = "Room";

@@ -19,6 +19,7 @@ pub mod metrics;
 pub mod music;
 pub mod owners;
 pub mod poise_ext;
+pub mod rooms;
 pub mod sources;
 #[cfg(test)]
 pub mod test;

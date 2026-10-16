@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT enabled, hub_channel_id, name_template, default_limit, empty_grace_seconds\n           FROM room_settings WHERE guild_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "enabled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 1,
+        "name": "hub_channel_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "name_template",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "default_limit",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 4,
+        "name": "empty_grace_seconds",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a3048b896edf9bcd15797e136011adcea76d0dd9f661aaadc81011b86da83469"
+}
