@@ -426,6 +426,13 @@ holds:
     - D < L: one `DisconnectBatch` entry;
     - D > L: as D = L, the excess logged at debug.
   - Moves are matched per destination channel (`options.channel_id`).
+  - **Amended during the build (rulings M1, M7, M8):** a row that names a
+    target never counts toward D. It pairs only with that target's change of the
+    same kind (moves: same destination), and only when the entry is new since the
+    snapshot, since an aggregated entry may carry a stale target. D > L logs
+    nothing, because a surplus means the batch isn't self-contained. Moves with
+    D < L log nothing. CrackTunes' own leaves and moves are fed in so their
+    audit units are consumed, but they are never logged.
 - Cost guard: only for guilds with the mod log enabled, one fetch in flight
   per guild, and a 403 marks the guild "missing View Audit Log". That shows on
   `/modlog status` and the dashboard, and suspends fetches until the settings
