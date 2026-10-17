@@ -4,7 +4,9 @@
 //! [`preflight`] is pure; [`for_guild`] is the thin cache reader that feeds
 //! it. An empty result means ready.
 
+use crate::messaging::messages::*;
 use crate::music::perms::roles_resolvable;
+use crate::rooms::card::perm_names;
 use crate::Data;
 use serenity::all::{Cache, ChannelId, GuildId, Permissions};
 
@@ -75,6 +77,28 @@ pub fn for_guild(cache: &Cache, data: &Data, guild: GuildId) -> Option<Vec<ModLo
         .map(|ch| g.user_permissions_in(ch, bot));
     let suspended = data.modlog.is_suspended(guild, tokio::time::Instant::now());
     Some(preflight(bot_guild, bot_in_channel, channel, suspended))
+}
+
+/// One finding as a line of text. The one wording for the `/modlog status`
+/// reply (`name_of` makes a channel mention, `bold` on) and the dashboard
+/// (channel names, plain text).
+pub fn finding_text(
+    f: &ModLogFinding,
+    name_of: impl Fn(ChannelId) -> String,
+    bold: bool,
+) -> String {
+    match f {
+        ModLogFinding::MissingServer(perms) => format!(
+            "{MODLOG_FINDING_SERVER_GIVE} {} {MODLOG_FINDING_SERVER_WHERE}",
+            perm_names(*perms, bold)
+        ),
+        ModLogFinding::MissingChannel { channel, perms } => format!(
+            "{MODLOG_FINDING_SERVER_GIVE} {} {MODLOG_FINDING_CHANNEL_IN} {}",
+            perm_names(*perms, bold),
+            name_of(*channel)
+        ),
+        ModLogFinding::Suspended => MODLOG_FINDING_SUSPENDED.to_string(),
+    }
 }
 
 #[cfg(test)]
@@ -160,6 +184,35 @@ mod tests {
                 },
                 ModLogFinding::Suspended,
             ]
+        );
+    }
+
+    #[test]
+    fn finding_text_lists_exactly_the_missing_permissions() {
+        let name = |c: ChannelId| format!("#log-{c}");
+        assert_eq!(
+            finding_text(
+                &ModLogFinding::MissingServer(Permissions::VIEW_AUDIT_LOG),
+                name,
+                true
+            ),
+            "Give CrackTunes **View Audit Log** in Server Settings → Roles"
+        );
+        let missing = ModLogFinding::MissingChannel {
+            channel: LOG,
+            perms: Permissions::SEND_MESSAGES | Permissions::EMBED_LINKS,
+        };
+        assert_eq!(
+            finding_text(&missing, |c| format!("<#{c}>"), true),
+            "Give CrackTunes **Send Messages**, **Embed Links** in <#55>"
+        );
+        assert_eq!(
+            finding_text(&missing, name, false),
+            "Give CrackTunes Send Messages, Embed Links in #log-55"
+        );
+        assert_eq!(
+            finding_text(&ModLogFinding::Suspended, name, false),
+            "Fetching is paused: CrackTunes couldn't read the audit log (it will try again in a few minutes or when settings are saved)"
         );
     }
 }
