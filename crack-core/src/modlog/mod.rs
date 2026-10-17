@@ -68,9 +68,11 @@ pub async fn save_settings(data: &Data, s: ModLogSettings) -> Result<(), ModLogS
     let (guild, enabled) = (s.guild, s.enabled);
     // Turning the log off drops all its state (`set_settings` does that).
     data.modlog.set_settings(s);
-    // A save lifts a fetch suspension and outdates any fetch already running.
+    // A save lifts a fetch suspension and outdates any fetch already
+    // running, at most once a minute per server (M26).
     if enabled {
-        data.modlog.settings_saved(guild);
+        data.modlog
+            .settings_saved(guild, tokio::time::Instant::now());
     }
     Ok(())
 }

@@ -8,7 +8,7 @@
 
 use super::attribution::{AuditKind, Change, Snapshots};
 use super::settings::ModLogSettings;
-use dashmap::{DashMap, DashSet};
+use dashmap::{mapref::entry::Entry, DashMap, DashSet};
 use serenity::all::{GuildId, UserId};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -18,6 +18,10 @@ use tokio::time::Instant;
 /// How long a disconnect the bot is about to make itself (a room kick) is
 /// held, so its voice leave is not attributed.
 pub const EXPECT_FOR: Duration = Duration::from_secs(10);
+
+/// A settings save resumes a server's audit fetching (lifts a 403 pause,
+/// outdates running fetches, seeds) at most this often (M26).
+pub const RESUME_EVERY: Duration = Duration::from_secs(60);
 
 /// Tells one life of a server's batch state from the next: a fetch that
 /// started before the state was forgotten, or before a settings save, must
@@ -78,6 +82,11 @@ pub struct ModLogRegistry {
     batches: DashMap<GuildId, GuildBatch>,
     /// Members the bot is disconnecting itself, since when.
     expected: DashMap<(GuildId, UserId), Instant>,
+    /// When a save last resumed each server's fetching (M26). Kept when the
+    /// log is turned off, so off and on again cannot fetch more often.
+    resumed: DashMap<GuildId, Instant>,
+    /// Servers a save resumed that have not had their seed started yet.
+    seed_owed: DashSet<GuildId>,
 }
 
 impl ModLogRegistry {
@@ -119,27 +128,54 @@ impl ModLogRegistry {
         self.batches.get(&g).is_some_and(|b| b.suspended(now))
     }
 
-    /// The settings were saved: lift a fetch suspension, and start a new
-    /// epoch, so a fetch that began before the save (a 403 included) writes
-    /// nothing after it. The snapshots stay marked for a re-read, so nothing
-    /// is diffed against the stale ones.
-    pub fn settings_saved(&self, g: GuildId) {
+    /// The settings were saved with the log on: resume the server's audit
+    /// fetching, at most once per [`RESUME_EVERY`] (M26). Resuming lifts a
+    /// fetch suspension, starts a new epoch so a fetch that began before the
+    /// save (a 403 included) writes nothing after it, and owes the server a
+    /// seed ([`Self::take_seed_owed`]). Inside the window it changes nothing
+    /// and answers false. It marks nothing for a re-read: a suspension has
+    /// already marked both kinds, and snapshots read before a save stay good.
+    pub fn settings_saved(&self, g: GuildId, now: Instant) -> bool {
+        match self.resumed.entry(g) {
+            Entry::Occupied(last) if now.saturating_duration_since(*last.get()) < RESUME_EVERY => {
+                tracing::debug!(
+                    "modlog: {g}: saved, but fetching was resumed less than {} s ago",
+                    RESUME_EVERY.as_secs()
+                );
+                return false;
+            },
+            Entry::Occupied(mut last) => {
+                last.insert(now);
+            },
+            Entry::Vacant(first) => {
+                first.insert(now);
+            },
+        }
         if let Some(mut b) = self.batches.get_mut(&g) {
             b.suspended_until = None;
             b.epoch = NEXT_EPOCH.fetch_add(1, Ordering::Relaxed);
         }
+        self.seed_owed.insert(g);
+        true
     }
 
-    /// Drop everything held for the server but its settings: pending
-    /// changes, the armed debounce, snapshots, the suspension and expected
-    /// disconnects. A fetch already running finds its state gone and does
-    /// nothing with what it read.
+    /// Consume the seed a resuming save owes the server: true once per
+    /// [`Self::settings_saved`] that resumed it.
+    pub fn take_seed_owed(&self, g: GuildId) -> bool {
+        self.seed_owed.remove(&g).is_some()
+    }
+
+    /// Drop everything held for the server but its settings (and when a save
+    /// last resumed it): pending changes, the armed debounce, snapshots, the
+    /// suspension, an owed seed and expected disconnects. A fetch already
+    /// running finds its state gone and does nothing with what it read.
     pub fn forget(&self, g: GuildId) {
         if let Some((_, b)) = self.batches.remove(&g) {
             if let Some(h) = b.debounce {
                 h.abort();
             }
         }
+        self.seed_owed.remove(&g);
         self.expected.retain(|(eg, _), _| *eg != g);
     }
 
@@ -288,6 +324,53 @@ mod tests {
         reg.expect_disconnect(G, U, Instant::now());
         assert!(!reg.has_state(G), "configured off");
         assert!(!reg.take_expected(G, U, Instant::now()));
+    }
+
+    /// M26: a save resumes fetching at most once a minute per server, and
+    /// turning the log off and on again does not start the minute over.
+    #[tokio::test(start_paused = true)]
+    async fn a_save_resumes_fetching_at_most_once_a_minute() {
+        let reg = enabled();
+        let t0 = Instant::now();
+        let pause = |reg: &ModLogRegistry| {
+            reg.batch_if_enabled(G, |b| {
+                b.suspended_until = Some(t0 + Duration::from_secs(600));
+            })
+        };
+        let epoch = |reg: &ModLogRegistry| reg.batch_existing(G, |b| b.epoch);
+        pause(&reg);
+        let before = epoch(&reg);
+        assert!(reg.settings_saved(G, t0));
+        assert!(!reg.is_suspended(G, t0), "lifted");
+        assert_ne!(epoch(&reg), before, "older fetches are void");
+        assert!(reg.take_seed_owed(G), "a seed is owed");
+        assert!(!reg.take_seed_owed(G), "one seed");
+
+        pause(&reg);
+        let before = epoch(&reg);
+        let almost = t0 + RESUME_EVERY - Duration::from_millis(1);
+        assert!(!reg.settings_saved(G, almost));
+        assert!(reg.is_suspended(G, almost), "still paused");
+        assert_eq!(epoch(&reg), before, "nothing outdated");
+        assert!(!reg.take_seed_owed(G), "no seed");
+        let on = reg.settings(G);
+        reg.set_settings(ModLogSettings::off(G));
+        reg.set_settings(on);
+        assert!(!reg.settings_saved(G, almost), "off and on again");
+        assert!(!reg.take_seed_owed(G));
+        let other = GuildId::new(5);
+        reg.set_settings(ModLogSettings {
+            enabled: true,
+            channel: Some(serenity::all::ChannelId::new(3)),
+            ..ModLogSettings::off(other)
+        });
+        assert!(reg.settings_saved(other, almost), "another server's minute");
+
+        // A minute after the last resume, a save resumes again.
+        pause(&reg);
+        assert!(reg.settings_saved(G, t0 + RESUME_EVERY));
+        assert!(!reg.is_suspended(G, t0 + RESUME_EVERY));
+        assert!(reg.take_seed_owed(G));
     }
 
     #[tokio::test(start_paused = true)]

@@ -274,9 +274,26 @@ pub async fn on_audit_event(data: &Data, ctx: &Context, guild: GuildId, entry: &
 
 /// A save went through: if the server's log is now on, seed its snapshots
 /// in the background, so the first forced action is attributable. `/modlog`
-/// and the dashboard call this after a successful save (M20).
+/// and the dashboard call this after a successful save (M20). At most once
+/// per server per minute (M26): a save inside that minute was stored, but
+/// starts no fetch; the next flush then seeds what it reads.
 pub fn after_save(data: &Data, http: Arc<Http>, guild: GuildId) {
-    spawn_seed(data, Arc::new(LiveAudit { http }), guild);
+    seed_after_save(data, Arc::new(LiveAudit { http }), guild);
+}
+
+/// [`after_save`] with the audit log passed in.
+fn seed_after_save(
+    data: &Data,
+    audit: Arc<dyn AuditSource>,
+    guild: GuildId,
+) -> Option<JoinHandle<()>> {
+    if !data.modlog.take_seed_owed(guild) {
+        tracing::debug!(
+            "modlog: {guild}: not seeded after the save: one ran less than a minute ago"
+        );
+        return None;
+    }
+    spawn_seed(data, audit, guild)
 }
 
 /// `GuildCreate`: read the server's stored settings, then seed if the log is
@@ -715,6 +732,30 @@ mod tests {
             transport.texts()[1],
             format!("<@{MOD}> {MODLOG_DEAFENED} <@{T}>")
         );
+    }
+
+    /// M26: what `save_settings` does with the log on, then what its
+    /// callers do (`after_save`): one seed per server per minute at most.
+    #[tokio::test(start_paused = true)]
+    async fn a_save_seeds_at_most_once_a_minute() {
+        use crate::modlog::registry::RESUME_EVERY;
+        let data = data_on();
+        let audit = Arc::new(FakeAudit::default());
+        let t0 = Instant::now();
+        let save = |at: Instant| {
+            data.modlog.settings_saved(G, at);
+            seed_after_save(&data, audit.clone(), G)
+        };
+        save(t0).expect("the first save seeds").await.unwrap();
+        assert_eq!(audit.kinds(), vec![Disconnect, Move]);
+        let almost = t0 + RESUME_EVERY - Duration::from_millis(1);
+        assert!(save(almost).is_none(), "a second save inside the minute");
+        data.modlog.set_settings(ModLogSettings::off(G));
+        data.modlog.set_settings(on());
+        assert!(save(almost).is_none(), "off and on again inside it");
+        assert_eq!(audit.calls().len(), 2);
+        save(t0 + RESUME_EVERY).expect("a minute on").await.unwrap();
+        assert_eq!(audit.calls().len(), 4);
     }
 
     #[tokio::test(start_paused = true)]

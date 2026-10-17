@@ -931,13 +931,14 @@ mod tests {
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
-    async fn a_settings_save_lifts_the_suspension(pool: sqlx::PgPool) {
+    async fn a_settings_save_lifts_the_suspension_once_a_minute(pool: sqlx::PgPool) {
         let w = W::with(Data(Arc::new(DataInner {
-            database_pool: Some(pool),
+            database_pool: Some(pool.clone()),
             ..Default::default()
         })));
         assert!(load_settings(&w.data, G).await);
-        assert_eq!(save_settings(&w.data, on()).await, Ok(()));
+        // On straight into the registry, so the saves below are the first.
+        w.data.modlog.set_settings(on());
         w.audit.fail_next(G, Disconnect, AuditError::Forbidden);
         w.seed().await;
         assert!(w.data.modlog.is_suspended(G, Instant::now()));
@@ -956,6 +957,28 @@ mod tests {
         );
         w.change(left(T2));
         assert_eq!(w.pending(), 1, "changes are batched again");
+
+        // Paused again: a second save inside the minute is stored, but
+        // resumes nothing (M26).
+        w.audit.fail_next(G, Disconnect, AuditError::Forbidden);
+        w.seed().await;
+        assert!(w.data.modlog.is_suspended(G, Instant::now()));
+        let before = epoch(&w);
+        let elsewhere = ModLogSettings {
+            channel: Some(ChannelId::new(556)),
+            ..on()
+        };
+        assert_eq!(save_settings(&w.data, elsewhere.clone()).await, Ok(()));
+        assert!(
+            w.data.modlog.is_suspended(G, Instant::now()),
+            "still paused"
+        );
+        assert_eq!(epoch(&w), before, "nothing outdated");
+        assert_eq!(w.data.modlog.settings(G), elsewhere, "but saved");
+        assert_eq!(
+            crate::db::modlog::load_settings(&pool, G).await.unwrap(),
+            Some(elsewhere)
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -1363,7 +1386,7 @@ mod tests {
         after(DEBOUNCE).await; // t = 2: the fetch runs until 3
         after(ms(500)).await;
         // What `save_settings` does when it enables the log.
-        w.data.modlog.settings_saved(G);
+        w.data.modlog.settings_saved(G, Instant::now());
         after(ms(500)).await; // t = 3: the 403, from before the save
         assert!(
             !w.data.modlog.is_suspended(G, Instant::now()),
@@ -1386,7 +1409,7 @@ mod tests {
         let seeding = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
         settle().await; // t = 0: the seed reads disconnects until 1
         after(ms(500)).await;
-        w.data.modlog.settings_saved(G);
+        w.data.modlog.settings_saved(G, Instant::now());
         after(ms(500)).await; // t = 1: the 403, from before the save
         assert!(seeding.is_finished());
         assert!(!w.data.modlog.is_suspended(G, Instant::now()));

@@ -28,8 +28,8 @@ use axum::{
 use catacombs::auth::AuthenticatedUser;
 use crack_core::messaging::messages::{
     DASH_MODLOG_UNKNOWN_CHANNEL, DASH_SETTINGS_FAILED, DASH_SETTINGS_NEEDS_MANAGE,
-    DASH_SETTINGS_NOT_LOADED, DASH_SETTINGS_UNKNOWN_CHANNEL, DASH_SETTINGS_UNREADABLE,
-    MODLOG_SETTINGS_NOT_LOADED, MODLOG_SETTINGS_SAVE_FAILED,
+    DASH_SETTINGS_NOT_LOADED, DASH_SETTINGS_TOO_MANY, DASH_SETTINGS_UNKNOWN_CHANNEL,
+    DASH_SETTINGS_UNREADABLE, MODLOG_SETTINGS_NOT_LOADED, MODLOG_SETTINGS_SAVE_FAILED,
 };
 use serenity::all::{GuildId, UserId};
 use std::{
@@ -290,7 +290,7 @@ async fn settings_page<B: Backend>(
 }
 
 /// JSON only and same-origin, as `/control`; the same Manage Server access
-/// as the page (`history_access`).
+/// as the page (`history_access`); the controls' per-user rate limit (M26).
 async fn save_rooms<B: Backend>(
     State(s): State<WebState<B>>,
     session: Session,
@@ -317,6 +317,9 @@ async fn save_rooms<B: Backend>(
             return error_json(StatusCode::FORBIDDEN, DASH_SETTINGS_NEEDS_MANAGE)
         },
         HistoryAccess::Allowed => {},
+    }
+    if !s.limiter.allow(user, Instant::now()) {
+        return error_json(StatusCode::TOO_MANY_REQUESTS, DASH_SETTINGS_TOO_MANY);
     }
     let Ok(form) = serde_json::from_slice::<RoomSettingsForm>(&body) else {
         return error_json(StatusCode::BAD_REQUEST, DASH_SETTINGS_UNREADABLE);
@@ -366,6 +369,9 @@ async fn save_modlog<B: Backend>(
             return error_json(StatusCode::FORBIDDEN, DASH_SETTINGS_NEEDS_MANAGE)
         },
         HistoryAccess::Allowed => {},
+    }
+    if !s.limiter.allow(user, Instant::now()) {
+        return error_json(StatusCode::TOO_MANY_REQUESTS, DASH_SETTINGS_TOO_MANY);
     }
     let Ok(form) = serde_json::from_slice::<ModLogSettingsForm>(&body) else {
         return error_json(StatusCode::BAD_REQUEST, DASH_SETTINGS_UNREADABLE);
@@ -2583,6 +2589,41 @@ mod test {
         assert_eq!(r.status(), StatusCode::OK);
         assert_eq!(fake.modlog_saves.lock().unwrap()[1].2.channel, None);
         assert!(!fake.modlog_saves.lock().unwrap()[1].2.enabled);
+    }
+
+    /// M26: settings saves draw on the per-user budget the controls use,
+    /// rooms and mod log alike, and a refused save reaches no backend.
+    #[tokio::test]
+    async fn the_sixth_settings_save_in_ten_seconds_is_too_many_and_saves_nothing() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        let router = app(fake.clone()); // one router, so one limiter
+        let json = Some("application/json");
+        let rooms = |user| post_settings_req(Some(&session(user)), json, Some(ORIGIN), FORM);
+        let modlog = |user| post_modlog_req(Some(&session(user)), json, Some(ORIGIN), LOG_FORM);
+        for (i, req) in [rooms(9), modlog(9), rooms(9), modlog(9), rooms(9)]
+            .into_iter()
+            .enumerate()
+        {
+            let r = router.clone().oneshot(req).await.unwrap();
+            assert_eq!(r.status(), StatusCode::OK, "save {i}");
+        }
+        for req in [rooms(9), modlog(9)] {
+            let r = router.clone().oneshot(req).await.unwrap();
+            assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+            let got = body(r).await;
+            assert!(
+                got.contains(&format!(
+                    "\"error\":{}",
+                    serde_json::to_string(DASH_SETTINGS_TOO_MANY).unwrap()
+                )),
+                "{got}"
+            );
+        }
+        assert_eq!(fake.saves.lock().unwrap().len(), 3);
+        assert_eq!(fake.modlog_saves.lock().unwrap().len(), 2);
+        // Another user is not held up by it.
+        let r = router.oneshot(modlog(10)).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
     }
 
     #[tokio::test]

@@ -785,6 +785,9 @@ pub const DASH_SETTINGS_BAD_GRACE: &str = "Pick one of the listed delays.";
 pub const DASH_SETTINGS_UNKNOWN_CHANNEL: &str = "That hub is not a voice channel of this server.";
 pub const DASH_SETTINGS_UNREADABLE: &str = "The settings could not be read.";
 pub const DASH_SETTINGS_FAILED: &str = "The settings could not be saved. Try again in a moment.";
+/// A settings save past the per-user rate limit: the dashboard's controls
+/// say the same.
+pub const DASH_SETTINGS_TOO_MANY: &str = "Slow down a little.";
 pub const ROOM_SETTINGS_INVALID: &str = "Those settings aren't valid, so nothing was changed.";
 pub const ROOM_SETTINGS_SAVE_FAILED: &str = "Couldn't save the settings. Try again in a moment.";
 pub const ROOM_SETTINGS_NOT_LOADED: &str =
