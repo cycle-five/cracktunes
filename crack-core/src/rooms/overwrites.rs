@@ -6,7 +6,7 @@
 //! server's own category permissions keep out.
 
 use super::state::{OverwriteTarget, RoomState, StoredOverwrite};
-use serenity::all::{GuildId, Permissions, RoleId};
+use serenity::all::{GuildId, Permissions, RoleId, UserId};
 use std::collections::BTreeMap;
 
 /// The only permission bits the rooms feature ever touches.
@@ -50,8 +50,10 @@ fn lock_roles(map: &mut BTreeMap<OverwriteTarget, Bits>, everyone: RoleId, p: Pe
 }
 
 /// The overwrites a room should carry, sorted by target, without all-zero entries.
+/// `bot` is CrackTunes itself, which a lock must not shut out.
 pub fn room_overwrites(
     guild: GuildId,
+    bot: UserId,
     baseline: &[StoredOverwrite],
     state: &RoomState,
 ) -> Vec<StoredOverwrite> {
@@ -63,12 +65,18 @@ pub fn room_overwrites(
     let role = |id| OverwriteTarget::Role { id };
     let everyone = RoleId::new(guild.get());
 
+    // CrackTunes gets the bit a lock takes away, never View Channel: it sees
+    // the room through the category, as the preflight requires. Without it,
+    // a lock would keep it from playing in the room, a queue resume from
+    // rejoining it and the hub from moving an owner in; a chat lock would
+    // keep it from posting the panel again.
     if state.locked {
         lock_roles(&mut map, everyone, Permissions::CONNECT);
         for r in &state.permitted_roles {
             allow(&mut map, role(*r), Permissions::CONNECT);
         }
-        let users = std::iter::once(&state.owner)
+        let users = [&state.owner, &bot]
+            .into_iter()
             .chain(&state.helpers)
             .chain(&state.permitted_users);
         for u in users {
@@ -77,7 +85,7 @@ pub fn room_overwrites(
     }
     if state.chat_locked {
         lock_roles(&mut map, everyone, Permissions::SEND_MESSAGES);
-        for u in std::iter::once(&state.owner).chain(&state.helpers) {
+        for u in [&state.owner, &bot].into_iter().chain(&state.helpers) {
             allow(&mut map, member(*u), Permissions::SEND_MESSAGES);
         }
     }
@@ -130,9 +138,9 @@ pub fn diff(before: &[StoredOverwrite], after: &[StoredOverwrite]) -> Vec<Overwr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serenity::all::UserId;
 
     const G: GuildId = GuildId::new(100);
+    const BOT: UserId = UserId::new(99);
     const V: Permissions = Permissions::VIEW_CHANNEL;
     const C: Permissions = Permissions::CONNECT;
     const S: Permissions = Permissions::SEND_MESSAGES;
@@ -172,7 +180,7 @@ mod tests {
         let mut base = baseline();
         base.push(ow(r(5), Permissions::empty(), Permissions::empty()));
         base.reverse();
-        let out = room_overwrites(G, &base, &state());
+        let out = room_overwrites(G, BOT, &base, &state());
         assert_eq!(
             out,
             vec![
@@ -186,7 +194,7 @@ mod tests {
     fn lock_moves_connect_to_deny_on_everyone_and_every_role_allow() {
         let mut s = state();
         s.locked = true;
-        let out = room_overwrites(G, &baseline(), &s);
+        let out = room_overwrites(G, BOT, &baseline(), &s);
         assert_eq!(get(&out, r(100)), Some((Permissions::empty(), V | C)));
         assert_eq!(get(&out, r(18)), Some((V, C)));
     }
@@ -195,7 +203,7 @@ mod tests {
     fn lock_creates_everyone_when_absent() {
         let mut s = state();
         s.locked = true;
-        let out = room_overwrites(G, &[], &s);
+        let out = room_overwrites(G, BOT, &[], &s);
         assert_eq!(get(&out, r(100)), Some((Permissions::empty(), C)));
     }
 
@@ -205,12 +213,54 @@ mod tests {
         s.locked = true;
         s.helpers.insert(UserId::new(2));
         s.permitted_users.insert(UserId::new(3));
-        let out = room_overwrites(G, &baseline(), &s);
+        let out = room_overwrites(G, BOT, &baseline(), &s);
         for id in [1, 2, 3] {
             assert_eq!(get(&out, m(id)), Some((C, Permissions::empty())), "{id}");
         }
         s.locked = false;
-        assert_eq!(get(&room_overwrites(G, &baseline(), &s), m(1)), None);
+        assert_eq!(get(&room_overwrites(G, BOT, &baseline(), &s), m(1)), None);
+    }
+
+    /// A lock must not shut CrackTunes out: it plays music in rooms, a queue
+    /// resume rejoins them, and moving an owner into their locked room needs
+    /// the mover to be able to connect there.
+    #[test]
+    fn lock_lets_crack_tunes_connect_and_chat_lock_lets_it_post() {
+        let mut s = state();
+        s.locked = true;
+        let out = room_overwrites(G, BOT, &baseline(), &s);
+        assert_eq!(get(&out, m(99)), Some((C, Permissions::empty())));
+
+        let mut s = state();
+        s.chat_locked = true;
+        let out = room_overwrites(G, BOT, &baseline(), &s);
+        assert_eq!(get(&out, m(99)), Some((S, Permissions::empty())));
+
+        s.locked = true;
+        let out = room_overwrites(G, BOT, &baseline(), &s);
+        assert_eq!(get(&out, m(99)), Some((C | S, Permissions::empty())));
+    }
+
+    #[test]
+    fn unlocked_room_has_no_crack_tunes_entry() {
+        let mut s = state();
+        s.helpers.insert(UserId::new(2));
+        s.muted.insert(UserId::new(5));
+        s.blocked_roles.insert(RoleId::new(30));
+        let out = room_overwrites(G, BOT, &baseline(), &s);
+        assert_eq!(get(&out, m(99)), None);
+        // A category entry for CrackTunes keeps its bits; a lock only adds.
+        let mm = Permissions::MANAGE_MESSAGES;
+        let base = vec![ow(m(99), mm, Permissions::empty())];
+        assert_eq!(
+            get(&room_overwrites(G, BOT, &base, &s), m(99)),
+            Some((mm, Permissions::empty()))
+        );
+        s.locked = true;
+        assert_eq!(
+            get(&room_overwrites(G, BOT, &base, &s), m(99)),
+            Some((mm | C, Permissions::empty()))
+        );
     }
 
     #[test]
@@ -219,7 +269,7 @@ mod tests {
         s.locked = true;
         s.permitted_roles.insert(RoleId::new(18));
         s.permitted_roles.insert(RoleId::new(30));
-        let out = room_overwrites(G, &baseline(), &s);
+        let out = room_overwrites(G, BOT, &baseline(), &s);
         assert_eq!(get(&out, r(18)), Some((V | C, Permissions::empty())));
         assert_eq!(get(&out, r(30)), Some((C, Permissions::empty())));
     }
@@ -231,7 +281,7 @@ mod tests {
         s.helpers.insert(UserId::new(2));
         s.permitted_users.insert(UserId::new(3));
         let base = vec![ow(r(18), S, Permissions::empty())];
-        let out = room_overwrites(G, &base, &s);
+        let out = room_overwrites(G, BOT, &base, &s);
         assert_eq!(get(&out, r(100)), Some((Permissions::empty(), S)));
         assert_eq!(get(&out, r(18)), Some((Permissions::empty(), S)));
         assert_eq!(get(&out, m(1)), Some((S, Permissions::empty())));
@@ -246,7 +296,7 @@ mod tests {
         s.permitted_users.insert(UserId::new(4));
         s.blocked.insert(UserId::new(4));
         let base = vec![ow(m(4), V | C, Permissions::empty())];
-        let out = room_overwrites(G, &base, &s);
+        let out = room_overwrites(G, BOT, &base, &s);
         assert_eq!(get(&out, m(4)), Some((Permissions::empty(), V | C)));
     }
 
@@ -254,7 +304,7 @@ mod tests {
     fn muted_user_is_denied_speak_only() {
         let mut s = state();
         s.muted.insert(UserId::new(5));
-        let out = room_overwrites(G, &[], &s);
+        let out = room_overwrites(G, BOT, &[], &s);
         assert_eq!(
             out,
             vec![ow(m(5), Permissions::empty(), Permissions::SPEAK)]
@@ -267,7 +317,7 @@ mod tests {
         s.locked = true;
         s.permitted_roles.insert(RoleId::new(18));
         s.blocked_roles.insert(RoleId::new(18));
-        let out = room_overwrites(G, &baseline(), &s);
+        let out = room_overwrites(G, BOT, &baseline(), &s);
         assert_eq!(get(&out, r(18)), Some((Permissions::empty(), V | C)));
     }
 
@@ -294,7 +344,7 @@ mod tests {
         ];
         for st in [state(), full, blocked] {
             for base in &bases {
-                for o in room_overwrites(G, base, &st) {
+                for o in room_overwrites(G, BOT, base, &st) {
                     let allowed = get(base, o.target).map_or(Permissions::empty(), |b| b.0);
                     assert!(
                         (o.allow & V) & !allowed == Permissions::empty(),
@@ -318,7 +368,7 @@ mod tests {
         s.chat_locked = true;
         s.helpers.insert(UserId::new(2));
         s.muted.insert(UserId::new(2));
-        let out = room_overwrites(G, &base, &s);
+        let out = room_overwrites(G, BOT, &base, &s);
         assert_eq!(get(&out, r(18)), Some((mm, C | S)));
         let (a, d) = get(&out, m(2)).unwrap();
         assert!(a.contains(mm));
@@ -354,11 +404,11 @@ mod tests {
             ow(r(40), mm, Permissions::empty()),
             ow(r(41), Permissions::empty(), V),
         ];
-        let unlocked = room_overwrites(G, &base, &state());
+        let unlocked = room_overwrites(G, BOT, &base, &state());
         let mut s = state();
         s.locked = true;
         s.chat_locked = true;
-        let out = room_overwrites(G, &base, &s);
+        let out = room_overwrites(G, BOT, &base, &s);
         assert_eq!(get(&out, r(40)), Some((mm, Permissions::empty())));
         assert_eq!(get(&out, r(41)), Some((Permissions::empty(), V)));
         let touched: Vec<_> = diff(&unlocked, &out)
@@ -377,7 +427,7 @@ mod tests {
         s.locked = true;
         s.chat_locked = true;
         s.permitted_roles.insert(RoleId::new(18));
-        let out = room_overwrites(G, &base, &s);
+        let out = room_overwrites(G, BOT, &base, &s);
         assert_eq!(get(&out, r(18)), Some((C, S)));
     }
 

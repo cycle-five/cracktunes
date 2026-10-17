@@ -261,7 +261,7 @@ pub async fn hub_join(
     // 7. The managed layer. A new room's state adds nothing to its baseline
     // today (R6), so this sends nothing; it keeps the order honest if that
     // changes.
-    let wanted = room_overwrites(guild, &live.baseline, &live.state);
+    let wanted = room_overwrites(guild, facts.bot, &live.baseline, &live.state);
     for change in diff(&live.baseline, &wanted) {
         let written = match &change {
             OverwriteChange::Put(o) => cx.discord.put_overwrite(room, o).await,

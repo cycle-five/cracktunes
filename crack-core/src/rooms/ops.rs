@@ -83,8 +83,8 @@ pub async fn act(
             }
         }
     }
-    let before = room_overwrites(guild, &live.baseline, &live.state);
-    let after = room_overwrites(guild, &live.baseline, &next);
+    let before = room_overwrites(guild, facts.bot, &live.baseline, &live.state);
+    let after = room_overwrites(guild, facts.bot, &live.baseline, &next);
     write_overwrites(cx.discord, room, &before, &after).await?;
     match &action {
         RoomAction::Limit(n) => cx
@@ -913,6 +913,7 @@ mod tests {
             vec![
                 Call::Put(ROOM.get(), ow(member(OWNER), C, NONE)),
                 Call::Put(ROOM.get(), ow(member(HELPER), C, NONE)),
+                Call::Put(ROOM.get(), ow(member(BOT), C, NONE)),
                 Call::Put(ROOM.get(), ow(role(18), V, C)),
                 Call::Put(ROOM.get(), ow(role(G.get()), NONE, C)),
             ]
@@ -935,6 +936,7 @@ mod tests {
             [
                 Call::DeleteOverwrite(ROOM.get(), member(OWNER)),
                 Call::DeleteOverwrite(ROOM.get(), member(HELPER)),
+                Call::DeleteOverwrite(ROOM.get(), member(BOT)),
                 Call::Put(ROOM.get(), ow(role(18), V | C, NONE)),
                 Call::DeleteOverwrite(ROOM.get(), role(G.get())),
             ]
@@ -1290,11 +1292,14 @@ mod tests {
             vec![
                 Call::Put(ROOM.get(), ow(member(OWNER), s, NONE)),
                 Call::Put(ROOM.get(), ow(member(HELPER), s, NONE)),
+                // CrackTunes can still post the panel.
+                Call::Put(ROOM.get(), ow(member(BOT), s, NONE)),
                 Call::Put(ROOM.get(), ow(role(G.get()), NONE, s)),
                 Call::Put(ROOM.get(), ow(role(30), NONE, V | C)),
                 Call::DeleteOverwrite(ROOM.get(), role(30)),
                 Call::DeleteOverwrite(ROOM.get(), member(OWNER)),
                 Call::DeleteOverwrite(ROOM.get(), member(HELPER)),
+                Call::DeleteOverwrite(ROOM.get(), member(BOT)),
                 Call::DeleteOverwrite(ROOM.get(), role(G.get())),
             ]
         );

@@ -1205,6 +1205,7 @@ mod tests {
                     ROOM.get(),
                     ow(OverwriteTarget::Member { id: HELPER }, C, NONE)
                 ),
+                Call::Put(ROOM.get(), ow(OverwriteTarget::Member { id: BOT }, C, NONE)),
                 Call::Put(
                     ROOM.get(),
                     ow(
