@@ -186,8 +186,8 @@ locked.
 You cannot kick or mute CrackTunes, a moderator, the room's owner (only a
 moderator can act on the owner), or yourself. A helper also cannot kick or
 mute another helper. You cannot transfer the room or add a helper to yourself
-or to CrackTunes. Someone you kick is also removed from the helpers and from
-the people let in.
+or to CrackTunes, and you cannot unmute yourself or let yourself back in.
+Someone you kick is also removed from the helpers and from the people let in.
 
 ### Notes on each control
 

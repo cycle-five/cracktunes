@@ -155,7 +155,13 @@ pub fn may(who: Standing, action: &RoomAction, owner_present: bool) -> Result<()
     }
 }
 
-/// Whether `action` may be aimed at a target of the given standing.
+/// Whether `action` may be aimed at a target of the given standing. Spec
+/// 1.4: nobody targets CrackTunes, or themselves, except to remove
+/// themselves as a helper or allow themselves in, which narrow or change
+/// nothing.
+///
+/// The match names every action, so a new one with a target cannot slip
+/// through unprotected: it has to be given its rule here.
 pub fn target_ok(
     who: Standing,
     action: &RoomAction,
@@ -169,18 +175,28 @@ pub fn target_ok(
             TargetStanding::Helper if who == Standing::Helper => refuse,
             _ => Ok(()),
         },
-        RoomAction::Transfer { .. } | RoomAction::HelperAdd { .. } => match target {
+        RoomAction::Transfer { .. }
+        | RoomAction::HelperAdd { .. }
+        | RoomAction::LetIn { .. }
+        | RoomAction::Unmute { .. } => match target {
             TargetStanding::Itself | TargetStanding::TheBot => refuse,
             _ => Ok(()),
         },
-        RoomAction::LetIn { .. }
-        | RoomAction::Unmute { .. }
-        | RoomAction::HelperRemove { .. }
-        | RoomAction::AllowUser { .. } => match target {
+        RoomAction::HelperRemove { .. } | RoomAction::AllowUser { .. } => match target {
             TargetStanding::TheBot => refuse,
             _ => Ok(()),
         },
-        _ => Ok(()),
+        RoomAction::Lock
+        | RoomAction::Unlock
+        | RoomAction::ChatLock
+        | RoomAction::ChatUnlock
+        | RoomAction::Limit(_)
+        | RoomAction::Rename(_)
+        | RoomAction::AllowRole { .. }
+        | RoomAction::BlockRole { .. }
+        | RoomAction::UnblockRole { .. }
+        | RoomAction::Claim
+        | RoomAction::Panel => Ok(()),
     }
 }
 
@@ -400,25 +416,55 @@ mod tests {
         );
     }
 
+    /// Spec 1.4: nobody targets themselves. A muted helper cannot unmute
+    /// themselves; nobody lets themselves back in.
     #[test]
-    fn unmute_letin_refuse_only_the_bot() {
+    fn unmute_letin_refuse_self_and_the_bot() {
         for a in [
             RoomAction::Unmute { target: T },
             RoomAction::LetIn { target: T },
         ] {
-            assert_eq!(
-                target_ok(Standing::Helper, &a, TargetStanding::TheBot),
-                Err(RoomRefusal::ProtectedTarget)
-            );
-            for t in [
-                TargetStanding::Itself,
-                TargetStanding::Owner,
-                TargetStanding::Helper,
-                TargetStanding::Moderator,
-                TargetStanding::Plain,
-            ] {
-                assert_eq!(target_ok(Standing::Helper, &a, t), Ok(()), "{a:?} {t:?}");
+            for who in [Standing::Owner, Standing::Helper, Standing::Moderator] {
+                for t in [TargetStanding::Itself, TargetStanding::TheBot] {
+                    assert_eq!(
+                        target_ok(who, &a, t),
+                        Err(RoomRefusal::ProtectedTarget),
+                        "{who:?} {a:?} {t:?}"
+                    );
+                }
+                for t in [
+                    TargetStanding::Owner,
+                    TargetStanding::Helper,
+                    TargetStanding::Moderator,
+                    TargetStanding::Plain,
+                ] {
+                    assert_eq!(target_ok(who, &a, t), Ok(()), "{who:?} {a:?} {t:?}");
+                }
             }
+        }
+    }
+
+    /// Actions without a member target pass whatever the standing.
+    #[test]
+    fn untargeted_actions_pass_target_ok() {
+        for a in all_actions().into_iter().filter(|a| {
+            !matches!(
+                a,
+                RoomAction::Kick { .. }
+                    | RoomAction::LetIn { .. }
+                    | RoomAction::Mute { .. }
+                    | RoomAction::Unmute { .. }
+                    | RoomAction::Transfer { .. }
+                    | RoomAction::HelperAdd { .. }
+                    | RoomAction::HelperRemove { .. }
+                    | RoomAction::AllowUser { .. }
+            )
+        }) {
+            assert_eq!(
+                target_ok(Standing::Helper, &a, TargetStanding::Itself),
+                Ok(()),
+                "{a:?}"
+            );
         }
     }
 

@@ -1463,6 +1463,22 @@ mod tests {
         );
     }
 
+    /// Spec 1.4: nobody targets themselves, so a muted helper's Unmute menu
+    /// lists the other muted people, not them.
+    #[test]
+    fn a_muted_helpers_unmute_menu_leaves_them_out() {
+        let mut state = live().state;
+        state.muted.extend([HELPER, TARGET]);
+        let menu = offered(&modal_for(RoomModal::Unmute, ROOM, &facts(), &state, HELPER).unwrap());
+        assert_eq!(menu, ["3"]);
+        // Muted alone: nobody they could unmute.
+        state.muted.remove(&TARGET);
+        assert_eq!(
+            modal_for(RoomModal::Unmute, ROOM, &facts(), &state, HELPER).err(),
+            Some(RoomRefusal::NobodyMuted)
+        );
+    }
+
     #[test]
     fn kick_modal_requires_a_reason() {
         let modal =

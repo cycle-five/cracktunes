@@ -1238,6 +1238,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_muted_helper_cannot_unmute_themselves() {
+        let mut room = live(vec![]);
+        room.state.muted.insert(HELPER);
+        let w = World::new(room);
+        assert_eq!(
+            w.act(&facts(), HELPER, RoomAction::Unmute { target: HELPER })
+                .await,
+            Err(RoomRefusal::ProtectedTarget)
+        );
+        assert_eq!(w.discord.calls(), vec![]);
+        assert!(w.room().await.state.muted.contains(&HELPER));
+        // The owner can.
+        assert_eq!(
+            w.act(&facts(), OWNER, RoomAction::Unmute { target: HELPER })
+                .await,
+            Ok(RoomDone::Unmuted(HELPER))
+        );
+    }
+
+    #[tokio::test]
     async fn mute_denies_speak_and_unmute_takes_it_back() {
         let w = World::new(live(vec![]));
         let mute = RoomAction::Mute {

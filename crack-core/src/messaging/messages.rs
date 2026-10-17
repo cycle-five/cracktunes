@@ -647,7 +647,7 @@ pub const ROOM_NOT_IN_ROOM: &str =
 pub const ROOM_NOT_ALLOWED: &str = "Only this room's owner or helpers can do that.";
 pub const ROOM_OWNER_ONLY: &str = "Only this room's owner can do that.";
 pub const ROOM_PROTECTED_TARGET: &str =
-    "You can't do that to CrackTunes, a moderator, the room's owner, or yourself.";
+    "You can't do that to yourself, the room's owner, another helper, a moderator, or CrackTunes.";
 pub const ROOM_TARGET_NOT_IN_ROOM: &str = "That person isn't in this room.";
 pub const ROOM_NOT_BLOCKED: &str = "That person isn't blocked from this room.";
 pub const ROOM_CANNOT_JOIN_HERE: &str =

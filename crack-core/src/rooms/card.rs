@@ -24,7 +24,8 @@ pub enum RoomRefusal {
     NotAllowed,
     /// A helper tried something only the room's owner (or a moderator) may do.
     OwnerOnly,
-    /// The target is protected (the bot, a moderator, the owner or oneself).
+    /// The target is protected: oneself, CrackTunes, a moderator, the owner
+    /// (unless a moderator acts) or, for a helper, another helper.
     ProtectedTarget,
     /// The target is not in this room.
     TargetNotInRoom,
@@ -785,6 +786,17 @@ mod tests {
             .content
             .unwrap()
             .contains("42s"));
+        // Every protected target is named, helpers included (spec 1.4).
+        let protected = render(&RoomCard::Refused(ProtectedTarget)).content.unwrap();
+        for who in [
+            "yourself",
+            "owner",
+            "another helper",
+            "moderator",
+            "CrackTunes",
+        ] {
+            assert!(protected.contains(who), "{who}: {protected}");
+        }
         let missing = render(&RoomCard::Refused(MissingPermissions))
             .content
             .unwrap();
