@@ -939,46 +939,69 @@ fn voice_channel_of(cache: &Cache, guild: GuildId, user: UserId) -> Option<Chann
 }
 
 /// Reconcile a server's rooms as its `GuildCreate` arrives: at startup, after
-/// an outage, and on every gateway reconnect. When the rows (or the server's
-/// room settings, unread at `GuildCreate`) cannot be read, it is tried once
-/// more a minute later.
+/// an outage, and on every gateway reconnect. When the rows, or the server's
+/// room settings (unread at `GuildCreate`), cannot be read, it is tried once
+/// more a minute later. Rows read without the settings are reconciled at
+/// once: their empty rooms are swept, and only the hub waits.
 pub async fn reconcile_guild(data: &Data, ctx: &Context, guild: &Guild) {
     let id = guild.id;
-    match load_rooms(data, id).await {
-        Ok(stored) => reconcile_with(data, ctx, id, stored).await,
-        Err(err) => {
+    if reconcile_what_reads(data, ctx, id).await {
+        return;
+    }
+    tracing::warn!("rooms: reconciling {id} again in a minute");
+    let (data, ctx) = (data.clone(), ctx.clone());
+    tokio::spawn(async move {
+        tokio::time::sleep(RECONCILE_RETRY).await;
+        if !reconcile_what_reads(&data, &ctx, id).await {
             tracing::warn!(
-                "rooms: loading the rooms (or room settings) of {id} failed; retrying in a \
-                 minute: {err}"
+                "rooms: {id} still could not be read in full; no full reconcile until its next \
+                 GuildCreate"
             );
-            let (data, ctx) = (data.clone(), ctx.clone());
-            tokio::spawn(async move {
-                tokio::time::sleep(RECONCILE_RETRY).await;
-                match load_rooms(&data, id).await {
-                    Ok(stored) => reconcile_with(&data, &ctx, id, stored).await,
-                    Err(err) => tracing::warn!(
-                        "rooms: loading the rooms (or room settings) of {id} failed again; no \
-                         reconcile until its next GuildCreate: {err}"
-                    ),
-                }
-            });
+        }
+    });
+}
+
+/// Read the server's rows (and its settings, if unread) and reconcile the
+/// rows read. Whether both reads succeeded.
+async fn reconcile_what_reads(data: &Data, ctx: &Context, guild: GuildId) -> bool {
+    match load_rooms(data, guild).await {
+        Ok(stored) => {
+            reconcile_with(data, ctx, guild, stored).await;
+            settings_read(data, guild)
+        },
+        Err(err) => {
+            tracing::warn!("rooms: reading the rooms of {guild} failed: {err}");
+            false
         },
     }
 }
 
-/// How long a reconcile whose rows could not be read waits to try again.
+/// How long a reconcile whose rows or settings could not be read waits to
+/// try again.
 const RECONCILE_RETRY: Duration = Duration::from_secs(60);
 
-/// The server's stored rooms, after its settings if `GuildCreate` could not
-/// read them: the retry covers both.
+/// The server's stored rooms, and first its settings if `GuildCreate` could
+/// not read them. The rows do not wait on the settings: a failed settings
+/// read is logged, and [`settings_read`] says so afterwards.
 async fn load_rooms(data: &Data, guild: GuildId) -> sqlx::Result<Vec<StoredRoom>> {
     let Some(pool) = data.database_pool.as_ref() else {
         return Ok(Vec::new());
     };
     if !data.rooms.settings_loaded(guild) {
-        super::ops::load_settings(data, guild).await?;
+        if let Err(err) = super::ops::load_settings(data, guild).await {
+            tracing::warn!(
+                "rooms: reading the room settings of {guild} failed; its rooms are put in order \
+                 without them, and its hub waits: {err}"
+            );
+        }
     }
     crate::db::rooms::rooms_in(pool, guild).await
+}
+
+/// Whether the server's room settings have been read, or there is no
+/// database to read them from.
+fn settings_read(data: &Data, guild: GuildId) -> bool {
+    data.database_pool.is_none() || data.rooms.settings_loaded(guild)
 }
 
 /// Whether a reconcile has nothing to do: rooms are off (so no hub to
@@ -2568,6 +2591,39 @@ mod tests {
             assert_eq!(load_rooms(&data, G).await?, vec![stored(ROOM, JOINER)]);
             assert!(data.rooms.settings_loaded(G));
             assert_eq!(data.rooms.settings(G), saved);
+            Ok(())
+        }
+
+        /// The rows do not wait on the settings: when the settings cannot be
+        /// read, the rooms are still read (so empty ones are swept), and only
+        /// the hub waits for the retry, which reads the settings.
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
+        async fn the_rooms_are_read_even_when_the_settings_cannot_be(
+            pool: PgPool,
+        ) -> sqlx::Result<()> {
+            insert_room(&pool, &stored(ROOM, JOINER)).await?;
+            sqlx::query("ALTER TABLE room_settings RENAME TO room_settings_away")
+                .execute(&pool)
+                .await?;
+            let data = Data(Arc::new(DataInner {
+                database_pool: Some(pool.clone()),
+                ..Default::default()
+            }));
+            assert_eq!(load_rooms(&data, G).await?, vec![stored(ROOM, JOINER)]);
+            assert!(!data.rooms.settings_loaded(G));
+            assert!(!settings_read(&data, G), "so the retry comes");
+
+            sqlx::query("ALTER TABLE room_settings_away RENAME TO room_settings")
+                .execute(&pool)
+                .await?;
+            assert_eq!(load_rooms(&data, G).await?, vec![stored(ROOM, JOINER)]);
+            assert!(settings_read(&data, G));
+            // Without a database there are no settings to read.
+            assert!(settings_read(&Data::default(), G));
             Ok(())
         }
 
