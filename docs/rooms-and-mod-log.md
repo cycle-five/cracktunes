@@ -247,6 +247,9 @@ room. Run this from your room's voice channel or its chat."
   starts or rejoins the server), or an admin can delete the channel by hand.
 - A room's panel, owner, helpers, locks and mutes are stored in CrackTunes'
   database so they survive a restart. They are removed with the room.
+- A room being created at the very moment CrackTunes crashes or is
+  restarted may not have been stored yet; if one is left behind, delete it
+  by hand.
 
 ## Why there is no deafen
 

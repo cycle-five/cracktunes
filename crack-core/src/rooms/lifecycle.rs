@@ -981,8 +981,26 @@ async fn load_rooms(data: &Data, guild: GuildId) -> sqlx::Result<Vec<StoredRoom>
     crate::db::rooms::rooms_in(pool, guild).await
 }
 
+/// Whether a reconcile has nothing to do: rooms are off (so no hub to
+/// empty), no row is stored and the registry holds none of the server's
+/// rooms. Most servers never use rooms, and their facts are not worth
+/// reading at every `GuildCreate`. Knowing there are no rows costs the
+/// query that read them, which a server that turned rooms off with rooms
+/// still live needs anyway.
+fn nothing_to_reconcile(
+    data: &Data,
+    guild: GuildId,
+    settings: &RoomSettings,
+    stored: &[StoredRoom],
+) -> bool {
+    !settings.enabled && stored.is_empty() && data.rooms.count_in(guild) == 0
+}
+
 async fn reconcile_with(data: &Data, ctx: &Context, guild: GuildId, stored: Vec<StoredRoom>) {
     let settings = data.rooms.settings(guild);
+    if nothing_to_reconcile(data, guild, &settings, &stored) {
+        return;
+    }
     // The hub's occupants by name, first: each may get a room, the joiner
     // guard needs their roles, and fetching them may wait on Discord.
     let occupants: Option<Vec<UserId>> = ctx.cache.guild(guild).map(|g| {
@@ -2178,6 +2196,36 @@ mod tests {
         assert_eq!(w.discord.calls(), vec![]);
         after(2 * SEC).await;
         assert_eq!(w.discord.calls(), vec![Call::Delete(ROOM.get())]);
+    }
+
+    /// Most servers never use rooms: their GuildCreate reads no facts.
+    #[test]
+    fn a_server_without_rooms_has_nothing_to_reconcile() {
+        let data = Data(Arc::new(DataInner::default()));
+        let off = RoomSettings::off(G);
+        assert!(nothing_to_reconcile(&data, G, &off, &[]));
+        assert!(
+            !nothing_to_reconcile(&data, G, &settings(), &[]),
+            "rooms on: the hub"
+        );
+        assert!(
+            !nothing_to_reconcile(&data, G, &off, &[stored(ROOM, JOINER)]),
+            "a row to check"
+        );
+        data.rooms.insert(live(ROOM, JOINER));
+        assert!(
+            !nothing_to_reconcile(&data, G, &off, &[]),
+            "a live room to sweep"
+        );
+        assert!(
+            nothing_to_reconcile(
+                &data,
+                GuildId::new(101),
+                &RoomSettings::off(GuildId::new(101)),
+                &[]
+            ),
+            "another server's room does not count"
+        );
     }
 
     #[test]
