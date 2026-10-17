@@ -8,6 +8,7 @@ use crate::{
         SavedTrack, Source, SourceResult, SourceSet,
     },
     routes::{router, WebState},
+    settings::{RoomSettingsForm, RoomSettingsView, SaveRefused},
     view::{PlanView, QueueView, TrackView},
     watch::ViewSource,
 };
@@ -75,6 +76,11 @@ pub struct FakeBackend {
     pub adds: Mutex<Vec<AddCall>>,
     /// What `view` becomes once an add succeeds; `None` leaves it as it was.
     pub view_after_add: Mutex<Option<QueueView>>,
+    /// What `room_settings` answers.
+    pub room_view: Mutex<RoomSettingsView>,
+    pub save_result: Mutex<Result<(), SaveRefused>>,
+    /// Every settings save the routes asked for: (guild, user, form).
+    pub saves: Mutex<Vec<(GuildId, UserId, RoomSettingsForm)>>,
 }
 
 impl FakeBackend {
@@ -103,6 +109,17 @@ impl FakeBackend {
             add_result: Mutex::new(Ok(())),
             adds: Mutex::new(Vec::new()),
             view_after_add: Mutex::new(None),
+            room_view: Mutex::new(RoomSettingsView {
+                enabled: false,
+                hub: None,
+                name_template: "{name}'s room".into(),
+                default_limit: 0,
+                empty_grace_secs: 30,
+                voice_channels: Vec::new(),
+                findings: None,
+            }),
+            save_result: Mutex::new(Ok(())),
+            saves: Mutex::new(Vec::new()),
             plan: Mutex::new(PlanView::Premium),
             control_result: Mutex::new(Ok(())),
             controls: Mutex::new(Vec::new()),
@@ -249,6 +266,21 @@ impl Backend for FakeBackend {
             }
         }
         result
+    }
+
+    async fn room_settings(&self, _g: GuildId) -> RoomSettingsView {
+        self.room_view.lock().unwrap().clone()
+    }
+
+    async fn save_room_settings(
+        &self,
+        user: UserId,
+        g: GuildId,
+        f: RoomSettingsForm,
+    ) -> Result<RoomSettingsView, SaveRefused> {
+        self.saves.lock().unwrap().push((g, user, f));
+        (*self.save_result.lock().unwrap())?;
+        Ok(self.room_view.lock().unwrap().clone())
     }
 }
 

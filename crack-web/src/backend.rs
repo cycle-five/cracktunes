@@ -5,6 +5,7 @@
 use crate::{
     access::{HistoryAccess, Presence},
     history::{HistoryPage, HistoryQuery},
+    settings::{RoomSettingsForm, RoomSettingsView, SaveRefused},
     view::PlanView,
     watch::ViewSource,
 };
@@ -72,4 +73,11 @@ pub trait Backend: ViewSource {
         track: SavedTrack,
         at: At,
     ) -> impl Future<Output = Result<(), AddRefused>> + Send;
+    fn room_settings(&self, g: GuildId) -> impl Future<Output = RoomSettingsView> + Send;
+    fn save_room_settings(
+        &self,
+        user: UserId,
+        g: GuildId,
+        f: RoomSettingsForm,
+    ) -> impl Future<Output = Result<RoomSettingsView, SaveRefused>> + Send;
 }

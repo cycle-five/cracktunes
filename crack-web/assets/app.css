@@ -76,3 +76,17 @@ a.title:hover { text-decoration: underline; }
 #results ol.hits { list-style: none; padding: 0; margin: 0; }
 .hit .add { padding: 0 8px; font-size: 0.85rem; line-height: 1.6; }
 .hit .add:first-of-type { margin-left: auto; }
+
+#settings form { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+#settings label { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+#settings input[type="text"] { min-width: 16rem; max-width: 100%; }
+#settings input[type="text"], #settings input[type="number"], #settings select {
+  padding: 6px 10px; font: inherit; color: var(--fg); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; }
+#settings output { font-weight: 600; overflow-wrap: anywhere; }
+#s-save { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 16px;
+          font: inherit; font-weight: 600; cursor: pointer; }
+#s-save[disabled] { opacity: 0.45; cursor: not-allowed; }
+#s-note { background: var(--note); padding: 8px 12px; border-radius: 6px; margin: 0; }
+#s-note.bad { border-left: 4px solid var(--accent); }
+#s-findings ul { padding-left: 1.2rem; margin: 0; }

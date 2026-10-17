@@ -378,41 +378,54 @@ fn refusal_text(refusal: RoomRefusal) -> String {
     }
 }
 
-fn perm_names(perms: Permissions) -> String {
+fn perm_names(perms: Permissions, bold: bool) -> String {
     perms
         .get_permission_names()
         .iter()
-        .map(|n| format!("**{n}**"))
+        .map(|n| {
+            if bold {
+                format!("**{n}**")
+            } else {
+                (*n).to_string()
+            }
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
 
-fn where_text(at: Where) -> String {
+fn where_text(at: Where, name_of: &impl Fn(ChannelId) -> String) -> String {
     match at {
-        Where::Category(c) => format!("{ROOM_AT_CATEGORY} <#{c}>"),
-        Where::Hub(h) => format!("{ROOM_AT_HUB} <#{h}>"),
+        Where::Category(c) => format!("{ROOM_AT_CATEGORY} {}", name_of(c)),
+        Where::Hub(h) => format!("{ROOM_AT_HUB} {}", name_of(h)),
         Where::Server => ROOM_AT_SERVER.to_string(),
     }
 }
 
-fn finding_text(finding: &Finding) -> String {
+/// One finding as a line of text. The one wording for the Discord Status card
+/// (`name_of` makes a channel mention, `bold` on) and the dashboard (channel
+/// names, plain text), so it lives here once.
+pub fn finding_text(
+    finding: &Finding,
+    name_of: impl Fn(ChannelId) -> String,
+    bold: bool,
+) -> String {
     match finding {
         Finding::Missing { at, perms } => {
             format!(
                 "{ROOM_FINDING_MISSING} {} {}",
-                perm_names(*perms),
-                where_text(*at)
+                perm_names(*perms, bold),
+                where_text(*at, &name_of)
             )
         },
         Finding::Optional { at, perms } => {
             format!(
                 "{ROOM_FINDING_OPTIONAL} {} {}",
-                perm_names(*perms),
-                where_text(*at)
+                perm_names(*perms, bold),
+                where_text(*at, &name_of)
             )
         },
         Finding::LockMayFail { perms } => {
-            format!("{ROOM_FINDING_LOCK} {}.", perm_names(*perms))
+            format!("{ROOM_FINDING_LOCK} {}.", perm_names(*perms, bold))
         },
     }
 }
@@ -449,7 +462,10 @@ fn status_text(
         None if settings.hub.is_none() => lines.push(ROOM_STATUS_NO_HUB_YET.to_string()),
         None => lines.push(ROOM_STATUS_UNKNOWN.to_string()),
         Some([]) => lines.push(ROOM_STATUS_READY.to_string()),
-        Some(list) => lines.extend(list.iter().map(finding_text)),
+        Some(list) => lines.extend(
+            list.iter()
+                .map(|f| finding_text(f, |c| format!("<#{c}>"), true)),
+        ),
     }
     if let Some(url) = dashboard {
         lines.push(String::new());
@@ -687,6 +703,30 @@ mod tests {
         assert!(status(None).contains(
             "Couldn't check permissions: CrackTunes may not be able to see the hub or its category — give it View Channel there — or it's still starting up."
         ));
+    }
+
+    #[test]
+    fn finding_text_is_plain_with_channel_names_for_the_dashboard() {
+        let name_of = |c: ChannelId| format!("chan-{c}");
+        let missing = Finding::Missing {
+            at: Where::Category(ChannelId::new(20)),
+            perms: Permissions::MOVE_MEMBERS,
+        };
+        assert_eq!(
+            finding_text(&missing, name_of, false),
+            "Give CrackTunes Move Members on chan-20"
+        );
+        assert_eq!(
+            finding_text(&missing, |c| format!("<#{c}>"), true),
+            "Give CrackTunes **Move Members** on <#20>"
+        );
+        let lock = Finding::LockMayFail {
+            perms: Permissions::MANAGE_MESSAGES,
+        };
+        assert_eq!(
+            finding_text(&lock, name_of, false),
+            format!("{ROOM_FINDING_LOCK} Manage Messages.")
+        );
     }
 
     #[test]

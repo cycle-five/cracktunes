@@ -11,6 +11,7 @@ pub mod hits;
 pub mod limit;
 pub mod page;
 pub mod routes;
+pub mod settings;
 #[cfg(test)]
 mod test_support;
 pub mod view;
@@ -25,6 +26,7 @@ use crate::{
     config::WebEnv,
     history::{HistoryPage, HistoryQuery},
     routes::WebState,
+    settings::{ChannelOption, RoomSettingsForm, RoomSettingsView, SaveRefused},
     view::{view_from_state, PlanView, QueueView},
     watch::{Hub, ViewSource, LINGER, TICK},
 };
@@ -35,7 +37,7 @@ use crack_core::{
     music::remote,
     owners, Data,
 };
-use serenity::all::{Cache, GuildId, Http, Permissions, RoleId, UserId};
+use serenity::all::{Cache, ChannelId, ChannelType, GuildId, Http, Permissions, RoleId, UserId};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -66,6 +68,62 @@ impl LiveBackend {
             .get_or_init(|| owners::bot_owners(&self.deps.data.bot_settings, &self.deps.http))
             .await
             .contains(&u)
+    }
+
+    /// The voice channels of `g` from the cache, in the order Discord shows
+    /// them, and `hub`'s permission findings as plain text (channel names).
+    fn rooms_cache_view(
+        &self,
+        g: GuildId,
+        hub: Option<ChannelId>,
+    ) -> (Vec<ChannelOption>, Option<Vec<String>>) {
+        use crack_core::rooms::{card::finding_text, preflight};
+        let channels = self
+            .deps
+            .cache
+            .guild(g)
+            .map(|guild| {
+                let mut voice: Vec<_> = guild
+                    .channels
+                    .iter()
+                    .filter(|c| c.base.kind == ChannelType::Voice)
+                    .map(|c| (c.position, c.id, c.base.name.to_string()))
+                    .collect();
+                voice.sort();
+                voice
+                    .into_iter()
+                    .map(|(_, id, name)| ChannelOption {
+                        id: id.to_string(),
+                        name,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let findings = hub
+            .and_then(|h| preflight::for_guild(&self.deps.cache, g, h))
+            .map(|found| {
+                let name_of = |c: ChannelId| {
+                    self.deps
+                        .cache
+                        .guild(g)
+                        .and_then(|guild| guild.channels.get(&c).map(|ch| ch.base.name.to_string()))
+                        .unwrap_or_else(|| format!("channel {c}"))
+                };
+                found
+                    .iter()
+                    .map(|f| finding_text(f, name_of, false))
+                    .collect()
+            });
+        (channels, findings)
+    }
+
+    /// `raw` as a voice channel of `g` in the cache. Ids that serenity
+    /// cannot hold (0, u64::MAX) are refused before `ChannelId::new`.
+    fn voice_channel_of(&self, g: GuildId, raw: &str) -> Option<ChannelId> {
+        let n: u64 = raw.parse().ok().filter(|n| *n != 0 && *n != u64::MAX)?;
+        let id = ChannelId::new(n);
+        let guild = self.deps.cache.guild(g)?;
+        (guild.channels.get(&id)?.base.kind == ChannelType::Voice).then_some(id)
     }
 
     fn member_name(&self, g: GuildId, u: UserId) -> Option<String> {
@@ -294,6 +352,55 @@ impl Backend for LiveBackend {
         )
         .await
         .map(|_| ())
+    }
+
+    async fn room_settings(&self, g: GuildId) -> RoomSettingsView {
+        let s = self.deps.data.rooms.settings(g);
+        let (voice_channels, findings) = self.rooms_cache_view(g, s.hub);
+        RoomSettingsView {
+            enabled: s.enabled,
+            hub: s.hub.map(|h| h.to_string()),
+            name_template: s.name_template,
+            default_limit: s.default_limit,
+            empty_grace_secs: s.empty_grace_secs,
+            voice_channels,
+            findings,
+        }
+    }
+
+    async fn save_room_settings(
+        &self,
+        user: UserId,
+        g: GuildId,
+        f: RoomSettingsForm,
+    ) -> Result<RoomSettingsView, SaveRefused> {
+        use crack_core::rooms::{
+            ops::{save_settings, SettingsSaveError},
+            settings::RoomSettings,
+        };
+        let hub = match f.hub.as_deref() {
+            Some(raw) => Some(
+                self.voice_channel_of(g, raw)
+                    .ok_or(SaveRefused::UnknownChannel)?,
+            ),
+            None => None,
+        };
+        let settings = RoomSettings {
+            guild: g,
+            enabled: f.enabled,
+            hub,
+            name_template: f.name_template,
+            default_limit: f.default_limit,
+            empty_grace_secs: f.empty_grace_secs,
+        };
+        save_settings(&self.deps.data, settings)
+            .await
+            .map_err(|e| match e {
+                SettingsSaveError::Invalid(e) => SaveRefused::Invalid(e),
+                SettingsSaveError::Db => SaveRefused::Failed,
+            })?;
+        tracing::info!(guild = %g, user = %user, "dashboard saved room settings");
+        Ok(self.room_settings(g).await)
     }
 
     async fn history(&self, g: GuildId, q: &HistoryQuery) -> Result<HistoryPage, HistoryError> {

@@ -756,6 +756,34 @@ pub const ROOM_FINDING_LOCK: &str = "Locking a room may fail: CrackTunes lacks";
 pub const ROOM_AT_CATEGORY: &str = "on";
 pub const ROOM_AT_HUB: &str = "on the hub";
 pub const ROOM_AT_SERVER: &str = "server-wide";
+
+// The dashboard's rooms settings page.
+pub const DASH_SETTINGS_LINK: &str = "Settings";
+pub const DASH_SETTINGS_TITLE: &str = "Voice rooms";
+pub const DASH_SETTINGS_NEEDS_MANAGE: &str =
+    "Only members with Manage Server can see or change this server's settings.";
+pub const DASH_SETTINGS_ENABLED: &str = "Rooms are on";
+pub const DASH_SETTINGS_HUB: &str = "Hub channel";
+pub const DASH_SETTINGS_NO_HUB_OPTION: &str = "None";
+pub const DASH_SETTINGS_TEMPLATE: &str = "Room name";
+pub const DASH_SETTINGS_PREVIEW: &str = "Looks like:";
+pub const DASH_SETTINGS_LIMIT: &str = "Default member limit (0 for none)";
+pub const DASH_SETTINGS_GRACE: &str = "Delete an empty room after";
+pub const DASH_SETTINGS_SAVE: &str = "Save";
+pub const DASH_SETTINGS_SAVED: &str = "Saved.";
+pub const DASH_SETTINGS_SAVING_FAILED: &str = "Could not reach the dashboard. Try again.";
+pub const DASH_SETTINGS_GUIDE: &str = "How rooms work";
+pub const DASH_SETTINGS_PERMISSIONS: &str = "Permissions";
+pub const DASH_SETTINGS_NO_DATABASE: &str =
+    "Rooms need the bot's database, which isn't set up, so they can't be turned on.";
+pub const DASH_SETTINGS_NO_HUB: &str = "Pick a hub channel before turning rooms on.";
+pub const DASH_SETTINGS_BAD_TEMPLATE: &str =
+    "The room name must be 1 to 100 characters, with no control characters.";
+pub const DASH_SETTINGS_BAD_LIMIT: &str = "The member limit must be from 0 to 99.";
+pub const DASH_SETTINGS_BAD_GRACE: &str = "Pick one of the listed delays.";
+pub const DASH_SETTINGS_UNKNOWN_CHANNEL: &str = "That hub is not a voice channel of this server.";
+pub const DASH_SETTINGS_UNREADABLE: &str = "The settings could not be read.";
+pub const DASH_SETTINGS_FAILED: &str = "The settings could not be saved. Try again in a moment.";
 pub const ROOM_SETTINGS_INVALID: &str = "Those settings aren't valid, so nothing was changed.";
 pub const ROOM_SETTINGS_SAVE_FAILED: &str = "Couldn't save the settings. Try again in a moment.";
 pub const ROOM_SWITCHED_ON: &str = "Voice rooms are on.";
