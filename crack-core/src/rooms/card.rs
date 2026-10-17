@@ -22,6 +22,8 @@ pub enum RoomRefusal {
     NotInRoom,
     /// The member's standing in the room does not allow this action.
     NotAllowed,
+    /// A helper tried something only the room's owner (or a moderator) may do.
+    OwnerOnly,
     /// The target is protected (the bot, a moderator, the owner or oneself).
     ProtectedTarget,
     /// The target is not in this room.
@@ -30,6 +32,8 @@ pub enum RoomRefusal {
     NotBlocked,
     /// Unmute was pressed, and nobody in the room is muted.
     NobodyMuted,
+    /// Another action on the room held it longer than a modal can wait.
+    Busy,
     /// The server's own permissions keep the member or role out of this room.
     CannotJoinHere,
     /// Renaming is rate limited; try again after the wait.
@@ -347,10 +351,12 @@ fn refusal_text(refusal: RoomRefusal) -> String {
     match refusal {
         RoomRefusal::NotInRoom => ROOM_NOT_IN_ROOM.to_string(),
         RoomRefusal::NotAllowed => ROOM_NOT_ALLOWED.to_string(),
+        RoomRefusal::OwnerOnly => ROOM_OWNER_ONLY.to_string(),
         RoomRefusal::ProtectedTarget => ROOM_PROTECTED_TARGET.to_string(),
         RoomRefusal::TargetNotInRoom => ROOM_TARGET_NOT_IN_ROOM.to_string(),
         RoomRefusal::NotBlocked => ROOM_NOT_BLOCKED.to_string(),
         RoomRefusal::NobodyMuted => ROOM_NOBODY_MUTED.to_string(),
+        RoomRefusal::Busy => ROOM_BUSY.to_string(),
         RoomRefusal::CannotJoinHere => ROOM_CANNOT_JOIN_HERE.to_string(),
         RoomRefusal::RenameLimited { wait_secs } => {
             format!("{ROOM_RENAME_LIMITED} {wait_secs}s.")
@@ -685,10 +691,12 @@ mod tests {
         let all = [
             NotInRoom,
             NotAllowed,
+            OwnerOnly,
             ProtectedTarget,
             TargetNotInRoom,
             NotBlocked,
             NobodyMuted,
+            Busy,
             CannotJoinHere,
             RenameLimited { wait_secs: 42 },
             BadLimit,

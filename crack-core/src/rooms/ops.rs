@@ -214,7 +214,7 @@ fn panel(room: &LiveRoom) -> Rendered {
 }
 
 /// The member an action is aimed at, if any.
-fn user_target(action: &RoomAction) -> Option<UserId> {
+pub(crate) fn user_target(action: &RoomAction) -> Option<UserId> {
     match action {
         RoomAction::Kick { target, .. }
         | RoomAction::LetIn { target }
@@ -229,7 +229,7 @@ fn user_target(action: &RoomAction) -> Option<UserId> {
 }
 
 /// What `target` is to `actor` in this room, most protected first.
-fn target_standing(
+pub(crate) fn target_standing(
     facts: &GuildFacts,
     state: &RoomState,
     actor: UserId,

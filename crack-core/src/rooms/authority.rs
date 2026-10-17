@@ -134,6 +134,8 @@ fn helper_may(action: &RoomAction) -> bool {
 }
 
 /// Whether `who` may attempt `action` at all (targets are checked by [`target_ok`]).
+/// A helper refused is told it is the owner's to do (`OwnerOnly`); anyone
+/// else, that it is the owner's or a helper's (`NotAllowed`).
 pub fn may(who: Standing, action: &RoomAction, owner_present: bool) -> Result<(), RoomRefusal> {
     if who == Standing::Outsider {
         return Err(RoomRefusal::NotAllowed);
@@ -148,6 +150,7 @@ pub fn may(who: Standing, action: &RoomAction, owner_present: bool) -> Result<()
     match who {
         Standing::Owner | Standing::Moderator => Ok(()),
         Standing::Helper if helper_may(action) => Ok(()),
+        Standing::Helper => Err(RoomRefusal::OwnerOnly),
         _ => Err(RoomRefusal::NotAllowed),
     }
 }
@@ -295,7 +298,8 @@ mod tests {
             } else if is_claim(&a) {
                 assert_eq!(r, Err(RoomRefusal::OwnerPresent));
             } else {
-                assert_eq!(r, Err(RoomRefusal::NotAllowed), "{a:?}");
+                // Not "owner or helpers": the helper is one.
+                assert_eq!(r, Err(RoomRefusal::OwnerOnly), "{a:?}");
             }
         }
         assert_eq!(may(Standing::Helper, &RoomAction::Claim, false), Ok(()));

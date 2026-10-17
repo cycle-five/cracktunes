@@ -645,6 +645,7 @@ pub const ROOM_GUIDE_RUN: &str =
 pub const ROOM_NOT_IN_ROOM: &str =
     "You're not in a room. Run this from your room's voice channel or its chat.";
 pub const ROOM_NOT_ALLOWED: &str = "Only this room's owner or helpers can do that.";
+pub const ROOM_OWNER_ONLY: &str = "Only this room's owner can do that.";
 pub const ROOM_PROTECTED_TARGET: &str =
     "You can't do that to CrackTunes, a moderator, the room's owner, or yourself.";
 pub const ROOM_TARGET_NOT_IN_ROOM: &str = "That person isn't in this room.";
@@ -669,6 +670,7 @@ pub const ROOM_DISCORD_FAILED: &str = "Discord refused that. Try again in a mome
 pub const ROOM_NO_DATABASE: &str = "Voice rooms need a database, and this CrackTunes has none.";
 pub const ROOM_ROOMS_OFF: &str = "Voice rooms aren't turned on in this server.";
 pub const ROOM_NOBODY_MUTED: &str = "Nobody in this room is muted.";
+pub const ROOM_BUSY: &str = "This room is busy — try again in a moment.";
 
 // The panel's modals. Discord caps a modal title and a field label at 45
 // characters, and a placeholder at 100.
@@ -701,6 +703,17 @@ pub const ROOM_MODE_ALLOW_USER: &str = "Let a person in";
 pub const ROOM_MODE_ALLOW_ROLE: &str = "Let a role in";
 pub const ROOM_MODE_BLOCK_ROLE: &str = "Keep a role out";
 pub const ROOM_MODE_UNBLOCK_ROLE: &str = "Stop keeping a role out";
+// One line under each modal field's label; Discord caps it at 100 characters.
+pub const ROOM_DESC_MEMBER: &str = "Only people this can be done to are listed.";
+pub const ROOM_DESC_REASON: &str = "Required, up to 200 characters.";
+pub const ROOM_DESC_REASON_OPTIONAL: &str = "Optional, up to 200 characters.";
+pub const ROOM_DESC_LIMIT: &str = "A number from 0 to 99.";
+pub const ROOM_DESC_NAME: &str = "1 to 100 characters.";
+pub const ROOM_DESC_MODE_HELPERS: &str = "Add a helper, or remove one.";
+pub const ROOM_DESC_MODE_WHO: &str = "Let a person or a role in, or keep a role out.";
+pub const ROOM_DESC_HELPER: &str = "Anyone in this server.";
+pub const ROOM_DESC_WHO_USER: &str = "Only for \"Let a person in\".";
+pub const ROOM_DESC_WHO_ROLE: &str = "Only for the three role choices.";
 
 // Confirmations.
 pub const ROOM_DONE_KICKED: &str = "Kicked";

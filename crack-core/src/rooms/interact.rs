@@ -1,34 +1,43 @@
 //! What the room panel's buttons and modals do. Spec 1.7.
 //!
-//! 🔑 A button that needs input answers with a modal as the interaction's
-//! FIRST response: Discord refuses a modal after an acknowledgement. So such
-//! a press is checked (the room, then whether the presser may) before
-//! anything is sent, and a refusal is the press's one private response. The
-//! modal's submit then checks everything again through [`act`]: the room may
-//! have changed while the modal was open.
+//! 🔑 Discord waits 3 s for an interaction's first response, and another
+//! action can hold a room's lock longer than that (it keeps it across its
+//! Discord calls). So:
+//! - a button that acts (Lock, Claim, ...) and a modal's submit acknowledge
+//!   FIRST, before the room's lock or any read, then read, act, and answer
+//!   privately;
+//! - a button that needs input answers with a modal as its first response
+//!   (Discord refuses a modal after an acknowledgement). It waits at most
+//!   [`MODAL_ROOM_WAIT`] for the room, checks whether the presser may, and
+//!   then opens the modal or refuses privately;
+//! - the submit checks everything again through [`act`]: the room may have
+//!   changed while the modal was open.
 //!
 //! Like `messaging::buttons`, the Discord glue ([`handle_press`],
-//! [`handle_submit`]) only gathers what a press needs; [`respond_press`] and
+//! [`handle_submit`]) only builds the live pieces; [`respond_press`] and
 //! [`respond_submit`] decide, and tests drive them with fakes.
-use super::authority::{is_moderator, may, standing, Reason, RoomAction};
-use super::card::{RoomCard, RoomRefusal};
+use super::authority::{is_moderator, may, standing, target_ok, Reason, RoomAction};
+use super::card::{RoomCard, RoomDone, RoomRefusal};
 use super::discord::LiveRoomsDiscord;
 use super::facts::{gather, GuildFacts};
 use super::ids::{field, ButtonId, ModalId, RoomButton, RoomModal};
-use super::ops::{act, validate, RoomCx};
+use super::ops::{act, target_standing, user_target, validate, RoomCx};
 use super::settings::ROOM_NAME_MAX;
 use super::state::RoomState;
 use crate::messaging::courier;
 use crate::messaging::format::clip;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
-    ROOM_LABEL_LIMIT, ROOM_LABEL_MEMBER, ROOM_LABEL_MODE, ROOM_LABEL_NAME, ROOM_LABEL_REASON,
-    ROOM_LABEL_REASON_OPTIONAL, ROOM_LABEL_ROLE_OPTIONAL, ROOM_LABEL_USER_OPTIONAL,
-    ROOM_MODAL_HELPERS, ROOM_MODAL_KICK, ROOM_MODAL_LET_IN, ROOM_MODAL_LIMIT, ROOM_MODAL_MUTE,
-    ROOM_MODAL_RENAME, ROOM_MODAL_TRANSFER, ROOM_MODAL_UNMUTE, ROOM_MODAL_WHO_CAN_JOIN,
-    ROOM_MODE_ALLOW_ROLE, ROOM_MODE_ALLOW_USER, ROOM_MODE_BLOCK_ROLE, ROOM_MODE_HELPER_ADD,
-    ROOM_MODE_HELPER_REMOVE, ROOM_MODE_UNBLOCK_ROLE, ROOM_PICK_MEMBER, ROOM_PICK_MODE,
-    ROOM_PICK_ROLE, ROOM_PLACEHOLDER_LIMIT, ROOM_PLACEHOLDER_NAME, ROOM_PLACEHOLDER_REASON,
+    ROOM_DESC_HELPER, ROOM_DESC_LIMIT, ROOM_DESC_MEMBER, ROOM_DESC_MODE_HELPERS,
+    ROOM_DESC_MODE_WHO, ROOM_DESC_NAME, ROOM_DESC_REASON, ROOM_DESC_REASON_OPTIONAL,
+    ROOM_DESC_WHO_ROLE, ROOM_DESC_WHO_USER, ROOM_LABEL_LIMIT, ROOM_LABEL_MEMBER, ROOM_LABEL_MODE,
+    ROOM_LABEL_NAME, ROOM_LABEL_REASON, ROOM_LABEL_REASON_OPTIONAL, ROOM_LABEL_ROLE_OPTIONAL,
+    ROOM_LABEL_USER_OPTIONAL, ROOM_MODAL_HELPERS, ROOM_MODAL_KICK, ROOM_MODAL_LET_IN,
+    ROOM_MODAL_LIMIT, ROOM_MODAL_MUTE, ROOM_MODAL_RENAME, ROOM_MODAL_TRANSFER, ROOM_MODAL_UNMUTE,
+    ROOM_MODAL_WHO_CAN_JOIN, ROOM_MODE_ALLOW_ROLE, ROOM_MODE_ALLOW_USER, ROOM_MODE_BLOCK_ROLE,
+    ROOM_MODE_HELPER_ADD, ROOM_MODE_HELPER_REMOVE, ROOM_MODE_UNBLOCK_ROLE, ROOM_PICK_MEMBER,
+    ROOM_PICK_MODE, ROOM_PICK_ROLE, ROOM_PLACEHOLDER_LIMIT, ROOM_PLACEHOLDER_NAME,
+    ROOM_PLACEHOLDER_REASON,
 };
 use crate::messaging::render::RenderCx;
 use crate::messaging::transport::{DiscordModalPress, DiscordPress, DiscordTransport, Press};
@@ -36,10 +45,12 @@ use crate::Data;
 use serenity::all::{
     Cache, ChannelId, ComponentInteraction, CreateInputText, CreateLabel, CreateModal,
     CreateModalComponent, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, GuildId,
-    InputTextStyle, LabelComponent, ModalComponent, ModalInteraction, RoleId, UserId,
+    Http, InputTextStyle, LabelComponent, ModalComponent, ModalInteraction, RoleId, UserId,
 };
+use serenity::async_trait;
 use std::borrow::Cow;
-use std::time::Instant;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// The values of a modal's MODE choice ([`field::MODE`]).
 pub mod mode {
@@ -55,6 +66,10 @@ pub mod mode {
 const MENU_MAX: usize = 25;
 /// Discord's cap on a select option's label.
 const OPTION_LABEL_MAX: usize = 100;
+/// R26: how long a press that opens a modal waits for its room. The modal
+/// must be the first response, inside Discord's 3 s; a room held longer
+/// (another action mid-way) is answered with `Busy`.
+pub(crate) const MODAL_ROOM_WAIT: Duration = Duration::from_secs(1);
 
 /// What a room modal's submit carried, by field name ([`field`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -66,8 +81,67 @@ pub struct Submitted {
     pub mode: Option<String>,
 }
 
-/// A press on a `room:` button. Nothing is acknowledged here: a button that
-/// opens a modal must open it as its first response.
+/// Where a press's or submit's facts come from. Read only when needed, and
+/// after any acknowledgement; tests hand in fixed facts.
+#[async_trait]
+pub(crate) trait FactSource: Send + Sync {
+    /// The server's facts with `extra` read too (R18), and the display names
+    /// of `names` from the cache alone. `None` when the server is not cached.
+    async fn facts(&self, extra: &[UserId], names: &[UserId]) -> Option<GuildFacts>;
+}
+
+/// The real [`FactSource`]: the cache, and HTTP for an `extra` member it
+/// lacks.
+struct LiveFacts {
+    cache: Arc<Cache>,
+    http: Arc<Http>,
+    guild: GuildId,
+}
+
+#[async_trait]
+impl FactSource for LiveFacts {
+    async fn facts(&self, extra: &[UserId], names: &[UserId]) -> Option<GuildFacts> {
+        let Some(mut facts) = gather(&self.cache, &self.http, self.guild, extra).await else {
+            tracing::debug!("rooms: {} is not cached", self.guild);
+            return None;
+        };
+        name_from_cache(&self.cache, &mut facts, names);
+        Some(facts)
+    }
+}
+
+/// The live pieces a press or a submit works with.
+struct Live {
+    discord: LiveRoomsDiscord,
+    transport: DiscordTransport,
+    facts: LiveFacts,
+}
+
+impl Live {
+    fn of(ctx: &serenity::all::Context, guild: GuildId) -> Self {
+        Self {
+            discord: LiveRoomsDiscord {
+                http: ctx.http.clone(),
+            },
+            transport: DiscordTransport::of(ctx),
+            facts: LiveFacts {
+                cache: ctx.cache.clone(),
+                http: ctx.http.clone(),
+                guild,
+            },
+        }
+    }
+
+    fn cx<'a>(&'a self, data: &'a Data) -> RoomCx<'a> {
+        RoomCx {
+            data,
+            discord: &self.discord,
+            transport: &self.transport,
+        }
+    }
+}
+
+/// A press on a `room:` button.
 pub async fn handle_press(data: &Data, ctx: &serenity::all::Context, i: &ComponentInteraction) {
     let press = DiscordPress {
         http: &ctx.http,
@@ -82,35 +156,17 @@ pub async fn handle_press(data: &Data, ctx: &serenity::all::Context, i: &Compone
         answer_first(&press, RoomCard::Refused(RoomRefusal::NotInRoom)).await;
         return;
     };
-    // R18: whoever the decision is about, beyond the people in voice.
-    let state = room_state(data, id.room, guild).await;
-    let owner = state.as_ref().map(|s| s.owner);
-    let extra: Vec<UserId> = std::iter::once(presser).chain(owner).collect();
-    let Some(mut facts) = gather(&ctx.cache, &ctx.http, guild, &extra).await else {
-        tracing::debug!("rooms: {guild} is not cached; press refused");
-        answer_first(&press, RoomCard::Refused(RoomRefusal::DiscordFailed)).await;
-        return;
-    };
-    // Unmute and Let back in list people who may have left voice: name them
-    // from the cache, never over HTTP (the modal must open inside 3 s).
-    if let Some(state) = &state {
-        let listed: Vec<UserId> = match id.kind {
-            RoomButton::Unmute => state.muted.iter().copied().collect(),
-            RoomButton::LetIn => state.blocked.iter().copied().collect(),
-            _ => Vec::new(),
-        };
-        name_from_cache(&ctx.cache, &mut facts, &listed);
-    }
-    let discord = LiveRoomsDiscord {
-        http: ctx.http.clone(),
-    };
-    let transport = DiscordTransport::of(ctx);
-    let cx = RoomCx {
-        data,
-        discord: &discord,
-        transport: &transport,
-    };
-    respond_press(&cx, &press, &facts, id, presser, Instant::now()).await;
+    let live = Live::of(ctx, guild);
+    respond_press(
+        &live.cx(data),
+        &press,
+        &live.facts,
+        guild,
+        id,
+        presser,
+        Instant::now(),
+    )
+    .await;
 }
 
 /// A submit of a `roomm:` modal.
@@ -128,34 +184,14 @@ pub async fn handle_submit(data: &Data, ctx: &serenity::all::Context, i: &ModalI
         answer_first(&press, RoomCard::Refused(RoomRefusal::NotInRoom)).await;
         return;
     };
-    let submitted = read_submit(i);
-    // Facts as they are now, not as they were when the modal opened (R18:
-    // the submitter, the target and the room's owner).
-    let owner = room_state(data, id.room, guild).await.map(|s| s.owner);
-    let extra: Vec<UserId> = [Some(submitter), submitted.member, owner]
-        .into_iter()
-        .flatten()
-        .collect();
-    let Some(facts) = gather(&ctx.cache, &ctx.http, guild, &extra).await else {
-        tracing::debug!("rooms: {guild} is not cached; submit refused");
-        answer_first(&press, RoomCard::Refused(RoomRefusal::DiscordFailed)).await;
-        return;
-    };
-    let discord = LiveRoomsDiscord {
-        http: ctx.http.clone(),
-    };
-    let transport = DiscordTransport::of(ctx);
-    let cx = RoomCx {
-        data,
-        discord: &discord,
-        transport: &transport,
-    };
+    let live = Live::of(ctx, guild);
     respond_submit(
-        &cx,
+        &live.cx(data),
         &press,
-        &facts,
+        &live.facts,
+        guild,
         id,
-        submitted,
+        read_submit(i),
         submitter,
         Instant::now(),
     )
@@ -164,10 +200,10 @@ pub async fn handle_submit(data: &Data, ctx: &serenity::all::Context, i: &ModalI
 
 /// What a press does.
 enum Plan {
-    /// The guide, privately. Nobody's standing matters.
+    /// The guide, privately. Nothing is read: nobody's standing matters.
     Guide,
-    /// Acknowledge, act, and answer only a refusal: the redrawn panel is the
-    /// answer.
+    /// Acknowledge, then act, and answer only a refusal: the redrawn panel
+    /// is the answer.
     Act(RoomAction),
     /// Open this modal, if the presser may.
     Ask(RoomModal),
@@ -193,42 +229,98 @@ fn plan(kind: RoomButton) -> Plan {
     }
 }
 
-/// [`handle_press`] without Discord.
+/// [`handle_press`] without Discord. `guild` is the server the press came
+/// from; the room must be registered there.
 pub(crate) async fn respond_press(
     cx: &RoomCx<'_>,
     press: &dyn Press,
-    facts: &GuildFacts,
+    source: &dyn FactSource,
+    guild: GuildId,
     id: ButtonId,
     presser: UserId,
     now: Instant,
 ) {
-    // The room this panel was drawn for, in the server it was pressed in.
-    let Some(state) = room_state(cx.data, id.room, facts.guild).await else {
-        answer_first(press, RoomCard::Refused(RoomRefusal::NotInRoom)).await;
-        return;
-    };
     match plan(id.kind) {
         Plan::Guide => answer_first(press, RoomCard::Guide).await,
         Plan::Act(action) => {
-            // `act` makes Discord calls, which can outlast the 3 s window.
+            // First, before the room's lock or any read.
             courier::acknowledge(press).await;
-            if let Err(refused) = act(cx, facts, id.room, presser, action, now).await {
+            if let Err(refused) =
+                act_after_ack(cx, source, guild, id.room, presser, action, now).await
+            {
                 answer_after(press, RoomCard::Refused(refused)).await;
             }
         },
         Plan::Ask(kind) => {
-            let modal = may_ask(facts, &state, id.room, presser, kind)
-                .and_then(|()| modal_for(kind, id.room, facts, &state, presser));
-            match modal {
-                Ok(modal) => {
-                    if let Err(err) = press.open_modal(modal).await {
+            let refused = match ask(cx, source, guild, id.room, presser, kind).await {
+                Ok(modal) => match press.open_modal(modal).await {
+                    Ok(()) => return,
+                    // The interaction is still unanswered: say so privately.
+                    Err(err) => {
                         tracing::warn!("rooms: opening the {kind:?} modal failed: {err:?}");
-                    }
+                        RoomRefusal::DiscordFailed
+                    },
                 },
-                Err(refused) => answer_first(press, RoomCard::Refused(refused)).await,
-            }
+                Err(refused) => refused,
+            };
+            answer_first(press, RoomCard::Refused(refused)).await;
         },
     }
+}
+
+/// The modal a press opens, or why not: one read of the room (waiting at
+/// most [`MODAL_ROOM_WAIT`]), then the facts, then whether the presser may.
+async fn ask(
+    cx: &RoomCx<'_>,
+    source: &dyn FactSource,
+    guild: GuildId,
+    room: ChannelId,
+    presser: UserId,
+    kind: RoomModal,
+) -> Result<CreateModal<'static>, RoomRefusal> {
+    let state = tokio::time::timeout(MODAL_ROOM_WAIT, room_state(cx.data, room, guild))
+        .await
+        .map_err(|_| RoomRefusal::Busy)?
+        .ok_or(RoomRefusal::NotInRoom)?;
+    // Unmute and Let back in list people who may have left voice.
+    let names: Vec<UserId> = match kind {
+        RoomModal::Unmute => state.muted.iter().copied().collect(),
+        RoomModal::LetIn => state.blocked.iter().copied().collect(),
+        _ => Vec::new(),
+    };
+    let facts = source
+        .facts(&[presser, state.owner], &names)
+        .await
+        .ok_or(RoomRefusal::DiscordFailed)?;
+    may_ask(&facts, &state, room, presser, kind)?;
+    modal_for(kind, room, &facts, &state, presser)
+}
+
+/// After an acknowledgement: one read of the room (for its owner), the
+/// facts as they are now (R18: the actor, the action's target, the owner),
+/// then [`act`], which checks the room, the actor and the target again.
+async fn act_after_ack(
+    cx: &RoomCx<'_>,
+    source: &dyn FactSource,
+    guild: GuildId,
+    room: ChannelId,
+    actor: UserId,
+    action: RoomAction,
+    now: Instant,
+) -> Result<RoomDone, RoomRefusal> {
+    let owner = room_state(cx.data, room, guild)
+        .await
+        .ok_or(RoomRefusal::NotInRoom)?
+        .owner;
+    let extra: Vec<UserId> = [Some(actor), user_target(&action), Some(owner)]
+        .into_iter()
+        .flatten()
+        .collect();
+    let facts = source
+        .facts(&extra, &[])
+        .await
+        .ok_or(RoomRefusal::DiscordFailed)?;
+    act(cx, &facts, room, actor, action, now).await
 }
 
 /// Whether the presser may take this kind of action at all, before a modal
@@ -240,23 +332,30 @@ fn may_ask(
     presser: UserId,
     kind: RoomModal,
 ) -> Result<(), RoomRefusal> {
-    let who = standing(
-        presser,
-        state,
-        is_moderator(facts.guild_perms(presser)),
-        facts.in_room(presser, room),
-    );
     may(
-        who,
+        standing_of(facts, state, room, presser),
         &sample(kind, presser)?,
         facts.in_room(state.owner, room),
     )
 }
 
-/// An action of the kind the modal leads to. Its target and reason are
-/// stand-ins: `may` reads neither.
-fn sample(kind: RoomModal, presser: UserId) -> Result<RoomAction, RoomRefusal> {
-    let target = presser;
+fn standing_of(
+    facts: &GuildFacts,
+    state: &RoomState,
+    room: ChannelId,
+    user: UserId,
+) -> super::authority::Standing {
+    standing(
+        user,
+        state,
+        is_moderator(facts.guild_perms(user)),
+        facts.in_room(user, room),
+    )
+}
+
+/// An action of the kind the modal leads to, aimed at `target`. Its reason
+/// is a stand-in: neither `may` nor `target_ok` reads it.
+fn sample(kind: RoomModal, target: UserId) -> Result<RoomAction, RoomRefusal> {
     Ok(match kind {
         RoomModal::Kick => RoomAction::Kick {
             target,
@@ -278,6 +377,7 @@ fn sample(kind: RoomModal, presser: UserId) -> Result<RoomAction, RoomRefusal> {
 
 /// The modal a button opens, or why it can't: an empty pick list (Discord
 /// rejects a select with no options) or one longer than a select holds.
+/// R27: a pick list holds only people the presser could do this to.
 pub(crate) fn modal_for(
     kind: RoomModal,
     room: ChannelId,
@@ -285,6 +385,18 @@ pub(crate) fn modal_for(
     state: &RoomState,
     presser: UserId,
 ) -> Result<CreateModal<'static>, RoomRefusal> {
+    let who = standing_of(facts, state, room, presser);
+    let pick = |people: Vec<UserId>, nobody: RoomRefusal| {
+        let fit: Vec<UserId> = people
+            .into_iter()
+            .filter(|u| {
+                sample(kind, *u)
+                    .and_then(|a| target_ok(who, &a, target_standing(facts, state, presser, *u)))
+                    .is_ok()
+            })
+            .collect();
+        pick_member(facts, fit, nobody)
+    };
     let occupants = || -> Vec<UserId> {
         facts
             .humans_in(room)
@@ -294,50 +406,56 @@ pub(crate) fn modal_for(
     };
     let inputs = match kind {
         RoomModal::Kick => vec![
-            pick_member(facts, occupants(), RoomRefusal::TargetNotInRoom)?,
+            pick(occupants(), RoomRefusal::TargetNotInRoom)?,
             reason(true),
         ],
         RoomModal::Mute => vec![
-            pick_member(facts, occupants(), RoomRefusal::TargetNotInRoom)?,
+            pick(occupants(), RoomRefusal::TargetNotInRoom)?,
             reason(false),
         ],
-        RoomModal::Unmute => vec![pick_member(
-            facts,
+        RoomModal::Unmute => vec![pick(
             state.muted.iter().copied().collect(),
             RoomRefusal::NobodyMuted,
         )?],
-        RoomModal::LetIn => vec![pick_member(
-            facts,
+        RoomModal::LetIn => vec![pick(
             state.blocked.iter().copied().collect(),
             RoomRefusal::NotBlocked,
         )?],
-        RoomModal::Transfer => vec![pick_member(
-            facts,
-            occupants(),
-            RoomRefusal::TargetNotInRoom,
-        )?],
-        RoomModal::Limit => vec![text(ROOM_LABEL_LIMIT, ROOM_PLACEHOLDER_LIMIT, 2)],
+        RoomModal::Transfer => vec![pick(occupants(), RoomRefusal::TargetNotInRoom)?],
+        RoomModal::Limit => vec![text(
+            ROOM_LABEL_LIMIT,
+            ROOM_DESC_LIMIT,
+            ROOM_PLACEHOLDER_LIMIT,
+            2,
+        )],
         RoomModal::Rename => vec![text(
             ROOM_LABEL_NAME,
+            ROOM_DESC_NAME,
             ROOM_PLACEHOLDER_NAME,
             u16::try_from(ROOM_NAME_MAX).unwrap_or(u16::MAX),
         )],
         RoomModal::Helpers => vec![
-            choose(&[
-                (ROOM_MODE_HELPER_ADD, mode::HELPER_ADD),
-                (ROOM_MODE_HELPER_REMOVE, mode::HELPER_REMOVE),
-            ]),
-            pick_user(ROOM_LABEL_MEMBER, true),
+            choose(
+                ROOM_DESC_MODE_HELPERS,
+                &[
+                    (ROOM_MODE_HELPER_ADD, mode::HELPER_ADD),
+                    (ROOM_MODE_HELPER_REMOVE, mode::HELPER_REMOVE),
+                ],
+            ),
+            pick_user(ROOM_LABEL_MEMBER, ROOM_DESC_HELPER, true),
         ],
         RoomModal::WhoCanJoin => vec![
-            choose(&[
-                (ROOM_MODE_ALLOW_USER, mode::ALLOW_USER),
-                (ROOM_MODE_ALLOW_ROLE, mode::ALLOW_ROLE),
-                (ROOM_MODE_BLOCK_ROLE, mode::BLOCK_ROLE),
-                (ROOM_MODE_UNBLOCK_ROLE, mode::UNBLOCK_ROLE),
-            ]),
-            pick_user(ROOM_LABEL_USER_OPTIONAL, false),
-            pick_role(ROOM_LABEL_ROLE_OPTIONAL),
+            choose(
+                ROOM_DESC_MODE_WHO,
+                &[
+                    (ROOM_MODE_ALLOW_USER, mode::ALLOW_USER),
+                    (ROOM_MODE_ALLOW_ROLE, mode::ALLOW_ROLE),
+                    (ROOM_MODE_BLOCK_ROLE, mode::BLOCK_ROLE),
+                    (ROOM_MODE_UNBLOCK_ROLE, mode::UNBLOCK_ROLE),
+                ],
+            ),
+            pick_user(ROOM_LABEL_USER_OPTIONAL, ROOM_DESC_WHO_USER, false),
+            pick_role(ROOM_LABEL_ROLE_OPTIONAL, ROOM_DESC_WHO_ROLE),
         ],
     };
     Ok(CreateModal::new(ModalId { kind, room }.custom_id(), title(kind)).components(inputs))
@@ -355,6 +473,15 @@ fn title(kind: RoomModal) -> &'static str {
         RoomModal::Helpers => ROOM_MODAL_HELPERS,
         RoomModal::WhoCanJoin => ROOM_MODAL_WHO_CAN_JOIN,
     }
+}
+
+/// A label over a modal field, with its one-line description (never left
+/// null in the payload).
+fn labelled(
+    label: CreateLabel<'static>,
+    description: &'static str,
+) -> CreateModalComponent<'static> {
+    CreateModalComponent::Label(label.description(description))
 }
 
 /// A required pick of one of `people`, each by name (else by id), valued by
@@ -386,18 +513,19 @@ fn pick_member(
             options: Cow::Owned(options),
         },
     )
-    .placeholder(ROOM_PICK_MEMBER)
-    .min_values(1)
-    .max_values(1)
-    .required(true);
-    Ok(CreateModalComponent::Label(CreateLabel::select_menu(
-        ROOM_LABEL_MEMBER,
-        menu,
-    )))
+    .placeholder(ROOM_PICK_MEMBER);
+    Ok(labelled(
+        CreateLabel::select_menu(ROOM_LABEL_MEMBER, one(menu, true)),
+        ROOM_DESC_MEMBER,
+    ))
 }
 
 /// A pick of any one member of the server.
-fn pick_user(label: &'static str, required: bool) -> CreateModalComponent<'static> {
+fn pick_user(
+    label: &'static str,
+    description: &'static str,
+    required: bool,
+) -> CreateModalComponent<'static> {
     let menu = CreateSelectMenu::new(
         field::MEMBER,
         CreateSelectMenuKind::User {
@@ -405,11 +533,14 @@ fn pick_user(label: &'static str, required: bool) -> CreateModalComponent<'stati
         },
     )
     .placeholder(ROOM_PICK_MEMBER);
-    CreateModalComponent::Label(CreateLabel::select_menu(label, one(menu, required)))
+    labelled(
+        CreateLabel::select_menu(label, one(menu, required)),
+        description,
+    )
 }
 
 /// An optional pick of one role.
-fn pick_role(label: &'static str) -> CreateModalComponent<'static> {
+fn pick_role(label: &'static str, description: &'static str) -> CreateModalComponent<'static> {
     let menu = CreateSelectMenu::new(
         field::ROLE,
         CreateSelectMenuKind::Role {
@@ -417,7 +548,10 @@ fn pick_role(label: &'static str) -> CreateModalComponent<'static> {
         },
     )
     .placeholder(ROOM_PICK_ROLE);
-    CreateModalComponent::Label(CreateLabel::select_menu(label, one(menu, false)))
+    labelled(
+        CreateLabel::select_menu(label, one(menu, false)),
+        description,
+    )
 }
 
 /// A select of at most one; an optional one may be left empty (Discord
@@ -429,7 +563,10 @@ fn one(menu: CreateSelectMenu<'static>, required: bool) -> CreateSelectMenu<'sta
 }
 
 /// A required choice of one `(label, value)`.
-fn choose(choices: &[(&'static str, &'static str)]) -> CreateModalComponent<'static> {
+fn choose(
+    description: &'static str,
+    choices: &[(&'static str, &'static str)],
+) -> CreateModalComponent<'static> {
     let options: Vec<CreateSelectMenuOption<'static>> = choices
         .iter()
         .map(|&(label, value)| CreateSelectMenuOption::new(label, value))
@@ -441,33 +578,41 @@ fn choose(choices: &[(&'static str, &'static str)]) -> CreateModalComponent<'sta
         },
     )
     .placeholder(ROOM_PICK_MODE);
-    CreateModalComponent::Label(CreateLabel::select_menu(ROOM_LABEL_MODE, one(menu, true)))
+    labelled(
+        CreateLabel::select_menu(ROOM_LABEL_MODE, one(menu, true)),
+        description,
+    )
 }
 
-/// A kick's reason (required) or a mute's (optional).
+/// A kick's reason (required) or a mute's (optional). Both lengths are set:
+/// serenity sends an unset one as `null`.
 fn reason(required: bool) -> CreateModalComponent<'static> {
-    let max = u16::try_from(Reason::MAX).unwrap_or(u16::MAX);
-    let mut input = CreateInputText::new(InputTextStyle::Paragraph, field::REASON)
+    let input = CreateInputText::new(InputTextStyle::Paragraph, field::REASON)
         .placeholder(ROOM_PLACEHOLDER_REASON)
-        .max_length(max)
+        .min_length(u16::from(required))
+        .max_length(u16::try_from(Reason::MAX).unwrap_or(u16::MAX))
         .required(required);
-    let label = if required {
-        input = input.min_length(1);
-        ROOM_LABEL_REASON
+    let (label, description) = if required {
+        (ROOM_LABEL_REASON, ROOM_DESC_REASON)
     } else {
-        ROOM_LABEL_REASON_OPTIONAL
+        (ROOM_LABEL_REASON_OPTIONAL, ROOM_DESC_REASON_OPTIONAL)
     };
-    CreateModalComponent::Label(CreateLabel::input_text(label, input))
+    labelled(CreateLabel::input_text(label, input), description)
 }
 
 /// A required one-line value, 1 to `max` characters.
-fn text(label: &'static str, placeholder: &'static str, max: u16) -> CreateModalComponent<'static> {
+fn text(
+    label: &'static str,
+    description: &'static str,
+    placeholder: &'static str,
+    max: u16,
+) -> CreateModalComponent<'static> {
     let input = CreateInputText::new(InputTextStyle::Short, field::VALUE)
         .placeholder(placeholder)
         .min_length(1)
         .max_length(max)
         .required(true);
-    CreateModalComponent::Label(CreateLabel::input_text(label, input))
+    labelled(CreateLabel::input_text(label, input), description)
 }
 
 /// The fields of a room modal's submit.
@@ -553,15 +698,20 @@ pub fn action_for(kind: RoomModal, s: &Submitted) -> Result<RoomAction, RoomRefu
     })
 }
 
-/// [`handle_submit`] without Discord. Acknowledged first (a deferred update:
-/// `act` makes Discord calls and can outlast the 3 s window), then `act`
-/// checks the room, the submitter's standing and the target's presence as
-/// they are now. The answer is a private follow-up; the redrawn panel is
-/// `act`'s.
+/// [`handle_submit`] without Discord. R28: acknowledged FIRST (a deferred
+/// update), before the room's lock or any read; then the input, the room,
+/// the facts as they are now, and [`act`], which checks the room, the
+/// submitter's standing and the target's presence again. The answer is a
+/// private follow-up; the redrawn panel is `act`'s.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the submit's own inputs plus its two seams, as respond_press"
+)]
 pub(crate) async fn respond_submit(
     cx: &RoomCx<'_>,
     press: &dyn Press,
-    facts: &GuildFacts,
+    source: &dyn FactSource,
+    guild: GuildId,
     id: ModalId,
     s: Submitted,
     submitter: UserId,
@@ -569,7 +719,7 @@ pub(crate) async fn respond_submit(
 ) {
     courier::acknowledge(press).await;
     let outcome = match action_for(id.kind, &s) {
-        Ok(action) => act(cx, facts, id.room, submitter, action, now).await,
+        Ok(action) => act_after_ack(cx, source, guild, id.room, submitter, action, now).await,
         Err(refused) => Err(refused),
     };
     let card = match outcome {
@@ -587,7 +737,8 @@ async fn room_state(data: &Data, room: ChannelId, guild: GuildId) -> Option<Room
     (live.guild == guild).then(|| live.state.clone())
 }
 
-/// Display names for `users` from the cache only, for those the facts lack.
+/// Display names for `users` from the cache only, for those the facts lack:
+/// never over HTTP, since a modal must open inside 3 s.
 fn name_from_cache(cache: &Cache, facts: &mut GuildFacts, users: &[UserId]) {
     if users.is_empty() {
         return;
@@ -623,6 +774,7 @@ mod tests {
     use super::*;
     use crate::messaging::messages::*;
     use crate::messaging::test_support::{FakePress, FakeTransport, Op, PressOp};
+    use crate::messaging::transport::TransportError;
     use crate::rooms::authority::Reason;
     use crate::rooms::facts::tests::empty;
     use crate::rooms::ids::{field, RoomButton};
@@ -632,8 +784,8 @@ mod tests {
     use crate::rooms::test_support::{Call, FakeRoomsDiscord};
     use crate::DataInner;
     use serde_json::Value;
-    use serenity::all::{GuildId, MessageId, ModalInteractionData, Permissions};
-    use std::sync::Arc;
+    use serenity::all::{MessageId, ModalInteractionData, Permissions};
+    use std::sync::Mutex;
 
     const G: GuildId = GuildId::new(100);
     const ROOM: ChannelId = ChannelId::new(500);
@@ -643,6 +795,7 @@ mod tests {
     const TARGET: UserId = UserId::new(3);
     const OUTSIDE: UserId = UserId::new(4);
     const MODERATOR: UserId = UserId::new(5);
+    const HELPER_TWO: UserId = UserId::new(6);
     const BOT: UserId = UserId::new(99);
     const OTHER_BOT: UserId = UserId::new(98);
     const MOD_ROLE: RoleId = RoleId::new(7);
@@ -706,11 +859,46 @@ mod tests {
         }
     }
 
+    /// One read of the facts: whom for, and what the press had sent by then.
+    #[derive(Debug, Clone, PartialEq)]
+    struct Gathered {
+        extra: Vec<UserId>,
+        names: Vec<UserId>,
+        sent_before: Vec<PressOp>,
+    }
+
+    /// Fixed facts (`None`: the server is not cached), and a record of
+    /// every read.
+    struct FakeSource {
+        facts: Mutex<Option<GuildFacts>>,
+        press: Arc<FakePress>,
+        reads: Mutex<Vec<Gathered>>,
+    }
+
+    impl FakeSource {
+        fn reads(&self) -> Vec<Gathered> {
+            self.reads.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl FactSource for FakeSource {
+        async fn facts(&self, extra: &[UserId], names: &[UserId]) -> Option<GuildFacts> {
+            self.reads.lock().unwrap().push(Gathered {
+                extra: extra.to_vec(),
+                names: names.to_vec(),
+                sent_before: self.press.ops(),
+            });
+            self.facts.lock().unwrap().clone()
+        }
+    }
+
     struct World {
         data: Data,
         discord: FakeRoomsDiscord,
         transport: FakeTransport,
-        press: FakePress,
+        press: Arc<FakePress>,
+        source: FakeSource,
     }
 
     impl World {
@@ -719,11 +907,17 @@ mod tests {
                 ..Default::default()
             }));
             data.rooms.insert(room);
+            let press = Arc::new(FakePress::default());
             Self {
                 data,
                 discord: FakeRoomsDiscord::default(),
                 transport: FakeTransport::default(),
-                press: FakePress::default(),
+                source: FakeSource {
+                    facts: Mutex::new(Some(facts())),
+                    press: press.clone(),
+                    reads: Mutex::default(),
+                },
+                press,
             }
         }
 
@@ -735,21 +929,35 @@ mod tests {
             }
         }
 
-        async fn press(&self, kind: RoomButton, presser: UserId) {
-            self.press_with(&facts(), kind, presser).await;
+        fn with_facts(&self, facts: Option<GuildFacts>) {
+            *self.source.facts.lock().unwrap() = facts;
         }
 
-        async fn press_with(&self, facts: &GuildFacts, kind: RoomButton, presser: UserId) {
+        async fn press(&self, kind: RoomButton, presser: UserId) {
+            self.press_in(G, kind, presser).await;
+        }
+
+        async fn press_in(&self, guild: GuildId, kind: RoomButton, presser: UserId) {
             let id = ButtonId { kind, room: ROOM };
-            respond_press(&self.cx(), &self.press, facts, id, presser, Instant::now()).await;
+            respond_press(
+                &self.cx(),
+                &*self.press,
+                &self.source,
+                guild,
+                id,
+                presser,
+                Instant::now(),
+            )
+            .await;
         }
 
         async fn submit(&self, kind: RoomModal, s: Submitted, submitter: UserId) {
             let id = ModalId { kind, room: ROOM };
             respond_submit(
                 &self.cx(),
-                &self.press,
-                &facts(),
+                &*self.press,
+                &self.source,
+                G,
                 id,
                 s,
                 submitter,
@@ -768,10 +976,22 @@ mod tests {
                 .clone()
         }
 
+        /// The room's lock, as another action mid-way would hold it.
+        async fn hold(&self) -> tokio::sync::OwnedMutexGuard<LiveRoom> {
+            self.data.rooms.get(ROOM).unwrap().lock_owned().await
+        }
+
         /// Nothing reached Discord but the press's own answers.
         fn sent_nothing(&self) {
             assert_eq!(self.discord.calls(), vec![], "no channel calls");
             assert_eq!(self.transport.ops(), vec![], "no messages");
+        }
+    }
+
+    /// Let everything else in this task run until it waits.
+    async fn settle() {
+        for _ in 0..50 {
+            tokio::task::yield_now().await;
         }
     }
 
@@ -789,6 +1009,10 @@ mod tests {
         }
     }
 
+    fn kick_modal() -> PressOp {
+        PressOp::Modal("roomm:kick:500".into())
+    }
+
     fn json(modal: &CreateModal<'static>) -> Value {
         serde_json::to_value(modal).expect("a modal serializes")
     }
@@ -804,6 +1028,9 @@ mod tests {
                 assert!(label["label"]
                     .as_str()
                     .is_some_and(|l| l.chars().count() <= 45));
+                assert!(label["description"]
+                    .as_str()
+                    .is_some_and(|d| !d.is_empty() && d.chars().count() <= 100));
                 label["component"].clone()
             })
             .find(|c| c["custom_id"] == custom_id)
@@ -823,6 +1050,31 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    /// The values a member pick offers.
+    fn offered(modal: &CreateModal<'static>) -> Vec<String> {
+        options(&json(modal), field::MEMBER)
+            .into_iter()
+            .map(|(_, v)| v)
+            .collect()
+    }
+
+    fn assert_no_nulls(v: &Value, at: &str) {
+        match v {
+            Value::Null => panic!("null at {at}"),
+            Value::Array(items) => {
+                for (i, x) in items.iter().enumerate() {
+                    assert_no_nulls(x, &format!("{at}[{i}]"));
+                }
+            },
+            Value::Object(fields) => {
+                for (k, x) in fields {
+                    assert_no_nulls(x, &format!("{at}.{k}"));
+                }
+            },
+            _ => {},
+        }
     }
 
     fn picked(member: UserId) -> Submitted {
@@ -848,7 +1100,7 @@ mod tests {
         w.press(RoomButton::Kick, OWNER).await;
         assert_eq!(
             w.press.ops(),
-            vec![PressOp::Modal("roomm:kick:500".into())],
+            vec![kick_modal()],
             "the modal is the one response: no acknowledgement before it"
         );
         w.sent_nothing();
@@ -864,8 +1116,8 @@ mod tests {
     }
 
     /// The pre-check is `may` for each input button: a helper may kick, mute,
-    /// unmute, let in and limit, and nothing else; a moderator outside the
-    /// room may do all of it.
+    /// unmute, let in and limit, and is told the rest is the owner's; a
+    /// moderator outside the room may do all of it.
     #[tokio::test]
     async fn input_buttons_check_who_may_before_opening_their_modal() {
         let mut room = live();
@@ -889,7 +1141,7 @@ mod tests {
             let want = if helper_may {
                 modal.clone()
             } else {
-                private(ROOM_NOT_ALLOWED)
+                private(ROOM_OWNER_ONLY)
             };
             assert_eq!(w.press.ops(), vec![want], "helper, {kind:?}");
 
@@ -902,6 +1154,35 @@ mod tests {
             assert_eq!(w.press.ops(), vec![private(ROOM_NOT_ALLOWED)], "occupant");
             w.sent_nothing();
         }
+    }
+
+    /// R18: a press reads the presser and the room's owner; Unmute and Let
+    /// back in also name whom they list.
+    #[tokio::test]
+    async fn presses_read_the_people_the_decision_is_about() {
+        let mut room = live();
+        room.state.muted.insert(OUTSIDE);
+        room.state.blocked.insert(UserId::new(42));
+        let w = World::new(room);
+        w.press(RoomButton::Kick, HELPER).await;
+        w.press(RoomButton::Unmute, HELPER).await;
+        w.press(RoomButton::LetIn, HELPER).await;
+        w.press(RoomButton::Lock, HELPER).await;
+        let reads: Vec<(Vec<UserId>, Vec<UserId>)> = w
+            .source
+            .reads()
+            .into_iter()
+            .map(|g| (g.extra, g.names))
+            .collect();
+        assert_eq!(
+            reads,
+            vec![
+                (vec![HELPER, OWNER], vec![]),
+                (vec![HELPER, OWNER], vec![OUTSIDE]),
+                (vec![HELPER, OWNER], vec![UserId::new(42)]),
+                (vec![HELPER, OWNER], vec![]),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -940,6 +1221,102 @@ mod tests {
         assert_eq!(w.transport.ops(), vec![Op::Edit(ROOM.get(), PANEL.get())]);
     }
 
+    /// Fix round 1, item 1: another action holds the room; the press is
+    /// acknowledged before it waits, and nothing is read until then.
+    #[tokio::test]
+    async fn a_direct_button_acknowledges_before_waiting_for_the_room() {
+        let w = World::new(live());
+        let held = w.hold().await;
+        let meanwhile = async {
+            settle().await;
+            let seen = (w.press.ops(), w.source.reads().len());
+            drop(held);
+            seen
+        };
+        let ((), seen) = tokio::join!(w.press(RoomButton::Lock, OWNER), meanwhile);
+        assert_eq!(
+            seen,
+            (vec![PressOp::Acknowledge], 0),
+            "while the room was held"
+        );
+        assert_eq!(w.source.reads()[0].sent_before, vec![PressOp::Acknowledge]);
+        assert_eq!(w.press.ops(), vec![PressOp::Acknowledge]);
+        assert!(w.room().await.state.locked);
+    }
+
+    /// R26 holds only for modals: an acknowledged press waits for the room
+    /// however long it takes.
+    #[tokio::test(start_paused = true)]
+    async fn a_direct_button_outwaits_a_busy_room() {
+        let w = World::new(live());
+        let held = w.hold().await;
+        let release = async move {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            drop(held);
+        };
+        tokio::join!(w.press(RoomButton::Lock, OWNER), release);
+        assert_eq!(w.press.ops(), vec![PressOp::Acknowledge]);
+        assert!(w.room().await.state.locked);
+    }
+
+    /// R26: a press that must open a modal waits a second for its room, then
+    /// says it is busy, as its one response.
+    #[tokio::test(start_paused = true)]
+    async fn a_modal_button_gives_up_on_a_busy_room_after_a_second() {
+        let w = World::new(live());
+        let held = w.hold().await;
+        let started = tokio::time::Instant::now();
+        w.press(RoomButton::Kick, OWNER).await;
+        let waited = started.elapsed();
+        assert!(
+            waited >= MODAL_ROOM_WAIT && waited < MODAL_ROOM_WAIT * 2,
+            "{waited:?}"
+        );
+        assert_eq!(w.press.ops(), vec![private(ROOM_BUSY)]);
+        assert!(w.press.modals.lock().unwrap().is_empty());
+        assert!(w.source.reads().is_empty(), "nothing read");
+        drop(held);
+
+        // Freed inside the second: the modal opens.
+        let w = World::new(live());
+        let held = w.hold().await;
+        let release = async move {
+            tokio::time::sleep(MODAL_ROOM_WAIT * 9 / 10).await;
+            drop(held);
+        };
+        tokio::join!(w.press(RoomButton::Kick, OWNER), release);
+        assert_eq!(w.press.ops(), vec![kick_modal()]);
+    }
+
+    #[tokio::test]
+    async fn a_modal_that_fails_to_open_falls_back_to_a_private_refusal() {
+        let w = World::new(live());
+        *w.press.modal_error.lock().unwrap() = Some(TransportError::Other("400".into()));
+        w.press(RoomButton::Kick, OWNER).await;
+        assert_eq!(
+            w.press.ops(),
+            vec![kick_modal(), private(ROOM_DISCORD_FAILED)]
+        );
+        w.sent_nothing();
+    }
+
+    #[tokio::test]
+    async fn an_uncached_server_is_refused() {
+        let w = World::new(live());
+        w.with_facts(None);
+        w.press(RoomButton::Kick, OWNER).await;
+        w.press(RoomButton::Lock, OWNER).await;
+        assert_eq!(
+            w.press.ops(),
+            vec![
+                private(ROOM_DISCORD_FAILED),
+                PressOp::Acknowledge,
+                followup(ROOM_DISCORD_FAILED),
+            ]
+        );
+        w.sent_nothing();
+    }
+
     #[tokio::test]
     async fn the_other_direct_buttons_act_too() {
         let mut room = live();
@@ -966,7 +1343,8 @@ mod tests {
         let mut away = facts();
         away.voice.remove(&OWNER);
         let w = World::new(live());
-        w.press_with(&away, RoomButton::Claim, TARGET).await;
+        w.with_facts(Some(away));
+        w.press(RoomButton::Claim, TARGET).await;
         assert_eq!(w.press.ops(), vec![PressOp::Acknowledge]);
         assert_eq!(w.room().await.state.owner, TARGET);
     }
@@ -1015,15 +1393,18 @@ mod tests {
         w.press(RoomButton::Kick, OWNER).await;
         assert_eq!(w.press.ops(), vec![private(ROOM_NOT_IN_ROOM)]);
 
-        let mut elsewhere = facts();
-        elsewhere.guild = GuildId::new(101);
-        for kind in [RoomButton::Kick, RoomButton::Lock] {
-            let w = World::new(live());
-            w.press_with(&elsewhere, kind, OWNER).await;
-            assert_eq!(w.press.ops(), vec![private(ROOM_NOT_IN_ROOM)], "{kind:?}");
-            w.sent_nothing();
-            assert!(w.press.modals.lock().unwrap().is_empty());
-        }
+        let elsewhere = GuildId::new(101);
+        let w = World::new(live());
+        w.press_in(elsewhere, RoomButton::Kick, OWNER).await;
+        assert_eq!(w.press.ops(), vec![private(ROOM_NOT_IN_ROOM)]);
+        let w = World::new(live());
+        w.press_in(elsewhere, RoomButton::Lock, OWNER).await;
+        assert_eq!(
+            w.press.ops(),
+            vec![PressOp::Acknowledge, followup(ROOM_NOT_IN_ROOM)]
+        );
+        w.sent_nothing();
+        assert!(!w.room().await.state.locked);
     }
 
     // Modals.
@@ -1052,6 +1433,35 @@ mod tests {
         assert_eq!(menu["required"], true);
     }
 
+    /// R27: a pick list holds only people the presser could do this to.
+    #[test]
+    fn a_helpers_kick_menu_lists_only_whom_a_helper_may_kick() {
+        let mut state = live().state;
+        state.helpers.insert(HELPER_TWO);
+        let mut f = facts();
+        f.voice.insert(HELPER_TWO, (ROOM, false));
+        f.voice.insert(MODERATOR, (ROOM, false));
+        let menu = |kind, f: &GuildFacts, presser| {
+            offered(&modal_for(kind, ROOM, f, &state, presser).unwrap())
+        };
+        // Not the owner, another helper, a moderator, or themself.
+        assert_eq!(menu(RoomModal::Kick, &f, HELPER), ["3"]);
+        assert_eq!(menu(RoomModal::Mute, &f, HELPER), ["3"]);
+        // The owner may kick helpers, not a moderator.
+        assert_eq!(menu(RoomModal::Kick, &f, OWNER), ["2", "3", "6"]);
+        // A moderator may kick the owner too.
+        assert_eq!(menu(RoomModal::Kick, &f, MODERATOR), ["1", "2", "3", "6"]);
+        // Anyone but oneself may be handed the room.
+        assert_eq!(menu(RoomModal::Transfer, &f, OWNER), ["2", "3", "5", "6"]);
+
+        // Nobody a helper may kick: refused like an empty list.
+        f.voice.remove(&TARGET);
+        assert_eq!(
+            modal_for(RoomModal::Kick, ROOM, &f, &state, HELPER).err(),
+            Some(RoomRefusal::TargetNotInRoom)
+        );
+    }
+
     #[test]
     fn kick_modal_requires_a_reason() {
         let modal =
@@ -1069,6 +1479,7 @@ mod tests {
         assert_eq!(modal["custom_id"], "roomm:mute:500");
         let reason = input(&modal, field::REASON);
         assert_eq!(reason["required"], false);
+        assert_eq!(reason["min_length"], 0);
         assert_eq!(reason["max_length"], 200);
         assert_eq!(options(&modal, field::MEMBER).len(), 2);
     }
@@ -1120,9 +1531,12 @@ mod tests {
 
         // 25 others fit; 26 do not.
         let mut full = facts();
-        full.voice = (1..=26).map(|n| (UserId::new(n), (ROOM, false))).collect();
+        full.voice = std::iter::once(OWNER)
+            .chain((100..125).map(UserId::new))
+            .map(|u| (u, (ROOM, false)))
+            .collect();
         assert!(modal_for(RoomModal::Kick, ROOM, &full, &state, OWNER).is_ok());
-        full.voice.insert(UserId::new(27), (ROOM, false));
+        full.voice.insert(UserId::new(125), (ROOM, false));
         for kind in [RoomModal::Kick, RoomModal::Mute, RoomModal::Transfer] {
             assert_eq!(
                 modal_for(kind, ROOM, &full, &state, OWNER).err(),
@@ -1201,7 +1615,14 @@ mod tests {
                 m["title"].as_str().unwrap().chars().count() <= 45,
                 "{kind:?}"
             );
-            assert!(m["components"].as_array().unwrap().len() <= 5, "{kind:?}");
+            let labels = m["components"].as_array().unwrap();
+            assert!(labels.len() <= 5, "{kind:?}");
+            for label in labels {
+                // Every label is checked by `input`, description included.
+                input(&m, label["component"]["custom_id"].as_str().unwrap());
+            }
+            // serenity sends an unset Option as null; nothing may be unset.
+            assert_no_nulls(&m, &format!("{kind:?}"));
         }
     }
 
@@ -1544,6 +1965,42 @@ mod tests {
         );
         assert_eq!(w.transport.ops(), vec![Op::Edit(ROOM.get(), PANEL.get())]);
         assert!(w.room().await.state.blocked.contains(&TARGET));
+        // R18: the submitter, the target and the room's owner.
+        assert_eq!(
+            w.source.reads(),
+            vec![Gathered {
+                extra: vec![HELPER, TARGET, OWNER],
+                names: vec![],
+                sent_before: vec![PressOp::Acknowledge],
+            }]
+        );
+    }
+
+    /// R28: the submit is acknowledged before anything is read, so a room
+    /// held by another action cannot run it past Discord's 3 s.
+    #[tokio::test]
+    async fn a_submit_acknowledges_before_reading_anything() {
+        let w = World::new(live());
+        let held = w.hold().await;
+        let meanwhile = async {
+            settle().await;
+            let seen = (w.press.ops(), w.source.reads().len());
+            drop(held);
+            seen
+        };
+        let ((), seen) = tokio::join!(
+            w.submit(RoomModal::Kick, kick_of(TARGET, "spamming"), OWNER),
+            meanwhile
+        );
+        assert_eq!(
+            seen,
+            (vec![PressOp::Acknowledge], 0),
+            "while the room was held"
+        );
+        assert_eq!(
+            w.press.ops(),
+            vec![PressOp::Acknowledge, followup("🚫 Kicked <@3>.")]
+        );
     }
 
     #[tokio::test]
@@ -1566,7 +2023,7 @@ mod tests {
     async fn submit_after_room_deleted_refuses_and_sends_nothing() {
         let w = World::new(live());
         w.press(RoomButton::Kick, OWNER).await;
-        assert_eq!(w.press.ops(), vec![PressOp::Modal("roomm:kick:500".into())]);
+        assert_eq!(w.press.ops(), vec![kick_modal()]);
         w.data.rooms.remove(ROOM);
         w.submit(RoomModal::Kick, kick_of(TARGET, "spamming"), OWNER)
             .await;
@@ -1583,7 +2040,7 @@ mod tests {
     async fn submit_after_transfer_rechecks_authority() {
         let w = World::new(live());
         w.press(RoomButton::Kick, OWNER).await;
-        assert_eq!(w.press.ops(), vec![PressOp::Modal("roomm:kick:500".into())]);
+        assert_eq!(w.press.ops(), vec![kick_modal()]);
         act(
             &w.cx(),
             &facts(),
@@ -1605,5 +2062,10 @@ mod tests {
         assert_eq!(w.discord.calls().len(), calls, "no channel calls");
         assert_eq!(w.transport.ops().len(), msgs, "no messages");
         assert!(w.room().await.state.blocked.is_empty());
+        // The facts were read for the new owner.
+        assert_eq!(
+            w.source.reads().last().unwrap().extra,
+            [OWNER, HELPER, TARGET]
+        );
     }
 }

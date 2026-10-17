@@ -204,6 +204,8 @@ pub struct FakePress {
     pub ack_error: Mutex<Option<TransportError>>,
     /// Every modal opened, whole, for inspection.
     pub modals: Mutex<Vec<serenity::all::CreateModal<'static>>>,
+    /// What `open_modal` answers with, after recording the modal.
+    pub modal_error: Mutex<Option<TransportError>>,
 }
 
 impl FakePress {
@@ -251,7 +253,10 @@ impl super::transport::Press for FakePress {
         let custom_id = payload["custom_id"].as_str().unwrap_or_default().to_owned();
         self.ops.lock().unwrap().push(PressOp::Modal(custom_id));
         self.modals.lock().unwrap().push(modal);
-        Ok(())
+        match self.modal_error.lock().unwrap().clone() {
+            Some(err) => Err(err),
+            None => Ok(()),
+        }
     }
 }
 
