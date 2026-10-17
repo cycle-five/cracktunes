@@ -12,7 +12,7 @@ Voice rooms are **off by default** in every server, and free: no premium needed.
 - [Voice rooms: for room owners](#voice-rooms--for-room-owners)
 - [What gets deleted and when](#what-gets-deleted-and-when)
 - [Why there is no deafen](#why-there-is-no-deafen)
-- [Mod log: coming in v0.29.0](#mod-log--coming-in-v0290)
+- [Mod log](#mod-log)
 
 ## Voice rooms — for admins
 
@@ -206,8 +206,8 @@ Someone you kick is also removed from the helpers and from the people let in.
 
 - **Kick** keeps the person out until you use Let back in, even if the room is
   open. The reason is required, so you cannot kick without giving one. It is
-  not sent to the member; it will appear in the mod log once that ships
-  (v0.29.0). The member picker lists only people it can be done to. A
+  not sent to the member; it appears in the [mod log](#mod-log) when the
+  server has one on. The member picker lists only people it can be done to. A
   moderator who kicks the room's owner frees the room: anyone left in it can
   claim it, and the hub gives the old owner a new room rather than moving
   them back.
@@ -271,9 +271,118 @@ hearing.
 
 Kick, mute and lock cover what deafening someone in your room would be for.
 
-## Mod log — coming in v0.29.0
+## Mod log
 
-Not in this version. The mod log will be a channel the server chooses where
-CrackTunes posts who server-muted, deafened, disconnected or moved whom, and who
-kicked whom from a voice room. It ships in v0.29.0 and this section will
-describe it then.
+The mod log is a channel the server picks where CrackTunes posts who muted,
+deafened, disconnected or moved whom in voice, and who kicked, muted or let
+back in whom in a voice room. Each entry is one embed with a timestamp.
+Mentions sit inside the embed and nobody is pinged.
+
+It is **off by default** in every server, free, and independent of voice
+rooms: you can use either without the other. It needs CrackTunes' database;
+without one it cannot be turned on.
+
+### What it logs
+
+| Entry | What it says | How sure it is |
+|---|---|---|
+| Server muted / unmuted | Who did it to whom, and the reason if the moderator gave one. | Exact: it comes straight from Discord's audit log. |
+| Server deafened / undeafened | The same. | Exact. |
+| Disconnected | Who was disconnected from which channel, and by whom. | Matched by timing (see below). |
+| Moved | Who was moved from which channel to which, and by whom. | Matched by timing. |
+| Disconnected several | Several disconnects at once, when they cannot be told apart. | Matched by timing. |
+| Kicked from a room | Who kicked whom from which voice room, with the reason. | Exact: CrackTunes did it itself. |
+| Muted / unmuted in a room | Who did it, to whom, in which room; a mute shows its reason if one was given. | Exact. |
+| Let back into a room | Who lifted a room kick. | Exact. |
+
+Server mutes and deafens appear as soon as Discord records them. A server mute
+or deafen that CrackTunes applies to itself (it deafens itself when it joins a
+channel) is not logged. A moderator muting CrackTunes is logged, and so is
+CrackTunes muting someone else.
+
+### What it does not log, and why entries say "matched by timing"
+
+Members leaving a voice channel on their own, switching channels themselves,
+and muting or deafening themselves are never logged. Neither is anything
+CrackTunes does to its own voice state.
+
+Discord's audit log records that a moderator disconnected or moved *someone*,
+but it does not say who. CrackTunes sees each member leave or move, and about 2
+to 5 seconds after it happens it looks at the audit log and matches what
+changed there to the members who left or moved. These entries therefore carry
+the footer "Matched from Discord's audit log by timing", and they are the one
+place CrackTunes can be unsure. When it cannot be sure:
+
+- If several moderators acted around the same time, the entry says "by one of"
+  and lists them.
+- If several people were disconnected together and the audit log cannot say who
+  did which, one line reads "<moderators> disconnected N of: <members>" (it
+  names the first ten members and then "and N more"; with several moderators it
+  starts "One or more of").
+- If the audit log gives CrackTunes nothing it can match with confidence,
+  **nothing is posted**. A missing line does not
+  prove nobody forced the change; a member who left by themselves is also
+  never posted.
+
+Room kicks made from the panel or `/room kick` are logged once, as a room kick,
+and are not also posted as a disconnect.
+
+The kick reason shown in the log is for your moderators. It is never sent to
+the member who was kicked.
+
+### Turning it on
+
+You need **Manage Server** (or to be the server's owner). There are two ways,
+and they change the same settings:
+
+- **Dashboard.** Open dash.cracktun.es, pick the server, then **Settings**.
+  In the "Mod log" section tick "Mod log is on", pick the log channel and press
+  Save. The page also shows which permissions CrackTunes is still missing. Only
+  text channels can be picked; announcement channels cannot.
+- **Discord.** Run `/modlog set channel:<text channel>`. It turns the log on
+  and answers with the status below. `/modlog off` turns it off and keeps the
+  channel for next time. Only members with Manage Server see these commands.
+
+`/modlog status` (it answers only to you) shows whether the log is on and where,
+then either "CrackTunes has everything it needs." or one line for each thing
+still missing. The dashboard shows the same lines.
+
+### Permissions CrackTunes needs
+
+| Permission | Where | Why |
+|---|---|---|
+| View Audit Log | Server-wide (Server Settings, Roles) | To read who muted, deafened, disconnected or moved someone. The audit log is not a channel setting. |
+| View Channel | The log channel | To see it. |
+| Send Messages | The log channel | To post entries. |
+| Embed Links | The log channel | Entries are embeds. |
+
+Room kicks, room mutes and let-backs need only the log channel permissions;
+they do not read the audit log.
+
+If Discord refuses to show CrackTunes the audit log (View Audit Log missing),
+CrackTunes **stops looking for about 10 minutes**, or until the mod log
+settings are saved again, and then tries once more. While it is paused,
+forced disconnects and moves are not logged, and they are not caught up
+afterwards. Room actions are logged as usual. `/modlog status` and the
+dashboard then show "Fetching is paused". Grant View Audit Log and save the
+settings (press Save, or run `/modlog set` again) to resume at once.
+
+Without View Audit Log, Discord also does not tell CrackTunes about server
+mutes and deafens, so those are missed too.
+
+### Who can read it
+
+Whoever the log channel's own Discord permissions let see it. CrackTunes never
+changes a channel's permissions. To keep the log private, make the channel
+visible to only the roles you want: for example, give only your 18+ role View
+Channel and leave it denied for @everyone. `/modlog status` reminds you that
+anyone who can see the channel can read the log.
+
+### Good to know
+
+- Turning the log off stops new entries; entries already posted stay.
+- If the log channel is deleted, or CrackTunes loses permission in it, entries
+  are dropped and CrackTunes keeps working normally. `/modlog status` says what
+  is missing.
+- Only changes that happen while the log is on are recorded; nothing is
+  reconstructed afterwards.
