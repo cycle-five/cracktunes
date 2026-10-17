@@ -4,10 +4,19 @@
 //!
 //! A change (re)arms the server's debounce: [`DEBOUNCE`] after the last
 //! change, at most [`MAX_WAIT`] after the first. The debounce [`flush`]es:
-//! it fetches the kinds the pending changes need, then takes the changes
-//! (so those that arrived during the fetch join the batch: M8b), attributes
-//! them against the snapshots, posts the events, and advances the snapshots
-//! by what it fetched (M9/M10). One fetch runs per server at a time.
+//! it fetches the kinds the pending changes need, waits [`GRACE`], then
+//! attributes the changes against the snapshots, posts the events, and
+//! advances the snapshots by what it fetched (M9/M10). One fetch runs per
+//! server at a time.
+//!
+//! Discord reads its audit log somewhere inside a fetch, and a voice event
+//! can land a little before its audit entry is written or a little after the
+//! fetch's answer (M25). So a change that arrived from [`SKEW`] before a
+//! kind's fetch started until [`GRACE`] after it returned may or may not be
+//! in the rows: if a kind has any such change, that round attributes nothing
+//! of the kind, absorbs its rows, drops its earlier changes and keeps the
+//! overlapping ones for the next round. A kind with none is matched as
+//! usual, from the changes that arrived before its window.
 //!
 //! What a fetch cannot vouch for is never diffed (M8b, M15): a kind whose
 //! fetch failed, or both kinds after a 403 suspension, are re-read on the
@@ -35,6 +44,13 @@ pub const FETCH_LIMIT: u8 = 10;
 /// A fetch that takes longer counts as failed (serenity waits out a 429
 /// rather than failing, and the server's one fetch slot must not stay taken).
 pub const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long after a kind's fetch returns a voice event may still belong to a
+/// unit those rows hold (the gateway can trail the REST answer). A flush
+/// waits this long before it decides (M25).
+pub const GRACE: Duration = Duration::from_secs(1);
+/// How long before a kind's fetch starts a voice event may arrive whose
+/// audit entry is not written yet (M25).
+pub const SKEW: Duration = Duration::from_millis(250);
 
 /// Both kinds, in the order they are fetched.
 const BOTH: [AuditKind; 2] = [AuditKind::Disconnect, AuditKind::Move];
@@ -58,6 +74,12 @@ fn kind_of(c: &Change) -> AuditKind {
     match c {
         Change::Left { .. } => AuditKind::Disconnect,
         Change::Moved { .. } => AuditKind::Move,
+    }
+}
+
+fn target_of(c: &Change) -> UserId {
+    match c {
+        Change::Left { target, .. } | Change::Moved { target, .. } => *target,
     }
 }
 
@@ -132,8 +154,13 @@ fn arm(
         data.modlog.release_debounce(guild, tokio::task::id());
         let busy = flush_once(&data, audit.as_ref(), sink.as_ref(), guild, bot).await;
         // Not done (a fetch was running, or this one was outdated by a
-        // save): the changes wait for the next debounce.
-        if busy == Flushed::Busy && !data.modlog.debounce_armed(guild) {
+        // save), or changes held back (M25): they wait for the next
+        // debounce.
+        let held = data
+            .modlog
+            .batch_existing(guild, |b| !b.pending.is_empty())
+            .unwrap_or(false);
+        if (busy == Flushed::Busy || held) && !data.modlog.debounce_armed(guild) {
             arm(&data, audit, sink, guild, bot, Instant::now() + DEBOUNCE);
         }
     });
@@ -173,13 +200,95 @@ struct Fetched {
     forbidden: bool,
     /// When each attempted kind's fetch started.
     started: Vec<(AuditKind, Instant)>,
-    /// When each attempted kind's fetch returned (or gave up). A change
-    /// after that may have a unit those rows cannot hold.
+    /// When each attempted kind's fetch returned (or gave up). Discord read
+    /// the rows somewhere between the two (see [`Arrival`]).
     returned: Vec<(AuditKind, Instant)>,
 }
 
 fn time_of(times: &[(AuditKind, Instant)], kind: AuditKind) -> Option<Instant> {
     times.iter().find(|(k, _)| *k == kind).map(|(_, at)| *at)
+}
+
+/// When a change of a kind stands against that kind's fetch (M25).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Arrival {
+    /// Before the window: its unit, if it has one, is in the rows.
+    Early,
+    /// From [`SKEW`] before the fetch started to [`GRACE`] after it
+    /// returned: its unit may or may not be in the rows.
+    Overlap,
+    /// After the window: its unit is not in the rows.
+    Late,
+    /// Its kind was not fetched this round.
+    Unread,
+}
+
+/// Where the window of a fetch that started at `start` opens.
+fn opens(start: Instant) -> Instant {
+    start.checked_sub(SKEW).unwrap_or(start)
+}
+
+impl Fetched {
+    fn arrival(&self, kind: AuditKind, at: Instant) -> Arrival {
+        match (time_of(&self.started, kind), time_of(&self.returned, kind)) {
+            (Some(start), Some(back)) => {
+                if at < opens(start) {
+                    Arrival::Early
+                } else if at <= back + GRACE {
+                    Arrival::Overlap
+                } else {
+                    Arrival::Late
+                }
+            },
+            _ => Arrival::Unread,
+        }
+    }
+
+    /// The instant the decision waits for: [`GRACE`] after the last kind
+    /// that was read returned. None when nothing was read (nothing to
+    /// match, so nothing to wait for).
+    fn decide_at(&self) -> Option<Instant> {
+        self.ok
+            .iter()
+            .filter_map(|k| time_of(&self.returned, *k))
+            .max()
+            .map(|back| back + GRACE)
+    }
+}
+
+/// Signed milliseconds from `from` to `at`.
+fn ms_from(at: Instant, from: Instant) -> i128 {
+    if at >= from {
+        (at - from).as_millis() as i128
+    } else {
+        -((from - at).as_millis() as i128)
+    }
+}
+
+/// One debug line per round: each change against its kind's fetch, for
+/// measuring the gateway's lag on a live server.
+fn log_arrivals(guild: GuildId, f: &Fetched, pending: &[(Change, Instant)]) {
+    if !tracing::enabled!(tracing::Level::DEBUG) {
+        return;
+    }
+    let lines: Vec<String> = pending
+        .iter()
+        .filter_map(|(c, at)| {
+            let k = kind_of(c);
+            let start = time_of(&f.started, k)?;
+            let back = time_of(&f.returned, k)?;
+            Some(format!(
+                "{k:?} {} {:+} ms from start, {:+} ms from return: {:?}",
+                target_of(c),
+                ms_from(*at, start),
+                ms_from(*at, back),
+                f.arrival(k, *at)
+            ))
+        })
+        .collect();
+    if !lines.is_empty() {
+        tracing::debug!("modlog: {guild}: round arrivals: {}", lines.join("; "));
+    }
 }
 
 /// The server's fetch slot, taken. Dropped before [`Self::release`] (a
@@ -337,6 +446,13 @@ async fn flush_once(
 
     let slot = InFlight::new(reg, guild, token);
     let fetched = fetch(audit, guild, &kinds).await;
+    // M25: a voice event can trail the fetch's answer; give it GRACE so a
+    // change whose unit the rows hold is seen before anything is decided.
+    if !fetched.forbidden {
+        if let Some(at) = fetched.decide_at() {
+            tokio::time::sleep_until(at).await;
+        }
+    }
 
     let now = Instant::now();
     let outcome = reg.batch_existing(guild, |b| {
@@ -348,17 +464,37 @@ async fn flush_once(
             suspend(b, guild, now);
             return Some(Vec::new());
         }
-        // Taken only now (M8b), so changes that arrived during the fetch
-        // join this batch; but only those its rows can cover (M19): a change
-        // of a kind fetched this round, that arrived before that kind's
-        // fetch returned. The rest wait for the next round.
+        log_arrivals(guild, &fetched, &b.pending);
+        // A kind read this round with a change around its fetch: whether
+        // that change's unit is in the rows is unknown (M25).
+        let overlapped: Vec<AuditKind> = BOTH
+            .into_iter()
+            .filter(|k| {
+                fetched.ok.contains(k)
+                    && b.pending.iter().any(|(c, at)| {
+                        kind_of(c) == *k && fetched.arrival(*k, *at) == Arrival::Overlap
+                    })
+            })
+            .collect();
+        for k in &overlapped {
+            tracing::debug!(
+                "modlog: {guild}: {k:?}: voice activity overlapped the audit read; nothing \
+                 of the kind is attributed this round"
+            );
+        }
+        // Taken: the changes from before their kind's window (M8b, M19,
+        // M25). The rest wait for the next round: overlapping ones, later
+        // ones, and those of a kind not fetched.
         let (taken, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut b.pending)
             .into_iter()
-            .partition(|(c, at)| time_of(&fetched.returned, kind_of(c)).is_some_and(|r| *at <= r));
+            .partition(|(c, at)| fetched.arrival(kind_of(c), *at) == Arrival::Early);
         b.pending = rest;
-        // A kind attributes only when it was read and needs no re-read; the
-        // changes of any other kind are dropped (M15).
-        let attributable = |k: AuditKind| fetched.ok.contains(&k) && !reseed.contains(&k);
+        // A kind attributes only when it was read, needs no re-read (M15)
+        // and nothing overlapped its read (M25); the taken changes of any
+        // other kind are dropped.
+        let attributable = |k: AuditKind| {
+            fetched.ok.contains(&k) && !reseed.contains(&k) && !overlapped.contains(&k)
+        };
         let taken_count = taken.len();
         let changes: Vec<Change> = taken
             .into_iter()
@@ -367,7 +503,8 @@ async fn flush_once(
             .collect();
         if changes.len() < taken_count {
             tracing::debug!(
-                "modlog: {guild}: {} changes dropped: their audit log was not read cleanly",
+                "modlog: {guild}: {} changes dropped: their audit log was not read cleanly, or \
+                 voice activity overlapped the read",
                 taken_count - changes.len()
             );
         }
@@ -378,6 +515,8 @@ async fn flush_once(
             .cloned()
             .collect();
         let events = attribute(&b.snaps, &rows, &changes, bot);
+        // Every kind read is absorbed, overlapped or not: the units the rows
+        // hold are spent either way.
         absorb(b, &fetched);
         Some(events)
     });
@@ -406,8 +545,9 @@ async fn flush_once(
 /// Read both kinds into the snapshots, so the first forced action after the
 /// log becomes active is attributable. For a server with the log on that is
 /// not suspended and has no fetch running (a running flush keeps the
-/// snapshots itself). Pending changes that arrived before their kind was
-/// read are dropped: the seed took in their units.
+/// snapshots itself). Pending changes that arrived before their kind's
+/// window ([`SKEW`] before its fetch) are dropped: the seed took in their
+/// units.
 pub async fn seed(data: &Data, audit: &dyn AuditSource, guild: GuildId) {
     let reg = &data.modlog;
     let now = Instant::now();
@@ -437,9 +577,13 @@ pub async fn seed(data: &Data, audit: &dyn AuditSource, guild: GuildId) {
             suspend(b, guild, now);
             return;
         }
-        // A failed kind is marked for a re-read, which drops these anyway.
-        b.pending
-            .retain(|(c, at)| !time_of(&fetched.started, kind_of(c)).is_some_and(|s| *at < s));
+        // The changes from before their kind's window went into the seed;
+        // from the window on (M25) they wait for the next round, which
+        // reads their units if the seed did not. A failed kind is marked for
+        // a re-read, which drops its changes anyway.
+        b.pending.retain(|(c, at)| {
+            !time_of(&fetched.started, kind_of(c)).is_some_and(|s| *at < opens(s))
+        });
         absorb(b, &fetched);
     });
     slot.release();
@@ -545,9 +689,17 @@ mod tests {
         }
     }
 
-    /// Move the paused clock on, then let the timers run.
+    /// Move the paused clock on in one step, then let the timers run (a
+    /// timer due inside the step fires at its end).
     async fn after(d: Duration) {
         tokio::time::advance(d).await;
+        settle().await;
+    }
+
+    /// Let `d` pass with every timer firing at its own instant: the paused
+    /// clock jumps from one due timer to the next while the test sleeps.
+    async fn run(d: Duration) {
+        tokio::time::sleep(d).await;
         settle().await;
     }
 
@@ -580,13 +732,18 @@ mod tests {
         }
 
         fn change(&self, c: Change) {
+            self.change_at(c, Instant::now());
+        }
+
+        /// A change stamped as arriving at `at`.
+        fn change_at(&self, c: Change, at: Instant) {
             record_change(
                 &self.data,
                 self.audit.clone(),
                 self.sink.clone(),
                 G,
                 c,
-                Instant::now(),
+                at,
                 BOT,
             );
         }
@@ -655,6 +812,12 @@ mod tests {
             [(G, Disconnect, 10)],
             "one fetch, of the disconnect log, limit 10"
         );
+        after(GRACE - ms(1)).await;
+        assert!(
+            w.sink.posted().is_empty(),
+            "nothing is decided until GRACE after the fetch returned"
+        );
+        after(ms(1)).await;
         assert_eq!(
             w.sink.posted(),
             vec![(G, disc(T1, By(M1))), (G, disc(T2, By(M1)))]
@@ -710,7 +873,7 @@ mod tests {
         // M1 disconnects T1: the entry ticks up to 4.
         w.dc(vec![dc(5, M1, 4)]);
         w.change(left(T1));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         assert_eq!(w.sink.events(), vec![disc(T1, By(M1))]);
     }
 
@@ -719,13 +882,13 @@ mod tests {
         let w = W::new();
         w.dc(vec![dc(5, M1, 3)]);
         w.change(left(T1));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         assert!(w.sink.events().is_empty(), "3 old units are not T1's");
         let snaps = w.data.modlog.snapshots(G).expect("held");
         assert!(snaps.disconnect.seeded, "the flush seeded what it read");
         w.dc(vec![dc(5, M1, 4)]);
         w.change(left(T2));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         assert_eq!(w.sink.events(), vec![disc(T2, By(M1))]);
     }
 
@@ -807,13 +970,13 @@ mod tests {
         // unit, one leave, and a diff would name M1.
         let s0 = w.fetches();
         w.change(left(T2));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         assert_eq!(w.kinds_since(s0), [Disconnect, Move], "a re-seed of both");
         assert!(w.sink.events().is_empty(), "T2 is not blamed for T1's unit");
         assert!(w.reseed().is_empty());
         w.dc(vec![dc(1, M1, 2)]);
         w.change(left(T3));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         assert_eq!(w.sink.events(), vec![disc(T3, By(M1))]);
     }
 
@@ -827,7 +990,7 @@ mod tests {
             .fail_next(G, Disconnect, AuditError::Other("boom".into()));
         w.change(left(T1));
         w.change(moved(T2, C2));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         assert_eq!(
             w.sink.events(),
             vec![mov(T2, C2, By(M2))],
@@ -837,13 +1000,13 @@ mod tests {
         // T3 leaves on their own; the log still holds T1's unseen unit.
         let s0 = w.fetches();
         w.change(left(T3));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         assert_eq!(w.kinds_since(s0), [Disconnect]);
         assert_eq!(w.sink.events().len(), 1, "T3 is not blamed for T1's unit");
         assert!(w.reseed().is_empty());
         w.dc(vec![dc(1, M1, 2)]);
         w.change(left(T4));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         assert_eq!(w.sink.events()[1..], [disc(T4, By(M1))]);
     }
 
@@ -854,11 +1017,11 @@ mod tests {
         w.audit
             .fail_next(G, Disconnect, AuditError::Other("boom".into()));
         w.change(left(T1));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         let s0 = w.fetches();
         w.mv(vec![mv(2, M2, 1, C2)]);
         w.change(moved(T2, C2));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
         assert_eq!(w.sink.events(), vec![mov(T2, C2, By(M2))]);
         assert!(w.reseed().is_empty());
@@ -1029,7 +1192,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_leave_after_its_kinds_fetch_returned_waits_for_the_next_round() {
+    async fn a_leave_after_its_kinds_window_waits_for_the_next_round() {
         let w = W::new();
         w.seed().await;
         let s0 = w.fetches();
@@ -1040,58 +1203,152 @@ mod tests {
         w.change(moved(T2, C2));
         after(DEBOUNCE).await; // t = 2: disconnects read until 3
         after(secs(1)).await; // t = 3: then moves, until 4
-        after(ms(500)).await; // t = 3.5
-                              // M1 disconnects T3 now, after the disconnect rows were read.
+        after(secs(1)).await; // t = 4: the disconnect window has closed
+        after(ms(500)).await;
+        // t = 4.5: M1 disconnects T3, after the disconnect rows were read.
         w.dc(vec![dc(1, M1, 2)]);
         w.change(left(T3));
-        after(ms(500)).await; // t = 4: the round ends
-        assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
+        // t = 5: GRACE after the moves returned. T3's debounce, also due
+        // now, may already have started a fetch.
+        after(ms(500)).await;
+        assert_eq!(w.kinds_since(s0)[..2], [Disconnect, Move]);
         assert_eq!(
             w.sink.events(),
             vec![disc(T1, By(M1)), mov(T2, C2, By(M2))],
             "T3 is not judged by rows read before it left"
         );
-        assert_eq!(w.pending(), 1, "T3 waits");
-        after(DEBOUNCE).await; // t = 6: T3's debounce fired at 5.5
-        after(secs(1)).await; // t = 7
+        assert_eq!(w.pending_changes(), vec![left(T3)], "T3 waits");
+        run(secs(10)).await;
         assert_eq!(w.sink.events()[2..], [disc(T3, By(M1))]);
         // T4 leaves on their own: no unit is left over to pin on M1.
         w.change(left(T4));
-        after(DEBOUNCE).await;
-        after(secs(1)).await;
+        run(secs(10)).await;
         assert_eq!(w.sink.events().len(), 3);
+    }
+
+    /// A leave inside the disconnect window holds back the disconnects of
+    /// that round, and only them: the moves are matched as usual.
+    #[tokio::test(start_paused = true)]
+    async fn an_overlapping_change_holds_back_only_its_kind() {
+        let w = W::new();
+        w.seed().await;
+        w.dc(vec![dc(1, M1, 1)]);
+        w.mv(vec![mv(2, M2, 1, C2)]);
+        w.audit.set_delay(secs(1));
+        w.change(left(T1));
+        w.change(moved(T2, C2));
+        after(DEBOUNCE).await; // t = 2: disconnects read until 3
+        after(secs(1)).await; // t = 3: then moves, until 4
+        after(ms(500)).await;
+        // t = 3.5: M1 disconnects T3 after the disconnect rows were read,
+        // but inside their window.
+        w.dc(vec![dc(1, M1, 2)]);
+        w.change(left(T3));
+        after(ms(500)).await; // t = 4: moves returned
+        after(GRACE).await; // t = 5: decided
+        assert_eq!(
+            w.sink.events(),
+            vec![mov(T2, C2, By(M2))],
+            "T1 is not matched in a round T3 overlapped"
+        );
+        assert_eq!(w.pending_changes(), vec![left(T3)], "T1 dropped, T3 waits");
+        assert_eq!(
+            w.data.modlog.snapshots(G).expect("held").disconnect.counts[&1],
+            1,
+            "the unit read went into the snapshot"
+        );
+        run(secs(10)).await;
+        assert_eq!(
+            w.sink.events()[1..],
+            [disc(T3, By(M1))],
+            "the next round reads T3's unit"
+        );
+        w.change(left(T4));
+        run(secs(10)).await;
+        assert_eq!(w.sink.events().len(), 2, "T4 is not named");
+    }
+
+    /// The window's edges (M25): it opens SKEW before a fetch starts and
+    /// closes GRACE after it returns, both edges inside it.
+    #[tokio::test(start_paused = true)]
+    async fn the_window_opens_skew_before_the_fetch_and_closes_grace_after_it() {
+        // Four leaves keep the debounce going until the 5 s cap: the fetch
+        // starts at 5, so the window opens at 4.75.
+        for (last, matched) in [(ms(4750), false), (ms(4749), true)] {
+            let w = W::new();
+            w.seed().await;
+            w.dc(vec![dc(1, M1, 4)]);
+            w.change(left(T1));
+            after(ms(1900)).await;
+            w.change(left(T2));
+            after(ms(1900)).await;
+            w.change(left(T3));
+            after(last - ms(3800)).await;
+            w.change(left(T4));
+            run(secs(10)).await;
+            let want = if matched {
+                [T1, T2, T3, T4].map(|t| disc(t, By(M1))).to_vec()
+            } else {
+                Vec::new()
+            };
+            assert_eq!(w.sink.events(), want, "the last leave at {last:?}");
+            assert_eq!(w.pending(), 0, "a held-back leave gets a round of its own");
+        }
+        // No delay: the fetch returns at 2, so the window closes at 3.
+        for (stamp, held_back) in [(secs(3), true), (ms(3001), false)] {
+            let w = W::new();
+            w.seed().await;
+            let t0 = Instant::now();
+            w.dc(vec![dc(1, M1, 1)]);
+            w.change(left(T1));
+            after(DEBOUNCE).await; // t = 2: fetched
+            after(ms(500)).await;
+            w.change_at(left(T2), t0 + stamp);
+            after(ms(500)).await; // t = 3: decided
+            let want = if held_back {
+                Vec::new()
+            } else {
+                vec![disc(T1, By(M1))]
+            };
+            assert_eq!(w.sink.events(), want, "T2 stamped at {stamp:?}");
+            assert_eq!(w.pending_changes(), vec![left(T2)], "T2 waits either way");
+        }
     }
 
     #[tokio::test(start_paused = true)]
     async fn a_seed_drops_the_changes_whose_units_it_read() {
         let w = W::new();
-        // T1 and T3 were forced before the seed: their units are in the log.
+        // T1 and T3 were forced well before the seed: their units are in
+        // the log.
         w.dc(vec![dc(1, M1, 1)]);
         w.mv(vec![mv(2, M1, 1, C2)]);
         w.change(left(T1));
         w.change(moved(T3, C2));
-        after(ms(100)).await;
+        after(ms(400)).await; // t = 0.4
+        w.change(left(T4)); // within SKEW of the seed's start: kept
+        after(ms(100)).await; // t = 0.5
         w.audit.set_delay(secs(1));
         let (data, audit) = (w.data.clone(), w.audit.clone());
         let seeding = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
-        settle().await; // t = 0.1: disconnects are read until 1.1
-        after(ms(500)).await; // t = 0.6
+        settle().await; // t = 0.5: disconnects are read until 1.5
+        after(ms(500)).await; // t = 1
         w.change(left(T2)); // during that read: kept
-        after(ms(500)).await; // t = 1.1: then moves, until 2.1
-        after(secs(1)).await; // t = 2.1
+        after(ms(500)).await; // t = 1.5: then moves, until 2.5
+        after(secs(1)).await; // t = 2.5
         assert!(seeding.is_finished());
         assert_eq!(
             w.pending_changes(),
-            vec![left(T2)],
+            vec![left(T4), left(T2)],
             "T1 and T3 went into the seed"
         );
-        // M2 had disconnected T2.
+        // M2 had disconnected T4 and T2, and the seed read neither unit.
         w.audit.set_delay(Duration::ZERO);
-        w.dc(vec![dc(1, M1, 1), dc(3, M2, 1)]);
+        w.dc(vec![dc(1, M1, 1), dc(3, M2, 2)]);
         let s0 = w.fetches();
-        after(ms(500)).await; // t = 2.6: T2's debounce
+        after(ms(500)).await; // t = 3: T2's debounce
         assert_eq!(w.kinds_since(s0), [Disconnect], "nothing left of the move");
-        assert_eq!(w.sink.events(), vec![disc(T2, By(M2))]);
+        after(GRACE).await;
+        assert_eq!(w.sink.events(), vec![disc(T2, By(M2)), disc(T4, By(M2))]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1115,6 +1372,7 @@ mod tests {
         assert_eq!(w.pending(), 1, "T1 waits for a fetch after the save");
         after(DEBOUNCE).await; // t = 5: retried, read until 6
         after(secs(1)).await;
+        after(GRACE).await; // t = 7: decided
         assert_eq!(w.sink.events(), vec![disc(T1, By(M1))]);
     }
 
@@ -1191,31 +1449,125 @@ mod tests {
         // A moderator disconnects CrackTunes.
         w.dc(vec![dc(1, M1, 1)]);
         w.change(left(BOT));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
         assert_eq!(w.kinds_since(s0), [Disconnect]);
         assert!(w.sink.events().is_empty(), "never logged");
         // Its unit is spent: T1 leaving on their own is not blamed on M1.
         w.change(left(T1));
-        after(DEBOUNCE).await;
+        run(DEBOUNCE + GRACE).await;
+        assert_eq!(w.kinds_since(s0), [Disconnect, Disconnect]);
         assert!(w.sink.events().is_empty());
     }
 
+    /// M25 replaces M8b's "changes during the fetch join its batch": the
+    /// read may or may not hold such a change's unit, so it holds its kind
+    /// back for a round instead.
     #[tokio::test(start_paused = true)]
-    async fn changes_arriving_during_the_fetch_join_its_batch() {
+    async fn a_change_during_the_fetch_holds_its_kind_back() {
         let w = W::new();
         w.seed().await;
         let s0 = w.fetches();
         w.audit.set_delay(ms(500));
+        w.dc(vec![dc(1, M1, 1)]);
         w.change(left(T1));
         after(DEBOUNCE).await;
         assert_eq!(w.kinds_since(s0), [Disconnect], "the fetch is running");
         // T2 is disconnected while it runs; the log it reads has both.
         w.change(left(T2));
         w.dc(vec![dc(1, M1, 2)]);
-        after(ms(500)).await;
-        assert_eq!(w.sink.events(), vec![disc(T1, By(M1)), disc(T2, By(M1))]);
-        after(DEBOUNCE * 2).await;
-        assert_eq!(w.fetches(), s0 + 1, "T2 went with that batch");
+        after(ms(500)).await; // the response
+        after(GRACE).await; // decided
+        assert!(w.sink.events().is_empty(), "{:?}", w.sink.events());
+        assert_eq!(w.pending_changes(), vec![left(T2)], "T1 dropped, T2 waits");
+        assert_eq!(
+            w.data.modlog.snapshots(G).expect("held").disconnect.counts[&1],
+            2,
+            "both units went into the snapshot"
+        );
+        run(secs(10)).await;
+        assert_eq!(w.fetches(), s0 + 2, "T2 had a round of its own");
+        assert!(w.sink.events().is_empty(), "its unit was already spent");
+        // T3 leaves on their own: no unit is left over to pin on M1.
+        w.change(left(T3));
+        run(secs(10)).await;
+        assert!(w.sink.events().is_empty(), "{:?}", w.sink.events());
+    }
+
+    /// A held-back round still spends the units it read: T1's forced unit
+    /// must not wait for T2, who left on their own during the fetch.
+    #[tokio::test(start_paused = true)]
+    async fn a_held_back_round_spends_the_units_it_read() {
+        let w = W::new();
+        w.seed().await;
+        w.audit.set_delay(ms(500));
+        w.dc(vec![dc(1, M1, 1)]); // M1 disconnected T1
+        w.change(left(T1));
+        after(DEBOUNCE).await; // t = 2: the fetch runs until 2.5
+        after(ms(100)).await;
+        w.change(left(T2)); // T2 leaves on their own during it
+        run(secs(10)).await;
+        assert!(
+            w.sink.events().is_empty(),
+            "T2 is not named for T1's unit: {:?}",
+            w.sink.events()
+        );
+        assert_eq!(w.pending(), 0);
+    }
+
+    /// P1 (final review): Discord reads the log when the request reaches
+    /// it, and a voice event can land after the response. T2's unit is in
+    /// the rows while T2's leave is not yet seen; a diff would pin it on T1,
+    /// who left on their own.
+    #[tokio::test(start_paused = true)]
+    async fn a_unit_read_before_its_change_arrives_names_nobody() {
+        let w = W::new();
+        w.seed().await;
+        w.audit.read_at_start();
+        w.audit.set_delay(ms(50));
+        w.change(left(T1)); // T1 leaves on their own
+        after(ms(1990)).await;
+        w.dc(vec![dc(7, M1, 1)]); // t = 1.99: M1 disconnects T2
+        after(ms(10)).await; // t = 2: the fetch reads T2's unit
+        after(ms(50)).await; // t = 2.05: the response is back
+        w.change(left(T2)); // ...and T2's voice event lands after it
+        run(secs(10)).await;
+        assert!(
+            w.sink.events().is_empty(),
+            "nobody is named: {:?}",
+            w.sink.events()
+        );
+        assert_eq!(w.pending(), 0, "T2 was judged in the next round");
+        // T2's unit went into the snapshot: T3 leaving later is not blamed.
+        w.change(left(T3));
+        run(secs(10)).await;
+        assert!(w.sink.events().is_empty(), "{:?}", w.sink.events());
+    }
+
+    /// P2 (final review): T2's leave lands during the fetch, but Discord
+    /// wrote T2's unit after it read the log. Taking T2 then would leave the
+    /// unit for whoever leaves next, however much later.
+    #[tokio::test(start_paused = true)]
+    async fn a_unit_written_after_the_read_is_not_carried_forward() {
+        let w = W::new();
+        w.seed().await;
+        w.audit.read_at_start();
+        w.audit.set_delay(ms(300));
+        w.change(left(T1)); // T1 leaves on their own
+        after(secs(2)).await; // t = 2: the fetch reads an unchanged log
+        after(ms(100)).await; // t = 2.1
+        w.dc(vec![dc(7, M1, 1)]); // M1 disconnects T2 after the read
+        w.change(left(T2)); // ...and T2's voice event beats the response
+        after(ms(200)).await; // t = 2.3: the response
+        run(secs(5)).await;
+        assert_eq!(
+            w.sink.events(),
+            vec![disc(T2, By(M1))],
+            "T2 is matched in the next round, which reads its unit"
+        );
+        run(secs(3600)).await;
+        w.change(left(T3)); // an hour later, T3 leaves on their own
+        run(secs(10)).await;
+        assert_eq!(w.sink.events(), vec![disc(T2, By(M1))], "T3 is not named");
     }
 
     #[tokio::test(start_paused = true)]
@@ -1227,16 +1579,18 @@ mod tests {
         w.mv(vec![mv(2, M2, 1, C2)]);
         w.change(left(T1));
         after(DEBOUNCE).await; // t = 2: the disconnect fetch runs until 5
-        w.change(moved(T2, C2));
-        after(DEBOUNCE).await; // t = 4: T2's debounce finds it running
+        after(ms(500)).await;
+        w.change(moved(T2, C2)); // t = 2.5: its debounce, 4.5
+        after(DEBOUNCE).await; // t = 4.5: T2's debounce finds it running
         assert_eq!(w.kinds_since(s0), [Disconnect]);
         assert_eq!(w.audit.most_running(), 1);
-        after(secs(1)).await; // t = 5: done; T2's kind was not fetched
+        after(ms(500)).await; // t = 5: returned
+        after(GRACE).await; // t = 6: decided; T2's kind was not fetched
         assert_eq!(w.kinds_since(s0), [Disconnect]);
         assert_eq!(w.pending(), 1, "T2 waits");
-        after(secs(1)).await; // t = 6: the next debounce
+        after(ms(500)).await; // t = 6.5: the next debounce
         assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
-        after(secs(3)).await;
+        run(secs(5)).await;
         assert_eq!(w.audit.most_running(), 1, "never two at once");
         assert_eq!(w.sink.events(), vec![mov(T2, C2, By(M2))]);
     }

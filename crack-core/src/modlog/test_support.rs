@@ -20,13 +20,17 @@ struct AuditInner {
     failures: HashMap<(GuildId, AuditKind), VecDeque<AuditError>>,
     /// How long each fetch takes (on tokio's clock).
     delay: Duration,
+    /// How far into a fetch the rows are read; `None` reads them at the end.
+    read_after: Option<Duration>,
     running: usize,
     most_running: usize,
 }
 
 /// A scripted audit log. A fetch answers the rows set for its (guild,
-/// kind) when it ends (after [`Self::set_delay`]), or the next queued
-/// failure.
+/// kind), or the next queued failure, as they stood at its read instant:
+/// the end of the fetch (after [`Self::set_delay`]) unless
+/// [`Self::set_read_after`] moves it earlier. Discord reads its audit log
+/// when the request reaches it, anywhere inside the fetch.
 #[derive(Default)]
 pub struct FakeAudit {
     inner: Mutex<AuditInner>,
@@ -54,6 +58,17 @@ impl FakeAudit {
         self.inner.lock().unwrap().delay = d;
     }
 
+    /// Every fetch from now on reads the log `d` after it starts (capped at
+    /// its delay), then takes the rest of its delay to answer.
+    pub fn set_read_after(&self, d: Duration) {
+        self.inner.lock().unwrap().read_after = Some(d);
+    }
+
+    /// Every fetch from now on reads the log the moment it starts.
+    pub fn read_at_start(&self) {
+        self.set_read_after(Duration::ZERO);
+    }
+
     /// Every fetch started so far: (guild, kind, limit).
     pub fn calls(&self) -> Vec<(GuildId, AuditKind, u8)> {
         self.inner.lock().unwrap().calls.clone()
@@ -78,26 +93,33 @@ impl AuditSource for FakeAudit {
         kind: AuditKind,
         limit: u8,
     ) -> Result<Vec<AuditRow>, AuditError> {
-        let delay = {
+        let (before, after) = {
             let mut i = self.inner.lock().unwrap();
             i.calls.push((guild, kind, limit));
             i.running += 1;
             i.most_running = i.most_running.max(i.running);
-            i.delay
+            let before = i.read_after.map_or(i.delay, |r| r.min(i.delay));
+            (before, i.delay - before)
         };
-        if !delay.is_zero() {
-            tokio::time::sleep(delay).await;
+        if !before.is_zero() {
+            tokio::time::sleep(before).await;
         }
-        let mut i = self.inner.lock().unwrap();
-        i.running -= 1;
-        if let Some(e) = i
-            .failures
-            .get_mut(&(guild, kind))
-            .and_then(VecDeque::pop_front)
-        {
-            return Err(e);
+        let read = {
+            let mut i = self.inner.lock().unwrap();
+            match i
+                .failures
+                .get_mut(&(guild, kind))
+                .and_then(VecDeque::pop_front)
+            {
+                Some(e) => Err(e),
+                None => Ok(i.rows.get(&(guild, kind)).cloned().unwrap_or_default()),
+            }
+        };
+        if !after.is_zero() {
+            tokio::time::sleep(after).await;
         }
-        Ok(i.rows.get(&(guild, kind)).cloned().unwrap_or_default())
+        self.inner.lock().unwrap().running -= 1;
+        read
     }
 }
 
