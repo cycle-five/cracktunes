@@ -1973,11 +1973,11 @@ mod tests {
         assert_eq!(
             w.discord.calls(),
             vec![
-                Call::Move(TARGET.get(), None),
                 Call::Put(
                     ROOM.get(),
                     ow(OverwriteTarget::Member { id: TARGET }, NONE, V | C)
                 ),
+                Call::Move(TARGET.get(), None),
             ]
         );
         assert_eq!(w.transport.ops(), vec![Op::Edit(ROOM.get(), PANEL.get())]);

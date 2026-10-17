@@ -74,18 +74,24 @@ pub async fn act(
     let done = apply(&mut next, &action, actor);
 
     // 5-6. Discord. Any failure returns here, with nothing persisted.
+    let before = room_overwrites(guild, facts.bot, &live.baseline, &live.state);
+    let after = room_overwrites(guild, facts.bot, &live.baseline, &next);
+    write_overwrites(cx.discord, room, &before, &after).await?;
+    // A kick shuts them out first (above), then disconnects them: a refused
+    // deny has done nothing, and a refused disconnect still leaves the kick
+    // standing, since they cannot come back.
     if let RoomAction::Kick { target, .. } = &action {
         if facts.in_room(*target, room) {
             match cx.discord.move_member(guild, *target, None).await {
                 // Left voice since the snapshot: nobody to disconnect.
                 Ok(()) | Err(DiscordError::NotConnected) => {},
-                Err(e) => return Err(refusal(room, e)),
+                Err(err) => tracing::warn!(
+                    "rooms: {target} is kicked from {room} but disconnecting them failed; they \
+                     stay blocked: {err:?}"
+                ),
             }
         }
     }
-    let before = room_overwrites(guild, facts.bot, &live.baseline, &live.state);
-    let after = room_overwrites(guild, facts.bot, &live.baseline, &next);
-    write_overwrites(cx.discord, room, &before, &after).await?;
     match &action {
         RoomAction::Limit(n) => cx
             .discord
@@ -744,7 +750,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn kick_disconnects_then_denies_and_returns_kicked() {
+    async fn kick_denies_then_disconnects_and_returns_kicked() {
         let mut room = live(vec![]);
         room.state.helpers.insert(TARGET);
         room.state.permitted_users.insert(TARGET);
@@ -754,9 +760,10 @@ mod tests {
         assert_eq!(
             w.discord.calls(),
             vec![
-                Call::Move(TARGET.get(), None),
                 Call::Put(ROOM.get(), ow(member(TARGET), NONE, V | C)),
-            ]
+                Call::Move(TARGET.get(), None),
+            ],
+            "shut out first, so a refused disconnect still leaves them out"
         );
         let state = w.room().await.state;
         assert!(state.blocked.contains(&TARGET));
@@ -781,22 +788,48 @@ mod tests {
         assert_eq!(
             w.discord.calls(),
             vec![
-                Call::Move(TARGET.get(), None),
                 Call::Put(ROOM.get(), ow(member(TARGET), NONE, V | C)),
+                Call::Move(TARGET.get(), None),
             ]
         );
         assert!(w.room().await.state.blocked.contains(&TARGET));
 
-        // Any other refusal of the disconnect still stops the kick.
+        // A disconnect refused for any other reason, once they are denied:
+        // the kick stands (they are blocked), and the failure is logged.
         let w = World::new(live(vec![]));
         w.discord
             .fail_next(CallKind::Move, DiscordError::MissingPermissions);
         assert_eq!(
             w.act(&facts(), OWNER, kick(TARGET)).await,
+            Ok(RoomDone::Kicked(TARGET))
+        );
+        assert_eq!(
+            w.discord.calls(),
+            vec![
+                Call::Put(ROOM.get(), ow(member(TARGET), NONE, V | C)),
+                Call::Move(TARGET.get(), None),
+            ]
+        );
+        assert!(w.room().await.state.blocked.contains(&TARGET));
+        assert_eq!(w.transport.ops(), vec![Op::Edit(ROOM.get(), PANEL.get())]);
+    }
+
+    #[tokio::test]
+    async fn a_kick_whose_deny_is_refused_does_nothing() {
+        let w = World::new(live(vec![]));
+        w.discord
+            .fail_next(CallKind::Put, DiscordError::MissingPermissions);
+        assert_eq!(
+            w.act(&facts(), OWNER, kick(TARGET)).await,
             Err(RoomRefusal::MissingPermissions)
         );
-        assert_eq!(w.discord.calls(), vec![Call::Move(TARGET.get(), None)]);
+        assert_eq!(
+            w.discord.calls(),
+            vec![Call::Put(ROOM.get(), ow(member(TARGET), NONE, V | C))],
+            "not disconnected"
+        );
         assert!(w.room().await.state.blocked.is_empty());
+        assert_eq!(w.transport.ops(), vec![], "no panel edit");
     }
 
     #[tokio::test]
