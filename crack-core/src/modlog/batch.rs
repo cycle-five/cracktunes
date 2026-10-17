@@ -16,7 +16,7 @@
 use super::attribution::{advance, attribute, AuditKind, AuditRow, Change};
 use super::audit::{AuditError, AuditSource};
 use super::event::ModLogEvent;
-use super::registry::{GuildBatch, ModLogRegistry};
+use super::registry::{next_fetch, GuildBatch, ModLogRegistry};
 use crate::Data;
 use serenity::all::{GuildId, UserId};
 use serenity::async_trait;
@@ -75,6 +75,7 @@ pub fn record_change(
     bot: UserId,
 ) {
     let reg = &data.modlog;
+    // Off: return before anything is looked up or held.
     if !reg.is_enabled(guild) {
         return;
     }
@@ -89,12 +90,14 @@ pub fn record_change(
     if reg.is_suspended(guild, now) {
         return;
     }
-    let deadline = reg.batch(guild, |b| {
+    let deadline = reg.batch_if_enabled(guild, |b| {
         b.pending.push((change, now));
         let first = b.pending.iter().map(|(_, at)| *at).min().unwrap_or(now);
         (now + DEBOUNCE).min(first + MAX_WAIT)
     });
-    arm(data, audit, sink, guild, bot, deadline);
+    if let Some(deadline) = deadline {
+        arm(data, audit, sink, guild, bot, deadline);
+    }
 }
 
 /// Arm the server's debounce for `deadline`, replacing any armed one.
@@ -120,7 +123,8 @@ fn arm(
         // arms a new debounce, which would abort this one mid-flush.
         data.modlog.release_debounce(guild, tokio::task::id());
         let busy = flush_once(&data, audit.as_ref(), sink.as_ref(), guild, bot).await;
-        // A fetch was running: these changes wait for the next debounce.
+        // Not done (a fetch was running, or this one was outdated by a
+        // save): the changes wait for the next debounce.
         if busy == Flushed::Busy && !data.modlog.debounce_armed(guild) {
             arm(&data, audit, sink, guild, bot, Instant::now() + DEBOUNCE);
         }
@@ -134,7 +138,8 @@ fn arm(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Flushed {
-    /// Another fetch for the server was running; nothing was done.
+    /// Nothing was done: another fetch for the server was running, or this
+    /// one was outdated by a settings save. Try again later.
     Busy,
     Done,
 }
@@ -145,6 +150,7 @@ enum Claim {
     Idle,
     Go {
         epoch: u64,
+        token: u64,
         kinds: Vec<AuditKind>,
         reseed: Vec<AuditKind>,
     },
@@ -157,6 +163,15 @@ struct Fetched {
     failed: Vec<AuditKind>,
     rows: Vec<AuditRow>,
     forbidden: bool,
+    /// When each attempted kind's fetch started.
+    started: Vec<(AuditKind, Instant)>,
+    /// When each attempted kind's fetch returned (or gave up). A change
+    /// after that may have a unit those rows cannot hold.
+    returned: Vec<(AuditKind, Instant)>,
+}
+
+fn time_of(times: &[(AuditKind, Instant)], kind: AuditKind) -> Option<Instant> {
+    times.iter().find(|(k, _)| *k == kind).map(|(_, at)| *at)
 }
 
 /// The server's fetch slot, taken. Dropped before [`Self::release`] (a
@@ -165,16 +180,16 @@ struct Fetched {
 struct InFlight<'a> {
     reg: &'a ModLogRegistry,
     guild: GuildId,
-    epoch: u64,
+    token: u64,
     held: bool,
 }
 
 impl<'a> InFlight<'a> {
-    fn new(reg: &'a ModLogRegistry, guild: GuildId, epoch: u64) -> Self {
+    fn new(reg: &'a ModLogRegistry, guild: GuildId, token: u64) -> Self {
         Self {
             reg,
             guild,
-            epoch,
+            token,
             held: true,
         }
     }
@@ -185,11 +200,18 @@ impl<'a> InFlight<'a> {
     }
 }
 
+/// Free the slot if `token` still holds it.
+fn free_slot(b: &mut GuildBatch, token: u64) {
+    if b.in_flight == Some(token) {
+        b.in_flight = None;
+    }
+}
+
 impl Drop for InFlight<'_> {
     fn drop(&mut self) {
         if self.held {
-            self.reg
-                .batch_existing(self.guild, Some(self.epoch), |b| b.in_flight = false);
+            let token = self.token;
+            self.reg.batch_existing(self.guild, |b| free_slot(b, token));
         }
     }
 }
@@ -198,9 +220,11 @@ impl Drop for InFlight<'_> {
 async fn fetch(audit: &dyn AuditSource, guild: GuildId, kinds: &[AuditKind]) -> Fetched {
     let mut f = Fetched::default();
     for &kind in kinds {
+        f.started.push((kind, Instant::now()));
         let read = tokio::time::timeout(FETCH_TIMEOUT, audit.recent(guild, kind, FETCH_LIMIT))
             .await
             .unwrap_or_else(|_| Err(AuditError::Other("timed out".into())));
+        f.returned.push((kind, Instant::now()));
         match read {
             Ok(rows) => {
                 f.ok.push(kind);
@@ -265,13 +289,9 @@ async fn flush_once(
     bot: UserId,
 ) -> Flushed {
     let reg = &data.modlog;
-    if !reg.is_enabled(guild) {
-        reg.forget(guild);
-        return Flushed::Done;
-    }
     let now = Instant::now();
-    let claim = reg.batch_existing(guild, None, |b| {
-        if b.in_flight {
+    let claim = reg.batch_existing(guild, |b| {
+        if b.in_flight.is_some() {
             return Claim::Busy;
         }
         if b.suspended(now) {
@@ -287,38 +307,46 @@ async fn flush_once(
         if kinds.is_empty() {
             return Claim::Idle;
         }
-        b.in_flight = true;
+        let token = next_fetch();
+        b.in_flight = Some(token);
         Claim::Go {
             epoch: b.epoch,
+            token,
             kinds,
             reseed: b.reseed.clone(),
         }
     });
-    let (epoch, kinds, reseed) = match claim {
+    let (epoch, token, kinds, reseed) = match claim {
         None | Some(Claim::Idle) => return Flushed::Done,
         Some(Claim::Busy) => return Flushed::Busy,
         Some(Claim::Go {
             epoch,
+            token,
             kinds,
             reseed,
-        }) => (epoch, kinds, reseed),
+        }) => (epoch, token, kinds, reseed),
     };
 
-    let slot = InFlight::new(reg, guild, epoch);
+    let slot = InFlight::new(reg, guild, token);
     let fetched = fetch(audit, guild, &kinds).await;
 
     let now = Instant::now();
-    let events = reg.batch_existing(guild, Some(epoch), |b| {
-        b.in_flight = false;
+    let outcome = reg.batch_existing(guild, |b| {
+        free_slot(b, token);
+        if b.epoch != epoch {
+            return None;
+        }
         if fetched.forbidden {
             suspend(b, guild, now);
-            return Vec::new();
+            return Some(Vec::new());
         }
-        // Taken only now (M8b): changes that arrived during the fetch join
-        // this batch. A change of a kind not fetched waits for the next.
+        // Taken only now (M8b), so changes that arrived during the fetch
+        // join this batch; but only those its rows can cover (M19): a change
+        // of a kind fetched this round, that arrived before that kind's
+        // fetch returned. The rest wait for the next round.
         let (taken, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut b.pending)
             .into_iter()
-            .partition(|(c, _)| kinds.contains(&kind_of(c)));
+            .partition(|(c, at)| time_of(&fetched.returned, kind_of(c)).is_some_and(|r| *at <= r));
         b.pending = rest;
         // A kind attributes only when it was read and needs no re-read; the
         // changes of any other kind are dropped (M15).
@@ -343,50 +371,68 @@ async fn flush_once(
             .collect();
         let events = attribute(&b.snaps, &rows, &changes, bot);
         absorb(b, &fetched);
-        events
+        Some(events)
     });
     slot.release();
-    let Some(events) = events else {
-        tracing::debug!("modlog: {guild}: state forgotten during a fetch; nothing posted");
-        return Flushed::Done;
-    };
-    for e in events {
-        sink.post(guild, e).await;
+    match outcome {
+        None => {
+            tracing::debug!("modlog: {guild}: state forgotten during a fetch; nothing posted");
+            Flushed::Done
+        },
+        Some(None) => {
+            tracing::debug!(
+                "modlog: {guild}: a fetch was outdated (settings saved, or the log turned off \
+                 and on); it is discarded"
+            );
+            Flushed::Busy
+        },
+        Some(Some(events)) => {
+            for e in events {
+                sink.post(guild, e).await;
+            }
+            Flushed::Done
+        },
     }
-    Flushed::Done
 }
 
 /// Read both kinds into the snapshots, so the first forced action after the
 /// log becomes active is attributable. For a server with the log on that is
 /// not suspended and has no fetch running (a running flush keeps the
-/// snapshots itself).
+/// snapshots itself). Pending changes that arrived before their kind was
+/// read are dropped: the seed took in their units.
 pub async fn seed(data: &Data, audit: &dyn AuditSource, guild: GuildId) {
     let reg = &data.modlog;
-    if !reg.is_enabled(guild) {
-        return;
-    }
     let now = Instant::now();
-    let claim = reg.batch(guild, |b| {
-        if b.in_flight || b.suspended(now) {
+    let claim = reg.batch_if_enabled(guild, |b| {
+        if b.in_flight.is_some() || b.suspended(now) {
             return None;
         }
-        b.in_flight = true;
-        Some(b.epoch)
+        let token = next_fetch();
+        b.in_flight = Some(token);
+        Some((b.epoch, token))
     });
-    let Some(epoch) = claim else {
-        tracing::debug!("modlog: {guild}: not seeded: a fetch is running or fetching is paused");
+    let Some(Some((epoch, token))) = claim else {
+        tracing::debug!(
+            "modlog: {guild}: not seeded: the log is off, a fetch is running or fetching is paused"
+        );
         return;
     };
-    let slot = InFlight::new(reg, guild, epoch);
+    let slot = InFlight::new(reg, guild, token);
     let fetched = fetch(audit, guild, &BOTH).await;
     let now = Instant::now();
-    reg.batch_existing(guild, Some(epoch), |b| {
-        b.in_flight = false;
+    reg.batch_existing(guild, |b| {
+        free_slot(b, token);
+        if b.epoch != epoch {
+            return;
+        }
         if fetched.forbidden {
             suspend(b, guild, now);
-        } else {
-            absorb(b, &fetched);
+            return;
         }
+        // A failed kind is marked for a re-read, which drops these anyway.
+        b.pending
+            .retain(|(c, at)| !time_of(&fetched.started, kind_of(c)).is_some_and(|s| *at < s));
+        absorb(b, &fetched);
     });
     slot.release();
 }
@@ -565,14 +611,21 @@ mod tests {
         fn pending(&self) -> usize {
             self.data
                 .modlog
-                .batch_existing(G, None, |b| b.pending.len())
+                .batch_existing(G, |b| b.pending.len())
                 .unwrap_or(0)
+        }
+
+        fn pending_changes(&self) -> Vec<Change> {
+            self.data
+                .modlog
+                .batch_existing(G, |b| b.pending.iter().map(|(c, _)| c.clone()).collect())
+                .unwrap_or_default()
         }
 
         fn reseed(&self) -> Vec<AuditKind> {
             self.data
                 .modlog
-                .batch_existing(G, None, |b| b.reseed.clone())
+                .batch_existing(G, |b| b.reseed.clone())
                 .unwrap_or_default()
         }
     }
@@ -719,8 +772,11 @@ mod tests {
         w.change(left(T1));
         assert_eq!(w.pending(), 0, "suspended: dropped");
 
+        let epoch = |w: &W| w.data.modlog.batch_existing(G, |b| b.epoch);
+        let before = epoch(&w);
         assert_eq!(save_settings(&w.data, on()).await, Ok(()));
         assert!(!w.data.modlog.is_suspended(G, Instant::now()), "lifted");
+        assert_ne!(epoch(&w), before, "a new epoch: older fetches are void");
         assert_eq!(
             w.reseed(),
             [Disconnect, Move],
@@ -888,15 +944,43 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_flush_for_a_disabled_server_drops_its_state() {
+    async fn turning_the_log_off_by_any_path_forgets_its_state() {
         let w = W::new();
         w.change(left(T1));
-        // Turned off around `save_settings`, which would have forgotten it.
-        w.data.modlog.set_settings(ModLogSettings::off(G));
         assert!(w.data.modlog.has_state(G));
-        after(DEBOUNCE).await;
+        // Not through `save_settings`: `load_settings` reading an off row.
+        w.data.modlog.set_settings(ModLogSettings::off(G));
         assert!(!w.data.modlog.has_state(G));
+        after(DEBOUNCE).await;
         assert!(w.audit.calls().is_empty());
+        w.seed().await;
+        assert!(!w.data.modlog.has_state(G), "a seed holds nothing for it");
+        assert!(w.audit.calls().is_empty());
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn loading_an_off_row_drops_the_state(pool: sqlx::PgPool) {
+        let stored = ModLogSettings {
+            channel: Some(LOG),
+            ..ModLogSettings::off(G)
+        };
+        crate::db::modlog::save_settings(&pool, &stored)
+            .await
+            .unwrap();
+        let w = W::with(Data(Arc::new(DataInner {
+            database_pool: Some(pool),
+            ..Default::default()
+        })));
+        w.data.modlog.set_settings(on());
+        w.change(left(T1));
+        assert!(w.data.modlog.has_state(G));
+        assert!(load_settings(&w.data, G).await);
+        assert!(!w.data.modlog.is_enabled(G));
+        assert!(!w.data.modlog.has_state(G));
     }
 
     #[tokio::test(start_paused = true)]
@@ -909,7 +993,6 @@ mod tests {
         after(DEBOUNCE).await;
         // Off and on again while that fetch runs.
         w.data.modlog.set_settings(ModLogSettings::off(G));
-        w.data.modlog.forget(G);
         w.data.modlog.set_settings(on());
         w.change(left(T2));
         after(ms(1000)).await;
@@ -917,6 +1000,179 @@ mod tests {
         let snaps = w.data.modlog.snapshots(G).expect("the new state");
         assert!(!snaps.disconnect.seeded, "the old fetch did not seed it");
         assert_eq!(w.pending(), 1, "nor took its changes");
+        assert!(!in_flight(&w), "nor holds its slot");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_outdated_fetch_never_frees_a_newer_ones_slot() {
+        let w = W::new();
+        w.seed().await;
+        w.audit.set_delay(secs(3));
+        w.change(left(T1));
+        after(DEBOUNCE).await; // t = 2: the old fetch runs until 5
+        after(ms(500)).await;
+        w.data.modlog.set_settings(ModLogSettings::off(G));
+        w.data.modlog.set_settings(on());
+        w.change(left(T2)); // t = 2.5: its debounce, 4.5
+        after(secs(2)).await; // t = 4.5: the new fetch runs until 7.5
+        assert!(in_flight(&w));
+        after(ms(500)).await; // t = 5: the old one returns
+        assert!(in_flight(&w), "the new fetch still holds the slot");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_leave_after_its_kinds_fetch_returned_waits_for_the_next_round() {
+        let w = W::new();
+        w.seed().await;
+        let s0 = w.fetches();
+        w.dc(vec![dc(1, M1, 1)]);
+        w.mv(vec![mv(2, M2, 1, C2)]);
+        w.audit.set_delay(secs(1));
+        w.change(left(T1));
+        w.change(moved(T2, C2));
+        after(DEBOUNCE).await; // t = 2: disconnects read until 3
+        after(secs(1)).await; // t = 3: then moves, until 4
+        after(ms(500)).await; // t = 3.5
+                              // M1 disconnects T3 now, after the disconnect rows were read.
+        w.dc(vec![dc(1, M1, 2)]);
+        w.change(left(T3));
+        after(ms(500)).await; // t = 4: the round ends
+        assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
+        assert_eq!(
+            w.sink.events(),
+            vec![disc(T1, By(M1)), mov(T2, C2, By(M2))],
+            "T3 is not judged by rows read before it left"
+        );
+        assert_eq!(w.pending(), 1, "T3 waits");
+        after(DEBOUNCE).await; // t = 6: T3's debounce fired at 5.5
+        after(secs(1)).await; // t = 7
+        assert_eq!(w.sink.events()[2..], [disc(T3, By(M1))]);
+        // T4 leaves on their own: no unit is left over to pin on M1.
+        w.change(left(T4));
+        after(DEBOUNCE).await;
+        after(secs(1)).await;
+        assert_eq!(w.sink.events().len(), 3);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_seed_drops_the_changes_whose_units_it_read() {
+        let w = W::new();
+        // T1 and T3 were forced before the seed: their units are in the log.
+        w.dc(vec![dc(1, M1, 1)]);
+        w.mv(vec![mv(2, M1, 1, C2)]);
+        w.change(left(T1));
+        w.change(moved(T3, C2));
+        after(ms(100)).await;
+        w.audit.set_delay(secs(1));
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let seeding = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        settle().await; // t = 0.1: disconnects are read until 1.1
+        after(ms(500)).await; // t = 0.6
+        w.change(left(T2)); // during that read: kept
+        after(ms(500)).await; // t = 1.1: then moves, until 2.1
+        after(secs(1)).await; // t = 2.1
+        assert!(seeding.is_finished());
+        assert_eq!(
+            w.pending_changes(),
+            vec![left(T2)],
+            "T1 and T3 went into the seed"
+        );
+        // M2 had disconnected T2.
+        w.audit.set_delay(Duration::ZERO);
+        w.dc(vec![dc(1, M1, 1), dc(3, M2, 1)]);
+        let s0 = w.fetches();
+        after(ms(500)).await; // t = 2.6: T2's debounce
+        assert_eq!(w.kinds_since(s0), [Disconnect], "nothing left of the move");
+        assert_eq!(w.sink.events(), vec![disc(T2, By(M2))]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_save_outdates_a_running_fetch_and_its_403() {
+        let w = W::new();
+        w.seed().await;
+        w.audit.set_delay(secs(1));
+        w.audit.fail_next(G, Disconnect, AuditError::Forbidden);
+        w.dc(vec![dc(1, M1, 1)]);
+        w.change(left(T1));
+        after(DEBOUNCE).await; // t = 2: the fetch runs until 3
+        after(ms(500)).await;
+        // What `save_settings` does when it enables the log.
+        w.data.modlog.settings_saved(G);
+        after(ms(500)).await; // t = 3: the 403, from before the save
+        assert!(
+            !w.data.modlog.is_suspended(G, Instant::now()),
+            "a 403 from before the save does not suspend after it"
+        );
+        assert!(!in_flight(&w), "the slot is free");
+        assert_eq!(w.pending(), 1, "T1 waits for a fetch after the save");
+        after(DEBOUNCE).await; // t = 5: retried, read until 6
+        after(secs(1)).await;
+        assert_eq!(w.sink.events(), vec![disc(T1, By(M1))]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_save_outdates_a_running_seed_and_its_403() {
+        let w = W::new();
+        w.audit.set_delay(secs(1));
+        w.audit.fail_next(G, Disconnect, AuditError::Forbidden);
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let seeding = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        settle().await; // t = 0: the seed reads disconnects until 1
+        after(ms(500)).await;
+        w.data.modlog.settings_saved(G);
+        after(ms(500)).await; // t = 1: the 403, from before the save
+        assert!(seeding.is_finished());
+        assert!(!w.data.modlog.is_suspended(G, Instant::now()));
+        assert!(!in_flight(&w));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_seed_during_a_flush_fetches_nothing() {
+        let w = W::new();
+        w.seed().await;
+        let s0 = w.fetches();
+        w.audit.set_delay(secs(1));
+        w.change(left(T1));
+        after(DEBOUNCE).await;
+        w.seed().await;
+        assert_eq!(w.fetches(), s0 + 1, "only the flush's fetch");
+        assert_eq!(w.audit.most_running(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_seed_while_suspended_fetches_nothing() {
+        let w = W::new();
+        w.audit.fail_next(G, Disconnect, AuditError::Forbidden);
+        w.seed().await;
+        assert!(w.data.modlog.is_suspended(G, Instant::now()));
+        let s0 = w.fetches();
+        w.seed().await;
+        assert_eq!(w.fetches(), s0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_403_after_a_good_read_drops_the_whole_round() {
+        let w = W::new();
+        w.dc(vec![dc(1, M1, 1)]);
+        w.seed().await;
+        let before = w.data.modlog.snapshots(G).expect("seeded");
+        let s0 = w.fetches();
+        w.dc(vec![dc(1, M1, 2)]);
+        w.mv(vec![mv(2, M2, 1, C2)]);
+        w.audit.fail_next(G, Move, AuditError::Forbidden);
+        w.change(left(T1));
+        w.change(moved(T2, C2));
+        after(DEBOUNCE).await;
+        assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
+        assert!(w.sink.events().is_empty(), "nothing from the good read");
+        assert_eq!(
+            w.data.modlog.snapshots(G).expect("held"),
+            before,
+            "nothing advanced"
+        );
+        assert_eq!(w.reseed(), [Disconnect, Move]);
+        assert_eq!(w.pending(), 0);
+        assert!(w.data.modlog.is_suspended(G, Instant::now()));
     }
 
     #[tokio::test(start_paused = true)]
@@ -980,7 +1236,7 @@ mod tests {
     fn in_flight(w: &W) -> bool {
         w.data
             .modlog
-            .batch_existing(G, None, |b| b.in_flight)
+            .batch_existing(G, |b| b.in_flight.is_some())
             .unwrap_or(false)
     }
 

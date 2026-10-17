@@ -20,8 +20,17 @@ use tokio::time::Instant;
 pub const EXPECT_FOR: Duration = Duration::from_secs(10);
 
 /// Tells one life of a server's batch state from the next: a fetch that
-/// started before the state was forgotten must not write into a new one.
+/// started before the state was forgotten, or before a settings save, must
+/// not write into what came after.
 static NEXT_EPOCH: AtomicU64 = AtomicU64::new(1);
+
+/// Names the fetch that holds a server's fetch slot.
+static NEXT_FETCH: AtomicU64 = AtomicU64::new(1);
+
+/// A fresh token for [`GuildBatch::in_flight`].
+pub(super) fn next_fetch() -> u64 {
+    NEXT_FETCH.fetch_add(1, Ordering::Relaxed)
+}
 
 /// One enabled server's attribution state. Only `modlog::batch` touches it.
 #[derive(Debug, Clone)]
@@ -31,8 +40,9 @@ pub(super) struct GuildBatch {
     pub(super) pending: Vec<(Change, Instant)>,
     /// The armed debounce, if any.
     pub(super) debounce: Option<AbortHandle>,
-    /// A fetch (flush or seed) is running; at most one per server.
-    pub(super) in_flight: bool,
+    /// The fetch (flush or seed) running, by token; at most one per server.
+    /// Only that fetch frees it, whatever became of the epoch meanwhile.
+    pub(super) in_flight: Option<u64>,
     pub(super) snaps: Snapshots,
     /// Kinds whose snapshot must be re-read before anything is attributed
     /// from them again: after a failed fetch (M15) or a suspension (M8b).
@@ -47,7 +57,7 @@ impl GuildBatch {
             epoch: NEXT_EPOCH.fetch_add(1, Ordering::Relaxed),
             pending: Vec::new(),
             debounce: None,
-            in_flight: false,
+            in_flight: None,
             snaps: Snapshots::default(),
             reseed: Vec::new(),
             suspended_until: None,
@@ -83,8 +93,14 @@ impl ModLogRegistry {
         self.settings.get(&g).is_some_and(|s| s.enabled)
     }
 
+    /// Store the server's settings. With the log off, everything else held
+    /// for the server goes (only enabled servers hold any state).
     pub fn set_settings(&self, s: ModLogSettings) {
-        self.settings.insert(s.guild, s);
+        let (g, enabled) = (s.guild, s.enabled);
+        self.settings.insert(g, s);
+        if !enabled {
+            self.forget(g);
+        }
     }
 
     /// The server's stored settings have been read.
@@ -103,11 +119,14 @@ impl ModLogRegistry {
         self.batches.get(&g).is_some_and(|b| b.suspended(now))
     }
 
-    /// Lift a fetch suspension (a settings save). The snapshots stay marked
-    /// for a re-read, so nothing is diffed against the stale ones.
-    pub fn clear_suspension(&self, g: GuildId) {
+    /// The settings were saved: lift a fetch suspension, and start a new
+    /// epoch, so a fetch that began before the save (a 403 included) writes
+    /// nothing after it. The snapshots stay marked for a re-read, so nothing
+    /// is diffed against the stale ones.
+    pub fn settings_saved(&self, g: GuildId) {
         if let Some(mut b) = self.batches.get_mut(&g) {
             b.suspended_until = None;
+            b.epoch = NEXT_EPOCH.fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -133,7 +152,12 @@ impl ModLogRegistry {
     /// within [`EXPECT_FOR`] is not attributed. Nothing is held for a server
     /// with the log off.
     pub fn expect_disconnect(&self, g: GuildId, u: UserId, now: Instant) {
-        if !self.is_enabled(g) {
+        // Held while the marker is stored, so turning the log off waits for
+        // it and then forgets it (see `batch_if_enabled`).
+        let Some(settings) = self.settings.get(&g) else {
+            return;
+        };
+        if !settings.enabled {
             return;
         }
         self.expected
@@ -159,25 +183,31 @@ impl ModLogRegistry {
         self.batches.get(&g).map(|b| b.snaps.clone())
     }
 
-    /// Run `f` on the server's batch state, creating it. Callers check the
-    /// server is enabled first.
-    pub(super) fn batch<R>(&self, g: GuildId, f: impl FnOnce(&mut GuildBatch) -> R) -> R {
+    /// Run `f` on the server's batch state, creating it, if the server has
+    /// the log on; `None` (and nothing held) when it is off. The settings
+    /// entry is held throughout, so a `set_settings` turning the log off
+    /// waits until the state exists, then forgets it. `f` must not touch the
+    /// registry.
+    pub(super) fn batch_if_enabled<R>(
+        &self,
+        g: GuildId,
+        f: impl FnOnce(&mut GuildBatch) -> R,
+    ) -> Option<R> {
+        let settings = self.settings.get(&g)?;
+        if !settings.enabled {
+            return None;
+        }
         let mut b = self.batches.entry(g).or_insert_with(GuildBatch::new);
-        f(&mut b)
+        Some(f(&mut b))
     }
 
-    /// Run `f` on the server's batch state if it exists (and, with `epoch`,
-    /// only if it is that life of it).
+    /// Run `f` on the server's batch state if it exists.
     pub(super) fn batch_existing<R>(
         &self,
         g: GuildId,
-        epoch: Option<u64>,
         f: impl FnOnce(&mut GuildBatch) -> R,
     ) -> Option<R> {
         let mut b = self.batches.get_mut(&g)?;
-        if epoch.is_some_and(|e| e != b.epoch) {
-            return None;
-        }
         Some(f(&mut b))
     }
 
@@ -253,7 +283,10 @@ mod tests {
     async fn a_disabled_server_holds_no_expected_disconnect() {
         let reg = ModLogRegistry::default();
         reg.expect_disconnect(G, U, Instant::now());
-        assert!(!reg.has_state(G));
+        assert!(!reg.has_state(G), "never configured");
+        reg.set_settings(ModLogSettings::off(G));
+        reg.expect_disconnect(G, U, Instant::now());
+        assert!(!reg.has_state(G), "configured off");
         assert!(!reg.take_expected(G, U, Instant::now()));
     }
 
