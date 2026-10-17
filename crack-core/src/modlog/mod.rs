@@ -2,9 +2,14 @@
 //! deafened, disconnected or moved whom, and every room kick or mute.
 
 pub mod attribution;
+pub mod audit;
+pub mod batch;
 pub mod event;
+pub mod preflight;
 pub mod registry;
 pub mod settings;
+#[cfg(test)]
+pub mod test_support;
 
 use crate::Data;
 use serenity::all::GuildId;
@@ -59,7 +64,15 @@ pub async fn save_settings(data: &Data, s: ModLogSettings) -> Result<(), ModLogS
             return Err(ModLogSaveError::Db);
         }
     }
+    let (guild, enabled) = (s.guild, s.enabled);
     data.modlog.set_settings(s);
+    // A save lifts a fetch suspension; turning the log off drops all its
+    // state (only enabled servers hold any).
+    if enabled {
+        data.modlog.clear_suspension(guild);
+    } else {
+        data.modlog.forget(guild);
+    }
     Ok(())
 }
 
