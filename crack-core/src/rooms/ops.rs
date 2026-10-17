@@ -112,7 +112,11 @@ pub async fn act(
                 .expect_disconnect(guild, *target, tokio::time::Instant::now());
             match cx.discord.move_member(guild, *target, None).await {
                 // Left voice since the snapshot: nobody to disconnect.
-                Ok(()) | Err(DiscordError::NotConnected) => {},
+                Ok(()) => {},
+                Err(DiscordError::NotConnected) => {
+                    // No bot-caused leave will follow either.
+                    cx.data.modlog.clear_expected(guild, *target);
+                },
                 Err(err) => {
                     // No leave is coming: the marker must not swallow a
                     // moderator's later, real disconnect of this member.
@@ -184,7 +188,10 @@ pub async fn act(
 
     // 10. The mod log, once, after everything else: a failed post never
     // alters what the action did.
-    if let Some(event) = mod_log_event(&action, room, actor) {
+    // The room's lock is let go first: a slow post must not hold up presses.
+    let event = mod_log_event(&action, room, actor);
+    drop(live);
+    if let Some(event) = event {
         cx.log.post(guild, event).await;
     }
     Ok(done)
@@ -1081,6 +1088,25 @@ mod tests {
             "no leave is coming: a moderator's later disconnect must not be swallowed"
         );
         assert_eq!(w.log.events().len(), 1, "the kick itself still stands");
+    }
+
+    #[tokio::test]
+    async fn a_not_connected_kick_takes_the_expected_marker_back() {
+        let w = World::new(live(vec![]));
+        w.enable_mod_log();
+        w.discord
+            .fail_next(CallKind::Move, DiscordError::NotConnected);
+        assert_eq!(
+            w.act(&facts(), OWNER, kick(TARGET)).await,
+            Ok(RoomDone::Kicked(TARGET))
+        );
+        assert_eq!(w.log.events().len(), 1, "logged once");
+        assert!(
+            !w.data
+                .modlog
+                .take_expected(G, TARGET, tokio::time::Instant::now()),
+            "no bot-caused leave will follow"
+        );
     }
 
     #[tokio::test]
