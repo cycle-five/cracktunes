@@ -15,10 +15,12 @@ use crate::messaging::render::RenderCx;
 use crate::messaging::transport::{DiscordTransport, Transport};
 use crate::rooms::lifecycle::{classify, VoiceChange};
 use crate::Data;
+use futures::future::BoxFuture;
 use serenity::all::{AuditLogEntry, ChannelId, Context, GuildId, Http, UserId, VoiceState};
 use serenity::async_trait;
 use serenity::model::guild::audit_log::{Action, Change as AuditChange, MemberAction};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -56,9 +58,9 @@ impl ModLogSink for ChannelSink {
 
 /// The server mutes and deafens one audit entry records, in its order. None
 /// for another action, for an entry without an actor or a target (or with a
-/// zero id), and for one about CrackTunes itself (its own voice changes are
-/// never logged). One CrackTunes authored about someone else is logged: an
-/// admin command run through the bot.
+/// zero id), and for CrackTunes muting or deafening itself (its self-deafen:
+/// M21). A moderator muting CrackTunes is logged, and so is CrackTunes
+/// muting someone else (an admin command run through the bot).
 fn events_of(entry: &AuditLogEntry, bot: UserId) -> Vec<ModLogEvent> {
     if !matches!(entry.action, Action::Member(MemberAction::Update)) {
         return Vec::new();
@@ -69,7 +71,7 @@ fn events_of(entry: &AuditLogEntry, bot: UserId) -> Vec<ModLogEvent> {
     let (Some(actor), Some(target)) = (actor, target) else {
         return Vec::new();
     };
-    if target == bot {
+    if actor == bot && target == bot {
         return Vec::new();
     }
     let reason = entry.reason.as_deref().map(str::to_owned);
@@ -181,6 +183,51 @@ fn spawn_seed(data: &Data, audit: Arc<dyn AuditSource>, guild: GuildId) -> Optio
     }))
 }
 
+/// How long a failed read of a server's settings at `GuildCreate` waits
+/// before its one retry (rooms' reconcile waits as long).
+pub const LOAD_RETRY: Duration = Duration::from_secs(60);
+
+/// Reads a server's stored settings into the registry; false when the read
+/// failed.
+type Load = Arc<dyn Fn(Data, GuildId) -> BoxFuture<'static, bool> + Send + Sync>;
+
+/// The real read: [`super::load_settings`].
+fn stored_settings() -> Load {
+    Arc::new(|data, guild| Box::pin(async move { super::load_settings(&data, guild).await }))
+}
+
+/// Read the server's settings, then seed if the log is on. A failed read is
+/// tried once more after [`LOAD_RETRY`] (M22), on tokio's clock; the retry's
+/// handle is returned. Until a read succeeds the server keeps what was read
+/// before (off, if nothing was) and refuses saves (`NotLoaded`).
+async fn load_and_seed(
+    data: &Data,
+    audit: Arc<dyn AuditSource>,
+    guild: GuildId,
+    load: Load,
+) -> Option<JoinHandle<()>> {
+    if load(data.clone(), guild).await {
+        spawn_seed(data, audit, guild);
+        return None;
+    }
+    // Timed from the failure, not from when the task first runs.
+    let at = Instant::now() + LOAD_RETRY;
+    let data = data.clone();
+    Some(tokio::spawn(async move {
+        tokio::time::sleep_until(at).await;
+        if !load(data.clone(), guild).await {
+            tracing::warn!(
+                "modlog: {guild}: the settings could not be read again; they wait for the \
+                 next GuildCreate"
+            );
+            return;
+        }
+        if let Some(seed) = spawn_seed(&data, audit, guild) {
+            let _ = seed.await;
+        }
+    }))
+}
+
 // --- Glue: serenity in, the pieces above out. Untested here beyond what
 // they hand on; the TuneTitan checklist covers the routing.
 
@@ -233,11 +280,10 @@ pub fn after_save(data: &Data, http: Arc<Http>, guild: GuildId) {
 }
 
 /// `GuildCreate`: read the server's stored settings, then seed if the log is
-/// on. A failed read is logged by `load_settings`; the server keeps what was
-/// read before (off, if nothing was) until a later `GuildCreate` reads it.
+/// on; a failed read is retried once a minute later (see `load_and_seed`).
 pub async fn on_guild_create(data: &Data, http: Arc<Http>, guild: GuildId) {
-    super::load_settings(data, guild).await;
-    after_save(data, http, guild);
+    let audit = Arc::new(LiveAudit { http });
+    load_and_seed(data, audit, guild, stored_settings()).await;
 }
 
 #[cfg(test)]
@@ -252,7 +298,9 @@ mod tests {
     use crate::modlog::test_support::{FakeAudit, FakeSink};
     use crate::DataInner;
     use std::cell::Cell;
-    use std::time::Duration;
+    use std::collections::VecDeque;
+    use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+    use std::sync::Mutex;
 
     const G: GuildId = GuildId::new(1);
     const OTHER: GuildId = GuildId::new(2);
@@ -435,27 +483,45 @@ mod tests {
         );
     }
 
+    /// A MEMBER_UPDATE by `actor` on `target` with one change.
+    fn update_by(actor: UserId, target: UserId, change: &str) -> AuditLogEntry {
+        entry(&format!(
+            r#"{{"id": "900", "action_type": 24, "user_id": "{actor}", "target_id": "{target}",
+                "changes": [{change}]}}"#
+        ))
+    }
+
     #[tokio::test]
-    async fn the_bots_own_mutes_are_not_logged_but_its_mutes_of_others_are() {
+    async fn only_crack_tunes_muting_itself_is_skipped() {
         let data = data_on();
-        let of_bot = entry(&format!(
-            r#"{{"id": "900", "action_type": 24, "user_id": "{BOT}", "target_id": "{BOT}",
-                "changes": [{DEAF_OFF}]}}"#
-        ));
-        assert_eq!(posted(&data, &of_bot).await, vec![], "CrackTunes' own");
-        let by_bot = entry(&format!(
-            r#"{{"id": "900", "action_type": 24, "user_id": "{BOT}", "target_id": "{T}",
-                "reason": "/mute", "changes": [{MUTE_ON}]}}"#
-        ));
+        let deaf_on = r#"{"key": "deaf", "old_value": false, "new_value": true}"#;
         assert_eq!(
-            posted(&data, &by_bot).await,
+            posted(&data, &update_by(BOT, BOT, deaf_on)).await,
+            vec![],
+            "its own self-deafen (M21)"
+        );
+        assert_eq!(
+            posted(&data, &update_by(MOD, BOT, deaf_on)).await,
+            vec![(
+                G,
+                ModLogEvent::ServerDeafen {
+                    target: BOT,
+                    actor: MOD,
+                    on: true,
+                    reason: None,
+                }
+            )],
+            "a moderator deafening CrackTunes"
+        );
+        assert_eq!(
+            posted(&data, &update_by(BOT, T, MUTE_ON)).await,
             vec![(
                 G,
                 ModLogEvent::ServerMute {
                     target: T,
                     actor: BOT,
                     on: true,
-                    reason: Some("/mute".into()),
+                    reason: None,
                 }
             )],
             "an admin command through the bot"
@@ -666,5 +732,132 @@ mod tests {
             .unwrap();
         assert_eq!(audit.kinds(), vec![Disconnect, Move], "both kinds read");
         assert!(on.modlog.snapshots(G).is_some(), "the snapshots are held");
+    }
+
+    /// A settings read answering `script` in turn (a read past its end
+    /// fails); a good read stores `then`. The second value counts reads.
+    fn scripted(script: &[bool], then: ModLogSettings) -> (Load, Arc<AtomicUsize>) {
+        let script = Arc::new(Mutex::new(script.iter().copied().collect::<VecDeque<_>>()));
+        let reads = Arc::new(AtomicUsize::new(0));
+        let counted = reads.clone();
+        let load: Load = Arc::new(move |data: Data, guild: GuildId| {
+            counted.fetch_add(1, SeqCst);
+            let ok = script.lock().unwrap().pop_front().unwrap_or(false);
+            let then = then.clone();
+            Box::pin(async move {
+                if ok {
+                    data.modlog.set_settings(then);
+                    data.modlog.mark_loaded(guild);
+                }
+                ok
+            })
+        });
+        (load, reads)
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_settings_read_is_retried_a_minute_later_then_seeds() {
+        let data = data_off();
+        let audit = Arc::new(FakeAudit::default());
+        let (load, reads) = scripted(&[false, true], on());
+        let retry = load_and_seed(&data, audit.clone(), G, load)
+            .await
+            .expect("a failed read is retried");
+        assert_eq!(reads.load(SeqCst), 1);
+        after(LOAD_RETRY - Duration::from_millis(1)).await;
+        assert_eq!(reads.load(SeqCst), 1, "not before a minute");
+        assert_eq!(audit.calls(), vec![], "nothing seeded while unread");
+        after(Duration::from_millis(1)).await;
+        // Before awaiting the handle: a paused clock jumps ahead to any
+        // sleeper once everything else is idle.
+        assert_eq!(reads.load(SeqCst), 2, "read again at a minute");
+        retry.await.unwrap();
+        assert!(data.modlog.is_enabled(G));
+        assert_eq!(audit.kinds(), vec![Disconnect, Move], "seeded once read");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_settings_read_is_retried_only_once() {
+        let data = data_off();
+        let audit = Arc::new(FakeAudit::default());
+        let (load, reads) = scripted(&[false, false, true], on());
+        let retry = load_and_seed(&data, audit.clone(), G, load)
+            .await
+            .expect("a failed read is retried");
+        after(LOAD_RETRY).await;
+        retry.await.unwrap();
+        after(LOAD_RETRY * 10).await;
+        assert_eq!(reads.load(SeqCst), 2, "one retry, no more");
+        assert!(!data.modlog.is_enabled(G));
+        assert_eq!(audit.calls(), vec![]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_failed_read_seeds_nothing_nor_does_a_retry_that_reads_the_log_off() {
+        // On from an earlier read: a seed now would fetch.
+        let data = data_on();
+        let audit = Arc::new(FakeAudit::default());
+        let (load, reads) = scripted(&[false, true], ModLogSettings::off(G));
+        let retry = load_and_seed(&data, audit.clone(), G, load)
+            .await
+            .expect("a failed read is retried");
+        after(Duration::ZERO).await;
+        assert_eq!(audit.calls(), vec![], "a failed read seeds nothing");
+        after(LOAD_RETRY).await;
+        retry.await.unwrap();
+        assert_eq!(reads.load(SeqCst), 2);
+        assert!(!data.modlog.is_enabled(G));
+        assert_eq!(audit.calls(), vec![], "read off: nothing seeded");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_good_read_seeds_at_once_and_is_not_retried() {
+        let data = data_off();
+        let audit = Arc::new(FakeAudit::default());
+        let (load, reads) = scripted(&[true], on());
+        assert!(
+            load_and_seed(&data, audit.clone(), G, load).await.is_none(),
+            "no retry"
+        );
+        after(Duration::ZERO).await;
+        assert_eq!(audit.kinds(), vec![Disconnect, Move]);
+        after(LOAD_RETRY * 2).await;
+        assert_eq!(reads.load(SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn without_a_database_the_stored_read_is_not_retried() {
+        let retry = load_and_seed(
+            &data_off(),
+            Arc::new(FakeAudit::default()),
+            G,
+            stored_settings(),
+        )
+        .await;
+        assert!(
+            retry.is_none(),
+            "no database: nothing to read, nothing failed"
+        );
+    }
+
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn a_failed_stored_read_schedules_a_retry(pool: sqlx::PgPool) {
+        // A closed pool fails every read.
+        pool.close().await;
+        let data = Data(Arc::new(DataInner {
+            database_pool: Some(pool),
+            ..Default::default()
+        }));
+        let retry = load_and_seed(&data, Arc::new(FakeAudit::default()), G, stored_settings())
+            .await
+            .expect("a failed read is retried");
+        assert!(!data.modlog.loaded(G));
+        retry.abort();
     }
 }
