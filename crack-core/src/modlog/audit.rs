@@ -49,7 +49,7 @@ fn action_of(kind: AuditKind) -> Action {
 
 /// An id Discord could not have meant: 0 (`u64::MAX` cannot reach here,
 /// serenity's ids are non-max).
-fn nonzero(id: u64) -> Option<u64> {
+pub(super) fn nonzero(id: u64) -> Option<u64> {
     (id != 0).then_some(id)
 }
 

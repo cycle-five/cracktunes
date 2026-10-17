@@ -47,11 +47,20 @@ impl EventHandler for SerenityHandler {
                     .await;
             },
             FullEvent::VoiceStateUpdate { old, new } => {
-                // Voice rooms first: the handler below returns early for
+                // The mod log first: it never waits, so a leave or move is
+                // timed when it arrived. It takes CrackTunes' own changes too
+                // (their audit units must be consumed, M8a).
+                crate::modlog::live::on_voice_state(&self.data, ctx, old.as_ref(), new);
+                // Then voice rooms: the handler below returns early for
                 // anyone but the bot.
                 crate::rooms::lifecycle::on_voice_state(&self.data, ctx, old.as_ref(), new).await;
                 self.on_voice_state_update(ctx.clone(), old.clone(), new.clone())
                     .await;
+            },
+            // Server mutes and deafens for the mod log. The event log after
+            // this match sees the entry too.
+            FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
+                crate::modlog::live::on_audit_event(&self.data, ctx, *guild_id, entry).await;
             },
             // A voice room deleted by hand drops its row and its timer.
             FullEvent::ChannelDelete { channel, .. } => {
@@ -459,6 +468,10 @@ impl SerenityHandler {
                 guild.id
             );
         }
+
+        // The mod log's settings, likewise (off without a database); a server
+        // with the log on has its audit snapshots seeded in the background.
+        crate::modlog::live::on_guild_create(&self.data, ctx.http.clone(), guild.id).await;
 
         // A `/gp` game that was running when the bot went down comes back here,
         // per guild, for the same reason the settings do.

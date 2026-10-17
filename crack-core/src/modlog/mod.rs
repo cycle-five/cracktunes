@@ -5,6 +5,7 @@ pub mod attribution;
 pub mod audit;
 pub mod batch;
 pub mod event;
+pub mod live;
 pub mod preflight;
 pub mod registry;
 pub mod settings;
