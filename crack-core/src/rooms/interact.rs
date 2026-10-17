@@ -41,6 +41,7 @@ use crate::messaging::messages::{
 };
 use crate::messaging::render::RenderCx;
 use crate::messaging::transport::{DiscordModalPress, DiscordPress, DiscordTransport, Press};
+use crate::modlog::live::ChannelSink;
 use crate::Data;
 use serenity::all::{
     Cache, ChannelId, ComponentInteraction, CreateInputText, CreateLabel, CreateModal,
@@ -115,10 +116,11 @@ pub(crate) struct Live {
     discord: LiveRoomsDiscord,
     transport: DiscordTransport,
     facts: LiveFacts,
+    log: ChannelSink,
 }
 
 impl Live {
-    pub(crate) fn of(ctx: &serenity::all::Context, guild: GuildId) -> Self {
+    pub(crate) fn of(ctx: &serenity::all::Context, data: &Data, guild: GuildId) -> Self {
         Self {
             discord: LiveRoomsDiscord {
                 http: ctx.http.clone(),
@@ -129,6 +131,10 @@ impl Live {
                 http: ctx.http.clone(),
                 guild,
             },
+            log: ChannelSink {
+                data: data.clone(),
+                transport: Arc::new(DiscordTransport::of(ctx)),
+            },
         }
     }
 
@@ -137,6 +143,7 @@ impl Live {
             data,
             discord: &self.discord,
             transport: &self.transport,
+            log: &self.log,
         }
     }
 }
@@ -156,7 +163,7 @@ pub async fn handle_press(data: &Data, ctx: &serenity::all::Context, i: &Compone
         answer_first(&press, RoomCard::Refused(RoomRefusal::NotInRoom)).await;
         return;
     };
-    let live = Live::of(ctx, guild);
+    let live = Live::of(ctx, data, guild);
     respond_press(
         &live.cx(data),
         &press,
@@ -184,7 +191,7 @@ pub async fn handle_submit(data: &Data, ctx: &serenity::all::Context, i: &ModalI
         answer_first(&press, RoomCard::Refused(RoomRefusal::NotInRoom)).await;
         return;
     };
-    let live = Live::of(ctx, guild);
+    let live = Live::of(ctx, data, guild);
     respond_submit(
         &live.cx(data),
         &press,
@@ -775,6 +782,7 @@ mod tests {
     use crate::messaging::messages::*;
     use crate::messaging::test_support::{FakePress, FakeTransport, Op, PressOp};
     use crate::messaging::transport::TransportError;
+    use crate::modlog::batch::NoopSink;
     use crate::rooms::authority::Reason;
     use crate::rooms::facts::tests::empty;
     use crate::rooms::ids::{field, RoomButton};
@@ -927,6 +935,7 @@ mod tests {
                 data: &self.data,
                 discord: &self.discord,
                 transport: &self.transport,
+                log: &NoopSink,
             }
         }
 

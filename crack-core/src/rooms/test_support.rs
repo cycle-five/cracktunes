@@ -58,9 +58,13 @@ struct Inner {
     created_overwrites: Vec<StoredOverwrite>,
 }
 
+/// What the gateway delivers while a call is on its way.
+type Hook = Box<dyn FnOnce() + Send>;
+
 #[derive(Default)]
 pub struct FakeRoomsDiscord {
     inner: Mutex<Inner>,
+    before_move: Mutex<Option<Hook>>,
 }
 
 impl FakeRoomsDiscord {
@@ -77,6 +81,12 @@ impl FakeRoomsDiscord {
             .entry(kind)
             .or_default()
             .push_back(e);
+    }
+
+    /// `f` runs when the next `move_member` call reaches Discord, before it
+    /// answers: a voice event the gateway delivers meanwhile.
+    pub fn before_next_move(&self, f: impl FnOnce() + Send + 'static) {
+        *self.before_move.lock().unwrap() = Some(Box::new(f));
     }
 
     /// What every created room comes back with, as if inherited from its category.
@@ -136,6 +146,11 @@ impl RoomsDiscord for FakeRoomsDiscord {
         user: UserId,
         to: Option<ChannelId>,
     ) -> Result<(), DiscordError> {
+        // Taken out first: the hook runs without the lock held.
+        let hook = self.before_move.lock().unwrap().take();
+        if let Some(f) = hook {
+            f();
+        }
         self.record(Call::Move(user.get(), to.map(ChannelId::get)))
     }
     async fn pin(&self, ch: ChannelId, msg: MessageId) -> Result<(), DiscordError> {

@@ -228,6 +228,7 @@ pub fn render(msg: &CrackedMessage, cx: &RenderCx) -> Rendered {
         CrackedMessage::Echo(line) => super::cards::echo(line),
         CrackedMessage::Gp(card) => crate::commands::music::gp::render_card(card, cx),
         CrackedMessage::Room(card) => crate::rooms::card::render_card(card, cx),
+        CrackedMessage::ModLog(event) => crate::modlog::event::render(event, cx),
         CrackedMessage::TrackFailed { listed, more } => {
             Rendered::embed(CreateEmbed::new().description(clip(
                 &super::track_failed::render_text(listed, *more),

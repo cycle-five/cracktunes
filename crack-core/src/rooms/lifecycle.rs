@@ -14,6 +14,7 @@ use super::state::{RoomState, StoredOverwrite};
 use crate::db::rooms::StoredRoom;
 use crate::messaging::messages::ROOM_NAME_FALLBACK;
 use crate::messaging::transport::DiscordTransport;
+use crate::modlog::batch::NoopSink;
 use crate::Data;
 use dashmap::DashSet;
 use serenity::all::{Cache, ChannelId, Context, Guild, GuildId, Timestamp, UserId, VoiceState};
@@ -894,6 +895,7 @@ async fn hub_join_live(
         data,
         discord: &*sweep.discord,
         transport: &transport,
+        log: &NoopSink,
     };
     let outcome = hub_join(&cx, sweep, &facts, &settings, &hub, user, Instant::now()).await;
     if outcome == HubOutcome::Refused(MISSING_PERMISSIONS) {
@@ -1062,6 +1064,7 @@ async fn reconcile_with(data: &Data, ctx: &Context, guild: GuildId, stored: Vec<
         data,
         discord: &*sweep.discord,
         transport: &transport,
+        log: &NoopSink,
     };
     reconcile(
         &cx,
@@ -1244,6 +1247,7 @@ mod tests {
                 data: &self.data,
                 discord: &*self.discord,
                 transport: &self.transport,
+                log: &NoopSink,
             }
         }
 
@@ -1714,6 +1718,7 @@ mod tests {
             data: &w.data,
             discord: &probe,
             transport: &w.transport,
+            log: &NoopSink,
         };
         let got = hub_join(
             &cx,

@@ -15,6 +15,7 @@ pub mod http_utils;
 pub mod macros;
 pub mod messaging;
 pub mod metrics;
+pub mod modlog;
 #[cfg(feature = "crack-music")]
 pub mod music;
 pub mod owners;
@@ -365,6 +366,8 @@ pub struct DataInner {
     pub autoplay_buffer: Arc<crate::music::autoplay::AutoplayBuffer>,
     /// The live voice rooms; see `rooms::registry`.
     pub rooms: crate::rooms::registry::RoomRegistry,
+    /// The mod log's settings; see `modlog::registry`.
+    pub modlog: crate::modlog::registry::ModLogRegistry,
 }
 
 impl std::fmt::Debug for DataInner {
@@ -562,6 +565,7 @@ impl Default for DataInner {
             musicreco: None,
             autoplay_buffer: Arc::default(),
             rooms: Default::default(),
+            modlog: Default::default(),
         }
     }
 }
