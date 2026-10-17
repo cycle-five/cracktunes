@@ -5,7 +5,10 @@
 use crate::{
     access::{HistoryAccess, Presence},
     history::{HistoryPage, HistoryQuery},
-    settings::{RoomSettingsForm, RoomSettingsView, SaveRefused},
+    settings::{
+        ModLogSaveRefused, ModLogSettingsForm, ModLogSettingsView, RoomSettingsForm,
+        RoomSettingsView, SaveRefused,
+    },
     view::PlanView,
     watch::ViewSource,
 };
@@ -80,4 +83,11 @@ pub trait Backend: ViewSource {
         g: GuildId,
         f: RoomSettingsForm,
     ) -> impl Future<Output = Result<RoomSettingsView, SaveRefused>> + Send;
+    fn mod_log_settings(&self, g: GuildId) -> impl Future<Output = ModLogSettingsView> + Send;
+    fn save_mod_log_settings(
+        &self,
+        user: UserId,
+        g: GuildId,
+        f: ModLogSettingsForm,
+    ) -> impl Future<Output = Result<ModLogSettingsView, ModLogSaveRefused>> + Send;
 }

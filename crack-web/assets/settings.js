@@ -99,4 +99,78 @@
       save.disabled = false;
     }
   });
+
+  // ---- Mod log ----
+  const logForm = document.getElementById("modlog-form");
+  if (logForm) {
+    const logEnabled = document.getElementById("m-enabled");
+    const logChannel = document.getElementById("m-channel");
+    const logSave = document.getElementById("m-save");
+    const logNote = document.getElementById("m-note");
+    const logVisible = document.getElementById("m-visible");
+    const logFindings = document.getElementById("m-findings");
+
+    function logSay(text, bad) {
+      logNote.textContent = text || "";
+      logNote.hidden = !text;
+      logNote.className = bad ? "bad" : "";
+    }
+
+    function showLog(view) {
+      logVisible.textContent = view.visibility || "";
+      logFindings.textContent = "";
+      if (view.findings === null) {
+        const p = document.createElement("p");
+        p.textContent =
+          view.channel === null ? logFindings.dataset.noChannel : logFindings.dataset.unknown;
+        logFindings.appendChild(p);
+      } else if (view.findings.length === 0) {
+        const p = document.createElement("p");
+        p.textContent = logFindings.dataset.ready;
+        logFindings.appendChild(p);
+      } else {
+        const ul = document.createElement("ul");
+        for (const f of view.findings) {
+          const li = document.createElement("li");
+          li.textContent = f;
+          ul.appendChild(li);
+        }
+        logFindings.appendChild(ul);
+      }
+    }
+
+    logForm.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      logSave.disabled = true;
+      logSay("");
+      const body = {
+        enabled: logEnabled.checked,
+        channel: logChannel.value === "" ? null : logChannel.value,
+      };
+      try {
+        const r = await fetch(`/g/${guild}/settings/modlog`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const text = await r.text();
+        let data = null;
+        try {
+          data = JSON.parse(text);
+        } catch (_) {
+          data = null;
+        }
+        if (r.ok && data) {
+          showLog(data);
+          logSay(root.dataset.saved, false);
+        } else {
+          logSay((data && data.error) || `Error ${r.status}`, true);
+        }
+      } catch (_) {
+        logSay(root.dataset.offline, true);
+      } finally {
+        logSave.disabled = false;
+      }
+    });
+  }
 })();

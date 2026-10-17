@@ -840,3 +840,10 @@ pub const MODLOG_NO_CHANNEL: &str = "Pick a channel for the log.";
 pub const MODLOG_SETTINGS_NOT_LOADED: &str =
     "Mod log settings couldn't be read from the database yet — try again in a minute.";
 pub const MODLOG_SETTINGS_SAVE_FAILED: &str = "Couldn't save the mod log settings — try again.";
+pub const DASH_MODLOG_TITLE: &str = "Mod log";
+pub const DASH_MODLOG_ENABLED: &str = "Mod log is on";
+pub const DASH_MODLOG_CHANNEL: &str = "Log channel";
+pub const DASH_MODLOG_NO_CHANNEL_OPTION: &str = "None";
+pub const DASH_MODLOG_NO_CHANNEL_YET: &str = "No channel set yet — pick one and save.";
+pub const DASH_MODLOG_GUIDE: &str = "How the mod log works";
+pub const DASH_MODLOG_UNKNOWN_CHANNEL: &str = "That is not a text channel of this server.";

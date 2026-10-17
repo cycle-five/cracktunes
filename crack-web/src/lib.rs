@@ -26,7 +26,10 @@ use crate::{
     config::WebEnv,
     history::{HistoryPage, HistoryQuery},
     routes::WebState,
-    settings::{ChannelOption, RoomSettingsForm, RoomSettingsView, SaveRefused},
+    settings::{
+        ChannelOption, ModLogSaveRefused, ModLogSettingsForm, ModLogSettingsView, RoomSettingsForm,
+        RoomSettingsView, SaveRefused,
+    },
     view::{view_from_state, PlanView, QueueView},
     watch::{Hub, ViewSource, LINGER, TICK},
 };
@@ -124,6 +127,15 @@ impl LiveBackend {
         let id = ChannelId::new(n);
         let guild = self.deps.cache.guild(g)?;
         (guild.channels.get(&id)?.base.kind == ChannelType::Voice).then_some(id)
+    }
+
+    /// `raw` as a text channel of `g` in the cache; ids serenity cannot hold
+    /// (0, u64::MAX) are refused before `ChannelId::new`.
+    fn text_channel_of(&self, g: GuildId, raw: &str) -> Option<ChannelId> {
+        let n: u64 = raw.parse().ok().filter(|n| *n != 0 && *n != u64::MAX)?;
+        let id = ChannelId::new(n);
+        let guild = self.deps.cache.guild(g)?;
+        (guild.channels.get(&id)?.base.kind == ChannelType::Text).then_some(id)
     }
 
     fn member_name(&self, g: GuildId, u: UserId) -> Option<String> {
@@ -402,6 +414,94 @@ impl Backend for LiveBackend {
             })?;
         tracing::info!(guild = %g, user = %user, "dashboard saved room settings");
         Ok(self.room_settings(g).await)
+    }
+
+    async fn mod_log_settings(&self, g: GuildId) -> ModLogSettingsView {
+        use crack_core::{
+            messaging::messages::{MODLOG_STATUS_VISIBLE_PREFIX, MODLOG_STATUS_VISIBLE_SUFFIX},
+            modlog::preflight::{finding_text, for_guild},
+        };
+        let s = self.deps.data.modlog.settings(g);
+        let (mut text_channels, name) = match self.deps.cache.guild(g) {
+            Some(guild) => {
+                let mut text: Vec<_> = guild
+                    .channels
+                    .iter()
+                    .filter(|c| c.base.kind == ChannelType::Text)
+                    .map(|c| (c.position, c.id, c.base.name.to_string()))
+                    .collect();
+                text.sort();
+                let name = s
+                    .channel
+                    .and_then(|ch| guild.channels.get(&ch).map(|c| c.base.name.to_string()));
+                (text, name)
+            },
+            None => (Vec::new(), None),
+        };
+        let name_of = |c: ChannelId| {
+            self.deps
+                .cache
+                .guild(g)
+                .and_then(|guild| guild.channels.get(&c).map(|ch| ch.base.name.to_string()))
+                .unwrap_or_else(|| format!("channel {c}"))
+        };
+        let findings = s
+            .channel
+            .and_then(|_| for_guild(&self.deps.cache, &self.deps.data, g))
+            .map(|found| {
+                found
+                    .iter()
+                    .map(|f| finding_text(f, name_of, false))
+                    .collect()
+            });
+        let visibility = name
+            .map(|n| format!("{MODLOG_STATUS_VISIBLE_PREFIX} #{n} {MODLOG_STATUS_VISIBLE_SUFFIX}"));
+        ModLogSettingsView {
+            enabled: s.enabled,
+            channel: s.channel.map(|c| c.to_string()),
+            text_channels: text_channels
+                .drain(..)
+                .map(|(_, id, name)| ChannelOption {
+                    id: id.to_string(),
+                    name,
+                })
+                .collect(),
+            findings,
+            visibility,
+        }
+    }
+
+    async fn save_mod_log_settings(
+        &self,
+        user: UserId,
+        g: GuildId,
+        f: ModLogSettingsForm,
+    ) -> Result<ModLogSettingsView, ModLogSaveRefused> {
+        use crack_core::modlog::{
+            live::after_save, save_settings, settings::ModLogSettings, ModLogSaveError,
+        };
+        let channel = match f.channel.as_deref() {
+            Some(raw) => Some(
+                self.text_channel_of(g, raw)
+                    .ok_or(ModLogSaveRefused::UnknownChannel)?,
+            ),
+            None => None,
+        };
+        let settings = ModLogSettings {
+            guild: g,
+            enabled: f.enabled,
+            channel,
+        };
+        save_settings(&self.deps.data, settings)
+            .await
+            .map_err(|e| match e {
+                ModLogSaveError::Invalid(e) => ModLogSaveRefused::Invalid(e),
+                ModLogSaveError::Db => ModLogSaveRefused::Failed,
+                ModLogSaveError::NotLoaded => ModLogSaveRefused::NotLoaded,
+            })?;
+        after_save(&self.deps.data, self.deps.http.clone(), g);
+        tracing::info!(guild = %g, user = %user, "dashboard saved mod log settings");
+        Ok(self.mod_log_settings(g).await)
     }
 
     async fn history(&self, g: GuildId, q: &HistoryQuery) -> Result<HistoryPage, HistoryError> {

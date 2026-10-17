@@ -8,7 +8,7 @@ use crate::{
     },
     limit::RateLimit,
     page,
-    settings::{self, RoomSettingsForm, SaveRefused},
+    settings::{self, ModLogSaveRefused, ModLogSettingsForm, RoomSettingsForm, SaveRefused},
     view::{
         ControlRequest, ControlResult, MoveRequest, MoveResult, PageState, PlanView, QueueView,
     },
@@ -27,8 +27,9 @@ use axum::{
 };
 use catacombs::auth::AuthenticatedUser;
 use crack_core::messaging::messages::{
-    DASH_SETTINGS_FAILED, DASH_SETTINGS_NEEDS_MANAGE, DASH_SETTINGS_NOT_LOADED,
-    DASH_SETTINGS_UNKNOWN_CHANNEL, DASH_SETTINGS_UNREADABLE,
+    DASH_MODLOG_UNKNOWN_CHANNEL, DASH_SETTINGS_FAILED, DASH_SETTINGS_NEEDS_MANAGE,
+    DASH_SETTINGS_NOT_LOADED, DASH_SETTINGS_UNKNOWN_CHANNEL, DASH_SETTINGS_UNREADABLE,
+    MODLOG_SETTINGS_NOT_LOADED, MODLOG_SETTINGS_SAVE_FAILED,
 };
 use serenity::all::{GuildId, UserId};
 use std::{
@@ -280,11 +281,12 @@ async fn settings_page<B: Backend>(
         HistoryAccess::Allowed => {},
     }
     let view = s.backend.room_settings(g).await;
+    let modlog = s.backend.mod_log_settings(g).await;
     let name = s
         .backend
         .guild_name(g)
         .unwrap_or_else(|| "Server".to_owned());
-    Html(page::settings_page(&name, g, &view)).into_response()
+    Html(page::settings_page(&name, g, &view, &modlog)).into_response()
 }
 
 /// JSON only and same-origin, as `/control`; the same Manage Server access
@@ -332,6 +334,55 @@ async fn save_rooms<B: Backend>(
         },
         Err(SaveRefused::NotLoaded) => {
             error_json(StatusCode::SERVICE_UNAVAILABLE, DASH_SETTINGS_NOT_LOADED)
+        },
+    }
+}
+
+/// The same ladder as `save_rooms`: the access check comes before the body
+/// is parsed, so a non-manager learns nothing from how a body fails.
+async fn save_modlog<B: Backend>(
+    State(s): State<WebState<B>>,
+    session: Session,
+    Path(raw): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let Some(g) = parse_guild(&raw) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some((user, _)) = user_id(session) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if !is_json(&headers) {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+    if headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) != Some(&*s.origin) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    match s.backend.history_access(g, user).await {
+        HistoryAccess::Hidden => return StatusCode::NOT_FOUND.into_response(),
+        HistoryAccess::Unavailable => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        HistoryAccess::Forbidden => {
+            return error_json(StatusCode::FORBIDDEN, DASH_SETTINGS_NEEDS_MANAGE)
+        },
+        HistoryAccess::Allowed => {},
+    }
+    let Ok(form) = serde_json::from_slice::<ModLogSettingsForm>(&body) else {
+        return error_json(StatusCode::BAD_REQUEST, DASH_SETTINGS_UNREADABLE);
+    };
+    match s.backend.save_mod_log_settings(user, g, form).await {
+        Ok(view) => Json(view).into_response(),
+        Err(ModLogSaveRefused::Invalid(e)) => {
+            error_json(StatusCode::BAD_REQUEST, settings::modlog_invalid_message(e))
+        },
+        Err(ModLogSaveRefused::UnknownChannel) => {
+            error_json(StatusCode::BAD_REQUEST, DASH_MODLOG_UNKNOWN_CHANNEL)
+        },
+        Err(ModLogSaveRefused::Failed) => {
+            error_json(StatusCode::SERVICE_UNAVAILABLE, MODLOG_SETTINGS_SAVE_FAILED)
+        },
+        Err(ModLogSaveRefused::NotLoaded) => {
+            error_json(StatusCode::SERVICE_UNAVAILABLE, MODLOG_SETTINGS_NOT_LOADED)
         },
     }
 }
@@ -651,6 +702,7 @@ pub fn router<B: Backend>(state: WebState<B>) -> Router {
         .route("/g/{guild}/history.json", get(history_json::<B>))
         .route("/g/{guild}/settings", get(settings_page::<B>))
         .route("/g/{guild}/settings/rooms", post(save_rooms::<B>))
+        .route("/g/{guild}/settings/modlog", post(save_modlog::<B>))
         .route_layer(axum::middleware::map_response(no_store));
     let timed = Router::new()
         .merge(per_user)
@@ -2341,6 +2393,247 @@ mod test {
             assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{bad}");
         }
         assert!(fake.saves.lock().unwrap().is_empty());
+    }
+
+    // ---- mod log settings ----
+
+    use crate::settings::{ModLogSaveRefused, ModLogSettingsForm, ModLogSettingsView};
+    use crack_core::modlog::settings::ModLogSettingsError;
+
+    fn post_modlog_req(
+        cookie: Option<&str>,
+        ctype: Option<&str>,
+        origin: Option<&str>,
+        text: &str,
+    ) -> Request<Body> {
+        let mut req = Request::post("/g/5/settings/modlog");
+        if let Some(c) = cookie {
+            req = req.header(header::COOKIE, c);
+        }
+        if let Some(c) = ctype {
+            req = req.header(header::CONTENT_TYPE, c);
+        }
+        if let Some(o) = origin {
+            req = req.header(header::ORIGIN, o);
+        }
+        req.body(Body::from(text.to_owned())).unwrap()
+    }
+
+    async fn post_modlog(
+        fake: std::sync::Arc<FakeBackend>,
+        text: &str,
+    ) -> axum::response::Response {
+        app(fake)
+            .oneshot(post_modlog_req(
+                Some(&session(9)),
+                Some("application/json"),
+                Some(ORIGIN),
+                text,
+            ))
+            .await
+            .unwrap()
+    }
+
+    const LOG_FORM: &str = r#"{"enabled":true,"channel":"123"}"#;
+
+    #[tokio::test]
+    async fn modlog_section_lists_text_channels_and_current_values() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        *fake.modlog_view.lock().unwrap() = ModLogSettingsView {
+            enabled: true,
+            channel: Some("22".into()),
+            text_channels: vec![
+                ChannelOption {
+                    id: "11".into(),
+                    name: "general".into(),
+                },
+                ChannelOption {
+                    id: "22".into(),
+                    name: "mod <i>log</i>".into(),
+                },
+            ],
+            findings: Some(vec![
+                "Give CrackTunes View Audit Log in Server Settings → Roles".into(),
+                "<script>x</script>".into(),
+            ]),
+            visibility: Some("Anyone who can see #mod <i>log</i> can read the log.".into()),
+        };
+        let r = get(fake.clone(), "/g/5/settings", Some(&session(9))).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let html = body(r).await;
+        for needle in [
+            "id=\"modlog-form\"",
+            "id=\"m-enabled\" checked",
+            "<option value=\"11\">general</option>",
+            "<option value=\"22\" selected>mod &lt;i&gt;log&lt;/i&gt;</option>",
+            "<p id=\"m-visible\">Anyone who can see #mod &lt;i&gt;log&lt;/i&gt; can read the log.</p>",
+            "<li>Give CrackTunes View Audit Log in Server Settings → Roles</li>",
+            "<li>&lt;script&gt;x&lt;/script&gt;</li>",
+            "https://github.com/cycle-five/cracktunes/blob/master/docs/rooms-and-mod-log.md#mod-log",
+        ] {
+            assert!(html.contains(needle), "missing {needle}: {html}");
+        }
+        assert!(!html.contains("<script>x"), "{html}");
+        // No channel yet, then unknown, then ready: each says why.
+        *fake.modlog_view.lock().unwrap() = ModLogSettingsView {
+            enabled: false,
+            channel: None,
+            text_channels: vec![],
+            findings: None,
+            visibility: None,
+        };
+        let html = body(get(fake.clone(), "/g/5/settings", Some(&session(9))).await).await;
+        assert!(
+            html.contains(&crate::page::esc(DASH_MODLOG_NO_CHANNEL_YET)),
+            "{html}"
+        );
+        assert!(!html.contains("id=\"m-enabled\" checked"), "{html}");
+        fake.modlog_view.lock().unwrap().channel = Some("22".into());
+        let html = body(get(fake.clone(), "/g/5/settings", Some(&session(9))).await).await;
+        assert!(
+            html.contains(&crate::page::esc(MODLOG_STATUS_UNKNOWN)),
+            "{html}"
+        );
+        fake.modlog_view.lock().unwrap().findings = Some(vec![]);
+        let html = body(get(fake, "/g/5/settings", Some(&session(9))).await).await;
+        assert!(html.contains(MODLOG_STATUS_READY), "{html}");
+    }
+
+    #[tokio::test]
+    async fn posting_modlog_settings_requires_json() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        for ctype in [
+            None,
+            Some("text/plain"),
+            Some("application/x-www-form-urlencoded"),
+        ] {
+            let r = app(fake.clone())
+                .oneshot(post_modlog_req(
+                    Some(&session(9)),
+                    ctype,
+                    Some(ORIGIN),
+                    LOG_FORM,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE, "{ctype:?}");
+        }
+        let r = app(fake.clone())
+            .oneshot(post_modlog_req(
+                Some(&session(9)),
+                Some("application/json"),
+                Some("https://evil.test"),
+                LOG_FORM,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::FORBIDDEN);
+        let r = app(fake.clone())
+            .oneshot(post_modlog_req(
+                None,
+                Some("application/json"),
+                Some(ORIGIN),
+                LOG_FORM,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+        assert!(fake.modlog_saves.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn only_managers_may_post_modlog_settings() {
+        // A malformed body gets the access answer, not a 400: access is
+        // checked before the body is parsed.
+        for body_text in [LOG_FORM, "nope"] {
+            for (access, status) in [
+                (HistoryAccess::Hidden, StatusCode::NOT_FOUND),
+                (HistoryAccess::Unavailable, StatusCode::SERVICE_UNAVAILABLE),
+                (HistoryAccess::Forbidden, StatusCode::FORBIDDEN),
+            ] {
+                let fake = settings_fake(access);
+                let r = post_modlog(fake.clone(), body_text).await;
+                assert_eq!(r.status(), status, "{access:?} {body_text}");
+                assert!(fake.modlog_saves.lock().unwrap().is_empty(), "{access:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn a_manager_saves_modlog_and_the_backend_gets_exactly_that_form() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        fake.modlog_view.lock().unwrap().visibility = Some("seen".into());
+        let r = post_modlog(fake.clone(), LOG_FORM).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let got = body(r).await;
+        assert!(got.contains("\"visibility\":\"seen\""), "{got}");
+        assert_eq!(
+            fake.modlog_saves.lock().unwrap().clone(),
+            vec![(
+                GuildId::new(5),
+                serenity::all::UserId::new(9),
+                ModLogSettingsForm {
+                    enabled: true,
+                    channel: Some("123".into()),
+                }
+            )]
+        );
+        // A channel-less, disabled form is valid too.
+        let r = post_modlog(fake.clone(), r#"{"enabled":false,"channel":null}"#).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(fake.modlog_saves.lock().unwrap()[1].2.channel, None);
+        assert!(!fake.modlog_saves.lock().unwrap()[1].2.enabled);
+    }
+
+    #[tokio::test]
+    async fn invalid_modlog_settings_are_400_with_the_reason() {
+        for (refused, status, text) in [
+            (
+                ModLogSaveRefused::Invalid(ModLogSettingsError::NoDatabase),
+                StatusCode::BAD_REQUEST,
+                "The mod log needs a database.",
+            ),
+            (
+                ModLogSaveRefused::Invalid(ModLogSettingsError::NoChannel),
+                StatusCode::BAD_REQUEST,
+                "Pick a channel for the log.",
+            ),
+            (
+                ModLogSaveRefused::UnknownChannel,
+                StatusCode::BAD_REQUEST,
+                DASH_MODLOG_UNKNOWN_CHANNEL,
+            ),
+            (
+                ModLogSaveRefused::Failed,
+                StatusCode::SERVICE_UNAVAILABLE,
+                MODLOG_SETTINGS_SAVE_FAILED,
+            ),
+            (
+                ModLogSaveRefused::NotLoaded,
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Mod log settings couldn't be read from the database yet — try again in a minute.",
+            ),
+        ] {
+            let fake = settings_fake(HistoryAccess::Allowed);
+            *fake.modlog_save_result.lock().unwrap() = Err(refused);
+            let r = post_modlog(fake, LOG_FORM).await;
+            assert_eq!(r.status(), status, "{refused:?}");
+            let got = body(r).await;
+            assert!(
+                got.contains(&format!(
+                    "\"error\":{}",
+                    serde_json::to_string(text).unwrap()
+                )),
+                "{refused:?}: {got}"
+            );
+        }
+        // Unreadable bodies never reach the backend.
+        let fake = settings_fake(HistoryAccess::Allowed);
+        for bad in ["{}", "nope", r#"{"enabled":"yes","channel":null}"#] {
+            let r = post_modlog(fake.clone(), bad).await;
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{bad}");
+        }
+        assert!(fake.modlog_saves.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
