@@ -46,6 +46,14 @@ pub trait ModLogSink: Send + Sync {
     async fn post(&self, guild: GuildId, e: ModLogEvent);
 }
 
+/// A sink that drops everything, for callers that never log.
+pub struct NoopSink;
+
+#[async_trait]
+impl ModLogSink for NoopSink {
+    async fn post(&self, _guild: GuildId, _e: ModLogEvent) {}
+}
+
 fn kind_of(c: &Change) -> AuditKind {
     match c {
         Change::Left { .. } => AuditKind::Disconnect,
