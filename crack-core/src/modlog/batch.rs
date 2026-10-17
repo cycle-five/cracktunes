@@ -583,14 +583,21 @@ pub async fn seed(data: &Data, audit: &dyn AuditSource, guild: GuildId) {
     // waited on; and again as the slot is taken after it, since the log may
     // have been turned off, a flush started or a 403 paused fetching
     // meanwhile.
-    if reg.batch_if_enabled(guild, |b| seedable(b, Instant::now())) != Some(true) {
+    // The batch life it was started for: a seed reads only for that life. If
+    // the epoch moves during the wait, a resuming save bumped it and owes its
+    // own seed (which waits its own SKEW), or a new life began unseeded and
+    // its first flush seeds it; reading now would be less than SKEW after
+    // that restart, so a unit written in between could leak.
+    let Some(Some(life)) =
+        reg.batch_if_enabled(guild, |b| seedable(b, Instant::now()).then_some(b.epoch))
+    else {
         not_seeded();
         return;
-    }
+    };
     tokio::time::sleep(SKEW).await;
     let now = Instant::now();
     let claim = reg.batch_if_enabled(guild, |b| {
-        if !seedable(b, now) {
+        if !seedable(b, now) || b.epoch != life {
             return None;
         }
         let token = next_fetch();
@@ -1869,8 +1876,10 @@ mod tests {
         assert!(cut.is_err(), "the flush was dropped mid-fetch");
         assert!(!in_flight(&w), "the slot is free again");
         // Cut mid-fetch: a seed reads SKEW after it is called.
+        let before = w.fetches();
         let seed_dropped = tokio::time::timeout(SKEW + ms(10), w.seed()).await;
         assert!(seed_dropped.is_err());
+        assert!(w.fetches() > before, "the seed's fetch had started");
         assert!(!in_flight(&w), "a dropped seed frees it too");
     }
 
@@ -1900,5 +1909,141 @@ mod tests {
         w.flush().await;
         assert_eq!(w.fetches(), s0 + 1);
         assert_eq!(w.audit.most_running(), 1);
+    }
+
+    // ---- regression tests: a seed reads only for the life it was started for (M28) ----
+
+    /// P1: GuildCreate's seed S1 is waiting its SKEW when the log is turned
+    /// off, a moderator disconnects T1 (dropped), and the log is turned on
+    /// again (a save that resumes and owes seed S2). S1 wakes and seeds the
+    /// new life with a read SKEW-earlier than S2 would; S2 finds S1 in flight.
+    #[tokio::test(start_paused = true)]
+    async fn seed_wait_p1_off_and_on_during_a_seeds_wait() {
+        let w = W::new(); // GuildCreate read "on"
+        w.audit.read_at_start();
+        w.audit.set_delay(ms(300));
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let s1 = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await }); // t = 0
+        settle().await;
+        after(ms(50)).await; // t = 0.05: off
+        w.data.modlog.set_settings(ModLogSettings::off(G));
+        after(ms(50)).await; // t = 0.1: M1 disconnects T1, dropped
+        w.change(left(T1));
+        assert_eq!(w.pending(), 0);
+        after(ms(50)).await; // t = 0.15: on again
+        w.data.modlog.set_settings(on());
+        assert!(w.data.modlog.settings_saved(G, Instant::now()));
+        assert!(w.data.modlog.take_seed_owed(G));
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let s2 = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        settle().await;
+        after(ms(100)).await; // t = 0.25: S1 reads
+        after(ms(50)).await; // t = 0.3: T1's entry is written (200 ms after, < SKEW)
+        w.dc(vec![dc(7, M1, 1)]);
+        run(secs(2)).await;
+        assert!(s1.is_finished() && s2.is_finished());
+        eprintln!("P1 fetches during seeds: {:?}", w.audit.kinds());
+        run(secs(3600)).await;
+        w.audit.set_delay(Duration::ZERO);
+        w.change(left(T2));
+        run(secs(10)).await;
+        assert!(
+            w.sink.events().is_empty(),
+            "P1: T2 must not be named: {:?}",
+            w.sink.events()
+        );
+    }
+
+    /// P2: the log is turned on (resume + seed S1), off 50 ms later, a
+    /// moderator disconnects T1 (dropped), and on again inside the resume
+    /// minute (no seed owed). S1 wakes and seeds the new life.
+    #[tokio::test(start_paused = true)]
+    async fn seed_wait_p2_on_off_on_inside_the_resume_minute() {
+        let w = W::off();
+        w.audit.read_at_start();
+        w.audit.set_delay(ms(100));
+        w.data.modlog.set_settings(on()); // t = 0
+        assert!(w.data.modlog.settings_saved(G, Instant::now()));
+        assert!(w.data.modlog.take_seed_owed(G));
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let s1 = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        settle().await;
+        after(ms(50)).await; // t = 0.05: off
+        w.data.modlog.set_settings(ModLogSettings::off(G));
+        after(ms(50)).await; // t = 0.1: dropped
+        w.change(left(T1));
+        assert_eq!(w.pending(), 0);
+        after(ms(50)).await; // t = 0.15: on again, inside the minute
+        w.data.modlog.set_settings(on());
+        assert!(!w.data.modlog.settings_saved(G, Instant::now()));
+        assert!(!w.data.modlog.take_seed_owed(G));
+        after(ms(100)).await; // t = 0.25: S1 reads
+        after(ms(50)).await; // t = 0.3: T1's entry is written
+        w.dc(vec![dc(7, M1, 1)]);
+        run(secs(2)).await;
+        assert!(s1.is_finished());
+        eprintln!("P2 fetches during seed: {:?}", w.audit.kinds());
+        run(secs(3600)).await;
+        w.audit.set_delay(Duration::ZERO);
+        w.change(left(T2));
+        run(secs(10)).await;
+        assert!(
+            w.sink.events().is_empty(),
+            "P2: T2 must not be named: {:?}",
+            w.sink.events()
+        );
+    }
+
+    /// P3: a GuildCreate seed waiting its SKEW while a save (log already on,
+    /// nothing dropped) resumes: nothing is lost, and the next forced
+    /// disconnect is still attributed (liveness control for any epoch guard).
+    #[tokio::test(start_paused = true)]
+    async fn seed_wait_p3_a_save_during_a_seeds_wait_still_seeds() {
+        let w = W::new();
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let s1 = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        settle().await;
+        after(ms(100)).await;
+        assert!(w.data.modlog.settings_saved(G, Instant::now()));
+        assert!(w.data.modlog.take_seed_owed(G));
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let s2 = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        run(secs(2)).await;
+        assert!(s1.is_finished() && s2.is_finished());
+        assert!(
+            w.data.modlog.snapshots(G).unwrap().disconnect.seeded,
+            "seeded"
+        );
+        w.dc(vec![dc(7, M1, 1)]);
+        w.change(left(T2));
+        run(secs(10)).await;
+        assert_eq!(w.sink.events(), vec![disc(T2, By(M1))]);
+    }
+
+    /// P4: a kick mark set while a seed's fetch is in flight survives it
+    /// (the seed started before the mark's instant) and holds the next
+    /// round's disconnects back.
+    #[tokio::test(start_paused = true)]
+    async fn seed_wait_p4_a_mark_set_during_a_seed_outlives_it() {
+        let w = W::new();
+        w.audit.read_at_start();
+        w.audit.set_delay(ms(300));
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let s1 = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        settle().await;
+        after(SKEW).await; // the seed reads disconnects, until 0.55
+        after(ms(100)).await; // t = 0.35: a kick's leave was a moderator's
+        w.data.modlog.mark_reread(G, Disconnect, Instant::now());
+        after(ms(50)).await; // its entry is written after the seed read
+        w.dc(vec![dc(7, M1, 1)]);
+        run(secs(2)).await;
+        assert!(s1.is_finished());
+        assert_eq!(w.reseed(), [Disconnect], "the seed did not clear it");
+        run(secs(3600)).await;
+        w.audit.set_delay(Duration::ZERO);
+        w.change(left(T2));
+        run(secs(10)).await;
+        assert!(w.sink.events().is_empty(), "P4: {:?}", w.sink.events());
+        assert!(w.reseed().is_empty());
     }
 }

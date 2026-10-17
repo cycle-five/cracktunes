@@ -194,8 +194,6 @@ pub async fn act(
     Ok(done)
 }
 
-/// What the mod log records of a committed action: kicks, let-ins, mutes and
-/// unmutes. Everything else is the room's own business.
 /// A room kick's disconnect of `target` failed, so no leave of the bot's is
 /// coming: take the marker back, so it cannot swallow a moderator's later,
 /// real disconnect of them. If a leave already took it, that leave was not
@@ -209,6 +207,8 @@ fn no_leave_coming(data: &Data, guild: GuildId, target: UserId) {
     }
 }
 
+/// What the mod log records of a committed action: kicks, let-ins, mutes and
+/// unmutes. Everything else is the room's own business.
 fn mod_log_event(action: &RoomAction, room: ChannelId, actor: UserId) -> Option<ModLogEvent> {
     match action {
         RoomAction::Kick { target, reason } => Some(ModLogEvent::RoomKick {

@@ -855,7 +855,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_good_read_seeds_at_once_and_is_not_retried() {
+    async fn a_good_read_seeds_after_the_skew_and_is_not_retried() {
         let data = data_off();
         let audit = Arc::new(FakeAudit::default());
         let (load, reads) = scripted(&[true], on());
