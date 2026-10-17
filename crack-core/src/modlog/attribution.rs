@@ -32,7 +32,24 @@ pub struct Snapshot {
     pub counts: HashMap<u64, u32>,
 }
 
-/// A voice change the bot observed.
+/// The two snapshots of one guild, one per audit action type.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Snapshots {
+    pub disconnect: Snapshot,
+    pub moves: Snapshot,
+}
+
+impl Snapshots {
+    fn of(&self, kind: AuditKind) -> &Snapshot {
+        match kind {
+            AuditKind::Disconnect => &self.disconnect,
+            AuditKind::Move => &self.moves,
+        }
+    }
+}
+
+/// A voice change the bot observed. Callers pass the bot's own changes too,
+/// so their audit units are consumed; they are never reported.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
     Left {
@@ -59,51 +76,97 @@ impl Change {
             Self::Moved { .. } => AuditKind::Move,
         }
     }
-}
 
-/// Record every row's count and mark the snapshot seeded. The counts are
-/// replaced by the rows given: ids that fell out of the fetch window go.
-pub fn advance(snap: &mut Snapshot, rows: &[AuditRow]) {
-    snap.counts = rows.iter().map(|r| (r.id, r.count)).collect();
-    snap.seeded = true;
-}
-
-/// A row's new units: its whole count when unseen, else the rise.
-fn delta(snap: &Snapshot, row: &AuditRow) -> u32 {
-    match snap.counts.get(&row.id) {
-        Some(prev) => row.count.saturating_sub(*prev),
-        None => row.count,
+    fn event(&self, by: Attribution) -> ModLogEvent {
+        match self {
+            Self::Left { target, from } => ModLogEvent::Disconnect {
+                target: *target,
+                from: *from,
+                by,
+            },
+            Self::Moved { target, from, to } => ModLogEvent::Move {
+                target: *target,
+                from: *from,
+                to: *to,
+                by,
+            },
+        }
     }
 }
 
-/// What to report for a group of changes given the actors' units.
-/// `batch_ok` is true for leaves, where too few units become a batch.
-fn decide(changes: &[&Change], units: &BTreeMap<UserId, u32>, batch_ok: bool) -> Vec<ModLogEvent> {
-    let d: u32 = units.values().sum();
-    let l = changes.len();
+/// How many entry ids a snapshot keeps (the highest).
+const SNAPSHOT_KEEP: usize = 100;
+
+/// Merge the rows' counts into each kind's snapshot (ids not fetched keep
+/// their counts), prune each to the highest [`SNAPSHOT_KEEP`] ids, and mark
+/// both seeded.
+pub fn advance(snaps: &mut Snapshots, rows: &[AuditRow]) {
+    for r in rows {
+        let snap = match r.kind {
+            AuditKind::Disconnect => &mut snaps.disconnect,
+            AuditKind::Move => &mut snaps.moves,
+        };
+        snap.counts.insert(r.id, r.count);
+    }
+    for snap in [&mut snaps.disconnect, &mut snaps.moves] {
+        if snap.counts.len() > SNAPSHOT_KEEP {
+            let mut ids: Vec<u64> = snap.counts.keys().copied().collect();
+            ids.sort_unstable_by(|a, b| b.cmp(a));
+            for id in &ids[SNAPSHOT_KEEP..] {
+                snap.counts.remove(id);
+            }
+        }
+        snap.seeded = true;
+    }
+}
+
+/// A row that counts: not the bot's, with an actor, on a seeded snapshot.
+struct Live<'a> {
+    row: &'a AuditRow,
+    actor: UserId,
+    delta: u32,
+}
+
+/// What to report for a group of changes given the actors' units. Bot
+/// changes count towards L but are never named.
+fn decide(
+    changes: &[&Change],
+    units: &BTreeMap<UserId, u64>,
+    batch_ok: bool,
+    bot: UserId,
+) -> Vec<ModLogEvent> {
+    let d: u64 = units.values().fold(0, |a, u| a.saturating_add(*u));
+    let l = changes.len() as u64;
     if d == 0 || l == 0 {
         if d > 0 {
             tracing::debug!("modlog: {d} audit units with no change to explain");
         }
         return Vec::new();
     }
+    if d > l {
+        tracing::debug!("modlog: {d} audit units for {l} changes: not attributed");
+        return Vec::new();
+    }
     let actors: Vec<UserId> = units.keys().copied().collect();
-    if (d as usize) < l {
+    if d < l {
         if !batch_ok {
             tracing::debug!("modlog: {d} audit units for {l} moves: not attributed");
             return Vec::new();
         }
+        let mut among: Vec<UserId> = changes
+            .iter()
+            .map(|c| c.target())
+            .filter(|t| *t != bot)
+            .collect();
+        among.dedup();
+        if among.is_empty() {
+            return Vec::new();
+        }
         return vec![ModLogEvent::DisconnectBatch {
             actors,
-            count: d,
-            among: changes.iter().map(|c| c.target()).collect(),
+            count: u32::try_from(d).unwrap_or(u32::MAX),
+            among,
         }];
-    }
-    if (d as usize) > l {
-        tracing::debug!(
-            "modlog: {} audit units beyond the {l} changes",
-            d as usize - l
-        );
     }
     let by = || match actors.as_slice() {
         [one] => Attribution::By(*one),
@@ -111,74 +174,80 @@ fn decide(changes: &[&Change], units: &BTreeMap<UserId, u32>, batch_ok: bool) ->
     };
     changes
         .iter()
-        .map(|c| match c {
-            Change::Left { target, from } => ModLogEvent::Disconnect {
-                target: *target,
-                from: *from,
-                by: by(),
-            },
-            Change::Moved { target, from, to } => ModLogEvent::Move {
-                target: *target,
-                from: *from,
-                to: *to,
-                by: by(),
-            },
-        })
+        .filter(|c| c.target() != bot)
+        .map(|c| c.event(by()))
         .collect()
 }
 
 /// Turn audit deltas and observed voice changes into events (spec 2.3).
-/// Output order is stable: leaves, then moves by destination id; within a
-/// group by target id.
+/// Output order is stable: exact pairs (by row id), then leaves, then moves
+/// by destination id; within a group by target id, actors sorted.
+///
+/// A row naming a target never feeds the pools: it only pairs exactly, and
+/// only when new since the snapshot.
 #[must_use]
 pub fn attribute(
-    snap: &Snapshot,
+    snaps: &Snapshots,
     rows: &[AuditRow],
     changes: &[Change],
     bot: UserId,
 ) -> Vec<ModLogEvent> {
-    if !snap.seeded {
-        return Vec::new();
-    }
     let mut sorted_changes: Vec<&Change> = changes.iter().collect();
     sorted_changes.sort_by_key(|c| c.target());
     let mut paired = vec![false; sorted_changes.len()];
     let mut events: Vec<ModLogEvent> = Vec::new();
 
-    // (row, remaining units), bot-authored and unauthored rows never count.
-    let mut live: Vec<(&AuditRow, UserId, u32)> = rows
+    let mut live: Vec<Live> = rows
         .iter()
         .filter_map(|r| {
+            let snap = snaps.of(r.kind);
+            if !snap.seeded {
+                return None;
+            }
             let actor = r.actor.filter(|a| *a != bot)?;
-            let d = delta(snap, r);
-            (d > 0).then_some((r, actor, d))
+            let delta = match snap.counts.get(&r.id) {
+                Some(prev) => r.count.saturating_sub(*prev),
+                None => r.count,
+            };
+            (delta > 0).then_some(Live {
+                row: r,
+                actor,
+                delta,
+            })
         })
         .collect();
-    live.sort_by_key(|(r, ..)| r.id);
+    live.sort_by_key(|l| l.row.id);
 
-    // Exact pairs.
-    for (row, actor, units) in &mut live {
-        let Some(target) = row.target else { continue };
-        let hit = sorted_changes
-            .iter()
-            .enumerate()
-            .find(|(i, c)| !paired[*i] && c.target() == target && c.kind() == row.kind);
-        if let Some((i, c)) = hit {
-            paired[i] = true;
-            *units -= 1;
-            events.push(match c {
-                Change::Left { target, from } => ModLogEvent::Disconnect {
-                    target: *target,
-                    from: *from,
-                    by: Attribution::By(*actor),
-                },
-                Change::Moved { target, from, to } => ModLogEvent::Move {
-                    target: *target,
-                    from: *from,
-                    to: *to,
-                    by: Attribution::By(*actor),
-                },
+    // Exact pairs: targeted rows only, new rows only.
+    for l in live.iter().filter(|l| l.row.target.is_some()) {
+        let Some(target) = l.row.target else { continue };
+        if l.delta != l.row.count {
+            tracing::debug!(
+                "modlog: incremented entry {} names a stale target",
+                l.row.id
+            );
+            continue;
+        }
+        let mut left = l.delta;
+        while left > 0 {
+            let hit = sorted_changes.iter().enumerate().find(|(i, c)| {
+                !paired[*i]
+                    && c.target() == target
+                    && c.kind() == l.row.kind
+                    && match c {
+                        Change::Moved { to, .. } => l.row.channel == Some(*to),
+                        Change::Left { .. } => true,
+                    }
             });
+            let Some((i, c)) = hit else { break };
+            paired[i] = true;
+            left -= 1;
+            if c.target() != bot {
+                events.push(c.event(Attribution::By(l.actor)));
+            }
+        }
+        if left > 0 {
+            tracing::debug!("modlog: {left} units of entry {} left unpaired", l.row.id);
         }
     }
 
@@ -189,13 +258,14 @@ pub fn attribute(
         .filter(|(i, c)| !paired[*i] && c.kind() == AuditKind::Disconnect)
         .map(|(_, c)| *c)
         .collect();
-    let mut units: BTreeMap<UserId, u32> = BTreeMap::new();
-    for (row, actor, u) in &live {
-        if row.kind == AuditKind::Disconnect && *u > 0 {
-            *units.entry(*actor).or_default() += u;
+    let mut units: BTreeMap<UserId, u64> = BTreeMap::new();
+    for l in &live {
+        if l.row.target.is_none() && l.row.kind == AuditKind::Disconnect {
+            let u = units.entry(l.actor).or_default();
+            *u = u.saturating_add(u64::from(l.delta));
         }
     }
-    events.extend(decide(&leaves, &units, true));
+    events.extend(decide(&leaves, &units, true, bot));
 
     // Moves: one group per destination.
     let mut by_dest: BTreeMap<ChannelId, Vec<&Change>> = BTreeMap::new();
@@ -205,13 +275,17 @@ pub fn attribute(
         }
     }
     for (dest, group) in &by_dest {
-        let mut units: BTreeMap<UserId, u32> = BTreeMap::new();
-        for (row, actor, u) in &live {
-            if row.kind == AuditKind::Move && row.channel == Some(*dest) && *u > 0 {
-                *units.entry(*actor).or_default() += u;
+        let mut units: BTreeMap<UserId, u64> = BTreeMap::new();
+        for l in &live {
+            if l.row.target.is_none()
+                && l.row.kind == AuditKind::Move
+                && l.row.channel == Some(*dest)
+            {
+                let u = units.entry(l.actor).or_default();
+                *u = u.saturating_add(u64::from(l.delta));
             }
         }
-        events.extend(decide(group, &units, false));
+        events.extend(decide(group, &units, false, bot));
     }
     events
 }
@@ -230,10 +304,14 @@ mod tests {
     const C2: ChannelId = ChannelId::new(102);
     const C3: ChannelId = ChannelId::new(103);
 
-    fn seeded(counts: &[(u64, u32)]) -> Snapshot {
-        Snapshot {
+    fn seeded(counts: &[(u64, u32)]) -> Snapshots {
+        let s = Snapshot {
             seeded: true,
             counts: counts.iter().copied().collect(),
+        };
+        Snapshots {
+            disconnect: s.clone(),
+            moves: s,
         }
     }
 
@@ -333,10 +411,10 @@ mod tests {
     }
 
     #[test]
-    fn more_deltas_than_leaves_attributes_all() {
+    fn more_deltas_than_leaves_attributes_nothing() {
         let snap = seeded(&[(1, 1)]);
         let out = attribute(&snap, &[dc(1, M1, 5)], &[left(T1)], BOT);
-        assert_eq!(out, vec![disc(T1, Attribution::By(M1))]);
+        assert!(out.is_empty(), "a surplus is not self-contained: {out:?}");
     }
 
     #[test]
@@ -402,7 +480,7 @@ mod tests {
 
     #[test]
     fn unseeded_snapshot_attributes_nothing() {
-        let snap = Snapshot::default();
+        let snap = Snapshots::default();
         let out = attribute(&snap, &[dc(1, M1, 1)], &[left(T1)], BOT);
         assert!(out.is_empty());
     }
@@ -418,11 +496,191 @@ mod tests {
 
     #[test]
     fn advance_records_counts_and_seeds() {
-        let mut snap = Snapshot::default();
-        advance(&mut snap, &[dc(1, M1, 2), dc(2, BOT, 7)]);
-        assert!(snap.seeded);
-        assert_eq!(snap.counts, HashMap::from([(1, 2), (2, 7)]));
-        advance(&mut snap, &[dc(1, M1, 3)]);
-        assert_eq!(snap.counts, HashMap::from([(1, 3)]));
+        let mut snaps = Snapshots::default();
+        advance(&mut snaps, &[dc(1, M1, 2), dc(2, BOT, 7), mv(5, M2, 1, C2)]);
+        assert!(snaps.disconnect.seeded && snaps.moves.seeded);
+        assert_eq!(snaps.disconnect.counts, HashMap::from([(1, 2), (2, 7)]));
+        assert_eq!(snaps.moves.counts, HashMap::from([(5, 1)]));
+        advance(&mut snaps, &[dc(1, M1, 3)]);
+        assert_eq!(
+            snaps.disconnect.counts,
+            HashMap::from([(1, 3), (2, 7)]),
+            "merge keeps ids not fetched"
+        );
+    }
+
+    #[test]
+    fn advance_prunes_to_the_hundred_highest_ids() {
+        let mut snaps = Snapshots::default();
+        let rows: Vec<AuditRow> = (1..=150).map(|i| dc(i, M1, 1)).collect();
+        advance(&mut snaps, &rows);
+        assert_eq!(snaps.disconnect.counts.len(), 100);
+        assert!(snaps.disconnect.counts.contains_key(&150));
+        assert!(snaps.disconnect.counts.contains_key(&51));
+        assert!(!snaps.disconnect.counts.contains_key(&50));
+    }
+
+    fn targeted(r: AuditRow, t: UserId) -> AuditRow {
+        AuditRow {
+            target: Some(t),
+            ..r
+        }
+    }
+
+    #[test]
+    fn targeted_row_never_pairs_across_kinds() {
+        let snap = seeded(&[]);
+        let rows = [targeted(dc(1, M1, 1), T1)];
+        let changes = [moved(T1, C2), left(T3)];
+        assert!(attribute(&snap, &rows, &changes, BOT).is_empty());
+        let rows = [targeted(mv(1, M1, 1, C2), T1)];
+        let changes = [left(T1), moved(T3, C2)];
+        assert!(attribute(&snap, &rows, &changes, BOT).is_empty());
+    }
+
+    #[test]
+    fn targeted_move_pairs_by_destination_through_two_hops() {
+        let snap = seeded(&[]);
+        let rows = [targeted(mv(1, M1, 1, C2), T1)];
+        let hop1 = Change::Moved {
+            target: T1,
+            from: C1,
+            to: C3,
+        };
+        let hop2 = Change::Moved {
+            target: T1,
+            from: C3,
+            to: C2,
+        };
+        let out = attribute(&snap, &rows, &[hop1, hop2], BOT);
+        assert_eq!(
+            out,
+            vec![ModLogEvent::Move {
+                target: T1,
+                from: C3,
+                to: C2,
+                by: Attribution::By(M1),
+            }]
+        );
+    }
+
+    #[test]
+    fn incremented_targeted_row_pairs_nothing() {
+        let snap = seeded(&[(1, 1)]);
+        let rows = [targeted(dc(1, M1, 2), T1)];
+        assert!(attribute(&snap, &rows, &[left(T1)], BOT).is_empty());
+    }
+
+    #[test]
+    fn unobserved_target_adds_nothing_to_the_pool() {
+        let snap = seeded(&[]);
+        let rows = [targeted(dc(1, M1, 1), T2)];
+        assert!(attribute(&snap, &rows, &[left(T1)], BOT).is_empty());
+    }
+
+    #[test]
+    fn mods_disconnecting_the_bot_is_consumed_and_silent() {
+        let mut snaps = seeded(&[]);
+        let bot_left = Change::Left {
+            target: BOT,
+            from: C1,
+        };
+        let out = attribute(&snaps, &[dc(1, M1, 1)], &[bot_left], BOT);
+        assert!(out.is_empty(), "{out:?}");
+        advance(&mut snaps, &[dc(1, M1, 1)]);
+        let out = attribute(&snaps, &[dc(1, M1, 1)], &[left(T1)], BOT);
+        assert!(out.is_empty(), "a voluntary leave after it: {out:?}");
+    }
+
+    #[test]
+    fn bot_change_counts_in_l_but_is_not_named() {
+        let snap = seeded(&[]);
+        let bot_left = Change::Left {
+            target: BOT,
+            from: C1,
+        };
+        let out = attribute(&snap, &[dc(1, M1, 2)], &[bot_left.clone(), left(T1)], BOT);
+        assert_eq!(out, vec![disc(T1, Attribution::By(M1))]);
+        let out = attribute(&snap, &[dc(1, M1, 1)], &[bot_left, left(T1), left(T2)], BOT);
+        assert_eq!(
+            out,
+            vec![ModLogEvent::DisconnectBatch {
+                actors: vec![M1],
+                count: 1,
+                among: vec![T1, T2],
+            }],
+            "the bot is not among them"
+        );
+    }
+
+    #[test]
+    fn mixed_batch_keeps_kinds_apart() {
+        let snap = seeded(&[]);
+        let dc_with_channel = AuditRow {
+            channel: Some(C2),
+            ..dc(2, M2, 1)
+        };
+        let rows = [mv(1, M1, 1, C2), dc_with_channel];
+        let changes = [moved(T1, C2), left(T2), left(T3)];
+        let out = attribute(&snap, &rows, &changes, BOT);
+        assert_eq!(
+            out,
+            vec![
+                ModLogEvent::DisconnectBatch {
+                    actors: vec![M2],
+                    count: 1,
+                    among: vec![T2, T3],
+                },
+                mov(T1, C2, Attribution::By(M1)),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_kind_with_an_unseeded_snapshot_attributes_nothing() {
+        let mut snap = seeded(&[]);
+        snap.moves.seeded = false;
+        let rows = [dc(1, M1, 1), mv(2, M2, 1, C2)];
+        let out = attribute(&snap, &rows, &[left(T1), moved(T2, C2)], BOT);
+        assert_eq!(out, vec![disc(T1, Attribution::By(M1))]);
+    }
+
+    #[test]
+    fn a_count_below_the_snapshot_is_no_delta() {
+        let snap = seeded(&[(1, 5)]);
+        assert!(attribute(&snap, &[dc(1, M1, 3)], &[left(T1)], BOT).is_empty());
+    }
+
+    #[test]
+    fn absurd_counts_cannot_wrap() {
+        let snap = seeded(&[]);
+        let rows = [dc(1, M1, u32::MAX), dc(2, M2, u32::MAX)];
+        assert!(attribute(&snap, &rows, &[left(T1)], BOT).is_empty());
+    }
+
+    #[test]
+    fn exact_pair_with_the_bot_is_consumed_and_silent() {
+        let snap = seeded(&[]);
+        let rows = [targeted(dc(1, M1, 1), BOT)];
+        let bot_left = Change::Left {
+            target: BOT,
+            from: C1,
+        };
+        let out = attribute(&snap, &rows, &[bot_left, left(T1)], BOT);
+        assert!(out.is_empty(), "{out:?}");
+    }
+
+    #[test]
+    fn a_member_leaving_twice_is_listed_once_in_a_batch() {
+        let snap = seeded(&[]);
+        let out = attribute(&snap, &[dc(1, M1, 1)], &[left(T1), left(T1), left(T2)], BOT);
+        assert_eq!(
+            out,
+            vec![ModLogEvent::DisconnectBatch {
+                actors: vec![M1],
+                count: 1,
+                among: vec![T1, T2],
+            }]
+        );
     }
 }
