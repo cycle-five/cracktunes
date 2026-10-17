@@ -3,7 +3,9 @@
 
 use super::guard::{member_can_join, BaselineView};
 use super::state::StoredOverwrite;
-use serenity::all::{Cache, ChannelId, GuildId, Http, Member, Permissions, RoleId, UserId};
+use serenity::all::{
+    Cache, ChannelId, ChannelType, GuildId, Http, Member, Permissions, RoleId, UserId,
+};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +23,9 @@ pub struct GuildFacts {
     /// Who is in which voice channel, and whether they are a bot.
     pub voice: HashMap<UserId, (ChannelId, bool)>,
     pub display: HashMap<UserId, String>,
+    /// Each voice channel's overwrites as the cache holds them: what a room
+    /// carries now, which may have moved on from its stored baseline (R33).
+    pub overwrites: HashMap<ChannelId, Vec<StoredOverwrite>>,
 }
 
 impl GuildFacts {
@@ -89,8 +94,8 @@ impl GuildFacts {
 /// whoever else the decision needs, such as the actor, a modal's target, or
 /// the room's owner (Block role checks the owner's roles). An `extra` member
 /// the cache does not hold is fetched over HTTP; one that cannot be fetched
-/// is left out, and counts as holding only `@everyone`. `None` when the guild
-/// is not cached.
+/// is left out, and counts as holding only `@everyone`. Every voice
+/// channel's overwrites are copied too. `None` when the guild is not cached.
 pub async fn gather(
     cache: &Cache,
     http: &Http,
@@ -117,6 +122,21 @@ pub async fn gather(
             roles: HashMap::new(),
             voice: HashMap::new(),
             display: HashMap::new(),
+            // Voice channels only: rooms are voice channels, and a server
+            // has a few hundred channels at most, unlike members.
+            overwrites: g
+                .channels
+                .iter()
+                .filter(|c| c.base.kind == ChannelType::Voice)
+                .map(|c| {
+                    let ows = c
+                        .permission_overwrites
+                        .iter()
+                        .filter_map(StoredOverwrite::of)
+                        .collect();
+                    (c.id, ows)
+                })
+                .collect(),
         };
         for vs in g.voice_states.iter() {
             let Some(ch) = vs.channel_id else { continue };
@@ -175,6 +195,7 @@ pub(crate) mod tests {
             roles: HashMap::new(),
             voice: HashMap::new(),
             display: HashMap::new(),
+            overwrites: HashMap::new(),
         }
     }
 

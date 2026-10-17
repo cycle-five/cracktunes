@@ -8,7 +8,7 @@ use super::card::{PanelView, RoomCard, RoomDone, RoomRefusal};
 use super::discord::{DiscordError, RoomsDiscord};
 use super::facts::GuildFacts;
 use super::guard::role_can_connect;
-use super::overwrites::{diff, room_overwrites, OverwriteChange};
+use super::overwrites::{diff, fold_cached, managed_members, room_overwrites, OverwriteChange};
 use super::registry::LiveRoom;
 use super::settings::{RoomSettings, SettingsError, ROOM_NAME_MAX};
 use super::state::{OverwriteTarget, RoomState, StoredOverwrite};
@@ -20,6 +20,12 @@ use crate::Data;
 use serenity::all::{ChannelId, MessageId, RoleId, UserId};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+/// How long after the bot writes a room's overwrites the cache may still
+/// show the room as it was (the gateway's update lags the write, and a
+/// press's facts are read before it waits for the room). Until then the
+/// cache is not folded into the baseline (R33).
+pub const CACHE_SETTLE: Duration = Duration::from_secs(10);
 
 /// What an action needs besides its inputs.
 pub struct RoomCx<'a> {
@@ -66,6 +72,11 @@ pub async fn act(
     }
     role_choice_ok(facts, &live.state, &action)?;
 
+    // R33: what the channel carries now goes into the baseline before
+    // anything is worked out from it, so no write puts back an entry the
+    // category (or an admin) has since tightened.
+    fold_channel(cx.data, facts, &mut live, now).await;
+
     // 3. Never widen: whoever is let in must already be able to get in.
     guard(facts, &live.baseline, &action, actor)?;
 
@@ -79,6 +90,11 @@ pub async fn act(
     // 5-6. Discord. Any failure returns here, with nothing persisted.
     let before = room_overwrites(guild, facts.bot, &live.baseline, &live.state);
     let after = room_overwrites(guild, facts.bot, &live.baseline, &next);
+    if before != after {
+        // Even a refused write may have changed some targets (and put them
+        // back): the cache needs time either way.
+        live.wrote_at = Some(now);
+    }
     write_overwrites(cx.discord, room, &before, &after).await?;
     // A kick shuts them out first (above), then disconnects them: a refused
     // deny has done nothing, and a refused disconnect still leaves the kick
@@ -152,6 +168,39 @@ pub async fn act(
         persist(cx.data, room, &live.state).await;
     }
     Ok(done)
+}
+
+/// R33: fold the room's channel as the cache holds it into the room's
+/// baseline ([`fold_cached`]), and save the baseline if that changed it.
+/// Nothing is folded on a cache miss, or while the cache may not yet show
+/// the bot's own last write ([`CACHE_SETTLE`]).
+async fn fold_channel(data: &Data, facts: &GuildFacts, live: &mut LiveRoom, now: Instant) {
+    let settling = live
+        .wrote_at
+        .is_some_and(|at| now.saturating_duration_since(at) < CACHE_SETTLE);
+    let Some(cached) = facts.overwrites.get(&live.channel).filter(|_| !settling) else {
+        return;
+    };
+    let expected = room_overwrites(live.guild, facts.bot, &live.baseline, &live.state);
+    let managed = managed_members(&live.state, facts.bot);
+    let folded = fold_cached(&live.baseline, &expected, cached, &managed);
+    if folded == live.baseline {
+        return;
+    }
+    tracing::info!(
+        "rooms: room {} carries overwrites tighter than its stored baseline; taking them in",
+        live.channel
+    );
+    live.baseline = folded;
+    let Some(pool) = data.database_pool.as_ref() else {
+        return;
+    };
+    if let Err(err) = crate::db::rooms::save_baseline(pool, live.channel, &live.baseline).await {
+        tracing::warn!(
+            "rooms: saving room {}'s baseline failed: {err}",
+            live.channel
+        );
+    }
 }
 
 /// Post the panel at the bottom of the room's chat, try to pin it, and
@@ -652,6 +701,7 @@ mod tests {
             baseline,
             limit: 0,
             renames: RenameWindow::default(),
+            wrote_at: None,
         }
     }
 
@@ -1042,6 +1092,90 @@ mod tests {
         let state = w.room().await.state;
         assert!(state.permitted_users.contains(&OUTSIDE));
         assert!(state.permitted_roles.contains(&friends));
+    }
+
+    /// R33: the category hid the room from `@everyone` after it was made,
+    /// and Discord synced that into the untouched room. The stored baseline
+    /// lacks it; no lock or unlock may write the old, opener entry back.
+    #[tokio::test]
+    async fn a_category_tightened_since_creation_is_never_undone() {
+        let adult = ow(role(18), V | C, NONE);
+        let w = World::new(live(vec![adult]));
+        let mut f = facts();
+        f.overwrites
+            .insert(ROOM, vec![adult, ow(role(G.get()), NONE, V)]);
+        let t0 = Instant::now();
+        assert_eq!(
+            w.act_at(&f, OWNER, RoomAction::Lock, t0).await,
+            Ok(RoomDone::Locked)
+        );
+        assert!(
+            w.discord
+                .calls()
+                .contains(&Call::Put(ROOM.get(), ow(role(G.get()), NONE, V | C))),
+            "the lock keeps it hidden: {:?}",
+            w.discord.calls()
+        );
+        assert_eq!(
+            w.room().await.baseline,
+            vec![adult, ow(role(G.get()), NONE, V)]
+        );
+
+        // Later, with the cache showing the lock.
+        let room = w.room().await;
+        f.overwrites
+            .insert(ROOM, room_overwrites(G, BOT, &room.baseline, &room.state));
+        let n = w.discord.calls().len();
+        assert_eq!(
+            w.act_at(&f, OWNER, RoomAction::Unlock, t0 + CACHE_SETTLE)
+                .await,
+            Ok(RoomDone::Unlocked)
+        );
+        let unlock = w.discord.calls()[n..].to_vec();
+        assert!(
+            unlock.contains(&Call::Put(ROOM.get(), ow(role(G.get()), NONE, V))),
+            "back to hidden, not deleted: {unlock:?}"
+        );
+        assert!(!unlock.contains(&Call::DeleteOverwrite(ROOM.get(), role(G.get()))));
+        assert!(unlock.contains(&Call::Put(ROOM.get(), adult)));
+    }
+
+    /// R33: the bot's own writes can be missing from the cache for a
+    /// moment; read then, they would look like someone else's tightening.
+    #[tokio::test]
+    async fn the_cache_is_not_folded_until_it_has_caught_up() {
+        let w = World::new(live(vec![]));
+        let t0 = Instant::now();
+        w.act_at(&facts(), OWNER, RoomAction::Lock, t0)
+            .await
+            .unwrap();
+        let locked = {
+            let room = w.room().await;
+            room_overwrites(G, BOT, &room.baseline, &room.state)
+        };
+        w.act_at(&facts(), OWNER, RoomAction::Unlock, t0)
+            .await
+            .unwrap();
+        // A press right after the unlock, read from a cache still showing
+        // the lock: its deny on @everyone is the bot's, not the category's.
+        let mut stale = facts();
+        stale.overwrites.insert(ROOM, locked.clone());
+        let soon = t0 + CACHE_SETTLE - Duration::from_millis(1);
+        w.act_at(&stale, OWNER, RoomAction::Limit(3), soon)
+            .await
+            .unwrap();
+        assert_eq!(w.room().await.baseline, vec![]);
+        // A room the bot has not written to since it was loaded (at a
+        // reconcile) is folded at once.
+        let w = World::new(live(vec![]));
+        let mut f = facts();
+        f.overwrites.insert(ROOM, vec![ow(role(G.get()), NONE, C)]);
+        w.act_at(&f, OWNER, RoomAction::Limit(3), t0).await.unwrap();
+        assert_eq!(
+            w.room().await.baseline,
+            vec![ow(role(G.get()), NONE, C)],
+            "an unexplained deny is taken"
+        );
     }
 
     #[tokio::test]
@@ -1779,6 +1913,23 @@ mod tests {
             assert_eq!(got, Err(RoomRefusal::MissingPermissions));
             let stored = rooms_in(&pool, G).await?;
             assert!(!stored[0].state.locked);
+            Ok(())
+        }
+
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
+        async fn a_folded_baseline_is_persisted(pool: PgPool) -> sqlx::Result<()> {
+            let w = world(pool.clone()).await?;
+            let mut f = facts();
+            let hidden = ow(role(G.get()), NONE, V);
+            f.overwrites.insert(ROOM, vec![hidden]);
+            w.act(&f, OWNER, RoomAction::Limit(2)).await.unwrap();
+            let stored = rooms_in(&pool, G).await?;
+            assert_eq!(stored[0].baseline, vec![hidden]);
+            assert_eq!(w.room().await.baseline, vec![hidden]);
             Ok(())
         }
 

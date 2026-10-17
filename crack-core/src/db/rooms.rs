@@ -99,6 +99,23 @@ pub async fn save_state(
     Ok(())
 }
 
+/// The room's baseline, once it has taken in what its category gained
+/// since it was made (R33).
+pub async fn save_baseline(
+    pool: &PgPool,
+    channel: ChannelId,
+    baseline: &[StoredOverwrite],
+) -> sqlx::Result<()> {
+    sqlx::query!(
+        "UPDATE rooms SET baseline = $2 WHERE channel_id = $1",
+        channel.get() as i64,
+        Json(baseline) as _,
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn delete_room(pool: &PgPool, channel: ChannelId) -> sqlx::Result<()> {
     sqlx::query!(
         "DELETE FROM rooms WHERE channel_id = $1",

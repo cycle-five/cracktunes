@@ -120,7 +120,10 @@ Only members with Manage Server (and the server owner). Discord hides the comman
 - Rooms are never more open than their category. CrackTunes copies the
   category's permissions into each new room, and a room owner can only narrow
   who gets in, never open the room past the category's own rules. A member the
-  category keeps out of the hub gets no room.
+  category keeps out of the hub gets no room. If you tighten the category
+  while a room exists and Discord carries the change into the room, the
+  room's controls keep the tighter rule: locking or unlocking never puts the
+  old one back.
 - Moderators (anyone with Administrator, Manage Channels or Move Members) can
   use every control in every room.
 

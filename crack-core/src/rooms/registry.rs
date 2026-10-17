@@ -29,6 +29,10 @@ pub struct LiveRoom {
     /// The channel's member limit; 0 means none.
     pub limit: u8,
     pub renames: RenameWindow,
+    /// When the bot last wrote the room's overwrites. Until the cache has
+    /// caught up with that, its view of the room is not folded into the
+    /// baseline (R33): the bot's own writes would read as someone else's.
+    pub wrote_at: Option<Instant>,
 }
 
 /// Discord lets a channel be renamed twice per ten minutes, and serenity
@@ -224,6 +228,7 @@ mod tests {
             baseline: vec![],
             limit: 0,
             renames: RenameWindow::default(),
+            wrote_at: None,
         }
     }
 

@@ -848,6 +848,7 @@ mod tests {
             baseline: vec![],
             limit: 0,
             renames: RenameWindow::default(),
+            wrote_at: None,
         }
     }
 

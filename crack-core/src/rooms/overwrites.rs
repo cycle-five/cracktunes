@@ -7,7 +7,7 @@
 
 use super::state::{OverwriteTarget, RoomState, StoredOverwrite};
 use serenity::all::{GuildId, Permissions, RoleId, UserId};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The only permission bits the rooms feature ever touches.
 pub const MANAGED: Permissions = Permissions::VIEW_CHANNEL
@@ -107,6 +107,81 @@ pub fn room_overwrites(
             allow,
             deny,
         })
+        .collect()
+}
+
+/// R33: fold what a room's channel carries now (`cached`, as the cache holds
+/// it) into its stored `baseline`, never opener than either. `expected` is
+/// what the bot last wrote there: [`room_overwrites`] of `baseline` and the
+/// room's state. What differs between the two was changed by someone else,
+/// typically the category reaching an untouched room through Discord's sync,
+/// or an admin editing the room:
+/// - a bit the channel denies that `expected` does not joins the baseline's
+///   deny (and leaves its allow);
+/// - a bit `expected` allows that the channel does not leaves the baseline's
+///   allow;
+/// - a target only the channel carries is the server's, and is added whole,
+///   unless it is a member overwrite of one of `managed` (see
+///   [`managed_members`]): that one is the bot's, left over;
+/// - a bit the channel allows or stopped denying is not taken: the stored
+///   baseline stays the tighter side.
+///
+/// Every target keeps its place; new ones go at the end. The bot's own
+/// latest writes may not be in the cache yet, and would read as someone
+/// else's: the caller folds only once the cache has caught up.
+pub fn fold_cached(
+    baseline: &[StoredOverwrite],
+    expected: &[StoredOverwrite],
+    cached: &[StoredOverwrite],
+    managed: &BTreeSet<UserId>,
+) -> Vec<StoredOverwrite> {
+    let index = |v: &[StoredOverwrite]| -> BTreeMap<OverwriteTarget, Bits> {
+        v.iter().map(|o| (o.target, (o.allow, o.deny))).collect()
+    };
+    let (expected, cache) = (index(expected), index(cached));
+    let known: BTreeSet<OverwriteTarget> = baseline
+        .iter()
+        .map(|o| o.target)
+        .chain(expected.keys().copied())
+        .collect();
+    let mut out = baseline.to_vec();
+    for t in &known {
+        let (want_allow, want_deny) = expected.get(t).copied().unwrap_or_default();
+        let (has_allow, has_deny) = cache.get(t).copied().unwrap_or_default();
+        let added_deny = has_deny & !want_deny;
+        let lost_allow = want_allow & !has_allow;
+        match out.iter_mut().find(|o| o.target == *t) {
+            Some(o) => {
+                o.deny |= added_deny;
+                o.allow &= !(lost_allow | added_deny);
+            },
+            None if !added_deny.is_empty() => out.push(StoredOverwrite {
+                target: *t,
+                allow: Permissions::empty(),
+                deny: added_deny,
+            }),
+            None => {},
+        }
+    }
+    for o in cached {
+        let bots = matches!(o.target, OverwriteTarget::Member { id } if managed.contains(&id));
+        let neutral = o.allow.is_empty() && o.deny.is_empty();
+        if !known.contains(&o.target) && !bots && !neutral {
+            out.push(*o);
+        }
+    }
+    out
+}
+
+/// The people whose member overwrites in a room are the bot's to write: the
+/// owner, helpers, permitted, muted and blocked people, and CrackTunes.
+pub fn managed_members(state: &RoomState, bot: UserId) -> BTreeSet<UserId> {
+    [state.owner, bot]
+        .into_iter()
+        .chain(state.helpers.iter().copied())
+        .chain(state.permitted_users.iter().copied())
+        .chain(state.muted.iter().copied())
+        .chain(state.blocked.iter().copied())
         .collect()
 }
 
@@ -450,6 +525,140 @@ mod tests {
         let mut after = baseline();
         after.push(set);
         assert_eq!(diff(&before, &after), vec![OverwriteChange::Put(set)]);
+    }
+
+    // --- R33: folding the channel's cached overwrites into the baseline
+
+    fn everyone() -> OverwriteTarget {
+        r(100)
+    }
+    fn managed(s: &RoomState) -> std::collections::BTreeSet<UserId> {
+        managed_members(s, BOT)
+    }
+    /// Fold `cached` into `base` for a room in state `s`.
+    fn fold(
+        base: &[StoredOverwrite],
+        s: &RoomState,
+        cached: &[StoredOverwrite],
+    ) -> Vec<StoredOverwrite> {
+        let expected = room_overwrites(G, BOT, base, s);
+        fold_cached(base, &expected, cached, &managed(s))
+    }
+
+    #[test]
+    fn fold_takes_a_deny_the_category_added_since() {
+        // Made open to the adult role; the category has since hidden it
+        // from @everyone, and Discord synced that into the untouched room.
+        let base = vec![ow(r(18), V | C, Permissions::empty())];
+        let cached = vec![
+            ow(r(18), V | C, Permissions::empty()),
+            ow(everyone(), Permissions::empty(), V),
+        ];
+        assert_eq!(
+            fold(&base, &state(), &cached),
+            vec![
+                ow(r(18), V | C, Permissions::empty()),
+                ow(everyone(), Permissions::empty(), V)
+            ]
+        );
+        // A deny added on a target the baseline has already.
+        let base = vec![ow(everyone(), Permissions::empty(), C)];
+        let cached = vec![ow(everyone(), Permissions::empty(), V | C)];
+        assert_eq!(
+            fold(&base, &state(), &cached),
+            vec![ow(everyone(), Permissions::empty(), V | C)]
+        );
+    }
+
+    #[test]
+    fn fold_drops_an_allow_the_channel_lost_and_keeps_a_deny_it_dropped() {
+        let base = vec![
+            ow(r(18), V | C, Permissions::empty()),
+            ow(everyone(), Permissions::empty(), V),
+        ];
+        // The adult role lost View; @everyone's deny is gone (opener).
+        let cached = vec![ow(r(18), C, Permissions::empty())];
+        assert_eq!(
+            fold(&base, &state(), &cached),
+            vec![
+                ow(r(18), C, Permissions::empty()),
+                ow(everyone(), Permissions::empty(), V)
+            ],
+            "never opener than the stored baseline"
+        );
+    }
+
+    #[test]
+    fn fold_ignores_the_rooms_own_managed_layer() {
+        // A locked, chat-locked room with helpers, permits, mutes, a block
+        // and a blocked role: the cache shows exactly what the bot wrote.
+        let mut s = state();
+        s.locked = true;
+        s.chat_locked = true;
+        s.helpers.insert(UserId::new(2));
+        s.permitted_users.insert(UserId::new(3));
+        s.permitted_roles.insert(RoleId::new(18));
+        s.muted.insert(UserId::new(5));
+        s.blocked.insert(UserId::new(6));
+        s.blocked_roles.insert(RoleId::new(40));
+        let base = baseline();
+        let cached = room_overwrites(G, BOT, &base, &s);
+        assert_eq!(fold(&base, &s, &cached), base);
+        // The same cache in another order.
+        let mut shuffled = cached.clone();
+        shuffled.reverse();
+        assert_eq!(fold(&base, &s, &shuffled), base);
+    }
+
+    #[test]
+    fn fold_adds_a_target_only_the_channel_carries_unless_it_is_the_bots() {
+        let base = baseline();
+        let mut s = state();
+        s.helpers.insert(UserId::new(2));
+        let theirs = ow(r(30), C, Permissions::SPEAK);
+        let someone = ow(m(7), Permissions::empty(), V);
+        let cached: Vec<_> = room_overwrites(G, BOT, &base, &s)
+            .into_iter()
+            .chain([
+                theirs,
+                someone,
+                // Left over from a lock (unlocked now): the owner's, a
+                // helper's and CrackTunes' member allows are the bot's.
+                ow(m(1), C, Permissions::empty()),
+                ow(m(2), C, Permissions::empty()),
+                ow(m(99), C, Permissions::empty()),
+                // A neutral entry: nothing to keep.
+                ow(r(31), Permissions::empty(), Permissions::empty()),
+            ])
+            .collect();
+        let mut want = base.clone();
+        want.extend([theirs, someone]);
+        assert_eq!(fold(&base, &s, &cached), want);
+    }
+
+    #[test]
+    fn fold_keeps_the_baseline_order_and_changes_nothing_when_in_step() {
+        // Stored as Discord listed it, @everyone (100) before the adult
+        // role (18): not sorted, and kept so, so nothing is saved again.
+        let base = baseline();
+        let mut cached = baseline();
+        cached.reverse();
+        assert_eq!(fold(&base, &state(), &cached), base);
+        assert_eq!(fold(&[], &state(), &[]), vec![]);
+    }
+
+    #[test]
+    fn managed_members_are_the_rooms_people_and_crack_tunes() {
+        let mut s = state();
+        s.helpers.insert(UserId::new(2));
+        s.permitted_users.insert(UserId::new(3));
+        s.muted.insert(UserId::new(5));
+        s.blocked.insert(UserId::new(6));
+        let got: Vec<u64> = managed_members(&s, BOT)
+            .into_iter()
+            .map(UserId::get)
+            .collect();
+        assert_eq!(got, [1, 2, 3, 5, 6, 99]);
     }
 
     #[test]

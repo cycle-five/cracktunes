@@ -23,20 +23,26 @@ pub struct StoredOverwrite {
 
 impl From<&PermissionOverwrite> for StoredOverwrite {
     fn from(o: &PermissionOverwrite) -> Self {
-        let target = match o.kind {
-            PermissionOverwriteType::Member(id) => OverwriteTarget::Member { id },
-            PermissionOverwriteType::Role(id) => OverwriteTarget::Role { id },
-            _ => unreachable!("serenity's overwrite types are member and role"),
-        };
-        Self {
-            target,
-            allow: o.allow,
-            deny: o.deny,
-        }
+        Self::of(o)
+            .unwrap_or_else(|| unreachable!("serenity's overwrite types are member and role"))
     }
 }
 
 impl StoredOverwrite {
+    /// The overwrite in our form; `None` for a kind serenity may add later.
+    pub fn of(o: &PermissionOverwrite) -> Option<Self> {
+        let target = match o.kind {
+            PermissionOverwriteType::Member(id) => OverwriteTarget::Member { id },
+            PermissionOverwriteType::Role(id) => OverwriteTarget::Role { id },
+            _ => return None,
+        };
+        Some(Self {
+            target,
+            allow: o.allow,
+            deny: o.deny,
+        })
+    }
+
     pub fn to_serenity(&self) -> PermissionOverwrite {
         PermissionOverwrite {
             allow: self.allow,

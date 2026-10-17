@@ -236,6 +236,9 @@ pub async fn hub_join(
         baseline: created.overwrites.clone(),
         limit: settings.default_limit,
         renames: RenameWindow::default(),
+        // Just made, and maybe written to below: the cache may not have
+        // caught up with either.
+        wrote_at: Some(now),
     });
     let mut live = handle.lock().await;
 
@@ -696,6 +699,7 @@ pub async fn reconcile(
                     baseline: row.baseline,
                     limit: channel.limit,
                     renames: RenameWindow::default(),
+                    wrote_at: None,
                 });
                 rooms.push(ch);
             },
@@ -1135,6 +1139,7 @@ mod tests {
             baseline: gate(),
             limit: 0,
             renames: RenameWindow::default(),
+            wrote_at: None,
         }
     }
 
@@ -1383,6 +1388,10 @@ mod tests {
         assert_eq!(room.baseline, gate(), "what Discord gave the channel");
         assert_eq!(room.name, "Saucey's room");
         assert_eq!(room.limit, 4);
+        assert!(
+            room.wrote_at.is_some(),
+            "R33: the cache may lag a new room, so it is not folded at once"
+        );
         assert_eq!(w.data.rooms.owned_by(G, JOINER), Some(NEW));
         assert!(w.data.rooms.hub_creating.is_empty(), "the guard is let go");
         assert!(w.data.rooms.creating.is_empty(), "no longer in flight");
