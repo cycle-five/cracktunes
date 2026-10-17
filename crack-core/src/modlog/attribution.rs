@@ -97,18 +97,23 @@ impl Change {
 /// How many entry ids a snapshot keeps (the highest).
 const SNAPSHOT_KEEP: usize = 100;
 
-/// Merge the rows' counts into each kind's snapshot (ids not fetched keep
-/// their counts), prune each to the highest [`SNAPSHOT_KEEP`] ids, and mark
-/// both seeded.
-pub fn advance(snaps: &mut Snapshots, rows: &[AuditRow]) {
-    for r in rows {
-        let snap = match r.kind {
+/// Merge the rows' counts into the snapshot of each kind in `fetched` (ids
+/// not fetched keep their counts), prune each to the highest
+/// [`SNAPSHOT_KEEP`] ids, and mark it seeded: a fetched kind with no rows is
+/// seeded too. A kind not in `fetched` is left untouched, and its rows are
+/// ignored.
+pub fn advance(snaps: &mut Snapshots, fetched: &[AuditKind], rows: &[AuditRow]) {
+    for kind in [AuditKind::Disconnect, AuditKind::Move] {
+        if !fetched.contains(&kind) {
+            continue;
+        }
+        let snap = match kind {
             AuditKind::Disconnect => &mut snaps.disconnect,
             AuditKind::Move => &mut snaps.moves,
         };
-        snap.counts.insert(r.id, r.count);
-    }
-    for snap in [&mut snaps.disconnect, &mut snaps.moves] {
+        for r in rows.iter().filter(|r| r.kind == kind) {
+            snap.counts.insert(r.id, r.count);
+        }
         if snap.counts.len() > SNAPSHOT_KEEP {
             let mut ids: Vec<u64> = snap.counts.keys().copied().collect();
             ids.sort_unstable_by(|a, b| b.cmp(a));
@@ -117,6 +122,9 @@ pub fn advance(snaps: &mut Snapshots, rows: &[AuditRow]) {
             }
         }
         snap.seeded = true;
+    }
+    if rows.iter().any(|r| !fetched.contains(&r.kind)) {
+        tracing::debug!("modlog: advance ignored rows of a kind that was not fetched");
     }
 }
 
@@ -497,11 +505,15 @@ mod tests {
     #[test]
     fn advance_records_counts_and_seeds() {
         let mut snaps = Snapshots::default();
-        advance(&mut snaps, &[dc(1, M1, 2), dc(2, BOT, 7), mv(5, M2, 1, C2)]);
+        advance(
+            &mut snaps,
+            &[AuditKind::Disconnect, AuditKind::Move],
+            &[dc(1, M1, 2), dc(2, BOT, 7), mv(5, M2, 1, C2)],
+        );
         assert!(snaps.disconnect.seeded && snaps.moves.seeded);
         assert_eq!(snaps.disconnect.counts, HashMap::from([(1, 2), (2, 7)]));
         assert_eq!(snaps.moves.counts, HashMap::from([(5, 1)]));
-        advance(&mut snaps, &[dc(1, M1, 3)]);
+        advance(&mut snaps, &[AuditKind::Disconnect], &[dc(1, M1, 3)]);
         assert_eq!(
             snaps.disconnect.counts,
             HashMap::from([(1, 3), (2, 7)]),
@@ -513,7 +525,7 @@ mod tests {
     fn advance_prunes_to_the_hundred_highest_ids() {
         let mut snaps = Snapshots::default();
         let rows: Vec<AuditRow> = (1..=150).map(|i| dc(i, M1, 1)).collect();
-        advance(&mut snaps, &rows);
+        advance(&mut snaps, &[AuditKind::Disconnect], &rows);
         assert_eq!(snaps.disconnect.counts.len(), 100);
         assert!(snaps.disconnect.counts.contains_key(&150));
         assert!(snaps.disconnect.counts.contains_key(&51));
@@ -587,7 +599,7 @@ mod tests {
         };
         let out = attribute(&snaps, &[dc(1, M1, 1)], &[bot_left], BOT);
         assert!(out.is_empty(), "{out:?}");
-        advance(&mut snaps, &[dc(1, M1, 1)]);
+        advance(&mut snaps, &[AuditKind::Disconnect], &[dc(1, M1, 1)]);
         let out = attribute(&snaps, &[dc(1, M1, 1)], &[left(T1)], BOT);
         assert!(out.is_empty(), "a voluntary leave after it: {out:?}");
     }
@@ -682,5 +694,30 @@ mod tests {
                 among: vec![T1, T2],
             }]
         );
+    }
+
+    #[test]
+    fn advance_leaves_an_unfetched_kind_unseeded() {
+        let mut snaps = Snapshots::default();
+        advance(&mut snaps, &[AuditKind::Disconnect], &[dc(1, M1, 2)]);
+        assert!(snaps.disconnect.seeded);
+        assert_eq!(snaps.moves, Snapshot::default());
+    }
+
+    #[test]
+    fn advance_seeds_a_fetched_kind_with_no_rows() {
+        let mut snaps = Snapshots::default();
+        advance(&mut snaps, &[AuditKind::Move], &[]);
+        assert!(snaps.moves.seeded && snaps.moves.counts.is_empty());
+        assert!(!snaps.disconnect.seeded);
+    }
+
+    #[test]
+    fn advance_ignores_rows_of_an_unfetched_kind() {
+        let mut snaps = seeded(&[(5, 1)]);
+        let before = snaps.clone();
+        advance(&mut snaps, &[AuditKind::Disconnect], &[mv(9, M1, 4, C2)]);
+        assert_eq!(snaps.moves, before.moves, "moves untouched");
+        assert!(!snaps.disconnect.counts.contains_key(&9));
     }
 }
