@@ -2,10 +2,23 @@
 //! string goes through [`esc`], and the queue itself is not HTML at all --
 //! it is inlined as JSON and drawn by `app.js`, the one renderer.
 
-use crate::{backend::GuildEntry, history::HistoryPage, view::PageState};
-use crack_core::messaging::messages::{
-    DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE, DASH_SIGN_IN, JOIN_VOICE_FOR_CONTROLS,
-    PATREON_URL, PREMIUM_CONTROLS, PREMIUM_HISTORY,
+use crate::{
+    backend::GuildEntry, history::HistoryPage, settings::RoomSettingsView, view::PageState,
+};
+use crack_core::{
+    messaging::{
+        message::REPO_LINK,
+        messages::{
+            DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE, DASH_SETTINGS_ENABLED,
+            DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE, DASH_SETTINGS_HUB, DASH_SETTINGS_LIMIT,
+            DASH_SETTINGS_LINK, DASH_SETTINGS_NO_HUB_OPTION, DASH_SETTINGS_PERMISSIONS,
+            DASH_SETTINGS_PREVIEW, DASH_SETTINGS_SAVE, DASH_SETTINGS_SAVED,
+            DASH_SETTINGS_SAVING_FAILED, DASH_SETTINGS_TEMPLATE, DASH_SETTINGS_TITLE, DASH_SIGN_IN,
+            JOIN_VOICE_FOR_CONTROLS, PATREON_URL, PREMIUM_CONTROLS, PREMIUM_HISTORY,
+            ROOM_STATUS_NO_HUB_YET, ROOM_STATUS_READY, ROOM_STATUS_UNKNOWN,
+        },
+    },
+    rooms::settings::{render_room_name, GRACE_CHOICES, ROOM_NAME_MAX},
 };
 use serde::Serialize;
 use serenity::all::GuildId;
@@ -39,6 +52,8 @@ pub fn inline_json<T: Serialize>(v: &T) -> String {
 const QUEUE_SCRIPTS: &[&str] = &["sortable.min.js", "app.js", "find.js"];
 /// The history page: `app.js` for the logout button, `history.js` for the rest.
 const HISTORY_SCRIPTS: &[&str] = &["app.js", "history.js"];
+/// The settings page: `app.js` for the logout button, `settings.js` for the rest.
+const SETTINGS_SCRIPTS: &[&str] = &["app.js", "settings.js"];
 
 fn layout(title: &str, body: &str, scripts: &[&str]) -> String {
     let scripts: String = scripts
@@ -124,7 +139,11 @@ pub fn queue_page(
     history_link: bool,
 ) -> String {
     let links = if history_link {
-        format!("<p class=\"links\"><a href=\"/g/{guild_id}/history\">History</a></p>")
+        format!(
+            "<p class=\"links\"><a href=\"/g/{guild_id}/history\">History</a> · \
+<a href=\"/g/{guild_id}/settings\">{settings}</a></p>",
+            settings = esc(DASH_SETTINGS_LINK),
+        )
     } else {
         String::new()
     };
@@ -203,6 +222,96 @@ pub fn history_page(guild_name: &str, guild_id: GuildId, page: &HistoryPage) -> 
             json = inline_json(page),
         ),
         HISTORY_SCRIPTS,
+    )
+}
+
+/// `GET /g/{id}/settings`: every rooms option, server-rendered with escaped
+/// values, and the permissions CrackTunes is missing. `settings.js` saves it.
+pub fn settings_page(guild_name: &str, guild_id: GuildId, view: &RoomSettingsView) -> String {
+    let hubs: String = view
+        .voice_channels
+        .iter()
+        .map(|c| {
+            format!(
+                "<option value=\"{id}\"{sel}>{name}</option>",
+                id = esc(&c.id),
+                sel = if view.hub.as_deref() == Some(c.id.as_str()) {
+                    " selected"
+                } else {
+                    ""
+                },
+                name = esc(&c.name),
+            )
+        })
+        .collect();
+    let graces: String = GRACE_CHOICES
+        .iter()
+        .map(|g| {
+            format!(
+                "<option value=\"{g}\"{sel}>{g} s</option>",
+                sel = if *g == view.empty_grace_secs {
+                    " selected"
+                } else {
+                    ""
+                },
+            )
+        })
+        .collect();
+    let findings = match &view.findings {
+        None if view.hub.is_none() => format!("<p>{}</p>", esc(ROOM_STATUS_NO_HUB_YET)),
+        None => format!("<p>{}</p>", esc(ROOM_STATUS_UNKNOWN)),
+        Some(list) if list.is_empty() => format!("<p>{}</p>", esc(ROOM_STATUS_READY)),
+        Some(list) => {
+            let li: String = list
+                .iter()
+                .map(|f| format!("<li>{}</li>", esc(f)))
+                .collect();
+            format!("<ul>{li}</ul>")
+        },
+    };
+    layout(
+        &format!("{DASH_SETTINGS_TITLE} · {guild_name}"),
+        &format!(
+            "<section id=\"settings\" data-guild=\"{guild_id}\" data-saved=\"{saved}\" \
+data-offline=\"{offline}\">\
+<h1>{title} · {name}</h1>\
+<p class=\"links\"><a href=\"/g/{guild_id}\">← Queue</a> · <a href=\"{guide}\">{guide_text}</a></p>\
+<form id=\"rooms-form\" autocomplete=\"off\">\
+<label class=\"check\"><input type=\"checkbox\" id=\"s-enabled\"{enabled}> {enabled_text}</label>\
+<label>{hub_text} <select id=\"s-hub\"><option value=\"\">{none}</option>{hubs}</select></label>\
+<label>{template_text} <input type=\"text\" id=\"s-template\" maxlength=\"{max}\" value=\"{template}\"></label>\
+<p>{preview_text} <output id=\"s-preview\">{preview}</output></p>\
+<label>{limit_text} <input type=\"number\" id=\"s-limit\" min=\"0\" max=\"99\" value=\"{limit}\"></label>\
+<label>{grace_text} <select id=\"s-grace\">{graces}</select></label>\
+<button type=\"submit\" id=\"s-save\">{save}</button>\
+<p id=\"s-note\" role=\"status\" hidden></p></form>\
+<h2>{permissions}</h2><div id=\"s-findings\" data-ready=\"{ready}\" data-no-hub=\"{no_hub}\" \
+data-unknown=\"{unknown}\">{findings}</div></section>",
+            saved = esc(DASH_SETTINGS_SAVED),
+            offline = esc(DASH_SETTINGS_SAVING_FAILED),
+            title = esc(DASH_SETTINGS_TITLE),
+            name = esc(guild_name),
+            guide = esc(&format!("{REPO_LINK}blob/master/docs/rooms-and-mod-log.md")),
+            guide_text = esc(DASH_SETTINGS_GUIDE),
+            enabled = if view.enabled { " checked" } else { "" },
+            enabled_text = esc(DASH_SETTINGS_ENABLED),
+            hub_text = esc(DASH_SETTINGS_HUB),
+            none = esc(DASH_SETTINGS_NO_HUB_OPTION),
+            template_text = esc(DASH_SETTINGS_TEMPLATE),
+            max = ROOM_NAME_MAX,
+            template = esc(&view.name_template),
+            preview_text = esc(DASH_SETTINGS_PREVIEW),
+            preview = esc(&render_room_name(&view.name_template, "Saucey")),
+            limit_text = esc(DASH_SETTINGS_LIMIT),
+            limit = view.default_limit,
+            grace_text = esc(DASH_SETTINGS_GRACE),
+            save = esc(DASH_SETTINGS_SAVE),
+            permissions = esc(DASH_SETTINGS_PERMISSIONS),
+            ready = esc(ROOM_STATUS_READY),
+            no_hub = esc(ROOM_STATUS_NO_HUB_YET),
+            unknown = esc(ROOM_STATUS_UNKNOWN),
+        ),
+        SETTINGS_SCRIPTS,
     )
 }
 

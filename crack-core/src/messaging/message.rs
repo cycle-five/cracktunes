@@ -308,6 +308,8 @@ pub enum CrackedMessage {
     NowPlayingButtonsOn,
     NowPlayingButtonsOff,
     QueueResumed,
+    /// Every voice-room message, rendered by `rooms::card::render_card`.
+    Room(Box<crate::rooms::card::RoomCard>),
 }
 
 impl CrackedMessage {
@@ -668,6 +670,7 @@ impl Display for CrackedMessage {
             Self::NowPlayingButtonsOn => f.write_str(crate::messaging::messages::NP_BUTTONS_ON),
             Self::NowPlayingButtonsOff => f.write_str(crate::messaging::messages::NP_BUTTONS_OFF),
             Self::QueueResumed => f.write_str(crate::messaging::messages::QUEUE_RESUMED),
+            Self::Room(card) => write!(f, "{card}"),
         }
     }
 }

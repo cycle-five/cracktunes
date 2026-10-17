@@ -51,6 +51,13 @@ impl<K: Eq + Hash> Throttle<K> {
         }
     }
 
+    /// How long until an event for `key` would be accepted at `now`; `None`
+    /// when it would be accepted now. Stamps nothing.
+    pub fn remaining(&self, key: &K, now: Instant) -> Option<Duration> {
+        let since = now.saturating_duration_since(*self.last.get(key)?);
+        (since < self.window).then(|| self.window - since)
+    }
+
     #[cfg(test)]
     fn len(&self) -> usize {
         self.last.len()
@@ -98,6 +105,25 @@ mod tests {
         let t0 = Instant::now();
         assert!(t.allow(1, t0));
         assert!(!t.allow(1, t0));
+    }
+
+    #[test]
+    fn remaining_says_how_long_until_the_next_accept_and_stamps_nothing() {
+        let t = Throttle::new(W);
+        let t0 = Instant::now();
+        assert_eq!(t.remaining(&1, t0), None, "never seen");
+        assert!(t.allow(1, t0));
+        assert_eq!(t.remaining(&1, t0), Some(W));
+        assert_eq!(t.remaining(&1, t0 + 500 * MS), Some(W - 500 * MS));
+        assert_eq!(
+            t.remaining(&1, t0 + W),
+            None,
+            "accepted again at the window"
+        );
+        assert_eq!(t.remaining(&2, t0), None, "another key");
+        // Asking did not stamp: the next accept is still at t0 + W.
+        assert!(!t.allow(1, t0 + W - MS));
+        assert!(t.allow(1, t0 + W));
     }
 
     #[test]

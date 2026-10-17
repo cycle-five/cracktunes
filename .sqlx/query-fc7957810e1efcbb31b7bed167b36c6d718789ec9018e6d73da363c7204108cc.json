@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO room_settings (\n               guild_id, enabled, hub_channel_id, name_template, default_limit,\n               empty_grace_seconds\n           )\n           VALUES ($1, $2, $3, $4, $5, $6)\n           ON CONFLICT (guild_id) DO UPDATE SET\n               enabled = EXCLUDED.enabled,\n               hub_channel_id = EXCLUDED.hub_channel_id,\n               name_template = EXCLUDED.name_template,\n               default_limit = EXCLUDED.default_limit,\n               empty_grace_seconds = EXCLUDED.empty_grace_seconds,\n               updated_at = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Bool",
+        "Int8",
+        "Text",
+        "Int2",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fc7957810e1efcbb31b7bed167b36c6d718789ec9018e6d73da363c7204108cc"
+}

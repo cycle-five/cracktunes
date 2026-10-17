@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT channel_id, owner_id,\n                  state AS \"state!: Json<RoomState>\",\n                  baseline AS \"baseline!: Json<Vec<StoredOverwrite>>\"\n           FROM rooms WHERE guild_id = $1 ORDER BY created_at, channel_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "channel_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "owner_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "state!: Json<RoomState>",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 3,
+        "name": "baseline!: Json<Vec<StoredOverwrite>>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "3361bcc7ff8a39fe406bc3b4b8a46f903f4aed39b3ed1af1e3ff0e75431cab93"
+}

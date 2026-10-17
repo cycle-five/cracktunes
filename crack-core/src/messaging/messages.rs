@@ -567,3 +567,228 @@ pub const SEARCH_UNREADABLE: &str = "The query string could not be read.";
 pub const SEARCH_CONTROL: &str = "That search has characters it cannot use.";
 pub const SEARCH_NO_SOURCES: &str = "Pick at least one place to search.";
 pub const SEARCH_UNKNOWN_SOURCE: &str = "That is not a place the dashboard can search.";
+
+// Voice rooms
+/// Used when a rendered room name would otherwise be empty.
+pub const ROOM_NAME_FALLBACK: &str = "Room";
+
+// The room panel. It is the room's documentation: every control is named in
+// plain words with the slash command that does the same thing.
+pub const ROOM_PANEL_TITLE_PREFIX: &str = "🔊";
+pub const ROOM_FIELD_OWNER: &str = "Owner";
+pub const ROOM_FIELD_HELPERS: &str = "Helpers";
+pub const ROOM_FIELD_ACCESS: &str = "Locked / chat";
+pub const ROOM_FIELD_LIMIT: &str = "Limit";
+pub const ROOM_FIELD_REFERENCE: &str = "What the buttons do";
+pub const ROOM_NO_HELPERS: &str = "None";
+pub const ROOM_NO_LIMIT: &str = "No limit";
+pub const ROOM_LIMIT_PEOPLE: &str = "people";
+pub const ROOM_STATE_OPEN: &str = "🔓 Open";
+pub const ROOM_STATE_LOCKED: &str = "🔒 Locked";
+pub const ROOM_STATE_CHAT_OPEN: &str = "💬 Chat open";
+pub const ROOM_STATE_CHAT_LOCKED: &str = "🤐 Chat locked";
+
+// Button labels: an emoji and a word, never an emoji alone.
+pub const ROOM_BTN_KICK: &str = "🚫 Kick";
+pub const ROOM_BTN_MUTE: &str = "🔇 Mute";
+pub const ROOM_BTN_UNMUTE: &str = "🔊 Unmute";
+pub const ROOM_BTN_LET_IN: &str = "↩️ Let back in";
+pub const ROOM_BTN_LOCK: &str = "🔒 Lock";
+pub const ROOM_BTN_UNLOCK: &str = "🔓 Unlock";
+pub const ROOM_BTN_CHAT_LOCK: &str = "🤐 Lock chat";
+pub const ROOM_BTN_CHAT_UNLOCK: &str = "💬 Unlock chat";
+pub const ROOM_BTN_LIMIT: &str = "👥 Limit";
+pub const ROOM_BTN_RENAME: &str = "✏️ Rename";
+pub const ROOM_BTN_TRANSFER: &str = "🔑 Transfer";
+pub const ROOM_BTN_HELPERS: &str = "🛡️ Helpers";
+pub const ROOM_BTN_WHO_CAN_JOIN: &str = "🚪 Who can join";
+pub const ROOM_BTN_CLAIM: &str = "👑 Claim";
+pub const ROOM_BTN_HELP: &str = "❓ Help";
+
+// One reference line per control, name then what it does.
+pub const ROOM_REF_KICK: &str =
+    "**Kick** · `/room kick` — disconnect someone and keep them out; asks for a reason.";
+pub const ROOM_REF_MUTE: &str =
+    "**Mute** · `/room mute` — stop someone from speaking here; the reason is optional.";
+pub const ROOM_REF_UNMUTE: &str = "**Unmute** · `/room unmute` — let a muted person speak again.";
+pub const ROOM_REF_LET_IN: &str =
+    "**Let back in** · `/room letin` — lift a kick so the person can rejoin.";
+pub const ROOM_REF_LOCK: &str =
+    "**Lock / Unlock** · `/room lock` · `/room unlock` — close the room to newcomers, or open it again.";
+pub const ROOM_REF_CHAT_LOCK: &str =
+    "**Lock chat / Unlock chat** · `/room chatlock` · `/room chatunlock` — stop or allow typing in this room's chat.";
+pub const ROOM_REF_LIMIT: &str =
+    "**Limit** · `/room limit` — cap how many people fit (0 means no limit).";
+pub const ROOM_REF_RENAME: &str = "**Rename** · `/room rename` — change the room's name.";
+pub const ROOM_REF_TRANSFER: &str =
+    "**Transfer** · `/room transfer` — hand the room to someone else in it.";
+pub const ROOM_REF_HELPERS: &str =
+    "**Helpers** · `/room helper add` · `/room helper remove` — let people run these controls with you.";
+pub const ROOM_REF_WHO_CAN_JOIN: &str =
+    "**Who can join** · `/room allow` · `/room block` · `/room unblock` — let a person or role in, or keep a role out.";
+pub const ROOM_REF_CLAIM: &str =
+    "**Claim** · `/room claim` — take over a room whose owner has left.";
+pub const ROOM_REF_PANEL: &str = "**Panel** · `/room panel` — post this panel again.";
+pub const ROOM_REF_HELP: &str = "**Help** — a private, longer guide.";
+pub const ROOM_REF_DELETED: &str = "This room is deleted when everyone leaves.";
+pub const ROOM_REF_NO_DEAFEN: &str =
+    "Deafen isn't available: Discord can't deafen someone in just one channel.";
+
+// The long private guide.
+pub const ROOM_GUIDE_TITLE: &str = "How rooms work";
+pub const ROOM_GUIDE_INTRO: &str = "Join the hub channel and CrackTunes makes you a voice room of your own. You own it, and you can share the controls with helpers. Every control is a button on the room's panel and a `/room` command; either works.";
+pub const ROOM_GUIDE_WHO: &str = "The owner and helpers — and server moderators — can use these controls. If the owner has left, anyone in the room can claim it.";
+pub const ROOM_GUIDE_RUN: &str =
+    "Run `/room` commands from the room's voice channel or from its chat.";
+
+// Refusals: one plain sentence each.
+pub const ROOM_NOT_IN_ROOM: &str =
+    "You're not in a room. Run this from your room's voice channel or its chat.";
+pub const ROOM_NOT_ALLOWED: &str = "Only this room's owner or helpers can do that.";
+pub const ROOM_OWNER_ONLY: &str = "Only this room's owner can do that.";
+pub const ROOM_PROTECTED_TARGET: &str =
+    "You can't do that to yourself, the room's owner, another helper, a moderator, or CrackTunes.";
+pub const ROOM_TARGET_NOT_IN_ROOM: &str = "That person isn't in this room.";
+pub const ROOM_NOT_BLOCKED: &str = "That person isn't blocked from this room.";
+pub const ROOM_CANNOT_JOIN_HERE: &str =
+    "This server's own permissions keep them out of this room, so there's nothing for a room control to change.";
+pub const ROOM_RENAME_LIMITED: &str = "Renaming is limited to twice every 10 minutes. Try again in";
+pub const ROOM_BAD_LIMIT: &str = "The limit must be a number from 0 to 99 (0 means no limit).";
+pub const ROOM_BAD_NAME: &str = "A room name must be 1 to 100 characters.";
+pub const ROOM_REASON_REQUIRED: &str = "Give a reason.";
+pub const ROOM_REASON_TOO_LONG: &str = "That reason is too long (200 characters at most).";
+pub const ROOM_MISSING_CHOICE: &str = "Pick who or what this is for, then submit again.";
+pub const ROOM_OWNER_PRESENT: &str = "The owner is still in the room, so it can't be claimed.";
+pub const ROOM_ALREADY_OWNER: &str = "You already own this room.";
+pub const ROOM_OWNS_ANOTHER_ROOM: &str = "That member already owns a room.";
+pub const ROOM_CANNOT_BLOCK_ROLE: &str = "That role can't be blocked: it would lock out the room's owner or CrackTunes. Use Lock instead.";
+pub const ROOM_CANNOT_ALLOW_ROLE: &str =
+    "That would let everyone in, which is what Unlock is for. Use Unlock instead.";
+pub const ROOM_TOO_MANY_FOR_MENU: &str =
+    "There are too many people to pick from here. Use the `/room` command instead.";
+pub const ROOM_MISSING_PERMISSIONS: &str = "CrackTunes is missing a permission on this room's category. An admin can run `/rooms status` to see which.";
+pub const ROOM_DISCORD_FAILED: &str = "Discord refused that. Try again in a moment.";
+pub const ROOM_NO_DATABASE: &str = "Voice rooms need a database, and this CrackTunes has none.";
+pub const ROOM_ROOMS_OFF: &str = "Voice rooms aren't turned on in this server.";
+pub const ROOM_NOBODY_MUTED: &str = "Nobody in this room is muted.";
+pub const ROOM_BUSY: &str = "This room is busy — try again in a moment.";
+
+// The panel's modals. Discord caps a modal title and a field label at 45
+// characters, and a placeholder at 100.
+pub const ROOM_MODAL_KICK: &str = "Kick someone";
+pub const ROOM_MODAL_MUTE: &str = "Mute someone";
+pub const ROOM_MODAL_UNMUTE: &str = "Unmute someone";
+pub const ROOM_MODAL_LET_IN: &str = "Let someone back in";
+pub const ROOM_MODAL_LIMIT: &str = "Member limit";
+pub const ROOM_MODAL_RENAME: &str = "Rename the room";
+pub const ROOM_MODAL_TRANSFER: &str = "Hand the room over";
+pub const ROOM_MODAL_HELPERS: &str = "Helpers";
+pub const ROOM_MODAL_WHO_CAN_JOIN: &str = "Who can join";
+pub const ROOM_LABEL_MEMBER: &str = "Who";
+pub const ROOM_LABEL_REASON: &str = "Reason";
+pub const ROOM_LABEL_REASON_OPTIONAL: &str = "Reason (optional)";
+pub const ROOM_LABEL_LIMIT: &str = "How many people (0 means no limit)";
+pub const ROOM_LABEL_NAME: &str = "New name";
+pub const ROOM_LABEL_MODE: &str = "What to do";
+pub const ROOM_LABEL_USER_OPTIONAL: &str = "Person (to let a person in)";
+pub const ROOM_LABEL_ROLE_OPTIONAL: &str = "Role (for the role choices)";
+pub const ROOM_PICK_MEMBER: &str = "Pick someone";
+pub const ROOM_PICK_ROLE: &str = "Pick a role";
+pub const ROOM_PICK_MODE: &str = "Pick one";
+pub const ROOM_PLACEHOLDER_REASON: &str = "Why? Up to 200 characters.";
+pub const ROOM_PLACEHOLDER_LIMIT: &str = "0 to 99";
+pub const ROOM_PLACEHOLDER_NAME: &str = "Up to 100 characters";
+pub const ROOM_MODE_HELPER_ADD: &str = "Add a helper";
+pub const ROOM_MODE_HELPER_REMOVE: &str = "Remove a helper";
+pub const ROOM_MODE_ALLOW_USER: &str = "Let a person in";
+pub const ROOM_MODE_ALLOW_ROLE: &str = "Let a role in";
+pub const ROOM_MODE_BLOCK_ROLE: &str = "Keep a role out";
+pub const ROOM_MODE_UNBLOCK_ROLE: &str = "Stop keeping a role out";
+// One line under each modal field's label; Discord caps it at 100 characters.
+pub const ROOM_DESC_MEMBER: &str = "Only people this can be done to are listed.";
+pub const ROOM_DESC_REASON: &str = "Required, up to 200 characters.";
+pub const ROOM_DESC_REASON_OPTIONAL: &str = "Optional, up to 200 characters.";
+pub const ROOM_DESC_LIMIT: &str = "A number from 0 to 99.";
+pub const ROOM_DESC_NAME: &str = "1 to 100 characters.";
+pub const ROOM_DESC_MODE_HELPERS: &str = "Add a helper, or remove one.";
+pub const ROOM_DESC_MODE_WHO: &str = "Let a person or a role in, or keep a role out.";
+pub const ROOM_DESC_HELPER: &str = "Anyone in this server.";
+pub const ROOM_DESC_WHO_USER: &str = "Only for \"Let a person in\".";
+pub const ROOM_DESC_WHO_ROLE: &str = "Only for the three role choices.";
+
+// Confirmations.
+pub const ROOM_DONE_KICKED: &str = "Kicked";
+pub const ROOM_DONE_LET_IN: &str = "Let back in";
+pub const ROOM_DONE_MUTED: &str = "Muted";
+pub const ROOM_DONE_UNMUTED: &str = "Unmuted";
+pub const ROOM_DONE_LOCKED: &str = "🔒 Room locked. Nobody new can join.";
+pub const ROOM_DONE_UNLOCKED: &str = "🔓 Room unlocked.";
+pub const ROOM_DONE_CHAT_LOCKED: &str = "🤐 Chat locked.";
+pub const ROOM_DONE_CHAT_UNLOCKED: &str = "💬 Chat unlocked.";
+pub const ROOM_DONE_LIMIT_SET: &str = "👥 Limit set to";
+pub const ROOM_DONE_LIMIT_CLEARED: &str = "👥 Limit removed.";
+pub const ROOM_DONE_RENAMED: &str = "✏️ Renamed to";
+pub const ROOM_DONE_TRANSFERRED: &str = "🔑 The room now belongs to";
+pub const ROOM_DONE_HELPER_ADDED: &str = "🛡️ Helper added:";
+pub const ROOM_DONE_HELPER_REMOVED: &str = "🛡️ Helper removed:";
+pub const ROOM_DONE_ALLOWED_USER: &str = "🚪 Allowed in:";
+pub const ROOM_DONE_ALLOWED_ROLE: &str = "🚪 Allowed in:";
+pub const ROOM_DONE_ROLE_BLOCKED: &str = "🚫 Kept out:";
+pub const ROOM_DONE_ROLE_UNBLOCKED: &str = "🚪 No longer kept out:";
+pub const ROOM_DONE_CLAIMED: &str = "👑 You now own this room.";
+pub const ROOM_DONE_PANEL_POSTED: &str = "Panel posted.";
+
+// `/rooms status` and `/rooms on|off`.
+pub const ROOM_STATUS_TITLE: &str = "Voice rooms";
+pub const ROOM_STATUS_ENABLED: &str = "Rooms are **on**.";
+pub const ROOM_STATUS_DISABLED: &str = "Rooms are **off**.";
+pub const ROOM_STATUS_HUB: &str = "Hub:";
+pub const ROOM_STATUS_NO_HUB: &str = "Hub: not set";
+pub const ROOM_STATUS_TEMPLATE: &str = "Name:";
+pub const ROOM_STATUS_LIMIT: &str = "Default limit:";
+pub const ROOM_STATUS_GRACE: &str = "Empty-room grace:";
+pub const ROOM_STATUS_DASHBOARD: &str = "Dashboard settings:";
+pub const ROOM_STATUS_READY: &str = "CrackTunes has everything it needs.";
+pub const ROOM_STATUS_NO_HUB_YET: &str = "No hub set yet — run /rooms setup.";
+pub const ROOM_STATUS_UNKNOWN: &str = "Couldn't check permissions: CrackTunes may not be able to see the hub or its category — give it View Channel there — or it's still starting up.";
+pub const ROOM_FINDING_MISSING: &str = "Give CrackTunes";
+pub const ROOM_FINDING_OPTIONAL: &str = "Optional: give CrackTunes";
+pub const ROOM_FINDING_LOCK: &str = "Locking a room may fail: CrackTunes lacks";
+pub const ROOM_AT_CATEGORY: &str = "on";
+pub const ROOM_AT_HUB: &str = "on the hub";
+pub const ROOM_AT_SERVER: &str = "server-wide";
+
+// The dashboard's rooms settings page.
+pub const DASH_SETTINGS_LINK: &str = "Settings";
+pub const DASH_SETTINGS_TITLE: &str = "Voice rooms";
+pub const DASH_SETTINGS_NEEDS_MANAGE: &str =
+    "Only members with Manage Server can see or change this server's settings.";
+pub const DASH_SETTINGS_ENABLED: &str = "Rooms are on";
+pub const DASH_SETTINGS_HUB: &str = "Hub channel";
+pub const DASH_SETTINGS_NO_HUB_OPTION: &str = "None";
+pub const DASH_SETTINGS_TEMPLATE: &str = "Room name";
+pub const DASH_SETTINGS_PREVIEW: &str = "Looks like:";
+pub const DASH_SETTINGS_LIMIT: &str = "Default member limit (0 for none)";
+pub const DASH_SETTINGS_GRACE: &str = "Delete an empty room after";
+pub const DASH_SETTINGS_SAVE: &str = "Save";
+pub const DASH_SETTINGS_SAVED: &str = "Saved.";
+pub const DASH_SETTINGS_SAVING_FAILED: &str = "Could not reach the dashboard. Try again.";
+pub const DASH_SETTINGS_GUIDE: &str = "How rooms work";
+pub const DASH_SETTINGS_PERMISSIONS: &str = "Permissions";
+pub const DASH_SETTINGS_NO_DATABASE: &str =
+    "Rooms need the bot's database, which isn't set up, so they can't be turned on.";
+pub const DASH_SETTINGS_NO_HUB: &str = "Pick a hub channel before turning rooms on.";
+pub const DASH_SETTINGS_BAD_TEMPLATE: &str =
+    "The room name must be 1 to 100 characters, with no control characters.";
+pub const DASH_SETTINGS_BAD_LIMIT: &str = "The member limit must be from 0 to 99.";
+pub const DASH_SETTINGS_BAD_GRACE: &str = "Pick one of the listed delays.";
+pub const DASH_SETTINGS_UNKNOWN_CHANNEL: &str = "That hub is not a voice channel of this server.";
+pub const DASH_SETTINGS_UNREADABLE: &str = "The settings could not be read.";
+pub const DASH_SETTINGS_FAILED: &str = "The settings could not be saved. Try again in a moment.";
+pub const ROOM_SETTINGS_INVALID: &str = "Those settings aren't valid, so nothing was changed.";
+pub const ROOM_SETTINGS_SAVE_FAILED: &str = "Couldn't save the settings. Try again in a moment.";
+pub const ROOM_SETTINGS_NOT_LOADED: &str =
+    "Room settings couldn't be read from the database yet — try again in a minute.";
+pub const DASH_SETTINGS_NOT_LOADED: &str = ROOM_SETTINGS_NOT_LOADED;
+pub const ROOM_SWITCHED_ON: &str = "Voice rooms are on.";
+pub const ROOM_SWITCHED_OFF: &str = "Voice rooms are off. Existing rooms stay until they empty.";
