@@ -227,12 +227,12 @@ pub async fn chatunlock(ctx: Context<'_>) -> Result<(), Error> {
 #[poise::command(slash_command, guild_only)]
 pub async fn limit(
     ctx: Context<'_>,
-    #[description = "Most people allowed, 0 for no limit"]
+    #[description = "How many people may join (0 = no limit)"]
     #[min = 0]
     #[max = 99]
-    n: u8,
+    people: u8,
 ) -> Result<(), Error> {
-    run(ctx, Ok(RoomAction::Limit(n))).await
+    run(ctx, Ok(RoomAction::Limit(people))).await
 }
 
 /// Change the room's name.
@@ -463,7 +463,7 @@ mod tests {
             .find(|s| s.name == "limit")
             .unwrap();
         assert_eq!(limit.parameters.len(), 1);
-        assert_eq!(limit.parameters[0].name, "n");
+        assert_eq!(limit.parameters[0].name, "people");
     }
 
     #[test]

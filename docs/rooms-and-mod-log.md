@@ -16,7 +16,7 @@ Voice rooms are **off by default** in every server, and free: no premium needed.
 
 ## Voice rooms — for admins
 
-You need **Manage Server** to set rooms up, change them or look at them.
+You need **Manage Server** (or to be the server's owner) to set rooms up, change them or look at them.
 
 ### Turning rooms on
 
@@ -108,7 +108,7 @@ moment you turn rooms off.
 
 ### Who may run `/rooms`
 
-Only members with Manage Server. Discord hides the command from everyone else.
+Only members with Manage Server (and the server owner). Discord hides the command from everyone else.
 
 ### Limits worth knowing
 
@@ -201,11 +201,13 @@ the people let in.
   lock, to let only them in.
 - **Block role** keeps a role out. It is refused for `@everyone` and for any role
   the owner holds, because it would lock the owner out. Use Lock instead.
-- **Allow** is refused for a person or role the server's own permissions keep
-  out ("This server's own permissions keep them out of this room"). A room can
-  never be more open than its category.
-- **Rename** is limited to twice every 10 minutes. That is Discord's limit on
-  channel renames, not CrackTunes'. The reply says how long to wait.
+- **Allow**, **Helpers** (add) and **Transfer** are refused for a person or
+  role the server's own permissions keep out ("This server's own permissions
+  keep them out of this room"). A room can never be more open than its
+  category.
+- **Rename** is limited to twice every 10 minutes. Discord limits channel renames
+  to that, and CrackTunes enforces it itself (the count starts over if the bot
+  restarts). The reply says how long to wait.
 - **Limit** needs a number from 0 to 99.
 
 If you run a command while not in a room, CrackTunes says "You're not in a
@@ -216,11 +218,12 @@ room. Run this from your room's voice channel or its chat."
 - **A room is deleted once no human is left in it**, after the server's delay
   (default 30 seconds; the admin picks 0, 10, 30, 60, 120 or 300). If someone
   joins before the delay runs out, the deletion is cancelled and the next
-  emptying starts a fresh delay. A brand new room is never swept in its first
-  10 seconds, whatever the delay.
+  emptying starts a fresh delay. A new room isn't deleted before CrackTunes has
+  seen its owner arrive (it waits at least 10 seconds for that).
 - Bots in the room do not count. A room with only bots in it is empty.
 - **After a restart**: when CrackTunes starts, it checks every room it knows
-  about. Empty rooms are deleted, and rooms with someone in them are kept.
+  about. Empty rooms are deleted after the server's delay, not at once, and rooms
+  with someone in them are kept.
 - **A room someone deletes by hand** is forgotten. CrackTunes does not bring it
   back and does not keep trying to manage it. Running a `/room` command in it
   afterwards says you are not in a room.
