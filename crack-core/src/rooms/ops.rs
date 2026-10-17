@@ -365,23 +365,20 @@ pub(crate) fn validate(action: RoomAction) -> Result<RoomAction, RoomRefusal> {
 
 /// A role choice that would undo the room's own controls. Blocking
 /// `@everyone`, or a role the owner holds (as far as `facts` knows their
-/// roles), would lock the owner out: Lock is for that. Allowing `@everyone`
-/// in would leave a lock locking nobody out while the panel says locked:
-/// Unlock is for that.
+/// roles), would lock the owner out: Lock is for that. Blocking a role
+/// CrackTunes holds could take its view of the room, and with it the room's
+/// deletion. Allowing `@everyone` in would leave a lock locking nobody out
+/// while the panel says locked: Unlock is for that.
 fn role_choice_ok(
     facts: &GuildFacts,
     state: &RoomState,
     action: &RoomAction,
 ) -> Result<(), RoomRefusal> {
     let everyone = RoleId::new(facts.guild.get());
+    let holds = |u: UserId, role: &RoleId| facts.roles.get(&u).is_some_and(|r| r.contains(role));
     match action {
         RoomAction::BlockRole { role } => {
-            let owners = facts
-                .roles
-                .get(&state.owner)
-                .map(Vec::as_slice)
-                .unwrap_or(&[]);
-            if *role == everyone || owners.contains(role) {
+            if *role == everyone || holds(state.owner, role) || holds(facts.bot, role) {
                 Err(RoomRefusal::CannotBlockRole)
             } else {
                 Ok(())
@@ -1978,13 +1975,18 @@ mod tests {
         assert_eq!(w.transport.ops(), vec![]);
     }
 
+    /// Blocking `@everyone` or a role the owner holds would lock the owner
+    /// out; blocking a role CrackTunes holds could take its view of the room,
+    /// and with it the room's deletion.
     #[tokio::test]
-    async fn block_role_refuses_everyone_and_the_owners_roles() {
+    async fn block_role_refuses_everyone_the_owners_and_crack_tunes_roles() {
         let w = World::new(live(vec![]));
         let mut f = facts();
         let owners_role = RoleId::new(40);
+        let bots_role = RoleId::new(42);
         f.roles.insert(OWNER, vec![owners_role]);
-        for role in [RoleId::new(G.get()), owners_role] {
+        f.roles.insert(BOT, vec![bots_role]);
+        for role in [RoleId::new(G.get()), owners_role, bots_role] {
             assert_eq!(
                 w.act(&f, OWNER, RoomAction::BlockRole { role }).await,
                 Err(RoomRefusal::CannotBlockRole),

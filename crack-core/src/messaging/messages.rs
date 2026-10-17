@@ -661,8 +661,7 @@ pub const ROOM_MISSING_CHOICE: &str = "Pick who or what this is for, then submit
 pub const ROOM_OWNER_PRESENT: &str = "The owner is still in the room, so it can't be claimed.";
 pub const ROOM_ALREADY_OWNER: &str = "You already own this room.";
 pub const ROOM_OWNS_ANOTHER_ROOM: &str = "That member already owns a room.";
-pub const ROOM_CANNOT_BLOCK_ROLE: &str =
-    "That role can't be blocked: it would lock the room's owner out. Use Lock instead.";
+pub const ROOM_CANNOT_BLOCK_ROLE: &str = "That role can't be blocked: it would lock out the room's owner or CrackTunes. Use Lock instead.";
 pub const ROOM_CANNOT_ALLOW_ROLE: &str =
     "That would let everyone in, which is what Unlock is for. Use Unlock instead.";
 pub const ROOM_TOO_MANY_FOR_MENU: &str =

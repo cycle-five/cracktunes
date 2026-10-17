@@ -55,8 +55,8 @@ pub enum RoomRefusal {
     AlreadyOwner,
     /// The would-be owner already owns another room in this server.
     OwnsAnotherRoom,
-    /// Blocking this role would lock the room's owner out (`@everyone`, or a
-    /// role the owner holds).
+    /// Blocking this role would lock out the room's owner (`@everyone`, or
+    /// a role the owner holds) or CrackTunes (a role it holds).
     CannotBlockRole,
     /// Allowing `@everyone` in would leave a locked room locking nobody out.
     CannotAllowRole,
@@ -801,6 +801,11 @@ mod tests {
         ] {
             assert!(protected.contains(who), "{who}: {protected}");
         }
+        let block = render(&RoomCard::Refused(CannotBlockRole)).content.unwrap();
+        assert!(
+            block.contains("owner") && block.contains("CrackTunes"),
+            "{block}"
+        );
         let missing = render(&RoomCard::Refused(MissingPermissions))
             .content
             .unwrap();

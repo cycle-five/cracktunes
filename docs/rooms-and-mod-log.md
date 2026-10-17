@@ -217,8 +217,10 @@ Someone you kick is also removed from the helpers and from the people let in.
   if they drop out. The owner, helpers and anyone you allowed can still join,
   and so can CrackTunes, to play music. Allow a person or role first, then
   lock, to let only them in.
-- **Block role** keeps a role out. It is refused for `@everyone` and for any role
-  the owner holds, because it would lock the owner out. Use Lock instead.
+- **Block role** keeps a role out. It is refused for `@everyone`, for any role
+  the owner holds and for any role CrackTunes holds, because it would lock the
+  owner or CrackTunes out (CrackTunes needs to see a room to delete it). Use
+  Lock instead.
   Allowing `@everyone` in is refused too: use Unlock instead.
 - **Allow**, **Helpers** (add), **Transfer** and **Claim** are refused for a
   person or role the server's own permissions keep out ("This server's own

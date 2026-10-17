@@ -90,24 +90,28 @@ impl GuildFacts {
 
 /// Read the facts for `guild` from the cache. Roles and display names are
 /// copied only for the people a decision can be about: everyone in one of the
-/// guild's voice channels, the guild's owner, and `extra`. Put in `extra`
+/// guild's voice channels, the guild's owner, CrackTunes itself (Block role
+/// checks its roles, as it does the owner's), and `extra`. Put in `extra`
 /// whoever else the decision needs, such as the actor, a modal's target, or
-/// the room's owner (Block role checks the owner's roles). An `extra` member
-/// the cache does not hold is fetched over HTTP; one that cannot be fetched
-/// is left out, and counts as holding only `@everyone`. Every voice
-/// channel's overwrites are copied too. `None` when the guild is not cached.
+/// the room's owner. CrackTunes or an `extra` member the cache does not hold
+/// is fetched over HTTP; one that cannot be fetched is left out, and counts
+/// as holding only `@everyone`. Every voice channel's overwrites are copied
+/// too. `None` when the guild is not cached.
 pub async fn gather(
     cache: &Cache,
     http: &Http,
     guild: GuildId,
     extra: &[UserId],
 ) -> Option<GuildFacts> {
+    let bot = cache.current_user().id;
     let mut seen = HashSet::new();
-    let extra: Vec<UserId> = extra.iter().copied().filter(|u| seen.insert(*u)).collect();
+    let extra: Vec<UserId> = std::iter::once(bot)
+        .chain(extra.iter().copied())
+        .filter(|u| seen.insert(*u))
+        .collect();
     // The cache guard lives only in this block: nothing here awaits.
     let (mut facts, missing) = {
         let g = cache.guild(guild)?;
-        let bot = cache.current_user().id;
         let everyone_id = RoleId::new(guild.get());
         let mut facts = GuildFacts {
             guild,
