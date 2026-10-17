@@ -1,6 +1,7 @@
 //! The mod log: a per-server channel where the bot posts who server-muted,
 //! deafened, disconnected or moved whom, and every room kick or mute.
 
+pub mod attribution;
 pub mod event;
 pub mod registry;
 pub mod settings;
