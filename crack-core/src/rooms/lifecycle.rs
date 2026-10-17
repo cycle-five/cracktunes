@@ -939,22 +939,26 @@ fn voice_channel_of(cache: &Cache, guild: GuildId, user: UserId) -> Option<Chann
 }
 
 /// Reconcile a server's rooms as its `GuildCreate` arrives: at startup, after
-/// an outage, and on every gateway reconnect. When the rows cannot be read,
-/// it is tried once more a minute later.
+/// an outage, and on every gateway reconnect. When the rows (or the server's
+/// room settings, unread at `GuildCreate`) cannot be read, it is tried once
+/// more a minute later.
 pub async fn reconcile_guild(data: &Data, ctx: &Context, guild: &Guild) {
     let id = guild.id;
     match load_rooms(data, id).await {
         Ok(stored) => reconcile_with(data, ctx, id, stored).await,
         Err(err) => {
-            tracing::warn!("rooms: loading the rooms of {id} failed; retrying in a minute: {err}");
+            tracing::warn!(
+                "rooms: loading the rooms (or room settings) of {id} failed; retrying in a \
+                 minute: {err}"
+            );
             let (data, ctx) = (data.clone(), ctx.clone());
             tokio::spawn(async move {
                 tokio::time::sleep(RECONCILE_RETRY).await;
                 match load_rooms(&data, id).await {
                     Ok(stored) => reconcile_with(&data, &ctx, id, stored).await,
                     Err(err) => tracing::warn!(
-                        "rooms: loading the rooms of {id} failed again; no reconcile until its \
-                         next GuildCreate: {err}"
+                        "rooms: loading the rooms (or room settings) of {id} failed again; no \
+                         reconcile until its next GuildCreate: {err}"
                     ),
                 }
             });
@@ -965,11 +969,16 @@ pub async fn reconcile_guild(data: &Data, ctx: &Context, guild: &Guild) {
 /// How long a reconcile whose rows could not be read waits to try again.
 const RECONCILE_RETRY: Duration = Duration::from_secs(60);
 
+/// The server's stored rooms, after its settings if `GuildCreate` could not
+/// read them: the retry covers both.
 async fn load_rooms(data: &Data, guild: GuildId) -> sqlx::Result<Vec<StoredRoom>> {
-    match data.database_pool.as_ref() {
-        Some(pool) => crate::db::rooms::rooms_in(pool, guild).await,
-        None => Ok(Vec::new()),
+    let Some(pool) = data.database_pool.as_ref() else {
+        return Ok(Vec::new());
+    };
+    if !data.rooms.settings_loaded(guild) {
+        super::ops::load_settings(data, guild).await?;
     }
+    crate::db::rooms::rooms_in(pool, guild).await
 }
 
 async fn reconcile_with(data: &Data, ctx: &Context, guild: GuildId, stored: Vec<StoredRoom>) {
@@ -2488,6 +2497,30 @@ mod tests {
 
         fn synced() -> FakeRoomsDiscord {
             FakeRoomsDiscord::default().with_created_overwrites(gate())
+        }
+
+        /// Reconcile's read (and its retry a minute after a failure) reads
+        /// the server's room settings too when GuildCreate could not.
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
+        async fn loading_the_rooms_reads_settings_not_yet_read(pool: PgPool) -> sqlx::Result<()> {
+            let saved = RoomSettings {
+                name_template: "{name}'s den".into(),
+                ..settings()
+            };
+            crate::db::rooms::save_settings(&pool, &saved).await?;
+            insert_room(&pool, &stored(ROOM, JOINER)).await?;
+            let data = Data(Arc::new(DataInner {
+                database_pool: Some(pool.clone()),
+                ..Default::default()
+            }));
+            assert_eq!(load_rooms(&data, G).await?, vec![stored(ROOM, JOINER)]);
+            assert!(data.rooms.settings_loaded(G));
+            assert_eq!(data.rooms.settings(G), saved);
+            Ok(())
         }
 
         #[sqlx::test(migrator = "MIGRATOR")]

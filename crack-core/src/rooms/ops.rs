@@ -17,7 +17,7 @@ use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::messaging::transport::{Transport, TransportError};
 use crate::Data;
-use serenity::all::{ChannelId, MessageId, RoleId, UserId};
+use serenity::all::{ChannelId, GuildId, MessageId, RoleId, UserId};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -600,12 +600,35 @@ pub enum SettingsSaveError {
     Invalid(SettingsError),
     /// The database refused the write.
     Db,
+    /// The server's stored settings have not been read yet (the read at
+    /// GuildCreate failed): a save would write defaults over them.
+    NotLoaded,
+}
+
+/// Read a server's stored room settings into the registry, and record
+/// that they were read (absent counts: the server never set rooms up).
+/// Without a database there is nothing to read. Run at `GuildCreate`, and
+/// again by reconcile's retry while a read has not yet succeeded.
+pub async fn load_settings(data: &Data, guild: GuildId) -> sqlx::Result<()> {
+    let Some(pool) = data.database_pool.as_ref() else {
+        return Ok(());
+    };
+    if let Some(s) = crate::db::rooms::load_settings(pool, guild).await? {
+        data.rooms.set_settings(s);
+    }
+    data.rooms.mark_settings_loaded(guild);
+    Ok(())
 }
 
 /// R4: the one way a server's room settings change (`/rooms`, the dashboard).
 /// Validates, writes the database (when there is one), then the registry, so
-/// memory never runs ahead of what a restart would load.
+/// memory never runs ahead of what a restart would load. Refused while the
+/// server's stored settings have not been read ([`load_settings`]): the
+/// caller built `s` on defaults, and would write them over what is stored.
 pub async fn save_settings(data: &Data, s: RoomSettings) -> Result<(), SettingsSaveError> {
+    if data.database_pool.is_some() && !data.rooms.settings_loaded(s.guild) {
+        return Err(SettingsSaveError::NotLoaded);
+    }
     s.validate(data.database_pool.is_some())
         .map_err(SettingsSaveError::Invalid)?;
     if let Some(pool) = &data.database_pool {
@@ -814,12 +837,102 @@ mod tests {
             database_pool: Some(pool.clone()),
             ..Default::default()
         }));
+        load_settings(&data, G).await.unwrap();
         let s = on_with_hub();
         assert_eq!(save_settings(&data, s.clone()).await, Ok(()));
         assert_eq!(data.rooms.settings(G), s);
         assert_eq!(
             crate::db::rooms::load_settings(&pool, G).await.unwrap(),
             Some(s)
+        );
+    }
+
+    /// A server whose stored settings were never read: a save would write
+    /// defaults over its template, limit and grace. Refused until a read
+    /// succeeds.
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn save_settings_refuses_until_the_stored_settings_are_read(pool: sqlx::PgPool) {
+        let stored = RoomSettings {
+            name_template: "{name} hangs out".into(),
+            default_limit: 7,
+            empty_grace_secs: 120,
+            ..RoomSettings::off(G)
+        };
+        crate::db::rooms::save_settings(&pool, &stored)
+            .await
+            .unwrap();
+        let data = Data(Arc::new(DataInner {
+            database_pool: Some(pool.clone()),
+            ..Default::default()
+        }));
+        // `/rooms setup` builds on what the registry holds: defaults.
+        let setup = RoomSettings {
+            enabled: true,
+            hub: Some(ChannelId::new(55)),
+            ..data.rooms.settings(G)
+        };
+        assert_eq!(
+            save_settings(&data, setup).await,
+            Err(SettingsSaveError::NotLoaded)
+        );
+        assert_eq!(
+            crate::db::rooms::load_settings(&pool, G).await.unwrap(),
+            Some(stored.clone()),
+            "nothing written"
+        );
+        assert_eq!(data.rooms.settings(G), RoomSettings::off(G));
+
+        // Read, the stored settings are what a save builds on.
+        load_settings(&data, G).await.unwrap();
+        assert_eq!(data.rooms.settings(G), stored);
+        let setup = RoomSettings {
+            enabled: true,
+            hub: Some(ChannelId::new(55)),
+            ..data.rooms.settings(G)
+        };
+        assert_eq!(save_settings(&data, setup.clone()).await, Ok(()));
+        assert_eq!(
+            crate::db::rooms::load_settings(&pool, G).await.unwrap(),
+            Some(setup)
+        );
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn a_server_with_no_stored_settings_counts_as_read(pool: sqlx::PgPool) {
+        let data = Data(Arc::new(DataInner {
+            database_pool: Some(pool),
+            ..Default::default()
+        }));
+        assert!(!data.rooms.settings_loaded(G));
+        load_settings(&data, G).await.unwrap();
+        assert!(data.rooms.settings_loaded(G));
+        assert_eq!(save_settings(&data, on_with_hub()).await, Ok(()));
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn a_failed_settings_read_leaves_saves_refused(pool: sqlx::PgPool) {
+        let data = Data(Arc::new(DataInner {
+            database_pool: Some(pool.clone()),
+            ..Default::default()
+        }));
+        pool.close().await;
+        assert!(load_settings(&data, G).await.is_err());
+        assert!(!data.rooms.settings_loaded(G));
+        assert_eq!(
+            save_settings(&data, RoomSettings::off(G)).await,
+            Err(SettingsSaveError::NotLoaded)
         );
     }
 

@@ -27,8 +27,8 @@ use axum::{
 };
 use catacombs::auth::AuthenticatedUser;
 use crack_core::messaging::messages::{
-    DASH_SETTINGS_FAILED, DASH_SETTINGS_NEEDS_MANAGE, DASH_SETTINGS_UNKNOWN_CHANNEL,
-    DASH_SETTINGS_UNREADABLE,
+    DASH_SETTINGS_FAILED, DASH_SETTINGS_NEEDS_MANAGE, DASH_SETTINGS_NOT_LOADED,
+    DASH_SETTINGS_UNKNOWN_CHANNEL, DASH_SETTINGS_UNREADABLE,
 };
 use serenity::all::{GuildId, UserId};
 use std::{
@@ -329,6 +329,9 @@ async fn save_rooms<B: Backend>(
         },
         Err(SaveRefused::Failed) => {
             error_json(StatusCode::SERVICE_UNAVAILABLE, DASH_SETTINGS_FAILED)
+        },
+        Err(SaveRefused::NotLoaded) => {
+            error_json(StatusCode::SERVICE_UNAVAILABLE, DASH_SETTINGS_NOT_LOADED)
         },
     }
 }
@@ -2307,6 +2310,11 @@ mod test {
                 SaveRefused::Failed,
                 StatusCode::SERVICE_UNAVAILABLE,
                 DASH_SETTINGS_FAILED,
+            ),
+            (
+                SaveRefused::NotLoaded,
+                StatusCode::SERVICE_UNAVAILABLE,
+                DASH_SETTINGS_NOT_LOADED,
             ),
         ] {
             let fake = settings_fake(HistoryAccess::Allowed);

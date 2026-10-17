@@ -450,16 +450,14 @@ impl SerenityHandler {
         tracing::info!("Loaded settings for guild {} ({})", guild.id, guild.name);
 
         // Voice room settings live in their own table; with no database,
-        // rooms stay off.
-        if let Some(pool) = self.data.database_pool.as_ref() {
-            match crate::db::rooms::load_settings(pool, guild.id).await {
-                Ok(Some(rooms)) => self.data.rooms.set_settings(rooms),
-                Ok(None) => {},
-                Err(err) => tracing::warn!(
-                    "rooms: loading the room settings of {} failed: {err}",
-                    guild.id
-                ),
-            }
+        // rooms stay off. A failed read leaves rooms off and room settings
+        // unsaveable for the server until a read succeeds: reconcile below
+        // tries again, then once more a minute later.
+        if let Err(err) = crate::rooms::ops::load_settings(&self.data, guild.id).await {
+            tracing::warn!(
+                "rooms: loading the room settings of {} failed: {err}",
+                guild.id
+            );
         }
 
         // A `/gp` game that was running when the bot went down comes back here,

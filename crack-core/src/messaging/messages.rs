@@ -788,5 +788,8 @@ pub const DASH_SETTINGS_UNREADABLE: &str = "The settings could not be read.";
 pub const DASH_SETTINGS_FAILED: &str = "The settings could not be saved. Try again in a moment.";
 pub const ROOM_SETTINGS_INVALID: &str = "Those settings aren't valid, so nothing was changed.";
 pub const ROOM_SETTINGS_SAVE_FAILED: &str = "Couldn't save the settings. Try again in a moment.";
+pub const ROOM_SETTINGS_NOT_LOADED: &str =
+    "Room settings couldn't be read from the database yet — try again in a minute.";
+pub const DASH_SETTINGS_NOT_LOADED: &str = ROOM_SETTINGS_NOT_LOADED;
 pub const ROOM_SWITCHED_ON: &str = "Voice rooms are on.";
 pub const ROOM_SWITCHED_OFF: &str = "Voice rooms are off. Existing rooms stay until they empty.";

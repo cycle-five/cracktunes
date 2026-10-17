@@ -76,6 +76,8 @@ pub struct RoomRegistry {
     /// One room per member per server.
     owners: DashMap<(GuildId, UserId), ChannelId>,
     settings: DashMap<GuildId, RoomSettings>,
+    /// Servers whose stored settings have been read.
+    loaded: DashSet<GuildId>,
     /// A pending empty-room deletion per room.
     timers: DashMap<ChannelId, AbortHandle>,
     /// One new room per member per [`NEW_ROOM_COOLDOWN`].
@@ -95,6 +97,7 @@ impl Default for RoomRegistry {
             rooms: DashMap::new(),
             owners: DashMap::new(),
             settings: DashMap::new(),
+            loaded: DashSet::new(),
             timers: DashMap::new(),
             cooldown: Throttle::new(NEW_ROOM_COOLDOWN),
             hub_creating: DashSet::new(),
@@ -114,6 +117,18 @@ impl RoomRegistry {
 
     pub fn set_settings(&self, s: RoomSettings) {
         self.settings.insert(s.guild, s);
+    }
+
+    /// Whether the server's stored settings have been read (or found
+    /// absent). Until they are, [`Self::settings`] answers defaults that a
+    /// save must not write over what is stored.
+    pub fn settings_loaded(&self, g: GuildId) -> bool {
+        self.loaded.contains(&g)
+    }
+
+    /// The server's stored settings have been read.
+    pub fn mark_settings_loaded(&self, g: GuildId) {
+        self.loaded.insert(g);
     }
 
     pub fn get(&self, ch: ChannelId) -> Option<Arc<Mutex<LiveRoom>>> {
@@ -288,6 +303,15 @@ mod tests {
             reg.settings(GuildId::new(7)),
             RoomSettings::off(GuildId::new(7))
         );
+    }
+
+    #[test]
+    fn settings_count_as_loaded_once_marked_per_server() {
+        let reg = RoomRegistry::default();
+        assert!(!reg.settings_loaded(G));
+        reg.mark_settings_loaded(G);
+        assert!(reg.settings_loaded(G));
+        assert!(!reg.settings_loaded(GuildId::new(7)));
     }
 
     #[tokio::test]

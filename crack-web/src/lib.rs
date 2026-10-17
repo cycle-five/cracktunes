@@ -398,6 +398,7 @@ impl Backend for LiveBackend {
             .map_err(|e| match e {
                 SettingsSaveError::Invalid(e) => SaveRefused::Invalid(e),
                 SettingsSaveError::Db => SaveRefused::Failed,
+                SettingsSaveError::NotLoaded => SaveRefused::NotLoaded,
             })?;
         tracing::info!(guild = %g, user = %user, "dashboard saved room settings");
         Ok(self.room_settings(g).await)

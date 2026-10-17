@@ -7,7 +7,7 @@
 use crate::messaging::courier;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::messages::{
-    ROOM_NO_DATABASE, ROOM_SETTINGS_INVALID, ROOM_SETTINGS_SAVE_FAILED,
+    ROOM_NO_DATABASE, ROOM_SETTINGS_INVALID, ROOM_SETTINGS_NOT_LOADED, ROOM_SETTINGS_SAVE_FAILED,
 };
 use crate::messaging::render::Rendered;
 use crate::rooms::card::RoomCard;
@@ -44,6 +44,7 @@ pub(crate) fn save_error_text(err: SettingsSaveError) -> &'static str {
         SettingsSaveError::Invalid(SettingsError::NoDatabase) => ROOM_NO_DATABASE,
         SettingsSaveError::Invalid(_) => ROOM_SETTINGS_INVALID,
         SettingsSaveError::Db => ROOM_SETTINGS_SAVE_FAILED,
+        SettingsSaveError::NotLoaded => ROOM_SETTINGS_NOT_LOADED,
     }
 }
 
@@ -207,6 +208,10 @@ mod tests {
         assert_eq!(
             save_error_text(SettingsSaveError::Db),
             ROOM_SETTINGS_SAVE_FAILED
+        );
+        assert_eq!(
+            save_error_text(SettingsSaveError::NotLoaded),
+            "Room settings couldn't be read from the database yet — try again in a minute."
         );
     }
 }

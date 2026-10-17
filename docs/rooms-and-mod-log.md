@@ -47,6 +47,11 @@ The settings page has these options:
 as they were. Change the name, limit and delay on the dashboard.
 
 Rooms need CrackTunes' database. A CrackTunes without one cannot turn rooms on.
+If the database could not be read when CrackTunes joined or rejoined the
+server, rooms stay off there and saving is refused with "Room settings
+couldn't be read from the database yet — try again in a minute." rather than
+overwriting your settings with defaults. CrackTunes reads them again a minute
+later.
 
 ### Permissions CrackTunes needs
 

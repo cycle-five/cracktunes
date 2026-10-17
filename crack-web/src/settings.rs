@@ -50,6 +50,9 @@ pub enum SaveRefused {
     UnknownChannel,
     /// The database refused the write.
     Failed,
+    /// The server's stored settings have not been read yet, so a save
+    /// would write defaults over them.
+    NotLoaded,
 }
 
 /// The reason shown for a refused settings value.
