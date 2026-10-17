@@ -255,6 +255,28 @@ impl ModLogRegistry {
         }
     }
 
+    /// `GuildCreate` fired for a server that already holds a batch life: the
+    /// gateway re-identified without a restart. Whatever moderators did
+    /// while the bot was away left audit units whose voice events it never
+    /// saw, so both kinds are marked for a re-read (see [`Self::mark_reread`]):
+    /// the next flush attributes nothing of them and absorbs what it reads.
+    /// A server with no life is untouched (its first flush seeds it). True
+    /// when a life was marked.
+    pub fn mark_reconnected(&self, g: GuildId, now: Instant) -> bool {
+        let marked = self
+            .batch_existing(g, |b| {
+                b.mark_reread(AuditKind::Disconnect, now + SKEW);
+                b.mark_reread(AuditKind::Move, now + SKEW);
+            })
+            .is_some();
+        if marked {
+            tracing::debug!(
+                "modlog: {g}: reconnected; both kinds are re-read before anything is attributed"
+            );
+        }
+        marked
+    }
+
     /// The server's snapshots, if any state is held.
     pub fn snapshots(&self, g: GuildId) -> Option<Snapshots> {
         self.batches.get(&g).map(|b| b.snaps.clone())

@@ -422,6 +422,9 @@ impl SerenityHandler {
     /// Per-guild work belongs on the per-guild event, where it is also correct for
     /// guilds that recover from an outage or are joined while running.
     async fn on_guild_create(&self, ctx: SerenityContext, guild: serenity::Guild) {
+        // First, before any await below: a re-identify must mark the mod log's
+        // existing snapshots stale before a flush can run against them.
+        crate::modlog::live::mark_reconnected(&self.data, guild.id);
         let prefix = self.data.bot_settings.get_prefix();
         let name = guild.name.clone();
         let settings = match self.data.database_pool.as_ref() {

@@ -296,6 +296,16 @@ fn seed_after_save(
     spawn_seed(data, audit, guild)
 }
 
+/// A `GuildCreate` for a server that already has a batch life is a gateway
+/// re-identify: mark both kinds for a re-read (M31). Called at the very start
+/// of `GuildCreate` handling, before any await: the handler's database reads
+/// take time, during which a flush can already run, and it must find the
+/// marks. [`ModLogRegistry::mark_reconnected`] asks for a read from `SKEW`
+/// after now, so a fetch that began before cannot clear them.
+pub fn mark_reconnected(data: &Data, guild: GuildId) {
+    data.modlog.mark_reconnected(guild, Instant::now());
+}
+
 /// `GuildCreate`: read the server's stored settings, then seed if the log is
 /// on; a failed read is retried once a minute later (see `load_and_seed`).
 pub async fn on_guild_create(data: &Data, http: Arc<Http>, guild: GuildId) {

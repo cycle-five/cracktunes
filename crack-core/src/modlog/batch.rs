@@ -585,9 +585,10 @@ pub async fn seed(data: &Data, audit: &dyn AuditSource, guild: GuildId) {
     // meanwhile.
     // The batch life it was started for: a seed reads only for that life. If
     // the epoch moves during the wait, a resuming save bumped it and owes its
-    // own seed (which waits its own SKEW), or a new life began unseeded and
-    // its first flush seeds it; reading now would be less than SKEW after
-    // that restart, so a unit written in between could leak.
+    // own seed (which waits its own SKEW), or a new life began: the first
+    // flush of a new life seeds the kinds it reads, and the new life may
+    // also get its own spawned seed. Reading now would be less than SKEW
+    // after that restart, so a unit written in between could leak.
     let Some(Some(life)) =
         reg.batch_if_enabled(guild, |b| seedable(b, Instant::now()).then_some(b.epoch))
     else {
@@ -1915,8 +1916,11 @@ mod tests {
 
     /// P1: GuildCreate's seed S1 is waiting its SKEW when the log is turned
     /// off, a moderator disconnects T1 (dropped), and the log is turned on
-    /// again (a save that resumes and owes seed S2). S1 wakes and seeds the
-    /// new life with a read SKEW-earlier than S2 would; S2 finds S1 in flight.
+    /// again (a save that resumes and owes seed S2). Before the fix S1 woke
+    /// and seeded the new life with a read SKEW-earlier than S2's, so T1's
+    /// unit, written after that read, looked new to the next flush and
+    /// T2's own leave was named as M1's. Now S1 sees the life changed and
+    /// reads nothing; S2 seeds the new life, and T2 is not named.
     #[tokio::test(start_paused = true)]
     async fn seed_wait_p1_off_and_on_during_a_seeds_wait() {
         let w = W::new(); // GuildCreate read "on"
@@ -1942,7 +1946,6 @@ mod tests {
         w.dc(vec![dc(7, M1, 1)]);
         run(secs(2)).await;
         assert!(s1.is_finished() && s2.is_finished());
-        eprintln!("P1 fetches during seeds: {:?}", w.audit.kinds());
         run(secs(3600)).await;
         w.audit.set_delay(Duration::ZERO);
         w.change(left(T2));
@@ -1982,7 +1985,6 @@ mod tests {
         w.dc(vec![dc(7, M1, 1)]);
         run(secs(2)).await;
         assert!(s1.is_finished());
-        eprintln!("P2 fetches during seed: {:?}", w.audit.kinds());
         run(secs(3600)).await;
         w.audit.set_delay(Duration::ZERO);
         w.change(left(T2));
@@ -2044,6 +2046,78 @@ mod tests {
         w.change(left(T2));
         run(secs(10)).await;
         assert!(w.sink.events().is_empty(), "P4: {:?}", w.sink.events());
+        assert!(w.reseed().is_empty());
+    }
+
+    // ---- M31: a reconnect absorbs what happened while the bot was away ----
+
+    /// A gateway re-identify (GuildCreate) in a server with a seeded life:
+    /// a moderator disconnected T1 during the outage, so its unit is in the
+    /// audit log but the bot saw no voice event. A flush that runs before
+    /// the reconnect's own seed claims the slot must not pair that unit
+    /// with T2's voluntary leave.
+    #[tokio::test(start_paused = true)]
+    async fn a_reconnect_absorbs_the_outages_units_before_its_seed_claims() {
+        let w = W::new();
+        w.seed().await; // before the outage: nothing in the audit log
+        run(secs(5)).await;
+        w.dc(vec![dc(7, M1, 1)]); // the outage: M1 disconnects T1, unseen
+        w.data.modlog.mark_reconnected(G, Instant::now()); // GuildCreate
+        assert_eq!(w.reseed(), [Disconnect, Move]);
+        w.change(left(T2)); // T2 leaves on their own, before the seed claims
+        run(secs(10)).await;
+        assert!(
+            w.sink.events().is_empty(),
+            "T2 must not be named: {:?}",
+            w.sink.events()
+        );
+        assert!(w.reseed().is_empty(), "that round's read cleared the marks");
+        // Back to normal: a forced disconnect is matched again.
+        w.dc(vec![dc(8, M1, 1), dc(7, M1, 1)]);
+        w.change(left(T3));
+        run(secs(10)).await;
+        assert_eq!(w.sink.events(), vec![disc(T3, By(M1))]);
+    }
+
+    /// A GuildCreate for a server with no batch life changes nothing: no
+    /// life is created, no mark is held.
+    #[tokio::test(start_paused = true)]
+    async fn a_reconnect_of_a_server_with_no_life_marks_nothing() {
+        let w = W::off();
+        assert!(!w.data.modlog.mark_reconnected(G, Instant::now()));
+        assert!(!w.data.modlog.has_state(G));
+        w.data.modlog.set_settings(on()); // enabled, but no life yet
+        assert!(!w.data.modlog.mark_reconnected(G, Instant::now()));
+        assert!(!w.data.modlog.has_state(G));
+        // A first flush still seeds what it reads and attributes normally.
+        w.dc(vec![dc(1, M1, 1)]);
+        w.seed().await;
+        w.dc(vec![dc(2, M1, 1), dc(1, M1, 1)]);
+        w.change(left(T1));
+        run(secs(10)).await;
+        assert_eq!(w.sink.events(), vec![disc(T1, By(M1))]);
+    }
+
+    /// The reconnect's marks are cleared only by a fetch that started at or
+    /// after their `from` (now + SKEW): a seed already reading when the
+    /// reconnect arrives leaves them.
+    #[tokio::test(start_paused = true)]
+    async fn the_reconnect_marks_survive_a_fetch_that_started_before_them() {
+        let w = W::new();
+        w.seed().await;
+        w.audit.read_at_start();
+        w.audit.set_delay(ms(300));
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let s1 = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        settle().await;
+        after(SKEW).await; // the seed reads, until 0.55
+        after(ms(100)).await; // t = 0.35: the reconnect
+        w.data.modlog.mark_reconnected(G, Instant::now());
+        run(secs(2)).await;
+        assert!(s1.is_finished());
+        assert_eq!(w.reseed(), [Disconnect, Move], "that seed started before");
+        // A seed called now reads SKEW later, at or after `from`: it clears.
+        w.seed().await;
         assert!(w.reseed().is_empty());
     }
 }
