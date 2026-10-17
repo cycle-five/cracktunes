@@ -813,6 +813,7 @@ pub const MODLOG_FROM: &str = "from";
 pub const MODLOG_TO: &str = "to";
 pub const MODLOG_IN: &str = "in";
 pub const MODLOG_DISCONNECTED: &str = "disconnected";
+pub const MODLOG_ONE_OR_MORE_OF: &str = "One or more of";
 pub const MODLOG_OF: &str = "of";
 pub const MODLOG_AND: &str = "and";
 pub const MODLOG_MORE: &str = "more";

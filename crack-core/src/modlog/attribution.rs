@@ -129,6 +129,33 @@ pub fn advance(snaps: &mut Snapshots, fetched: &[AuditKind], rows: &[AuditRow]) 
     }
 }
 
+/// One row per (kind, id), the one with the highest count, in the order the
+/// ids first appear. A repeated entry is one entry read twice.
+fn dedupe(rows: &[AuditRow]) -> Vec<&AuditRow> {
+    let mut out: Vec<&AuditRow> = Vec::with_capacity(rows.len());
+    let mut at: HashMap<(AuditKind, u64), usize> = HashMap::new();
+    for r in rows {
+        match at.get(&(r.kind, r.id)) {
+            Some(&i) => {
+                if r.count > out[i].count {
+                    out[i] = r;
+                }
+            },
+            None => {
+                at.insert((r.kind, r.id), out.len());
+                out.push(r);
+            },
+        }
+    }
+    if out.len() < rows.len() {
+        tracing::debug!(
+            "modlog: {} repeated audit rows ignored",
+            rows.len() - out.len()
+        );
+    }
+    out
+}
+
 /// A row that counts: not the bot's, with an actor, on a seeded snapshot.
 struct Live<'a> {
     row: &'a AuditRow,
@@ -199,8 +226,9 @@ fn decide(
 /// Output order is stable: exact pairs (by row id), then leaves, then moves
 /// by destination id; within a group by target id, actors sorted.
 ///
-/// A row naming a target never feeds the pools: it only pairs exactly, and
-/// only when new since the snapshot.
+/// A row naming a target never feeds the pools: it only pairs exactly, only
+/// when new since the snapshot, and only when exactly one unpaired change
+/// fits it. Rows repeating a (kind, id) count once, at their highest count.
 #[must_use]
 pub fn attribute(
     snaps: &Snapshots,
@@ -213,8 +241,8 @@ pub fn attribute(
     let mut paired = vec![false; sorted_changes.len()];
     let mut events: Vec<ModLogEvent> = Vec::new();
 
-    let mut live: Vec<Live> = rows
-        .iter()
+    let mut live: Vec<Live> = dedupe(rows)
+        .into_iter()
         .filter_map(|r| {
             let snap = snaps.of(r.kind);
             if !snap.seeded {
@@ -234,7 +262,8 @@ pub fn attribute(
         .collect();
     live.sort_by_key(|l| l.row.id);
 
-    // Exact pairs: targeted rows only, and only new single-count rows.
+    // Exact pairs: targeted rows only, only new single-count rows, and only
+    // when one unpaired change fits; several fits fall to their group.
     for l in live.iter().filter(|l| l.row.target.is_some()) {
         let Some(target) = l.row.target else { continue };
         let new = !snaps.of(l.row.kind).counts.contains_key(&l.row.id);
@@ -246,20 +275,34 @@ pub fn attribute(
             );
             continue;
         }
-        let hit = sorted_changes.iter().enumerate().find(|(i, c)| {
-            !paired[*i]
-                && c.target() == target
-                && c.kind() == l.row.kind
-                && match c {
-                    Change::Moved { to, .. } => l.row.channel == Some(*to),
-                    Change::Left { .. } => true,
+        let fits: Vec<usize> = sorted_changes
+            .iter()
+            .enumerate()
+            .filter(|(i, c)| {
+                !paired[*i]
+                    && c.target() == target
+                    && c.kind() == l.row.kind
+                    && match c {
+                        Change::Moved { to, .. } => l.row.channel == Some(*to),
+                        Change::Left { .. } => true,
+                    }
+            })
+            .map(|(i, _)| i)
+            .collect();
+        match fits.as_slice() {
+            [] => {},
+            [i] => {
+                paired[*i] = true;
+                let c = sorted_changes[*i];
+                if c.target() != bot {
+                    events.push(c.event(Attribution::By(l.actor)));
                 }
-        });
-        if let Some((i, c)) = hit {
-            paired[i] = true;
-            if c.target() != bot {
-                events.push(c.event(Attribution::By(l.actor)));
-            }
+            },
+            many => tracing::debug!(
+                "modlog: entry {} fits {} changes of its target: not paired",
+                l.row.id,
+                many.len()
+            ),
         }
     }
 
@@ -767,5 +810,81 @@ mod tests {
         let snap = seeded(&[(1, 0)]);
         let rows = [targeted(dc(1, M1, 1), T1)];
         assert!(attribute(&snap, &rows, &[left(T1)], BOT).is_empty());
+    }
+
+    fn left_from(t: UserId, from: ChannelId) -> Change {
+        Change::Left { target: t, from }
+    }
+
+    #[test]
+    fn a_target_with_two_candidate_leaves_pairs_nothing() {
+        let snap = seeded(&[]);
+        let rows = [targeted(dc(1, M1, 1), T1)];
+        let changes = [left_from(T1, C2), left_from(T1, C1)];
+        let out = attribute(&snap, &rows, &changes, BOT);
+        assert!(out.is_empty(), "which leave was forced is unknown: {out:?}");
+    }
+
+    #[test]
+    fn a_target_with_two_candidate_moves_pairs_nothing() {
+        let snap = seeded(&[]);
+        let rows = [targeted(mv(1, M1, 1, C2), T1)];
+        let hop = |from| Change::Moved {
+            target: T1,
+            from,
+            to: C2,
+        };
+        let out = attribute(&snap, &rows, &[hop(C1), hop(C3)], BOT);
+        assert!(out.is_empty(), "which move was forced is unknown: {out:?}");
+    }
+
+    #[test]
+    fn an_unpaired_ambiguous_target_is_not_claimed_by_a_batch() {
+        let snap = seeded(&[]);
+        let rows = [targeted(dc(1, M1, 1), T1), dc(2, M2, 1)];
+        let changes = [left_from(T1, C2), left_from(T1, C1)];
+        let out = attribute(&snap, &rows, &changes, BOT);
+        assert!(out.is_empty(), "{out:?}");
+    }
+
+    #[test]
+    fn a_repeated_row_id_counts_once() {
+        let snap = seeded(&[]);
+        let rows = [dc(1, M1, 1), dc(1, M1, 1)];
+        let out = attribute(&snap, &rows, &[left(T1), left(T2)], BOT);
+        assert_eq!(
+            out,
+            vec![ModLogEvent::DisconnectBatch {
+                actors: vec![M1],
+                count: 1,
+                among: vec![T1, T2],
+            }],
+            "one entry read twice is one unit, never By for both"
+        );
+    }
+
+    #[test]
+    fn a_repeated_row_id_keeps_its_highest_count() {
+        let snap = seeded(&[]);
+        let by_m1 = Attribution::By(M1);
+        let want = vec![disc(T1, by_m1.clone()), disc(T2, by_m1)];
+        for rows in [[dc(1, M1, 1), dc(1, M1, 2)], [dc(1, M1, 2), dc(1, M1, 1)]] {
+            let out = attribute(&snap, &rows, &[left(T1), left(T2)], BOT);
+            assert_eq!(out, want, "{rows:?}");
+        }
+    }
+
+    #[test]
+    fn a_shared_id_across_kinds_is_two_entries() {
+        let snap = seeded(&[]);
+        let rows = [dc(1, M1, 1), mv(1, M2, 1, C2)];
+        let out = attribute(&snap, &rows, &[left(T1), moved(T2, C2)], BOT);
+        assert_eq!(
+            out,
+            vec![
+                disc(T1, Attribution::By(M1)),
+                mov(T2, C2, Attribution::By(M2)),
+            ]
+        );
     }
 }

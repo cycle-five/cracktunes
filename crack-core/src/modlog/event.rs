@@ -209,14 +209,16 @@ fn parts(e: &ModLogEvent) -> Parts {
             } else {
                 String::new()
             };
+            // Several actors: which of them disconnected whom is unknown.
+            let who = match actors.as_slice() {
+                [_, _, ..] => format!("{MODLOG_ONE_OR_MORE_OF} {}", users(actors)),
+                _ => users(actors),
+            };
             Parts {
                 audit: true,
                 ..plain(
                     MODLOG_TITLE_BATCH,
-                    format!(
-                        "{} {MODLOG_DISCONNECTED} {count} {MODLOG_OF}: {shown}{more}",
-                        users(actors)
-                    ),
+                    format!("{who} {MODLOG_DISCONNECTED} {count} {MODLOG_OF}: {shown}{more}"),
                 )
             }
         },
@@ -463,6 +465,23 @@ mod tests {
         let big = d(13);
         assert!(big.contains("<@1010>") && !big.contains("<@1011>"), "{big}");
         assert!(big.ends_with("and 3 more"), "{big}");
+    }
+
+    #[test]
+    fn a_batch_by_several_actors_is_hedged() {
+        let r = render(
+            &ModLogEvent::DisconnectBatch {
+                actors: vec![UserId::new(5), UserId::new(6)],
+                count: 2,
+                among: ids(3),
+            },
+            &cx(),
+        );
+        let d = json(&r)["description"].as_str().unwrap().to_owned();
+        assert_eq!(
+            d,
+            "One or more of <@5>, <@6> disconnected 2 of: <@1001>, <@1002>, <@1003>"
+        );
     }
 
     #[test]
