@@ -636,6 +636,7 @@ mod tests {
             id,
             kind: Disconnect,
             actor: Some(actor),
+            actor_is_bot: false,
             target: None,
             count,
             channel: None,

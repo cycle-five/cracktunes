@@ -20,6 +20,9 @@ pub struct AuditRow {
     pub id: u64,
     pub kind: AuditKind,
     pub actor: Option<UserId>,
+    /// The actor is a bot account (from the audit log's `users`; false when
+    /// unknown).
+    pub actor_is_bot: bool,
     pub target: Option<UserId>,
     pub count: u32,
     pub channel: Option<ChannelId>,
@@ -156,11 +159,22 @@ fn dedupe(rows: &[AuditRow]) -> Vec<&AuditRow> {
     out
 }
 
-/// A row that counts: not the bot's, with an actor, on a seeded snapshot.
+/// A row that counts: with an actor that is no bot account (CrackTunes or
+/// any other: M24), on a seeded snapshot, with a positive delta.
 struct Live<'a> {
     row: &'a AuditRow,
     actor: UserId,
     delta: u32,
+}
+
+/// What a targeted row competes for: its target and kind, and for a move its
+/// destination.
+fn pair_key(r: &AuditRow, target: UserId) -> (UserId, AuditKind, Option<ChannelId>) {
+    let dest = match r.kind {
+        AuditKind::Move => r.channel,
+        AuditKind::Disconnect => None,
+    };
+    (target, r.kind, dest)
 }
 
 /// What to report for a group of changes given the actors' units. Bot
@@ -227,8 +241,11 @@ fn decide(
 /// by destination id; within a group by target id, actors sorted.
 ///
 /// A row naming a target never feeds the pools: it only pairs exactly, only
-/// when new since the snapshot, and only when exactly one unpaired change
-/// fits it. Rows repeating a (kind, id) count once, at their highest count.
+/// when new since the snapshot, only when no other changed row names the
+/// same target (and kind and destination), and only when exactly one
+/// unpaired change fits it. Rows repeating a (kind, id) count once, at their
+/// highest count. Rows by a bot account (CrackTunes or another) are never
+/// candidates.
 #[must_use]
 pub fn attribute(
     snaps: &Snapshots,
@@ -241,18 +258,33 @@ pub fn attribute(
     let mut paired = vec![false; sorted_changes.len()];
     let mut events: Vec<ModLogEvent> = Vec::new();
 
-    let mut live: Vec<Live> = dedupe(rows)
-        .into_iter()
+    let rows = dedupe(rows);
+    let delta_of = |r: &AuditRow| {
+        let snap = snaps.of(r.kind);
+        if !snap.seeded {
+            return 0;
+        }
+        match snap.counts.get(&r.id) {
+            Some(prev) => r.count.saturating_sub(*prev),
+            None => r.count,
+        }
+    };
+    // Rows naming a target that changed since the snapshot, by (target,
+    // kind, destination), whoever made them: more than one, and none of
+    // them may pair (M17, as M14 for changes).
+    let mut naming: HashMap<(UserId, AuditKind, Option<ChannelId>), usize> = HashMap::new();
+    for r in &rows {
+        if let Some(target) = r.target.filter(|_| delta_of(r) > 0) {
+            *naming.entry(pair_key(r, target)).or_default() += 1;
+        }
+    }
+    let mut live: Vec<Live> = rows
+        .iter()
         .filter_map(|r| {
-            let snap = snaps.of(r.kind);
-            if !snap.seeded {
-                return None;
-            }
-            let actor = r.actor.filter(|a| *a != bot)?;
-            let delta = match snap.counts.get(&r.id) {
-                Some(prev) => r.count.saturating_sub(*prev),
-                None => r.count,
-            };
+            // Never a candidate: CrackTunes' own rows, and any other bot's
+            // (M24). Their units are spent all the same (`advance`).
+            let actor = r.actor.filter(|a| *a != bot && !r.actor_is_bot)?;
+            let delta = delta_of(r);
             (delta > 0).then_some(Live {
                 row: r,
                 actor,
@@ -272,6 +304,13 @@ pub fn attribute(
                 "modlog: entry {} (count {}) names a target but cannot pair",
                 l.row.id,
                 l.row.count
+            );
+            continue;
+        }
+        if naming.get(&pair_key(l.row, target)).copied().unwrap_or(0) > 1 {
+            tracing::debug!(
+                "modlog: entry {} shares its target with another entry: not paired",
+                l.row.id
             );
             continue;
         }
@@ -375,6 +414,7 @@ mod tests {
             id,
             kind,
             actor: Some(actor),
+            actor_is_bot: false,
             target: None,
             count,
             channel: None,
@@ -872,6 +912,81 @@ mod tests {
             let out = attribute(&snap, &rows, &[left(T1), left(T2)], BOT);
             assert_eq!(out, want, "{rows:?}");
         }
+    }
+
+    const OTHER_BOT: UserId = UserId::new(98);
+
+    /// A row by another bot account.
+    fn by_bot(r: AuditRow) -> AuditRow {
+        AuditRow {
+            actor: Some(OTHER_BOT),
+            actor_is_bot: true,
+            ..r
+        }
+    }
+
+    /// M24: another bot (a temp-voice bot's hub moves, say) is no moderator.
+    #[test]
+    fn rows_by_another_bot_are_never_candidates() {
+        let mut snaps = seeded(&[]);
+        let bot_dc = by_bot(dc(1, M1, 1));
+        let out = attribute(&snaps, std::slice::from_ref(&bot_dc), &[left(T1)], BOT);
+        assert!(out.is_empty(), "no unit to explain T1: {out:?}");
+        let out = attribute(&snaps, &[by_bot(mv(2, M1, 1, C2))], &[moved(T1, C2)], BOT);
+        assert!(out.is_empty(), "{out:?}");
+        let out = attribute(&snaps, &[targeted(bot_dc.clone(), T1)], &[left(T1)], BOT);
+        assert!(out.is_empty(), "nor paired: {out:?}");
+        // Its unit counts for nobody, so one moderator unit among two leaves
+        // is a hedged batch, never a By.
+        let rows = [bot_dc.clone(), dc(3, M2, 1)];
+        let out = attribute(&snaps, &rows, &[left(T1), left(T2)], BOT);
+        assert_eq!(
+            out,
+            vec![ModLogEvent::DisconnectBatch {
+                actors: vec![M2],
+                count: 1,
+                among: vec![T1, T2],
+            }]
+        );
+        // And it is consumed: the snapshot moves past it.
+        advance(&mut snaps, &[AuditKind::Disconnect], &[bot_dc]);
+        assert_eq!(snaps.disconnect.counts[&1], 1);
+    }
+
+    /// M17: two rows naming one target compete for its change, so neither
+    /// pairs (as M14 does for two changes of one target).
+    #[test]
+    fn competing_targeted_rows_pair_none() {
+        let snap = seeded(&[]);
+        let rows = [targeted(dc(1, M1, 1), T1), targeted(dc(2, M2, 1), T1)];
+        let out = attribute(&snap, &rows, &[left(T1)], BOT);
+        assert!(out.is_empty(), "who disconnected T1 is unknown: {out:?}");
+        let rows = [
+            targeted(mv(1, M1, 1, C2), T1),
+            targeted(mv(2, M2, 1, C2), T1),
+        ];
+        let out = attribute(&snap, &rows, &[moved(T1, C2)], BOT);
+        assert!(out.is_empty(), "{out:?}");
+        // A bot's row competes too: either may have made the change.
+        let rows = [
+            targeted(dc(1, M1, 1), T1),
+            targeted(by_bot(dc(2, M2, 1)), T1),
+        ];
+        let out = attribute(&snap, &rows, &[left(T1)], BOT);
+        assert!(out.is_empty(), "{out:?}");
+        // So does an older entry naming T1 whose count rose.
+        let rows = [targeted(dc(1, M1, 1), T1), targeted(dc(2, M2, 4), T1)];
+        let out = attribute(&seeded(&[(2, 3)]), &rows, &[left(T1)], BOT);
+        assert!(out.is_empty(), "{out:?}");
+        // A row for another destination, or one that did not change, does
+        // not compete.
+        let rows = [
+            targeted(mv(1, M1, 1, C2), T1),
+            targeted(mv(2, M2, 1, C3), T1),
+            targeted(mv(3, M2, 1, C2), T1),
+        ];
+        let out = attribute(&seeded(&[(3, 1)]), &rows, &[moved(T1, C2)], BOT);
+        assert_eq!(out, vec![mov(T1, C2, Attribution::By(M1))]);
     }
 
     #[test]
