@@ -264,7 +264,7 @@ mod tests {
             status_text(&off, Some(&findings), None),
             "Mod log: **off**\n\
              Give CrackTunes **View Audit Log** in Server Settings → Roles\n\
-             Fetching is paused: CrackTunes couldn't read the audit log (it will try again in a few minutes or when settings are saved)\n\
+             Fetching is paused: CrackTunes couldn't read the audit log (it will try again in a few minutes, or when settings are saved, at most once a minute)\n\
              Anyone who can see <#55> can read the log."
         );
     }

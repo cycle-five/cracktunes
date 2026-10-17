@@ -303,8 +303,10 @@ CrackTunes muting someone else.
 ### What it does not log, and why entries say "matched by timing"
 
 Muting or deafening yourself is never logged. Neither is anything done to
-CrackTunes' own voice connection or voice state: a moderator disconnecting or
-moving CrackTunes is not logged.
+CrackTunes' own voice connection: a moderator disconnecting or moving
+CrackTunes is not logged (a moderator muting or deafening it is, as above).
+Disconnects and moves made by another bot, such as a temp-voice bot moving
+people out of its hub, are never logged either: a bot is not a moderator.
 
 A member who leaves or switches channels by themselves isn't posted on their
 own account. If it happens in the same few seconds as a forced disconnect or
@@ -314,17 +316,22 @@ those lines say "matched by timing".
 
 Discord's audit log records that a moderator disconnected or moved *someone*,
 but it does not say who. CrackTunes sees each member leave or move, and about 2
-to 5 seconds after it happens it looks at the audit log and matches what
-changed there to the members who left or moved. These entries therefore carry
-the footer "Matched from Discord's audit log by timing", and they are the one
-place CrackTunes can be unsure. When it cannot be sure:
+to 5 seconds after it happens it looks at the audit log, waits a second for
+voice changes still on their way, and matches what changed there to the members
+who left or moved. These entries therefore carry the footer "Matched from
+Discord's audit log by timing", and they are the one place CrackTunes can be
+unsure. When it cannot be sure:
 
 - If several moderators acted around the same time, the entry says "by one of"
   and lists them.
 - If several people were disconnected together and the audit log cannot say who
   did which, one line reads "<moderators> disconnected N of: <members>" (it
   names the first ten members and then "and N more"; with several moderators it
-  starts "One or more of").
+  starts "One or more of"). Several moves it cannot tell apart post nothing.
+- If someone left or moved around the moment CrackTunes read the audit log, it
+  cannot tell whether the log already held their entry, so it matches nothing
+  of that kind (disconnects, or moves) from that look. At busy moments some
+  forced disconnects and moves therefore go unlogged.
 - If the audit log gives CrackTunes nothing it can match with confidence,
   **nothing is posted**. A missing line does not prove nobody forced the
   change.
@@ -366,11 +373,13 @@ they do not read the audit log.
 
 If Discord refuses to show CrackTunes the audit log (View Audit Log missing),
 CrackTunes **stops looking for about 10 minutes**, or until the mod log
-settings are saved again, and then tries once more. While it is paused,
+settings are saved again (a save resumes it at most once a minute), and then
+tries once more. While it is paused,
 forced disconnects and moves are not logged, and they are not caught up
 afterwards. Room actions are logged as usual. `/modlog status` and the
 dashboard then show "Fetching is paused". Grant View Audit Log and save the
-settings (press Save, or run `/modlog set` again) to resume at once.
+settings (press Save, or run `/modlog set` again) to resume at once; if a save
+already resumed it less than a minute ago, wait a minute and save again.
 
 Without View Audit Log, Discord also does not tell CrackTunes about server
 mutes and deafens, so those are missed too.

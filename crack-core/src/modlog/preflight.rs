@@ -212,7 +212,7 @@ mod tests {
         );
         assert_eq!(
             finding_text(&ModLogFinding::Suspended, name, false),
-            "Fetching is paused: CrackTunes couldn't read the audit log (it will try again in a few minutes or when settings are saved)"
+            "Fetching is paused: CrackTunes couldn't read the audit log (it will try again in a few minutes, or when settings are saved, at most once a minute)"
         );
     }
 }

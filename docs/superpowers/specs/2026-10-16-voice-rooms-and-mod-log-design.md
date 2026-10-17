@@ -438,10 +438,24 @@ holds:
     A batch with several moderators reads "One or more of …". A targeted row pairs
     only when it is new, has count 1 and exactly one candidate change. Rows are
     deduplicated by (kind, id). A stored count never goes down.
+  - **Final-review amendments (M17, M24, M25):** Discord reads its audit log
+    somewhere inside the request, and a voice event can land a little before
+    its audit entry is written or a little after the REST answer. So after each
+    kind's fetch returns the bot waits G = 1 s, and a change of that kind that
+    arrived from ε = 250 ms before the fetch started until G after it returned
+    is ambiguous. If a kind has any ambiguous change, that round attributes
+    nothing of the kind, absorbs its rows into the snapshot, drops its earlier
+    changes and keeps the ambiguous ones for the next round. A seed keeps the
+    changes from ε before it on. Rows by any bot account, not only
+    CrackTunes, are consumed but never candidates. When more than one changed
+    row names the same target (and kind, and for moves destination), none of
+    them pairs.
 - Cost guard: only for guilds with the mod log enabled, one fetch in flight
   per guild, and a 403 marks the guild "missing View Audit Log". That shows on
   `/modlog status` and the dashboard, and suspends fetches until the settings
-  are saved again or 10 minutes pass.
+  are saved again or 10 minutes pass. A save resumes fetching (lifts the
+  suspension and seeds) at most once per guild per minute, and dashboard
+  settings saves share the controls' per-user rate limit (M26).
 
 ### 2.4 Permissions
 
@@ -492,6 +506,8 @@ dashboard Settings page links to it.
 | A modal can hold a string select (`CreateLabel::select_menu`) on desktop and mobile | Kick becomes two steps: a select message, then a reason-only modal |
 | An aggregated `MEMBER_DISCONNECT`/`MEMBER_MOVE` entry keeps its id when its count rises | A re-created entry counts in full; D > L logs nothing, but D = L could misattribute |
 | Moves to different channels never share one aggregated `MEMBER_MOVE` entry | A stale `channel_id` would send units to the wrong destination group |
+| The audit write for a forced disconnect or move lands within ε (250 ms) of the gateway voice event | A change taken just before a fetch, whose unit is written after the read, leaves that unit for a later round, where it can be credited to someone who left on their own. Widen `batch::SKEW` |
+| The gateway voice event lags the REST response by less than G (1 s) | A unit read before its change arrives counts against the round's other changes: with one voluntary leaver in the round, that leaver is credited to the moderator. Widen `batch::GRACE`. Each round logs every change's arrival against its fetch at debug, to measure this |
 
 ## 6. Testing
 
