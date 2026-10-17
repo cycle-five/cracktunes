@@ -128,7 +128,12 @@ Only members with Manage Server (and the server owner). Discord hides the comman
   category keeps out of the hub gets no room. If you tighten the category
   while a room exists and Discord carries the change into the room, the
   room's controls keep the tighter rule: locking or unlocking never puts the
-  old one back.
+  old one back. The same goes for a permission you set by hand in a room on
+  its owner, helpers, allowed people or CrackTunes, such as denying a helper
+  Connect or giving CrackTunes Manage Channels: the room's controls keep it.
+  The exception is an allow of Connect or Send Messages on one of them, which
+  Lock and Lock chat set and clear themselves. Allowing someone never lets
+  them past a deny the room already holds for them.
 - Moderators (anyone with Administrator, Manage Channels or Move Members) can
   use every control in every room.
 

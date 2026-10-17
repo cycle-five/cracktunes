@@ -1291,6 +1291,57 @@ mod tests {
         );
     }
 
+    /// While unlocked, an entry the channel carries for one of the room's
+    /// own people is not the bot's: an admin's deny on a helper, an admin's
+    /// grant to CrackTunes. A lock adds to them and an unlock puts them back:
+    /// neither deletes them, and the helper's deny is never lifted.
+    #[tokio::test]
+    async fn entries_an_admin_gave_the_rooms_people_survive_lock_and_unlock() {
+        let mc = Permissions::MANAGE_CHANNELS;
+        let w = World::new(live(vec![]));
+        let mut f = facts();
+        let helper_denied = ow(member(HELPER), NONE, C);
+        let bot_granted = ow(member(BOT), V | mc, NONE);
+        f.overwrites.insert(ROOM, vec![helper_denied, bot_granted]);
+        let t0 = Instant::now();
+        assert_eq!(
+            w.act_at(&f, OWNER, RoomAction::Lock, t0).await,
+            Ok(RoomDone::Locked)
+        );
+        let lock = w.discord.calls();
+        assert!(
+            lock.contains(&Call::Put(ROOM.get(), ow(member(BOT), V | mc | C, NONE))),
+            "{lock:?}"
+        );
+        let touches_helper = |c: &Call| match c {
+            Call::Put(_, o) => o.target == member(HELPER),
+            Call::DeleteOverwrite(_, t) => *t == member(HELPER),
+            _ => false,
+        };
+        assert!(
+            !lock.iter().any(touches_helper),
+            "the helper's deny stands: {lock:?}"
+        );
+        assert_eq!(w.room().await.baseline, vec![helper_denied, bot_granted]);
+
+        // Later, with the cache showing the lock.
+        let room = w.room().await;
+        f.overwrites
+            .insert(ROOM, room_overwrites(G, BOT, &room.baseline, &room.state));
+        assert_eq!(
+            w.act_at(&f, OWNER, RoomAction::Unlock, t0 + CACHE_SETTLE)
+                .await,
+            Ok(RoomDone::Unlocked)
+        );
+        let unlock = w.discord.calls()[lock.len()..].to_vec();
+        assert!(
+            unlock.contains(&Call::Put(ROOM.get(), bot_granted)),
+            "{unlock:?}"
+        );
+        assert!(!unlock.contains(&Call::DeleteOverwrite(ROOM.get(), member(BOT))));
+        assert!(!unlock.iter().any(touches_helper), "{unlock:?}");
+    }
+
     #[tokio::test]
     async fn helper_remove_drops_the_helper() {
         let w = World::new(live(vec![]));

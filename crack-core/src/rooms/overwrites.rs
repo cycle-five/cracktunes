@@ -1,9 +1,10 @@
 //! The managed overwrite layer: a room's state, laid over the category's
 //! baseline overwrites, as the overwrites the channel should carry.
 //!
-//! "Never widen": the bot never writes an allow of `VIEW_CHANNEL`, and a lock
-//! only ever moves bits towards deny, so a room owner cannot let in someone the
-//! server's own category permissions keep out.
+//! "Never widen": the bot never writes an allow of `VIEW_CHANNEL`, a lock
+//! only ever moves bits towards deny, and a managed allow never lifts a deny
+//! the baseline holds for the same target, so a room owner cannot let in
+//! someone the server's own category permissions keep out.
 
 use super::state::{OverwriteTarget, RoomState, StoredOverwrite};
 use serenity::all::{GuildId, Permissions, RoleId, UserId};
@@ -21,9 +22,21 @@ pub enum OverwriteChange {
     Delete(OverwriteTarget),
 }
 
+/// The allow bits the bot itself writes on a member's entry: a lock's
+/// Connect and a chat lock's Send Messages.
+const MEMBER_ALLOWS: Permissions = Permissions::CONNECT.union(Permissions::SEND_MESSAGES);
+
 type Bits = (Permissions, Permissions);
 
-fn allow(map: &mut BTreeMap<OverwriteTarget, Bits>, t: OverwriteTarget, p: Permissions) {
+/// Allow `p` on `t`, all but the bits the baseline denies `t` (`held`): a
+/// managed allow never overrides the server's own deny on the same target.
+fn allow(
+    map: &mut BTreeMap<OverwriteTarget, Bits>,
+    held: &BTreeMap<OverwriteTarget, Permissions>,
+    t: OverwriteTarget,
+    p: Permissions,
+) {
+    let p = p & !held.get(&t).copied().unwrap_or_default();
     let e = map.entry(t).or_default();
     e.0 |= p;
     e.1 &= !p;
@@ -51,6 +64,12 @@ fn lock_roles(map: &mut BTreeMap<OverwriteTarget, Bits>, everyone: RoleId, p: Pe
 
 /// The overwrites a room should carry, sorted by target, without all-zero entries.
 /// `bot` is CrackTunes itself, which a lock must not shut out.
+///
+/// Every managed entry starts from the baseline's entry for its target, so
+/// the server's own bits on it survive the write. A managed allow never
+/// lifts a deny the baseline holds for the same target: a member or role
+/// the category (or an admin, folded in by [`fold_cached`]) denies Connect
+/// stays denied when permitted, and so does CrackTunes.
 pub fn room_overwrites(
     guild: GuildId,
     bot: UserId,
@@ -61,6 +80,8 @@ pub fn room_overwrites(
         .iter()
         .map(|o| (o.target, (o.allow, o.deny)))
         .collect();
+    let held: BTreeMap<OverwriteTarget, Permissions> =
+        baseline.iter().map(|o| (o.target, o.deny)).collect();
     let member = |id| OverwriteTarget::Member { id };
     let role = |id| OverwriteTarget::Role { id };
     let everyone = RoleId::new(guild.get());
@@ -73,20 +94,20 @@ pub fn room_overwrites(
     if state.locked {
         lock_roles(&mut map, everyone, Permissions::CONNECT);
         for r in &state.permitted_roles {
-            allow(&mut map, role(*r), Permissions::CONNECT);
+            allow(&mut map, &held, role(*r), Permissions::CONNECT);
         }
         let users = [&state.owner, &bot]
             .into_iter()
             .chain(&state.helpers)
             .chain(&state.permitted_users);
         for u in users {
-            allow(&mut map, member(*u), Permissions::CONNECT);
+            allow(&mut map, &held, member(*u), Permissions::CONNECT);
         }
     }
     if state.chat_locked {
         lock_roles(&mut map, everyone, Permissions::SEND_MESSAGES);
         for u in [&state.owner, &bot].into_iter().chain(&state.helpers) {
-            allow(&mut map, member(*u), Permissions::SEND_MESSAGES);
+            allow(&mut map, &held, member(*u), Permissions::SEND_MESSAGES);
         }
     }
     let shut = Permissions::VIEW_CHANNEL | Permissions::CONNECT;
@@ -120,11 +141,16 @@ pub fn room_overwrites(
 ///   deny (and leaves its allow);
 /// - a bit `expected` allows that the channel does not leaves the baseline's
 ///   allow;
-/// - a target only the channel carries is the server's, and is added whole,
-///   unless it is a member overwrite of one of `managed` (see
-///   [`managed_members`]): that one is the bot's, left over;
-/// - a bit the channel allows or stopped denying is not taken: the stored
-///   baseline stays the tighter side.
+/// - a target only the channel carries is the server's, and is added whole;
+/// - a member entry of one of `managed` (see [`managed_members`]) carries
+///   nothing of the bot's but the member allows it writes, Connect and Send
+///   Messages (maybe a lock's leftover). Any other bit the channel allows
+///   there beyond `expected` is the server's too, an admin's grant to
+///   CrackTunes say, and joins the baseline's allow unless the baseline
+///   denies it. Such an entry only the channel carries (an unlocked room's
+///   owner's, say) is added on the same terms: whole, but for those two;
+/// - otherwise a bit the channel allows or stopped denying is not taken:
+///   the stored baseline stays the tighter side.
 ///
 /// Every target keeps its place; new ones go at the end. The bot's own
 /// latest writes may not be in the cache yet, and would read as someone
@@ -144,37 +170,53 @@ pub fn fold_cached(
         .map(|o| o.target)
         .chain(expected.keys().copied())
         .collect();
+    let managed_member =
+        |t: &OverwriteTarget| matches!(t, OverwriteTarget::Member { id } if managed.contains(id));
     let mut out = baseline.to_vec();
     for t in &known {
         let (want_allow, want_deny) = expected.get(t).copied().unwrap_or_default();
         let (has_allow, has_deny) = cache.get(t).copied().unwrap_or_default();
         let added_deny = has_deny & !want_deny;
         let lost_allow = want_allow & !has_allow;
+        let gained = if managed_member(t) {
+            has_allow & !want_allow & !MEMBER_ALLOWS & !added_deny
+        } else {
+            Permissions::empty()
+        };
         match out.iter_mut().find(|o| o.target == *t) {
             Some(o) => {
                 o.deny |= added_deny;
                 o.allow &= !(lost_allow | added_deny);
+                o.allow |= gained & !o.deny;
             },
-            None if !added_deny.is_empty() => out.push(StoredOverwrite {
+            None if !(added_deny | gained).is_empty() => out.push(StoredOverwrite {
                 target: *t,
-                allow: Permissions::empty(),
+                allow: gained,
                 deny: added_deny,
             }),
             None => {},
         }
     }
-    for o in cached {
-        let bots = matches!(o.target, OverwriteTarget::Member { id } if managed.contains(&id));
-        let neutral = o.allow.is_empty() && o.deny.is_empty();
-        if !known.contains(&o.target) && !bots && !neutral {
-            out.push(*o);
+    for o in cached.iter().filter(|o| !known.contains(&o.target)) {
+        let allow = if managed_member(&o.target) {
+            o.allow & !MEMBER_ALLOWS
+        } else {
+            o.allow
+        };
+        if !(allow.is_empty() && o.deny.is_empty()) {
+            out.push(StoredOverwrite {
+                target: o.target,
+                allow,
+                deny: o.deny,
+            });
         }
     }
     out
 }
 
-/// The people whose member overwrites in a room are the bot's to write: the
-/// owner, helpers, permitted, muted and blocked people, and CrackTunes.
+/// The people whose member overwrites in a room the bot writes (some of the
+/// time: an unlocked room's owner has none): the owner, helpers, permitted,
+/// muted and blocked people, and CrackTunes.
 pub fn managed_members(state: &RoomState, bot: UserId) -> BTreeSet<UserId> {
     [state.owner, bot]
         .into_iter()
@@ -431,6 +473,74 @@ mod tests {
         }
     }
 
+    /// Never widen, for every bit: a managed allow never overrides a deny
+    /// the baseline holds for the same target. A member the category (or an
+    /// admin) denies Connect is not let in by a permit; a role it denies
+    /// Connect stays denied when permitted; CrackTunes itself goes without
+    /// Connect when an admin denied it that.
+    #[test]
+    fn managed_allows_never_override_a_baseline_deny() {
+        let none = Permissions::empty();
+        let mut full = state();
+        full.locked = true;
+        full.chat_locked = true;
+        full.helpers.insert(UserId::new(2));
+        full.permitted_users.insert(UserId::new(3));
+        full.permitted_roles.insert(RoleId::new(18));
+        full.permitted_roles.insert(RoleId::new(30));
+        full.muted.insert(UserId::new(5));
+        let mut chat_only = state();
+        chat_only.chat_locked = true;
+        chat_only.helpers.insert(UserId::new(2));
+        let mut blocked = full.clone();
+        blocked.blocked.insert(UserId::new(3));
+        blocked.blocked_roles.insert(RoleId::new(30));
+        let bases = vec![
+            vec![],
+            baseline(),
+            // Member denies on each of the room's people, CrackTunes too.
+            vec![
+                ow(m(1), none, C | S),
+                ow(m(2), none, C | S),
+                ow(m(3), none, C),
+                ow(m(99), none, C | S),
+            ],
+            // Role denies on the permitted roles and on @everyone.
+            vec![
+                ow(r(18), V, C),
+                ow(r(30), none, C | S),
+                ow(r(100), none, V | C | S),
+            ],
+            // One bit denied, another allowed.
+            vec![ow(m(1), C, S), ow(m(2), S, C), ow(r(18), C, S)],
+        ];
+        for st in [state(), chat_only, full, blocked] {
+            for base in &bases {
+                for o in room_overwrites(G, BOT, base, &st) {
+                    let held = get(base, o.target).map_or(none, |b| b.1);
+                    assert!(
+                        (o.allow & held).is_empty(),
+                        "{:?} allows {:?}, which its baseline denies ({st:?}, {base:?})",
+                        o.target,
+                        o.allow & held
+                    );
+                }
+            }
+        }
+
+        // Spelled out for a lock.
+        let mut s = state();
+        s.locked = true;
+        s.permitted_users.insert(UserId::new(3));
+        s.permitted_roles.insert(RoleId::new(30));
+        let base = vec![ow(m(3), none, C), ow(r(30), none, C), ow(m(99), none, C)];
+        let out = room_overwrites(G, BOT, &base, &s);
+        assert_eq!(get(&out, m(3)), Some((none, C)));
+        assert_eq!(get(&out, r(30)), Some((none, C)));
+        assert_eq!(get(&out, m(99)), Some((none, C)));
+        assert_eq!(get(&out, m(1)), Some((C, none)), "no deny: let in");
+    }
+
     #[test]
     fn non_managed_baseline_bits_survive() {
         let mm = Permissions::MANAGE_MESSAGES;
@@ -633,6 +743,105 @@ mod tests {
             .collect();
         let mut want = base.clone();
         want.extend([theirs, someone]);
+        assert_eq!(fold(&base, &s, &cached), want);
+    }
+
+    /// While a room is unlocked its owner, helpers, permitted people and
+    /// CrackTunes have no entry of the bot's, so one the channel carries for
+    /// them is someone else's: a category member deny Discord synced in, an
+    /// admin's deny on a helper, an admin's grant to CrackTunes. It is kept,
+    /// all but the member allows the bot writes itself (Connect, Send
+    /// Messages), which may be a lock's leftover.
+    #[test]
+    fn fold_keeps_a_managed_members_entry_the_bot_did_not_write() {
+        let none = Permissions::empty();
+        let mc = Permissions::MANAGE_CHANNELS;
+        let mm = Permissions::MANAGE_MESSAGES;
+        let mut s = state();
+        s.helpers.insert(UserId::new(2));
+        s.helpers.insert(UserId::new(4));
+        s.permitted_users.insert(UserId::new(3));
+        let base = baseline();
+        let cached: Vec<_> = room_overwrites(G, BOT, &base, &s)
+            .into_iter()
+            .chain([
+                // The category keeps the owner out; Discord synced it in.
+                ow(m(1), none, V),
+                // An admin's deny on a helper.
+                ow(m(2), none, C),
+                // An admin's grant to CrackTunes.
+                ow(m(99), V | mc, none),
+                // A lock's and a chat lock's leftovers, and an admin's bit.
+                ow(m(4), C | S | mm, none),
+                // Only a lock's leftover: nothing to keep.
+                ow(m(3), C, none),
+            ])
+            .collect();
+        let mut want = base.clone();
+        want.extend([
+            ow(m(1), none, V),
+            ow(m(2), none, C),
+            ow(m(99), V | mc, none),
+            ow(m(4), mm, none),
+        ]);
+        assert_eq!(fold(&base, &s, &cached), want);
+    }
+
+    /// Built on that folded baseline, a lock adds to those entries and an
+    /// unlock puts them back rather than deleting them: CrackTunes keeps what
+    /// an admin gave it, and whom the category keeps out stays out.
+    #[test]
+    fn lock_and_unlock_keep_a_folded_managed_entry() {
+        let none = Permissions::empty();
+        let mc = Permissions::MANAGE_CHANNELS;
+        let mut s = state();
+        let base = vec![ow(m(1), none, V), ow(m(99), V | mc, none)];
+        let unlocked = room_overwrites(G, BOT, &base, &s);
+        s.locked = true;
+        let locked = room_overwrites(G, BOT, &base, &s);
+        assert_eq!(get(&locked, m(1)), Some((C, V)));
+        assert_eq!(get(&locked, m(99)), Some((V | mc | C, none)));
+        let back = diff(&locked, &unlocked);
+        assert!(
+            back.contains(&OverwriteChange::Put(ow(m(1), none, V))),
+            "{back:?}"
+        );
+        assert!(back.contains(&OverwriteChange::Put(ow(m(99), V | mc, none))));
+        assert!(!back.contains(&OverwriteChange::Delete(m(99))));
+        assert!(!back.contains(&OverwriteChange::Delete(m(1))));
+    }
+
+    /// The same goes for an entry the bot does write (a locked room's):
+    /// what the channel's entry carries beyond the bot's is kept, but for the
+    /// member allows, and never a bit the baseline denies.
+    #[test]
+    fn fold_keeps_extra_allows_on_a_managed_entry_the_bot_writes() {
+        let none = Permissions::empty();
+        let mc = Permissions::MANAGE_CHANNELS;
+        let mut s = state();
+        s.locked = true;
+        s.chat_locked = true;
+        s.permitted_users.insert(UserId::new(3));
+        // The category keeps the owner from seeing the room, and lets a
+        // permitted member see it.
+        let base = vec![ow(m(1), none, V), ow(m(3), V, none)];
+        let mut cached = room_overwrites(G, BOT, &base, &s);
+        for o in &mut cached {
+            if o.target == m(99) {
+                // An admin gives CrackTunes View and Manage Channels.
+                o.allow |= V | mc;
+            } else if o.target == m(1) {
+                // An admin flipped the owner's deny View to an allow.
+                o.allow |= V;
+                o.deny &= !V;
+            } else if o.target == m(3) {
+                // Send Messages, which a chat lock gives helpers: the bot's,
+                // left over from when they were one.
+                o.allow |= S;
+            }
+        }
+        let mut want = base.clone();
+        want.push(ow(m(99), V | mc, none));
         assert_eq!(fold(&base, &s, &cached), want);
     }
 
