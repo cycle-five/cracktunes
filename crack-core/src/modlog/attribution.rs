@@ -97,7 +97,7 @@ impl Change {
 /// How many entry ids a snapshot keeps (the highest).
 const SNAPSHOT_KEEP: usize = 100;
 
-/// Merge the rows' counts into the snapshot of each kind in `fetched` (ids
+/// Merge the rows' counts (never lowering a stored one) into the snapshot of each kind in `fetched` (ids
 /// not fetched keep their counts), prune each to the highest
 /// [`SNAPSHOT_KEEP`] ids, and mark it seeded: a fetched kind with no rows is
 /// seeded too. A kind not in `fetched` is left untouched, and its rows are
@@ -112,7 +112,8 @@ pub fn advance(snaps: &mut Snapshots, fetched: &[AuditKind], rows: &[AuditRow]) 
             AuditKind::Move => &mut snaps.moves,
         };
         for r in rows.iter().filter(|r| r.kind == kind) {
-            snap.counts.insert(r.id, r.count);
+            let c = snap.counts.entry(r.id).or_insert(0);
+            *c = (*c).max(r.count);
         }
         if snap.counts.len() > SNAPSHOT_KEEP {
             let mut ids: Vec<u64> = snap.counts.keys().copied().collect();
@@ -167,12 +168,19 @@ fn decide(
             .filter(|t| *t != bot)
             .collect();
         among.dedup();
-        if among.is_empty() {
+        // Claim only what is certain: units may have gone to the bot's own
+        // changes, or to one member leaving twice.
+        let named = changes.iter().filter(|c| c.target() != bot).count();
+        let own = changes.len() - named;
+        let dups = named - among.len();
+        let count = d.saturating_sub((own + dups) as u64);
+        if among.is_empty() || count == 0 {
+            tracing::debug!("modlog: no unit of {d} is certain for {l} leaves");
             return Vec::new();
         }
         return vec![ModLogEvent::DisconnectBatch {
             actors,
-            count: u32::try_from(d).unwrap_or(u32::MAX),
+            count: u32::try_from(count).unwrap_or(u32::MAX),
             among,
         }];
     }
@@ -226,36 +234,32 @@ pub fn attribute(
         .collect();
     live.sort_by_key(|l| l.row.id);
 
-    // Exact pairs: targeted rows only, new rows only.
+    // Exact pairs: targeted rows only, and only new single-count rows.
     for l in live.iter().filter(|l| l.row.target.is_some()) {
         let Some(target) = l.row.target else { continue };
-        if l.delta != l.row.count {
+        let new = !snaps.of(l.row.kind).counts.contains_key(&l.row.id);
+        if !new || l.row.count != 1 {
             tracing::debug!(
-                "modlog: incremented entry {} names a stale target",
-                l.row.id
+                "modlog: entry {} (count {}) names a target but cannot pair",
+                l.row.id,
+                l.row.count
             );
             continue;
         }
-        let mut left = l.delta;
-        while left > 0 {
-            let hit = sorted_changes.iter().enumerate().find(|(i, c)| {
-                !paired[*i]
-                    && c.target() == target
-                    && c.kind() == l.row.kind
-                    && match c {
-                        Change::Moved { to, .. } => l.row.channel == Some(*to),
-                        Change::Left { .. } => true,
-                    }
-            });
-            let Some((i, c)) = hit else { break };
+        let hit = sorted_changes.iter().enumerate().find(|(i, c)| {
+            !paired[*i]
+                && c.target() == target
+                && c.kind() == l.row.kind
+                && match c {
+                    Change::Moved { to, .. } => l.row.channel == Some(*to),
+                    Change::Left { .. } => true,
+                }
+        });
+        if let Some((i, c)) = hit {
             paired[i] = true;
-            left -= 1;
             if c.target() != bot {
                 events.push(c.event(Attribution::By(l.actor)));
             }
-        }
-        if left > 0 {
-            tracing::debug!("modlog: {left} units of entry {} left unpaired", l.row.id);
         }
     }
 
@@ -613,7 +617,9 @@ mod tests {
         };
         let out = attribute(&snap, &[dc(1, M1, 2)], &[bot_left.clone(), left(T1)], BOT);
         assert_eq!(out, vec![disc(T1, Attribution::By(M1))]);
-        let out = attribute(&snap, &[dc(1, M1, 1)], &[bot_left, left(T1), left(T2)], BOT);
+        let out = attribute(&snap, &[dc(1, M1, 1)], &[bot_left.clone(), left(T1)], BOT);
+        assert!(out.is_empty(), "the one unit may be the bot's: {out:?}");
+        let out = attribute(&snap, &[dc(1, M1, 2)], &[bot_left, left(T1), left(T2)], BOT);
         assert_eq!(
             out,
             vec![ModLogEvent::DisconnectBatch {
@@ -621,7 +627,41 @@ mod tests {
                 count: 1,
                 among: vec![T1, T2],
             }],
-            "the bot is not among them"
+            "the bot is not among them, and one unit is its own"
+        );
+    }
+
+    #[test]
+    fn a_batch_claims_one_unit_less_for_a_repeated_leaver() {
+        let snap = seeded(&[]);
+        let out = attribute(&snap, &[dc(1, M1, 2)], &[left(T1), left(T1), left(T2)], BOT);
+        assert_eq!(
+            out,
+            vec![ModLogEvent::DisconnectBatch {
+                actors: vec![M1],
+                count: 1,
+                among: vec![T1, T2],
+            }]
+        );
+    }
+
+    #[test]
+    fn a_targeted_row_with_count_two_pairs_nothing() {
+        let snap = seeded(&[]);
+        let rows = [targeted(dc(1, M1, 2), T1)];
+        let out = attribute(&snap, &rows, &[left(T1), left(T1)], BOT);
+        assert!(out.is_empty(), "{out:?}");
+    }
+
+    #[test]
+    fn advance_never_lowers_a_stored_count() {
+        let mut snaps = seeded(&[(1, 5)]);
+        advance(&mut snaps, &[AuditKind::Disconnect], &[dc(1, M1, 3)]);
+        assert_eq!(snaps.disconnect.counts[&1], 5);
+        let out = attribute(&snaps, &[dc(1, M1, 5)], &[left(T1), left(T2)], BOT);
+        assert!(
+            out.is_empty(),
+            "a stale read must not replay units: {out:?}"
         );
     }
 
@@ -685,13 +725,14 @@ mod tests {
     #[test]
     fn a_member_leaving_twice_is_listed_once_in_a_batch() {
         let snap = seeded(&[]);
-        let out = attribute(&snap, &[dc(1, M1, 1)], &[left(T1), left(T1), left(T2)], BOT);
+        let changes = [left(T1), left(T1), left(T2), left(T3)];
+        let out = attribute(&snap, &[dc(1, M1, 2)], &changes, BOT);
         assert_eq!(
             out,
             vec![ModLogEvent::DisconnectBatch {
                 actors: vec![M1],
                 count: 1,
-                among: vec![T1, T2],
+                among: vec![T1, T2, T3],
             }]
         );
     }
@@ -719,5 +760,12 @@ mod tests {
         advance(&mut snaps, &[AuditKind::Disconnect], &[mv(9, M1, 4, C2)]);
         assert_eq!(snaps.moves, before.moves, "moves untouched");
         assert!(!snaps.disconnect.counts.contains_key(&9));
+    }
+
+    #[test]
+    fn a_known_targeted_row_with_count_one_pairs_nothing() {
+        let snap = seeded(&[(1, 0)]);
+        let rows = [targeted(dc(1, M1, 1), T1)];
+        assert!(attribute(&snap, &rows, &[left(T1)], BOT).is_empty());
     }
 }
