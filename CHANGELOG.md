@@ -44,19 +44,22 @@
 
 - **A mod log.** A server picks a text channel and CrackTunes posts who server-muted
   or server-deafened (and unmuted or undeafened) whom, with the moderator and their
-  reason, straight from Discord's audit log; who disconnected or moved whom in voice,
-  matched from the audit log by timing about 2 to 5 seconds after the change (Discord
-  does not name the member, so an entry says "by one of" when it cannot be sure, a
-  burst becomes one "disconnected N of" line, and when it cannot tell it posts
-  nothing); and who kicked, muted or let back in whom in a voice room, with the kick
-  reason (still never sent to the member). Leaving on your own and muting yourself
-  are never logged, nor is anything CrackTunes does to its own voice state. **Off by
-  default, and free.** Admins with Manage Server turn it on with `/modlog set
-  channel:<text channel>` or on the dashboard Settings page; `/modlog status` and the
-  page list what CrackTunes still needs (View Audit Log server-wide; View Channel,
-  Send Messages and Embed Links in the log channel). Without View Audit Log it stops
-  fetching for about 10 minutes, or until the settings are saved. Who can read the log
-  is the channel's own permissions. See `docs/rooms-and-mod-log.md`.
+  reason, straight from Discord's audit log; who disconnected or moved whom in
+  voice, matched from the audit log by timing about 2 to 5 seconds after the change
+  (Discord does not name the member, so an entry says "by one of" when it cannot be
+  sure, a burst becomes one "disconnected N of" line, and when it cannot tell it
+  posts nothing); and who kicked, muted or let back in whom in a voice room, with
+  the kick reason (still never sent to the member). Muting yourself is never logged,
+  nor is anything done to CrackTunes' own voice connection. Someone who leaves on
+  their own isn't posted for it, but if it happens within seconds of a forced
+  disconnect they can appear in its "disconnected N of" line. **Off by default, and
+  free.** Admins with Manage Server turn it on with
+  `/modlog set channel:<text channel>` or on the dashboard Settings page;
+  `/modlog status` and the page list what CrackTunes still needs (View Audit Log
+  server-wide; View Channel, Send Messages and Embed Links in the log channel).
+  Without View Audit Log it stops fetching for about 10 minutes, or until the
+  settings are saved. Who can read the log is the channel's own permissions. See
+  `docs/rooms-and-mod-log.md`.
 
 - **Voice rooms.** A member joins a hub voice channel and CrackTunes moves them
   into a new room of their own, in the hub's category, named after them. The room

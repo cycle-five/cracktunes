@@ -302,9 +302,15 @@ CrackTunes muting someone else.
 
 ### What it does not log, and why entries say "matched by timing"
 
-Members leaving a voice channel on their own, switching channels themselves,
-and muting or deafening themselves are never logged. Neither is anything
-CrackTunes does to its own voice state.
+Muting or deafening yourself is never logged. Neither is anything done to
+CrackTunes' own voice connection or voice state: a moderator disconnecting or
+moving CrackTunes is not logged.
+
+A member who leaves or switches channels by themselves isn't posted on their
+own account. If it happens in the same few seconds as a forced disconnect or
+move, the audit log can't tell them apart, so they may be listed in a
+"disconnected N of" line or, rarely, credited to the moderator. That is why
+those lines say "matched by timing".
 
 Discord's audit log records that a moderator disconnected or moved *someone*,
 but it does not say who. CrackTunes sees each member leave or move, and about 2
@@ -320,9 +326,8 @@ place CrackTunes can be unsure. When it cannot be sure:
   names the first ten members and then "and N more"; with several moderators it
   starts "One or more of").
 - If the audit log gives CrackTunes nothing it can match with confidence,
-  **nothing is posted**. A missing line does not
-  prove nobody forced the change; a member who left by themselves is also
-  never posted.
+  **nothing is posted**. A missing line does not prove nobody forced the
+  change.
 
 Room kicks made from the panel or `/room kick` are logged once, as a room kick,
 and are not also posted as a disconnect.
