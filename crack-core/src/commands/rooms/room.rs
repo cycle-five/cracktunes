@@ -140,7 +140,7 @@ pub async fn room(_ctx: Context<'_>) -> Result<(), Error> {
 pub async fn kick(
     ctx: Context<'_>,
     #[description = "Who to kick"] member: UserId,
-    #[description = "Why (shown to them)"] reason: String,
+    #[description = "Why you're kicking them (required)"] reason: String,
 ) -> Result<(), Error> {
     run(
         ctx,
@@ -449,6 +449,11 @@ mod tests {
             .unwrap();
         let param = |n: &str| kick.parameters.iter().find(|p| p.name == n).unwrap();
         assert!(param("reason").required, "kick needs a reason");
+        // The reason is not sent to the member (the mod log will record it).
+        assert_eq!(
+            param("reason").description.as_deref(),
+            Some("Why you're kicking them (required)")
+        );
         assert!(param("member").required);
         let mute = command
             .subcommands
