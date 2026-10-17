@@ -202,15 +202,16 @@ Someone you kick is also removed from the helpers and from the people let in.
 - **Kick** keeps the person out until you use Let back in, even if the room is
   open. The reason is required, so you cannot kick without giving one. It is
   not sent to the member; it will appear in the mod log once that ships
-  (v0.29.0). The member picker lists only people it can be done to. A moderator who kicks
-  the room's owner frees the room: anyone left in it can claim it, and the
-  hub gives the old owner a new room rather than moving them back.
+  (v0.29.0). The member picker lists only people it can be done to. A
+  moderator who kicks the room's owner frees the room: anyone left in it can
+  claim it, and the hub gives the old owner a new room rather than moving
+  them back.
 - **Mute** is for this room only. It does not server-mute the person anywhere
   else. If someone is muted and leaves, the mute stays with the room.
-- **Lock** blocks newcomers, not the people already inside: people already
-  inside can rejoin if they drop out. The owner, helpers and anyone you
-  allowed can still join, and so can CrackTunes, to play music. Allow a person
-  or role first, then lock, to let only them in.
+- **Lock** blocks newcomers, not the people already inside: they can rejoin
+  if they drop out. The owner, helpers and anyone you allowed can still join,
+  and so can CrackTunes, to play music. Allow a person or role first, then
+  lock, to let only them in.
 - **Block role** keeps a role out. It is refused for `@everyone` and for any role
   the owner holds, because it would lock the owner out. Use Lock instead.
   Allowing `@everyone` in is refused too: use Unlock instead.
