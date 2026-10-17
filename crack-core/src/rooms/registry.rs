@@ -156,6 +156,12 @@ impl RoomRegistry {
         self.owners.insert((g, new), ch);
     }
 
+    /// `u` no longer owns `ch` (kicked from it). An entry pointing at
+    /// another room is left alone.
+    pub fn unindex_owner(&self, g: GuildId, u: UserId, ch: ChannelId) {
+        self.owners.remove_if(&(g, u), |_, room| *room == ch);
+    }
+
     /// How many rooms live in the server.
     pub fn count_in(&self, g: GuildId) -> usize {
         self.rooms.iter().filter(|e| e.value().0 == g).count()
@@ -314,6 +320,21 @@ mod tests {
         assert_eq!(reg.owned_by(G, UserId::new(1)), None);
         assert_eq!(reg.owned_by(G, UserId::new(2)), Some(ChannelId::new(10)));
         assert_eq!(reg.count_in(G), 1);
+    }
+
+    #[test]
+    fn unindex_owner_drops_only_that_rooms_entry() {
+        let reg = RoomRegistry::default();
+        reg.insert(room(10, G, 1));
+        reg.unindex_owner(G, UserId::new(1), ChannelId::new(11));
+        assert_eq!(
+            reg.owned_by(G, UserId::new(1)),
+            Some(ChannelId::new(10)),
+            "another room's entry stays"
+        );
+        reg.unindex_owner(G, UserId::new(1), ChannelId::new(10));
+        assert_eq!(reg.owned_by(G, UserId::new(1)), None);
+        assert!(reg.get(ChannelId::new(10)).is_some(), "the room stays");
     }
 
     #[test]

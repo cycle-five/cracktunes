@@ -132,6 +132,11 @@ pub async fn act(
             .rooms
             .reindex_owner(guild, old_owner, live.state.owner, room);
     }
+    // A moderator kicked the owner: the room is no longer theirs to come
+    // back to through the hub, and it can be claimed.
+    if matches!(&action, RoomAction::Kick { target, .. } if *target == old_owner) {
+        cx.data.rooms.unindex_owner(guild, old_owner, room);
+    }
 
     // 9. Redraw; the panel just posted is already current.
     if !matches!(action, RoomAction::Panel) && redraw_panel(cx, &mut live).await {
@@ -1324,6 +1329,30 @@ mod tests {
             ]
         );
         assert_eq!(w.room().await.state, live(vec![]).state);
+    }
+
+    /// A moderator kicks the room's owner: the room is no longer indexed as
+    /// theirs, so the hub gives them a new one and the room can be claimed.
+    #[tokio::test]
+    async fn kicking_the_owner_frees_the_room() {
+        let w = World::new(live(vec![]));
+        assert_eq!(
+            w.act(&facts(), MODERATOR, kick(OWNER)).await,
+            Ok(RoomDone::Kicked(OWNER))
+        );
+        assert_eq!(w.data.rooms.owned_by(G, OWNER), None);
+        let mut f = facts();
+        f.voice.remove(&OWNER);
+        assert_eq!(
+            w.act(&f, TARGET, RoomAction::Claim).await,
+            Ok(RoomDone::Claimed)
+        );
+        assert_eq!(w.data.rooms.owned_by(G, TARGET), Some(ROOM));
+
+        // Kicking anyone else leaves the owner's entry alone.
+        let w = World::new(live(vec![]));
+        w.act(&facts(), MODERATOR, kick(TARGET)).await.unwrap();
+        assert_eq!(w.data.rooms.owned_by(G, OWNER), Some(ROOM));
     }
 
     #[tokio::test]

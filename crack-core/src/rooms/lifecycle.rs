@@ -160,22 +160,28 @@ pub async fn hub_join(
     let data = cx.data;
     let guild = facts.guild;
 
-    // 1. Their own room, if they have one that is set up.
+    // 1. Their own room, if they have one that is set up and has not kicked
+    // them. A room that blocks them (a moderator kicked its owner) is not
+    // theirs any more: it stays for whoever is in it, and they get a new one.
     let own = data
         .rooms
         .owned_by(guild, user)
         .filter(|room| !data.rooms.creating.contains(room));
     if let Some(room) = own {
-        // So the deletion cannot fire while they are on the way.
-        data.rooms.disarm_timer(room);
-        match cx.discord.move_member(guild, user, Some(room)).await {
-            Ok(()) => return HubOutcome::MovedToOwn(room),
-            // Deleted while nobody was watching: forget it, make a new one.
-            Err(DiscordError::UnknownChannel) => forget(data, room).await,
-            Err(err) => {
-                tracing::warn!("rooms: moving {user} into their room {room} failed: {err:?}");
-                return HubOutcome::Refused(MOVE_TO_OWN_FAILED);
-            },
+        if kicked_from(data, guild, user, room).await {
+            tracing::debug!("rooms: {user} was kicked from their room {room}; making another");
+        } else {
+            // So the deletion cannot fire while they are on the way.
+            data.rooms.disarm_timer(room);
+            match cx.discord.move_member(guild, user, Some(room)).await {
+                Ok(()) => return HubOutcome::MovedToOwn(room),
+                // Deleted while nobody was watching: forget it, make a new one.
+                Err(DiscordError::UnknownChannel) => forget(data, room).await,
+                Err(err) => {
+                    tracing::warn!("rooms: moving {user} into their room {room} failed: {err:?}");
+                    return HubOutcome::Refused(MOVE_TO_OWN_FAILED);
+                },
+            }
         }
     }
 
@@ -295,6 +301,22 @@ pub async fn hub_join(
         }
     }
     HubOutcome::Created(room)
+}
+
+/// Whether `room` blocks its indexed owner `user`. If so, the owner index
+/// lets go of it, under the room's lock (as [`RoomRegistry::remove`] does).
+///
+/// [`RoomRegistry::remove`]: super::registry::RoomRegistry::remove
+async fn kicked_from(data: &Data, guild: GuildId, user: UserId, room: ChannelId) -> bool {
+    let Some(handle) = data.rooms.get(room) else {
+        return false;
+    };
+    let live = handle.lock().await;
+    let kicked = live.state.blocked.contains(&user);
+    if kicked {
+        data.rooms.unindex_owner(guild, user, room);
+    }
+    kicked
 }
 
 /// A key held in a set for as long as this lives, let go however the holder
@@ -1845,6 +1867,50 @@ mod tests {
         settle().await;
         assert_eq!(w.discord.calls(), vec![]);
         assert!(w.data.rooms.get(ROOM).is_some());
+    }
+
+    /// An owner a moderator kicked from their room is not bounced back into
+    /// it by the hub: the room is no longer theirs, and they get a new one.
+    #[tokio::test]
+    async fn a_kicked_owner_gets_a_new_room_not_the_one_that_kicked_them() {
+        let w = World::new();
+        let mut kicked_from = live(ROOM, JOINER);
+        kicked_from.state.blocked.insert(JOINER);
+        w.data.rooms.insert(kicked_from);
+        // The old room is counting down to its deletion: that is left alone.
+        let timer = tokio::spawn(std::future::pending::<()>());
+        w.data.rooms.arm_timer(ROOM, timer.abort_handle());
+
+        let got = w.join(&facts(), JOINER, Instant::now()).await;
+        assert_eq!(got, HubOutcome::Created(NEW));
+        assert_eq!(
+            w.discord.calls(),
+            vec![
+                Call::Create(new_room()),
+                Call::Move(JOINER.get(), Some(NEW.get())),
+                Call::Pin(NEW.get(), PANEL.get()),
+            ],
+            "never moved into the room that kicked them"
+        );
+        assert_eq!(w.data.rooms.owned_by(G, JOINER), Some(NEW));
+        assert!(w.data.rooms.get(ROOM).is_some(), "the old room lives on");
+        assert!(w.data.rooms.timer_pending(ROOM), "and still counts down");
+        timer.abort();
+
+        // No new room yet (they are cooling down): the old one is still
+        // not theirs.
+        let w = World::new();
+        let mut kicked_from = live(ROOM, JOINER);
+        kicked_from.state.blocked.insert(JOINER);
+        w.data.rooms.insert(kicked_from);
+        let t0 = Instant::now();
+        assert!(w.data.rooms.cooldown.allow((G, JOINER), t0));
+        assert!(matches!(
+            w.join(&facts(), JOINER, t0).await,
+            HubOutcome::CoolingDown(_)
+        ));
+        assert_eq!(w.discord.calls(), vec![]);
+        assert_eq!(w.data.rooms.owned_by(G, JOINER), None);
     }
 
     #[tokio::test]

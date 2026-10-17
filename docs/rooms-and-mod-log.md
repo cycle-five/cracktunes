@@ -193,7 +193,9 @@ Someone you kick is also removed from the helpers and from the people let in.
 
 - **Kick** keeps the person out until you use Let back in, even if the room is
   open. The reason is required, so you cannot kick without giving one. The
-  member picker lists only people it can be done to.
+  member picker lists only people it can be done to. A moderator who kicks
+  the room's owner frees the room: anyone left in it can claim it, and the
+  hub gives the old owner a new room rather than moving them back.
 - **Mute** is for this room only. It does not server-mute the person anywhere
   else. If someone is muted and leaves, the mute stays with the room.
 - **Lock** blocks newcomers, not the people already inside. The owner, helpers
