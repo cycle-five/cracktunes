@@ -10,7 +10,7 @@ use super::facts::GuildFacts;
 use super::guard::role_can_connect;
 use super::overwrites::{diff, room_overwrites, OverwriteChange};
 use super::registry::LiveRoom;
-use super::settings::ROOM_NAME_MAX;
+use super::settings::{RoomSettings, SettingsError, ROOM_NAME_MAX};
 use super::state::{OverwriteTarget, RoomState, StoredOverwrite};
 use crate::messaging::courier::{edit_rendered_message, post_message};
 use crate::messaging::message::CrackedMessage;
@@ -502,6 +502,31 @@ async fn persist(data: &Data, room: ChannelId, state: &RoomState) {
     }
 }
 
+/// Why [`save_settings`] changed nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsSaveError {
+    /// The settings failed validation.
+    Invalid(SettingsError),
+    /// The database refused the write.
+    Db,
+}
+
+/// R4: the one way a server's room settings change (`/rooms`, the dashboard).
+/// Validates, writes the database (when there is one), then the registry, so
+/// memory never runs ahead of what a restart would load.
+pub async fn save_settings(data: &Data, s: RoomSettings) -> Result<(), SettingsSaveError> {
+    s.validate(data.database_pool.is_some())
+        .map_err(SettingsSaveError::Invalid)?;
+    if let Some(pool) = &data.database_pool {
+        if let Err(err) = crate::db::rooms::save_settings(pool, &s).await {
+            tracing::warn!("rooms: saving settings of {} failed: {err}", s.guild);
+            return Err(SettingsSaveError::Db);
+        }
+    }
+    data.rooms.set_settings(s);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -643,6 +668,67 @@ mod tests {
                 .await
                 .clone()
         }
+    }
+
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    fn on_with_hub() -> RoomSettings {
+        RoomSettings {
+            enabled: true,
+            hub: Some(ChannelId::new(55)),
+            ..RoomSettings::off(G)
+        }
+    }
+
+    #[tokio::test]
+    async fn save_settings_refuses_invalid_and_leaves_the_registry_alone() {
+        let data = Data(Arc::new(DataInner::default()));
+        let before = data.rooms.settings(G);
+        // Enabling needs a database.
+        assert_eq!(
+            save_settings(&data, on_with_hub()).await,
+            Err(SettingsSaveError::Invalid(SettingsError::NoDatabase))
+        );
+        // A bad template, whatever the database.
+        let bad = RoomSettings {
+            name_template: "  ".into(),
+            ..RoomSettings::off(G)
+        };
+        assert_eq!(
+            save_settings(&data, bad).await,
+            Err(SettingsSaveError::Invalid(SettingsError::BadTemplate))
+        );
+        assert_eq!(data.rooms.settings(G), before);
+    }
+
+    #[tokio::test]
+    async fn save_settings_without_a_pool_still_turns_rooms_off() {
+        let data = Data(Arc::new(DataInner::default()));
+        let off = RoomSettings {
+            default_limit: 4,
+            ..RoomSettings::off(G)
+        };
+        assert_eq!(save_settings(&data, off.clone()).await, Ok(()));
+        assert_eq!(data.rooms.settings(G), off);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn save_settings_writes_the_database_then_the_registry(pool: sqlx::PgPool) {
+        let data = Data(Arc::new(DataInner {
+            database_pool: Some(pool.clone()),
+            ..Default::default()
+        }));
+        let s = on_with_hub();
+        assert_eq!(save_settings(&data, s.clone()).await, Ok(()));
+        assert_eq!(data.rooms.settings(G), s);
+        assert_eq!(
+            crate::db::rooms::load_settings(&pool, G).await.unwrap(),
+            Some(s)
+        );
     }
 
     fn kick(target: UserId) -> RoomAction {

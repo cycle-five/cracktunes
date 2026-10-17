@@ -183,7 +183,7 @@ pub fn render_card(card: &RoomCard, _cx: &RenderCx) -> Rendered {
 }
 
 /// Every control, one line each, then the two facts worth knowing.
-fn reference_lines() -> [&'static str; 18] {
+pub(crate) fn reference_lines() -> [&'static str; 18] {
     [
         ROOM_REF_KICK,
         ROOM_REF_MUTE,
@@ -446,6 +446,7 @@ fn status_text(
     ));
     lines.push(String::new());
     match findings {
+        None if settings.hub.is_none() => lines.push(ROOM_STATUS_NO_HUB_YET.to_string()),
         None => lines.push(ROOM_STATUS_UNKNOWN.to_string()),
         Some([]) => lines.push(ROOM_STATUS_READY.to_string()),
         Some(list) => lines.extend(list.iter().map(finding_text)),
@@ -655,7 +656,10 @@ mod tests {
 
     fn status(findings: Option<Vec<Finding>>) -> String {
         description(&render(&RoomCard::Status {
-            settings: RoomSettings::off(GuildId::new(1)),
+            settings: RoomSettings {
+                hub: Some(ChannelId::new(10)),
+                ..RoomSettings::off(GuildId::new(1))
+            },
             findings,
             dashboard: Some("https://dash.example/g/1".into()),
         }))
@@ -683,6 +687,17 @@ mod tests {
         assert!(status(None).contains(
             "Couldn't check permissions: CrackTunes may not be able to see the hub or its category — give it View Channel there — or it's still starting up."
         ));
+    }
+
+    #[test]
+    fn status_without_a_hub_says_so_instead_of_blaming_permissions() {
+        let d = description(&render(&RoomCard::Status {
+            settings: RoomSettings::off(GuildId::new(1)),
+            findings: None,
+            dashboard: None,
+        }));
+        assert!(d.contains("No hub set yet — run /rooms setup."), "{d}");
+        assert!(!d.contains("Couldn't check permissions"), "{d}");
     }
 
     #[test]

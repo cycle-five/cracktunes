@@ -111,14 +111,14 @@ impl FactSource for LiveFacts {
 }
 
 /// The live pieces a press or a submit works with.
-struct Live {
+pub(crate) struct Live {
     discord: LiveRoomsDiscord,
     transport: DiscordTransport,
     facts: LiveFacts,
 }
 
 impl Live {
-    fn of(ctx: &serenity::all::Context, guild: GuildId) -> Self {
+    pub(crate) fn of(ctx: &serenity::all::Context, guild: GuildId) -> Self {
         Self {
             discord: LiveRoomsDiscord {
                 http: ctx.http.clone(),
@@ -132,7 +132,7 @@ impl Live {
         }
     }
 
-    fn cx<'a>(&'a self, data: &'a Data) -> RoomCx<'a> {
+    pub(crate) fn cx<'a>(&'a self, data: &'a Data) -> RoomCx<'a> {
         RoomCx {
             data,
             discord: &self.discord,

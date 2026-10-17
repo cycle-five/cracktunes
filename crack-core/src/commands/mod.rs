@@ -10,6 +10,7 @@ pub mod permissions;
 //pub mod playlist;
 pub mod premium;
 pub mod register;
+pub mod rooms;
 pub mod status;
 //pub mod settings;
 pub mod utility;
@@ -64,6 +65,7 @@ pub fn all_commands() -> Vec<crate::Command> {
     //.chain(music::game_commands())
     .chain(music::gp_commands())
     .chain(utility::utility_commands())
+    .chain(rooms::commands())
     //.chain(settings::commands())
     //.chain(admin::commands())
     //.chain(playlist::commands())
