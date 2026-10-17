@@ -310,7 +310,7 @@ mod tests {
     use crate::messaging::render::Mentions;
     use crate::messaging::test_support::{FakeTransport, Op};
     use crate::modlog::attribution::AuditKind::{Disconnect, Move};
-    use crate::modlog::batch::{DEBOUNCE, MAX_WAIT};
+    use crate::modlog::batch::{DEBOUNCE, MAX_WAIT, SKEW};
     use crate::modlog::settings::ModLogSettings;
     use crate::modlog::test_support::{FakeAudit, FakeSink};
     use crate::DataInner;
@@ -842,7 +842,10 @@ mod tests {
         let retry = load_and_seed(&data, audit.clone(), G, load)
             .await
             .expect("a failed read is retried");
+        // Long enough for a seed to have fetched (it reads SKEW after it is
+        // called).
         after(Duration::ZERO).await;
+        after(SKEW).await;
         assert_eq!(audit.calls(), vec![], "a failed read seeds nothing");
         after(LOAD_RETRY).await;
         retry.await.unwrap();
@@ -860,7 +863,9 @@ mod tests {
             load_and_seed(&data, audit.clone(), G, load).await.is_none(),
             "no retry"
         );
+        // A seed reads SKEW after it is called (M28a).
         after(Duration::ZERO).await;
+        after(SKEW).await;
         assert_eq!(audit.kinds(), vec![Disconnect, Move]);
         after(LOAD_RETRY * 2).await;
         assert_eq!(reads.load(SeqCst), 1);

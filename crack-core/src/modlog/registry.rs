@@ -7,6 +7,7 @@
 //! (and a paused test clock).
 
 use super::attribution::{AuditKind, Change, Snapshots};
+use super::batch::SKEW;
 use super::settings::ModLogSettings;
 use dashmap::{mapref::entry::Entry, DashMap, DashSet};
 use serenity::all::{GuildId, UserId};
@@ -49,8 +50,11 @@ pub(super) struct GuildBatch {
     pub(super) in_flight: Option<u64>,
     pub(super) snaps: Snapshots,
     /// Kinds whose snapshot must be re-read before anything is attributed
-    /// from them again: after a failed fetch (M15) or a suspension (M8b).
-    pub(super) reseed: Vec<AuditKind>,
+    /// from them again, each with the earliest fetch start whose read
+    /// clears the mark: after a failed fetch (M15) or a suspension (M8b),
+    /// any later read; after a room kick's leave turned out not to be the
+    /// bot's (M28c), a read from [`SKEW`] on. See [`Self::mark_reread`].
+    pub(super) reseed: Vec<(AuditKind, Instant)>,
     /// A 403 paused fetching until then.
     pub(super) suspended_until: Option<Instant>,
 }
@@ -70,6 +74,21 @@ impl GuildBatch {
 
     pub(super) fn suspended(&self, now: Instant) -> bool {
         self.suspended_until.is_some_and(|until| now < until)
+    }
+
+    /// Mark `kind` for a re-read that only a fetch started at or after
+    /// `from` satisfies. Marked already, the later instant wins: a mark is
+    /// never cleared by a read that started before it was set.
+    pub(super) fn mark_reread(&mut self, kind: AuditKind, from: Instant) {
+        match self.reseed.iter_mut().find(|(k, _)| *k == kind) {
+            Some((_, at)) => *at = (*at).max(from),
+            None => self.reseed.push((kind, from)),
+        }
+    }
+
+    /// Whether `kind` awaits a re-read.
+    pub(super) fn awaits_reread(&self, kind: AuditKind) -> bool {
+        self.reseed.iter().any(|(k, _)| *k == kind)
     }
 }
 
@@ -209,9 +228,31 @@ impl ModLogRegistry {
             .is_some_and(|(_, at)| now.saturating_duration_since(at) < EXPECT_FOR)
     }
 
-    /// The bot's disconnect of `u` failed: no leave is coming.
-    pub fn clear_expected(&self, g: GuildId, u: UserId) {
-        self.expected.remove(&(g, u));
+    /// The bot's disconnect of `u` failed: no leave is coming. True when a
+    /// marker was still held; false when none was, and so a leave of `u` has
+    /// already taken it for the bot's own (or the log is off).
+    pub fn clear_expected(&self, g: GuildId, u: UserId) -> bool {
+        self.expected.remove(&(g, u)).is_some()
+    }
+
+    /// The server's snapshot of `kind` may be missing a unit that no pending
+    /// change will explain (a room kick's leave turned out to be a
+    /// moderator's: M28c). The next flush re-reads `kind`, attributes
+    /// nothing of it, and absorbs what it reads, rather than leave that
+    /// unit for whoever leaves next. Only a fetch started [`SKEW`] after
+    /// `now` clears the mark: the unit is written by then. A fetch already
+    /// running attributes nothing of `kind` either. Nothing is held for a
+    /// server with the log off.
+    pub fn mark_reread(&self, g: GuildId, kind: AuditKind, now: Instant) {
+        if self
+            .batch_if_enabled(g, |b| b.mark_reread(kind, now + SKEW))
+            .is_some()
+        {
+            tracing::debug!(
+                "modlog: {g}: {kind:?} may hold a unit no change explains; it is re-read before \
+                 anything of it is attributed"
+            );
+        }
     }
 
     /// The server's snapshots, if any state is held.
@@ -307,12 +348,49 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn clear_expected_drops_the_marker() {
+    async fn clear_expected_drops_the_marker_and_says_whether_one_was_held() {
         let reg = enabled();
         let t0 = Instant::now();
         reg.expect_disconnect(G, U, t0);
-        reg.clear_expected(G, U);
+        assert!(reg.clear_expected(G, U), "held");
         assert!(!reg.take_expected(G, U, t0));
+        reg.expect_disconnect(G, U, t0);
+        assert!(reg.take_expected(G, U, t0), "a leave took it");
+        assert!(!reg.clear_expected(G, U), "taken already (M28c)");
+        assert!(!reg.clear_expected(G, UserId::new(4)), "never held");
+    }
+
+    /// M28c: a mark asks for a read started SKEW after it; marking again
+    /// keeps the later instant; a server with the log off holds nothing.
+    #[tokio::test(start_paused = true)]
+    async fn mark_reread_asks_for_a_read_skew_after_it() {
+        let reg = ModLogRegistry::default();
+        let t0 = Instant::now();
+        reg.mark_reread(G, AuditKind::Disconnect, t0);
+        assert!(!reg.has_state(G), "never configured");
+        let reg = enabled();
+        reg.batch_if_enabled(G, |b| b.mark_reread(AuditKind::Move, t0));
+        reg.mark_reread(G, AuditKind::Disconnect, t0);
+        let marks = |reg: &ModLogRegistry| reg.batch_existing(G, |b| b.reseed.clone());
+        assert_eq!(
+            marks(&reg),
+            Some(vec![
+                (AuditKind::Move, t0),
+                (AuditKind::Disconnect, t0 + SKEW)
+            ])
+        );
+        reg.batch_existing(G, |b| b.mark_reread(AuditKind::Disconnect, t0));
+        assert_eq!(
+            marks(&reg).unwrap()[1],
+            (AuditKind::Disconnect, t0 + SKEW),
+            "an earlier instant does not shorten a mark"
+        );
+        reg.mark_reread(G, AuditKind::Disconnect, t0 + SKEW);
+        assert_eq!(
+            marks(&reg).unwrap()[1],
+            (AuditKind::Disconnect, t0 + SKEW * 2),
+            "a later one lengthens it"
+        );
     }
 
     #[tokio::test(start_paused = true)]

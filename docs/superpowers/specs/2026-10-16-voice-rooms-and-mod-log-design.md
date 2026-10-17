@@ -450,6 +450,15 @@ holds:
     CrackTunes, are consumed but never candidates. When more than one changed
     row names the same target (and kind, and for moves destination), none of
     them pairs.
+  - **Re-review amendments (M28):** a seed reads ε after it is called, since
+    every caller seeds as recording (re)starts and a change dropped just
+    before then may have its unit written up to ε later. The decision runs
+    50 ms after the window closes (G after the return), so a change stamped
+    as it closes has taken the batch lock. When a room kick's disconnect
+    fails and its marker was already taken by a leave, that leave was not
+    the bot's: the disconnects are re-read and absorbed before anything of
+    them is attributed again. Only a read that started ε after the mark
+    clears it, and a mark set while a round runs holds that round back.
 - Cost guard: only for guilds with the mod log enabled, one fetch in flight
   per guild, and a 403 marks the guild "missing View Audit Log". That shows on
   `/modlog status` and the dashboard, and suspends fetches until the settings

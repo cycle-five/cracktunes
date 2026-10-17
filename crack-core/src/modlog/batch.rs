@@ -4,10 +4,10 @@
 //!
 //! A change (re)arms the server's debounce: [`DEBOUNCE`] after the last
 //! change, at most [`MAX_WAIT`] after the first. The debounce [`flush`]es:
-//! it fetches the kinds the pending changes need, waits [`GRACE`], then
-//! attributes the changes against the snapshots, posts the events, and
-//! advances the snapshots by what it fetched (M9/M10). One fetch runs per
-//! server at a time.
+//! it fetches the kinds the pending changes need, waits [`GRACE`] (and
+//! [`DECIDE_MARGIN`]), then attributes the changes against the snapshots,
+//! posts the events, and advances the snapshots by what it fetched
+//! (M9/M10). One fetch runs per server at a time.
 //!
 //! Discord reads its audit log somewhere inside a fetch, and a voice event
 //! can land a little before its audit entry is written or a little after the
@@ -18,9 +18,17 @@
 //! overlapping ones for the next round. A kind with none is matched as
 //! usual, from the changes that arrived before its window.
 //!
-//! What a fetch cannot vouch for is never diffed (M8b, M15): a kind whose
-//! fetch failed, or both kinds after a 403 suspension, are re-read on the
-//! next flush first (a seed) and attribute nothing until then.
+//! What a fetch cannot vouch for is never diffed (M8b, M15, M28c): a kind
+//! whose fetch failed, both kinds after a 403 suspension, and the
+//! disconnects after a room kick's leave turned out to be a moderator's,
+//! are re-read on the next flush first (a seed) and attribute nothing until
+//! then.
+//!
+//! A [`seed`] reads [`SKEW`] after it is called (M28a). Every caller seeds
+//! as recording (re)starts, and a change dropped just before then (the log
+//! was off, or fetching paused) may have its unit written up to [`SKEW`]
+//! later: an earlier read could miss it, and the unit would then wait for
+//! whoever leaves next.
 
 use super::attribution::{advance, attribute, AuditKind, AuditRow, Change};
 use super::audit::{AuditError, AuditSource};
@@ -49,8 +57,15 @@ pub const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
 /// waits this long before it decides (M25).
 pub const GRACE: Duration = Duration::from_secs(1);
 /// How long before a kind's fetch starts a voice event may arrive whose
-/// audit entry is not written yet (M25).
+/// audit entry is not written yet (M25). A seed waits this long before it
+/// reads (M28a).
 pub const SKEW: Duration = Duration::from_millis(250);
+/// How long after the window closes ([`GRACE`] after the return) the
+/// decision runs (M28b). A voice event is stamped before its handler takes
+/// the batch lock, so one stamped as the window closes may queue behind the
+/// decision: this gives it time to land first. The window itself still
+/// closes at [`GRACE`].
+pub const DECIDE_MARGIN: Duration = Duration::from_millis(50);
 
 /// Both kinds, in the order they are fetched.
 const BOTH: [AuditKind; 2] = [AuditKind::Disconnect, AuditKind::Move];
@@ -80,12 +95,6 @@ fn kind_of(c: &Change) -> AuditKind {
 fn target_of(c: &Change) -> UserId {
     match c {
         Change::Left { target, .. } | Change::Moved { target, .. } => *target,
-    }
-}
-
-fn add_kind(kinds: &mut Vec<AuditKind>, k: AuditKind) {
-    if !kinds.contains(&k) {
-        kinds.push(k);
     }
 }
 
@@ -187,7 +196,6 @@ enum Claim {
         epoch: u64,
         token: u64,
         kinds: Vec<AuditKind>,
-        reseed: Vec<AuditKind>,
     },
 }
 
@@ -244,15 +252,15 @@ impl Fetched {
         }
     }
 
-    /// The instant the decision waits for: [`GRACE`] after the last kind
-    /// that was read returned. None when nothing was read (nothing to
-    /// match, so nothing to wait for).
+    /// The instant the decision waits for: [`GRACE`] and [`DECIDE_MARGIN`]
+    /// after the last kind that was read returned. None when nothing was
+    /// read (nothing to match, so nothing to wait for).
     fn decide_at(&self) -> Option<Instant> {
         self.ok
             .iter()
             .filter_map(|k| time_of(&self.returned, *k))
             .max()
-            .map(|back| back + GRACE)
+            .map(|back| back + GRACE + DECIDE_MARGIN)
     }
 }
 
@@ -370,19 +378,26 @@ fn suspend(b: &mut GuildBatch, guild: GuildId, now: Instant) {
     );
     b.suspended_until = Some(now + SUSPEND);
     b.pending.clear();
-    b.reseed = BOTH.to_vec();
+    for k in BOTH {
+        b.mark_reread(k, now);
+    }
     if let Some(h) = b.debounce.take() {
         h.abort();
     }
 }
 
 /// Fold a round's outcome into the snapshots: the kinds read are advanced
-/// (seeded) and need no re-read; the kinds that failed do.
-fn absorb(b: &mut GuildBatch, f: &Fetched) {
+/// (seeded), and a read clears a kind's re-read mark when its fetch started
+/// no earlier than the mark asks (a mark set during the round outlives it:
+/// M28c); the kinds that failed need a re-read, which any later read
+/// satisfies.
+fn absorb(b: &mut GuildBatch, f: &Fetched, now: Instant) {
     advance(&mut b.snaps, &f.ok, &f.rows);
-    b.reseed.retain(|k| !f.ok.contains(k));
+    b.reseed.retain(|(k, from)| {
+        !(f.ok.contains(k) && time_of(&f.started, *k).is_some_and(|s| s >= *from))
+    });
     for k in &f.failed {
-        add_kind(&mut b.reseed, *k);
+        b.mark_reread(*k, now);
     }
 }
 
@@ -419,7 +434,7 @@ async fn flush_once(
         // suspension that is both, which makes this flush a seed (M8b).
         let kinds: Vec<AuditKind> = BOTH
             .into_iter()
-            .filter(|k| b.reseed.contains(k) || b.pending.iter().any(|(c, _)| kind_of(c) == *k))
+            .filter(|k| b.awaits_reread(*k) || b.pending.iter().any(|(c, _)| kind_of(c) == *k))
             .collect();
         if kinds.is_empty() {
             return Claim::Idle;
@@ -430,24 +445,24 @@ async fn flush_once(
             epoch: b.epoch,
             token,
             kinds,
-            reseed: b.reseed.clone(),
         }
     });
-    let (epoch, token, kinds, reseed) = match claim {
+    let (epoch, token, kinds) = match claim {
         None | Some(Claim::Idle) => return Flushed::Done,
         Some(Claim::Busy) => return Flushed::Busy,
         Some(Claim::Go {
             epoch,
             token,
             kinds,
-            reseed,
-        }) => (epoch, token, kinds, reseed),
+        }) => (epoch, token, kinds),
     };
 
     let slot = InFlight::new(reg, guild, token);
     let fetched = fetch(audit, guild, &kinds).await;
     // M25: a voice event can trail the fetch's answer; give it GRACE so a
-    // change whose unit the rows hold is seen before anything is decided.
+    // change whose unit the rows hold is seen before anything is decided,
+    // and DECIDE_MARGIN so one stamped as the window closes has taken the
+    // lock (M28b).
     if !fetched.forbidden {
         if let Some(at) = fetched.decide_at() {
             tokio::time::sleep_until(at).await;
@@ -491,10 +506,13 @@ async fn flush_once(
         b.pending = rest;
         // A kind attributes only when it was read, needs no re-read (M15)
         // and nothing overlapped its read (M25); the taken changes of any
-        // other kind are dropped.
-        let attributable = |k: AuditKind| {
-            fetched.ok.contains(&k) && !reseed.contains(&k) && !overlapped.contains(&k)
-        };
+        // other kind are dropped. The re-read marks are read now, not when
+        // the fetch started: one set during the round (M28c) holds it back.
+        let ready: Vec<AuditKind> = BOTH
+            .into_iter()
+            .filter(|k| fetched.ok.contains(k) && !b.awaits_reread(*k) && !overlapped.contains(k))
+            .collect();
+        let attributable = |k: AuditKind| ready.contains(&k);
         let taken_count = taken.len();
         let changes: Vec<Change> = taken
             .into_iter()
@@ -517,7 +535,7 @@ async fn flush_once(
         let events = attribute(&b.snaps, &rows, &changes, bot);
         // Every kind read is absorbed, overlapped or not: the units the rows
         // hold are spent either way.
-        absorb(b, &fetched);
+        absorb(b, &fetched, now);
         Some(events)
     });
     slot.release();
@@ -542,17 +560,37 @@ async fn flush_once(
     }
 }
 
+/// Whether a seed may fetch for the server now: no fetch running (a
+/// running flush keeps the snapshots itself) and fetching not paused.
+fn seedable(b: &GuildBatch, now: Instant) -> bool {
+    b.in_flight.is_none() && !b.suspended(now)
+}
+
 /// Read both kinds into the snapshots, so the first forced action after the
 /// log becomes active is attributable. For a server with the log on that is
-/// not suspended and has no fetch running (a running flush keeps the
-/// snapshots itself). Pending changes that arrived before their kind's
-/// window ([`SKEW`] before its fetch) are dropped: the seed took in their
-/// units.
+/// not suspended and has no fetch running. It reads [`SKEW`] after it is
+/// called (M28a; see the module docs). Pending changes that arrived before
+/// their kind's window ([`SKEW`] before its fetch) are dropped: the seed
+/// took in their units.
 pub async fn seed(data: &Data, audit: &dyn AuditSource, guild: GuildId) {
     let reg = &data.modlog;
+    let not_seeded = || {
+        tracing::debug!(
+            "modlog: {guild}: not seeded: the log is off, a fetch is running or fetching is paused"
+        );
+    };
+    // Checked before the wait, so a server that cannot be seeded is not
+    // waited on; and again as the slot is taken after it, since the log may
+    // have been turned off, a flush started or a 403 paused fetching
+    // meanwhile.
+    if reg.batch_if_enabled(guild, |b| seedable(b, Instant::now())) != Some(true) {
+        not_seeded();
+        return;
+    }
+    tokio::time::sleep(SKEW).await;
     let now = Instant::now();
     let claim = reg.batch_if_enabled(guild, |b| {
-        if b.in_flight.is_some() || b.suspended(now) {
+        if !seedable(b, now) {
             return None;
         }
         let token = next_fetch();
@@ -560,9 +598,7 @@ pub async fn seed(data: &Data, audit: &dyn AuditSource, guild: GuildId) {
         Some((b.epoch, token))
     });
     let Some(Some((epoch, token))) = claim else {
-        tracing::debug!(
-            "modlog: {guild}: not seeded: the log is off, a fetch is running or fetching is paused"
-        );
+        not_seeded();
         return;
     };
     let slot = InFlight::new(reg, guild, token);
@@ -584,7 +620,7 @@ pub async fn seed(data: &Data, audit: &dyn AuditSource, guild: GuildId) {
         b.pending.retain(|(c, at)| {
             !time_of(&fetched.started, kind_of(c)).is_some_and(|s| *at < opens(s))
         });
-        absorb(b, &fetched);
+        absorb(b, &fetched, now);
     });
     slot.release();
 }
@@ -614,6 +650,10 @@ mod tests {
     const LOG: ChannelId = ChannelId::new(555);
 
     static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    /// A change's whole round with no fetch delay: the debounce, then the
+    /// grace and the margin before the decision.
+    const ROUND: Duration = DEBOUNCE.saturating_add(GRACE).saturating_add(DECIDE_MARGIN);
 
     fn on() -> ModLogSettings {
         ModLogSettings {
@@ -791,7 +831,7 @@ mod tests {
         fn reseed(&self) -> Vec<AuditKind> {
             self.data
                 .modlog
-                .batch_existing(G, |b| b.reseed.clone())
+                .batch_existing(G, |b| b.reseed.iter().map(|(k, _)| *k).collect())
                 .unwrap_or_default()
         }
     }
@@ -813,10 +853,10 @@ mod tests {
             [(G, Disconnect, 10)],
             "one fetch, of the disconnect log, limit 10"
         );
-        after(GRACE - ms(1)).await;
+        after(GRACE + DECIDE_MARGIN - ms(1)).await;
         assert!(
             w.sink.posted().is_empty(),
-            "nothing is decided until GRACE after the fetch returned"
+            "nothing is decided until GRACE and DECIDE_MARGIN after the fetch returned"
         );
         after(ms(1)).await;
         assert_eq!(
@@ -874,7 +914,7 @@ mod tests {
         // M1 disconnects T1: the entry ticks up to 4.
         w.dc(vec![dc(5, M1, 4)]);
         w.change(left(T1));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert_eq!(w.sink.events(), vec![disc(T1, By(M1))]);
     }
 
@@ -883,13 +923,13 @@ mod tests {
         let w = W::new();
         w.dc(vec![dc(5, M1, 3)]);
         w.change(left(T1));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert!(w.sink.events().is_empty(), "3 old units are not T1's");
         let snaps = w.data.modlog.snapshots(G).expect("held");
         assert!(snaps.disconnect.seeded, "the flush seeded what it read");
         w.dc(vec![dc(5, M1, 4)]);
         w.change(left(T2));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert_eq!(w.sink.events(), vec![disc(T2, By(M1))]);
     }
 
@@ -994,13 +1034,13 @@ mod tests {
         // unit, one leave, and a diff would name M1.
         let s0 = w.fetches();
         w.change(left(T2));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert_eq!(w.kinds_since(s0), [Disconnect, Move], "a re-seed of both");
         assert!(w.sink.events().is_empty(), "T2 is not blamed for T1's unit");
         assert!(w.reseed().is_empty());
         w.dc(vec![dc(1, M1, 2)]);
         w.change(left(T3));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert_eq!(w.sink.events(), vec![disc(T3, By(M1))]);
     }
 
@@ -1014,7 +1054,7 @@ mod tests {
             .fail_next(G, Disconnect, AuditError::Other("boom".into()));
         w.change(left(T1));
         w.change(moved(T2, C2));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert_eq!(
             w.sink.events(),
             vec![mov(T2, C2, By(M2))],
@@ -1024,13 +1064,13 @@ mod tests {
         // T3 leaves on their own; the log still holds T1's unseen unit.
         let s0 = w.fetches();
         w.change(left(T3));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert_eq!(w.kinds_since(s0), [Disconnect]);
         assert_eq!(w.sink.events().len(), 1, "T3 is not blamed for T1's unit");
         assert!(w.reseed().is_empty());
         w.dc(vec![dc(1, M1, 2)]);
         w.change(left(T4));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert_eq!(w.sink.events()[1..], [disc(T4, By(M1))]);
     }
 
@@ -1041,11 +1081,11 @@ mod tests {
         w.audit
             .fail_next(G, Disconnect, AuditError::Other("boom".into()));
         w.change(left(T1));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         let s0 = w.fetches();
         w.mv(vec![mv(2, M2, 1, C2)]);
         w.change(moved(T2, C2));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
         assert_eq!(w.sink.events(), vec![mov(T2, C2, By(M2))]);
         assert!(w.reseed().is_empty());
@@ -1232,10 +1272,11 @@ mod tests {
         // t = 4.5: M1 disconnects T3, after the disconnect rows were read.
         w.dc(vec![dc(1, M1, 2)]);
         w.change(left(T3));
-        // t = 5: GRACE after the moves returned. T3's debounce, also due
-        // now, may already have started a fetch.
+        // t = 5: T3's debounce finds the fetch still running.
         after(ms(500)).await;
-        assert_eq!(w.kinds_since(s0)[..2], [Disconnect, Move]);
+        // t = 5.05: GRACE and DECIDE_MARGIN after the moves returned.
+        after(DECIDE_MARGIN).await;
+        assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
         assert_eq!(
             w.sink.events(),
             vec![disc(T1, By(M1)), mov(T2, C2, By(M2))],
@@ -1269,7 +1310,8 @@ mod tests {
         w.dc(vec![dc(1, M1, 2)]);
         w.change(left(T3));
         after(ms(500)).await; // t = 4: moves returned
-        after(GRACE).await; // t = 5: decided
+        after(GRACE).await; // t = 5: T3's debounce finds the fetch running
+        after(DECIDE_MARGIN).await; // t = 5.05: decided
         assert_eq!(
             w.sink.events(),
             vec![mov(T2, C2, By(M2))],
@@ -1328,7 +1370,9 @@ mod tests {
             after(DEBOUNCE).await; // t = 2: fetched
             after(ms(500)).await;
             w.change_at(left(T2), t0 + stamp);
-            after(ms(500)).await; // t = 3: decided
+            after(ms(500)).await; // t = 3: the window closes
+            assert!(w.sink.events().is_empty(), "not decided yet");
+            after(DECIDE_MARGIN).await; // t = 3.05: decided
             let want = if held_back {
                 Vec::new()
             } else {
@@ -1348,13 +1392,15 @@ mod tests {
         w.mv(vec![mv(2, M1, 1, C2)]);
         w.change(left(T1));
         w.change(moved(T3, C2));
-        after(ms(400)).await; // t = 0.4
-        w.change(left(T4)); // within SKEW of the seed's start: kept
-        after(ms(100)).await; // t = 0.5
+        after(ms(250)).await; // t = 0.25: the seed is called; it reads SKEW later
         w.audit.set_delay(secs(1));
         let (data, audit) = (w.data.clone(), w.audit.clone());
         let seeding = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
-        settle().await; // t = 0.5: disconnects are read until 1.5
+        settle().await;
+        after(ms(150)).await; // t = 0.4
+        w.change(left(T4)); // within SKEW of the seed's fetch: kept
+        after(ms(100)).await; // t = 0.5: disconnects are read until 1.5
+        assert!(in_flight(&w));
         after(ms(500)).await; // t = 1
         w.change(left(T2)); // during that read: kept
         after(ms(500)).await; // t = 1.5: then moves, until 2.5
@@ -1371,7 +1417,7 @@ mod tests {
         let s0 = w.fetches();
         after(ms(500)).await; // t = 3: T2's debounce
         assert_eq!(w.kinds_since(s0), [Disconnect], "nothing left of the move");
-        after(GRACE).await;
+        after(GRACE + DECIDE_MARGIN).await;
         assert_eq!(w.sink.events(), vec![disc(T2, By(M2)), disc(T4, By(M2))]);
     }
 
@@ -1396,7 +1442,7 @@ mod tests {
         assert_eq!(w.pending(), 1, "T1 waits for a fetch after the save");
         after(DEBOUNCE).await; // t = 5: retried, read until 6
         after(secs(1)).await;
-        after(GRACE).await; // t = 7: decided
+        after(GRACE + DECIDE_MARGIN).await; // t = 7.05: decided
         assert_eq!(w.sink.events(), vec![disc(T1, By(M1))]);
     }
 
@@ -1407,10 +1453,12 @@ mod tests {
         w.audit.fail_next(G, Disconnect, AuditError::Forbidden);
         let (data, audit) = (w.data.clone(), w.audit.clone());
         let seeding = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
-        settle().await; // t = 0: the seed reads disconnects until 1
+        settle().await;
+        after(SKEW).await; // t = 0.25: the seed reads disconnects until 1.25
+        assert!(in_flight(&w));
         after(ms(500)).await;
         w.data.modlog.settings_saved(G, Instant::now());
-        after(ms(500)).await; // t = 1: the 403, from before the save
+        after(ms(500)).await; // t = 1.25: the 403, from before the save
         assert!(seeding.is_finished());
         assert!(!w.data.modlog.is_suspended(G, Instant::now()));
         assert!(!in_flight(&w));
@@ -1436,8 +1484,10 @@ mod tests {
         w.seed().await;
         assert!(w.data.modlog.is_suspended(G, Instant::now()));
         let s0 = w.fetches();
+        let t = Instant::now();
         w.seed().await;
         assert_eq!(w.fetches(), s0);
+        assert_eq!(Instant::now(), t, "not waited on either");
     }
 
     #[tokio::test(start_paused = true)]
@@ -1473,12 +1523,12 @@ mod tests {
         // A moderator disconnects CrackTunes.
         w.dc(vec![dc(1, M1, 1)]);
         w.change(left(BOT));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert_eq!(w.kinds_since(s0), [Disconnect]);
         assert!(w.sink.events().is_empty(), "never logged");
         // Its unit is spent: T1 leaving on their own is not blamed on M1.
         w.change(left(T1));
-        run(DEBOUNCE + GRACE).await;
+        run(ROUND).await;
         assert_eq!(w.kinds_since(s0), [Disconnect, Disconnect]);
         assert!(w.sink.events().is_empty());
     }
@@ -1500,7 +1550,7 @@ mod tests {
         w.change(left(T2));
         w.dc(vec![dc(1, M1, 2)]);
         after(ms(500)).await; // the response
-        after(GRACE).await; // decided
+        after(GRACE + DECIDE_MARGIN).await; // decided
         assert!(w.sink.events().is_empty(), "{:?}", w.sink.events());
         assert_eq!(w.pending_changes(), vec![left(T2)], "T1 dropped, T2 waits");
         assert_eq!(
@@ -1594,6 +1644,189 @@ mod tests {
         assert_eq!(w.sink.events(), vec![disc(T2, By(M1))], "T3 is not named");
     }
 
+    /// E1 (re-review): M1 disconnects T1 while the log is off, and the log
+    /// is turned on 50 ms later (`save_settings`, then `after_save`'s
+    /// seed). Discord writes the entry 100 ms after the voice event, after a
+    /// seed reading at once would have read. That unit must not wait for
+    /// whoever leaves next.
+    #[tokio::test(start_paused = true)]
+    async fn a_leave_dropped_just_before_the_log_is_turned_on_leaves_no_unit_behind() {
+        let w = W::off();
+        w.audit.read_at_start();
+        w.audit.set_delay(ms(100));
+        w.change(left(T1)); // t = 0: dropped, the log is off
+        assert_eq!(w.pending(), 0);
+        after(ms(50)).await; // t = 0.05: the log is turned on
+        w.data.modlog.set_settings(on());
+        assert!(w.data.modlog.settings_saved(G, Instant::now()));
+        assert!(w.data.modlog.take_seed_owed(G));
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let seeding = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        settle().await;
+        after(ms(50)).await; // t = 0.1: T1's entry is written
+        w.dc(vec![dc(7, M1, 1)]);
+        run(secs(1)).await;
+        assert!(seeding.is_finished());
+        run(secs(3600)).await;
+        w.audit.set_delay(Duration::ZERO);
+        w.change(left(T2)); // an hour later T2 leaves on their own
+        run(secs(10)).await;
+        assert!(
+            w.sink.events().is_empty(),
+            "T2 must not be named: {:?}",
+            w.sink.events()
+        );
+    }
+
+    /// E2 (re-review): as E1, but the leave is dropped because a 403 paused
+    /// fetching, and a settings save lifts the pause 50 ms later.
+    #[tokio::test(start_paused = true)]
+    async fn a_leave_dropped_just_before_a_save_lifts_a_pause_leaves_no_unit_behind() {
+        let w = W::new();
+        w.seed().await;
+        w.audit.fail_next(G, Disconnect, AuditError::Forbidden);
+        w.change(left(T3));
+        run(ROUND).await;
+        assert!(w.data.modlog.is_suspended(G, Instant::now()));
+        run(secs(30)).await;
+        w.audit.read_at_start();
+        w.audit.set_delay(ms(100));
+        w.change(left(T1)); // dropped: paused
+        assert_eq!(w.pending(), 0);
+        after(ms(50)).await; // a save lifts the pause
+        assert!(w.data.modlog.settings_saved(G, Instant::now()));
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let seeding = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        settle().await;
+        after(ms(50)).await; // T1's entry is written
+        w.dc(vec![dc(7, M1, 1)]);
+        run(secs(1)).await;
+        assert!(seeding.is_finished());
+        run(secs(3600)).await;
+        w.audit.set_delay(Duration::ZERO);
+        w.change(left(T2));
+        run(secs(10)).await;
+        assert!(
+            w.sink.events().is_empty(),
+            "T2 must not be named: {:?}",
+            w.sink.events()
+        );
+    }
+
+    /// X1 (re-review): T2's voice event is stamped inside the window, at
+    /// exactly return + GRACE, but takes the batch lock just after that
+    /// instant (its handler ran on another worker between `Instant::now()`
+    /// and the lock). The decision must not have run yet.
+    #[tokio::test(start_paused = true)]
+    async fn a_change_stamped_as_the_window_closes_is_seen_by_the_decision() {
+        let w = W::new();
+        w.seed().await;
+        let t0 = Instant::now();
+        w.dc(vec![dc(7, M1, 1)]); // M1 disconnected T2; the entry is written
+        w.change(left(T1)); // T1 leaves on their own
+        after(DEBOUNCE).await; // t = 2: fetched (no delay); the window closes at 3
+        after(secs(1)).await; // t = 3
+        w.change_at(left(T2), t0 + secs(3));
+        run(secs(10)).await;
+        assert!(
+            w.sink.events().is_empty(),
+            "T1 must not be named: {:?}",
+            w.sink.events()
+        );
+    }
+
+    /// M28c: a re-read marked while a round runs (a room kick's disconnect
+    /// found its member gone after the round's fetch started) holds that
+    /// round's disconnects back: its rows may hold the unit of the leave the
+    /// kick took for its own.
+    #[tokio::test(start_paused = true)]
+    async fn a_reread_marked_during_a_round_holds_its_kind_back() {
+        let w = W::new();
+        w.seed().await;
+        w.audit.read_at_start();
+        w.audit.set_delay(secs(1));
+        w.change(left(T1)); // t = 0: T1 leaves on their own
+        after(ms(1900)).await; // t = 1.9: a room kick of T2 is on its way
+        w.data.modlog.expect_disconnect(G, T2, Instant::now());
+        w.dc(vec![dc(7, M1, 1)]); // ...when M1 disconnects T2
+        w.change(left(T2)); // T2's leave is taken for the kick's
+        assert_eq!(w.pending(), 1);
+        after(ms(100)).await; // t = 2: the round reads M1's unit, until 3
+        after(ms(500)).await; // t = 2.5: the kick's disconnect finds T2 gone
+        assert!(!w.data.modlog.clear_expected(G, T2));
+        w.data.modlog.mark_reread(G, Disconnect, Instant::now());
+        run(secs(10)).await;
+        assert!(
+            w.sink.events().is_empty(),
+            "T1 must not be named: {:?}",
+            w.sink.events()
+        );
+        assert_eq!(
+            w.reseed(),
+            [Disconnect],
+            "the mark outlives the round: its read started before the mark"
+        );
+    }
+
+    /// M28c: a re-read mark is cleared only by a read that started SKEW
+    /// after it. The unit of the leave the kick took for its own is written
+    /// by then, and not necessarily before.
+    #[tokio::test(start_paused = true)]
+    async fn a_reread_mark_is_cleared_only_by_a_read_started_skew_after_it() {
+        let w = W::new();
+        w.seed().await;
+        w.audit.read_at_start();
+        w.change(left(T1)); // t = 0: T1 leaves on their own; read at 2
+        after(ms(1900)).await; // t = 1.9: a room kick of T2 is on its way
+        w.data.modlog.expect_disconnect(G, T2, Instant::now());
+        w.change(left(T2)); // M1 disconnects T2: taken for the kick's
+        after(ms(50)).await; // t = 1.95: the kick's disconnect finds T2 gone
+        assert!(!w.data.modlog.clear_expected(G, T2));
+        w.data.modlog.mark_reread(G, Disconnect, Instant::now());
+        after(ms(50)).await; // t = 2: the round reads, before M1's entry
+        after(ms(100)).await; // t = 2.1: M1's entry is written
+        w.dc(vec![dc(7, M1, 1)]);
+        run(secs(5)).await;
+        assert!(w.sink.events().is_empty(), "{:?}", w.sink.events());
+        assert_eq!(
+            w.reseed(),
+            [Disconnect],
+            "a read started 50 ms after the mark leaves it"
+        );
+        run(secs(3600)).await;
+        w.change(left(T3)); // an hour later T3 leaves on their own
+        run(secs(10)).await;
+        assert!(
+            w.sink.events().is_empty(),
+            "T3 must not be named: {:?}",
+            w.sink.events()
+        );
+        assert!(w.reseed().is_empty(), "that round's read cleared it");
+        // And the next forced disconnect is matched again.
+        w.dc(vec![dc(7, M1, 2)]);
+        w.change(left(T4));
+        run(secs(10)).await;
+        assert_eq!(w.sink.events(), vec![disc(T4, By(M1))]);
+    }
+
+    /// M28a: a seed checks again after its wait. A flush that took the slot
+    /// meanwhile keeps the snapshots itself, so the seed reads nothing.
+    #[tokio::test(start_paused = true)]
+    async fn a_seed_reads_nothing_if_a_flush_starts_during_its_wait() {
+        let w = W::new();
+        w.seed().await;
+        let s0 = w.fetches();
+        w.audit.set_delay(secs(1));
+        w.change(left(T1)); // its debounce: t = 2
+        after(ms(1900)).await; // t = 1.9: a seed is called; it would read at 2.15
+        let (data, audit) = (w.data.clone(), w.audit.clone());
+        let seeding = tokio::spawn(async move { seed(&data, audit.as_ref(), G).await });
+        run(secs(5)).await;
+        assert!(seeding.is_finished());
+        assert_eq!(w.kinds_since(s0), [Disconnect], "only the flush's fetch");
+        assert_eq!(w.audit.most_running(), 1);
+    }
+
     #[tokio::test(start_paused = true)]
     async fn one_fetch_in_flight_per_guild() {
         let w = W::new();
@@ -1609,10 +1842,10 @@ mod tests {
         assert_eq!(w.kinds_since(s0), [Disconnect]);
         assert_eq!(w.audit.most_running(), 1);
         after(ms(500)).await; // t = 5: returned
-        after(GRACE).await; // t = 6: decided; T2's kind was not fetched
+        after(GRACE + DECIDE_MARGIN).await; // t = 6.05: decided; T2's kind was not fetched
         assert_eq!(w.kinds_since(s0), [Disconnect]);
         assert_eq!(w.pending(), 1, "T2 waits");
-        after(ms(500)).await; // t = 6.5: the next debounce
+        after(ms(450)).await; // t = 6.5: the next debounce
         assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
         run(secs(5)).await;
         assert_eq!(w.audit.most_running(), 1, "never two at once");
@@ -1635,7 +1868,8 @@ mod tests {
         let cut = tokio::time::timeout(ms(10), w.flush()).await;
         assert!(cut.is_err(), "the flush was dropped mid-fetch");
         assert!(!in_flight(&w), "the slot is free again");
-        let seed_dropped = tokio::time::timeout(ms(10), w.seed()).await;
+        // Cut mid-fetch: a seed reads SKEW after it is called.
+        let seed_dropped = tokio::time::timeout(SKEW + ms(10), w.seed()).await;
         assert!(seed_dropped.is_err());
         assert!(!in_flight(&w), "a dropped seed frees it too");
     }

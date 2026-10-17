@@ -16,6 +16,7 @@ use crate::messaging::courier::{edit_rendered_message, post_message};
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::messaging::transport::{Transport, TransportError};
+use crate::modlog::attribution::AuditKind;
 use crate::modlog::batch::ModLogSink;
 use crate::modlog::event::ModLogEvent;
 use crate::Data;
@@ -111,16 +112,12 @@ pub async fn act(
                 .modlog
                 .expect_disconnect(guild, *target, tokio::time::Instant::now());
             match cx.discord.move_member(guild, *target, None).await {
-                // Left voice since the snapshot: nobody to disconnect.
                 Ok(()) => {},
-                Err(DiscordError::NotConnected) => {
-                    // No bot-caused leave will follow either.
-                    cx.data.modlog.clear_expected(guild, *target);
-                },
+                // Left voice since the snapshot: nobody to disconnect, and
+                // no bot-caused leave will follow.
+                Err(DiscordError::NotConnected) => no_leave_coming(cx.data, guild, *target),
                 Err(err) => {
-                    // No leave is coming: the marker must not swallow a
-                    // moderator's later, real disconnect of this member.
-                    cx.data.modlog.clear_expected(guild, *target);
+                    no_leave_coming(cx.data, guild, *target);
                     tracing::warn!(
                         "rooms: {target} is kicked from {room} but disconnecting them failed; \
                          they stay blocked: {err:?}"
@@ -199,6 +196,19 @@ pub async fn act(
 
 /// What the mod log records of a committed action: kicks, let-ins, mutes and
 /// unmutes. Everything else is the room's own business.
+/// A room kick's disconnect of `target` failed, so no leave of the bot's is
+/// coming: take the marker back, so it cannot swallow a moderator's later,
+/// real disconnect of them. If a leave already took it, that leave was not
+/// the bot's: most likely a moderator's who got there first. Its audit unit
+/// then has no change left to explain it, so the disconnects are re-read
+/// and absorbed rather than carried forward to whoever leaves next (M28c).
+fn no_leave_coming(data: &Data, guild: GuildId, target: UserId) {
+    if !data.modlog.clear_expected(guild, target) {
+        data.modlog
+            .mark_reread(guild, AuditKind::Disconnect, tokio::time::Instant::now());
+    }
+}
+
 fn mod_log_event(action: &RoomAction, room: ChannelId, actor: UserId) -> Option<ModLogEvent> {
     match action {
         RoomAction::Kick { target, reason } => Some(ModLogEvent::RoomKick {
@@ -1107,6 +1117,76 @@ mod tests {
                 .take_expected(G, TARGET, tokio::time::Instant::now()),
             "no bot-caused leave will follow"
         );
+    }
+
+    /// M28c: a moderator disconnects TARGET a moment before a room kick of
+    /// TARGET. TARGET's leave lands after the kick set its marker, so it is
+    /// taken for the bot's own, and the kick's disconnect then fails: TARGET
+    /// is gone (or Discord refuses it). The moderator's audit unit has no
+    /// change left to explain it: it must be absorbed, not pinned on whoever
+    /// leaves next.
+    #[tokio::test(start_paused = true)]
+    async fn a_moderators_disconnect_taken_for_the_kicks_own_is_never_pinned_on_another() {
+        use crate::modlog::attribution::{AuditKind, AuditRow, Change};
+        use crate::modlog::batch::{record_change, seed};
+        use crate::modlog::test_support::FakeAudit;
+        for err in [DiscordError::NotConnected, DiscordError::MissingPermissions] {
+            let w = World::new(live(vec![]));
+            w.enable_mod_log();
+            let audit = Arc::new(FakeAudit::default());
+            let sink = Arc::new(FakeSink::default());
+            seed(&w.data, audit.as_ref(), G).await;
+            let leave = {
+                let (data, audit, sink) = (w.data.clone(), audit.clone(), sink.clone());
+                move |target: UserId| {
+                    record_change(
+                        &data,
+                        audit.clone(),
+                        sink.clone(),
+                        G,
+                        Change::Left { target, from: ROOM },
+                        tokio::time::Instant::now(),
+                        BOT,
+                    );
+                }
+            };
+            // MODERATOR's disconnect of TARGET is in the audit log, and
+            // TARGET's leave arrives while the kick's disconnect is on its
+            // way.
+            audit.set(
+                G,
+                AuditKind::Disconnect,
+                vec![AuditRow {
+                    id: 7,
+                    kind: AuditKind::Disconnect,
+                    actor: Some(MODERATOR),
+                    actor_is_bot: false,
+                    target: None,
+                    count: 1,
+                    channel: None,
+                }],
+            );
+            let on_move = leave.clone();
+            w.discord.before_next_move(move || on_move(TARGET));
+            w.discord.fail_next(CallKind::Move, err.clone());
+            assert_eq!(
+                w.act(&facts(), OWNER, kick(TARGET)).await,
+                Ok(RoomDone::Kicked(TARGET))
+            );
+            // An hour later OUTSIDE leaves on their own.
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+            leave(OUTSIDE);
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            for _ in 0..50 {
+                tokio::task::yield_now().await;
+            }
+            assert!(
+                sink.events().is_empty(),
+                "{err:?}: OUTSIDE must not be named: {:?}",
+                sink.events()
+            );
+            assert!(audit.calls().len() > 2, "OUTSIDE's leave was fetched for");
+        }
     }
 
     #[tokio::test]
