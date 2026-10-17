@@ -433,6 +433,11 @@ holds:
     nothing, because a surplus means the batch isn't self-contained. Moves with
     D < L log nothing. CrackTunes' own leaves and moves are fed in so their
     audit units are consumed, but they are never logged.
+  - **Further amendments (M11–M14):** a leaves batch claims only
+    D − (CrackTunes' own changes + repeated targets), and logs nothing when that is 0.
+    A batch with several moderators reads "One or more of …". A targeted row pairs
+    only when it is new, has count 1 and exactly one candidate change. Rows are
+    deduplicated by (kind, id). A stored count never goes down.
 - Cost guard: only for guilds with the mod log enabled, one fetch in flight
   per guild, and a 403 marks the guild "missing View Audit Log". That shows on
   `/modlog status` and the dashboard, and suspends fetches until the settings
@@ -485,6 +490,8 @@ dashboard Settings page links to it.
 | `MEMBER_DISCONNECT`/`MEMBER_MOVE` entries lack a target and aggregate | Attribution already pairs exactly when a target is present |
 | Re-PUTting a role overwrite whose baseline bits the bot lacks is refused | The preflight warning is then just conservative |
 | A modal can hold a string select (`CreateLabel::select_menu`) on desktop and mobile | Kick becomes two steps: a select message, then a reason-only modal |
+| An aggregated `MEMBER_DISCONNECT`/`MEMBER_MOVE` entry keeps its id when its count rises | A re-created entry counts in full; D > L logs nothing, but D = L could misattribute |
+| Moves to different channels never share one aggregated `MEMBER_MOVE` entry | A stale `channel_id` would send units to the wrong destination group |
 
 ## 6. Testing
 
