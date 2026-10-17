@@ -135,13 +135,17 @@ impl RoomRegistry {
         self.rooms.get(&ch).map(|e| e.value().1.clone())
     }
 
-    /// Register a room and index it under its owner. A room already
-    /// registered under the channel is replaced, and its owner entry dropped.
-    /// The registered room's handle.
+    /// Register a room and index it under its owner, unless the room blocks
+    /// them: a moderator kicked its owner, who stays `state.owner` but owns
+    /// it no more (see [`Self::unindex_owner`]). A room already registered
+    /// under the channel is replaced, and its owner entry dropped. The
+    /// registered room's handle.
     pub fn insert(&self, room: LiveRoom) -> Arc<Mutex<LiveRoom>> {
         let (guild, channel, owner) = (room.guild, room.channel, room.state.owner);
         self.owners.retain(|_, room| *room != channel);
-        self.owners.insert((guild, owner), channel);
+        if !room.state.blocked.contains(&owner) {
+            self.owners.insert((guild, owner), channel);
+        }
         let handle = Arc::new(Mutex::new(room));
         self.rooms.insert(channel, (guild, handle.clone()));
         handle
@@ -349,6 +353,36 @@ mod tests {
         assert_eq!(reg.owned_by(G, UserId::new(1)), None);
         assert_eq!(reg.owned_by(G, UserId::new(2)), Some(ChannelId::new(10)));
         assert_eq!(reg.count_in(G), 1);
+    }
+
+    /// A kicked owner stays the room's `state.owner`. Loading that room
+    /// again (a reconcile after a restart) must not index them under it:
+    /// they would count as owning it (a transfer or claim to them refused),
+    /// and the entry of a room they do own would be overwritten.
+    #[test]
+    fn insert_does_not_index_an_owner_the_room_blocks() {
+        let reg = RoomRegistry::default();
+        reg.insert(room(11, G, 1));
+        let mut kicked = room(10, G, 1);
+        kicked.state.blocked.insert(UserId::new(1));
+        reg.insert(kicked.clone());
+        assert_eq!(
+            reg.owned_by(G, UserId::new(1)),
+            Some(ChannelId::new(11)),
+            "their own room stays theirs"
+        );
+        assert!(
+            reg.get(ChannelId::new(10)).is_some(),
+            "the room is registered"
+        );
+        assert_eq!(reg.count_in(G), 2);
+
+        // With no other room, they own none.
+        let reg = RoomRegistry::default();
+        reg.insert(room(10, G, 2));
+        reg.insert(kicked);
+        assert_eq!(reg.owned_by(G, UserId::new(1)), None);
+        assert_eq!(reg.owned_by(G, UserId::new(2)), None, "the old entry went");
     }
 
     #[test]
