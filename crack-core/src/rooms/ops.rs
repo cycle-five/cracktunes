@@ -64,14 +64,17 @@ pub async fn act(
     {
         return Err(RoomRefusal::OwnsAnotherRoom);
     }
-    owner_kept_in(facts, &live.state, &action)?;
+    role_choice_ok(facts, &live.state, &action)?;
 
     // 3. Never widen: whoever is let in must already be able to get in.
-    guard(facts, &live.baseline, &action)?;
+    guard(facts, &live.baseline, &action, actor)?;
 
     // 4. The new state, on a copy.
     let mut next = live.state.clone();
     let done = apply(&mut next, &action, actor);
+    if matches!(action, RoomAction::Lock) {
+        permit_those_inside(facts, room, &live.baseline, &mut next);
+    }
 
     // 5-6. Discord. Any failure returns here, with nothing persisted.
     let before = room_overwrites(guild, facts.bot, &live.baseline, &live.state);
@@ -311,39 +314,48 @@ pub(crate) fn validate(action: RoomAction) -> Result<RoomAction, RoomRefusal> {
     }
 }
 
-/// Blocking a role must not lock the room's owner out: not `@everyone`, and
-/// not a role the owner holds (as far as `facts` knows their roles).
-fn owner_kept_in(
+/// A role choice that would undo the room's own controls. Blocking
+/// `@everyone`, or a role the owner holds (as far as `facts` knows their
+/// roles), would lock the owner out: Lock is for that. Allowing `@everyone`
+/// in would leave a lock locking nobody out while the panel says locked:
+/// Unlock is for that.
+fn role_choice_ok(
     facts: &GuildFacts,
     state: &RoomState,
     action: &RoomAction,
 ) -> Result<(), RoomRefusal> {
-    let RoomAction::BlockRole { role } = action else {
-        return Ok(());
-    };
     let everyone = RoleId::new(facts.guild.get());
-    let owners = facts
-        .roles
-        .get(&state.owner)
-        .map(Vec::as_slice)
-        .unwrap_or(&[]);
-    if *role == everyone || owners.contains(role) {
-        Err(RoomRefusal::CannotBlockRole)
-    } else {
-        Ok(())
+    match action {
+        RoomAction::BlockRole { role } => {
+            let owners = facts
+                .roles
+                .get(&state.owner)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            if *role == everyone || owners.contains(role) {
+                Err(RoomRefusal::CannotBlockRole)
+            } else {
+                Ok(())
+            }
+        },
+        RoomAction::AllowRole { role } if *role == everyone => Err(RoomRefusal::CannotAllowRole),
+        _ => Ok(()),
     }
 }
 
 /// Every member or role the action would let connect must already be able to.
+/// A claimer becomes the owner, whom a lock lets in, so they are checked too.
 fn guard(
     facts: &GuildFacts,
     baseline: &[StoredOverwrite],
     action: &RoomAction,
+    actor: UserId,
 ) -> Result<(), RoomRefusal> {
     let ok = match action {
         RoomAction::HelperAdd { target }
         | RoomAction::AllowUser { target }
         | RoomAction::Transfer { target } => facts.member_can_join(*target, baseline),
+        RoomAction::Claim => facts.member_can_join(actor, baseline),
         RoomAction::AllowRole { role } => role_can_connect(&facts.baseline(baseline), *role),
         _ => true,
     };
@@ -352,6 +364,25 @@ fn guard(
     } else {
         Err(RoomRefusal::CannotJoinHere)
     }
+}
+
+/// A lock keeps newcomers out, not whoever is inside: each human in the room
+/// is permitted, so a dropped connection does not lock them out. The owner
+/// and helpers pass already. Someone the baseline keeps out (a moderator
+/// dragged them in) is not: a permit would open the room past its category.
+fn permit_those_inside(
+    facts: &GuildFacts,
+    room: ChannelId,
+    baseline: &[StoredOverwrite],
+    next: &mut RoomState,
+) {
+    let inside: Vec<UserId> = facts
+        .humans_in(room)
+        .into_iter()
+        .filter(|u| *u != next.owner && !next.helpers.contains(u) && !next.blocked.contains(u))
+        .filter(|u| facts.member_can_join(*u, baseline))
+        .collect();
+    next.permitted_users.extend(inside);
 }
 
 /// The action's effect on the room's state, and what to tell the presser.
@@ -951,6 +982,8 @@ mod tests {
             vec![
                 Call::Put(ROOM.get(), ow(member(OWNER), C, NONE)),
                 Call::Put(ROOM.get(), ow(member(HELPER), C, NONE)),
+                // In the room when it was locked.
+                Call::Put(ROOM.get(), ow(member(TARGET), C, NONE)),
                 Call::Put(ROOM.get(), ow(member(BOT), C, NONE)),
                 Call::Put(ROOM.get(), ow(role(18), V, C)),
                 Call::Put(ROOM.get(), ow(role(G.get()), NONE, C)),
@@ -974,6 +1007,7 @@ mod tests {
             [
                 Call::DeleteOverwrite(ROOM.get(), member(OWNER)),
                 Call::DeleteOverwrite(ROOM.get(), member(HELPER)),
+                Call::DeleteOverwrite(ROOM.get(), member(TARGET)),
                 Call::DeleteOverwrite(ROOM.get(), member(BOT)),
                 Call::Put(ROOM.get(), ow(role(18), V | C, NONE)),
                 Call::DeleteOverwrite(ROOM.get(), role(G.get())),
@@ -1209,6 +1243,94 @@ mod tests {
                 .await,
             Ok(RoomDone::AllowedRole(adult))
         );
+    }
+
+    /// An occupant the category keeps out (a moderator dragged them in)
+    /// cannot claim the room: an owner gets a member allow Connect.
+    #[tokio::test]
+    async fn claim_needs_the_category_to_let_the_claimer_in() {
+        let (baseline, adult) = gated();
+        let w = World::new(live(baseline));
+        let mut f = facts();
+        f.voice.remove(&OWNER);
+        assert_eq!(
+            w.act(&f, TARGET, RoomAction::Claim).await,
+            Err(RoomRefusal::CannotJoinHere)
+        );
+        assert_eq!(w.discord.calls(), vec![]);
+        assert_eq!(w.room().await.state.owner, OWNER);
+        assert_eq!(w.data.rooms.owned_by(G, TARGET), None);
+        f.roles.insert(TARGET, vec![adult]);
+        assert_eq!(
+            w.act(&f, TARGET, RoomAction::Claim).await,
+            Ok(RoomDone::Claimed)
+        );
+    }
+
+    /// Allowing `@everyone` in would leave a lock that locks nobody out
+    /// while the panel says locked.
+    #[tokio::test]
+    async fn allow_role_refuses_everyone() {
+        let mut room = live(vec![]);
+        room.state.locked = true;
+        let w = World::new(room);
+        let everyone = RoleId::new(G.get());
+        assert_eq!(
+            w.act(&facts(), OWNER, RoomAction::AllowRole { role: everyone })
+                .await,
+            Err(RoomRefusal::CannotAllowRole)
+        );
+        assert_eq!(w.discord.calls(), vec![]);
+        assert!(w.room().await.state.permitted_roles.is_empty());
+        assert_eq!(w.transport.ops(), vec![]);
+    }
+
+    /// Lock keeps newcomers out, not the people already inside: whoever is
+    /// in the room may rejoin after a dropped connection. Unlock keeps the
+    /// permits (they only matter while locked).
+    #[tokio::test]
+    async fn lock_lets_whoever_is_inside_back_in() {
+        let w = World::new(live(vec![]));
+        assert_eq!(
+            w.act(&facts(), OWNER, RoomAction::Lock).await,
+            Ok(RoomDone::Locked)
+        );
+        let state = w.room().await.state;
+        assert_eq!(
+            state.permitted_users,
+            [TARGET].into(),
+            "the owner and helpers pass already; CrackTunes and others outside are not added"
+        );
+        assert!(w
+            .discord
+            .calls()
+            .contains(&Call::Put(ROOM.get(), ow(member(TARGET), C, NONE))));
+        assert_eq!(
+            w.act(&facts(), OWNER, RoomAction::Unlock).await,
+            Ok(RoomDone::Unlocked)
+        );
+        assert_eq!(w.room().await.state.permitted_users, [TARGET].into());
+    }
+
+    /// Someone a moderator dragged in, whom the category keeps out, is not
+    /// let back in by a lock: that would open the room past its category.
+    #[tokio::test]
+    async fn lock_does_not_permit_someone_the_category_keeps_out() {
+        let (baseline, adult) = gated();
+        let w = World::new(live(baseline.clone()));
+        w.act(&facts(), OWNER, RoomAction::Lock).await.unwrap();
+        assert!(w.room().await.state.permitted_users.is_empty());
+        assert!(!w
+            .discord
+            .calls()
+            .iter()
+            .any(|c| matches!(c, Call::Put(_, o) if o.target == member(TARGET))));
+
+        let w = World::new(live(baseline));
+        let mut f = facts();
+        f.roles.insert(TARGET, vec![adult]);
+        w.act(&f, OWNER, RoomAction::Lock).await.unwrap();
+        assert_eq!(w.room().await.state.permitted_users, [TARGET].into());
     }
 
     #[tokio::test]

@@ -58,6 +58,8 @@ pub enum RoomRefusal {
     /// Blocking this role would lock the room's owner out (`@everyone`, or a
     /// role the owner holds).
     CannotBlockRole,
+    /// Allowing `@everyone` in would leave a locked room locking nobody out.
+    CannotAllowRole,
     /// There are too many options to fit in a select menu.
     TooManyForMenu,
     /// The bot lacks a Discord permission it needs.
@@ -371,6 +373,7 @@ fn refusal_text(refusal: RoomRefusal) -> String {
         RoomRefusal::AlreadyOwner => ROOM_ALREADY_OWNER.to_string(),
         RoomRefusal::OwnsAnotherRoom => ROOM_OWNS_ANOTHER_ROOM.to_string(),
         RoomRefusal::CannotBlockRole => ROOM_CANNOT_BLOCK_ROLE.to_string(),
+        RoomRefusal::CannotAllowRole => ROOM_CANNOT_ALLOW_ROLE.to_string(),
         RoomRefusal::TooManyForMenu => ROOM_TOO_MANY_FOR_MENU.to_string(),
         RoomRefusal::MissingPermissions => ROOM_MISSING_PERMISSIONS.to_string(),
         RoomRefusal::DiscordFailed => ROOM_DISCORD_FAILED.to_string(),
@@ -764,6 +767,7 @@ mod tests {
             AlreadyOwner,
             OwnsAnotherRoom,
             CannotBlockRole,
+            CannotAllowRole,
             TooManyForMenu,
             MissingPermissions,
             DiscordFailed,

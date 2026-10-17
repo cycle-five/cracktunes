@@ -199,15 +199,17 @@ Someone you kick is also removed from the helpers and from the people let in.
   hub gives the old owner a new room rather than moving them back.
 - **Mute** is for this room only. It does not server-mute the person anywhere
   else. If someone is muted and leaves, the mute stays with the room.
-- **Lock** blocks newcomers, not the people already inside. The owner, helpers
-  and anyone you allowed can still join. Allow a person or role first, then
-  lock, to let only them in.
+- **Lock** blocks newcomers, not the people already inside: people already
+  inside can rejoin if they drop out. The owner, helpers and anyone you
+  allowed can still join, and so can CrackTunes, to play music. Allow a person
+  or role first, then lock, to let only them in.
 - **Block role** keeps a role out. It is refused for `@everyone` and for any role
   the owner holds, because it would lock the owner out. Use Lock instead.
-- **Allow**, **Helpers** (add) and **Transfer** are refused for a person or
-  role the server's own permissions keep out ("This server's own permissions
-  keep them out of this room"). A room can never be more open than its
-  category.
+  Allowing `@everyone` in is refused too: use Unlock instead.
+- **Allow**, **Helpers** (add), **Transfer** and **Claim** are refused for a
+  person or role the server's own permissions keep out ("This server's own
+  permissions keep them out of this room"). A room can never be more open
+  than its category.
 - **Rename** is limited to twice every 10 minutes. Discord limits channel renames
   to that, and CrackTunes enforces it itself (the count starts over if the bot
   restarts). The reply says how long to wait.

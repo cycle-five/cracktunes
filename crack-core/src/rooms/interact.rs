@@ -1205,6 +1205,11 @@ mod tests {
                     ROOM.get(),
                     ow(OverwriteTarget::Member { id: HELPER }, C, NONE)
                 ),
+                // In the room when it was locked.
+                Call::Put(
+                    ROOM.get(),
+                    ow(OverwriteTarget::Member { id: TARGET }, C, NONE)
+                ),
                 Call::Put(ROOM.get(), ow(OverwriteTarget::Member { id: BOT }, C, NONE)),
                 Call::Put(
                     ROOM.get(),

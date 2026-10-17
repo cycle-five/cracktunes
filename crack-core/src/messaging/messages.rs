@@ -663,6 +663,8 @@ pub const ROOM_ALREADY_OWNER: &str = "You already own this room.";
 pub const ROOM_OWNS_ANOTHER_ROOM: &str = "That member already owns a room.";
 pub const ROOM_CANNOT_BLOCK_ROLE: &str =
     "That role can't be blocked: it would lock the room's owner out. Use Lock instead.";
+pub const ROOM_CANNOT_ALLOW_ROLE: &str =
+    "That would let everyone in, which is what Unlock is for. Use Unlock instead.";
 pub const ROOM_TOO_MANY_FOR_MENU: &str =
     "There are too many people to pick from here. Use the `/room` command instead.";
 pub const ROOM_MISSING_PERMISSIONS: &str = "CrackTunes is missing a permission on this room's category. An admin can run `/rooms status` to see which.";
