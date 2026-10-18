@@ -8,6 +8,7 @@ use crate::{
     },
     limit::RateLimit,
     page,
+    settings::{self, RoomSettingsForm, SaveRefused},
     view::{
         ControlRequest, ControlResult, MoveRequest, MoveResult, PageState, PlanView, QueueView,
     },
@@ -25,6 +26,10 @@ use axum::{
     Json, Router,
 };
 use catacombs::auth::AuthenticatedUser;
+use crack_core::messaging::messages::{
+    DASH_SETTINGS_FAILED, DASH_SETTINGS_NEEDS_MANAGE, DASH_SETTINGS_NOT_LOADED,
+    DASH_SETTINGS_UNKNOWN_CHANNEL, DASH_SETTINGS_UNREADABLE,
+};
 use serenity::all::{GuildId, UserId};
 use std::{
     convert::Infallible,
@@ -177,9 +182,13 @@ async fn guild_page<B: Backend>(
 }
 
 fn forbidden_page() -> Response {
+    forbidden_with(NEEDS_MANAGE)
+}
+
+fn forbidden_with(text: &'static str) -> Response {
     (
         StatusCode::FORBIDDEN,
-        Html(page::message_page("Needs Manage Server", NEEDS_MANAGE)),
+        Html(page::message_page("Needs Manage Server", text)),
     )
         .into_response()
 }
@@ -248,6 +257,82 @@ async fn history_json<B: Backend>(
         Ok(page) => Json(page).into_response(),
         Err(HistoryError::NoDatabase) => error_json(StatusCode::SERVICE_UNAVAILABLE, NO_DATABASE),
         Err(HistoryError::Failed) => error_json(StatusCode::SERVICE_UNAVAILABLE, HISTORY_FAILED),
+    }
+}
+
+// The settings routes use `history_access`: it IS the Manage Server rule
+// (a guild owner or bot owner passes, as they do for history).
+async fn settings_page<B: Backend>(
+    State(s): State<WebState<B>>,
+    session: Session,
+    Path(raw): Path<String>,
+) -> Response {
+    let Some(g) = parse_guild(&raw) else {
+        return not_found();
+    };
+    let Some((user, _)) = user_id(session) else {
+        return login_redirect(&format!("/g/{g}/settings"));
+    };
+    match s.backend.history_access(g, user).await {
+        HistoryAccess::Hidden => return not_found(),
+        HistoryAccess::Unavailable => return unavailable(),
+        HistoryAccess::Forbidden => return forbidden_with(DASH_SETTINGS_NEEDS_MANAGE),
+        HistoryAccess::Allowed => {},
+    }
+    let view = s.backend.room_settings(g).await;
+    let name = s
+        .backend
+        .guild_name(g)
+        .unwrap_or_else(|| "Server".to_owned());
+    Html(page::settings_page(&name, g, &view)).into_response()
+}
+
+/// JSON only and same-origin, as `/control`; the same Manage Server access
+/// as the page (`history_access`).
+async fn save_rooms<B: Backend>(
+    State(s): State<WebState<B>>,
+    session: Session,
+    Path(raw): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let Some(g) = parse_guild(&raw) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some((user, _)) = user_id(session) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if !is_json(&headers) {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+    if headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) != Some(&*s.origin) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    match s.backend.history_access(g, user).await {
+        HistoryAccess::Hidden => return StatusCode::NOT_FOUND.into_response(),
+        HistoryAccess::Unavailable => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        HistoryAccess::Forbidden => {
+            return error_json(StatusCode::FORBIDDEN, DASH_SETTINGS_NEEDS_MANAGE)
+        },
+        HistoryAccess::Allowed => {},
+    }
+    let Ok(form) = serde_json::from_slice::<RoomSettingsForm>(&body) else {
+        return error_json(StatusCode::BAD_REQUEST, DASH_SETTINGS_UNREADABLE);
+    };
+    match s.backend.save_room_settings(user, g, form).await {
+        Ok(view) => Json(view).into_response(),
+        Err(SaveRefused::Invalid(e)) => {
+            error_json(StatusCode::BAD_REQUEST, settings::invalid_message(e))
+        },
+        Err(SaveRefused::UnknownChannel) => {
+            error_json(StatusCode::BAD_REQUEST, DASH_SETTINGS_UNKNOWN_CHANNEL)
+        },
+        Err(SaveRefused::Failed) => {
+            error_json(StatusCode::SERVICE_UNAVAILABLE, DASH_SETTINGS_FAILED)
+        },
+        Err(SaveRefused::NotLoaded) => {
+            error_json(StatusCode::SERVICE_UNAVAILABLE, DASH_SETTINGS_NOT_LOADED)
+        },
     }
 }
 
@@ -491,6 +576,10 @@ async fn asset(Path(name): Path<String>) -> Response {
             include_bytes!("../assets/history.js"),
             "text/javascript; charset=utf-8",
         ),
+        "settings.js" => (
+            include_bytes!("../assets/settings.js"),
+            "text/javascript; charset=utf-8",
+        ),
         "app.css" => (
             include_bytes!("../assets/app.css"),
             "text/css; charset=utf-8",
@@ -560,6 +649,8 @@ pub fn router<B: Backend>(state: WebState<B>) -> Router {
         .route("/g/{guild}/add", post(crate::find::add::<B>))
         .route("/g/{guild}/history", get(history_page::<B>))
         .route("/g/{guild}/history.json", get(history_json::<B>))
+        .route("/g/{guild}/settings", get(settings_page::<B>))
+        .route("/g/{guild}/settings/rooms", post(save_rooms::<B>))
         .route_layer(axum::middleware::map_response(no_store));
     let timed = Router::new()
         .merge(per_user)
@@ -1945,5 +2036,333 @@ mod test {
             .to_str()
             .unwrap()
             .starts_with("text/javascript"));
+    }
+
+    // ---- rooms settings ----
+
+    use crate::settings::{ChannelOption, RoomSettingsForm, SaveRefused};
+    use crack_core::{
+        messaging::messages::*,
+        rooms::settings::{render_room_name, SettingsError},
+    };
+
+    fn settings_fake(access: HistoryAccess) -> std::sync::Arc<FakeBackend> {
+        history_fake(access)
+    }
+
+    fn post_settings_req(
+        cookie: Option<&str>,
+        ctype: Option<&str>,
+        origin: Option<&str>,
+        text: &str,
+    ) -> Request<Body> {
+        let mut req = Request::post("/g/5/settings/rooms");
+        if let Some(c) = cookie {
+            req = req.header(header::COOKIE, c);
+        }
+        if let Some(c) = ctype {
+            req = req.header(header::CONTENT_TYPE, c);
+        }
+        if let Some(o) = origin {
+            req = req.header(header::ORIGIN, o);
+        }
+        req.body(Body::from(text.to_owned())).unwrap()
+    }
+
+    async fn post_settings(
+        fake: std::sync::Arc<FakeBackend>,
+        text: &str,
+    ) -> axum::response::Response {
+        app(fake)
+            .oneshot(post_settings_req(
+                Some(&session(9)),
+                Some("application/json"),
+                Some(ORIGIN),
+                text,
+            ))
+            .await
+            .unwrap()
+    }
+
+    const FORM: &str = r#"{"enabled":true,"hub":"123","name_template":"{name}'s den","default_limit":4,"empty_grace_secs":60}"#;
+
+    #[tokio::test]
+    async fn settings_page_404s_for_non_members_403s_for_non_managers() {
+        let r = get(member_viewing(), "/g/5/settings", None).await;
+        assert_eq!(r.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            r.headers()[header::LOCATION],
+            "/auth/login?return_to=%2Fg%2F5%2Fsettings"
+        );
+        for (access, status) in [
+            (HistoryAccess::Hidden, StatusCode::NOT_FOUND),
+            (HistoryAccess::Unavailable, StatusCode::SERVICE_UNAVAILABLE),
+            (HistoryAccess::Forbidden, StatusCode::FORBIDDEN),
+            (HistoryAccess::Allowed, StatusCode::OK),
+        ] {
+            let r = get(settings_fake(access), "/g/5/settings", Some(&session(9))).await;
+            assert_eq!(r.status(), status, "{access:?}");
+        }
+        let r = get(
+            settings_fake(HistoryAccess::Forbidden),
+            "/g/5/settings",
+            Some(&session(9)),
+        )
+        .await;
+        assert!(body(r)
+            .await
+            .contains(&crate::page::esc(DASH_SETTINGS_NEEDS_MANAGE)));
+    }
+
+    #[tokio::test]
+    async fn settings_page_lists_voice_channels_and_current_values() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        *fake.room_view.lock().unwrap() = crate::settings::RoomSettingsView {
+            enabled: true,
+            hub: Some("22".into()),
+            name_template: "<b>{name}</b> \"x\"".into(),
+            default_limit: 4,
+            empty_grace_secs: 60,
+            voice_channels: vec![
+                ChannelOption {
+                    id: "11".into(),
+                    name: "Music".into(),
+                },
+                ChannelOption {
+                    id: "22".into(),
+                    name: "Join <i>here</i>".into(),
+                },
+            ],
+            findings: Some(vec![
+                "Give CrackTunes Move Members on Games".into(),
+                "<script>x</script>".into(),
+            ]),
+        };
+        let r = get(fake, "/g/5/settings", Some(&session(9))).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let html = body(r).await;
+        for needle in [
+            "<option value=\"11\">Music</option>",
+            "<option value=\"22\" selected>Join &lt;i&gt;here&lt;/i&gt;</option>",
+            "id=\"s-enabled\" checked",
+            "value=\"&lt;b&gt;{name}&lt;/b&gt; &quot;x&quot;\"",
+            "id=\"s-limit\"",
+            "value=\"4\"",
+            "<option value=\"60\" selected>",
+            "<option value=\"0\">",
+            "<option value=\"300\">",
+            "<li>Give CrackTunes Move Members on Games</li>",
+            "<li>&lt;script&gt;x&lt;/script&gt;</li>",
+            "https://github.com/cycle-five/cracktunes/blob/master/docs/rooms-and-mod-log.md",
+            "<script src=\"/assets/settings.js\"></script>",
+        ] {
+            assert!(html.contains(needle), "missing {needle}: {html}");
+        }
+        assert!(!html.contains("<script>x"), "{html}");
+        // The first preview is what the bot would name the room.
+        let preview = render_room_name("<b>{name}</b> \"x\"", "Saucey");
+        assert!(
+            html.contains(&format!(
+                "<output id=\"s-preview\">{}</output>",
+                crate::page::esc(&preview)
+            )),
+            "{html}"
+        );
+    }
+
+    #[tokio::test]
+    async fn settings_page_says_why_there_are_no_findings() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        let html = body(get(fake.clone(), "/g/5/settings", Some(&session(9))).await).await;
+        assert!(html.contains(ROOM_STATUS_NO_HUB_YET), "{html}");
+        fake.room_view.lock().unwrap().hub = Some("22".into());
+        let html = body(get(fake.clone(), "/g/5/settings", Some(&session(9))).await).await;
+        assert!(
+            html.contains(&crate::page::esc(ROOM_STATUS_UNKNOWN)),
+            "{html}"
+        );
+        fake.room_view.lock().unwrap().findings = Some(vec![]);
+        let html = body(get(fake, "/g/5/settings", Some(&session(9))).await).await;
+        assert!(html.contains(ROOM_STATUS_READY), "{html}");
+    }
+
+    #[tokio::test]
+    async fn posting_settings_requires_json() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        for ctype in [
+            None,
+            Some("text/plain"),
+            Some("application/x-www-form-urlencoded"),
+        ] {
+            let r = app(fake.clone())
+                .oneshot(post_settings_req(
+                    Some(&session(9)),
+                    ctype,
+                    Some(ORIGIN),
+                    FORM,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(r.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE, "{ctype:?}");
+        }
+        let r = app(fake.clone())
+            .oneshot(post_settings_req(
+                Some(&session(9)),
+                Some("application/json"),
+                Some("https://evil.test"),
+                FORM,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::FORBIDDEN);
+        let r = app(fake.clone())
+            .oneshot(post_settings_req(
+                None,
+                Some("application/json"),
+                Some(ORIGIN),
+                FORM,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
+        assert!(fake.saves.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn only_managers_may_post_settings() {
+        for (access, status) in [
+            (HistoryAccess::Hidden, StatusCode::NOT_FOUND),
+            (HistoryAccess::Unavailable, StatusCode::SERVICE_UNAVAILABLE),
+            (HistoryAccess::Forbidden, StatusCode::FORBIDDEN),
+        ] {
+            let fake = settings_fake(access);
+            let r = post_settings(fake.clone(), FORM).await;
+            assert_eq!(r.status(), status, "{access:?}");
+            assert!(fake.saves.lock().unwrap().is_empty(), "{access:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_manager_saves_and_the_backend_gets_exactly_that_form() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        let r = post_settings(fake.clone(), FORM).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let got = body(r).await;
+        assert!(got.contains("\"name_template\""), "{got}");
+        assert_eq!(
+            fake.saves.lock().unwrap().clone(),
+            vec![(
+                GuildId::new(5),
+                serenity::all::UserId::new(9),
+                RoomSettingsForm {
+                    enabled: true,
+                    hub: Some("123".into()),
+                    name_template: "{name}'s den".into(),
+                    default_limit: 4,
+                    empty_grace_secs: 60,
+                }
+            )]
+        );
+        // A hub-less, disabled form is valid too.
+        let r = post_settings(
+            fake.clone(),
+            r#"{"enabled":false,"hub":null,"name_template":"x","default_limit":0,"empty_grace_secs":0}"#,
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(fake.saves.lock().unwrap()[1].2.hub, None);
+    }
+
+    #[tokio::test]
+    async fn invalid_settings_are_400_with_the_reason() {
+        for (refused, status, text) in [
+            (
+                SaveRefused::Invalid(SettingsError::NoDatabase),
+                StatusCode::BAD_REQUEST,
+                DASH_SETTINGS_NO_DATABASE,
+            ),
+            (
+                SaveRefused::Invalid(SettingsError::NoHub),
+                StatusCode::BAD_REQUEST,
+                DASH_SETTINGS_NO_HUB,
+            ),
+            (
+                SaveRefused::Invalid(SettingsError::BadTemplate),
+                StatusCode::BAD_REQUEST,
+                DASH_SETTINGS_BAD_TEMPLATE,
+            ),
+            (
+                SaveRefused::Invalid(SettingsError::BadLimit),
+                StatusCode::BAD_REQUEST,
+                DASH_SETTINGS_BAD_LIMIT,
+            ),
+            (
+                SaveRefused::Invalid(SettingsError::BadGrace),
+                StatusCode::BAD_REQUEST,
+                DASH_SETTINGS_BAD_GRACE,
+            ),
+            (
+                SaveRefused::UnknownChannel,
+                StatusCode::BAD_REQUEST,
+                DASH_SETTINGS_UNKNOWN_CHANNEL,
+            ),
+            (
+                SaveRefused::Failed,
+                StatusCode::SERVICE_UNAVAILABLE,
+                DASH_SETTINGS_FAILED,
+            ),
+            (
+                SaveRefused::NotLoaded,
+                StatusCode::SERVICE_UNAVAILABLE,
+                DASH_SETTINGS_NOT_LOADED,
+            ),
+        ] {
+            let fake = settings_fake(HistoryAccess::Allowed);
+            *fake.save_result.lock().unwrap() = Err(refused);
+            let r = post_settings(fake, FORM).await;
+            assert_eq!(r.status(), status, "{refused:?}");
+            let got = body(r).await;
+            assert!(
+                got.contains(&format!(
+                    "\"error\":{}",
+                    serde_json::to_string(text).unwrap()
+                )),
+                "{refused:?}: {got}"
+            );
+        }
+        // Unreadable bodies never reach the backend.
+        let fake = settings_fake(HistoryAccess::Allowed);
+        for bad in [
+            "{}",
+            "nope",
+            r#"{"enabled":true,"hub":null,"name_template":"x","default_limit":300,"empty_grace_secs":30}"#,
+        ] {
+            let r = post_settings(fake.clone(), bad).await;
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{bad}");
+        }
+        assert!(fake.saves.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn queue_page_links_settings_only_for_managers() {
+        for (access, linked) in [
+            (HistoryAccess::Allowed, true),
+            (HistoryAccess::Forbidden, false),
+        ] {
+            let fake = history_fake(access);
+            let html = body(get(fake, "/g/5", Some(&session(9))).await).await;
+            assert_eq!(html.contains("href=\"/g/5/settings\""), linked, "{html}");
+            assert_eq!(html.contains("href=\"/g/5/history\""), linked, "{html}");
+        }
+    }
+
+    #[tokio::test]
+    async fn settings_js_is_served_as_javascript() {
+        let r = get(member_viewing(), "/assets/settings.js", None).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(
+            r.headers()[header::CONTENT_TYPE],
+            "text/javascript; charset=utf-8"
+        );
     }
 }

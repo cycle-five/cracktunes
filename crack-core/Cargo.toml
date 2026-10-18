@@ -115,6 +115,11 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dev-dependencies]
 ctor = "1.0"
+# Builds a Discord error response for the 50013/10003 mapping test.
+http = "1"
+# The reqwest serenity itself uses (the workspace one is 0.12); its error
+# responses can only be built from one of its `Response`s.
+reqwest13 = { package = "reqwest", version = "0.13", default-features = false }
 # `#[tokio::test(start_paused = true)]`: /gp's reveal pauses five seconds.
 tokio = { workspace = true, features = ["test-util"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

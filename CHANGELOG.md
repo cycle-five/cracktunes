@@ -42,6 +42,26 @@
 
 ### Added
 
+- **Voice rooms.** A member joins a hub voice channel and CrackTunes moves them
+  into a new room of their own, in the hub's category, named after them. The room
+  gets a panel in its chat: buttons for kick (a reason of 1 to 200 characters is
+  required), mute, unmute, let back in, lock and unlock, lock chat, member limit,
+  rename, transfer, helpers, who can join, and claim (for a room whose owner has
+  left), each with a `/room` command that does the same, and the panel lists them
+  all in plain words. The owner, their helpers and server moderators (Administrator,
+  Manage Channels or Move Members) may use them. A room is deleted once no human is
+  left, after a delay the server picks (0, 10, 30, 60, 120 or 300 seconds, 30 by
+  default), also after a restart, and a room deleted by hand is forgotten. One room
+  per member, 10 seconds between new rooms, 50 rooms per server. A room is never
+  more open than its category, so owners can only narrow who gets in. There is no
+  deafen, because Discord cannot deafen someone in one channel. **Off by default,
+  and free.** Admins with Manage Server turn it on with `/rooms setup hub:<channel>`
+  or on the dashboard (server, then Settings), where the hub, room name, default
+  limit and delay are set; `/rooms status` and the Settings page list the
+  permissions CrackTunes still needs on the hub's category, and `/rooms off` stops
+  new rooms and leaves existing ones until they empty. See
+  `docs/rooms-and-mod-log.md`.
+
 - **The dashboard can search for a track and add it.** The queue page has a "Find a
   track" panel that searches the server's queue, the server's history, YouTube and
   SoundCloud at once, and shows each hit with its source. Any member who can view the

@@ -3,8 +3,8 @@
 use crate::http_utils::is_unknown_message;
 use crate::messaging::render::Rendered;
 use serenity::all::{
-    Cache, ComponentInteraction, CreateInteractionResponse, GenericChannelId, GuildId, Http,
-    MessageId,
+    Cache, ComponentInteraction, CreateInteractionResponse, CreateModal, GenericChannelId, GuildId,
+    Http, MessageId, ModalInteraction,
 };
 use serenity::async_trait;
 use std::sync::Arc;
@@ -168,6 +168,8 @@ pub trait Press: Send + Sync {
     async fn respond(&self, out: Rendered, ephemeral: bool) -> Result<(), TransportError>;
     /// The interaction's one response: redraw the message the component is on.
     async fn update(&self, out: Rendered) -> Result<(), TransportError>;
+    /// The interaction's one response: open a modal over the press.
+    async fn open_modal(&self, modal: CreateModal<'static>) -> Result<(), TransportError>;
 }
 
 /// The real Discord behind [`Press`].
@@ -228,5 +230,81 @@ impl Press for DiscordPress<'_> {
                 CreateInteractionResponse::UpdateMessage(out.to_interaction_message()),
             )
             .await?)
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
+    async fn open_modal(&self, modal: CreateModal<'static>) -> Result<(), TransportError> {
+        Ok(self
+            .interaction
+            .create_response(self.http, CreateInteractionResponse::Modal(modal))
+            .await?)
+    }
+}
+
+/// The real Discord behind [`Press`], for a modal submission.
+pub struct DiscordModalPress<'a> {
+    pub http: &'a Http,
+    pub interaction: &'a ModalInteraction,
+}
+
+#[async_trait]
+impl Press for DiscordModalPress<'_> {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
+    async fn acknowledge(&self) -> Result<(), TransportError> {
+        Ok(self
+            .interaction
+            .create_response(self.http, CreateInteractionResponse::Acknowledge)
+            .await?)
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
+    async fn followup(&self, out: Rendered, ephemeral: bool) -> Result<(), TransportError> {
+        self.interaction
+            .create_followup(self.http, out.to_followup(ephemeral))
+            .await?;
+        Ok(())
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
+    async fn respond(&self, out: Rendered, ephemeral: bool) -> Result<(), TransportError> {
+        Ok(self
+            .interaction
+            .create_response(
+                self.http,
+                CreateInteractionResponse::Message(
+                    out.to_interaction_message().ephemeral(ephemeral),
+                ),
+            )
+            .await?)
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "messaging is where sends are made"
+    )]
+    async fn update(&self, out: Rendered) -> Result<(), TransportError> {
+        Ok(self
+            .interaction
+            .create_response(
+                self.http,
+                CreateInteractionResponse::UpdateMessage(out.to_interaction_message()),
+            )
+            .await?)
+    }
+
+    async fn open_modal(&self, _modal: CreateModal<'static>) -> Result<(), TransportError> {
+        Err(TransportError::Other("a modal cannot open a modal".into()))
     }
 }
