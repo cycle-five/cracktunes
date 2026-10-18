@@ -447,9 +447,21 @@ holds:
     nothing of the kind, absorbs its rows into the snapshot, drops its earlier
     changes and keeps the ambiguous ones for the next round. A seed keeps the
     changes from ε before it on. Rows by any bot account, not only
-    CrackTunes, are consumed but never candidates. When more than one changed
+    CrackTunes, are consumed but never candidates (reversed for other bots by
+    the owner on 2026-10-18; see below). When more than one changed
     row names the same target (and kind, and for moves destination), none of
     them pairs.
+  - **Owner decision, 2026-10-18 (reverses M24 for other bots):** the log
+    exists to trace actions, and another bot's action is still one: it says
+    which bot to look at next. Another bot's disconnect and move rows are
+    candidates like a moderator's, under the same rules (exact pairs, groups,
+    the D and L hedges, the ambiguity window), and every event it gets,
+    mutes and deafens included, marks it with "(bot)" after its mention.
+    CrackTunes' own rows stay consumed and never candidates: putting a member
+    into their room is not moderation, and room kicks are logged directly.
+    Mute and deafen entries arrive without the audit log's `users` list, so
+    the flag comes from the cached member, else one bounded user fetch;
+    unknown counts as a person, which only drops the mark.
   - **Re-review amendments (M28):** a seed reads ε after it is called, since
     every caller seeds as recording (re)starts and a change dropped just
     before then may have its unit written up to ε later. The decision runs

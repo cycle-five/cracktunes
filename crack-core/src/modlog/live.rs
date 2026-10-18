@@ -8,7 +8,7 @@
 use super::attribution::Change;
 use super::audit::{nonzero, AuditSource, LiveAudit};
 use super::batch::{self, ModLogSink};
-use super::event::ModLogEvent;
+use super::event::{Actor, ModLogEvent};
 use crate::messaging::courier::{self, Destination};
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::RenderCx;
@@ -60,8 +60,9 @@ impl ModLogSink for ChannelSink {
 /// for another action, for an entry without an actor or a target (or with a
 /// zero id), and for CrackTunes muting or deafening itself (its self-deafen:
 /// M21). A moderator muting CrackTunes is logged, and so is CrackTunes
-/// muting someone else (an admin command run through the bot).
-fn events_of(entry: &AuditLogEntry, bot: UserId) -> Vec<ModLogEvent> {
+/// muting someone else (an admin command run through the bot). Another
+/// bot's mute or deafen is logged too, marked by `actor_is_bot`.
+fn events_of(entry: &AuditLogEntry, bot: UserId, actor_is_bot: bool) -> Vec<ModLogEvent> {
     if !matches!(entry.action, Action::Member(MemberAction::Update)) {
         return Vec::new();
     }
@@ -74,6 +75,10 @@ fn events_of(entry: &AuditLogEntry, bot: UserId) -> Vec<ModLogEvent> {
     if actor == bot && target == bot {
         return Vec::new();
     }
+    let actor = Actor {
+        id: actor,
+        bot: actor_is_bot,
+    };
     let reason = entry.reason.as_deref().map(str::to_owned);
     entry
         .changes
@@ -115,11 +120,12 @@ pub async fn on_audit_entry(
     guild: GuildId,
     entry: &AuditLogEntry,
     bot: UserId,
+    actor_is_bot: bool,
 ) {
     if !data.modlog.is_enabled(guild) {
         return;
     }
-    for e in events_of(entry, bot) {
+    for e in events_of(entry, bot, actor_is_bot) {
         sink.post(guild, e).await;
     }
 }
@@ -269,7 +275,31 @@ pub async fn on_audit_event(data: &Data, ctx: &Context, guild: GuildId, entry: &
     };
     // Read out first: the cache guard must not be held across the await.
     let bot = ctx.cache.current_user().id;
-    on_audit_entry(data, &sink, guild, entry, bot).await;
+    // Look the actor up only for an entry that will post something.
+    let actor_is_bot = match entry.user_id {
+        Some(actor) if !events_of(entry, bot, false).is_empty() => {
+            is_bot_account(ctx, guild, UserId::new(actor.get())).await
+        },
+        _ => false,
+    };
+    on_audit_entry(data, &sink, guild, entry, bot, actor_is_bot).await;
+}
+
+/// Whether `user` is a bot account: the cached member first, else one
+/// bounded fetch from Discord. Unknown counts as a person, which only drops
+/// the bot mark.
+async fn is_bot_account(ctx: &Context, guild: GuildId, user: UserId) -> bool {
+    let cached = ctx
+        .cache
+        .guild(guild)
+        .and_then(|g| g.members.get(&user).map(|m| m.user.bot()));
+    if let Some(bot) = cached {
+        return bot;
+    }
+    match tokio::time::timeout(Duration::from_secs(3), ctx.http.get_user(user)).await {
+        Ok(Ok(u)) => u.bot(),
+        _ => false,
+    }
 }
 
 /// A save went through: if the server's log is now on, seed its snapshots
@@ -377,14 +407,14 @@ mod tests {
 
     async fn posted(data: &Data, e: &AuditLogEntry) -> Vec<(GuildId, ModLogEvent)> {
         let sink = FakeSink::default();
-        on_audit_entry(data, &sink, G, e, BOT).await;
+        on_audit_entry(data, &sink, G, e, BOT, false).await;
         sink.posted()
     }
 
     fn mute(on: bool, reason: Option<&str>) -> ModLogEvent {
         ModLogEvent::ServerMute {
             target: T,
-            actor: MOD,
+            actor: Actor::person(MOD),
             on,
             reason: reason.map(str::to_owned),
         }
@@ -400,6 +430,19 @@ mod tests {
         );
     }
 
+    /// Another bot's mute is logged like a moderator's, marked as a bot's.
+    #[tokio::test]
+    async fn a_bot_actor_is_carried_into_the_event() {
+        let data = data_on();
+        let sink = FakeSink::default();
+        on_audit_entry(&data, &sink, G, &member_update(MUTE_ON, None), BOT, true).await;
+        let posted = sink.posted();
+        let [(_, ModLogEvent::ServerMute { actor, .. })] = posted.as_slice() else {
+            panic!("{posted:?}");
+        };
+        assert_eq!(*actor, Actor::bot(MOD));
+    }
+
     #[tokio::test]
     async fn deafen_off_entry_logs_undeafen() {
         let data = data_on();
@@ -410,7 +453,7 @@ mod tests {
                 G,
                 ModLogEvent::ServerDeafen {
                     target: T,
-                    actor: MOD,
+                    actor: Actor::person(MOD),
                     on: false,
                     reason: None,
                 }
@@ -431,7 +474,7 @@ mod tests {
                     G,
                     ModLogEvent::ServerDeafen {
                         target: T,
-                        actor: MOD,
+                        actor: Actor::person(MOD),
                         on: false,
                         reason: Some("r".into()),
                     }
@@ -533,7 +576,7 @@ mod tests {
                 G,
                 ModLogEvent::ServerDeafen {
                     target: BOT,
-                    actor: MOD,
+                    actor: Actor::person(MOD),
                     on: true,
                     reason: None,
                 }
@@ -546,7 +589,7 @@ mod tests {
                 G,
                 ModLogEvent::ServerMute {
                     target: T,
-                    actor: BOT,
+                    actor: Actor::person(BOT),
                     on: true,
                     reason: None,
                 }
@@ -728,7 +771,7 @@ mod tests {
             G,
             ModLogEvent::ServerDeafen {
                 target: T,
-                actor: MOD,
+                actor: Actor::person(MOD),
                 on: true,
                 reason: None,
             },

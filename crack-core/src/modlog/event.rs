@@ -7,11 +7,32 @@ use serenity::all::{ChannelId, CreateEmbed, CreateEmbedFooter, Timestamp, UserId
 /// How many members a batch names before "and N more".
 const BATCH_NAMES_MAX: usize = 10;
 
+/// Who took an action from Discord's audit log, and whether that account is
+/// a bot. Another bot's mutes, disconnects and moves are logged like a
+/// moderator's and marked as a bot's (owner's call, 2026-10-18): the action
+/// still happened, and the mark says where to look next. There is no
+/// `From<UserId>`: every producer states the flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Actor {
+    pub id: UserId,
+    pub bot: bool,
+}
+
+impl Actor {
+    pub const fn person(id: UserId) -> Self {
+        Self { id, bot: false }
+    }
+
+    pub const fn bot(id: UserId) -> Self {
+        Self { id, bot: true }
+    }
+}
+
 /// Who a forced disconnect or move is credited to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attribution {
-    By(UserId),
-    OneOf(Vec<UserId>),
+    By(Actor),
+    OneOf(Vec<Actor>),
 }
 
 /// One thing the mod log reports.
@@ -19,13 +40,13 @@ pub enum Attribution {
 pub enum ModLogEvent {
     ServerMute {
         target: UserId,
-        actor: UserId,
+        actor: Actor,
         on: bool,
         reason: Option<String>,
     },
     ServerDeafen {
         target: UserId,
-        actor: UserId,
+        actor: Actor,
         on: bool,
         reason: Option<String>,
     },
@@ -41,7 +62,7 @@ pub enum ModLogEvent {
         by: Attribution,
     },
     DisconnectBatch {
-        actors: Vec<UserId>,
+        actors: Vec<Actor>,
         count: u32,
         among: Vec<UserId>,
     },
@@ -100,10 +121,23 @@ fn users(list: &[UserId]) -> String {
     list.iter().map(|u| user(*u)).collect::<Vec<_>>().join(", ")
 }
 
+/// An audit actor's mention, marked when the account is a bot.
+fn who(a: Actor) -> String {
+    if a.bot {
+        format!("{} {MODLOG_BOT_MARK}", user(a.id))
+    } else {
+        user(a.id)
+    }
+}
+
+fn whos(list: &[Actor]) -> String {
+    list.iter().map(|a| who(*a)).collect::<Vec<_>>().join(", ")
+}
+
 fn by(a: &Attribution) -> String {
     match a {
-        Attribution::By(u) => format!("{MODLOG_BY} {}", user(*u)),
-        Attribution::OneOf(l) => format!("{MODLOG_BY_ONE_OF} {}", users(l)),
+        Attribution::By(a) => format!("{MODLOG_BY} {}", who(*a)),
+        Attribution::OneOf(l) => format!("{MODLOG_BY_ONE_OF} {}", whos(l)),
     }
 }
 
@@ -140,7 +174,7 @@ fn parts(e: &ModLogEvent) -> Parts {
             title: toggle(*on, MODLOG_TITLE_MUTE, MODLOG_TITLE_UNMUTE),
             description: format!(
                 "{} {} {}",
-                user(*actor),
+                who(*actor),
                 toggle(*on, MODLOG_MUTED, MODLOG_UNMUTED),
                 user(*target),
             ),
@@ -156,7 +190,7 @@ fn parts(e: &ModLogEvent) -> Parts {
             title: toggle(*on, MODLOG_TITLE_DEAFEN, MODLOG_TITLE_UNDEAFEN),
             description: format!(
                 "{} {} {}",
-                user(*actor),
+                who(*actor),
                 toggle(*on, MODLOG_DEAFENED, MODLOG_UNDEAFENED),
                 user(*target),
             ),
@@ -210,15 +244,15 @@ fn parts(e: &ModLogEvent) -> Parts {
                 String::new()
             };
             // Several actors: which of them disconnected whom is unknown.
-            let who = match actors.as_slice() {
-                [_, _, ..] => format!("{MODLOG_ONE_OR_MORE_OF} {}", users(actors)),
-                _ => users(actors),
+            let credited = match actors.as_slice() {
+                [_, _, ..] => format!("{MODLOG_ONE_OR_MORE_OF} {}", whos(actors)),
+                _ => whos(actors),
             };
             Parts {
                 audit: true,
                 ..plain(
                     MODLOG_TITLE_BATCH,
-                    format!("{who} {MODLOG_DISCONNECTED} {count} {MODLOG_OF}: {shown}{more}"),
+                    format!("{credited} {MODLOG_DISCONNECTED} {count} {MODLOG_OF}: {shown}{more}"),
                 )
             }
         },
@@ -325,41 +359,41 @@ mod tests {
         vec![
             ModLogEvent::ServerMute {
                 target: T,
-                actor: A,
+                actor: Actor::person(A),
                 on: true,
                 reason: Some("loud".into()),
             },
             ModLogEvent::ServerMute {
                 target: T,
-                actor: A,
+                actor: Actor::person(A),
                 on: false,
                 reason: None,
             },
             ModLogEvent::ServerDeafen {
                 target: T,
-                actor: A,
+                actor: Actor::person(A),
                 on: true,
                 reason: None,
             },
             ModLogEvent::ServerDeafen {
                 target: T,
-                actor: A,
+                actor: Actor::person(A),
                 on: false,
                 reason: None,
             },
             ModLogEvent::Disconnect {
                 target: T,
                 from: R,
-                by: Attribution::By(A),
+                by: Attribution::By(Actor::person(A)),
             },
             ModLogEvent::Move {
                 target: T,
                 from: R,
                 to: R2,
-                by: Attribution::OneOf(vec![A, T]),
+                by: Attribution::OneOf(vec![Actor::person(A), Actor::person(T)]),
             },
             ModLogEvent::DisconnectBatch {
-                actors: vec![A],
+                actors: vec![Actor::person(A)],
                 count: 2,
                 among: ids(3),
             },
@@ -411,6 +445,56 @@ mod tests {
         }
     }
 
+    /// Another bot's action is logged like a moderator's, with a mark after
+    /// its mention; a person's carries none.
+    #[test]
+    fn a_bot_actor_is_marked_as_a_bot() {
+        let bot = Actor::bot(A);
+        let marked = format!("<@22> {MODLOG_BOT_MARK}");
+        for e in [
+            ModLogEvent::ServerMute {
+                target: T,
+                actor: bot,
+                on: true,
+                reason: None,
+            },
+            ModLogEvent::ServerDeafen {
+                target: T,
+                actor: bot,
+                on: false,
+                reason: None,
+            },
+            ModLogEvent::Disconnect {
+                target: T,
+                from: R,
+                by: Attribution::By(bot),
+            },
+            ModLogEvent::Move {
+                target: T,
+                from: R,
+                to: R2,
+                by: Attribution::OneOf(vec![Actor::person(UserId::new(5)), bot]),
+            },
+            ModLogEvent::DisconnectBatch {
+                actors: vec![bot],
+                count: 1,
+                among: vec![T],
+            },
+        ] {
+            let j = json(&render(&e, &cx()));
+            let d = j["description"].as_str().unwrap();
+            assert!(d.contains(&marked), "{e}: {d}");
+        }
+        let person = ModLogEvent::ServerMute {
+            target: T,
+            actor: Actor::person(A),
+            on: true,
+            reason: None,
+        };
+        let j = json(&render(&person, &cx()));
+        assert_eq!(j["description"], format!("<@22> {MODLOG_MUTED} <@11>"));
+    }
+
     #[test]
     fn room_kick_shows_actor_target_room_and_reason() {
         let r = render(
@@ -436,7 +520,11 @@ mod tests {
             &ModLogEvent::Disconnect {
                 target: T,
                 from: R,
-                by: Attribution::OneOf(vec![UserId::new(5), UserId::new(6), UserId::new(7)]),
+                by: Attribution::OneOf(vec![
+                    Actor::person(UserId::new(5)),
+                    Actor::person(UserId::new(6)),
+                    Actor::person(UserId::new(7)),
+                ]),
             },
             &cx(),
         );
@@ -450,7 +538,7 @@ mod tests {
         let d = |n| {
             let r = render(
                 &ModLogEvent::DisconnectBatch {
-                    actors: vec![A],
+                    actors: vec![Actor::person(A)],
                     count: 2,
                     among: ids(n),
                 },
@@ -471,7 +559,7 @@ mod tests {
     fn a_batch_by_several_actors_is_hedged() {
         let r = render(
             &ModLogEvent::DisconnectBatch {
-                actors: vec![UserId::new(5), UserId::new(6)],
+                actors: vec![Actor::person(UserId::new(5)), Actor::person(UserId::new(6))],
                 count: 2,
                 among: ids(3),
             },
@@ -518,7 +606,7 @@ mod tests {
         let long = render(
             &ModLogEvent::ServerMute {
                 target: T,
-                actor: A,
+                actor: Actor::person(A),
                 on: true,
                 reason: Some("x".repeat(2000)),
             },

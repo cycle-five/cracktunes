@@ -812,6 +812,9 @@ pub const MODLOG_AUDIT_FOOTER: &str = "Matched from Discord's audit log by timin
 pub const MODLOG_REASON_FIELD: &str = "Reason";
 pub const MODLOG_BY: &str = "by";
 pub const MODLOG_BY_ONE_OF: &str = "by one of";
+/// After a bot account's mention: its action is logged like a moderator's,
+/// marked so readers can tell automation from a person.
+pub const MODLOG_BOT_MARK: &str = "(bot)";
 pub const MODLOG_FROM: &str = "from";
 pub const MODLOG_TO: &str = "to";
 pub const MODLOG_IN: &str = "in";

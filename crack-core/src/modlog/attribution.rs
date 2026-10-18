@@ -1,7 +1,7 @@
 //! Who forced a voice disconnect or move: audit count deltas matched to the
 //! leaves and moves the bot saw. Pure. When it cannot tell, it says so
 //! ([`Attribution::OneOf`], [`ModLogEvent::DisconnectBatch`]) or says nothing.
-use super::event::{Attribution, ModLogEvent};
+use super::event::{Actor, Attribution, ModLogEvent};
 use serenity::all::{ChannelId, UserId};
 use std::collections::{BTreeMap, HashMap};
 
@@ -159,11 +159,13 @@ fn dedupe(rows: &[AuditRow]) -> Vec<&AuditRow> {
     out
 }
 
-/// A row that counts: with an actor that is no bot account (CrackTunes or
-/// any other: M24), on a seeded snapshot, with a positive delta.
+/// A row that counts: with an actor other than CrackTunes, on a seeded
+/// snapshot, with a positive delta. Another bot's row counts like a
+/// moderator's and is credited as a bot's (owner, 2026-10-18; this reverses
+/// M24, which never named them).
 struct Live<'a> {
     row: &'a AuditRow,
-    actor: UserId,
+    actor: Actor,
     delta: u32,
 }
 
@@ -181,7 +183,7 @@ fn pair_key(r: &AuditRow, target: UserId) -> (UserId, AuditKind, Option<ChannelI
 /// changes count towards L but are never named.
 fn decide(
     changes: &[&Change],
-    units: &BTreeMap<UserId, u64>,
+    units: &BTreeMap<Actor, u64>,
     batch_ok: bool,
     bot: UserId,
 ) -> Vec<ModLogEvent> {
@@ -197,7 +199,7 @@ fn decide(
         tracing::debug!("modlog: {d} audit units for {l} changes: not attributed");
         return Vec::new();
     }
-    let actors: Vec<UserId> = units.keys().copied().collect();
+    let actors: Vec<Actor> = units.keys().copied().collect();
     if d < l {
         if !batch_ok {
             tracing::debug!("modlog: {d} audit units for {l} moves: not attributed");
@@ -281,9 +283,14 @@ pub fn attribute(
     let mut live: Vec<Live> = rows
         .iter()
         .filter_map(|r| {
-            // Never a candidate: CrackTunes' own rows, and any other bot's
-            // (M24). Their units are spent all the same (`advance`).
-            let actor = r.actor.filter(|a| *a != bot && !r.actor_is_bot)?;
+            // Never a candidate: CrackTunes' own rows. Their units are spent
+            // all the same (`advance`). Another bot's rows are candidates,
+            // marked as a bot's.
+            let id = r.actor.filter(|a| *a != bot)?;
+            let actor = Actor {
+                id,
+                bot: r.actor_is_bot,
+            };
             let delta = delta_of(r);
             (delta > 0).then_some(Live {
                 row: r,
@@ -352,7 +359,7 @@ pub fn attribute(
         .filter(|(i, c)| !paired[*i] && c.kind() == AuditKind::Disconnect)
         .map(|(_, c)| *c)
         .collect();
-    let mut units: BTreeMap<UserId, u64> = BTreeMap::new();
+    let mut units: BTreeMap<Actor, u64> = BTreeMap::new();
     for l in &live {
         if l.row.target.is_none() && l.row.kind == AuditKind::Disconnect {
             let u = units.entry(l.actor).or_default();
@@ -369,7 +376,7 @@ pub fn attribute(
         }
     }
     for (dest, group) in &by_dest {
-        let mut units: BTreeMap<UserId, u64> = BTreeMap::new();
+        let mut units: BTreeMap<Actor, u64> = BTreeMap::new();
         for l in &live {
             if l.row.target.is_none()
                 && l.row.kind == AuditKind::Move
@@ -475,7 +482,7 @@ mod tests {
     fn one_actor_one_leave_is_by() {
         let snap = seeded(&[(1, 3)]);
         let out = attribute(&snap, &[dc(1, M1, 4)], &[left(T1)], BOT);
-        assert_eq!(out, vec![disc(T1, Attribution::By(M1))]);
+        assert_eq!(out, vec![disc(T1, Attribution::By(Actor::person(M1)))]);
     }
 
     #[test]
@@ -483,7 +490,7 @@ mod tests {
         let snap = seeded(&[(1, 1), (2, 1)]);
         let rows = [dc(2, M2, 2), dc(1, M1, 2)];
         let out = attribute(&snap, &rows, &[left(T2), left(T1)], BOT);
-        let both = Attribution::OneOf(vec![M1, M2]);
+        let both = Attribution::OneOf(vec![Actor::person(M1), Actor::person(M2)]);
         assert_eq!(
             out,
             vec![disc(T1, both.clone()), disc(T2, both)],
@@ -498,7 +505,7 @@ mod tests {
         assert_eq!(
             out,
             vec![ModLogEvent::DisconnectBatch {
-                actors: vec![M1],
+                actors: vec![Actor::person(M1)],
                 count: 2,
                 among: vec![T1, T2, T3],
             }]
@@ -526,7 +533,11 @@ mod tests {
             dc(3, M2, 1),
         ];
         let out = attribute(&snap, &rows, &[left(T1)], BOT);
-        assert_eq!(out, vec![disc(T1, Attribution::By(M2))], "only M2 counts");
+        assert_eq!(
+            out,
+            vec![disc(T1, Attribution::By(Actor::person(M2)))],
+            "only M2 counts"
+        );
     }
 
     #[test]
@@ -542,7 +553,10 @@ mod tests {
         let out = attribute(&snap, &rows, &[left(T1), left(T2)], BOT);
         assert_eq!(
             out,
-            vec![disc(T2, Attribution::By(M1)), disc(T1, Attribution::By(M2)),],
+            vec![
+                disc(T2, Attribution::By(Actor::person(M1))),
+                disc(T1, Attribution::By(Actor::person(M2))),
+            ],
             "T2 pairs to M1 exactly; the one unit left explains T1"
         );
     }
@@ -555,8 +569,8 @@ mod tests {
         assert_eq!(
             out,
             vec![
-                mov(T1, C2, Attribution::By(M1)),
-                mov(T2, C3, Attribution::By(M2)),
+                mov(T1, C2, Attribution::By(Actor::person(M1))),
+                mov(T2, C3, Attribution::By(Actor::person(M2))),
             ]
         );
     }
@@ -585,7 +599,7 @@ mod tests {
         let snap = seeded(&[(1, 9)]);
         let rows = [dc(1, M1, 9), dc(2, M2, 2)];
         let out = attribute(&snap, &rows, &[left(T1), left(T2)], BOT);
-        let m2 = Attribution::By(M2);
+        let m2 = Attribution::By(Actor::person(M2));
         assert_eq!(out, vec![disc(T1, m2.clone()), disc(T2, m2)]);
     }
 
@@ -658,7 +672,7 @@ mod tests {
                 target: T1,
                 from: C3,
                 to: C2,
-                by: Attribution::By(M1),
+                by: Attribution::By(Actor::person(M1)),
             }]
         );
     }
@@ -699,14 +713,14 @@ mod tests {
             from: C1,
         };
         let out = attribute(&snap, &[dc(1, M1, 2)], &[bot_left.clone(), left(T1)], BOT);
-        assert_eq!(out, vec![disc(T1, Attribution::By(M1))]);
+        assert_eq!(out, vec![disc(T1, Attribution::By(Actor::person(M1)))]);
         let out = attribute(&snap, &[dc(1, M1, 1)], &[bot_left.clone(), left(T1)], BOT);
         assert!(out.is_empty(), "the one unit may be the bot's: {out:?}");
         let out = attribute(&snap, &[dc(1, M1, 2)], &[bot_left, left(T1), left(T2)], BOT);
         assert_eq!(
             out,
             vec![ModLogEvent::DisconnectBatch {
-                actors: vec![M1],
+                actors: vec![Actor::person(M1)],
                 count: 1,
                 among: vec![T1, T2],
             }],
@@ -721,7 +735,7 @@ mod tests {
         assert_eq!(
             out,
             vec![ModLogEvent::DisconnectBatch {
-                actors: vec![M1],
+                actors: vec![Actor::person(M1)],
                 count: 1,
                 among: vec![T1, T2],
             }]
@@ -762,11 +776,11 @@ mod tests {
             out,
             vec![
                 ModLogEvent::DisconnectBatch {
-                    actors: vec![M2],
+                    actors: vec![Actor::person(M2)],
                     count: 1,
                     among: vec![T2, T3],
                 },
-                mov(T1, C2, Attribution::By(M1)),
+                mov(T1, C2, Attribution::By(Actor::person(M1))),
             ]
         );
     }
@@ -777,7 +791,7 @@ mod tests {
         snap.moves.seeded = false;
         let rows = [dc(1, M1, 1), mv(2, M2, 1, C2)];
         let out = attribute(&snap, &rows, &[left(T1), moved(T2, C2)], BOT);
-        assert_eq!(out, vec![disc(T1, Attribution::By(M1))]);
+        assert_eq!(out, vec![disc(T1, Attribution::By(Actor::person(M1)))]);
     }
 
     #[test]
@@ -813,7 +827,7 @@ mod tests {
         assert_eq!(
             out,
             vec![ModLogEvent::DisconnectBatch {
-                actors: vec![M1],
+                actors: vec![Actor::person(M1)],
                 count: 1,
                 among: vec![T1, T2, T3],
             }]
@@ -895,7 +909,7 @@ mod tests {
         assert_eq!(
             out,
             vec![ModLogEvent::DisconnectBatch {
-                actors: vec![M1],
+                actors: vec![Actor::person(M1)],
                 count: 1,
                 among: vec![T1, T2],
             }],
@@ -906,7 +920,7 @@ mod tests {
     #[test]
     fn a_repeated_row_id_keeps_its_highest_count() {
         let snap = seeded(&[]);
-        let by_m1 = Attribution::By(M1);
+        let by_m1 = Attribution::By(Actor::person(M1));
         let want = vec![disc(T1, by_m1.clone()), disc(T2, by_m1)];
         for rows in [[dc(1, M1, 1), dc(1, M1, 2)], [dc(1, M1, 2), dc(1, M1, 1)]] {
             let out = attribute(&snap, &rows, &[left(T1), left(T2)], BOT);
@@ -925,32 +939,38 @@ mod tests {
         }
     }
 
-    /// M24: another bot (a temp-voice bot's hub moves, say) is no moderator.
+    /// Owner, 2026-10-18 (reverses M24): another bot's disconnects and moves
+    /// are attributed like a moderator's, by the same rules, and credited as
+    /// a bot's. CrackTunes' own rows are still never credited.
     #[test]
-    fn rows_by_another_bot_are_never_candidates() {
-        let mut snaps = seeded(&[]);
+    fn rows_by_another_bot_are_credited_as_a_bot() {
+        let snaps = seeded(&[]);
+        let other = Actor::bot(OTHER_BOT);
         let bot_dc = by_bot(dc(1, M1, 1));
         let out = attribute(&snaps, std::slice::from_ref(&bot_dc), &[left(T1)], BOT);
-        assert!(out.is_empty(), "no unit to explain T1: {out:?}");
+        assert_eq!(out, vec![disc(T1, Attribution::By(other))]);
         let out = attribute(&snaps, &[by_bot(mv(2, M1, 1, C2))], &[moved(T1, C2)], BOT);
-        assert!(out.is_empty(), "{out:?}");
+        assert_eq!(out, vec![mov(T1, C2, Attribution::By(other))]);
         let out = attribute(&snaps, &[targeted(bot_dc.clone(), T1)], &[left(T1)], BOT);
-        assert!(out.is_empty(), "nor paired: {out:?}");
-        // Its unit counts for nobody, so one moderator unit among two leaves
-        // is a hedged batch, never a By.
-        let rows = [bot_dc.clone(), dc(3, M2, 1)];
-        let out = attribute(&snaps, &rows, &[left(T1), left(T2)], BOT);
         assert_eq!(
             out,
-            vec![ModLogEvent::DisconnectBatch {
-                actors: vec![M2],
-                count: 1,
-                among: vec![T1, T2],
-            }]
+            vec![disc(T1, Attribution::By(other))],
+            "paired exactly"
         );
-        // And it is consumed: the snapshot moves past it.
-        advance(&mut snaps, &[AuditKind::Disconnect], &[bot_dc]);
-        assert_eq!(snaps.disconnect.counts[&1], 1);
+        // A bot and a moderator with a unit each, and two leaves: the same
+        // hedge as two moderators.
+        let rows = [bot_dc, dc(3, M2, 1)];
+        let out = attribute(&snaps, &rows, &[left(T1), left(T2)], BOT);
+        let both = Attribution::OneOf(vec![Actor::person(M2), other]);
+        assert_eq!(out, vec![disc(T1, both.clone()), disc(T2, both)]);
+        // CrackTunes itself is a bot too, and is still never credited.
+        let own = AuditRow {
+            actor: Some(BOT),
+            actor_is_bot: true,
+            ..dc(4, M1, 1)
+        };
+        let out = attribute(&snaps, &[own], &[left(T1)], BOT);
+        assert!(out.is_empty(), "{out:?}");
     }
 
     /// M17: two rows naming one target compete for its change, so neither
@@ -986,7 +1006,7 @@ mod tests {
             targeted(mv(3, M2, 1, C2), T1),
         ];
         let out = attribute(&seeded(&[(3, 1)]), &rows, &[moved(T1, C2)], BOT);
-        assert_eq!(out, vec![mov(T1, C2, Attribution::By(M1))]);
+        assert_eq!(out, vec![mov(T1, C2, Attribution::By(Actor::person(M1)))]);
     }
 
     #[test]
@@ -997,8 +1017,8 @@ mod tests {
         assert_eq!(
             out,
             vec![
-                disc(T1, Attribution::By(M1)),
-                mov(T2, C2, Attribution::By(M2)),
+                disc(T1, Attribution::By(Actor::person(M1))),
+                mov(T2, C2, Attribution::By(Actor::person(M2))),
             ]
         );
     }

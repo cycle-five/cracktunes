@@ -51,8 +51,9 @@
   moves it cannot tell apart posts nothing, and when it cannot tell it posts
   nothing); and who kicked, muted or let back in whom in a voice room, with the
   kick reason (still never sent to the member). Muting yourself is never logged,
-  nor is anything done to CrackTunes' own voice connection, nor a disconnect or
-  move made by another bot. While other voice activity overlaps the moment
+  nor is anything done to CrackTunes' own voice connection. Another bot's mutes,
+  deafens, disconnects and moves are logged like a moderator's, with "(bot)"
+  after its name. While other voice activity overlaps the moment
   CrackTunes reads the audit log it matches nothing of that kind, so at busy
   moments some forced disconnects and moves go unlogged. Someone who leaves on
   their own isn't posted for it, but if it happens within seconds of a forced

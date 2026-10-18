@@ -637,6 +637,7 @@ pub async fn seed(data: &Data, audit: &dyn AuditSource, guild: GuildId) {
 mod tests {
     use super::*;
     use crate::modlog::attribution::Snapshot;
+    use crate::modlog::event::Actor;
     use crate::modlog::event::Attribution::{self, By};
     use crate::modlog::settings::ModLogSettings;
     use crate::modlog::test_support::{FakeAudit, FakeSink};
@@ -869,7 +870,10 @@ mod tests {
         after(ms(1)).await;
         assert_eq!(
             w.sink.posted(),
-            vec![(G, disc(T1, By(M1))), (G, disc(T2, By(M1)))]
+            vec![
+                (G, disc(T1, By(Actor::person(M1)))),
+                (G, disc(T2, By(Actor::person(M1))))
+            ]
         );
         after(secs(10)).await;
         assert_eq!(w.fetches(), s0 + 1, "the burst was fetched once");
@@ -923,7 +927,7 @@ mod tests {
         w.dc(vec![dc(5, M1, 4)]);
         w.change(left(T1));
         run(ROUND).await;
-        assert_eq!(w.sink.events(), vec![disc(T1, By(M1))]);
+        assert_eq!(w.sink.events(), vec![disc(T1, By(Actor::person(M1)))]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -938,7 +942,7 @@ mod tests {
         w.dc(vec![dc(5, M1, 4)]);
         w.change(left(T2));
         run(ROUND).await;
-        assert_eq!(w.sink.events(), vec![disc(T2, By(M1))]);
+        assert_eq!(w.sink.events(), vec![disc(T2, By(Actor::person(M1)))]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1049,7 +1053,7 @@ mod tests {
         w.dc(vec![dc(1, M1, 2)]);
         w.change(left(T3));
         run(ROUND).await;
-        assert_eq!(w.sink.events(), vec![disc(T3, By(M1))]);
+        assert_eq!(w.sink.events(), vec![disc(T3, By(Actor::person(M1)))]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1065,7 +1069,7 @@ mod tests {
         run(ROUND).await;
         assert_eq!(
             w.sink.events(),
-            vec![mov(T2, C2, By(M2))],
+            vec![mov(T2, C2, By(Actor::person(M2)))],
             "the move is attributed; the leave is dropped"
         );
         assert_eq!(w.reseed(), [Disconnect]);
@@ -1079,7 +1083,7 @@ mod tests {
         w.dc(vec![dc(1, M1, 2)]);
         w.change(left(T4));
         run(ROUND).await;
-        assert_eq!(w.sink.events()[1..], [disc(T4, By(M1))]);
+        assert_eq!(w.sink.events()[1..], [disc(T4, By(Actor::person(M1)))]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1095,7 +1099,7 @@ mod tests {
         w.change(moved(T2, C2));
         run(ROUND).await;
         assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
-        assert_eq!(w.sink.events(), vec![mov(T2, C2, By(M2))]);
+        assert_eq!(w.sink.events(), vec![mov(T2, C2, By(Actor::person(M2)))]);
         assert!(w.reseed().is_empty());
     }
 
@@ -1287,12 +1291,15 @@ mod tests {
         assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
         assert_eq!(
             w.sink.events(),
-            vec![disc(T1, By(M1)), mov(T2, C2, By(M2))],
+            vec![
+                disc(T1, By(Actor::person(M1))),
+                mov(T2, C2, By(Actor::person(M2)))
+            ],
             "T3 is not judged by rows read before it left"
         );
         assert_eq!(w.pending_changes(), vec![left(T3)], "T3 waits");
         run(secs(10)).await;
-        assert_eq!(w.sink.events()[2..], [disc(T3, By(M1))]);
+        assert_eq!(w.sink.events()[2..], [disc(T3, By(Actor::person(M1)))]);
         // T4 leaves on their own: no unit is left over to pin on M1.
         w.change(left(T4));
         run(secs(10)).await;
@@ -1322,7 +1329,7 @@ mod tests {
         after(DECIDE_MARGIN).await; // t = 5.05: decided
         assert_eq!(
             w.sink.events(),
-            vec![mov(T2, C2, By(M2))],
+            vec![mov(T2, C2, By(Actor::person(M2)))],
             "T1 is not matched in a round T3 overlapped"
         );
         assert_eq!(w.pending_changes(), vec![left(T3)], "T1 dropped, T3 waits");
@@ -1334,7 +1341,7 @@ mod tests {
         run(secs(10)).await;
         assert_eq!(
             w.sink.events()[1..],
-            [disc(T3, By(M1))],
+            [disc(T3, By(Actor::person(M1)))],
             "the next round reads T3's unit"
         );
         w.change(left(T4));
@@ -1361,7 +1368,9 @@ mod tests {
             w.change(left(T4));
             run(secs(10)).await;
             let want = if matched {
-                [T1, T2, T3, T4].map(|t| disc(t, By(M1))).to_vec()
+                [T1, T2, T3, T4]
+                    .map(|t| disc(t, By(Actor::person(M1))))
+                    .to_vec()
             } else {
                 Vec::new()
             };
@@ -1384,7 +1393,7 @@ mod tests {
             let want = if held_back {
                 Vec::new()
             } else {
-                vec![disc(T1, By(M1))]
+                vec![disc(T1, By(Actor::person(M1)))]
             };
             assert_eq!(w.sink.events(), want, "T2 stamped at {stamp:?}");
             assert_eq!(w.pending_changes(), vec![left(T2)], "T2 waits either way");
@@ -1426,7 +1435,13 @@ mod tests {
         after(ms(500)).await; // t = 3: T2's debounce
         assert_eq!(w.kinds_since(s0), [Disconnect], "nothing left of the move");
         after(GRACE + DECIDE_MARGIN).await;
-        assert_eq!(w.sink.events(), vec![disc(T2, By(M2)), disc(T4, By(M2))]);
+        assert_eq!(
+            w.sink.events(),
+            vec![
+                disc(T2, By(Actor::person(M2))),
+                disc(T4, By(Actor::person(M2)))
+            ]
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -1451,7 +1466,7 @@ mod tests {
         after(DEBOUNCE).await; // t = 5: retried, read until 6
         after(secs(1)).await;
         after(GRACE + DECIDE_MARGIN).await; // t = 7.05: decided
-        assert_eq!(w.sink.events(), vec![disc(T1, By(M1))]);
+        assert_eq!(w.sink.events(), vec![disc(T1, By(Actor::person(M1)))]);
     }
 
     #[tokio::test(start_paused = true)]
@@ -1643,13 +1658,17 @@ mod tests {
         run(secs(5)).await;
         assert_eq!(
             w.sink.events(),
-            vec![disc(T2, By(M1))],
+            vec![disc(T2, By(Actor::person(M1)))],
             "T2 is matched in the next round, which reads its unit"
         );
         run(secs(3600)).await;
         w.change(left(T3)); // an hour later, T3 leaves on their own
         run(secs(10)).await;
-        assert_eq!(w.sink.events(), vec![disc(T2, By(M1))], "T3 is not named");
+        assert_eq!(
+            w.sink.events(),
+            vec![disc(T2, By(Actor::person(M1)))],
+            "T3 is not named"
+        );
     }
 
     /// E1 (re-review): M1 disconnects T1 while the log is off, and the log
@@ -1814,7 +1833,7 @@ mod tests {
         w.dc(vec![dc(7, M1, 2)]);
         w.change(left(T4));
         run(secs(10)).await;
-        assert_eq!(w.sink.events(), vec![disc(T4, By(M1))]);
+        assert_eq!(w.sink.events(), vec![disc(T4, By(Actor::person(M1)))]);
     }
 
     /// M28a: a seed checks again after its wait. A flush that took the slot
@@ -1857,7 +1876,7 @@ mod tests {
         assert_eq!(w.kinds_since(s0), [Disconnect, Move]);
         run(secs(5)).await;
         assert_eq!(w.audit.most_running(), 1, "never two at once");
-        assert_eq!(w.sink.events(), vec![mov(T2, C2, By(M2))]);
+        assert_eq!(w.sink.events(), vec![mov(T2, C2, By(Actor::person(M2)))]);
     }
 
     fn in_flight(w: &W) -> bool {
@@ -2019,7 +2038,7 @@ mod tests {
         w.dc(vec![dc(7, M1, 1)]);
         w.change(left(T2));
         run(secs(10)).await;
-        assert_eq!(w.sink.events(), vec![disc(T2, By(M1))]);
+        assert_eq!(w.sink.events(), vec![disc(T2, By(Actor::person(M1)))]);
     }
 
     /// P4: a kick mark set while a seed's fetch is in flight survives it
@@ -2076,7 +2095,7 @@ mod tests {
         w.dc(vec![dc(8, M1, 1), dc(7, M1, 1)]);
         w.change(left(T3));
         run(secs(10)).await;
-        assert_eq!(w.sink.events(), vec![disc(T3, By(M1))]);
+        assert_eq!(w.sink.events(), vec![disc(T3, By(Actor::person(M1)))]);
     }
 
     /// A GuildCreate for a server with no batch life changes nothing: no
@@ -2095,7 +2114,7 @@ mod tests {
         w.dc(vec![dc(2, M1, 1), dc(1, M1, 1)]);
         w.change(left(T1));
         run(secs(10)).await;
-        assert_eq!(w.sink.events(), vec![disc(T1, By(M1))]);
+        assert_eq!(w.sink.events(), vec![disc(T1, By(Actor::person(M1)))]);
     }
 
     /// The reconnect's marks are cleared only by a fetch that started at or

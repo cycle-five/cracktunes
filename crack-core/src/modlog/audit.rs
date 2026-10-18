@@ -85,7 +85,7 @@ pub fn row_of(
 
 /// Every entry of `kind` on one page of the audit log as an [`AuditRow`].
 /// Whether an actor is a bot comes from the page's `users`; one not listed
-/// counts as no bot (M24).
+/// is credited as a person, without the bot mark.
 pub fn rows_of(kind: AuditKind, logs: &AuditLogs) -> Vec<AuditRow> {
     let is_bot = |u: UserId| logs.users.get(&u).is_some_and(|user| user.bot());
     logs.entries

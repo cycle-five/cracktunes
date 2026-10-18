@@ -300,13 +300,18 @@ or deafen that CrackTunes applies to itself (it deafens itself when it joins a
 channel) is not logged. A moderator muting CrackTunes is logged, and so is
 CrackTunes muting someone else.
 
+Another bot's moderation is logged the same way, with "(bot)" after its name:
+its mutes and deafens, and its disconnects and moves (a temp-voice bot moving
+people out of its hub, say). The action still happened, and the mark tells you
+which bot to look at next.
+
 ### What it does not log, and why entries say "matched by timing"
 
 Muting or deafening yourself is never logged. Neither is anything done to
 CrackTunes' own voice connection: a moderator disconnecting or moving
 CrackTunes is not logged (a moderator muting or deafening it is, as above).
-Disconnects and moves made by another bot, such as a temp-voice bot moving
-people out of its hub, are never logged either: a bot is not a moderator.
+Nor are CrackTunes' own moves, such as putting someone into the room it just
+made for them; its room kicks are logged, with the kicker and their reason.
 
 A member who leaves or switches channels by themselves isn't posted on their
 own account. If it happens in the same few seconds as a forced disconnect or
