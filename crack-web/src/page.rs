@@ -3,19 +3,24 @@
 //! it is inlined as JSON and drawn by `app.js`, the one renderer.
 
 use crate::{
-    backend::GuildEntry, history::HistoryPage, settings::RoomSettingsView, view::PageState,
+    backend::GuildEntry,
+    history::HistoryPage,
+    settings::{ModLogSettingsView, RoomSettingsView},
+    view::PageState,
 };
 use crack_core::{
     messaging::{
         message::REPO_LINK,
         messages::{
-            DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE, DASH_SETTINGS_ENABLED,
-            DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE, DASH_SETTINGS_HUB, DASH_SETTINGS_LIMIT,
-            DASH_SETTINGS_LINK, DASH_SETTINGS_NO_HUB_OPTION, DASH_SETTINGS_PERMISSIONS,
-            DASH_SETTINGS_PREVIEW, DASH_SETTINGS_SAVE, DASH_SETTINGS_SAVED,
-            DASH_SETTINGS_SAVING_FAILED, DASH_SETTINGS_TEMPLATE, DASH_SETTINGS_TITLE, DASH_SIGN_IN,
-            JOIN_VOICE_FOR_CONTROLS, PATREON_URL, PREMIUM_CONTROLS, PREMIUM_HISTORY,
-            ROOM_STATUS_NO_HUB_YET, ROOM_STATUS_READY, ROOM_STATUS_UNKNOWN,
+            DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE, DASH_MODLOG_CHANNEL, DASH_MODLOG_ENABLED,
+            DASH_MODLOG_GUIDE, DASH_MODLOG_NO_CHANNEL_OPTION, DASH_MODLOG_NO_CHANNEL_YET,
+            DASH_MODLOG_TITLE, DASH_SETTINGS_ENABLED, DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE,
+            DASH_SETTINGS_HUB, DASH_SETTINGS_LIMIT, DASH_SETTINGS_LINK,
+            DASH_SETTINGS_NO_HUB_OPTION, DASH_SETTINGS_PERMISSIONS, DASH_SETTINGS_PREVIEW,
+            DASH_SETTINGS_SAVE, DASH_SETTINGS_SAVED, DASH_SETTINGS_SAVING_FAILED,
+            DASH_SETTINGS_TEMPLATE, DASH_SETTINGS_TITLE, DASH_SIGN_IN, JOIN_VOICE_FOR_CONTROLS,
+            MODLOG_STATUS_READY, MODLOG_STATUS_UNKNOWN, PATREON_URL, PREMIUM_CONTROLS,
+            PREMIUM_HISTORY, ROOM_STATUS_NO_HUB_YET, ROOM_STATUS_READY, ROOM_STATUS_UNKNOWN,
         },
     },
     rooms::settings::{render_room_name, GRACE_CHOICES, ROOM_NAME_MAX},
@@ -227,7 +232,43 @@ pub fn history_page(guild_name: &str, guild_id: GuildId, page: &HistoryPage) -> 
 
 /// `GET /g/{id}/settings`: every rooms option, server-rendered with escaped
 /// values, and the permissions CrackTunes is missing. `settings.js` saves it.
-pub fn settings_page(guild_name: &str, guild_id: GuildId, view: &RoomSettingsView) -> String {
+pub fn settings_page(
+    guild_name: &str,
+    guild_id: GuildId,
+    view: &RoomSettingsView,
+    modlog: &ModLogSettingsView,
+) -> String {
+    let log_channels: String = modlog
+        .text_channels
+        .iter()
+        .map(|c| {
+            format!(
+                "<option value=\"{id}\"{sel}>{name}</option>",
+                id = esc(&c.id),
+                sel = if modlog.channel.as_deref() == Some(c.id.as_str()) {
+                    " selected"
+                } else {
+                    ""
+                },
+                name = esc(&c.name),
+            )
+        })
+        .collect();
+    let log_findings = match &modlog.findings {
+        None if modlog.channel.is_none() => {
+            format!("<p>{}</p>", esc(DASH_MODLOG_NO_CHANNEL_YET))
+        },
+        None => format!("<p>{}</p>", esc(MODLOG_STATUS_UNKNOWN)),
+        Some(list) if list.is_empty() => format!("<p>{}</p>", esc(MODLOG_STATUS_READY)),
+        Some(list) => {
+            let li: String = list
+                .iter()
+                .map(|f| format!("<li>{}</li>", esc(f)))
+                .collect();
+            format!("<ul>{li}</ul>")
+        },
+    };
+    let log_visible = modlog.visibility.as_deref().unwrap_or_default();
     let hubs: String = view
         .voice_channels
         .iter()
@@ -286,7 +327,17 @@ data-offline=\"{offline}\">\
 <button type=\"submit\" id=\"s-save\">{save}</button>\
 <p id=\"s-note\" role=\"status\" hidden></p></form>\
 <h2>{permissions}</h2><div id=\"s-findings\" data-ready=\"{ready}\" data-no-hub=\"{no_hub}\" \
-data-unknown=\"{unknown}\">{findings}</div></section>",
+data-unknown=\"{unknown}\">{findings}</div>\
+<h2>{log_title}</h2>\
+<p class=\"links\"><a href=\"{log_guide}\">{log_guide_text}</a></p>\
+<form id=\"modlog-form\" autocomplete=\"off\">\
+<label class=\"check\"><input type=\"checkbox\" id=\"m-enabled\"{log_on}> {log_on_text}</label>\
+<label>{log_channel_text} <select id=\"m-channel\"><option value=\"\">{log_none}</option>{log_channels}</select></label>\
+<p id=\"m-visible\">{log_visible}</p>\
+<button type=\"submit\" id=\"m-save\">{save}</button>\
+<p id=\"m-note\" role=\"status\" hidden></p></form>\
+<h3>{permissions}</h3><div id=\"m-findings\" data-ready=\"{log_ready}\" data-no-channel=\"{log_no_channel}\" \
+data-unknown=\"{log_unknown}\">{log_findings}</div></section>",
             saved = esc(DASH_SETTINGS_SAVED),
             offline = esc(DASH_SETTINGS_SAVING_FAILED),
             title = esc(DASH_SETTINGS_TITLE),
@@ -310,6 +361,19 @@ data-unknown=\"{unknown}\">{findings}</div></section>",
             ready = esc(ROOM_STATUS_READY),
             no_hub = esc(ROOM_STATUS_NO_HUB_YET),
             unknown = esc(ROOM_STATUS_UNKNOWN),
+            log_title = esc(DASH_MODLOG_TITLE),
+            log_guide = esc(&format!(
+                "{REPO_LINK}blob/master/docs/rooms-and-mod-log.md#mod-log"
+            )),
+            log_guide_text = esc(DASH_MODLOG_GUIDE),
+            log_on = if modlog.enabled { " checked" } else { "" },
+            log_on_text = esc(DASH_MODLOG_ENABLED),
+            log_channel_text = esc(DASH_MODLOG_CHANNEL),
+            log_none = esc(DASH_MODLOG_NO_CHANNEL_OPTION),
+            log_visible = esc(log_visible),
+            log_ready = esc(MODLOG_STATUS_READY),
+            log_no_channel = esc(DASH_MODLOG_NO_CHANNEL_YET),
+            log_unknown = esc(MODLOG_STATUS_UNKNOWN),
         ),
         SETTINGS_SCRIPTS,
     )

@@ -1,6 +1,7 @@
 pub mod gp;
 pub mod guild;
 pub mod metadata;
+pub mod modlog;
 pub mod musicreco;
 pub mod play_history;
 pub mod play_log;

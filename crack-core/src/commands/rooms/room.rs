@@ -74,7 +74,7 @@ async fn perform(
             .await
             .ok_or(RoomRefusal::DiscordFailed)?;
     }
-    let live = Live::of(sctx, guild);
+    let live = Live::of(sctx, &data, guild);
     act(
         &live.cx(&data),
         &facts,

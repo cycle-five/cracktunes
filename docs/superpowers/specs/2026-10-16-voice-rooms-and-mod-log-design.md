@@ -426,10 +426,57 @@ holds:
     - D < L: one `DisconnectBatch` entry;
     - D > L: as D = L, the excess logged at debug.
   - Moves are matched per destination channel (`options.channel_id`).
+  - **Amended during the build (rulings M1, M7, M8):** a row that names a
+    target never counts toward D. It pairs only with that target's change of the
+    same kind (moves: same destination), and only when the entry is new since the
+    snapshot, since an aggregated entry may carry a stale target. D > L logs
+    nothing, because a surplus means the batch isn't self-contained. Moves with
+    D < L log nothing. CrackTunes' own leaves and moves are fed in so their
+    audit units are consumed, but they are never logged.
+  - **Further amendments (M11–M14):** a leaves batch claims only
+    D − (CrackTunes' own changes + repeated targets), and logs nothing when that is 0.
+    A batch with several moderators reads "One or more of …". A targeted row pairs
+    only when it is new, has count 1 and exactly one candidate change. Rows are
+    deduplicated by (kind, id). A stored count never goes down.
+  - **Final-review amendments (M17, M24, M25):** Discord reads its audit log
+    somewhere inside the request, and a voice event can land a little before
+    its audit entry is written or a little after the REST answer. So after each
+    kind's fetch returns the bot waits G = 1 s, and a change of that kind that
+    arrived from ε = 250 ms before the fetch started until G after it returned
+    is ambiguous. If a kind has any ambiguous change, that round attributes
+    nothing of the kind, absorbs its rows into the snapshot, drops its earlier
+    changes and keeps the ambiguous ones for the next round. A seed keeps the
+    changes from ε before it on. Rows by any bot account, not only
+    CrackTunes, are consumed but never candidates (reversed for other bots by
+    the owner on 2026-10-18; see below). When more than one changed
+    row names the same target (and kind, and for moves destination), none of
+    them pairs.
+  - **Owner decision, 2026-10-18 (reverses M24 for other bots):** the log
+    exists to trace actions, and another bot's action is still one: it says
+    which bot to look at next. Another bot's disconnect and move rows are
+    candidates like a moderator's, under the same rules (exact pairs, groups,
+    the D and L hedges, the ambiguity window), and every event it gets,
+    mutes and deafens included, marks it with "(bot)" after its mention.
+    CrackTunes' own rows stay consumed and never candidates: putting a member
+    into their room is not moderation, and room kicks are logged directly.
+    Mute and deafen entries arrive without the audit log's `users` list, so
+    the flag comes from the cached member, else one bounded user fetch;
+    unknown counts as a person, which only drops the mark.
+  - **Re-review amendments (M28):** a seed reads ε after it is called, since
+    every caller seeds as recording (re)starts and a change dropped just
+    before then may have its unit written up to ε later. The decision runs
+    50 ms after the window closes (G after the return), so a change stamped
+    as it closes has taken the batch lock. When a room kick's disconnect
+    fails and its marker was already taken by a leave, that leave was not
+    the bot's: the disconnects are re-read and absorbed before anything of
+    them is attributed again. Only a read that started ε after the mark
+    clears it, and a mark set while a round runs holds that round back.
 - Cost guard: only for guilds with the mod log enabled, one fetch in flight
   per guild, and a 403 marks the guild "missing View Audit Log". That shows on
   `/modlog status` and the dashboard, and suspends fetches until the settings
-  are saved again or 10 minutes pass.
+  are saved again or 10 minutes pass. A save resumes fetching (lifts the
+  suspension and seeds) at most once per guild per minute, and dashboard
+  settings saves share the controls' per-user rate limit (M26).
 
 ### 2.4 Permissions
 
@@ -478,6 +525,10 @@ dashboard Settings page links to it.
 | `MEMBER_DISCONNECT`/`MEMBER_MOVE` entries lack a target and aggregate | Attribution already pairs exactly when a target is present |
 | Re-PUTting a role overwrite whose baseline bits the bot lacks is refused | The preflight warning is then just conservative |
 | A modal can hold a string select (`CreateLabel::select_menu`) on desktop and mobile | Kick becomes two steps: a select message, then a reason-only modal |
+| An aggregated `MEMBER_DISCONNECT`/`MEMBER_MOVE` entry keeps its id when its count rises | A re-created entry counts in full; D > L logs nothing, but D = L could misattribute |
+| Moves to different channels never share one aggregated `MEMBER_MOVE` entry | A stale `channel_id` would send units to the wrong destination group |
+| The audit write for a forced disconnect or move lands within ε (250 ms) of the gateway voice event | A change taken just before a fetch, whose unit is written after the read, leaves that unit for a later round, where it can be credited to someone who left on their own. Widen `batch::SKEW` |
+| The gateway voice event lags the REST response by less than G (1 s) | A unit read before its change arrives counts against the round's other changes: with one voluntary leaver in the round, that leaver is credited to the moderator. Widen `batch::GRACE`. Each round logs every change's arrival against its fetch at debug, to measure this |
 
 ## 6. Testing
 

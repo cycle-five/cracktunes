@@ -310,6 +310,8 @@ pub enum CrackedMessage {
     QueueResumed,
     /// Every voice-room message, rendered by `rooms::card::render_card`.
     Room(Box<crate::rooms::card::RoomCard>),
+    /// A mod log entry, rendered by `modlog::event::render`.
+    ModLog(Box<crate::modlog::event::ModLogEvent>),
 }
 
 impl CrackedMessage {
@@ -671,6 +673,7 @@ impl Display for CrackedMessage {
             Self::NowPlayingButtonsOff => f.write_str(crate::messaging::messages::NP_BUTTONS_OFF),
             Self::QueueResumed => f.write_str(crate::messaging::messages::QUEUE_RESUMED),
             Self::Room(card) => write!(f, "{card}"),
+            Self::ModLog(event) => write!(f, "{event}"),
         }
     }
 }

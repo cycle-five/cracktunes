@@ -8,6 +8,7 @@ pub mod music_utils;
 pub mod osint;
 pub mod permissions;
 //pub mod playlist;
+pub mod modlog;
 pub mod premium;
 pub mod register;
 pub mod rooms;
@@ -66,6 +67,7 @@ pub fn all_commands() -> Vec<crate::Command> {
     .chain(music::gp_commands())
     .chain(utility::utility_commands())
     .chain(rooms::commands())
+    .chain(modlog::commands())
     //.chain(settings::commands())
     //.chain(admin::commands())
     //.chain(playlist::commands())

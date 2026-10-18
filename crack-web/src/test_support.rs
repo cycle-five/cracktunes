@@ -8,7 +8,10 @@ use crate::{
         SavedTrack, Source, SourceResult, SourceSet,
     },
     routes::{router, WebState},
-    settings::{RoomSettingsForm, RoomSettingsView, SaveRefused},
+    settings::{
+        ModLogSaveRefused, ModLogSettingsForm, ModLogSettingsView, RoomSettingsForm,
+        RoomSettingsView, SaveRefused,
+    },
     view::{PlanView, QueueView, TrackView},
     watch::ViewSource,
 };
@@ -81,6 +84,11 @@ pub struct FakeBackend {
     pub save_result: Mutex<Result<(), SaveRefused>>,
     /// Every settings save the routes asked for: (guild, user, form).
     pub saves: Mutex<Vec<(GuildId, UserId, RoomSettingsForm)>>,
+    /// What `mod_log_settings` answers.
+    pub modlog_view: Mutex<ModLogSettingsView>,
+    pub modlog_save_result: Mutex<Result<(), ModLogSaveRefused>>,
+    /// Every mod log save the routes asked for: (guild, user, form).
+    pub modlog_saves: Mutex<Vec<(GuildId, UserId, ModLogSettingsForm)>>,
 }
 
 impl FakeBackend {
@@ -120,6 +128,15 @@ impl FakeBackend {
             }),
             save_result: Mutex::new(Ok(())),
             saves: Mutex::new(Vec::new()),
+            modlog_view: Mutex::new(ModLogSettingsView {
+                enabled: false,
+                channel: None,
+                text_channels: Vec::new(),
+                findings: None,
+                visibility: None,
+            }),
+            modlog_save_result: Mutex::new(Ok(())),
+            modlog_saves: Mutex::new(Vec::new()),
             plan: Mutex::new(PlanView::Premium),
             control_result: Mutex::new(Ok(())),
             controls: Mutex::new(Vec::new()),
@@ -281,6 +298,21 @@ impl Backend for FakeBackend {
         self.saves.lock().unwrap().push((g, user, f));
         (*self.save_result.lock().unwrap())?;
         Ok(self.room_view.lock().unwrap().clone())
+    }
+
+    async fn mod_log_settings(&self, _g: GuildId) -> ModLogSettingsView {
+        self.modlog_view.lock().unwrap().clone()
+    }
+
+    async fn save_mod_log_settings(
+        &self,
+        user: UserId,
+        g: GuildId,
+        f: ModLogSettingsForm,
+    ) -> Result<ModLogSettingsView, ModLogSaveRefused> {
+        self.modlog_saves.lock().unwrap().push((g, user, f));
+        (*self.modlog_save_result.lock().unwrap())?;
+        Ok(self.modlog_view.lock().unwrap().clone())
     }
 }
 

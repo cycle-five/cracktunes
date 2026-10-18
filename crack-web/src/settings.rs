@@ -5,7 +5,9 @@ use crack_core::{
     messaging::messages::{
         DASH_SETTINGS_BAD_GRACE, DASH_SETTINGS_BAD_LIMIT, DASH_SETTINGS_BAD_TEMPLATE,
         DASH_SETTINGS_NO_DATABASE, DASH_SETTINGS_NO_HUB, DASH_SETTINGS_UNKNOWN_CHANNEL,
+        MODLOG_NO_CHANNEL, MODLOG_NO_DATABASE,
     },
+    modlog::settings::ModLogSettingsError,
     rooms::settings::SettingsError,
 };
 use serde::{Deserialize, Serialize};
@@ -63,6 +65,47 @@ pub fn invalid_message(e: SettingsError) -> &'static str {
         SettingsError::BadTemplate => DASH_SETTINGS_BAD_TEMPLATE,
         SettingsError::BadLimit => DASH_SETTINGS_BAD_LIMIT,
         SettingsError::BadGrace => DASH_SETTINGS_BAD_GRACE,
+    }
+}
+
+/// What the page shows for the mod log. Ids are strings, as for rooms.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModLogSettingsView {
+    pub enabled: bool,
+    pub channel: Option<String>,
+    pub text_channels: Vec<ChannelOption>,
+    /// Rendered permission findings; `None` when they could not be checked
+    /// (or there is no channel yet).
+    pub findings: Option<Vec<String>>,
+    /// "Anyone who can see #channel can read the log."; `None` without a
+    /// channel the cache knows.
+    pub visibility: Option<String>,
+}
+
+/// What the page posts for the mod log.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct ModLogSettingsForm {
+    pub enabled: bool,
+    pub channel: Option<String>,
+}
+
+/// Why a mod log save changed nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModLogSaveRefused {
+    Invalid(ModLogSettingsError),
+    /// The channel is not a text channel of this server.
+    UnknownChannel,
+    /// The database refused the write.
+    Failed,
+    /// The stored settings have not been read yet.
+    NotLoaded,
+}
+
+/// The reason shown for a refused mod log value.
+pub fn modlog_invalid_message(e: ModLogSettingsError) -> &'static str {
+    match e {
+        ModLogSettingsError::NoDatabase => MODLOG_NO_DATABASE,
+        ModLogSettingsError::NoChannel => MODLOG_NO_CHANNEL,
     }
 }
 
