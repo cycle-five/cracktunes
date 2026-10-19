@@ -26,8 +26,16 @@ pub enum CommandRegistration {
 }
 
 /// A value that is neither `global` nor `manual`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct UnknownCommandRegistration(pub String);
+
+/// `expect` at startup prints errors with `Debug`, so `Debug` must carry the
+/// same full message as `Display`.
+impl fmt::Debug for UnknownCommandRegistration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
 
 impl fmt::Display for UnknownCommandRegistration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -228,6 +236,20 @@ mod test {
     #[derive(Deserialize)]
     struct SentCommand {
         name: String,
+        #[serde(default)]
+        default_member_permissions: Option<String>,
+    }
+
+    /// The `default_member_permissions` the named command carries on the wire.
+    fn sent_permissions(cmds: &[serenity::CreateCommand<'_>], name: &str) -> Option<String> {
+        cmds.iter()
+            .map(|c| {
+                let body = serde_json::to_string(c).expect("a command serializes");
+                serde_json::from_str::<SentCommand>(&body).expect("a command body has a name")
+            })
+            .find(|c| c.name == name)
+            .expect("the command was sent")
+            .default_member_permissions
     }
 
     /// The names of the commands as Discord would receive them.
@@ -289,6 +311,36 @@ mod test {
             sent_names(&CommandRegistration::Manual.global_commands(&cmds)),
             ["register"]
         );
+    }
+
+    #[test]
+    fn manual_global_register_is_hidden_from_non_mods() {
+        let cmds = commands_for(CommandRegistration::Manual);
+        assert_eq!(
+            sent_permissions(
+                &CommandRegistration::Manual.global_commands(&cmds),
+                "register"
+            ),
+            Some(Permissions::MANAGE_GUILD.bits().to_string())
+        );
+        let cmds = commands_for(CommandRegistration::Global);
+        assert_eq!(
+            sent_permissions(
+                &CommandRegistration::Global.global_commands(&cmds),
+                "register"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn typo_message_survives_startup_formatting() {
+        let err = "manaul".parse::<CommandRegistration>().unwrap_err();
+        let e: Box<dyn std::error::Error + Send + Sync> = Box::new(err);
+        let shown = format!("{e:?}");
+        for part in ["COMMAND_REGISTRATION", "manaul", "global", "manual"] {
+            assert!(shown.contains(part), "{shown} lacks {part}");
+        }
     }
 
     #[test]

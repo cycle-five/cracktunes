@@ -64,19 +64,6 @@ pub(crate) fn create_application_commands_filtered<U, E>(
     commands_builder
 }
 
-/// Registers the given list of application commands to Discord as global commands.
-///
-/// Thin wrapper around [`create_application_commands`] that funnels the returned builder into
-/// [`serenity::Command::set_global_commands`].
-pub async fn register_globally_cracked<U, E>(
-    http: impl AsRef<serenity::Http>,
-    commands: &[poise::Command<U, E>],
-) -> Result<(), serenity::Error> {
-    let builder = create_application_commands_cracked(commands);
-    serenity::Command::set_global_commands(http.as_ref(), builder.as_slice()).await?;
-    Ok(())
-}
-
 /// One of the four choices `/register` can offer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RegisterButton {
@@ -139,7 +126,27 @@ pub fn offered_buttons(mode: CommandRegistration, is_owner: bool) -> Vec<Registe
     }
 }
 
-/// Spawns four buttons to register or delete application commands globally or in the current guild
+/// What a pressed component means, given the buttons that were offered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Press {
+    /// Not one of `/register`'s buttons.
+    Unknown,
+    /// A real button, but not one this caller was offered.
+    Refused,
+    Act(RegisterButton),
+}
+
+/// Decide what a press does. Only buttons in `offered` may act.
+pub fn resolve_press(offered: &[RegisterButton], custom_id: &str) -> Press {
+    match RegisterButton::from_custom_id(custom_id) {
+        None => Press::Unknown,
+        Some(button) if offered.contains(&button) => Press::Act(button),
+        Some(_) => Press::Refused,
+    }
+}
+
+/// Offers the buttons [`offered_buttons`] allows for this mode and caller, to register or delete
+/// application commands globally or in the current guild
 ///
 /// Upgraded version of [`register_application_commands`]
 ///
@@ -216,14 +223,17 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
         },
     };
 
-    let Some(pressed) = RegisterButton::from_custom_id(pressed_button_id.as_str()) else {
-        tracing::warn!("unknown register button ID: {:?}", pressed_button_id);
-        return Ok(());
+    let pressed = match resolve_press(&offered, pressed_button_id.as_str()) {
+        Press::Unknown => {
+            tracing::warn!("unknown register button ID: {:?}", pressed_button_id);
+            return Ok(());
+        },
+        Press::Refused => {
+            ctx.say(REGISTER_OWNER_ONLY).await?;
+            return Ok(());
+        },
+        Press::Act(button) => button,
     };
-    if !offered.contains(&pressed) {
-        ctx.say(REGISTER_OWNER_ONLY).await?;
-        return Ok(());
-    }
     let (register, global) = match pressed {
         RegisterButton::RegisterGlobal => (true, true),
         RegisterButton::UnregisterGlobal => (false, true),
@@ -319,9 +329,17 @@ mod test {
     }
 
     #[test]
-    fn only_offered_buttons_may_be_pressed() {
-        let offered = offered_buttons(Manual, false);
-        assert!(!offered.contains(&RegisterGlobal));
-        assert!(!offered.contains(&UnregisterGlobal));
+    fn a_press_that_was_not_offered_is_refused() {
+        let mods = offered_buttons(Manual, false);
+        assert_eq!(resolve_press(&mods, "register.global"), Press::Refused);
+        assert_eq!(resolve_press(&mods, "unregister.global"), Press::Refused);
+        assert_eq!(
+            resolve_press(&mods, "register.guild"),
+            Press::Act(RegisterGuild)
+        );
+        assert_eq!(
+            resolve_press(&offered_buttons(Global, true), "nope"),
+            Press::Unknown
+        );
     }
 }

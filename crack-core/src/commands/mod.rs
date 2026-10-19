@@ -75,7 +75,11 @@ pub fn all_commands() -> Vec<crate::Command> {
     .collect()
 }
 
-/// The commands registered with Discord as application (slash) commands.
+/// The full command list, as the tests check it is registrable.
+///
+/// Startup does not call this: it syncs [`commands_for`]`(mode)` through the
+/// mode's `global_commands` (everything in `Global`, only `/register` in
+/// `Manual`).
 ///
 /// Delegates to [`all_commands`] on purpose: this list and the framework's
 /// dispatch list must be the same set. A slash command registered but absent
@@ -163,6 +167,9 @@ pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command>
 // }
 
 /// Interactively register bot commands.
+///
+/// `ADMINISTRATOR` is the `Global` mode gate; `commands_for` replaces it with
+/// `MANAGE_GUILD` in `Manual` mode.
 #[poise::command(
     category = "Admin",
     guild_only,

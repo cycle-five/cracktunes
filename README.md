@@ -30,7 +30,7 @@ Everything below is optional, and the bot degrades rather than failing without i
 | `OPENAI_API_KEY` | ChatGPT commands |
 | `VIRUSTOTAL_API_KEY` | OSINT URL checking |
 
-`COMMAND_REGISTRATION` decides how the slash commands reach Discord. `global`, the default, registers every command globally at startup. `manual` registers only `/register` globally, for members with Manage Server: a server gets the rest when one of them runs `/register` and presses *Register in guild*, and keeps them (refreshed at each startup) until *Delete in guild*. TuneTitan, the beta bot, runs `manual`, so it only shows up in the servers testing it.
+`COMMAND_REGISTRATION` decides how the slash commands reach Discord. `global`, the default, registers every command globally at startup. `manual` registers only `/register` globally, for members with Manage Server: a server gets the rest when one of them runs `/register` and presses *Register in guild*, and keeps them (refreshed at each startup) until *Delete in guild*. Before switching a bot back to `global`, press *Delete in guild* in each server that registered, while it is still `manual`: those servers keep their own copy of the commands, and Discord would show every command twice. TuneTitan, the beta bot, runs `manual`, so it only shows up in the servers testing it.
 
 Autoplay (`/autoplay`) is off by default and lasts until the bot restarts. It
 picks the next track from the one that just ended: YouTube's own Mix for that
