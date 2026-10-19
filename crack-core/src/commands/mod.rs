@@ -11,6 +11,7 @@ pub mod permissions;
 pub mod modlog;
 pub mod premium;
 pub mod register;
+pub mod registration;
 pub mod rooms;
 pub mod status;
 //pub mod settings;

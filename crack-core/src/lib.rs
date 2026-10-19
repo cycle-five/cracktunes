@@ -218,6 +218,9 @@ pub struct BotConfig {
     pub credentials: Option<BotCredentials>,
     pub database_url: Option<String>,
     pub log_prefix: Option<String>,
+    /// How slash commands reach Discord. `COMMAND_REGISTRATION` overrides it.
+    #[serde(default)]
+    pub command_registration: commands::registration::CommandRegistration,
 }
 
 impl Default for BotConfig {
@@ -236,6 +239,7 @@ impl Default for BotConfig {
             // nobody configured. DATABASE_URL or cracktunes.toml supplies it.
             database_url: None,
             log_prefix: Some(DEFAULT_LOG_PREFIX.to_string()),
+            command_registration: Default::default(),
         }
     }
 }
@@ -272,6 +276,10 @@ impl Display for BotConfig {
             self.database_url.as_deref().map(redact_url)
         ));
         result.push_str(&format!("log_prefix: {:?}\n", self.log_prefix));
+        result.push_str(&format!(
+            "command_registration: {:?}\n",
+            self.command_registration
+        ));
         write!(f, "{}", result)
     }
 }
