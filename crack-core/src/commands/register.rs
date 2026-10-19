@@ -4,6 +4,8 @@
 
 #![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
 
+use super::registration::CommandRegistration;
+use crate::messaging::messages::REGISTER_OWNER_ONLY;
 use poise::serenity_prelude as serenity;
 use serenity::CollectComponentInteractions;
 use std::borrow::Cow;
@@ -75,6 +77,68 @@ pub async fn register_globally_cracked<U, E>(
     Ok(())
 }
 
+/// One of the four choices `/register` can offer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RegisterButton {
+    RegisterGuild,
+    UnregisterGuild,
+    RegisterGlobal,
+    UnregisterGlobal,
+}
+
+impl RegisterButton {
+    /// The component custom id, which is what comes back on a press.
+    pub fn custom_id(self) -> &'static str {
+        match self {
+            Self::RegisterGuild => "register.guild",
+            Self::UnregisterGuild => "unregister.guild",
+            Self::RegisterGlobal => "register.global",
+            Self::UnregisterGlobal => "unregister.global",
+        }
+    }
+
+    pub fn from_custom_id(id: &str) -> Option<Self> {
+        [
+            Self::RegisterGuild,
+            Self::UnregisterGuild,
+            Self::RegisterGlobal,
+            Self::UnregisterGlobal,
+        ]
+        .into_iter()
+        .find(|b| b.custom_id() == id)
+    }
+
+    pub fn button(self) -> serenity::CreateButton<'static> {
+        let (label, style, emoji) = match self {
+            Self::RegisterGuild => ("Register in guild", serenity::ButtonStyle::Primary, '📋'),
+            Self::UnregisterGuild => ("Delete in guild", serenity::ButtonStyle::Danger, '🗑'),
+            Self::RegisterGlobal => ("Register globally", serenity::ButtonStyle::Primary, '📋'),
+            Self::UnregisterGlobal => ("Unregister globally", serenity::ButtonStyle::Danger, '🗑'),
+        };
+        serenity::CreateButton::new(self.custom_id())
+            .label(label)
+            .style(style)
+            .emoji(emoji)
+    }
+}
+
+/// The buttons `/register` offers. The bot owner gets all four. In `Manual`
+/// mode anyone else who can run the command (mods) may register or delete
+/// their own server's commands; in `Global` mode only the owner may do anything.
+pub fn offered_buttons(mode: CommandRegistration, is_owner: bool) -> Vec<RegisterButton> {
+    use RegisterButton::*;
+    match (mode, is_owner) {
+        (_, true) => vec![
+            RegisterGuild,
+            UnregisterGuild,
+            RegisterGlobal,
+            UnregisterGlobal,
+        ],
+        (CommandRegistration::Manual, false) => vec![RegisterGuild, UnregisterGuild],
+        (CommandRegistration::Global, false) => vec![],
+    }
+}
+
 /// Spawns four buttons to register or delete application commands globally or in the current guild
 ///
 /// Upgraded version of [`register_application_commands`]
@@ -102,36 +166,20 @@ pub async fn register_globally_cracked<U, E>(
 /// ```
 ///
 /// Which you can call like any prefix command, for example `@your_bot register`.
+///
+/// Only the buttons [`offered_buttons`] allows are shown, and only those may be pressed.
 pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'static, E>(
     ctx: poise::Context<'_, U, E>,
+    mode: CommandRegistration,
 ) -> Result<(), serenity::Error> {
-    let create_commands = create_application_commands_cracked(&ctx.framework().options().commands);
-    let num_commands = create_commands.len();
-
     let is_bot_owner = ctx.framework().options().owners.contains(&ctx.author().id);
-    if !is_bot_owner {
-        ctx.say("Can only be used by bot owner").await?;
+    let offered = offered_buttons(mode, is_bot_owner);
+    if offered.is_empty() {
+        ctx.say(REGISTER_OWNER_ONLY).await?;
         return Ok(());
     }
 
-    let buttons = vec![
-        serenity::CreateButton::new("register.guild")
-            .label("Register in guild")
-            .style(serenity::ButtonStyle::Primary)
-            .emoji('📋'),
-        serenity::CreateButton::new("unregister.guild")
-            .label("Delete in guild")
-            .style(serenity::ButtonStyle::Danger)
-            .emoji('🗑'),
-        serenity::CreateButton::new("register.global")
-            .label("Register globally")
-            .style(serenity::ButtonStyle::Primary)
-            .emoji('📋'),
-        serenity::CreateButton::new("unregister.global")
-            .label("Unregister globally")
-            .style(serenity::ButtonStyle::Danger)
-            .emoji('🗑'),
-    ];
+    let buttons: Vec<_> = offered.iter().map(|b| b.button()).collect();
     let components = serenity::CreateComponent::ActionRow(serenity::CreateActionRow::Buttons(
         Cow::Owned(buttons),
     ));
@@ -168,24 +216,30 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
         },
     };
 
-    let id_str = pressed_button_id.as_str();
-    let (register, global) = match id_str {
-        "register.global" => (true, true),
-        "unregister.global" => (false, true),
-        "register.guild" => (true, false),
-        "unregister.guild" => (false, false),
-        other => {
-            tracing::warn!("unknown register button ID: {:?}", other);
-            return Ok(());
-        },
+    let Some(pressed) = RegisterButton::from_custom_id(pressed_button_id.as_str()) else {
+        tracing::warn!("unknown register button ID: {:?}", pressed_button_id);
+        return Ok(());
+    };
+    if !offered.contains(&pressed) {
+        ctx.say(REGISTER_OWNER_ONLY).await?;
+        return Ok(());
+    }
+    let (register, global) = match pressed {
+        RegisterButton::RegisterGlobal => (true, true),
+        RegisterButton::UnregisterGlobal => (false, true),
+        RegisterButton::RegisterGuild => (true, false),
+        RegisterButton::UnregisterGuild => (false, false),
     };
 
     let start_time = std::time::Instant::now();
 
     if global {
+        let create_commands =
+            create_application_commands_cracked(&ctx.framework().options().commands);
         if register {
             ctx.say(format!(
-                ":gear: Registering {num_commands} global commands...",
+                ":gear: Registering {} global commands...",
+                create_commands.len(),
             ))
             .await?;
             serenity::Command::set_global_commands(ctx.http(), create_commands.as_slice()).await?;
@@ -202,12 +256,14 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
             },
         };
         if register {
+            let guild_commands = mode.guild_commands(&ctx.framework().options().commands);
             ctx.say(format!(
-                ":gear: Registering {num_commands} guild commands...",
+                ":gear: Registering {} guild commands...",
+                guild_commands.len(),
             ))
             .await?;
             guild_id
-                .set_commands(ctx.http(), create_commands.as_slice())
+                .set_commands(ctx.http(), guild_commands.as_slice())
                 .await?;
         } else {
             ctx.say(":gear: Unregistering guild commands...").await?;
@@ -224,4 +280,48 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
     .await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::commands::registration::CommandRegistration::{Global, Manual};
+    use RegisterButton::*;
+
+    #[test]
+    fn offered_buttons_by_mode_and_owner() {
+        let all = vec![
+            RegisterGuild,
+            UnregisterGuild,
+            RegisterGlobal,
+            UnregisterGlobal,
+        ];
+        assert_eq!(offered_buttons(Global, true), all);
+        assert_eq!(offered_buttons(Manual, true), all);
+        assert_eq!(
+            offered_buttons(Manual, false),
+            vec![RegisterGuild, UnregisterGuild]
+        );
+        assert_eq!(offered_buttons(Global, false), vec![]);
+    }
+
+    #[test]
+    fn custom_ids_round_trip() {
+        for b in [
+            RegisterGuild,
+            UnregisterGuild,
+            RegisterGlobal,
+            UnregisterGlobal,
+        ] {
+            assert_eq!(RegisterButton::from_custom_id(b.custom_id()), Some(b));
+        }
+        assert_eq!(RegisterButton::from_custom_id("nope"), None);
+    }
+
+    #[test]
+    fn only_offered_buttons_may_be_pressed() {
+        let offered = offered_buttons(Manual, false);
+        assert!(!offered.contains(&RegisterGlobal));
+        assert!(!offered.contains(&UnregisterGlobal));
+    }
 }

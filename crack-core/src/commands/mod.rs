@@ -171,7 +171,11 @@ pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command>
     required_permissions = "ADMINISTRATOR"
 )]
 pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
-    register_application_commands_buttons_cracked(ctx).await?;
+    register_application_commands_buttons_cracked(
+        ctx,
+        ctx.data().bot_settings.command_registration,
+    )
+    .await?;
     Ok(())
 }
 
