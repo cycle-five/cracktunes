@@ -6,6 +6,7 @@ use poise::serenity_prelude as serenity;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
 
 /// The one command that is global in every mode.
 pub const REGISTER_COMMAND_NAME: &str = "register";
@@ -97,8 +98,127 @@ impl CommandRegistration {
     }
 }
 
+/// A Discord call that failed while syncing commands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandsError(pub String);
+
+impl fmt::Display for CommandsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for CommandsError {}
+
+impl From<serenity::Error> for CommandsError {
+    fn from(err: serenity::Error) -> Self {
+        Self(err.to_string())
+    }
+}
+
+/// The only door the command sync uses, so tests can record what would be sent.
+#[serenity::async_trait]
+pub trait CommandsDiscord: Send + Sync {
+    /// Replace the application's global commands.
+    async fn set_global(
+        &self,
+        commands: &[serenity::CreateCommand<'static>],
+    ) -> Result<(), CommandsError>;
+    /// How many commands the application has in this server.
+    async fn guild_command_count(&self, guild: serenity::GuildId) -> Result<usize, CommandsError>;
+    /// Replace the application's commands in this server.
+    async fn set_guild(
+        &self,
+        guild: serenity::GuildId,
+        commands: &[serenity::CreateCommand<'static>],
+    ) -> Result<(), CommandsError>;
+}
+
+/// The real Discord.
+pub struct LiveCommandsDiscord {
+    pub http: Arc<serenity::Http>,
+}
+
+#[serenity::async_trait]
+impl CommandsDiscord for LiveCommandsDiscord {
+    async fn set_global(
+        &self,
+        commands: &[serenity::CreateCommand<'static>],
+    ) -> Result<(), CommandsError> {
+        serenity::Command::set_global_commands(&self.http, commands).await?;
+        Ok(())
+    }
+
+    async fn guild_command_count(&self, guild: serenity::GuildId) -> Result<usize, CommandsError> {
+        Ok(guild.get_commands(&self.http).await?.len())
+    }
+
+    async fn set_guild(
+        &self,
+        guild: serenity::GuildId,
+        commands: &[serenity::CreateCommand<'static>],
+    ) -> Result<(), CommandsError> {
+        guild.set_commands(&self.http, commands).await?;
+        Ok(())
+    }
+}
+
+/// What a startup refresh of the opted-in servers did.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct GuildRefresh {
+    pub checked: usize,
+    pub refreshed: usize,
+    pub failed: usize,
+}
+
+/// Puts this mode's global set on Discord; `Ok` carries how many commands that was.
+pub async fn sync_global<U, E>(
+    api: &dyn CommandsDiscord,
+    mode: CommandRegistration,
+    commands: &[poise::Command<U, E>],
+) -> Result<usize, CommandsError> {
+    let global = mode.global_commands(commands);
+    api.set_global(&global).await?;
+    Ok(global.len())
+}
+
+/// Manual mode: for each server that already has commands (it opted in), write
+/// the current server set, so a new build reaches it without another `/register`.
+/// A failure is logged and counted, and the loop goes on. Global mode does nothing.
+pub async fn refresh_guilds<U, E>(
+    api: &dyn CommandsDiscord,
+    mode: CommandRegistration,
+    commands: &[poise::Command<U, E>],
+    guilds: &[serenity::GuildId],
+) -> GuildRefresh {
+    let mut result = GuildRefresh::default();
+    if mode != CommandRegistration::Manual {
+        return result;
+    }
+    let set = mode.guild_commands(commands);
+    for &guild in guilds {
+        result.checked += 1;
+        match api.guild_command_count(guild).await {
+            Ok(0) => {},
+            Ok(_) => match api.set_guild(guild, &set).await {
+                Ok(()) => result.refreshed += 1,
+                Err(e) => {
+                    tracing::warn!("Failed to refresh commands in guild {guild}: {e}");
+                    result.failed += 1;
+                },
+            },
+            Err(e) => {
+                tracing::warn!("Failed to count commands in guild {guild}: {e}");
+                result.failed += 1;
+            },
+        }
+    }
+    result
+}
+
 #[cfg(test)]
 mod test {
+    use super::serenity;
     use super::*;
     use crate::commands::{all_commands, commands_for};
     use crate::BotConfig;
@@ -239,5 +359,185 @@ mod test {
         let manual: BotConfig =
             serde_json::from_str(r#"{"command_registration":"manual"}"#).unwrap();
         assert_eq!(manual.command_registration, CommandRegistration::Manual);
+    }
+
+    // ---- startup sync and guild refresh ----
+
+    use std::collections::{HashMap, HashSet};
+    use std::sync::Mutex;
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum Call {
+        SetGlobal(Vec<String>),
+        GuildCount(serenity::GuildId),
+        SetGuild(serenity::GuildId, Vec<String>),
+    }
+
+    #[derive(Default)]
+    struct FakeCommandsDiscord {
+        calls: Mutex<Vec<Call>>,
+        counts: HashMap<serenity::GuildId, usize>,
+        fail_count: HashSet<serenity::GuildId>,
+        fail_set: HashSet<serenity::GuildId>,
+        fail_global: bool,
+    }
+
+    impl FakeCommandsDiscord {
+        fn calls(&self) -> Vec<Call> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    #[serenity::async_trait]
+    impl CommandsDiscord for FakeCommandsDiscord {
+        async fn set_global(
+            &self,
+            commands: &[serenity::CreateCommand<'static>],
+        ) -> Result<(), CommandsError> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(Call::SetGlobal(sent_names(commands)));
+            if self.fail_global {
+                return Err(CommandsError("global refused".into()));
+            }
+            Ok(())
+        }
+
+        async fn guild_command_count(
+            &self,
+            guild: serenity::GuildId,
+        ) -> Result<usize, CommandsError> {
+            self.calls.lock().unwrap().push(Call::GuildCount(guild));
+            if self.fail_count.contains(&guild) {
+                return Err(CommandsError("count refused".into()));
+            }
+            Ok(self.counts.get(&guild).copied().unwrap_or(0))
+        }
+
+        async fn set_guild(
+            &self,
+            guild: serenity::GuildId,
+            commands: &[serenity::CreateCommand<'static>],
+        ) -> Result<(), CommandsError> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(Call::SetGuild(guild, sent_names(commands)));
+            if self.fail_set.contains(&guild) {
+                return Err(CommandsError("set refused".into()));
+            }
+            Ok(())
+        }
+    }
+
+    fn gid(n: u64) -> serenity::GuildId {
+        serenity::GuildId::new(n)
+    }
+
+    fn without_register(mut names: Vec<String>) -> Vec<String> {
+        names.retain(|n| n != REGISTER_COMMAND_NAME);
+        names
+    }
+
+    #[tokio::test]
+    async fn global_mode_syncs_everything_and_refreshes_nothing() {
+        let cmds = commands_for(CommandRegistration::Global);
+        let all = create_application_commands_cracked(&cmds);
+        let api = FakeCommandsDiscord::default();
+
+        let n = sync_global(&api, CommandRegistration::Global, &cmds)
+            .await
+            .expect("sync succeeds");
+        assert_eq!(n, all.len());
+        assert_eq!(api.calls(), [Call::SetGlobal(sent_names(&all))]);
+
+        let api = FakeCommandsDiscord::default();
+        let result =
+            refresh_guilds(&api, CommandRegistration::Global, &cmds, &[gid(1), gid(2)]).await;
+        assert!(api.calls().is_empty());
+        assert_eq!(result, GuildRefresh::default());
+    }
+
+    #[tokio::test]
+    async fn manual_mode_syncs_only_register() {
+        let cmds = commands_for(CommandRegistration::Manual);
+        let api = FakeCommandsDiscord::default();
+        let n = sync_global(&api, CommandRegistration::Manual, &cmds)
+            .await
+            .expect("sync succeeds");
+        assert_eq!(n, 1);
+        assert_eq!(api.calls(), [Call::SetGlobal(vec!["register".to_string()])]);
+    }
+
+    #[tokio::test]
+    async fn refresh_writes_guild_set_only_where_commands_exist() {
+        let cmds = commands_for(CommandRegistration::Manual);
+        let expected = without_register(sent_names(&create_application_commands_cracked(&cmds)));
+        let (g1, g2) = (gid(1), gid(2));
+        let api = FakeCommandsDiscord {
+            counts: HashMap::from([(g1, 0), (g2, 3)]),
+            ..Default::default()
+        };
+        let result = refresh_guilds(&api, CommandRegistration::Manual, &cmds, &[g1, g2]).await;
+        assert_eq!(
+            api.calls(),
+            [
+                Call::GuildCount(g1),
+                Call::GuildCount(g2),
+                Call::SetGuild(g2, expected),
+            ]
+        );
+        assert_eq!(
+            result,
+            GuildRefresh {
+                checked: 2,
+                refreshed: 1,
+                failed: 0
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_continues_past_a_failing_guild() {
+        let cmds = commands_for(CommandRegistration::Manual);
+        let expected = without_register(sent_names(&create_application_commands_cracked(&cmds)));
+        let (g1, g2, g3) = (gid(1), gid(2), gid(3));
+        let api = FakeCommandsDiscord {
+            counts: HashMap::from([(g2, 3), (g3, 2)]),
+            fail_count: HashSet::from([g1]),
+            fail_set: HashSet::from([g3]),
+            ..Default::default()
+        };
+        let result = refresh_guilds(&api, CommandRegistration::Manual, &cmds, &[g1, g2, g3]).await;
+        assert_eq!(
+            api.calls(),
+            [
+                Call::GuildCount(g1),
+                Call::GuildCount(g2),
+                Call::SetGuild(g2, expected.clone()),
+                Call::GuildCount(g3),
+                Call::SetGuild(g3, expected),
+            ]
+        );
+        assert_eq!(
+            result,
+            GuildRefresh {
+                checked: 3,
+                refreshed: 1,
+                failed: 2
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_global_reports_failure() {
+        let cmds = commands_for(CommandRegistration::Global);
+        let api = FakeCommandsDiscord {
+            fail_global: true,
+            ..Default::default()
+        };
+        let result = sync_global(&api, CommandRegistration::Global, &cmds).await;
+        assert_eq!(result, Err(CommandsError("global refused".into())));
     }
 }

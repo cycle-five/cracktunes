@@ -1,3 +1,6 @@
+use crate::commands::registration::{
+    refresh_guilds, sync_global, CommandRegistration, LiveCommandsDiscord,
+};
 use crate::{
     // commands::queue_aux_metadata,
     commands::music::gp::{handle_gp_component, GP_CUSTOM_ID_PREFIX},
@@ -137,7 +140,8 @@ impl SerenityHandler {
 
         ctx.set_activity(Some(ActivityData::listening(DEFAULT_ACTIVITY)));
 
-        // Sync THIS build's command list to Discord.
+        // Sync THIS build's command list to Discord. The registration mode
+        // decides the set: every command globally, or only `/register`.
         //
         // Nothing did this before. The setup closure that called
         // `register_globally_cracked` was commented out when poise dropped the
@@ -148,12 +152,23 @@ impl SerenityHandler {
         //
         // `Ready` fires once per shard and again after a full reconnect, so
         // this is gated to once per process.
+        let mode = self.data.bot_settings.command_registration;
+        let commands = crate::commands::commands_for(mode);
+        let api = LiveCommandsDiscord {
+            http: ctx.http.clone(),
+        };
         static COMMANDS_REGISTERED: std::sync::atomic::AtomicBool =
             std::sync::atomic::AtomicBool::new(false);
         if !COMMANDS_REGISTERED.swap(true, Ordering::SeqCst) {
-            let commands = crate::commands::commands_to_register();
-            match crate::commands::register_globally_cracked(&ctx.http, &commands).await {
-                Ok(()) => tracing::info!("Registered {} global commands", commands.len()),
+            match sync_global(&api, mode, &commands).await {
+                Ok(n) => {
+                    tracing::info!("Registered {n} global commands");
+                    if mode == CommandRegistration::Manual {
+                        tracing::info!(
+                            "Command registration is manual: only /register is global, and servers opt in with it"
+                        );
+                    }
+                },
                 Err(e) => {
                     tracing::error!("Failed to register global commands: {e}");
                     // Clear the gate so a later `Ready` retries; otherwise one
@@ -161,6 +176,22 @@ impl SerenityHandler {
                     COMMANDS_REGISTERED.store(false, Ordering::SeqCst);
                 },
             }
+        }
+
+        // Every `Ready` carries its own shard's servers. A server that opted in
+        // gets this build's list; a repeat after a reconnect rewrites the same
+        // set, which is harmless.
+        if mode == CommandRegistration::Manual {
+            let guilds: Vec<GuildId> = ready.guilds.iter().map(|g| g.id).collect();
+            tokio::spawn(async move {
+                let r = refresh_guilds(&api, mode, &commands, &guilds).await;
+                tracing::info!(
+                    "Refreshed commands in {} of {} servers ({} failed)",
+                    r.refreshed,
+                    r.checked,
+                    r.failed
+                );
+            });
         }
 
         // Whether a Spotify LINK will resolve. This is the question an operator
