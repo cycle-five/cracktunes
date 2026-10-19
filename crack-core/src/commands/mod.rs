@@ -85,6 +85,26 @@ pub fn commands_to_register() -> Vec<crate::Command> {
     all_commands()
 }
 
+/// The commands the framework dispatches in the given registration mode.
+///
+/// The set is always [`all_commands`]. In `Manual` mode `/register` is the one
+/// command every server can reach before opting in, so it needs a gate a
+/// server moderator can pass: Manage Server instead of Administrator.
+pub fn commands_for(mode: registration::CommandRegistration) -> Vec<crate::Command> {
+    use poise::serenity_prelude::Permissions;
+    let mut commands = all_commands();
+    if mode == registration::CommandRegistration::Manual {
+        for command in commands
+            .iter_mut()
+            .filter(|c| c.name == registration::REGISTER_COMMAND_NAME)
+        {
+            command.required_permissions = Permissions::MANAGE_GUILD;
+            command.default_member_permissions = Permissions::MANAGE_GUILD;
+        }
+    }
+    commands
+}
+
 pub fn all_command_names() -> Vec<Cow<'static, str>> {
     all_commands().into_iter().map(|c| c.name).collect()
 }

@@ -25,6 +25,15 @@ use std::borrow::Cow;
 pub fn create_application_commands_cracked<U, E>(
     commands: &[poise::Command<U, E>],
 ) -> Vec<serenity::CreateCommand<'static>> {
+    create_application_commands_filtered(commands, |_| true)
+}
+
+/// Like [`create_application_commands_cracked`], but builds only the top-level
+/// commands `keep` accepts (a kept command brings its context menus along).
+pub(crate) fn create_application_commands_filtered<U, E>(
+    commands: &[poise::Command<U, E>],
+    keep: impl Fn(&poise::Command<U, E>) -> bool,
+) -> Vec<serenity::CreateCommand<'static>> {
     /// We decided to extract context menu commands recursively, despite the subcommand hierarchy
     /// not being preserved. Because it's more confusing to just silently discard context menu
     /// commands if they're not top-level commands.
@@ -44,7 +53,7 @@ pub fn create_application_commands_cracked<U, E>(
     }
 
     let mut commands_builder = Vec::with_capacity(commands.len());
-    for command in commands {
+    for command in commands.iter().filter(|command| keep(command)) {
         if let Some(slash_command) = command.create_as_slash_command() {
             commands_builder.push(slash_command);
         }
