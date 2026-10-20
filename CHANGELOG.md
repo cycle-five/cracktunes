@@ -234,7 +234,8 @@
 
 - **CrackTunes joins voice self-deafened, and no longer decrypts or decodes
   what it receives.** Nothing used the incoming audio, so the bot now shows the
-  deafened icon and Discord stops sending it any.
+  deafened icon and Discord stops sending it any. A server's event log (when it
+  logs voice-state updates) will show CrackTunes deafening itself when it joins.
 - **`/gp` sends everything through the messaging layer.** Its prompts, songs,
   reveals, results, scoreboards, picker and button answers are rendered by
   the one renderer and delivered by the courier, like the music commands

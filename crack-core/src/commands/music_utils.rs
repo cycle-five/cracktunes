@@ -144,7 +144,7 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 ///
 /// 🪤 `expect` matters because "connected" is not "connected to the channel
 /// you asked for". A concurrent `/gp` resume can land a join on another
-/// channel between a failed `manager.join` and this check, and without the
+/// channel between a failed join and this check, and without the
 /// comparison `do_join` would announce "Summoned <#B>" for a bot in A.
 pub(crate) async fn connected_call(
     manager: &songbird::Songbird,
@@ -183,6 +183,9 @@ pub(crate) async fn connected_call(
 ///
 /// A failed `deafen` is logged and the join carries on; an undeafened bot is no
 /// worse than before.
+///
+/// Call it only from `join_permitted`, which takes the `JoinPermit`; anything
+/// else would be a join without the permission gate.
 async fn join_deafened(
     manager: &songbird::Songbird,
     guild_id: GuildId,
@@ -337,8 +340,8 @@ async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
 
 /// Join a voice channel.
 ///
-/// Defers before the handshake, and only there. Every join that reaches
-/// `Songbird::join` can outlive Discord's three-second interaction deadline --
+/// Defers before the handshake, and only there. Every join can
+/// outlive Discord's three-second interaction deadline --
 /// songbird's `gateway_timeout` is 10s -- and this is the one point every
 /// command's join funnels through, so the defer belongs here rather than in
 /// each of them. poise's defer is idempotent and a no-op on prefix commands,
@@ -473,6 +476,36 @@ mod tests {
             "a leave was sent: {sent:?}"
         );
         assert_eq!(sent.last(), Some(&(Some(C), true)), "{sent:?}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_stage_1_does_not_deafen() {
+        let (manager, rx) = offline_manager(Duration::from_millis(50)).await;
+        // The shard's sender is still registered but nothing receives: the
+        // gateway send fails, so stage 1 fails.
+        drop(rx);
+        join_deafened(&manager, G, C)
+            .await
+            .expect_err("the gateway send fails");
+        let call = manager.get_or_insert(G);
+        assert!(!call.lock().await.is_deaf(), "deafened after a failed join");
+    }
+
+    #[tokio::test]
+    async fn a_rejoin_by_a_deaf_call_does_not_deafen_again() {
+        let (manager, mut rx) = offline_manager(Duration::from_millis(50)).await;
+        join_deafened(&manager, G, C).await.expect_err("times out");
+        // songbird keeps `self_deaf` across a leave (which sends a null update).
+        let call = manager.get_or_insert(G);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test needs songbird's bare leave: no queue, no audit"
+        )]
+        let left = call.lock().await.leave().await;
+        left.expect("leave");
+        let _ = voice_updates(&mut rx);
+        join_deafened(&manager, G, C).await.expect_err("times out");
+        assert_eq!(voice_updates(&mut rx), vec![(Some(C), true)]);
     }
 
     #[tokio::test]

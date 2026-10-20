@@ -438,8 +438,8 @@ pub fn unreadable_refusal(channel: ChannelId) -> CrackedError {
 ///
 /// The fields are private and this module holds the only constructor, so the
 /// sole way to obtain one is to have passed the gate.
-/// `music_utils::join_permitted` -- the crate's only caller of
-/// `Songbird::join` -- takes one **by value**. A join that skipped the
+/// `music_utils::join_permitted` -- the crate's only way into voice --
+/// takes one **by value**. A join that skipped the
 /// permission check therefore does not compile.
 ///
 /// 🔑 This replaces `join_site_guard_tests`, which read the join sites as text

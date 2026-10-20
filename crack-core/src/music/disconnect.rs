@@ -72,6 +72,7 @@ mod test {
     }
 
     fn manager() -> Arc<songbird::Songbird> {
+        crate::music::ops::test_support::lasting_scheduler();
         let m = songbird::Songbird::serenity();
         m.initialise_client_data(1, serenity::all::UserId::new(2));
         m

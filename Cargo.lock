@@ -1092,7 +1092,6 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "serenity",
- "serenity-voice-model",
  "songbird",
  "sqlx 0.9.0",
  "strsim 0.11.1",

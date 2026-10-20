@@ -297,7 +297,7 @@ without one it cannot be turned on.
 
 Server mutes and deafens appear as soon as Discord records them. CrackTunes
 deafens itself when it joins a channel, as if it had pressed the headphones
-button, and like every self-deafen that is never logged. A server mute or
+button, and, like every self-deafen, that is never logged. A server mute or
 deafen that CrackTunes applied to itself would not be logged either. A
 moderator muting CrackTunes is logged, and so is CrackTunes muting someone
 else.
