@@ -194,9 +194,11 @@ async fn join_deafened(
         // The one permitted `Call::join` in the crate -- `clippy.toml` bans it
         // (and `Songbird::join`) everywhere else, which is what makes
         // `join_permitted` the only door rather than merely the recommended
-        // one. The attribute sits on the enclosing block because it cannot
-        // be attached to an expression statement.
-        #[allow(clippy::disallowed_methods)]
+        // one.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the one sanctioned join; see join_permitted"
+        )]
         let joining = handler.join(channel_id).await;
         if joining.is_ok() && !handler.is_deaf() {
             if let Err(e) = handler.deafen(true).await {
@@ -213,10 +215,10 @@ async fn join_deafened(
 
 /// Join the channel a [`JoinPermit`] was issued for.
 ///
-/// **The crate's only way into voice**, and it joins self-deafened. Taking the permit by value
-/// is what makes that enforceable rather than aspirational: `ensure_can_join`
-/// is its only constructor, so a join that skipped the permission gate does
-/// not typecheck. This is the compiler doing the job `join_site_guard_tests`
+/// **The crate's only way into voice**, and it joins self-deafened. Taking the
+/// permit by value is what makes that enforceable rather than aspirational:
+/// `ensure_can_join` is its only constructor, so a join that skipped the
+/// permission gate does not typecheck. This is the compiler doing the job `join_site_guard_tests`
 /// was scanning source text to approximate.
 ///
 /// Because there is one implementation, every join site gets the same failure
@@ -469,5 +471,23 @@ mod tests {
             "a leave was sent: {sent:?}"
         );
         assert_eq!(sent.last(), Some(&(Some(C), true)), "{sent:?}");
+    }
+
+    #[tokio::test]
+    async fn the_call_lock_is_free_while_stage_2_waits() {
+        let (manager, _rx) = offline_manager().await;
+        let m = manager.clone();
+        let joining = tokio::spawn(async move { join_deafened(&m, G, C).await });
+        // Well inside the 50 ms gateway timeout: stage 2 is being awaited.
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        assert!(!joining.is_finished(), "the join ended before we looked");
+        let call = manager.get_or_insert(G);
+        assert!(
+            call.try_lock().is_ok(),
+            "the Call lock is held across stage 2"
+        );
+        drop(call);
+        let err = joining.await.unwrap().expect_err("nothing answers offline");
+        assert!(matches!(err, JoinError::TimedOut), "{err:?}");
     }
 }
