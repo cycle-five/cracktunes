@@ -42,6 +42,20 @@
 
 ### Added
 
+- **The economy, part 1: credits, immunity, and a coinflip.** A server can turn
+  on an economy from the dashboard's Settings page (off by default, free, and it
+  needs a database). Members earn credits for each minute in voice with at least
+  one other person (not alone, not self-deafened, not in the AFK channel) and
+  for one message per cooldown; CrackTunes counts messages and never reads them.
+  `/credits` shows a balance, the top ten, a private history, gifts between
+  members, and opting out of the economy; `/shop` lists and sells immunity, which
+  protects against the prank shop coming next; `/economy` lets moderators grant
+  and lift immunity and check the setup, and lets Manage Server holders adjust a
+  balance. A coinflip, 50/50 with no house edge, is available when the server
+  turns gambling on. Opted-out members keep their balance but can't earn, buy,
+  gamble, gift or be gifted. Turning an immunity source off stops new grants
+  only; what was already granted lasts its term. Credits have no cash value. See
+  `docs/economy.md`.
 - **`/downvote` is registered.** It skips the current track and records a
   dislike against that track's newest play in this server, and one dislike is
   enough to hide the play from `/playlog`. When the track has no logged play to
