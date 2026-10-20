@@ -137,6 +137,7 @@ pub const GP_BLOCKED_COMMANDS: &[&str] = &[
     "remove",
     "movesong",
     "skip",
+    "downvote",
     "voteskip",
     "leave",
     "seek",

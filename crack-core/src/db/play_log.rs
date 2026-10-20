@@ -239,6 +239,32 @@ impl PlayLog {
         Ok(last_played.into_iter().map(|t| t.id as i64).collect())
     }
 
+    /// The `play_log.id` of the newest play in the guild of the track whose
+    /// `metadata.source_url` is `source_url`, or `None` if it was never logged.
+    ///
+    /// 🪤 This is a **play_log** id (what `track_reaction.play_log_id`
+    /// references), not a metadata id.
+    pub async fn last_play_of_url(
+        conn: &PgPool,
+        guild_id: i64,
+        source_url: &str,
+    ) -> Result<Option<i64>, Error> {
+        sqlx::query_scalar!(
+            r#"
+            select play_log.id::bigint as "id!"
+            from play_log
+            join metadata on play_log.metadata_id = metadata.id
+            where play_log.guild_id = $1 and metadata.source_url = $2
+            order by play_log.created_at desc, play_log.id desc
+            limit 1
+            "#,
+            guild_id,
+            source_url
+        )
+        .fetch_optional(conn)
+        .await
+    }
+
     /// Get the last played track for the given user.
     pub async fn get_last_played_by_user(
         conn: &PgPool,
@@ -322,6 +348,58 @@ mod tests {
         PlayLog::create(&pool, user_id, guild_id, metadata_id + 2).await?;
         let last_played = PlayLog::get_last_played(&pool, Some(user_id), None).await?;
         assert_eq!(last_played.len(), 3);
+        Ok(())
+    }
+
+    /// Insert a play of `source_url` (with a throwaway metadata row) and
+    /// return `(metadata_id, play_log_id)`.
+    async fn play(pool: &PgPool, guild_id: i64, source_url: &str) -> (i64, i64) {
+        let metadata_id: i64 = sqlx::query_scalar(
+            "INSERT INTO metadata (source_url, title) VALUES ($1, 't') RETURNING id::bigint",
+        )
+        .bind(source_url)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let log = PlayLog::create(pool, 1, guild_id, metadata_id)
+            .await
+            .unwrap();
+        (metadata_id, log.id)
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn last_play_of_url_finds_the_newest_play_of_that_url(pool: PgPool) -> Result<(), Error> {
+        // Burn some metadata ids so they differ from the play_log ids.
+        for i in 0..3 {
+            sqlx::query("INSERT INTO metadata (source_url) VALUES ($1)")
+                .bind(format!("https://example.test/filler{i}"))
+                .execute(&pool)
+                .await?;
+        }
+        let (_, _first_a) = play(&pool, 1, "https://example.test/a").await;
+        let (_, _b) = play(&pool, 1, "https://example.test/b").await;
+        // A second play of the same URL (a second metadata row for it, as a
+        // re-resolve would make).
+        let (meta_a2, newer_a) = play(&pool, 1, "https://example.test/a").await;
+        assert_ne!(meta_a2, newer_a, "fixture must make the two ids differ");
+        let got = PlayLog::last_play_of_url(&pool, 1, "https://example.test/a").await?;
+        assert_eq!(got, Some(newer_a));
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn last_play_of_url_is_none_for_an_unplayed_url(pool: PgPool) -> Result<(), Error> {
+        play(&pool, 1, "https://example.test/a").await;
+        let got = PlayLog::last_play_of_url(&pool, 1, "https://example.test/never").await?;
+        assert_eq!(got, None);
         Ok(())
     }
 }

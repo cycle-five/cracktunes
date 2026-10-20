@@ -623,19 +623,23 @@ impl Data {
             .insert(guild_id, guild_settings)
     }
 
-    /// Create a new Data, calls default
+    /// Record one dislike against the newest play of `source_url` in the guild.
+    ///
+    /// Errors with `NoPlayLogged` when no play of it is logged yet (the play
+    /// log is written asynchronously and may lag), and `NoDatabasePool`
+    /// without a database.
     pub async fn downvote_track(
         &self,
         guild_id: GuildId,
-        _track: &str,
+        source_url: &str,
     ) -> Result<TrackReaction, CrackedError> {
         let pool = self.get_db_pool()?;
-        let play_log_id =
-            PlayLog::get_last_played_by_guild_metadata(&pool, guild_id.into(), 1).await?;
-        let pool = self.database_pool.as_ref().unwrap();
-        let id = *play_log_id.first().unwrap() as i32;
-        let _ = TrackReaction::insert(pool, id).await?;
-        TrackReaction::add_dislike(pool, id).await
+        let play_log_id = PlayLog::last_play_of_url(&pool, guild_id.get() as i64, source_url)
+            .await?
+            .ok_or(CrackedError::NoPlayLogged)?;
+        let id = i32::try_from(play_log_id).map_err(|_| CrackedError::NoPlayLogged)?;
+        TrackReaction::insert(&pool, id).await?;
+        TrackReaction::add_dislike(&pool, id).await
     }
 
     pub async fn add_reply_handle_to_cache(

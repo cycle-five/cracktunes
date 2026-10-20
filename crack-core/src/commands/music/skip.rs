@@ -1,5 +1,5 @@
 use crate::{
-    commands::{cmd_check_music, get_call_or_join_author},
+    commands::{cmd_check_music, connected_call},
     errors::CrackedError,
     guild::operations::GuildSettingsOperations,
     messaging::{courier, message::CrackedMessage},
@@ -56,7 +56,7 @@ pub async fn send_skip_reply(
         .map_err(|e| e.into())
 }
 
-/// Downvote and skip song causing it to *not* be used in music recommendations.
+/// Skip the current track and hide it from /playlog
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
@@ -67,7 +67,10 @@ pub async fn send_skip_reply(
 )]
 pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let call = get_call_or_join_author(ctx).await?;
+    // Never joins: downvoting is about the track playing right now.
+    let call = connected_call(&ctx.data().songbird, guild_id, None)
+        .await
+        .ok_or(CrackedError::NotConnected)?;
 
     // The downvoted track must be the one skipped. The DB write sits between
     // the read and the skip, with no lease or Call lock held across it, so the

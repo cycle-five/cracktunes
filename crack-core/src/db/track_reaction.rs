@@ -13,7 +13,9 @@ pub struct TrackReaction {
 }
 
 impl TrackReaction {
-    /// Insert a new track reaction.
+    /// Insert a new track reaction, or return the existing one for this play.
+    /// Never errors on a repeat: `add_dislike` and friends rely on the row
+    /// existing, and a second reaction to the same play is normal.
     pub async fn insert(pool: &PgPool, play_log_id: i32) -> Result<TrackReaction, CrackedError> {
         sqlx::query_as!(
             TrackReaction,
@@ -22,7 +24,7 @@ impl TrackReaction {
                 (play_log_id)
             VALUES
                 ($1)
-            ON CONFLICT (play_log_id) DO NOTHING
+            ON CONFLICT (play_log_id) DO UPDATE SET play_log_id = EXCLUDED.play_log_id
             RETURNING play_log_id, likes, dislikes, skip_votes, created_at"#,
             play_log_id,
         )
@@ -142,5 +144,34 @@ impl TrackReaction {
         .fetch_one(pool)
         .await
         .map_err(|e| e.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn downvoting_twice_counts_two_dislikes(pool: PgPool) -> Result<(), CrackedError> {
+        let metadata_id: i64 = sqlx::query_scalar(
+            "INSERT INTO metadata (source_url) VALUES ('https://example.test/a') RETURNING id::bigint",
+        )
+        .fetch_one(&pool)
+        .await?;
+        let log = crate::db::PlayLog::create(&pool, 1, 1, metadata_id).await?;
+        let id = log.id as i32;
+        // The same pair `Data::downvote_track` runs, twice on one play.
+        TrackReaction::insert(&pool, id).await?;
+        TrackReaction::add_dislike(&pool, id).await?;
+        TrackReaction::insert(&pool, id).await?;
+        let reaction = TrackReaction::add_dislike(&pool, id).await?;
+        assert_eq!(reaction.dislikes, 2);
+        Ok(())
     }
 }

@@ -79,6 +79,7 @@ pub fn music_commands() -> Vec<crate::Command> {
             // publicly before it replies (#535).
             clear(),
             diagnose(),
+            downvote(),
             echoes(),
             grab(),
             leave(),

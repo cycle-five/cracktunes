@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            select play_log.id::bigint as \"id!\"\n            from play_log\n            join metadata on play_log.metadata_id = metadata.id\n            where play_log.guild_id = $1 and metadata.source_url = $2\n            order by play_log.created_at desc, play_log.id desc\n            limit 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!",
+        "type_info": "Int8",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4f05fcf6b03da0e1eac002c9fd544c114cee5f1645d5ab6c995a42c69b49b436"
+}
