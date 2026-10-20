@@ -2,6 +2,7 @@
 //! Off by default; see `economy::settings`.
 
 pub mod earn;
+pub mod gamble;
 pub mod immunity;
 pub mod registry;
 pub mod settings;
@@ -91,6 +92,9 @@ pub enum OptOutError {
 }
 
 /// Opt a member out of (or back into) the server's economy and pranks.
+///
+/// Callers must gate on `EconomyRegistry::is_enabled` first: an unloaded
+/// server reads default settings here.
 pub async fn opt_out(
     data: &Data,
     g: GuildId,

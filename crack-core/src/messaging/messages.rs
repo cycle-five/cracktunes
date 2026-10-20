@@ -882,3 +882,41 @@ pub const ECONOMY_CANT_AFFORD_MIDDLE: &str = "more";
 pub const ECONOMY_NO_DATABASE: &str = "The economy needs a database.";
 pub const ECONOMY_PURCHASE_FAILED: &str =
     "That didn't work, so nothing was bought. If you were charged, it will be refunded.";
+pub const ECONOMY_HEADS: &str = "Heads";
+pub const ECONOMY_TAILS: &str = "Tails";
+pub const ECONOMY_COIN_LANDED: &str = "The coin landed";
+pub const ECONOMY_COIN_YOU_CALLED: &str = "You called";
+pub const ECONOMY_COIN_WON: &str = "You win";
+pub const ECONOMY_COIN_LOST: &str = "You lose";
+pub const ECONOMY_COIN_BALANCE: &str = "Balance:";
+pub const ECONOMY_GAMBLING_OFF: &str = "Gambling is off in this server.";
+pub const ECONOMY_GAMBLER_OPTED_OUT: &str =
+    "You've opted out of the economy, so you can't gamble. Opt back in first.";
+pub const ECONOMY_BET_NON_POSITIVE: &str = "Bet at least 1.";
+pub const ECONOMY_BET_OVER_MAX_PREFIX: &str = "The most you can bet here is";
+pub const ECONOMY_YOU_HAVE: &str = "You have";
+pub const ECONOMY_BET_FAILED: &str = "That didn't work, and nothing was taken. Try again.";
+pub const ECONOMY_GIFT_SELF: &str = "You can't gift yourself.";
+pub const ECONOMY_GIFT_TO_BOT: &str = "Bots don't need credits.";
+pub const ECONOMY_GIFT_FROM_OPTED_OUT: &str =
+    "You've opted out of the economy, so you can't gift. Opt back in first.";
+pub const ECONOMY_GIFT_TO_OPTED_OUT: &str =
+    "That member has opted out of the economy, so they can't be gifted credits.";
+pub const ECONOMY_GIFT_NON_POSITIVE: &str = "Gift at least 1.";
+pub const ECONOMY_GIFT_SENT: &str = "gifted";
+pub const ECONOMY_GIFT_TO: &str = "to";
+pub const ECONOMY_GIFT_FAILED: &str = "That didn't work, and nothing was sent. Try again.";
+pub const ECONOMY_BALANCE_HAS: &str = "has";
+pub const ECONOMY_TOP_TITLE: &str = "Richest members";
+pub const ECONOMY_TOP_EMPTY: &str = "Nobody has any yet.";
+pub const ECONOMY_HISTORY_TITLE: &str = "Your recent activity";
+pub const ECONOMY_HISTORY_EMPTY: &str = "Nothing yet.";
+pub const ECONOMY_READ_FAILED: &str = "Couldn't read that right now. Try again.";
+pub const ECONOMY_OPTED_OUT_DONE: &str =
+    "You've opted out. You won't earn, buy, gamble, gift or be gifted, and your balance is kept.";
+pub const ECONOMY_OPTED_IN_DONE: &str = "You've opted back in.";
+pub const ECONOMY_OPTOUT_DISABLED: &str = "This server doesn't allow opting out.";
+pub const ECONOMY_OPTOUT_ALREADY_OUT: &str = "You've already opted out.";
+pub const ECONOMY_OPTOUT_ALREADY_IN: &str = "You're already opted in.";
+pub const ECONOMY_OPTOUT_COOLDOWN_PREFIX: &str = "You switched recently. You can switch again";
+pub const ECONOMY_OPTOUT_FAILED: &str = "Couldn't change that. Try again.";
