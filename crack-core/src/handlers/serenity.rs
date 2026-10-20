@@ -45,6 +45,10 @@ impl EventHandler for SerenityHandler {
             FullEvent::GuildCreate { guild, .. } => {
                 self.on_guild_create(ctx.clone(), guild.clone()).await;
             },
+            FullEvent::Message { new_message, .. } => {
+                // Credits for chatting: counted, never awaited.
+                crate::economy::earn::on_message(&self.data, new_message);
+            },
             FullEvent::GuildMemberAddition { new_member } => {
                 self.on_guild_member_addition(ctx.clone(), new_member.clone())
                     .await;
@@ -254,6 +258,14 @@ impl SerenityHandler {
         //         });
         //     x
         // };
+
+        // The economy's once-a-minute payout. Here, not in `on_cache_ready`:
+        // that event never fires on a bot in many servers. A repeat `Ready`
+        // (reconnect) is harmless: the tick starts once per process. Placed
+        // before the loops below in case one of them awaits for long.
+        if let Some(cache) = ctx.cache() {
+            crate::economy::earn::start(self.data.clone(), cache.clone());
+        }
 
         // Process-level background work, moved off `CacheReady`.
         //
@@ -494,6 +506,11 @@ impl SerenityHandler {
             let gid = guild.id;
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                // A newer load (a reconnect's GuildCreate) may have succeeded
+                // meanwhile; this retry must not overwrite it.
+                if data.economy.loaded(gid) {
+                    return;
+                }
                 if !crate::economy::load_settings(&data, gid).await {
                     tracing::warn!("economy: retrying the settings of {gid} failed too");
                 }

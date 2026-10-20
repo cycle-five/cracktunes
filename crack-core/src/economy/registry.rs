@@ -1,16 +1,27 @@
 //! The economy's in-memory state, on `Data`: per-server settings, which
 //! servers' stored settings have been read, and who is opted out.
 
+use super::earn::cooldown_allows;
 use super::settings::EconomySettings;
-use dashmap::{DashMap, DashSet};
+use dashmap::{mapref::entry::Entry, DashMap, DashSet};
 use serenity::all::{GuildId, UserId};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::Instant;
 
 #[derive(Debug, Clone, Default)]
 pub struct EconomyRegistry {
     settings: DashMap<GuildId, EconomySettings>,
     loaded: DashSet<GuildId>,
     opted_out: DashMap<GuildId, HashSet<UserId>>,
+    /// Messages counted since the last tick, per server and member.
+    pending_messages: DashMap<GuildId, HashMap<UserId, u32>>,
+    /// When each member's last message was counted (the cooldown's clock).
+    last_counted: DashMap<(GuildId, UserId), Instant>,
+    /// The earning tick has been spawned.
+    started: Arc<AtomicBool>,
 }
 
 impl EconomyRegistry {
@@ -56,6 +67,56 @@ impl EconomyRegistry {
             .unwrap_or_default()
     }
 
+    /// Servers whose economy is switched on.
+    pub fn enabled_guilds(&self) -> Vec<GuildId> {
+        self.settings
+            .iter()
+            .filter(|e| e.enabled)
+            .map(|e| *e.key())
+            .collect()
+    }
+
+    /// Servers with messages counted since the last tick.
+    pub fn pending_guilds(&self) -> Vec<GuildId> {
+        self.pending_messages.iter().map(|e| *e.key()).collect()
+    }
+
+    /// Counts a message for `u` unless one was counted within `cooldown`.
+    /// Returns whether it counted (and records `now` when it did).
+    pub fn count_message(&self, g: GuildId, u: UserId, now: Instant, cooldown: Duration) -> bool {
+        match self.last_counted.entry((g, u)) {
+            Entry::Occupied(mut e) => {
+                if !cooldown_allows(Some(*e.get()), now, cooldown) {
+                    return false;
+                }
+                e.insert(now);
+            },
+            Entry::Vacant(e) => {
+                e.insert(now);
+            },
+        }
+        *self
+            .pending_messages
+            .entry(g)
+            .or_default()
+            .entry(u)
+            .or_insert(0) += 1;
+        true
+    }
+
+    /// Takes (and clears) the server's counted messages.
+    pub fn take_pending_messages(&self, g: GuildId) -> HashMap<UserId, u32> {
+        self.pending_messages
+            .remove(&g)
+            .map(|(_, m)| m)
+            .unwrap_or_default()
+    }
+
+    /// True the first time only: the caller then spawns the earning tick.
+    pub fn start_once(&self) -> bool {
+        !self.started.swap(true, Ordering::SeqCst)
+    }
+
     pub fn set_one_opted_out(&self, g: GuildId, u: UserId, out: bool) {
         let mut set = self.opted_out.entry(g).or_default();
         if out {
@@ -85,6 +146,44 @@ mod tests {
         assert!(!reg.is_opted_out(GuildId::new(9), a), "per server");
         reg.set_opted_out(G, HashSet::from([b]));
         assert_eq!(reg.opted_out(G), HashSet::from([b]));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn count_message_respects_cooldown_and_take_drains() {
+        let reg = EconomyRegistry::default();
+        let (a, b) = (UserId::new(2), UserId::new(3));
+        let cd = Duration::from_secs(60);
+        assert!(reg.count_message(G, a, Instant::now(), cd));
+        assert!(
+            !reg.count_message(G, a, Instant::now(), cd),
+            "inside cooldown"
+        );
+        assert!(reg.count_message(G, b, Instant::now(), cd), "per member");
+        assert!(
+            reg.count_message(GuildId::new(9), a, Instant::now(), cd),
+            "per server"
+        );
+        tokio::time::advance(Duration::from_secs(59)).await;
+        assert!(!reg.count_message(G, a, Instant::now(), cd));
+        tokio::time::advance(Duration::from_secs(1)).await;
+        assert!(reg.count_message(G, a, Instant::now(), cd), "cooldown over");
+        tokio::time::advance(Duration::from_secs(59)).await;
+        assert!(
+            !reg.count_message(G, a, Instant::now(), cd),
+            "the cooldown restarts from the last COUNTED message"
+        );
+        let taken = reg.take_pending_messages(G);
+        assert_eq!(taken, HashMap::from([(a, 2), (b, 1)]));
+        assert!(reg.take_pending_messages(G).is_empty(), "drained");
+        assert_eq!(reg.take_pending_messages(GuildId::new(9)).len(), 1);
+    }
+
+    #[test]
+    fn start_once_is_true_once() {
+        let reg = EconomyRegistry::default();
+        assert!(reg.start_once());
+        assert!(!reg.start_once());
+        assert!(!reg.clone().start_once(), "clones share the flag");
     }
 
     #[test]
