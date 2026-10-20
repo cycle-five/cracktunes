@@ -144,7 +144,7 @@ pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>
 ///
 /// 🪤 `expect` matters because "connected" is not "connected to the channel
 /// you asked for". A concurrent `/gp` resume can land a join on another
-/// channel between a failed `manager.join` and this check, and without the
+/// channel between a failed join and this check, and without the
 /// comparison `do_join` would announce "Summoned <#B>" for a bot in A.
 pub(crate) async fn connected_call(
     manager: &songbird::Songbird,
@@ -170,13 +170,59 @@ pub(crate) async fn connected_call(
     }
 }
 
+/// songbird's two join stages, run by hand so the bot can deafen in between.
+/// Mirrors `Songbird::join_inner`.
+///
+/// Two constraints:
+/// - **Never deafen before stage 1.** `Call::deafen` sends a voice-state update
+///   for the `Call`'s connected channel, which on a fresh `Call` is `None`, and
+///   Discord reads `channel_id: null` as "leave voice". That would run the
+///   disconnect cleanup in the middle of a join (e.g. the `/gp` resume rejoin).
+/// - **Release the `Call` lock before awaiting stage 2.** The gateway events that
+///   complete the join need that lock.
+///
+/// A failed `deafen` is logged and the join carries on; an undeafened bot is no
+/// worse than before.
+///
+/// Call it only from `join_permitted`, which takes the `JoinPermit`; anything
+/// else would be a join without the permission gate.
+async fn join_deafened(
+    manager: &songbird::Songbird,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> Result<Arc<Mutex<Call>>, JoinError> {
+    let call = manager.get_or_insert(guild_id);
+    let stage_1 = {
+        let mut handler = call.lock().await;
+        // The one permitted `Call::join` in the crate -- `clippy.toml` bans it
+        // (and `Songbird::join`) everywhere else, which is what makes
+        // `join_permitted` the only door rather than merely the recommended
+        // one.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the one sanctioned join; see join_permitted"
+        )]
+        let joining = handler.join(channel_id).await;
+        if joining.is_ok() && !handler.is_deaf() {
+            if let Err(e) = handler.deafen(true).await {
+                tracing::warn!("Could not self-deafen in {channel_id:?} ({guild_id:?}): {e:?}");
+            }
+        }
+        joining
+    };
+    match stage_1 {
+        Ok(join) => join.await.map(|()| call),
+        Err(e) => Err(e),
+    }
+}
+
 /// Join the channel a [`JoinPermit`] was issued for.
 ///
-/// **The crate's only caller of `Songbird::join`.** Taking the permit by value
-/// is what makes that enforceable rather than aspirational: `ensure_can_join`
-/// is its only constructor, so a join that skipped the permission gate does
-/// not typecheck. This is the compiler doing the job `join_site_guard_tests`
-/// was scanning source text to approximate.
+/// **The crate's only way into voice**, and it joins self-deafened. Taking the
+/// permit by value is what makes that enforceable rather than aspirational:
+/// `ensure_can_join` is its only constructor, so a join that skipped the
+/// permission gate does not typecheck. This is the compiler doing the job
+/// `join_site_guard_tests` was scanning source text to approximate.
 ///
 /// Because there is one implementation, every join site gets the same failure
 /// handling. They used to get three different ones (#502): `do_join` dropped
@@ -190,11 +236,7 @@ pub(crate) async fn join_permitted(
     permit: JoinPermit,
 ) -> Result<Arc<Mutex<Call>>, JoinError> {
     let (guild_id, channel_id) = permit.into_parts();
-    // The one permitted `Songbird::join` in the crate -- `clippy.toml` bans it
-    // everywhere else, which is what makes this function the only door rather
-    // than merely the recommended one.
-    #[allow(clippy::disallowed_methods)]
-    let joined = manager.join(guild_id, channel_id).await;
+    let joined = join_deafened(manager, guild_id, channel_id).await;
     match joined {
         Ok(call) => Ok(call),
         Err(err) => match connected_call(manager, guild_id, Some(channel_id)).await {
@@ -298,8 +340,8 @@ async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
 
 /// Join a voice channel.
 ///
-/// Defers before the handshake, and only there. Every join that reaches
-/// `Songbird::join` can outlive Discord's three-second interaction deadline --
+/// Defers before the handshake, and only there. Every join can
+/// outlive Discord's three-second interaction deadline --
 /// songbird's `gateway_timeout` is 10s -- and this is the one point every
 /// command's join funnels through, so the defer belongs here rather than in
 /// each of them. poise's defer is idempotent and a no-op on prefix commands,
@@ -370,4 +412,135 @@ pub async fn do_join(
     set_global_handlers(ctx, call.clone(), guild_id, channel_id.widen()).await;
     announce_join(ctx, channel_id).await;
     Ok(call)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::channel::mpsc::{unbounded, UnboundedReceiver};
+    use serenity::all::UserId;
+    use serenity::gateway::{ShardRunnerMessage, VoiceGatewayManager};
+
+    const G: GuildId = GuildId::new(7);
+    const C: ChannelId = ChannelId::new(70);
+
+    /// An offline manager whose gateway messages land in the returned receiver.
+    /// Nothing answers a join, so it times out after `gateway_timeout`.
+    async fn offline_manager(
+        gateway_timeout: Duration,
+    ) -> (
+        Arc<songbird::Songbird>,
+        UnboundedReceiver<ShardRunnerMessage>,
+    ) {
+        crate::music::ops::test_support::lasting_scheduler();
+        let manager = songbird::Songbird::serenity_from_config(
+            songbird::Config::default().gateway_timeout(Some(gateway_timeout)),
+        );
+        manager.initialise_client_data(1, UserId::new(2));
+        let (tx, rx) = unbounded();
+        manager.register_shard(0, tx).await;
+        (manager, rx)
+    }
+
+    /// (channel, self_deaf) of every voice-state update sent for G, in order.
+    fn voice_updates(
+        rx: &mut UnboundedReceiver<ShardRunnerMessage>,
+    ) -> Vec<(Option<ChannelId>, bool)> {
+        let mut out = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            if let ShardRunnerMessage::UpdateVoiceState {
+                guild_id,
+                channel_id,
+                self_deaf,
+                ..
+            } = msg
+            {
+                if guild_id == G {
+                    out.push((channel_id, self_deaf));
+                }
+            }
+        }
+        out
+    }
+
+    #[tokio::test]
+    async fn first_join_ends_self_deafened_and_never_sends_a_leave() {
+        let (manager, mut rx) = offline_manager(Duration::from_millis(50)).await;
+        let err = join_deafened(&manager, G, C)
+            .await
+            .expect_err("nothing answers offline");
+        assert!(matches!(err, JoinError::TimedOut), "{err:?}");
+        let sent = voice_updates(&mut rx);
+        assert!(
+            sent.iter().all(|(ch, _)| *ch == Some(C)),
+            "a leave was sent: {sent:?}"
+        );
+        assert_eq!(sent.last(), Some(&(Some(C), true)), "{sent:?}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_stage_1_does_not_deafen() {
+        let (manager, rx) = offline_manager(Duration::from_millis(50)).await;
+        // The shard's sender is still registered but nothing receives: the
+        // gateway send fails, so stage 1 fails.
+        drop(rx);
+        join_deafened(&manager, G, C)
+            .await
+            .expect_err("the gateway send fails");
+        let call = manager.get_or_insert(G);
+        assert!(!call.lock().await.is_deaf(), "deafened after a failed join");
+    }
+
+    #[tokio::test]
+    async fn a_rejoin_by_a_deaf_call_does_not_deafen_again() {
+        let (manager, mut rx) = offline_manager(Duration::from_millis(50)).await;
+        join_deafened(&manager, G, C).await.expect_err("times out");
+        // songbird keeps `self_deaf` across a leave (which sends a null update).
+        let call = manager.get_or_insert(G);
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the test needs songbird's bare leave: no queue, no audit"
+        )]
+        let left = call.lock().await.leave().await;
+        left.expect("leave");
+        let _ = voice_updates(&mut rx);
+        join_deafened(&manager, G, C).await.expect_err("times out");
+        assert_eq!(voice_updates(&mut rx), vec![(Some(C), true)]);
+    }
+
+    #[tokio::test]
+    async fn the_call_lock_is_free_while_stage_2_waits() {
+        use futures::StreamExt;
+        // Long enough that stage 2 cannot end during the check.
+        let (manager, mut rx) = offline_manager(Duration::from_secs(10)).await;
+        let m = manager.clone();
+        let joining = tokio::spawn(async move { join_deafened(&m, G, C).await });
+        // The deafen is the last thing sent while the lock is held, so once
+        // it arrives stage 1 is done and stage 2 is being awaited.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(msg) = rx.next().await {
+                if matches!(
+                    msg,
+                    ShardRunnerMessage::UpdateVoiceState {
+                        channel_id: Some(_),
+                        self_deaf: true,
+                        ..
+                    }
+                ) {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("the deafen was never sent");
+        let call = manager.get_or_insert(G);
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while call.try_lock().is_err() {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .expect("the Call lock is held across stage 2");
+        joining.abort();
+    }
 }

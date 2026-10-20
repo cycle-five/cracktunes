@@ -13,7 +13,7 @@ use crate::{
     Data,
 };
 use ::serenity::{
-    builder::{CreateEmbed, CreateMessage, EditMember},
+    builder::{CreateEmbed, CreateMessage},
     gateway::ActivityData,
 };
 use colored::Colorize;
@@ -354,22 +354,8 @@ impl SerenityHandler {
             return;
         }
 
+        // Only a disconnect (no channel) needs handling here.
         if new.channel_id.is_some() {
-            // check the data struct with this guild to see self deafen settings
-            // if self deafen is false, deafen the bot
-            // if self deafen is true, do nothing
-            // if self deafen is None, do nothing
-            let do_i_deafen = self
-                .data
-                .guild_settings_map
-                .read()
-                .await
-                .get(&new.guild_id.unwrap())
-                .map(|x| x.self_deafen)
-                .unwrap_or_else(|| true);
-            if !do_i_deafen {
-                return self.self_deafen(&ctx, new.guild_id, new).await;
-            }
             return;
         }
         let manager = ctx.data::<Data>().songbird.clone();
@@ -383,13 +369,6 @@ impl SerenityHandler {
         // TODO: Figure out why this clears the queue
         // TODO: Figure out why there is a voice state update event when the bot is disconnected
         // from the voice channel
-        // ANSWER: This is because the bot is deafened, so it's a voice state update event
-        // Q: What if the bot is not deafened?
-        // A: Then there is no voice state update event
-        // Q: Then how do we know when the bot is disconnected from the voice channel?
-        // A: We don't
-        // Q: Fuck you :(
-        // A:
         // 🪤 Not `.ok()`. songbird's `remove` is `leave(..)?` *then*
         // `calls.remove(..)`, so a failing leave skips the removal and leaves
         // the connectionless `Call` registered -- the stale handle the whole
@@ -595,24 +574,6 @@ impl SerenityHandler {
     //         new_settings.len()
     //     );
     // }
-
-    async fn self_deafen(&self, ctx: &SerenityContext, guild: Option<GuildId>, new: VoiceState) {
-        if self.data.bot_settings.self_deafen.is_some() {
-            return;
-        }
-
-        let Ok(user) = ctx.http.get_current_user().await else {
-            return;
-        };
-
-        if user.id == new.user_id && !new.deaf() {
-            guild
-                .unwrap()
-                .edit_member(ctx.http(), new.user_id, EditMember::default().deafen(true))
-                .await
-                .unwrap();
-        }
-    }
 }
 
 // /// Run a worker that writes metadata to the database.

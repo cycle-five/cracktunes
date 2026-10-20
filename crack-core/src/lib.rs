@@ -210,7 +210,6 @@ pub struct BotConfig {
     // Cammed down kicking config
     pub cam_kick: Option<Vec<CamKickConfig>>,
     pub sys_log_channel_id: Option<u64>,
-    pub self_deafen: Option<bool>,
     pub volume: Option<f32>,
     #[serde(skip)]
     pub guild_settings_map: Option<Vec<guild::settings::GuildSettings>>,
@@ -230,7 +229,6 @@ impl Default for BotConfig {
             owners: None,
             cam_kick: None,
             sys_log_channel_id: None,
-            self_deafen: Some(true),
             volume: Some(DEFAULT_VOLUME_LEVEL),
             guild_settings_map: None,
             prefix: Some(DEFAULT_PREFIX.to_string()),
@@ -257,7 +255,6 @@ impl Display for BotConfig {
             "sys_log_channel_id: {:?}\n",
             self.sys_log_channel_id
         ));
-        result.push_str(&format!("self_deafen: {:?}\n", self.self_deafen));
         result.push_str(&format!("volume: {:?}\n", self.volume));
         result.push_str(&format!(
             "guild_settings_map: {:?}\n",
