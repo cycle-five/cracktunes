@@ -9,11 +9,12 @@ use crate::messaging::messages::{
     ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE, ECONOMY_ADMIN_ADJUST_ZERO, ECONOMY_ADMIN_BOT_TARGET,
     ECONOMY_ADMIN_GRANT_DISABLED, ECONOMY_ADMIN_GRANT_DONE, ECONOMY_ADMIN_GRANT_FAILED,
     ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE, ECONOMY_ADMIN_LIFT_FAILED,
-    ECONOMY_ADMIN_LIFT_NONE, ECONOMY_NO_DATABASE, ECONOMY_READ_FAILED, ECONOMY_STATUS_CURRENCY,
-    ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY,
-    ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS, ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON,
-    ECONOMY_STATUS_PER_MESSAGE, ECONOMY_STATUS_PER_VOICE_MINUTE, ECONOMY_STATUS_SECONDS,
-    ECONOMY_STATUS_SHOP, ECONOMY_STATUS_TITLE, ECONOMY_STATUS_WALLETS,
+    ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE, ECONOMY_NO_DATABASE,
+    ECONOMY_READ_FAILED, ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING,
+    ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS,
+    ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
+    ECONOMY_STATUS_PER_VOICE_MINUTE, ECONOMY_STATUS_SECONDS, ECONOMY_STATUS_SHOP,
+    ECONOMY_STATUS_TITLE, ECONOMY_STATUS_WALLETS,
 };
 use crate::messaging::transport::DiscordTransport;
 use crate::modlog::batch::ModLogSink;
@@ -59,6 +60,34 @@ pub fn economy_status_text(s: &EconomySettings, wallets: i64, credits: i64) -> S
     )
 }
 
+/// Moderator commands need Moderate Members (an administrator holds every
+/// permission, so the resolved set already includes it; checked anyway).
+pub fn mod_allowed(p: Permissions) -> bool {
+    p.contains(Permissions::MODERATE_MEMBERS) || p.contains(Permissions::ADMINISTRATOR)
+}
+
+/// Whether the hours of a grant are in range.
+pub fn hours_ok(h: u32) -> bool {
+    (1..=MAX_GRANT_HOURS).contains(&h)
+}
+
+/// The invoker's permissions from the interaction (the resolved set); none
+/// when unknown.
+#[cfg(not(tarpaulin_include))]
+async fn invoker_permissions(ctx: Context<'_>) -> Option<Permissions> {
+    ctx.author_member().await.and_then(|m| m.permissions)
+}
+
+/// Refuses privately unless the invoker has Moderate Members.
+#[cfg(not(tarpaulin_include))]
+async fn mod_gate(ctx: Context<'_>) -> Result<bool, Error> {
+    if invoker_permissions(ctx).await.is_some_and(mod_allowed) {
+        return Ok(true);
+    }
+    say(ctx, ECONOMY_ADMIN_NEEDS_MODERATE, true).await?;
+    Ok(false)
+}
+
 /// Adjusting balances needs Manage Server, on top of the command's own
 /// Moderate Members.
 pub fn adjust_allowed(p: Permissions) -> bool {
@@ -96,6 +125,9 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     let Some((guild, pool)) = gate(ctx).await? else {
         return Ok(());
     };
+    if !mod_gate(ctx).await? {
+        return Ok(());
+    }
     match db::stats(&pool, guild).await {
         Ok((wallets, credits)) => {
             let s = ctx.data().economy.settings(guild);
@@ -120,10 +152,13 @@ pub async fn grant(
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
     };
+    if !mod_gate(ctx).await? {
+        return Ok(());
+    }
     if member.bot() {
         return say(ctx, ECONOMY_ADMIN_BOT_TARGET, true).await;
     }
-    if hours.is_some_and(|h| !(1..=MAX_GRANT_HOURS).contains(&h)) {
+    if hours.is_some_and(|h| !hours_ok(h)) {
         return say(ctx, ECONOMY_ADMIN_HOURS_RANGE, true).await;
     }
     let until = hours.map(|h| Utc::now() + Duration::hours(i64::from(h)));
@@ -156,6 +191,9 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
     };
+    if !mod_gate(ctx).await? {
+        return Ok(());
+    }
     match mod_lift(&ctx.data(), guild, member.id).await {
         Ok(true) => {
             log(
@@ -188,11 +226,7 @@ pub async fn adjust(
         return Ok(());
     };
     // For a slash command the member's `permissions` is the resolved set.
-    let permitted = ctx
-        .author_member()
-        .await
-        .and_then(|m| m.permissions)
-        .is_some_and(adjust_allowed);
+    let permitted = invoker_permissions(ctx).await.is_some_and(adjust_allowed);
     if !permitted {
         return say(ctx, ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE, true).await;
     }
@@ -270,6 +304,22 @@ mod tests {
         assert!(t.starts_with("**Economy status**: on\nCurrency: 💎 gems\n"));
         assert!(t.contains("shop off"));
         assert!(t.ends_with("Gambling: on, max bet 500"));
+    }
+
+    #[test]
+    fn mod_allowed_needs_moderate_members() {
+        assert!(!mod_allowed(Permissions::empty()));
+        assert!(mod_allowed(Permissions::MODERATE_MEMBERS));
+        assert!(mod_allowed(Permissions::ADMINISTRATOR));
+        assert!(!mod_allowed(Permissions::MANAGE_GUILD));
+    }
+
+    #[test]
+    fn hours_ok_bounds() {
+        assert!(!hours_ok(0));
+        assert!(hours_ok(1));
+        assert!(hours_ok(8760));
+        assert!(!hours_ok(8761));
     }
 
     #[test]

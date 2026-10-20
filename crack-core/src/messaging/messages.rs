@@ -958,3 +958,5 @@ pub const ECONOMY_ADMIN_ADJUST_BELOW_ZERO_PREFIX: &str =
     "That would take them below zero; they hold";
 pub const ECONOMY_ADMIN_ADJUST_DONE: &str = "Adjusted. They now hold";
 pub const ECONOMY_ADMIN_ADJUST_FAILED: &str = "Couldn't adjust that right now. Try again.";
+pub const ECONOMY_ADMIN_NEEDS_MODERATE: &str =
+    "This command needs the Moderate Members permission.";

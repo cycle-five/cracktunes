@@ -86,11 +86,10 @@ pub async fn immunity(ctx: Context<'_>) -> Result<(), Error> {
     if buyer.bot() {
         return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
     }
-    let currency = ctx.data().economy.settings(guild).config.currency_name;
+    let cfg = ctx.data().economy.settings(guild).config;
     match buy_immunity(&ctx.data(), guild, buyer.id, Utc::now()).await {
         Ok(bought) => {
             say(ctx, immune_card_text(buyer.id, bought.until), false).await?;
-            let cfg = ctx.data().economy.settings(guild).config;
             say(
                 ctx,
                 balance_followup_text(bought.balance, &cfg.currency_name, &cfg.currency_emoji),
@@ -98,7 +97,7 @@ pub async fn immunity(ctx: Context<'_>) -> Result<(), Error> {
             )
             .await
         },
-        Err(BuyError::Refused(r)) => say(ctx, refusal_text(&r, &currency), true).await,
+        Err(BuyError::Refused(r)) => say(ctx, refusal_text(&r, &cfg.currency_name), true).await,
         Err(BuyError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
         Err(BuyError::Db) => say(ctx, ECONOMY_PURCHASE_FAILED, true).await,
     }
