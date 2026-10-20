@@ -348,6 +348,20 @@ mod test {
         let _layer = combine_log_layers(stdout_log, debug_log);
     }
 
+    /// `BotConfig::self_deafen` was removed in v0.30.1. A cracktunes.toml
+    /// written for an older release may still carry the key, and must load.
+    #[test]
+    fn bot_config_ignores_a_leftover_self_deafen_key() {
+        let path = env::temp_dir().join(format!(
+            "cracktunes-leftover-self-deafen-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "self_deafen = true\n").unwrap();
+        let loaded = BotConfig::from_config_file(&path);
+        std::fs::remove_file(&path).unwrap();
+        assert!(loaded.is_ok(), "{:?}", loaded.err());
+    }
+
     #[test]
     fn test_load_key() {
         let key = "DISCORD_TOKEN".to_string();

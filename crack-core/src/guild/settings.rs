@@ -40,8 +40,6 @@ pub(crate) const ADDITIONAL_PREFIXES: [&str; 8] = [
 ];
 pub(crate) const MOD_VAL: u64 = 1 << 1;
 pub(crate) const ADMIN_VAL: u64 = 2 << 1;
-pub(crate) const DEFAULT_VALID_TOKEN: &str =
-    "XXXXXXXXXXXXXXXXXXXXXXXX.X_XXXX.XXXXXXXXXXXXXXXXXXXXXX_XXXX";
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
@@ -369,6 +367,8 @@ pub struct GuildSettings {
     pub old_volume: f32,
     #[serde(default = "volume_default")]
     pub volume: f32,
+    /// Unused since v0.30.1: CrackTunes always joins self-deafened. The column
+    /// stays so older images (which write it) can still roll back.
     pub self_deafen: bool,
     pub timeout: u32,
     pub welcome_settings: Option<WelcomeSettings>,
@@ -647,12 +647,6 @@ impl GuildSettings {
     /// Toggle whether the now-playing message carries its buttons.
     pub fn toggle_now_playing_buttons(&mut self) -> &mut Self {
         self.now_playing_buttons = !self.now_playing_buttons;
-        self
-    }
-
-    /// Toggle the autoplay setting, mutating.
-    pub fn toggle_self_deafen(&mut self) -> &mut Self {
-        self.self_deafen = !self.self_deafen;
         self
     }
 
