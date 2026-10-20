@@ -17,7 +17,9 @@ pub struct TargetFacts {
     pub is_bot: bool,
     pub is_self: bool,
     pub is_owner: bool,
-    pub top_role_position: u16,
+    /// `None` when the cache cannot say: a prank is then out of reach.
+    pub top_role_position: Option<u16>,
+    /// 0 when unknown, which fails closed: `>= 0` is always true.
     pub bot_top_role_position: u16,
     pub in_voice: Option<ChannelId>,
     pub opted_out: bool,
@@ -25,8 +27,9 @@ pub struct TargetFacts {
     pub has_mirror: bool,
     /// When a prank of the same slot (rename and clown share one) ends.
     pub running_same_kind: Option<DateTime<Utc>>,
-    /// Could the target join the drag or jail destination on their own?
-    /// `None` is "not applicable"; only a `Some(false)` refuses.
+    /// Could the target join the drag destination on their own? `None` means
+    /// unknown or not applicable. Drag treats `None` as a refusal; jail and
+    /// the other kinds ignore it.
     pub can_join_destination: Option<bool>,
     /// What a name prank restores.
     pub current_nick: Option<String>,
@@ -58,7 +61,10 @@ pub fn check_target(
         if t.is_self {
             return Err(Refusal::TargetIsSelf);
         }
-        if t.is_owner || t.top_role_position >= t.bot_top_role_position {
+        if t.is_owner
+            || t.top_role_position
+                .is_none_or(|p| p >= t.bot_top_role_position)
+        {
             return Err(Refusal::OutOfReach);
         }
     }
@@ -88,7 +94,7 @@ pub fn check_target(
     if let Some(until) = t.running_same_kind {
         return Err(Refusal::AlreadyRunning { until });
     }
-    if kind == ActionKind::Drag && t.can_join_destination == Some(false) {
+    if kind == ActionKind::Drag && t.can_join_destination != Some(true) {
         return Err(Refusal::CannotJoinDestination);
     }
     Ok(TargetOutcome::Lands)
@@ -126,20 +132,20 @@ pub fn can_join(cache: &Cache, guild: GuildId, member: UserId, channel: ChannelI
     Some(member_can_join(&view, member, &m.roles))
 }
 
-/// The member's highest role position from the cache; 0 for none or when
-/// the member is not cached.
-pub fn top_position(cache: &Cache, guild: GuildId, member: UserId) -> u16 {
-    let Some(g) = cache.guild(guild) else {
-        return 0;
-    };
-    let Some(m) = g.members.get(&member) else {
-        return 0;
-    };
-    top_of(&m.roles, |r| {
+/// The member's highest role position from the cache; `Some(0)` for no
+/// roles, `None` when the cache cannot answer (guild or member missing, or a
+/// role not cached), which callers treat as out of reach.
+pub fn top_position(cache: &Cache, guild: GuildId, member: UserId) -> Option<u16> {
+    let g = cache.guild(guild)?;
+    let m = g.members.get(&member)?;
+    if !roles_resolvable(guild, &m.roles, |r| g.roles.contains_key(&r)) {
+        return None;
+    }
+    Some(top_of(&m.roles, |r| {
         g.roles
             .get(&r)
             .map(|role| role.position.max(0).cast_unsigned())
-    })
+    }))
 }
 
 /// Whether `member` owns the server (always out of reach). `false` when the
@@ -166,7 +172,7 @@ mod tests {
             is_bot: false,
             is_self: false,
             is_owner: false,
-            top_role_position: 1,
+            top_role_position: Some(1),
             bot_top_role_position: 5,
             in_voice: Some(VC),
             opted_out: false,
@@ -184,7 +190,7 @@ mod tests {
             is_bot: true,
             is_self: true,
             is_owner: true,
-            top_role_position: 9,
+            top_role_position: Some(9),
             bot_top_role_position: 5,
             in_voice: None,
             opted_out: true,
@@ -207,7 +213,7 @@ mod tests {
         f.is_self = false;
         assert_eq!(check_target(kind, &f, buyer), Err(Refusal::OutOfReach));
         f.is_owner = false;
-        f.top_role_position = 1;
+        f.top_role_position = Some(1);
         // Drag: the buyer must be in voice, then the target.
         assert_eq!(check_target(kind, &f, None), Err(Refusal::BuyerNotInVoice));
         assert_eq!(
@@ -243,13 +249,13 @@ mod tests {
         let kind = ActionKind::Rename;
         let mut f = clean();
         assert_eq!(check_target(kind, &f, None), Ok(TargetOutcome::Lands));
-        f.top_role_position = 4;
+        f.top_role_position = Some(4);
         assert_eq!(check_target(kind, &f, None), Ok(TargetOutcome::Lands));
-        f.top_role_position = 5;
+        f.top_role_position = Some(5);
         assert_eq!(check_target(kind, &f, None), Err(Refusal::OutOfReach));
-        f.top_role_position = 6;
+        f.top_role_position = Some(6);
         assert_eq!(check_target(kind, &f, None), Err(Refusal::OutOfReach));
-        f.top_role_position = 0;
+        f.top_role_position = Some(0);
         f.is_owner = true;
         assert_eq!(check_target(kind, &f, None), Err(Refusal::OutOfReach));
         for k in [
@@ -319,12 +325,62 @@ mod tests {
             check_target(ActionKind::Drag, &f, Some(OTHER_VC)),
             Ok(TargetOutcome::Lands)
         );
+        f.can_join_destination = None;
+        assert_eq!(
+            check_target(ActionKind::Drag, &f, Some(OTHER_VC)),
+            Err(Refusal::CannotJoinDestination)
+        );
         // Other kinds never read it.
         f.can_join_destination = Some(false);
         assert_eq!(
             check_target(ActionKind::Mute, &f, None),
             Ok(TargetOutcome::Lands)
         );
+    }
+
+    #[test]
+    fn drag_refuses_an_unknown_destination() {
+        let mut f = clean();
+        f.can_join_destination = None;
+        assert_eq!(
+            check_target(ActionKind::Drag, &f, Some(VC)),
+            Err(Refusal::CannotJoinDestination)
+        );
+        for k in [ActionKind::Jail, ActionKind::Mute, ActionKind::Rename] {
+            assert_eq!(
+                check_target(k, &f, Some(VC)),
+                Ok(TargetOutcome::Lands),
+                "{k:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_target_position_is_out_of_reach() {
+        let mut f = clean();
+        f.top_role_position = None;
+        for k in [
+            ActionKind::Rename,
+            ActionKind::Lock,
+            ActionKind::Clown,
+            ActionKind::Drag,
+            ActionKind::Mute,
+            ActionKind::Deafen,
+            ActionKind::Jail,
+        ] {
+            assert_eq!(
+                check_target(k, &f, Some(VC)),
+                Err(Refusal::OutOfReach),
+                "{k:?}"
+            );
+        }
+        for k in [ActionKind::Mirror, ActionKind::Cleanse, ActionKind::Reveal] {
+            assert_eq!(
+                check_target(k, &f, Some(VC)),
+                Ok(TargetOutcome::Lands),
+                "{k:?}"
+            );
+        }
     }
 
     #[test]

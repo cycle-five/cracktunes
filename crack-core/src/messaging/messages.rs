@@ -939,7 +939,8 @@ pub const ECONOMY_NOTE_TOO_LONG: &str = "The note can be at most 200 characters.
 pub const ECONOMY_NOTE_MENTION: &str = "The note can't mention anyone.";
 pub const ECONOMY_NOTE_LINK: &str = "The note can't contain a link.";
 pub const ECONOMY_NICK_EMPTY: &str = "The nickname can't be empty.";
-pub const ECONOMY_NICK_TOO_LONG: &str = "A nickname can be at most 32 characters.";
+pub const ECONOMY_NICK_TOO_LONG: &str =
+    "That name is too long: 32 characters at most (an emoji counts as 2).";
 pub const ECONOMY_NICK_MENTION: &str = "The nickname can't mention anyone.";
 pub const ECONOMY_NICK_LINK: &str = "The nickname can't contain a link.";
 pub const ECONOMY_CLOWN_SUFFIX: &str = " 🤡";
