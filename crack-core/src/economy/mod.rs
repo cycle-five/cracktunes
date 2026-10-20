@@ -1,9 +1,11 @@
 //! Per-server credits: earned in voice and by chatting, spent in the shop.
 //! Off by default; see `economy::settings`.
 
+pub mod discord;
 pub mod earn;
 pub mod gamble;
 pub mod immunity;
+pub mod preflight;
 pub mod registry;
 pub mod settings;
 pub mod shop;
