@@ -203,27 +203,13 @@ pub fn get_client_old() -> &'static reqwest::Client {
     &CLIENT
 }
 
-/// Initialize the static, global reqwest client.
-pub async fn init_http_client() -> Result<(), CrackedError> {
-    let client = get_client();
-    let client_old = get_client_old();
-    let res1 = client.get("https://httpbin.org/ip").send().await?;
-    // This is really weird, it causes a bug if you don't implement the conversion
-    // for the error type in both the new and old version of the library.
-    let res2 = client_old.get("https://httpbin.org/ip").send().await?;
-    let status1 = res1.status();
-    let status2 = res2.status();
-    // let body = res.text().await?;
-    tracing::info!(
-        "HTTP client initialized successfully: {:?}",
-        status1.clone()
-    );
-    tracing::info!(
-        "HTTP client initialized successfully: {:?}",
-        status2.clone()
-    );
-    Ok(())
+/// Build the static, global reqwest client eagerly, so a TLS or builder
+/// failure shows at boot instead of on the first request. Makes no request:
+/// startup must not depend on any third-party host being reachable (#554).
+pub fn init_http_client() {
+    once_cell::sync::Lazy::force(&CLIENT);
 }
+
 /// Get the bot's user ID.
 #[cfg(not(tarpaulin_include))]
 pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedError> {

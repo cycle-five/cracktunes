@@ -597,6 +597,24 @@ pub async fn play_internal(
 
     let is_prefix = ctx.is_prefix();
 
+    // `ephemeral_replies` decides whether this reply -- and the edit that turns
+    // it into the result -- is seen by its author alone.
+    //
+    // 🪤 Discord fixes a response's visibility when the response is CREATED,
+    // and ignores `ephemeral` on an edit. `do_join` defers publicly, so the
+    // choice has to be made here, before the paused/`NoQuery` replies and
+    // before the join, or the reply stays public (#535). poise's defer is
+    // idempotent, so `do_join`'s later one is then a no-op. A prefix command
+    // is never private (`reply_privately`) and poise's defer ignores it too.
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    let private = crate::messaging::status::reply_privately(
+        ctx.data().get_ephemeral_replies(guild_id).await,
+        is_prefix,
+    );
+    if private {
+        ctx.defer_ephemeral().await?;
+    }
+
     let msg = get_msg(mode.clone(), query_or_url, is_prefix).map(to_fixed);
 
     if msg.is_none() && file.is_none() {
@@ -628,13 +646,6 @@ pub async fn play_internal(
 
     let _after_call = std::time::Instant::now();
 
-    // `ephemeral_replies` decides whether this reply -- and the edit that turns
-    // it into the result -- is seen by its author alone.
-    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
-    let private = crate::messaging::status::reply_privately(
-        ctx.data().get_ephemeral_replies(guild_id).await,
-        is_prefix,
-    );
     let search_msg = msg_int::send_search_message_as(&ctx, private).await?;
     //tracing::debug!("search response msg: {:?}", search_msg.message());
 

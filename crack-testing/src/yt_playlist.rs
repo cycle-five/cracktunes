@@ -26,8 +26,11 @@ const FALLBACK_API_KEY: &str = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
 const FALLBACK_CLIENT_VERSION: &str = "2.20240814.00.00";
 
 /// Hard ceiling on continuation requests, so a pathological playlist cannot
-/// spin forever.
-const MAX_CONTINUATIONS: usize = 20;
+/// spin forever. Scales with the limit (a page holds ~100 entries, and the
+/// factor of 2 leaves slack for short pages), with a floor of 20.
+pub fn max_continuations(limit: usize) -> usize {
+    limit.div_ceil(100).saturating_mul(2).max(20)
+}
 
 /// Per-request ceiling for the playlist page and each continuation. Set here
 /// rather than on the client, which rusty_ytdl shares for other work.
@@ -92,7 +95,7 @@ pub async fn fetch_playlist(
 
     let mut token = find_continuation_token(&data);
     let mut rounds = 0;
-    while entries.len() < limit && rounds < MAX_CONTINUATIONS {
+    while entries.len() < limit && rounds < max_continuations(limit) {
         let Some(t) = token.take() else { break };
         rounds += 1;
         let next = match fetch_continuation(client, &api_key, &client_version, &t).await {
@@ -405,6 +408,18 @@ fn dedup_by_video_id(entries: &mut Vec<PlaylistEntry>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn max_continuations_has_a_floor_of_20() {
+        for limit in [1, 100, 300] {
+            assert_eq!(max_continuations(limit), 20, "limit {limit}");
+        }
+    }
+
+    #[test]
+    fn max_continuations_grows_with_the_limit() {
+        assert_eq!(max_continuations(5000), 100);
+    }
 
     #[test]
     fn test_parse_duration() {

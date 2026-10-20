@@ -1,8 +1,14 @@
 use crate::{
-    commands::{cmd_check_music, get_call_or_join_author},
+    commands::{cmd_check_music, connected_call},
     errors::CrackedError,
     guild::operations::GuildSettingsOperations,
-    messaging::{courier, message::CrackedMessage},
+    messaging::{
+        courier,
+        message::CrackedMessage,
+        messages::{
+            DOWNVOTED_AND_SKIPPED, DOWNVOTED_BUT_MOVED_ON, MOVED_ON_NOT_SKIPPED, SKIPPED_NOT_LOGGED,
+        },
+    },
     music::ops::{self, OpCx, OpRefused},
     poise_ext::PoiseContextExt,
     utils::get_track_handle_metadata,
@@ -56,7 +62,7 @@ pub async fn send_skip_reply(
         .map_err(|e| e.into())
 }
 
-/// Downvote and skip song causing it to *not* be used in music recommendations.
+/// Skip the current track and hide it from /playlog
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
@@ -67,7 +73,25 @@ pub async fn send_skip_reply(
 )]
 pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
-    let call = get_call_or_join_author(ctx).await?;
+    // Defer before the DB work below: it makes three round trips (one an
+    // unindexed join on `play_log`) and a slow one would blow Discord's
+    // 3-second deadline. Discord fixes a response's visibility when it is
+    // created, so the defer must match `private`. poise's defer is idempotent
+    // and a no-op on prefix commands, as in `play_internal`.
+    let cx = OpCx::from_ctx(&ctx)?;
+    let private = crate::messaging::status::reply_privately(
+        ctx.data().get_ephemeral_replies(cx.guild_id).await,
+        ctx.is_prefix(),
+    );
+    if private {
+        ctx.defer_ephemeral().await?;
+    } else {
+        ctx.defer().await?;
+    }
+    // Never joins: downvoting is about the track playing right now.
+    let call = connected_call(&ctx.data().songbird, guild_id, None)
+        .await
+        .ok_or(CrackedError::NotConnected)?;
 
     // The downvoted track must be the one skipped. The DB write sits between
     // the read and the skip, with no lease or Call lock held across it, so the
@@ -80,21 +104,50 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
             .current()
             .ok_or(CrackedError::NothingPlaying)?;
         let metadata = get_track_handle_metadata(&current).await?;
-        (
-            current.uuid(),
-            metadata.source_url.ok_or(CrackedError::NoMetadata)?,
-        )
+        (current.uuid(), metadata.source_url)
     };
-    let res1 = ctx.data().downvote_track(guild_id, &source_url).await?;
-    tracing::warn!("downvoted track: {:#?}", res1);
+    // Autoplay picks are never logged, and a track may have no source URL, so
+    // there may be nothing to downvote. Neither must stop the skip; every
+    // other failure still does.
+    let hidden = match source_url {
+        None => {
+            tracing::info!("downvote: track has no source url; skipping only");
+            false
+        },
+        Some(source_url) => match ctx.data().downvote_track(guild_id, &source_url).await {
+            Ok(reaction) => {
+                tracing::info!("downvoted track: {:#?}", reaction);
+                true
+            },
+            Err(CrackedError::NoPlayLogged) => {
+                tracing::info!("downvote: no play logged for {source_url}; skipping only");
+                false
+            },
+            Err(e) => return Err(e.into()),
+        },
+    };
 
-    let cx = OpCx::from_ctx(&ctx)?;
     match ops::skip(&cx, 1, Some(current_id)).await {
         Ok(done) => {
-            done.settle_now(&cx).await;
+            let text = if hidden {
+                DOWNVOTED_AND_SKIPPED
+            } else {
+                SKIPPED_NOT_LOGGED
+            };
+            let reply =
+                send_skip_reply(ctx, CrackedMessage::Other(text.to_string()), private).await?;
+            // As in `/skip`: a visible reply anchors the status below it.
+            let anchor = (!private).then_some((reply.channel_id, reply.id));
+            done.settle_after(&cx, anchor).await;
         },
         Err(OpRefused::Stale) => {
             tracing::warn!("downvoted a track that had already moved on; skipped nothing");
+            let text = if hidden {
+                DOWNVOTED_BUT_MOVED_ON
+            } else {
+                MOVED_ON_NOT_SKIPPED
+            };
+            send_skip_reply(ctx, CrackedMessage::Other(text.to_string()), private).await?;
         },
         Err(e) => return Err(CrackedError::from(e).into()),
     }

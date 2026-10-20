@@ -159,6 +159,7 @@ pub const NO_GUILD_ID: &str = "⚠️ No GuildId Found!";
 pub const NO_GUILD_SETTINGS: &str = "⚠️ No GuildSettings Found!";
 pub const NO_USER_AUTOPLAY: &str = "(auto)";
 pub const NO_METADATA: &str = "⚠️ No metadata found!";
+pub const NO_PLAY_LOGGED: &str = "⚠️ This track is not in the play log, so it can't be downvoted.";
 pub const NOT_IN_MUSIC_CHANNEL: &str = "⚠️ You are not in the music channel! Use";
 pub const ONETWOFT: &str = "https://12ft.io/";
 pub const OWNERS_ONLY: &str = "⚠️ This command can only be used by bot owners!";
@@ -261,6 +262,14 @@ pub const SKIP_VOTE_USER: &str = "has voted to skip!";
 pub const SKIPPED_ALL: &str = "⏭️ Skipped until infinity!";
 pub const SKIPPED_TO: &str = "⏭️ Skipped to";
 pub const SKIPPED: &str = "⏭️ Skipped!";
+pub const DOWNVOTED_AND_SKIPPED: &str =
+    "👎 Downvoted and skipped. Its latest play is hidden from /playlog.";
+pub const SKIPPED_NOT_LOGGED: &str =
+    "⏭️ Skipped. This track isn't in the play log, so there was nothing to hide from /playlog.";
+pub const MOVED_ON_NOT_SKIPPED: &str =
+    "⚠️ The track had already moved on, so nothing was skipped or downvoted.";
+pub const DOWNVOTED_BUT_MOVED_ON: &str =
+    "👎 Downvoted. The track had already moved on, so nothing was skipped.";
 // The old copy here asked "Did you forget to provide your Spotify application's
 // client ID and secret?" -- advice that stopped being actionable. Spotify has
 // blocked the creation of new Web API apps since roughly December 2025, so an

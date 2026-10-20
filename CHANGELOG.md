@@ -42,6 +42,20 @@
 
 ### Added
 
+- **`/downvote` is registered.** It skips the current track and records a
+  dislike against that track's newest play in this server, and one dislike is
+  enough to hide the play from `/playlog`. When the track has no logged play to
+  dislike, it still skips and says nothing was recorded. It is refused while a
+  `/gp` game is running, and dislikes do not influence autoplay (#207).
+- **`/ephemeral` is registered.** No release had it before. With it on,
+  `/play` replies privately, the "Joining" notice included. The channel still
+  sees the public floating status message (#535).
+- **`playlist_limit` in `cracktunes.toml` sets the bot-wide cap on how many
+  tracks a YouTube playlist link queues.** Unset or `0` means 300, and values
+  above 1000 are capped at 1000. The `PLAYLIST_LIMIT` environment variable
+  overrides the file, since Docker deployments don't mount `cracktunes.toml`.
+  This is the bot-wide part of #397; a per-server override and paging through
+  longer playlists are not done.
 - **A mod log.** A server picks a text channel and CrackTunes posts who server-muted
   or server-deafened (and unmuted or undeafened) whom, with the moderator and their
   reason, straight from Discord's audit log; who disconnected or moved whom in
@@ -232,6 +246,10 @@
 
 ### Changed
 
+- **A YouTube playlist link now queues up to 300 tracks, not 100.** Set
+  `playlist_limit` in `cracktunes.toml`, or `PLAYLIST_LIMIT` in the environment,
+  to change it, and the YouTube playlist reader follows as many pages as that
+  limit needs.
 - **CrackTunes joins voice self-deafened, and no longer decrypts or decodes
   what it receives.** Nothing used the incoming audio, so the bot now shows the
   deafened icon and Discord stops sending it any. A server's event log (when it
@@ -303,6 +321,17 @@
 
 ### Fixed
 
+- **The bot no longer restart-loops when httpbin.org is down.** It sent two
+  requests to httpbin.org while starting up and exited if either failed; it
+  now makes none before connecting (#554).
+- **`/downvote` disliked the wrong play.** It passed a track's id where a
+  play's id belonged, so the dislike landed on an unrelated play or failed. It
+  also joined voice, left the interaction unanswered and errored on a repeat
+  downvote of the same play, which now just counts. See Added (#207).
+- **`/play` ignored `/ephemeral` whenever it had to join voice.** Joining
+  answered the command publicly first, and Discord fixes a reply's visibility
+  when it is created, so the "Joining" notice and the reply were both public.
+  `/play` now answers privately before it joins. `~play` stays public (#535).
 - **The old self-deafen handler is gone.** It acted only when a guild's
   self-deafen setting was off, and the setting defaults to on. Where it did
   act, it server-deafened the bot, and it panicked if the bot lacked the

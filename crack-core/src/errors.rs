@@ -11,7 +11,7 @@ use crate::messaging::messages::{
     FAIL_NO_SONGBIRD, FAIL_NO_VIRUSTOTAL_API_KEY, FAIL_NO_VOICE_CONNECTION, FAIL_PARSE_TIME,
     FAIL_PLAYLIST_FETCH, FAIL_RESUME, FAIL_TO_SET_CHANNEL_SIZE, FAIL_URL_NOT_ALLOWED,
     FAIL_WRONG_CHANNEL, GUILD_ONLY, MISSING_PERMS_FIX, NOT_IN_MUSIC_CHANNEL, NO_CHANNEL_ID,
-    NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA,
+    NO_DATABASE_POOL, NO_GUILD_CACHED, NO_GUILD_ID, NO_GUILD_SETTINGS, NO_METADATA, NO_PLAY_LOGGED,
     NO_USER_AUTOPLAY, QUEUE_IS_EMPTY, ROLE_NOT_FOUND, SPOTIFY_AUTH_FAILED, UNAUTHORIZED_USER,
 };
 use std::borrow::Cow;
@@ -89,6 +89,7 @@ pub enum CrackedError {
     NoGuildSettings,
     NoLogChannel,
     NoMetadata,
+    NoPlayLogged,
     NoUserAutoplay,
     NothingPlaying,
     NoSongbird,
@@ -238,6 +239,7 @@ impl Display for CrackedError {
             Self::NoGuildSettings => f.write_str(NO_GUILD_SETTINGS),
             Self::NoLogChannel => f.write_str("No log channel"),
             Self::NoMetadata => f.write_str(NO_METADATA),
+            Self::NoPlayLogged => f.write_str(NO_PLAY_LOGGED),
             Self::NoUserAutoplay => f.write_str(NO_USER_AUTOPLAY),
             Self::NothingPlaying => f.write_str(FAIL_NOTHING_PLAYING),
             Self::NoSongbird => f.write_str(FAIL_NO_SONGBIRD),

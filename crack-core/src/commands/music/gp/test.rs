@@ -2433,18 +2433,9 @@ fn blocklist_matches_registry() {
     // bought a later, less explanatory refusal -- and until the guard
     // existed it bought a real one, `queue.resume()` landing on a live round.
     assert!(GP_BLOCKED_COMMANDS.contains(&"resume"));
-    // 🪤 `downvote` (`skip.rs`) belongs to this list by every property it
-    // has -- it takes the guard as `Free` and mutates the queue through
-    // `force_skip_top_track` -- and is deliberately absent, because it is
-    // registered nowhere: `music_commands()` does not list it, so
-    // `all_commands()` does not either, and the assertion above would
-    // reject it. Registering it is not a formality; as written it
-    // `.unwrap()`s `queue().current()` and would panic on an empty queue.
-    // The day it is registered, this fails and says what to do about it.
-    assert!(
-        !music.contains(&"downvote".to_string()),
-        "downvote is registered now -- add it to GP_BLOCKED_COMMANDS"
-    );
+    // `downvote` skips through the queue like `skip` does, so a game that owns
+    // playback must refuse it too.
+    assert!(GP_BLOCKED_COMMANDS.contains(&"downvote"));
     // A blocked name does nothing unless its command actually runs the
     // check. `remove` sat on this list for exactly that reason with no
     // `check = "cmd_check_music"`, so its entry was inert.

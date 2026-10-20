@@ -75,8 +75,8 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 
     let mut client = config::poise_framework(config, event_log_async).await?;
 
-    // Force the client to init.
-    http_utils::init_http_client().await?;
+    // Build the shared HTTP client now; makes no request.
+    http_utils::init_http_client();
 
     // let client = framework.client();
     let data_arc = client.data::<crack_core::Data>().clone();
@@ -146,6 +146,42 @@ fn load_key(k: String) -> Result<String, Error> {
     }
 }
 
+const PLAYLIST_LIMIT_ENV: &str = "PLAYLIST_LIMIT";
+
+/// A `PLAYLIST_LIMIT` that is not a whole number.
+#[derive(Clone, PartialEq, Eq)]
+struct BadPlaylistLimit(String);
+
+/// `main` prints startup errors with `Debug`, so it must carry the full message.
+impl std::fmt::Debug for BadPlaylistLimit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(self, f)
+    }
+}
+
+impl std::fmt::Display for BadPlaylistLimit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{PLAYLIST_LIMIT_ENV} must be a whole number, not `{}`",
+            self.0
+        )
+    }
+}
+
+impl std::error::Error for BadPlaylistLimit {}
+
+/// Parse a `PLAYLIST_LIMIT` value. Unset or blank means "no override".
+fn playlist_limit_from_env_value(raw: Option<&str>) -> Result<Option<u64>, BadPlaylistLimit> {
+    match raw.map(str::trim) {
+        Some(value) if !value.is_empty() => value
+            .parse()
+            .map(Some)
+            .map_err(|_| BadPlaylistLimit(value.to_string())),
+        _ => Ok(None),
+    }
+}
+
 /// Load the bot's config
 fn load_bot_config() -> Result<BotConfig, Error> {
     // The token is the one thing the bot genuinely cannot start without.
@@ -178,6 +214,12 @@ fn load_bot_config() -> Result<BotConfig, Error> {
     // A bad value stops startup, like a missing DISCORD_TOKEN.
     if let Some(mode) = CommandRegistration::from_env()? {
         config.command_registration = mode;
+    }
+    // Docker deployments don't mount cracktunes.toml, so the env must reach it.
+    if let Some(limit) =
+        playlist_limit_from_env_value(env::var(PLAYLIST_LIMIT_ENV).ok().as_deref())?
+    {
+        config.playlist_limit = Some(limit);
     }
 
     let config_with_creds = config.set_credentials(BotCredentials {
@@ -360,6 +402,32 @@ mod test {
         let loaded = BotConfig::from_config_file(&path);
         std::fs::remove_file(&path).unwrap();
         assert!(loaded.is_ok(), "{:?}", loaded.err());
+    }
+
+    #[test]
+    fn bot_config_reads_playlist_limit_from_toml() {
+        let path = env::temp_dir().join(format!(
+            "cracktunes-playlist-limit-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "playlist_limit = 750\n").unwrap();
+        let loaded = BotConfig::from_config_file(&path);
+        std::fs::remove_file(&path).unwrap();
+        let config = loaded.expect("config should load");
+        assert_eq!(config.get_playlist_limit(), 750);
+    }
+
+    #[test]
+    fn playlist_limit_env_value_parses() {
+        assert_eq!(playlist_limit_from_env_value(None), Ok(None));
+        assert_eq!(playlist_limit_from_env_value(Some("  ")), Ok(None));
+        assert_eq!(playlist_limit_from_env_value(Some("750")), Ok(Some(750)));
+        let err = playlist_limit_from_env_value(Some("abc")).unwrap_err();
+        let text = err.to_string();
+        assert!(
+            text.contains("PLAYLIST_LIMIT") && text.contains("abc"),
+            "{text}"
+        );
     }
 
     #[test]

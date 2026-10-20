@@ -28,6 +28,10 @@ pub mod utils;
 
 //#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
+use crate::music::query::DEFAULT_PLAYLIST_LIMIT;
+
+/// The most tracks a playlist link may queue, however it is configured.
+pub const MAX_PLAYLIST_LIMIT: u64 = 1000;
 #[cfg(feature = "crack-activity")]
 use ::serenity::all::Activity;
 use chrono::{DateTime, Utc};
@@ -220,6 +224,9 @@ pub struct BotConfig {
     /// How slash commands reach Discord. `COMMAND_REGISTRATION` overrides it.
     #[serde(default)]
     pub command_registration: commands::registration::CommandRegistration,
+    /// Most entries pulled in when playing a playlist link. Unset or 0 means
+    /// `DEFAULT_PLAYLIST_LIMIT`.
+    pub playlist_limit: Option<u64>,
 }
 
 impl Default for BotConfig {
@@ -238,6 +245,7 @@ impl Default for BotConfig {
             database_url: None,
             log_prefix: Some(DEFAULT_LOG_PREFIX.to_string()),
             command_registration: Default::default(),
+            playlist_limit: None,
         }
     }
 }
@@ -277,6 +285,7 @@ impl Display for BotConfig {
             "command_registration: {:?}\n",
             self.command_registration
         ));
+        result.push_str(&format!("playlist_limit: {}\n", self.get_playlist_limit()));
         write!(f, "{}", result)
     }
 }
@@ -294,6 +303,18 @@ impl BotConfig {
     pub fn get_video_status_poll_interval(&self) -> u64 {
         self.video_status_poll_interval
             .unwrap_or(DEFAULT_VIDEO_STATUS_POLL_INTERVAL)
+    }
+
+    /// The playlist entry cap: the configured value, or the default when it
+    /// is unset or 0 (0 would make every playlist empty), and never more than
+    /// `MAX_PLAYLIST_LIMIT`: a whole playlist's play-log writes go out in one
+    /// `try_send` burst into a 1024-slot channel (`queue.rs`, `poise_ext.rs`),
+    /// so a larger cap drops play_log rows.
+    pub fn get_playlist_limit(&self) -> u64 {
+        match self.playlist_limit {
+            Some(n) if n > 0 => n.min(MAX_PLAYLIST_LIMIT),
+            _ => DEFAULT_PLAYLIST_LIMIT,
+        }
     }
 
     pub fn get_database_url(&self) -> String {
@@ -608,19 +629,23 @@ impl Data {
             .insert(guild_id, guild_settings)
     }
 
-    /// Create a new Data, calls default
+    /// Record one dislike against the newest play of `source_url` in the guild.
+    ///
+    /// Errors with `NoPlayLogged` when no play of it is logged yet (the play
+    /// log is written asynchronously and may lag), and `NoDatabasePool`
+    /// without a database.
     pub async fn downvote_track(
         &self,
         guild_id: GuildId,
-        _track: &str,
+        source_url: &str,
     ) -> Result<TrackReaction, CrackedError> {
         let pool = self.get_db_pool()?;
-        let play_log_id =
-            PlayLog::get_last_played_by_guild_metadata(&pool, guild_id.into(), 1).await?;
-        let pool = self.database_pool.as_ref().unwrap();
-        let id = *play_log_id.first().unwrap() as i32;
-        let _ = TrackReaction::insert(pool, id).await?;
-        TrackReaction::add_dislike(pool, id).await
+        let play_log_id = PlayLog::last_play_of_url(&pool, guild_id.get() as i64, source_url)
+            .await?
+            .ok_or(CrackedError::NoPlayLogged)?;
+        let id = i32::try_from(play_log_id).map_err(|_| CrackedError::NoPlayLogged)?;
+        TrackReaction::insert(&pool, id).await?;
+        TrackReaction::add_dislike(&pool, id).await
     }
 
     pub async fn add_reply_handle_to_cache(
@@ -777,6 +802,44 @@ msg_on_dc:     false
 }
 
 #[cfg(test)]
+mod playlist_limit_tests {
+    use super::*;
+
+    #[test]
+    fn bot_config_defaults_to_a_300_track_playlist_limit() {
+        assert_eq!(BotConfig::default().get_playlist_limit(), 300);
+    }
+
+    #[test]
+    fn a_zero_playlist_limit_means_the_default() {
+        let config = BotConfig {
+            playlist_limit: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(config.get_playlist_limit(), 300);
+    }
+
+    #[test]
+    fn a_playlist_limit_above_the_ceiling_is_capped() {
+        let config = BotConfig {
+            playlist_limit: Some(5000),
+            ..Default::default()
+        };
+        assert_eq!(config.get_playlist_limit(), MAX_PLAYLIST_LIMIT);
+        assert_eq!(config.get_playlist_limit(), 1000);
+    }
+
+    #[test]
+    fn a_configured_playlist_limit_is_used() {
+        let config = BotConfig {
+            playlist_limit: Some(1000),
+            ..Default::default()
+        };
+        assert_eq!(config.get_playlist_limit(), 1000);
+    }
+}
+
+#[cfg(test)]
 mod redaction_tests {
     use super::*;
 
@@ -801,5 +864,55 @@ mod redaction_tests {
             rendered.contains("<redacted>"),
             "Display did not redact at all:\n{rendered}"
         );
+    }
+}
+
+#[cfg(test)]
+mod downvote_tests {
+    use super::*;
+
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    async fn play(pool: &sqlx::PgPool, url: &str) -> (i64, i64) {
+        let metadata_id: i64 = sqlx::query_scalar(
+            "INSERT INTO metadata (source_url) VALUES ($1) RETURNING id::bigint",
+        )
+        .bind(url)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let log = PlayLog::create(pool, 1, 1, metadata_id).await.unwrap();
+        (metadata_id, log.id)
+    }
+
+    /// 🪤 The original #207 bug: `downvote_track` took the newest *metadata*
+    /// id of the guild and used it as a play_log id, ignoring the URL.
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn downvote_track_dislikes_the_play_of_that_url(pool: sqlx::PgPool) {
+        // Shift metadata ids away from play_log ids.
+        for i in 0..3 {
+            sqlx::query("INSERT INTO metadata (source_url) VALUES ($1)")
+                .bind(format!("https://example.test/filler{i}"))
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        let (_, wanted) = play(&pool, "https://example.test/a").await;
+        let (_, _newest_other) = play(&pool, "https://example.test/b").await;
+        let data = Data(Arc::new(DataInner::default().with_database_pool(pool)));
+        let reaction = data
+            .downvote_track(GuildId::new(1), "https://example.test/a")
+            .await
+            .unwrap();
+        assert_eq!(reaction.play_log_id, wanted);
+        assert_eq!(reaction.dislikes, 1);
+        let unlogged = data
+            .downvote_track(GuildId::new(1), "https://example.test/never")
+            .await;
+        assert_eq!(unlogged.unwrap_err(), CrackedError::NoPlayLogged);
     }
 }
