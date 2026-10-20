@@ -578,6 +578,51 @@ pub async fn extend_bought(
     Ok(row.until)
 }
 
+/// Extend a bought grant and mark its still-`pending` purchase `done` in one
+/// transaction, so `pending` can only mean "not granted". Errors, granting
+/// nothing, when the action is not pending (already finished or refunded).
+pub async fn grant_bought_for_action(
+    pool: &PgPool,
+    action_id: i64,
+    guild: GuildId,
+    user: UserId,
+    hours: u32,
+    now: DateTime<Utc>,
+) -> sqlx::Result<DateTime<Utc>> {
+    let hours = i32::try_from(hours)
+        .map_err(|_| sqlx::Error::Decode("immunity hours out of range".into()))?;
+    let mut tx = pool.begin().await?;
+    let done = sqlx::query!(
+        "UPDATE economy_actions SET state = $2, ended_at = now()
+         WHERE id = $1 AND state = $3",
+        action_id,
+        ActionState::Done.as_str(),
+        ActionState::Pending.as_str()
+    )
+    .execute(&mut *tx)
+    .await?;
+    if done.rows_affected() != 1 {
+        // Dropping the transaction rolls it back.
+        return Err(sqlx::Error::RowNotFound);
+    }
+    let row = sqlx::query!(
+        r#"INSERT INTO economy_immunity AS i (guild_id, user_id, source, until)
+           VALUES ($1, $2, 'bought', $3::timestamptz + make_interval(hours => $4))
+           ON CONFLICT (guild_id, user_id, source) DO UPDATE SET
+               until = GREATEST(COALESCE(i.until, $3::timestamptz), $3::timestamptz)
+                       + make_interval(hours => $4)
+           RETURNING until AS "until!""#,
+        guild.get() as i64,
+        user.get() as i64,
+        now,
+        hours
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(row.until)
+}
+
 /// Give or replace a member's moderator grant. `until: None` lasts until lifted.
 pub async fn grant_mod(
     pool: &PgPool,

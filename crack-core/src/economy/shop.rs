@@ -2,7 +2,7 @@
 //! refund when the grant fails. Immunity is the first item for sale.
 
 use super::settings::{ActionKind, ActionPrice};
-use super::wallet::{ActionPayload, ActionState, MoveError};
+use super::wallet::{ActionPayload, MoveError};
 use crate::messaging::messages::{
     ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANT_AFFORD_MIDDLE, ECONOMY_CANT_AFFORD_PREFIX,
     ECONOMY_NOT_FOR_SALE, ECONOMY_OFF,
@@ -45,11 +45,16 @@ pub fn check_purchase(f: &PurchaseFacts) -> Result<(), Refusal> {
     }
     let price = i64::from(f.price.price);
     if f.balance < price {
-        return Err(Refusal::CantAfford {
-            short: price - f.balance,
-        });
+        return Err(cant_afford(price, f.balance));
     }
     Ok(())
+}
+
+/// The refusal for a buyer holding `balance` against a `price`.
+pub fn cant_afford(price: i64, balance: i64) -> Refusal {
+    Refusal::CantAfford {
+        short: price - balance,
+    }
 }
 
 /// The words for a refusal, naming the server's currency.
@@ -79,8 +84,11 @@ pub struct ImmunityBought {
     pub balance: i64,
 }
 
-/// Buy immunity: check, charge (recorded `pending`), extend the bought grant,
-/// mark the action `done`. A failed grant is refunded.
+/// Buy immunity: check, charge (recorded `pending`), then grant and mark the
+/// action `done` in one transaction. A failed grant is refunded.
+///
+/// A row left `pending` was never granted: the grant and `done` commit
+/// together. Reconcile (PR 2) may refund any pending immunity row.
 pub async fn buy_immunity(
     data: &Data,
     g: GuildId,
@@ -127,9 +135,7 @@ pub async fn buy_immunity(
     .await
     .map_err(|err| match err {
         // The balance moved between the check and the charge.
-        MoveError::Insufficient { balance } => BuyError::Refused(Refusal::CantAfford {
-            short: amount - balance,
-        }),
+        MoveError::Insufficient { balance } => BuyError::Refused(cant_afford(amount, balance)),
         MoveError::Invalid => BuyError::Db,
         MoveError::Db(err) => {
             tracing::warn!("economy: charging {buyer} in {g} failed: {err}");
@@ -137,26 +143,21 @@ pub async fn buy_immunity(
         },
     })?;
 
-    let until = match db::extend_bought(pool, g, buyer, hours, now).await {
-        Ok(until) => until,
-        Err(err) => {
-            tracing::warn!("economy: granting immunity to {buyer} in {g} failed: {err}");
-            // Refund moves the action to failed and restores the credits.
-            if let Err(err) = db::refund_action(pool, charged.action_id).await {
-                tracing::error!(
-                    "economy: refunding action {} failed: {err}",
-                    charged.action_id
-                );
-            }
-            return Err(BuyError::Db);
-        },
-    };
-    if let Err(err) = db::finish_action(pool, charged.action_id, ActionState::Done).await {
-        tracing::warn!(
-            "economy: marking action {} done failed: {err}",
-            charged.action_id
-        );
-    }
+    let until =
+        match db::grant_bought_for_action(pool, charged.action_id, g, buyer, hours, now).await {
+            Ok(until) => until,
+            Err(err) => {
+                tracing::warn!("economy: granting immunity to {buyer} in {g} failed: {err}");
+                // Refund moves the action to failed and restores the credits.
+                if let Err(err) = db::refund_action(pool, charged.action_id).await {
+                    tracing::error!(
+                        "economy: refunding action {} failed: {err}",
+                        charged.action_id
+                    );
+                }
+                return Err(BuyError::Db);
+            },
+        };
     Ok(ImmunityBought {
         until,
         balance: charged.balance,
@@ -224,6 +225,12 @@ mod tests {
         let r = check_purchase(&f).unwrap_err();
         assert_eq!(r, Refusal::CantAfford { short: 40 });
         assert_eq!(refusal_text(&r, "credits"), "You need 40 more credits.");
+    }
+
+    #[test]
+    fn cant_afford_is_price_minus_balance() {
+        assert_eq!(cant_afford(200, 50), Refusal::CantAfford { short: 150 });
+        assert_eq!(cant_afford(200, 0), Refusal::CantAfford { short: 200 });
     }
 
     #[test]
@@ -360,6 +367,58 @@ mod tests {
                 Err(BuyError::Refused(Refusal::CantAfford { short: 150 }))
             );
             assert_eq!(crate::db::economy::balance(&pool, G, U).await.unwrap(), 50);
+        }
+    );
+
+    db_test!(grant_and_done_commit_together, |pool: PgPool| async {
+        let data = shop_data(&pool, 500).await;
+        buy_immunity(&data, G, U, t0()).await.unwrap();
+        assert_eq!(
+            count(
+                &pool,
+                "SELECT count(*) FROM economy_actions WHERE state = 'done' AND ended_at IS NOT NULL"
+            )
+            .await,
+            1
+        );
+        assert_eq!(
+            count(&pool, "SELECT count(*) FROM economy_immunity").await,
+            1
+        );
+    });
+
+    db_test!(
+        granting_a_finished_action_grants_nothing,
+        |pool: PgPool| async {
+            use crate::db::economy as db;
+            use crate::economy::wallet::ActionPayload;
+            let data = shop_data(&pool, 500).await;
+            let payload = ActionPayload::Immunity { hours: 24 };
+            let charged = db::charge_for_action(
+                &pool,
+                &db::NewAction {
+                    guild: G,
+                    kind: ActionKind::Immunity,
+                    buyer: U,
+                    target: None,
+                    price: 200,
+                    note: None,
+                    signed: false,
+                    payload: &payload,
+                    expires_at: None,
+                },
+            )
+            .await
+            .unwrap();
+            db::refund_action(&pool, charged.action_id).await.unwrap();
+            let r = db::grant_bought_for_action(&pool, charged.action_id, G, U, 24, t0()).await;
+            assert!(r.is_err());
+            assert_eq!(
+                count(&pool, "SELECT count(*) FROM economy_immunity").await,
+                0
+            );
+            assert_eq!(db::balance(&pool, G, U).await.unwrap(), 500);
+            let _ = data;
         }
     );
 

@@ -870,4 +870,5 @@ pub const ECONOMY_BUYER_OPTED_OUT: &str =
 pub const ECONOMY_CANT_AFFORD_PREFIX: &str = "You need";
 pub const ECONOMY_CANT_AFFORD_MIDDLE: &str = "more";
 pub const ECONOMY_NO_DATABASE: &str = "The economy needs a database.";
-pub const ECONOMY_PURCHASE_FAILED: &str = "Couldn't complete that purchase. You were not charged.";
+pub const ECONOMY_PURCHASE_FAILED: &str =
+    "That didn't work, so nothing was bought. If you were charged, it will be refunded.";
