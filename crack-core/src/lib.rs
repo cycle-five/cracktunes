@@ -13,6 +13,7 @@ pub mod handlers;
 pub mod http_utils;
 #[macro_use]
 pub mod macros;
+pub mod economy;
 pub mod messaging;
 pub mod metrics;
 pub mod modlog;
@@ -394,6 +395,8 @@ pub struct DataInner {
     pub rooms: crate::rooms::registry::RoomRegistry,
     /// The mod log's settings; see `modlog::registry`.
     pub modlog: crate::modlog::registry::ModLogRegistry,
+    /// Per-server credits settings; see `economy::registry`.
+    pub economy: crate::economy::registry::EconomyRegistry,
 }
 
 impl std::fmt::Debug for DataInner {
@@ -592,6 +595,7 @@ impl Default for DataInner {
             autoplay_buffer: Arc::default(),
             rooms: Default::default(),
             modlog: Default::default(),
+            economy: Default::default(),
         }
     }
 }

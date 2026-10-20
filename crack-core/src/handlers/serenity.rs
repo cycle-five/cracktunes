@@ -482,6 +482,13 @@ impl SerenityHandler {
             );
         }
 
+        // The economy's settings and opted-out members, likewise (off without
+        // a database). A failed read leaves the economy unsaveable and
+        // earning nothing for the server until a read succeeds.
+        if !crate::economy::load_settings(&self.data, guild.id).await {
+            tracing::warn!("economy: loading the settings of {} failed", guild.id);
+        }
+
         // The mod log's settings, likewise (off without a database); a server
         // with the log on has its audit snapshots seeded in the background.
         crate::modlog::live::on_guild_create(&self.data, ctx.http.clone(), guild.id).await;
