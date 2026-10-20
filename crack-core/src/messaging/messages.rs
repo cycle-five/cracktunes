@@ -863,3 +863,11 @@ pub const DASH_MODLOG_NO_CHANNEL_OPTION: &str = "None";
 pub const DASH_MODLOG_NO_CHANNEL_YET: &str = "No channel set yet — pick one and save.";
 pub const DASH_MODLOG_GUIDE: &str = "How the mod log works";
 pub const DASH_MODLOG_UNKNOWN_CHANNEL: &str = "That is not a text channel of this server.";
+pub const ECONOMY_OFF: &str = "The economy is off in this server.";
+pub const ECONOMY_NOT_FOR_SALE: &str = "That isn't for sale here.";
+pub const ECONOMY_BUYER_OPTED_OUT: &str =
+    "You've opted out of the economy, so you can't buy anything. Opt back in first.";
+pub const ECONOMY_CANT_AFFORD_PREFIX: &str = "You need";
+pub const ECONOMY_CANT_AFFORD_MIDDLE: &str = "more";
+pub const ECONOMY_NO_DATABASE: &str = "The economy needs a database.";
+pub const ECONOMY_PURCHASE_FAILED: &str = "Couldn't complete that purchase. You were not charged.";

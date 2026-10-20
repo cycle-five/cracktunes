@@ -4,6 +4,7 @@
 pub mod immunity;
 pub mod registry;
 pub mod settings;
+pub mod shop;
 pub mod wallet;
 
 use crate::Data;
