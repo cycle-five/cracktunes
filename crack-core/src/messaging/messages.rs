@@ -240,6 +240,7 @@ pub const NP_BUTTONS_OFF: &str =
 pub const QUEUE_PAGE_OF: &str = "of";
 pub const QUEUE_PAGE: &str = "Page";
 pub const QUEUE_UP_NEXT: &str = "⌛ Up next";
+pub const REGISTER_OWNER_ONLY: &str = "Can only be used by bot owner";
 pub const REMOVED_QUEUE_MULTIPLE: &str = "❌ Removed multiple tracks from queue!";
 pub const REMOVED_QUEUE: &str = "❌ Removed from queue";
 pub const RESUMED: &str = "▶ Resumed!";

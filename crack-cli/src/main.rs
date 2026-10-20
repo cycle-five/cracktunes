@@ -1,4 +1,5 @@
 use config_file::FromConfigFile;
+use crack_core::commands::registration::CommandRegistration;
 use crack_core::{config, sources::ytdl::HANDLE, BotConfig, BotCredentials, EventLogAsync};
 use std::env;
 use tokio::runtime::Handle;
@@ -173,6 +174,10 @@ fn load_bot_config() -> Result<BotConfig, Error> {
     // silently running with no persistence while appearing configured.
     if let Ok(database_url) = env::var("DATABASE_URL") {
         config.database_url = Some(database_url);
+    }
+    // A bad value stops startup, like a missing DISCORD_TOKEN.
+    if let Some(mode) = CommandRegistration::from_env()? {
+        config.command_registration = mode;
     }
 
     let config_with_creds = config.set_credentials(BotCredentials {

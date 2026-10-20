@@ -116,7 +116,7 @@ pub async fn poise_framework(
     // // FIXME: Is this the proper way to allocate this memory?
     // let up_prefix_cloned = Box::leak(Box::new(up_prefix.clone()));
 
-    let commands = crate::commands::all_commands();
+    let commands = crate::commands::commands_for(config.command_registration);
     let _commands_map = crate::commands::all_commands_map();
     let commands_str = crate::commands::all_command_names();
 

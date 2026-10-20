@@ -11,6 +11,7 @@ pub mod permissions;
 pub mod modlog;
 pub mod premium;
 pub mod register;
+pub mod registration;
 pub mod rooms;
 pub mod status;
 //pub mod settings;
@@ -74,7 +75,11 @@ pub fn all_commands() -> Vec<crate::Command> {
     .collect()
 }
 
-/// The commands registered with Discord as application (slash) commands.
+/// The full command list, as the tests check it is registrable.
+///
+/// Startup does not call this: it syncs [`commands_for`]`(mode)` through the
+/// mode's `global_commands` (everything in `Global`, only `/register` in
+/// `Manual`).
 ///
 /// Delegates to [`all_commands`] on purpose: this list and the framework's
 /// dispatch list must be the same set. A slash command registered but absent
@@ -82,6 +87,26 @@ pub fn all_commands() -> Vec<crate::Command> {
 /// framework but unregistered can never be invoked at all.
 pub fn commands_to_register() -> Vec<crate::Command> {
     all_commands()
+}
+
+/// The commands the framework dispatches in the given registration mode.
+///
+/// The set is always [`all_commands`]. In `Manual` mode `/register` is the one
+/// command every server can reach before opting in, so it needs a gate a
+/// server moderator can pass: Manage Server instead of Administrator.
+pub fn commands_for(mode: registration::CommandRegistration) -> Vec<crate::Command> {
+    use poise::serenity_prelude::Permissions;
+    let mut commands = all_commands();
+    if mode == registration::CommandRegistration::Manual {
+        for command in commands
+            .iter_mut()
+            .filter(|c| c.name == registration::REGISTER_COMMAND_NAME)
+        {
+            command.required_permissions = Permissions::MANAGE_GUILD;
+            command.default_member_permissions = Permissions::MANAGE_GUILD;
+        }
+    }
+    commands
 }
 
 pub fn all_command_names() -> Vec<Cow<'static, str>> {
@@ -142,6 +167,9 @@ pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command>
 // }
 
 /// Interactively register bot commands.
+///
+/// `ADMINISTRATOR` is the `Global` mode gate; `commands_for` replaces it with
+/// `MANAGE_GUILD` in `Manual` mode.
 #[poise::command(
     category = "Admin",
     guild_only,
@@ -150,7 +178,11 @@ pub fn all_commands_map() -> dashmap::DashMap<Cow<'static, str>, crate::Command>
     required_permissions = "ADMINISTRATOR"
 )]
 pub async fn register(ctx: Context<'_>) -> Result<(), Error> {
-    register_application_commands_buttons_cracked(ctx).await?;
+    register_application_commands_buttons_cracked(
+        ctx,
+        ctx.data().bot_settings.command_registration,
+    )
+    .await?;
     Ok(())
 }
 
