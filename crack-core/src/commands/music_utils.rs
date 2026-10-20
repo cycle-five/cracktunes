@@ -218,8 +218,8 @@ async fn join_deafened(
 /// **The crate's only way into voice**, and it joins self-deafened. Taking the
 /// permit by value is what makes that enforceable rather than aspirational:
 /// `ensure_can_join` is its only constructor, so a join that skipped the
-/// permission gate does not typecheck. This is the compiler doing the job `join_site_guard_tests`
-/// was scanning source text to approximate.
+/// permission gate does not typecheck. This is the compiler doing the job
+/// `join_site_guard_tests` was scanning source text to approximate.
 ///
 /// Because there is one implementation, every join site gets the same failure
 /// handling. They used to get three different ones (#502): `do_join` dropped
@@ -422,14 +422,16 @@ mod tests {
     const C: ChannelId = ChannelId::new(70);
 
     /// An offline manager whose gateway messages land in the returned receiver.
-    /// Nothing answers a join, so it times out after 50 ms.
-    async fn offline_manager() -> (
+    /// Nothing answers a join, so it times out after `gateway_timeout`.
+    async fn offline_manager(
+        gateway_timeout: Duration,
+    ) -> (
         Arc<songbird::Songbird>,
         UnboundedReceiver<ShardRunnerMessage>,
     ) {
         crate::music::ops::test_support::lasting_scheduler();
         let manager = songbird::Songbird::serenity_from_config(
-            songbird::Config::default().gateway_timeout(Some(Duration::from_millis(50))),
+            songbird::Config::default().gateway_timeout(Some(gateway_timeout)),
         );
         manager.initialise_client_data(1, UserId::new(2));
         let (tx, rx) = unbounded();
@@ -460,7 +462,7 @@ mod tests {
 
     #[tokio::test]
     async fn first_join_ends_self_deafened_and_never_sends_a_leave() {
-        let (manager, mut rx) = offline_manager().await;
+        let (manager, mut rx) = offline_manager(Duration::from_millis(50)).await;
         let err = join_deafened(&manager, G, C)
             .await
             .expect_err("nothing answers offline");
@@ -475,19 +477,37 @@ mod tests {
 
     #[tokio::test]
     async fn the_call_lock_is_free_while_stage_2_waits() {
-        let (manager, _rx) = offline_manager().await;
+        use futures::StreamExt;
+        // Long enough that stage 2 cannot end during the check.
+        let (manager, mut rx) = offline_manager(Duration::from_secs(10)).await;
         let m = manager.clone();
         let joining = tokio::spawn(async move { join_deafened(&m, G, C).await });
-        // Well inside the 50 ms gateway timeout: stage 2 is being awaited.
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        assert!(!joining.is_finished(), "the join ended before we looked");
+        // The deafen is the last thing sent while the lock is held, so once
+        // it arrives stage 1 is done and stage 2 is being awaited.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(msg) = rx.next().await {
+                if matches!(
+                    msg,
+                    ShardRunnerMessage::UpdateVoiceState {
+                        channel_id: Some(_),
+                        self_deaf: true,
+                        ..
+                    }
+                ) {
+                    break;
+                }
+            }
+        })
+        .await
+        .expect("the deafen was never sent");
         let call = manager.get_or_insert(G);
-        assert!(
-            call.try_lock().is_ok(),
-            "the Call lock is held across stage 2"
-        );
-        drop(call);
-        let err = joining.await.unwrap().expect_err("nothing answers offline");
-        assert!(matches!(err, JoinError::TimedOut), "{err:?}");
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while call.try_lock().is_err() {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .expect("the Call lock is held across stage 2");
+        joining.abort();
     }
 }
