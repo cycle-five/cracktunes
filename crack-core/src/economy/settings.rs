@@ -3,23 +3,60 @@
 //! field this build does not know is kept, so a config written by another
 //! release survives a load and save.
 
+use crate::messaging::messages::{
+    ECONOMY_CLOWN_SUFFIX, ECONOMY_LABEL_CLEANSE, ECONOMY_LABEL_CLOWN, ECONOMY_LABEL_DEAFEN,
+    ECONOMY_LABEL_DRAG, ECONOMY_LABEL_IMMUNITY, ECONOMY_LABEL_JAIL, ECONOMY_LABEL_LOCK,
+    ECONOMY_LABEL_MIRROR, ECONOMY_LABEL_MUTE, ECONOMY_LABEL_RENAME, ECONOMY_LABEL_REVEAL,
+};
 use serde::{Deserialize, Serialize};
-use serenity::all::GuildId;
+use serenity::all::{ChannelId, GuildId};
 use std::collections::BTreeMap;
 
-/// Something a member can buy. PR 2 adds variants.
+/// Something a member can buy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionKind {
     Immunity,
+    Rename,
+    Lock,
+    Clown,
+    Drag,
+    Mute,
+    Deafen,
+    Jail,
+    Mirror,
+    Cleanse,
+    Reveal,
 }
 
 impl ActionKind {
-    pub const ALL: &'static [ActionKind] = &[ActionKind::Immunity];
+    pub const ALL: &'static [ActionKind] = &[
+        ActionKind::Immunity,
+        ActionKind::Rename,
+        ActionKind::Lock,
+        ActionKind::Clown,
+        ActionKind::Drag,
+        ActionKind::Mute,
+        ActionKind::Deafen,
+        ActionKind::Jail,
+        ActionKind::Mirror,
+        ActionKind::Cleanse,
+        ActionKind::Reveal,
+    ];
 
     /// The stable key used in the prices map and the database.
     pub fn key(self) -> &'static str {
         match self {
             ActionKind::Immunity => "immunity",
+            ActionKind::Rename => "rename",
+            ActionKind::Lock => "lock",
+            ActionKind::Clown => "clown",
+            ActionKind::Drag => "drag",
+            ActionKind::Mute => "mute",
+            ActionKind::Deafen => "deafen",
+            ActionKind::Jail => "jail",
+            ActionKind::Mirror => "mirror",
+            ActionKind::Cleanse => "cleanse",
+            ActionKind::Reveal => "reveal",
         }
     }
 
@@ -28,18 +65,63 @@ impl ActionKind {
     }
 
     pub fn default_price(self) -> ActionPrice {
-        match self {
-            ActionKind::Immunity => ActionPrice {
-                price: 200,
-                on: true,
-            },
-        }
+        let price = match self {
+            ActionKind::Immunity => 200,
+            ActionKind::Rename => 120,
+            ActionKind::Lock => 60,
+            ActionKind::Clown => 30,
+            ActionKind::Drag => 60,
+            ActionKind::Mute => 90,
+            ActionKind::Deafen => 90,
+            ActionKind::Jail => 150,
+            ActionKind::Mirror => 150,
+            ActionKind::Cleanse => 80,
+            ActionKind::Reveal => 100,
+        };
+        ActionPrice { price, on: true }
     }
 
     pub fn label(self) -> &'static str {
         match self {
-            ActionKind::Immunity => "Immunity",
+            ActionKind::Immunity => ECONOMY_LABEL_IMMUNITY,
+            ActionKind::Rename => ECONOMY_LABEL_RENAME,
+            ActionKind::Lock => ECONOMY_LABEL_LOCK,
+            ActionKind::Clown => ECONOMY_LABEL_CLOWN,
+            ActionKind::Drag => ECONOMY_LABEL_DRAG,
+            ActionKind::Mute => ECONOMY_LABEL_MUTE,
+            ActionKind::Deafen => ECONOMY_LABEL_DEAFEN,
+            ActionKind::Jail => ECONOMY_LABEL_JAIL,
+            ActionKind::Mirror => ECONOMY_LABEL_MIRROR,
+            ActionKind::Cleanse => ECONOMY_LABEL_CLEANSE,
+            ActionKind::Reveal => ECONOMY_LABEL_REVEAL,
         }
+    }
+
+    /// The seven pranks (spec 4.1): the kinds aimed at another member.
+    pub fn is_prank(self) -> bool {
+        matches!(
+            self,
+            ActionKind::Rename
+                | ActionKind::Lock
+                | ActionKind::Clown
+                | ActionKind::Drag
+                | ActionKind::Mute
+                | ActionKind::Deafen
+                | ActionKind::Jail
+        )
+    }
+
+    /// True when the effect lasts a while and is undone by the sweeper.
+    pub fn is_timed(self) -> bool {
+        matches!(
+            self,
+            ActionKind::Rename
+                | ActionKind::Lock
+                | ActionKind::Clown
+                | ActionKind::Mute
+                | ActionKind::Deafen
+                | ActionKind::Jail
+        )
     }
 }
 
@@ -84,6 +166,12 @@ pub struct EconomyConfig {
     pub bought_immunity_hours: u32,
     pub gambling_enabled: bool,
     pub max_bet: u32,
+    /// Hours a rename, lock or clown lasts.
+    pub rename_hours: u32,
+    /// Minutes a mute, deafen or jail lasts.
+    pub short_effect_minutes: u32,
+    pub jail_channel_id: Option<ChannelId>,
+    pub announce_channel_id: Option<ChannelId>,
     /// Opaque passthrough of top-level fields a later release owns. This
     /// build neither reads nor validates them; it only keeps them, so a
     /// rollback followed by a save does not reset what that release stored.
@@ -107,6 +195,10 @@ impl Default for EconomyConfig {
             bought_immunity_hours: 24,
             gambling_enabled: false,
             max_bet: 500,
+            rename_hours: 24,
+            short_effect_minutes: 5,
+            jail_channel_id: None,
+            announce_channel_id: None,
             extra: BTreeMap::new(),
         }
     }
@@ -130,6 +222,8 @@ pub enum EconomySettingsError {
     BadOptoutCooldown,
     BadImmunityHours,
     BadMaxBet,
+    BadRenameHours,
+    BadShortEffect,
 }
 
 impl EconomySettings {
@@ -185,8 +279,98 @@ impl EconomySettings {
         if !(1..=1_000_000).contains(&c.max_bet) {
             return Err(E::BadMaxBet);
         }
+        if !(1..=168).contains(&c.rename_hours) {
+            return Err(E::BadRenameHours);
+        }
+        if !(1..=60).contains(&c.short_effect_minutes) {
+            return Err(E::BadShortEffect);
+        }
         Ok(())
     }
+}
+
+/// Why a prank note or nickname was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteError {
+    TooLong,
+    Empty,
+    Mention,
+    Link,
+}
+
+/// Why a prank nickname was refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NickError {
+    TooLong,
+    Empty,
+    Mention,
+    Link,
+}
+
+fn has_mention(s: &str) -> bool {
+    s.contains("<@") || s.contains("<#") || s.contains("@everyone") || s.contains("@here")
+}
+
+fn has_link(s: &str) -> bool {
+    let l = s.to_lowercase();
+    l.contains("http://") || l.contains("https://")
+}
+
+/// A prank note: 1..=200 chars after trim, no mentions, no links. Returns the
+/// trimmed text.
+pub fn validate_note(raw: &str) -> Result<String, NoteError> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Err(NoteError::Empty);
+    }
+    if t.chars().count() > 200 {
+        return Err(NoteError::TooLong);
+    }
+    if has_mention(t) {
+        return Err(NoteError::Mention);
+    }
+    if has_link(t) {
+        return Err(NoteError::Link);
+    }
+    Ok(t.to_string())
+}
+
+/// A prank nickname: 1..=32 chars after trim, no mentions, no links. Returns
+/// the trimmed text.
+pub fn validate_nick(raw: &str) -> Result<String, NickError> {
+    let t = raw.trim();
+    if t.is_empty() {
+        return Err(NickError::Empty);
+    }
+    if t.chars().count() > 32 {
+        return Err(NickError::TooLong);
+    }
+    if has_mention(t) {
+        return Err(NickError::Mention);
+    }
+    if has_link(t) {
+        return Err(NickError::Link);
+    }
+    Ok(t.to_string())
+}
+
+/// `current` plus the clown suffix, cut so the result fits Discord's 32
+/// limit. Discord counts UTF-16 code units, so the suffix (" 🤡") costs 3 and
+/// `current` keeps at most 29. Counting units never allows more than 32 chars
+/// either, and the cut is on chars, never bytes.
+pub fn clown_name(current: &str) -> String {
+    let room = 32 - ECONOMY_CLOWN_SUFFIX.encode_utf16().count();
+    let mut used = 0;
+    let mut head = String::new();
+    for ch in current.chars() {
+        used += ch.len_utf16();
+        if used > room {
+            break;
+        }
+        head.push(ch);
+    }
+    head.push_str(ECONOMY_CLOWN_SUFFIX);
+    head
 }
 
 #[cfg(test)]
@@ -327,10 +511,10 @@ mod tests {
     #[test]
     fn unknown_top_level_fields_survive_a_round_trip() {
         let c: EconomyConfig =
-            serde_json::from_str(r#"{"max_bet": 50, "rename_hours": 12}"#).unwrap();
+            serde_json::from_str(r#"{"max_bet": 50, "future_field": 12}"#).unwrap();
         assert_eq!(c.max_bet, 50);
         let raw = serde_json::to_string(&c).unwrap();
-        assert!(raw.contains(r#""rename_hours":12"#), "{raw}");
+        assert!(raw.contains(r#""future_field":12"#), "{raw}");
         // Known fields are not duplicated into the passthrough, and the
         // passthrough does not take part in validation.
         assert_eq!(c.extra.len(), 1);
@@ -343,8 +527,8 @@ mod tests {
     #[test]
     fn validate_ignores_unknown_price_keys() {
         let mut s = EconomySettings::off(GuildId::new(1));
-        s.config =
-            serde_json::from_str(r#"{"prices": {"rename": {"price": 0, "on": true}}}"#).unwrap();
+        s.config = serde_json::from_str(r#"{"prices": {"future_kind": {"price": 0, "on": true}}}"#)
+            .unwrap();
         assert_eq!(s.validate(true), Ok(()));
         s.config
             .prices
@@ -387,5 +571,169 @@ mod tests {
             ActionKind::Immunity.default_price()
         );
         assert!(serde_json::to_string(&c).unwrap().contains("\"rename\""));
+    }
+
+    #[test]
+    fn prank_defaults_match_the_spec() {
+        let want = [
+            ("immunity", 200),
+            ("rename", 120),
+            ("lock", 60),
+            ("clown", 30),
+            ("drag", 60),
+            ("mute", 90),
+            ("deafen", 90),
+            ("jail", 150),
+            ("mirror", 150),
+            ("cleanse", 80),
+            ("reveal", 100),
+        ];
+        assert_eq!(ActionKind::ALL.len(), want.len());
+        for (k, (key, price)) in ActionKind::ALL.iter().zip(want) {
+            assert_eq!(k.key(), key);
+            assert_eq!(ActionKind::from_key(key), Some(*k));
+            assert_eq!(k.default_price(), ActionPrice { price, on: true });
+            assert!(!k.label().is_empty());
+        }
+        let pranks: Vec<_> = ActionKind::ALL.iter().filter(|k| k.is_prank()).collect();
+        assert_eq!(pranks.len(), 7);
+        for k in [
+            ActionKind::Immunity,
+            ActionKind::Mirror,
+            ActionKind::Cleanse,
+            ActionKind::Reveal,
+        ] {
+            assert!(!k.is_prank(), "{k:?}");
+        }
+        let timed: Vec<_> = ActionKind::ALL
+            .iter()
+            .filter(|k| k.is_timed())
+            .map(|k| k.key())
+            .collect();
+        assert_eq!(timed, ["rename", "lock", "clown", "mute", "deafen", "jail"]);
+        let c = EconomyConfig::default();
+        assert_eq!((c.rename_hours, c.short_effect_minutes), (24, 5));
+        assert_eq!((c.jail_channel_id, c.announce_channel_id), (None, None));
+    }
+
+    #[test]
+    fn new_fields_default_and_bound() {
+        assert_eq!(with(|c| c.rename_hours = 0), Err(E::BadRenameHours));
+        assert_eq!(with(|c| c.rename_hours = 1), Ok(()));
+        assert_eq!(with(|c| c.rename_hours = 168), Ok(()));
+        assert_eq!(with(|c| c.rename_hours = 169), Err(E::BadRenameHours));
+        assert_eq!(with(|c| c.short_effect_minutes = 0), Err(E::BadShortEffect));
+        assert_eq!(with(|c| c.short_effect_minutes = 1), Ok(()));
+        assert_eq!(with(|c| c.short_effect_minutes = 60), Ok(()));
+        assert_eq!(
+            with(|c| c.short_effect_minutes = 61),
+            Err(E::BadShortEffect)
+        );
+        for k in ActionKind::ALL {
+            let p = |n| ActionPrice { price: n, on: true };
+            assert_eq!(with(|c| c.prices.set(*k, p(0))), Err(E::BadPrice), "{k:?}");
+            assert_eq!(
+                with(|c| c.prices.set(*k, p(1_000_001))),
+                Err(E::BadPrice),
+                "{k:?}"
+            );
+            assert_eq!(with(|c| c.prices.set(*k, p(1_000_000))), Ok(()), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn a_pr1_config_loads_with_pr2_defaults() {
+        let c: EconomyConfig = serde_json::from_str(
+            r#"{"currency_name":"gems","currency_emoji":"x","voice_credits_per_minute":2,
+            "message_credits":1,"message_cooldown_seconds":60,"prices":{"immunity":{"price":5,"on":true}},
+            "immunity_optout":true,"immunity_shop":true,"immunity_mods":true,
+            "optout_cooldown_days":7,"bought_immunity_hours":24,"gambling_enabled":false,"max_bet":500}"#,
+        )
+        .unwrap();
+        assert_eq!(c.rename_hours, 24);
+        assert_eq!(c.short_effect_minutes, 5);
+        assert_eq!(c.jail_channel_id, None);
+        assert_eq!(c.announce_channel_id, None);
+        assert!(c.extra.is_empty());
+        assert_eq!(c.prices.get(ActionKind::Rename).price, 120);
+    }
+
+    #[test]
+    fn a_pr1_extra_field_becomes_typed() {
+        let c: EconomyConfig =
+            serde_json::from_str(r#"{"rename_hours": 12, "jail_channel_id": "77"}"#).unwrap();
+        assert_eq!(c.rename_hours, 12);
+        assert_eq!(c.jail_channel_id, Some(ChannelId::new(77)));
+        assert!(c.extra.is_empty(), "{:?}", c.extra);
+    }
+
+    #[test]
+    fn channel_ids_round_trip_as_strings() {
+        let c = EconomyConfig {
+            jail_channel_id: Some(ChannelId::new(5)),
+            announce_channel_id: Some(ChannelId::new(6)),
+            ..EconomyConfig::default()
+        };
+        let raw = serde_json::to_string(&c).unwrap();
+        assert!(raw.contains(r#""jail_channel_id":"5""#), "{raw}");
+        assert!(raw.contains(r#""announce_channel_id":"6""#), "{raw}");
+        assert_eq!(serde_json::from_str::<EconomyConfig>(&raw).unwrap(), c);
+        // A number reads too.
+        let n: EconomyConfig = serde_json::from_str(r#"{"jail_channel_id": 9}"#).unwrap();
+        assert_eq!(n.jail_channel_id, Some(ChannelId::new(9)));
+    }
+
+    #[test]
+    fn validate_note_and_nick_edges() {
+        assert_eq!(validate_note(&"a".repeat(200)).map(|s| s.len()), Ok(200));
+        assert_eq!(validate_note(&"a".repeat(201)), Err(NoteError::TooLong));
+        assert_eq!(
+            validate_note(&"é".repeat(200)).map(|s| s.chars().count()),
+            Ok(200)
+        );
+        assert_eq!(validate_note("  hi  "), Ok("hi".to_string()));
+        assert_eq!(validate_note("   "), Err(NoteError::Empty));
+        assert_eq!(validate_note(""), Err(NoteError::Empty));
+        for m in ["<@1>", "<#2>", "<@&3>", "@everyone", "@here"] {
+            assert_eq!(validate_note(m), Err(NoteError::Mention), "{m}");
+            assert_eq!(validate_nick(m), Err(NickError::Mention), "{m}");
+        }
+        assert_eq!(validate_note("https://x"), Err(NoteError::Link));
+        assert_eq!(validate_note("see http://x"), Err(NoteError::Link));
+        assert_eq!(validate_nick("HTTPS://x"), Err(NickError::Link));
+        assert_eq!(validate_nick(&"a".repeat(32)).map(|s| s.len()), Ok(32));
+        assert_eq!(validate_nick(&"a".repeat(33)), Err(NickError::TooLong));
+        assert_eq!(
+            validate_nick(&"🤡".repeat(32)).map(|s| s.chars().count()),
+            Ok(32)
+        );
+        assert_eq!(
+            validate_nick(&format!(" {} ", "a".repeat(32))).map(|s| s.len()),
+            Ok(32)
+        );
+        assert_eq!(validate_nick("  "), Err(NickError::Empty));
+        assert_eq!(validate_nick(" bob "), Ok("bob".to_string()));
+    }
+
+    #[test]
+    fn clown_name_caps_at_32_chars() {
+        let long = "a".repeat(32);
+        let out = clown_name(&long);
+        assert_eq!(out, format!("{} 🤡", "a".repeat(29)));
+        // Discord counts UTF-16 units: the clown is two, so 29 + 3 = 32.
+        assert_eq!(out.encode_utf16().count(), 32);
+        assert!(out.chars().count() <= 32);
+        assert_eq!(clown_name("bob"), "bob 🤡");
+        assert_eq!(clown_name(""), " 🤡");
+        // Multi-byte input is cut on chars, never bytes.
+        let wide = clown_name(&"é".repeat(40));
+        assert_eq!(wide.chars().count(), 31);
+        // A name of astral chars is cut by units too: 14 clowns = 28 units.
+        let astral = clown_name(&"🤡".repeat(20));
+        assert_eq!(astral, format!("{} 🤡", "🤡".repeat(14)));
+        assert!(astral.encode_utf16().count() <= 32);
+        assert!(wide.ends_with(" 🤡"));
+        let exactly = clown_name(&"a".repeat(29));
+        assert_eq!(exactly, format!("{} 🤡", "a".repeat(29)));
     }
 }

@@ -86,7 +86,7 @@ All of these are slash commands, and work only in a server where the economy is 
 | `/credits optout` | Opts you out of the economy (see [Immunity](#immunity)). It tells you when you can switch back. |
 | `/credits optin` | Opts you back in. |
 | `/shop menu` | Lists what is for sale and the prices, with a link to this page. |
-| `/shop immunity` | Buys immunity. A public card says who is immune until when, and you privately see what you have left. Refused if you already hold a moderator grant that lasts until lifted. Pranks arrive in the next update. |
+| `/shop immunity` | Buys immunity. A public card says who is immune until when, and you privately see what you have left. Refused if you already hold a moderator grant that lasts until lifted. |
 | `/coinflip <bet> <heads\|tails>` | Bets on a coin toss, if the server allows it. |
 
 A balance is never negative. You can't gift to yourself or to a bot, and you

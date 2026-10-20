@@ -922,8 +922,27 @@ pub const ECONOMY_LEDGER_COINFLIP_BET: &str = "coinflip bet";
 pub const ECONOMY_LEDGER_COINFLIP_WIN: &str = "coinflip win";
 pub const ECONOMY_LEDGER_ADJUSTMENT: &str = "adjustment";
 pub const ECONOMY_OPTOUT_SWITCH_BACK_PREFIX: &str = "You can switch back";
-pub const ECONOMY_SHOP_IMMUNITY_NOTE: &str =
-    "Protects you from pranks, which arrive in the next update.";
+pub const ECONOMY_SHOP_IMMUNITY_NOTE: &str = "Protects you from pranks.";
+pub const ECONOMY_LABEL_IMMUNITY: &str = "Immunity";
+pub const ECONOMY_LABEL_RENAME: &str = "Rename";
+pub const ECONOMY_LABEL_LOCK: &str = "Lock nickname";
+pub const ECONOMY_LABEL_CLOWN: &str = "Clown";
+pub const ECONOMY_LABEL_DRAG: &str = "Drag";
+pub const ECONOMY_LABEL_MUTE: &str = "Mute";
+pub const ECONOMY_LABEL_DEAFEN: &str = "Deafen";
+pub const ECONOMY_LABEL_JAIL: &str = "Jail";
+pub const ECONOMY_LABEL_MIRROR: &str = "Mirror";
+pub const ECONOMY_LABEL_CLEANSE: &str = "Cleanse";
+pub const ECONOMY_LABEL_REVEAL: &str = "Reveal";
+pub const ECONOMY_NOTE_EMPTY: &str = "The note can't be empty.";
+pub const ECONOMY_NOTE_TOO_LONG: &str = "The note can be at most 200 characters.";
+pub const ECONOMY_NOTE_MENTION: &str = "The note can't mention anyone.";
+pub const ECONOMY_NOTE_LINK: &str = "The note can't contain a link.";
+pub const ECONOMY_NICK_EMPTY: &str = "The nickname can't be empty.";
+pub const ECONOMY_NICK_TOO_LONG: &str = "A nickname can be at most 32 characters.";
+pub const ECONOMY_NICK_MENTION: &str = "The nickname can't mention anyone.";
+pub const ECONOMY_NICK_LINK: &str = "The nickname can't contain a link.";
+pub const ECONOMY_CLOWN_SUFFIX: &str = " 🤡";
 pub const ECONOMY_ALREADY_IMMUNE: &str = "You're already immune until a moderator lifts it.";
 pub const ECONOMY_ADMIN_ADJUST_TOO_BIG: &str = "Adjust by at most 1,000,000,000 at a time.";
 pub const ECONOMY_READ_FAILED: &str = "Couldn't read that right now. Try again.";
@@ -1011,6 +1030,10 @@ pub const DASH_ECONOMY_BAD_OPTOUT_COOLDOWN: &str =
 pub const DASH_ECONOMY_BAD_IMMUNITY_HOURS: &str =
     "Bought immunity must last between 1 and 720 hours.";
 pub const DASH_ECONOMY_BAD_MAX_BET: &str = "The largest bet must be between 1 and 1,000,000.";
+pub const DASH_ECONOMY_BAD_RENAME_HOURS: &str =
+    "Hours a rename, lock or clown lasts must be between 1 and 168.";
+pub const DASH_ECONOMY_BAD_SHORT_EFFECT: &str =
+    "Minutes a mute, deafen or jail lasts must be between 1 and 60.";
 pub const DASH_ECONOMY_UNKNOWN_ACTION: &str = "That is not something this server can sell.";
 pub const DASH_ECONOMY_SETTINGS_NOT_LOADED: &str =
     "Economy settings couldn't be read from the database yet — try again in a minute.";

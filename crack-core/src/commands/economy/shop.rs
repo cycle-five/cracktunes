@@ -22,6 +22,9 @@ pub fn menu_text(settings: &EconomySettings) -> String {
         }
         let sold = match kind {
             ActionKind::Immunity => cfg.immunity_shop,
+            // Jail needs a channel to send members to.
+            ActionKind::Jail => cfg.jail_channel_id.is_some(),
+            _ => true,
         };
         if sold {
             lines.push(format!(
@@ -34,8 +37,8 @@ pub fn menu_text(settings: &EconomySettings) -> String {
         } else {
             lines.push(format!("{}: {ECONOMY_SHOP_NOT_SOLD}", kind.label()));
         }
-        match kind {
-            ActionKind::Immunity => lines.push(ECONOMY_SHOP_IMMUNITY_NOTE.to_string()),
+        if *kind == ActionKind::Immunity {
+            lines.push(ECONOMY_SHOP_IMMUNITY_NOTE.to_string());
         }
     }
     // Angle brackets keep Discord from unfurling the link into a preview.
@@ -79,7 +82,7 @@ pub async fn menu(ctx: Context<'_>) -> Result<(), Error> {
     say(ctx, menu_text(&ctx.data().economy.settings(guild)), false).await
 }
 
-/// Buy immunity from pranks (pranks arrive in the next update).
+/// Buy immunity from pranks.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn immunity(ctx: Context<'_>) -> Result<(), Error> {
@@ -112,16 +115,23 @@ mod tests {
     use super::*;
     use serenity::all::GuildId;
 
+    const DOCS: &str = "[How the economy works](<https://github.com/cycle-five/cracktunes/blob/master/docs/economy.md>)";
+
     #[test]
     fn menu_lists_on_items_with_prices() {
-        let s = EconomySettings::off(GuildId::new(1));
+        let mut s = EconomySettings::off(GuildId::new(1));
         assert_eq!(
             menu_text(&s),
-            "**Shop**\nImmunity: 200 🪙 credits\n\
-             Protects you from pranks, which arrive in the next update.\n\
-             [How the economy works](<https://github.com/cycle-five/cracktunes/blob/master/docs/economy.md>)"
+            format!(
+                "**Shop**\nImmunity: 200 🪙 credits\nProtects you from pranks.\n\
+                 Rename: 120 🪙 credits\nLock nickname: 60 🪙 credits\nClown: 30 🪙 credits\n\
+                 Drag: 60 🪙 credits\nMute: 90 🪙 credits\nDeafen: 90 🪙 credits\n\
+                 Jail: not sold here\nMirror: 150 🪙 credits\nCleanse: 80 🪙 credits\n\
+                 Reveal: 100 🪙 credits\n{DOCS}"
+            )
         );
-        let mut s = s;
+        s.config.jail_channel_id = Some(serenity::all::ChannelId::new(9));
+        assert!(menu_text(&s).contains("Jail: 150 🪙 credits"));
         let mut p = ActionKind::Immunity.default_price();
         p.on = false;
         s.config.prices.set(ActionKind::Immunity, p);
@@ -129,6 +139,11 @@ mod tests {
             !menu_text(&s).contains("Immunity"),
             "an item that is off is not listed"
         );
+        let mut p = ActionKind::Clown.default_price();
+        p.on = false;
+        s.config.prices.set(ActionKind::Clown, p);
+        assert!(!menu_text(&s).contains("Clown"));
+        assert!(!menu_text(&s).contains("next update"));
     }
 
     #[test]
@@ -140,7 +155,7 @@ mod tests {
         );
         assert_eq!(
             balance_followup_text(40, "credits", "🪙"),
-            "You have 40 🪙 credits. Protects you from pranks, which arrive in the next update."
+            "You have 40 🪙 credits. Protects you from pranks."
         );
     }
 
@@ -148,11 +163,13 @@ mod tests {
     fn menu_says_immunity_not_sold_when_the_switch_is_off() {
         let mut s = EconomySettings::off(GuildId::new(1));
         s.config.immunity_shop = false;
-        assert_eq!(
-            menu_text(&s),
-            "**Shop**\nImmunity: not sold here\n\
-             Protects you from pranks, which arrive in the next update.\n\
-             [How the economy works](<https://github.com/cycle-five/cracktunes/blob/master/docs/economy.md>)"
+        let text = menu_text(&s);
+        assert!(
+            text.starts_with(
+                "**Shop**\nImmunity: not sold here\nProtects you from pranks.\nRename: 120"
+            ),
+            "{text}"
         );
+        assert!(!text.contains("next update"));
     }
 }

@@ -7,9 +7,10 @@ use crack_core::{
         DASH_ECONOMY_BAD_COOLDOWN, DASH_ECONOMY_BAD_CURRENCY_EMOJI, DASH_ECONOMY_BAD_CURRENCY_NAME,
         DASH_ECONOMY_BAD_IMMUNITY_HOURS, DASH_ECONOMY_BAD_MAX_BET,
         DASH_ECONOMY_BAD_OPTOUT_COOLDOWN, DASH_ECONOMY_BAD_PRICE, DASH_ECONOMY_BAD_RATE,
-        DASH_ECONOMY_NO_DATABASE, DASH_SETTINGS_BAD_GRACE, DASH_SETTINGS_BAD_LIMIT,
-        DASH_SETTINGS_BAD_TEMPLATE, DASH_SETTINGS_NO_DATABASE, DASH_SETTINGS_NO_HUB,
-        DASH_SETTINGS_UNKNOWN_CHANNEL, MODLOG_NO_CHANNEL, MODLOG_NO_DATABASE,
+        DASH_ECONOMY_BAD_RENAME_HOURS, DASH_ECONOMY_BAD_SHORT_EFFECT, DASH_ECONOMY_NO_DATABASE,
+        DASH_SETTINGS_BAD_GRACE, DASH_SETTINGS_BAD_LIMIT, DASH_SETTINGS_BAD_TEMPLATE,
+        DASH_SETTINGS_NO_DATABASE, DASH_SETTINGS_NO_HUB, DASH_SETTINGS_UNKNOWN_CHANNEL,
+        MODLOG_NO_CHANNEL, MODLOG_NO_DATABASE,
     },
     modlog::settings::ModLogSettingsError,
     rooms::settings::SettingsError,
@@ -228,6 +229,8 @@ pub fn economy_invalid_message(e: EconomySettingsError) -> &'static str {
         EconomySettingsError::BadOptoutCooldown => DASH_ECONOMY_BAD_OPTOUT_COOLDOWN,
         EconomySettingsError::BadImmunityHours => DASH_ECONOMY_BAD_IMMUNITY_HOURS,
         EconomySettingsError::BadMaxBet => DASH_ECONOMY_BAD_MAX_BET,
+        EconomySettingsError::BadRenameHours => DASH_ECONOMY_BAD_RENAME_HOURS,
+        EconomySettingsError::BadShortEffect => DASH_ECONOMY_BAD_SHORT_EFFECT,
     }
 }
 
@@ -335,7 +338,7 @@ mod tests {
     #[test]
     fn saving_keeps_unknown_top_level_fields() {
         let config: EconomyConfig =
-            serde_json::from_str(r#"{"rename_hours":12,"max_bet":3}"#).unwrap();
+            serde_json::from_str(r#"{"future_field":12,"max_bet":3}"#).unwrap();
         let stored = EconomySettings {
             guild: GuildId::new(5),
             enabled: false,
@@ -343,7 +346,7 @@ mod tests {
         };
         let out = apply_form(stored, form()).unwrap();
         let raw = serde_json::to_string(&out.config).unwrap();
-        assert!(raw.contains(r#""rename_hours":12"#), "{raw}");
+        assert!(raw.contains(r#""future_field":12"#), "{raw}");
         assert_eq!(
             out.config.max_bet, 9,
             "the form still wins on its own fields"
@@ -384,14 +387,19 @@ mod tests {
     #[test]
     fn the_view_lists_prices_in_action_order() {
         let v = EconomySettingsView::from_settings(&EconomySettings::off(GuildId::new(5)));
-        assert_eq!(
-            v.prices,
-            vec![PriceView {
-                kind: "immunity".into(),
-                label: "Immunity".into(),
-                price: 200,
-                on: true
-            }]
-        );
+        let got: Vec<_> = v
+            .prices
+            .iter()
+            .map(|p| (p.kind.as_str(), p.price, p.on))
+            .collect();
+        let want: Vec<_> = ActionKind::ALL
+            .iter()
+            .map(|k| (k.key(), k.default_price().price, true))
+            .collect();
+        assert_eq!(got, want);
+        assert_eq!(got.len(), 11);
+        assert_eq!(got[0], ("immunity", 200, true));
+        assert_eq!(got[1], ("rename", 120, true));
+        assert_eq!(v.prices[1].label, "Rename");
     }
 }
