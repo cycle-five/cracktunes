@@ -438,6 +438,18 @@ pub async fn top(pool: &PgPool, guild: GuildId, limit: i64) -> sqlx::Result<Vec<
         .collect())
 }
 
+/// How many wallets a server has and the sum of their balances (0 when none).
+pub async fn stats(pool: &PgPool, guild: GuildId) -> sqlx::Result<(i64, i64)> {
+    let row = sqlx::query!(
+        r#"SELECT COUNT(*) AS "wallets!", COALESCE(SUM(balance), 0)::BIGINT AS "credits!"
+           FROM economy_wallets WHERE guild_id = $1"#,
+        guild.get() as i64
+    )
+    .fetch_one(pool)
+    .await?;
+    Ok((row.wallets, row.credits))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LedgerEntry {
     pub delta: i64,
@@ -707,6 +719,24 @@ mod tests {
             HashSet::from([UserId::new(10)])
         );
         assert!(load_opted_out(&pool, GuildId::new(3)).await?.is_empty());
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn stats_counts_wallets_and_sums_balances(pool: PgPool) -> sqlx::Result<()> {
+        assert_eq!(stats(&pool, GuildId::new(1)).await?, (0, 0));
+        sqlx::query(
+            "INSERT INTO economy_wallets (guild_id, user_id, balance) VALUES
+             (1, 10, 100), (1, 11, 0), (1, 12, 250), (2, 13, 999)",
+        )
+        .execute(&pool)
+        .await?;
+        assert_eq!(stats(&pool, GuildId::new(1)).await?, (3, 350));
+        assert_eq!(stats(&pool, GuildId::new(2)).await?, (1, 999));
         Ok(())
     }
 

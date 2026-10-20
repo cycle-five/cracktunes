@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(*) AS \"wallets!\", COALESCE(SUM(balance), 0)::BIGINT AS \"credits!\"\n           FROM economy_wallets WHERE guild_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "wallets!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "credits!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null,
+      null
+    ]
+  },
+  "hash": "f0b8298736b923e5e04e43c68a7ac99bb1ff107dd77059f84f6d7a5a088f6de3"
+}

@@ -920,3 +920,41 @@ pub const ECONOMY_OPTOUT_ALREADY_OUT: &str = "You've already opted out.";
 pub const ECONOMY_OPTOUT_ALREADY_IN: &str = "You're already opted in.";
 pub const ECONOMY_OPTOUT_COOLDOWN_PREFIX: &str = "You switched recently. You can switch again";
 pub const ECONOMY_OPTOUT_FAILED: &str = "Couldn't change that. Try again.";
+pub const ECONOMY_SHOP_TITLE: &str = "Shop";
+pub const ECONOMY_SHOP_NOT_SOLD: &str = "not sold here";
+pub const ECONOMY_SHOP_DOCS_LABEL: &str = "How the economy works";
+pub const ECONOMY_DOCS_URL: &str =
+    "https://github.com/cycle-five/cracktunes/blob/master/docs/economy.md";
+pub const ECONOMY_IMMUNE_UNTIL: &str = "is immune until";
+pub const ECONOMY_SHOP_BOT_BUYER: &str = "Bots can't buy anything.";
+pub const ECONOMY_STATUS_TITLE: &str = "Economy status";
+pub const ECONOMY_STATUS_ON: &str = "on";
+pub const ECONOMY_STATUS_OFF: &str = "off";
+pub const ECONOMY_STATUS_CURRENCY: &str = "Currency";
+pub const ECONOMY_STATUS_WALLETS: &str = "Wallets";
+pub const ECONOMY_STATUS_HELD: &str = "Held in total";
+pub const ECONOMY_STATUS_EARNING: &str = "Earning";
+pub const ECONOMY_STATUS_PER_VOICE_MINUTE: &str = "per voice minute";
+pub const ECONOMY_STATUS_PER_MESSAGE: &str = "per message, at most once every";
+pub const ECONOMY_STATUS_SECONDS: &str = "s";
+pub const ECONOMY_STATUS_IMMUNITY: &str = "Immunity: opt-out";
+pub const ECONOMY_STATUS_SHOP: &str = "shop";
+pub const ECONOMY_STATUS_MODS: &str = "mod grants";
+pub const ECONOMY_STATUS_GAMBLING: &str = "Gambling";
+pub const ECONOMY_STATUS_MAX_BET: &str = "max bet";
+pub const ECONOMY_ADMIN_BOT_TARGET: &str = "Bots don't take part in the economy.";
+pub const ECONOMY_ADMIN_HOURS_RANGE: &str = "Hours must be between 1 and 8760 (a year).";
+pub const ECONOMY_ADMIN_GRANT_DISABLED: &str =
+    "This server has turned off moderator immunity grants.";
+pub const ECONOMY_ADMIN_GRANT_DONE: &str = "Immunity granted.";
+pub const ECONOMY_ADMIN_GRANT_FAILED: &str = "Couldn't grant that right now. Try again.";
+pub const ECONOMY_ADMIN_LIFT_DONE: &str = "Moderator immunity lifted.";
+pub const ECONOMY_ADMIN_LIFT_NONE: &str = "That member has no moderator grant to lift.";
+pub const ECONOMY_ADMIN_LIFT_FAILED: &str = "Couldn't lift that right now. Try again.";
+pub const ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE: &str =
+    "Adjusting credits needs the Manage Server permission.";
+pub const ECONOMY_ADMIN_ADJUST_ZERO: &str = "Adjust by a nonzero amount.";
+pub const ECONOMY_ADMIN_ADJUST_BELOW_ZERO_PREFIX: &str =
+    "That would take them below zero; they hold";
+pub const ECONOMY_ADMIN_ADJUST_DONE: &str = "Adjusted. They now hold";
+pub const ECONOMY_ADMIN_ADJUST_FAILED: &str = "Couldn't adjust that right now. Try again.";
