@@ -345,7 +345,10 @@ async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
 /// songbird's `gateway_timeout` is 10s -- and this is the one point every
 /// command's join funnels through, so the defer belongs here rather than in
 /// each of them. poise's defer is idempotent and a no-op on prefix commands,
-/// so a caller that already deferred pays nothing.
+/// so a caller that already deferred pays nothing. `/play` does defer first
+/// when `ephemeral_replies` is on, and does it *privately*: Discord fixes a
+/// response's visibility when it is created, so this public defer must find
+/// the response already there (#535).
 ///
 /// It sits deliberately *after* the permission gate: a refusal is cache-only
 /// and answers in microseconds, so it should not spend a round-trip putting

@@ -49,17 +49,14 @@ pub async fn ephemeral_internal(ctx: Context<'_>) -> Result<(), Error> {
 mod tests {
     use poise::serenity_prelude::all::Permissions;
 
-    /// 🪤 The toggle flips the setting and changes nothing downstream: the join
-    /// path defers publicly before any command body replies, and Discord fixes
-    /// a response's visibility when it is created, so `ephemeral(true)` on the
-    /// reply that edits it is ignored (#535). Registering the command would
-    /// promise a privacy the bot cannot deliver, so it stays out of the set
-    /// Discord is given until #535 lands -- built and tested, unreachable.
+    /// 🪤 Registered since #535: `/play` defers privately before it joins, so
+    /// the setting this toggles now takes effect. Discord fixes a response's
+    /// visibility when it is created, so that early defer is what makes it work.
     ///
     /// 🪤 It first lived under `/settings`, whose module has been compiled out
     /// since v0.4.0 (#534): that copy was never even type-checked. This one is.
     #[test]
-    fn ephemeral_is_built_but_deliberately_not_registered() {
+    fn ephemeral_is_built_and_registered() {
         let command = super::ephemeral();
 
         assert!(command.slash_action.is_some(), "a slash command");
@@ -72,10 +69,10 @@ mod tests {
             .contains(Permissions::ADMINISTRATOR));
 
         assert!(
-            !crate::commands::commands_to_register()
+            crate::commands::commands_to_register()
                 .into_iter()
                 .any(|command| command.name == "ephemeral"),
-            "not registered while #535 is open: replies cannot be private yet"
+            "registered: /play defers privately before joining (#535)"
         );
     }
 }
