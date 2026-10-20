@@ -28,6 +28,7 @@ pub mod utils;
 
 //#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
+use crate::music::query::DEFAULT_PLAYLIST_LIMIT;
 #[cfg(feature = "crack-activity")]
 use ::serenity::all::Activity;
 use chrono::{DateTime, Utc};
@@ -220,6 +221,9 @@ pub struct BotConfig {
     /// How slash commands reach Discord. `COMMAND_REGISTRATION` overrides it.
     #[serde(default)]
     pub command_registration: commands::registration::CommandRegistration,
+    /// Most entries pulled in when playing a playlist link. Unset or 0 means
+    /// `DEFAULT_PLAYLIST_LIMIT`.
+    pub playlist_limit: Option<u64>,
 }
 
 impl Default for BotConfig {
@@ -238,6 +242,7 @@ impl Default for BotConfig {
             database_url: None,
             log_prefix: Some(DEFAULT_LOG_PREFIX.to_string()),
             command_registration: Default::default(),
+            playlist_limit: None,
         }
     }
 }
@@ -277,6 +282,7 @@ impl Display for BotConfig {
             "command_registration: {:?}\n",
             self.command_registration
         ));
+        result.push_str(&format!("playlist_limit: {}\n", self.get_playlist_limit()));
         write!(f, "{}", result)
     }
 }
@@ -294,6 +300,15 @@ impl BotConfig {
     pub fn get_video_status_poll_interval(&self) -> u64 {
         self.video_status_poll_interval
             .unwrap_or(DEFAULT_VIDEO_STATUS_POLL_INTERVAL)
+    }
+
+    /// The playlist entry cap: the configured value, or the default when it
+    /// is unset or 0 (0 would make every playlist empty).
+    pub fn get_playlist_limit(&self) -> u64 {
+        match self.playlist_limit {
+            Some(n) if n > 0 => n,
+            _ => DEFAULT_PLAYLIST_LIMIT,
+        }
     }
 
     pub fn get_database_url(&self) -> String {
@@ -773,6 +788,34 @@ msg_on_dc:     false
         let guild_settings = GuildSettingsMapParam::default();
         let new_data = new_data.with_guild_settings_map(guild_settings);
         assert!(new_data.guild_settings_map.read().await.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod playlist_limit_tests {
+    use super::*;
+
+    #[test]
+    fn bot_config_defaults_to_a_300_track_playlist_limit() {
+        assert_eq!(BotConfig::default().get_playlist_limit(), 300);
+    }
+
+    #[test]
+    fn a_zero_playlist_limit_means_the_default() {
+        let config = BotConfig {
+            playlist_limit: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(config.get_playlist_limit(), 300);
+    }
+
+    #[test]
+    fn a_configured_playlist_limit_is_used() {
+        let config = BotConfig {
+            playlist_limit: Some(1000),
+            ..Default::default()
+        };
+        assert_eq!(config.get_playlist_limit(), 1000);
     }
 }
 

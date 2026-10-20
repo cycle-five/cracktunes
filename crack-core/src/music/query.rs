@@ -41,11 +41,13 @@ use url::Url;
 
 pub const PLAYLIST_SEARCH_LIMIT: u64 = 30;
 
-/// Maximum number of playlist entries pulled in when playing a playlist link.
+/// Default cap on playlist entries pulled in when playing a playlist link;
+/// `playlist_limit` in cracktunes.toml overrides it (see
+/// `BotConfig::get_playlist_limit`).
 ///
-/// Matches `rusty_ytdl`'s own default, which is what the previous
-/// `Playlist::get(url, None)` call used.
-pub const PLAYLIST_PLAY_LIMIT: u64 = 100;
+/// Pages are read about 100 entries per request (~600 ms each), so the cap
+/// costs one request per ~100 entries rather than one lookup per track.
+pub const DEFAULT_PLAYLIST_LIMIT: u64 = 300;
 
 // #[derive(Clone, Debug)]
 // /// Enum for type of possible queries we have to handle
@@ -438,7 +440,7 @@ impl NewQueryType {
                 let playlist: Playlist = rusty_ytdl::search::Playlist::get(
                     url.clone(),
                     Some(&rusty_ytdl::search::PlaylistSearchOptions {
-                        limit: PLAYLIST_PLAY_LIMIT,
+                        limit: ctx.data().bot_settings.get_playlist_limit(),
                         ..Default::default()
                     }),
                 )
@@ -544,7 +546,7 @@ impl NewQueryType {
                 let tracks = ctx
                     .data()
                     .ct_client
-                    .resolve_playlist_limit(url, PLAYLIST_PLAY_LIMIT)
+                    .resolve_playlist_limit(url, ctx.data().bot_settings.get_playlist_limit())
                     .await?;
                 queue_resolved_list_back(ctx, call, tracks, search_msg).await?;
                 Ok(true)

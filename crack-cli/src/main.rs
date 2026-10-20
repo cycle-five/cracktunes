@@ -363,6 +363,19 @@ mod test {
     }
 
     #[test]
+    fn bot_config_reads_playlist_limit_from_toml() {
+        let path = env::temp_dir().join(format!(
+            "cracktunes-playlist-limit-{}.toml",
+            std::process::id()
+        ));
+        std::fs::write(&path, "playlist_limit = 750\n").unwrap();
+        let loaded = BotConfig::from_config_file(&path);
+        std::fs::remove_file(&path).unwrap();
+        let config = loaded.expect("config should load");
+        assert_eq!(config.get_playlist_limit(), 750);
+    }
+
+    #[test]
     fn test_load_key() {
         let key = "DISCORD_TOKEN".to_string();
         let result = load_key(key);
