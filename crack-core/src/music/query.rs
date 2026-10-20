@@ -45,8 +45,11 @@ pub const PLAYLIST_SEARCH_LIMIT: u64 = 30;
 /// `playlist_limit` in cracktunes.toml overrides it (see
 /// `BotConfig::get_playlist_limit`).
 ///
-/// Pages are read about 100 entries per request (~600 ms each), so the cap
-/// costs one request per ~100 entries rather than one lookup per track.
+/// For end-of-queue plays (`mode_end`, `resolve_playlist_limit`) pages are
+/// read about 100 entries per request (~600 ms each), so the cap costs one
+/// request per ~100 entries rather than one lookup per track. `/playnext`
+/// (`mode_next`) still resolves every entry (`rusty_ytdl::Playlist::get`, then
+/// `resolve_track_many`), so a higher cap costs more lookups there.
 pub const DEFAULT_PLAYLIST_LIMIT: u64 = 300;
 
 // #[derive(Clone, Debug)]

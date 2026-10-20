@@ -47,12 +47,14 @@
   enough to hide the play from `/playlog`. When the track has no logged play to
   dislike, it still skips and says nothing was recorded. It is refused while a
   `/gp` game is running, and dislikes do not influence autoplay (#207).
-- **`/ephemeral` is a command again.** With it on, `/play` replies privately,
+- **`/ephemeral` is registered.** (It never was, in any release.) With it on, `/play` replies privately,
   the "Joining" notice included. The channel still sees the public floating
   status message (#535).
 - **`playlist_limit` in `cracktunes.toml` sets the bot-wide cap on how many
-  tracks a YouTube playlist link queues.** Unset or `0` means 300. This is the
-  bot-wide part of #397; a per-server override and paging through longer
+  tracks a YouTube playlist link queues.** Unset or `0` means 300, and values
+  above 1000 are capped at 1000. The `PLAYLIST_LIMIT` environment variable
+  overrides the file, since Docker deployments don't mount `cracktunes.toml`.
+  This is the bot-wide part of #397; a per-server override and paging through longer
   playlists are not done.
 - **A mod log.** A server picks a text channel and CrackTunes posts who server-muted
   or server-deafened (and unmuted or undeafened) whom, with the moderator and their
@@ -245,7 +247,8 @@
 ### Changed
 
 - **A YouTube playlist link now queues up to 300 tracks, not 100.** Set
-  `playlist_limit` in `cracktunes.toml` to change it, and the YouTube playlist
+  `playlist_limit` in `cracktunes.toml`, or `PLAYLIST_LIMIT` in the environment,
+  to change it, and the YouTube playlist
   reader follows as many pages as that limit needs.
 - **CrackTunes joins voice self-deafened, and no longer decrypts or decodes
   what it receives.** Nothing used the incoming audio, so the bot now shows the

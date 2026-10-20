@@ -29,6 +29,9 @@ pub mod utils;
 //#![feature(linked_list_cursors)]
 use crate::handlers::event_log::LogEntry;
 use crate::music::query::DEFAULT_PLAYLIST_LIMIT;
+
+/// The most tracks a playlist link may queue, however it is configured.
+pub const MAX_PLAYLIST_LIMIT: u64 = 1000;
 #[cfg(feature = "crack-activity")]
 use ::serenity::all::Activity;
 use chrono::{DateTime, Utc};
@@ -303,10 +306,13 @@ impl BotConfig {
     }
 
     /// The playlist entry cap: the configured value, or the default when it
-    /// is unset or 0 (0 would make every playlist empty).
+    /// is unset or 0 (0 would make every playlist empty), and never more than
+    /// `MAX_PLAYLIST_LIMIT`: a whole playlist's play-log writes go out in one
+    /// `try_send` burst into a 1024-slot channel (`queue.rs`, `poise_ext.rs`),
+    /// so a larger cap drops play_log rows.
     pub fn get_playlist_limit(&self) -> u64 {
         match self.playlist_limit {
-            Some(n) if n > 0 => n,
+            Some(n) if n > 0 => n.min(MAX_PLAYLIST_LIMIT),
             _ => DEFAULT_PLAYLIST_LIMIT,
         }
     }
@@ -811,6 +817,16 @@ mod playlist_limit_tests {
             ..Default::default()
         };
         assert_eq!(config.get_playlist_limit(), 300);
+    }
+
+    #[test]
+    fn a_playlist_limit_above_the_ceiling_is_capped() {
+        let config = BotConfig {
+            playlist_limit: Some(5000),
+            ..Default::default()
+        };
+        assert_eq!(config.get_playlist_limit(), MAX_PLAYLIST_LIMIT);
+        assert_eq!(config.get_playlist_limit(), 1000);
     }
 
     #[test]

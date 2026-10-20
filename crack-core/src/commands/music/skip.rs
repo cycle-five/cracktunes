@@ -73,6 +73,21 @@ pub async fn send_skip_reply(
 )]
 pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
+    // Defer before the DB work below: it makes three round trips (one an
+    // unindexed join on `play_log`) and a slow one would blow Discord's
+    // 3-second deadline. Discord fixes a response's visibility when it is
+    // created, so the defer must match `private`. poise's defer is idempotent
+    // and a no-op on prefix commands, as in `play_internal`.
+    let cx = OpCx::from_ctx(&ctx)?;
+    let private = crate::messaging::status::reply_privately(
+        ctx.data().get_ephemeral_replies(cx.guild_id).await,
+        ctx.is_prefix(),
+    );
+    if private {
+        ctx.defer_ephemeral().await?;
+    } else {
+        ctx.defer().await?;
+    }
     // Never joins: downvoting is about the track playing right now.
     let call = connected_call(&ctx.data().songbird, guild_id, None)
         .await
@@ -89,30 +104,29 @@ pub async fn downvote(ctx: Context<'_>) -> Result<(), Error> {
             .current()
             .ok_or(CrackedError::NothingPlaying)?;
         let metadata = get_track_handle_metadata(&current).await?;
-        (
-            current.uuid(),
-            metadata.source_url.ok_or(CrackedError::NoMetadata)?,
-        )
+        (current.uuid(), metadata.source_url)
     };
-    // Autoplay picks are never logged, so there may be nothing to downvote.
-    // That must not stop the skip; every other failure still does.
-    let hidden = match ctx.data().downvote_track(guild_id, &source_url).await {
-        Ok(reaction) => {
-            tracing::info!("downvoted track: {:#?}", reaction);
-            true
-        },
-        Err(CrackedError::NoPlayLogged) => {
-            tracing::info!("downvote: no play logged for {source_url}; skipping only");
+    // Autoplay picks are never logged, and a track may have no source URL, so
+    // there may be nothing to downvote. Neither must stop the skip; every
+    // other failure still does.
+    let hidden = match source_url {
+        None => {
+            tracing::info!("downvote: track has no source url; skipping only");
             false
         },
-        Err(e) => return Err(e.into()),
+        Some(source_url) => match ctx.data().downvote_track(guild_id, &source_url).await {
+            Ok(reaction) => {
+                tracing::info!("downvoted track: {:#?}", reaction);
+                true
+            },
+            Err(CrackedError::NoPlayLogged) => {
+                tracing::info!("downvote: no play logged for {source_url}; skipping only");
+                false
+            },
+            Err(e) => return Err(e.into()),
+        },
     };
 
-    let cx = OpCx::from_ctx(&ctx)?;
-    let private = crate::messaging::status::reply_privately(
-        ctx.data().get_ephemeral_replies(cx.guild_id).await,
-        ctx.is_prefix(),
-    );
     match ops::skip(&cx, 1, Some(current_id)).await {
         Ok(done) => {
             let text = if hidden {
