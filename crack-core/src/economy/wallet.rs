@@ -75,6 +75,9 @@ pub enum MoveError {
     Insufficient {
         balance: i64,
     },
+    /// The request is malformed (non-positive amount, gift to oneself, an
+    /// overflow); nothing was written.
+    Invalid,
     Db(sqlx::Error),
 }
 
@@ -88,6 +91,7 @@ impl std::fmt::Display for MoveError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MoveError::Insufficient { balance } => write!(f, "insufficient balance ({balance})"),
+            MoveError::Invalid => write!(f, "invalid amount"),
             MoveError::Db(e) => write!(f, "database error: {e}"),
         }
     }

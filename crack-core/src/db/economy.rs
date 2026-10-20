@@ -85,6 +85,7 @@ pub async fn credit_earnings(pool: &PgPool, guild: GuildId, rows: &[EarnRow]) ->
            SELECT $1, t.u, sum(t.v + t.m), sum(t.v), sum(t.m)
            FROM UNNEST($2::bigint[], $3::bigint[], $4::bigint[]) AS t(u, v, m)
            GROUP BY t.u
+           ORDER BY t.u
            ON CONFLICT (guild_id, user_id) DO UPDATE SET
                balance = w.balance + EXCLUDED.balance,
                earned_voice = w.earned_voice + EXCLUDED.earned_voice,
@@ -111,13 +112,22 @@ pub async fn balance(pool: &PgPool, guild: GuildId, user: UserId) -> sqlx::Resul
     Ok(row.map_or(0, |r| r.balance))
 }
 
-/// Create the wallet if missing, then lock it and return its balance. The
-/// lock is held until the transaction ends, which is what serialises debits.
+/// Proof that a wallet row is locked in the current transaction. Only
+/// [`lock_wallet`] makes one, and [`set_balance`] needs one, so a balance
+/// cannot be written without the row having been locked first.
+struct Locked {
+    guild: GuildId,
+    user: UserId,
+    balance: i64,
+}
+
+/// Create the wallet if missing, then lock it. The lock is held until the
+/// transaction ends, which is what serialises debits.
 async fn lock_wallet(
     tx: &mut sqlx::PgConnection,
     guild: GuildId,
     user: UserId,
-) -> sqlx::Result<i64> {
+) -> sqlx::Result<Locked> {
     sqlx::query!(
         "INSERT INTO economy_wallets (guild_id, user_id) VALUES ($1, $2)
          ON CONFLICT (guild_id, user_id) DO NOTHING",
@@ -133,19 +143,22 @@ async fn lock_wallet(
     )
     .fetch_one(&mut *tx)
     .await?;
-    Ok(row.balance)
+    Ok(Locked {
+        guild,
+        user,
+        balance: row.balance,
+    })
 }
 
 async fn set_balance(
     tx: &mut sqlx::PgConnection,
-    guild: GuildId,
-    user: UserId,
+    wallet: &Locked,
     new_balance: i64,
 ) -> sqlx::Result<()> {
     sqlx::query!(
         "UPDATE economy_wallets SET balance = $3 WHERE guild_id = $1 AND user_id = $2",
-        guild.get() as i64,
-        user.get() as i64,
+        wallet.guild.get() as i64,
+        wallet.user.get() as i64,
         new_balance
     )
     .execute(tx)
@@ -196,13 +209,17 @@ pub struct Charged {
 
 /// Debit the buyer and record the purchase as `pending`, in one transaction.
 pub async fn charge_for_action(pool: &PgPool, a: &NewAction<'_>) -> Result<Charged, MoveError> {
+    if a.price <= 0 {
+        return Err(MoveError::Invalid);
+    }
     let mut tx = pool.begin().await?;
-    let held = lock_wallet(&mut tx, a.guild, a.buyer).await?;
+    let wallet = lock_wallet(&mut tx, a.guild, a.buyer).await?;
+    let held = wallet.balance;
     if held < a.price {
         return Err(MoveError::Insufficient { balance: held });
     }
     let left = held - a.price;
-    set_balance(&mut tx, a.guild, a.buyer, left).await?;
+    set_balance(&mut tx, &wallet, left).await?;
     let row = sqlx::query!(
         "INSERT INTO economy_actions
              (guild_id, kind, buyer_id, target_id, price, note, signed, payload, state, expires_at)
@@ -237,12 +254,13 @@ pub async fn charge_for_action(pool: &PgPool, a: &NewAction<'_>) -> Result<Charg
     })
 }
 
-/// Move an action to a new state, stamping `ended_at` when it is final.
+/// Move an action to a new state, stamping `ended_at` when it is final. A
+/// row in a final state never moves again.
 pub async fn finish_action(pool: &PgPool, action_id: i64, state: ActionState) -> sqlx::Result<()> {
     sqlx::query!(
         "UPDATE economy_actions
          SET state = $2, ended_at = CASE WHEN $3 THEN now() ELSE ended_at END
-         WHERE id = $1",
+         WHERE id = $1 AND state NOT IN ('done', 'ended', 'failed')",
         action_id,
         state.as_str(),
         state.is_final()
@@ -276,9 +294,12 @@ pub async fn refund_action(pool: &PgPool, action_id: i64) -> sqlx::Result<Option
         return Err(sqlx::Error::Decode("action has an invalid id".into()));
     };
     let guild = GuildId::new(guild);
-    let held = lock_wallet(&mut tx, guild, buyer).await?;
-    let back = held + row.price;
-    set_balance(&mut tx, guild, buyer, back).await?;
+    let wallet = lock_wallet(&mut tx, guild, buyer).await?;
+    let back = wallet
+        .balance
+        .checked_add(row.price)
+        .ok_or_else(|| sqlx::Error::Decode("refund overflows the balance".into()))?;
+    set_balance(&mut tx, &wallet, back).await?;
     write_ledger(
         &mut tx,
         guild,
@@ -301,25 +322,26 @@ pub async fn transfer(
     to: UserId,
     amount: i64,
 ) -> Result<(i64, i64), MoveError> {
+    if amount <= 0 || from == to {
+        return Err(MoveError::Invalid);
+    }
     let mut tx = pool.begin().await?;
-    let (mut from_bal, mut to_bal) = (0, 0);
-    let mut ids = [from, to];
-    ids.sort();
-    for u in ids {
-        let held = lock_wallet(&mut tx, guild, u).await?;
-        if u == from {
-            from_bal = held;
-        } else {
-            to_bal = held;
-        }
+    let (first, second) = if from < to { (from, to) } else { (to, from) };
+    let w1 = lock_wallet(&mut tx, guild, first).await?;
+    let w2 = lock_wallet(&mut tx, guild, second).await?;
+    let (sender, receiver) = if first == from { (w1, w2) } else { (w2, w1) };
+    if sender.balance < amount {
+        return Err(MoveError::Insufficient {
+            balance: sender.balance,
+        });
     }
-    if from_bal < amount {
-        return Err(MoveError::Insufficient { balance: from_bal });
-    }
-    from_bal -= amount;
-    to_bal += amount;
-    set_balance(&mut tx, guild, from, from_bal).await?;
-    set_balance(&mut tx, guild, to, to_bal).await?;
+    let from_bal = sender.balance - amount;
+    let to_bal = receiver
+        .balance
+        .checked_add(amount)
+        .ok_or(MoveError::Invalid)?;
+    set_balance(&mut tx, &sender, from_bal).await?;
+    set_balance(&mut tx, &receiver, to_bal).await?;
     write_ledger(&mut tx, guild, from, -amount, LedgerKind::GiftSent, None).await?;
     write_ledger(&mut tx, guild, to, amount, LedgerKind::GiftReceived, None).await?;
     tx.commit().await?;
@@ -335,18 +357,30 @@ pub async fn settle_coinflip(
     bet: i64,
     won: bool,
 ) -> Result<i64, MoveError> {
+    if bet <= 0 {
+        return Err(MoveError::Invalid);
+    }
     let mut tx = pool.begin().await?;
-    let held = lock_wallet(&mut tx, guild, user).await?;
+    let wallet = lock_wallet(&mut tx, guild, user).await?;
+    let held = wallet.balance;
     if held < bet {
         return Err(MoveError::Insufficient { balance: held });
     }
     write_ledger(&mut tx, guild, user, -bet, LedgerKind::CoinflipStake, None).await?;
     let mut now = held - bet;
     if won {
-        write_ledger(&mut tx, guild, user, 2 * bet, LedgerKind::CoinflipWin, None).await?;
-        now += 2 * bet;
+        write_ledger(
+            &mut tx,
+            guild,
+            user,
+            bet.checked_mul(2).ok_or(MoveError::Invalid)?,
+            LedgerKind::CoinflipWin,
+            None,
+        )
+        .await?;
+        now = now.checked_add(2 * bet).ok_or(MoveError::Invalid)?;
     }
-    set_balance(&mut tx, guild, user, now).await?;
+    set_balance(&mut tx, &wallet, now).await?;
     tx.commit().await?;
     Ok(now)
 }
@@ -360,13 +394,17 @@ pub async fn adjust(
     by: UserId,
     reason: &str,
 ) -> Result<i64, MoveError> {
+    if amount == 0 {
+        return Err(MoveError::Invalid);
+    }
     let mut tx = pool.begin().await?;
-    let held = lock_wallet(&mut tx, guild, user).await?;
-    if held + amount < 0 {
+    let wallet = lock_wallet(&mut tx, guild, user).await?;
+    let held = wallet.balance;
+    let now = held.checked_add(amount).ok_or(MoveError::Invalid)?;
+    if now < 0 {
         return Err(MoveError::Insufficient { balance: held });
     }
-    let now = held + amount;
-    set_balance(&mut tx, guild, user, now).await?;
+    set_balance(&mut tx, &wallet, now).await?;
     sqlx::query!(
         "INSERT INTO economy_ledger (guild_id, user_id, delta, kind, by_user_id, reason)
          VALUES ($1, $2, $3, $4, $5, $6)",
@@ -521,6 +559,8 @@ pub async fn extend_bought(
     hours: u32,
     now: DateTime<Utc>,
 ) -> sqlx::Result<DateTime<Utc>> {
+    let hours = i32::try_from(hours)
+        .map_err(|_| sqlx::Error::Decode("immunity hours out of range".into()))?;
     let row = sqlx::query!(
         r#"INSERT INTO economy_immunity AS i (guild_id, user_id, source, until)
            VALUES ($1, $2, 'bought', $3::timestamptz + make_interval(hours => $4))
@@ -531,7 +571,7 @@ pub async fn extend_bought(
         guild.get() as i64,
         user.get() as i64,
         now,
-        hours as i32
+        hours
     )
     .fetch_one(pool)
     .await?;
@@ -1125,4 +1165,96 @@ mod tests {
         );
         Ok(())
     });
+
+    async fn nothing_written(pool: &PgPool) {
+        let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM economy_ledger")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+        assert_eq!(rows, 0, "no ledger rows");
+    }
+
+    db_test!(
+        transfer_refuses_non_positive_and_self,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            fund(&pool, B, 100).await;
+            for (to, amount) in [(B, 0), (B, -50), (A, 10), (A, -10)] {
+                let e = transfer(&pool, G, A, to, amount).await.unwrap_err();
+                assert!(matches!(e, MoveError::Invalid), "{to} {amount}: {e:?}");
+            }
+            assert_eq!(balance(&pool, G, A).await?, 100);
+            assert_eq!(balance(&pool, G, B).await?, 100);
+            nothing_written(&pool).await;
+            Ok(())
+        }
+    );
+
+    db_test!(coinflip_refuses_non_positive_bet, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        for (bet, won) in [(0, true), (-50, false), (-50, true)] {
+            let e = settle_coinflip(&pool, G, A, bet, won).await.unwrap_err();
+            assert!(matches!(e, MoveError::Invalid), "{bet} {won}: {e:?}");
+        }
+        assert_eq!(balance(&pool, G, A).await?, 100);
+        nothing_written(&pool).await;
+        Ok(())
+    });
+
+    db_test!(charge_refuses_non_positive_price, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        let payload = ActionPayload::Immunity { hours: 24 };
+        for price in [0, -50] {
+            let e = charge_for_action(&pool, &immunity_action(A, price, &payload))
+                .await
+                .unwrap_err();
+            assert!(matches!(e, MoveError::Invalid), "{price}: {e:?}");
+        }
+        assert_eq!(balance(&pool, G, A).await?, 100);
+        nothing_written(&pool).await;
+        let actions: i64 = sqlx::query_scalar("SELECT count(*) FROM economy_actions")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(actions, 0);
+        Ok(())
+    });
+
+    db_test!(adjust_refuses_zero_and_overflow, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        let e = adjust(&pool, G, A, 0, MOD, "nothing").await.unwrap_err();
+        assert!(matches!(e, MoveError::Invalid), "{e:?}");
+        let e = adjust(&pool, G, A, i64::MAX, MOD, "huge")
+            .await
+            .unwrap_err();
+        assert!(matches!(e, MoveError::Invalid), "{e:?}");
+        assert_eq!(balance(&pool, G, A).await?, 100);
+        nothing_written(&pool).await;
+        assert_eq!(
+            adjust(&pool, G, A, -1, MOD, "negative stays legal")
+                .await
+                .unwrap(),
+            99
+        );
+        Ok(())
+    });
+
+    db_test!(
+        finish_action_never_leaves_a_final_state,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            let payload = ActionPayload::Immunity { hours: 24 };
+            let c = charge_for_action(&pool, &immunity_action(A, 50, &payload))
+                .await
+                .unwrap();
+            assert_eq!(refund_action(&pool, c.action_id).await?, Some(100));
+            finish_action(&pool, c.action_id, ActionState::Active).await?;
+            let state: String =
+                sqlx::query_scalar("SELECT state FROM economy_actions WHERE id = $1")
+                    .bind(c.action_id)
+                    .fetch_one(&pool)
+                    .await?;
+            assert_eq!(state, "failed");
+            Ok(())
+        }
+    );
 }
