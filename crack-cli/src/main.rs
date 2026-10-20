@@ -75,8 +75,8 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 
     let mut client = config::poise_framework(config, event_log_async).await?;
 
-    // Force the client to init.
-    http_utils::init_http_client().await?;
+    // Build the shared HTTP client now; makes no request.
+    http_utils::init_http_client();
 
     // let client = framework.client();
     let data_arc = client.data::<crack_core::Data>().clone();
