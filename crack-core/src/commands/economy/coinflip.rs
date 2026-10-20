@@ -13,7 +13,10 @@ use crate::{Context, Error};
 #[poise::command(category = "Economy", slash_command, guild_only)]
 pub async fn coinflip(
     ctx: Context<'_>,
-    #[description = "How many to bet"] bet: i64,
+    #[description = "How many to bet"]
+    #[min = 1]
+    #[max = 1000000]
+    bet: i64,
     #[description = "Your call"] call: CoinSide,
 ) -> Result<(), Error> {
     let Some((guild, pool)) = gate(ctx).await? else {

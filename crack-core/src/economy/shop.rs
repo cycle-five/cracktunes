@@ -4,8 +4,8 @@
 use super::settings::{ActionKind, ActionPrice};
 use super::wallet::{ActionPayload, MoveError};
 use crate::messaging::messages::{
-    ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANT_AFFORD_MIDDLE, ECONOMY_CANT_AFFORD_PREFIX,
-    ECONOMY_NOT_FOR_SALE, ECONOMY_OFF,
+    ECONOMY_ALREADY_IMMUNE, ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANT_AFFORD_MIDDLE,
+    ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_NOT_FOR_SALE, ECONOMY_OFF,
 };
 use crate::Data;
 use chrono::{DateTime, Utc};
@@ -19,6 +19,9 @@ pub struct PurchaseFacts {
     /// The action's own switch (for immunity, `immunity_shop`).
     pub source_on: bool,
     pub buyer_opted_out: bool,
+    /// The buyer holds a moderator grant that lasts until lifted, so a
+    /// purchase would add nothing.
+    pub already_immune_indefinitely: bool,
     pub balance: i64,
 }
 
@@ -28,11 +31,13 @@ pub enum Refusal {
     EconomyOff,
     NotForSale,
     BuyerOptedOut,
+    AlreadyImmune,
     CantAfford { short: i64 },
 }
 
 /// Check a purchase, refusing for the first reason that applies, in order:
-/// economy off, not for sale, buyer opted out, can't afford.
+/// economy off, not for sale, buyer opted out, already immune indefinitely,
+/// can't afford.
 pub fn check_purchase(f: &PurchaseFacts) -> Result<(), Refusal> {
     if !f.enabled {
         return Err(Refusal::EconomyOff);
@@ -42,6 +47,9 @@ pub fn check_purchase(f: &PurchaseFacts) -> Result<(), Refusal> {
     }
     if f.buyer_opted_out {
         return Err(Refusal::BuyerOptedOut);
+    }
+    if f.already_immune_indefinitely {
+        return Err(Refusal::AlreadyImmune);
     }
     let price = i64::from(f.price.price);
     if f.balance < price {
@@ -63,6 +71,7 @@ pub fn refusal_text(r: &Refusal, currency: &str) -> String {
         Refusal::EconomyOff => ECONOMY_OFF.to_string(),
         Refusal::NotForSale => ECONOMY_NOT_FOR_SALE.to_string(),
         Refusal::BuyerOptedOut => ECONOMY_BUYER_OPTED_OUT.to_string(),
+        Refusal::AlreadyImmune => ECONOMY_ALREADY_IMMUNE.to_string(),
         Refusal::CantAfford { short } => {
             format!("{ECONOMY_CANT_AFFORD_PREFIX} {short} {ECONOMY_CANT_AFFORD_MIDDLE} {currency}.")
         },
@@ -106,11 +115,16 @@ pub async fn buy_immunity(
         tracing::warn!("economy: reading balance of {buyer} in {g} failed: {err}");
         BuyError::Db
     })?;
+    let grants = db::grants(pool, g, buyer).await.map_err(|err| {
+        tracing::warn!("economy: reading grants of {buyer} in {g} failed: {err}");
+        BuyError::Db
+    })?;
     let facts = PurchaseFacts {
         enabled: data.economy.is_enabled(g),
         price,
         source_on: cfg.immunity_shop,
         buyer_opted_out: data.economy.is_opted_out(g, buyer),
+        already_immune_indefinitely: grants.iter().any(|gr| gr.until.is_none()),
         balance,
     };
     check_purchase(&facts).map_err(BuyError::Refused)?;
@@ -187,6 +201,7 @@ mod tests {
             },
             source_on: true,
             buyer_opted_out: false,
+            already_immune_indefinitely: false,
             balance: 1000,
         }
     }
@@ -199,6 +214,7 @@ mod tests {
             enabled: false,
             source_on: false,
             buyer_opted_out: true,
+            already_immune_indefinitely: true,
             balance: 0,
             ..ok()
         };
@@ -211,6 +227,8 @@ mod tests {
         f.price.on = true;
         assert_eq!(check_purchase(&f), Err(Refusal::BuyerOptedOut));
         f.buyer_opted_out = false;
+        assert_eq!(check_purchase(&f), Err(Refusal::AlreadyImmune));
+        f.already_immune_indefinitely = false;
         assert_eq!(check_purchase(&f), Err(Refusal::CantAfford { short: 200 }));
         f.balance = 200;
         assert_eq!(check_purchase(&f), Ok(()));
@@ -239,6 +257,7 @@ mod tests {
             Refusal::EconomyOff,
             Refusal::NotForSale,
             Refusal::BuyerOptedOut,
+            Refusal::AlreadyImmune,
             Refusal::CantAfford { short: 1 },
         ];
         let texts: std::collections::HashSet<_> =
@@ -370,6 +389,25 @@ mod tests {
         }
     );
 
+    db_test!(
+        an_indefinite_mod_grant_refuses_a_purchase_before_any_charge,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 500).await;
+            crate::db::economy::grant_mod(&pool, G, U, None, UserId::new(99), None)
+                .await
+                .unwrap();
+            assert_eq!(
+                buy_immunity(&data, G, U, t0()).await,
+                Err(BuyError::Refused(Refusal::AlreadyImmune))
+            );
+            assert_eq!(crate::db::economy::balance(&pool, G, U).await.unwrap(), 500);
+            assert_eq!(
+                count(&pool, "SELECT count(*) FROM economy_actions").await,
+                0
+            );
+        }
+    );
+
     db_test!(grant_and_done_commit_together, |pool: PgPool| async {
         let data = shop_data(&pool, 500).await;
         buy_immunity(&data, G, U, t0()).await.unwrap();
@@ -424,10 +462,19 @@ mod tests {
 
     db_test!(a_failed_grant_is_refunded, |pool: PgPool| async {
         let data = shop_data(&pool, 500).await;
-        sqlx::query("DROP TABLE economy_immunity")
-            .execute(&pool)
-            .await
-            .unwrap();
+        // Reads of grants still work (the check reads them); only the grant fails.
+        sqlx::query(
+            "CREATE FUNCTION refuse_grant() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'no'; END $$ LANGUAGE plpgsql",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "CREATE TRIGGER refuse_grant BEFORE INSERT ON economy_immunity FOR EACH ROW EXECUTE FUNCTION refuse_grant()",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
         assert_eq!(buy_immunity(&data, G, U, t0()).await, Err(BuyError::Db));
         assert_eq!(crate::db::economy::balance(&pool, G, U).await.unwrap(), 500);
         assert_eq!(

@@ -112,6 +112,42 @@ pub async fn balance(pool: &PgPool, guild: GuildId, user: UserId) -> sqlx::Resul
     Ok(row.map_or(0, |r| r.balance))
 }
 
+/// A member's balance and what they earned, by source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WalletSummary {
+    pub balance: i64,
+    pub earned_voice: i64,
+    pub earned_messages: i64,
+}
+
+/// A member's balance and earning counters; all zeros when there is no wallet.
+pub async fn wallet_summary(
+    pool: &PgPool,
+    guild: GuildId,
+    user: UserId,
+) -> sqlx::Result<WalletSummary> {
+    let row = sqlx::query!(
+        "SELECT balance, earned_voice, earned_messages FROM economy_wallets
+         WHERE guild_id = $1 AND user_id = $2",
+        guild.get() as i64,
+        user.get() as i64
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map_or(
+        WalletSummary {
+            balance: 0,
+            earned_voice: 0,
+            earned_messages: 0,
+        },
+        |r| WalletSummary {
+            balance: r.balance,
+            earned_voice: r.earned_voice,
+            earned_messages: r.earned_messages,
+        },
+    ))
+}
+
 /// Proof that a wallet row is locked in the current transaction. Only
 /// [`lock_wallet`] makes one, and [`set_balance`] needs one, so a balance
 /// cannot be written without the row having been locked first.
@@ -862,6 +898,84 @@ mod tests {
         }
         Ok(())
     });
+
+    db_test!(
+        wallet_summary_reads_counters_and_defaults_to_zero,
+        |pool: PgPool| async {
+            assert_eq!(
+                wallet_summary(&pool, G, A).await?,
+                WalletSummary {
+                    balance: 0,
+                    earned_voice: 0,
+                    earned_messages: 0
+                }
+            );
+            credit_earnings(
+                &pool,
+                G,
+                &[EarnRow {
+                    user: A,
+                    voice: 30,
+                    messages: 12,
+                }],
+            )
+            .await?;
+            let payload = ActionPayload::Immunity { hours: 24 };
+            charge_for_action(&pool, &immunity_action(A, 10, &payload))
+                .await
+                .unwrap();
+            assert_eq!(
+                wallet_summary(&pool, G, A).await?,
+                WalletSummary {
+                    balance: 32,
+                    earned_voice: 30,
+                    earned_messages: 12
+                }
+            );
+            // Another member, another server: still zeros.
+            assert_eq!(wallet_summary(&pool, G, B).await?.earned_voice, 0);
+            assert_eq!(wallet_summary(&pool, GuildId::new(2), A).await?.balance, 0);
+            Ok(())
+        }
+    );
+
+    db_test!(
+        earning_racing_a_charge_keeps_the_invariant,
+        |pool: PgPool| async {
+            // Open both connections first so the two writes overlap.
+            let (c1, c2) = (pool.acquire().await?, pool.acquire().await?);
+            drop((c1, c2));
+            let payload = ActionPayload::Immunity { hours: 24 };
+            let act = immunity_action(A, 5, &payload);
+            let earn = [EarnRow {
+                user: A,
+                voice: 7,
+                messages: 3,
+            }];
+            fund(&pool, A, 100).await;
+            for round in 0..10 {
+                let (e, c) = tokio::join!(
+                    credit_earnings(&pool, G, &earn),
+                    charge_for_action(&pool, &act)
+                );
+                e?;
+                c.unwrap_or_else(|err| panic!("round {round}: charge failed: {err:?}"));
+            }
+            // fund() credited 100 to the counters without a ledger row, so the
+            // invariant is: balance = ledger deltas + earned counters.
+            let w = wallet_summary(&pool, G, A).await?;
+            let ledger: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(SUM(delta), 0)::BIGINT FROM economy_ledger WHERE guild_id = 1 AND user_id = 10",
+        )
+        .fetch_one(&pool)
+        .await?;
+            assert_eq!(w.earned_voice, 100 + 10 * 7);
+            assert_eq!(w.earned_messages, 10 * 3);
+            assert_eq!(ledger, -10 * 5);
+            assert_eq!(w.balance, ledger + w.earned_voice + w.earned_messages);
+            Ok(())
+        }
+    );
 
     db_test!(refund_restores_once, |pool: PgPool| async {
         fund(&pool, A, 100).await;

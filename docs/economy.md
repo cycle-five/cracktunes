@@ -80,13 +80,13 @@ All of these are slash commands, and work only in a server where the economy is 
 | Command | What it does |
 |---|---|
 | `/credits balance [member]` | Shows your credits, or another member's. Public. |
-| `/credits top` | The 10 richest members. Public. |
+| `/credits top` | The 10 richest members, leaving out opted-out members. Public. |
 | `/credits gift <member> <amount>` | Gives some of your credits to someone else. Public. |
-| `/credits history` | Your last 15 movements of credits: earnings, gifts, purchases, bets. Only you see it. |
-| `/credits optout` | Opts you out of the economy (see [Immunity](#immunity)). |
+| `/credits history` | Your last 15 movements of credits: gifts, purchases, refunds, bets and moderator adjustments. Earnings are not rows: they appear as the "Earned so far" totals (voice and messages) on the first line. Only you see it. |
+| `/credits optout` | Opts you out of the economy (see [Immunity](#immunity)). It tells you when you can switch back. |
 | `/credits optin` | Opts you back in. |
 | `/shop menu` | Lists what is for sale and the prices, with a link to this page. |
-| `/shop immunity` | Buys immunity. A public card says who is immune until when, and you privately see what you have left. |
+| `/shop immunity` | Buys immunity. A public card says who is immune until when, and you privately see what you have left. Refused if you already hold a moderator grant that lasts until lifted. Pranks arrive in the next update. |
 | `/coinflip <bet> <heads\|tails>` | Bets on a coin toss, if the server allows it. |
 
 A balance is never negative. You can't gift to yourself or to a bot, and you
@@ -98,14 +98,16 @@ or be gifted.
 
 ## Commands for moderators
 
-`/economy` is for moderators, and is hidden from members by default.
+`/economy` is visible only to **Moderate Members** by default (Discord's
+Integrations settings can change who sees it). Every `/economy` command also
+refuses, privately, while the economy is off.
 
 | Command | Who may run it | What it does |
 |---|---|---|
-| `/economy status` | **Moderate Members** | Shows the currency, how many members hold credits and how many in total, the earning rates, the three immunity switches and the gambling settings. Only you see it. |
+| `/economy status` | **Moderate Members** | Shows the currency, how many wallets the server has (zero balances and opted-out members count) and how many credits are held in total, the earning rates, the three immunity switches and the gambling settings. Only you see it. |
 | `/economy grant <member> [hours] [reason]` | **Moderate Members** | Makes a member immune for 1 to 8760 hours, or until lifted if you leave the hours out. Refused if the server has turned off moderator grants. |
 | `/economy lift <member>` | **Moderate Members** | Removes a moderator grant. Always allowed, even if grants are switched off. It doesn't touch immunity the member bought. |
-| `/economy adjust <member> <amount> <reason>` | **Manage Server** | Adds credits, or removes them with a negative amount. The reason is required. Refused if it would take the member below zero (it tells you what they hold), or if the amount is 0. |
+| `/economy adjust <member> <amount> <reason>` | **Manage Server**, on top of Moderate Members | Adds credits, or removes them with a negative amount. The reason is required. Refused if it would take the member below zero (it tells you what they hold), or if the amount is 0 or larger than 1,000,000,000 either way. |
 
 Bots can't be granted immunity or have their credits adjusted.
 
@@ -165,4 +167,4 @@ than you hold. Opted-out members can't play.
   few minutes, and more. Credits never buy roles or permissions, only things the
   bot does itself, and the mod log will always name the buyer. Immunity is what
   protects members from all of it.
-- **A testnet coin**, later.
+- **A test-network coin you can see in a crypto wallet: worthless by design, later.**

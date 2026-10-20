@@ -6,13 +6,13 @@ use crate::economy::wallet::MoveError;
 use crate::economy::{mod_grant, mod_lift, GrantError};
 use crate::messaging::messages::{
     ECONOMY_ADMIN_ADJUST_BELOW_ZERO_PREFIX, ECONOMY_ADMIN_ADJUST_DONE, ECONOMY_ADMIN_ADJUST_FAILED,
-    ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE, ECONOMY_ADMIN_ADJUST_ZERO, ECONOMY_ADMIN_BOT_TARGET,
-    ECONOMY_ADMIN_GRANT_DISABLED, ECONOMY_ADMIN_GRANT_DONE, ECONOMY_ADMIN_GRANT_FAILED,
-    ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE, ECONOMY_ADMIN_LIFT_FAILED,
-    ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE, ECONOMY_NO_DATABASE,
-    ECONOMY_READ_FAILED, ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING,
-    ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS,
-    ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
+    ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE, ECONOMY_ADMIN_ADJUST_TOO_BIG, ECONOMY_ADMIN_ADJUST_ZERO,
+    ECONOMY_ADMIN_BOT_TARGET, ECONOMY_ADMIN_GRANT_DISABLED, ECONOMY_ADMIN_GRANT_DONE,
+    ECONOMY_ADMIN_GRANT_FAILED, ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE,
+    ECONOMY_ADMIN_LIFT_FAILED, ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE,
+    ECONOMY_NO_DATABASE, ECONOMY_READ_FAILED, ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING,
+    ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET,
+    ECONOMY_STATUS_MODS, ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
     ECONOMY_STATUS_PER_VOICE_MINUTE, ECONOMY_STATUS_SECONDS, ECONOMY_STATUS_SHOP,
     ECONOMY_STATUS_TITLE, ECONOMY_STATUS_WALLETS,
 };
@@ -27,6 +27,9 @@ use std::sync::Arc;
 
 /// Longest immunity a moderator can grant by hours: a year.
 pub const MAX_GRANT_HOURS: u32 = 8760;
+
+/// Largest single adjustment, up or down.
+pub const MAX_ADJUST: i64 = 1_000_000_000;
 
 fn on_off(b: bool) -> &'static str {
     if b {
@@ -88,10 +91,15 @@ async fn mod_gate(ctx: Context<'_>) -> Result<bool, Error> {
     Ok(false)
 }
 
-/// Adjusting balances needs Manage Server, on top of the command's own
-/// Moderate Members.
+/// Adjusting balances needs Manage Server (or Administrator, which holds every
+/// permission), on top of the command's own Moderate Members.
 pub fn adjust_allowed(p: Permissions) -> bool {
-    p.contains(Permissions::MANAGE_GUILD)
+    p.contains(Permissions::MANAGE_GUILD) || p.contains(Permissions::ADMINISTRATOR)
+}
+
+/// Whether an adjustment is within [`MAX_ADJUST`] either way.
+pub fn adjust_amount_ok(amount: i64) -> bool {
+    amount.unsigned_abs() <= MAX_ADJUST.unsigned_abs()
 }
 
 /// Post a mod log event; nothing happens while the log is off.
@@ -165,6 +173,8 @@ pub async fn grant(
     let by = ctx.author().id;
     match mod_grant(&ctx.data(), guild, member.id, until, by, reason.as_deref()).await {
         Ok(()) => {
+            // Reply first: a slow log channel must not time the interaction out.
+            let replied = say(ctx, ECONOMY_ADMIN_GRANT_DONE, true).await;
             log(
                 ctx,
                 guild,
@@ -176,7 +186,7 @@ pub async fn grant(
                 },
             )
             .await;
-            say(ctx, ECONOMY_ADMIN_GRANT_DONE, true).await
+            replied
         },
         Err(GrantError::Disabled) => say(ctx, ECONOMY_ADMIN_GRANT_DISABLED, true).await,
         Err(GrantError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
@@ -196,6 +206,7 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
     }
     match mod_lift(&ctx.data(), guild, member.id).await {
         Ok(true) => {
+            let replied = say(ctx, ECONOMY_ADMIN_LIFT_DONE, true).await;
             log(
                 ctx,
                 guild,
@@ -205,7 +216,7 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
                 },
             )
             .await;
-            say(ctx, ECONOMY_ADMIN_LIFT_DONE, true).await
+            replied
         },
         Ok(false) => say(ctx, ECONOMY_ADMIN_LIFT_NONE, true).await,
         Err(GrantError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
@@ -219,7 +230,10 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
 pub async fn adjust(
     ctx: Context<'_>,
     #[description = "Who"] member: User,
-    #[description = "Credits to add, or a negative number to remove"] amount: i64,
+    #[description = "Credits to add, or a negative number to remove"]
+    #[min = -1000000000]
+    #[max = 1000000000]
+    amount: i64,
     #[description = "Why (shown in the mod log)"] reason: String,
 ) -> Result<(), Error> {
     let Some((guild, pool)) = gate(ctx).await? else {
@@ -233,10 +247,22 @@ pub async fn adjust(
     if member.bot() {
         return say(ctx, ECONOMY_ADMIN_BOT_TARGET, true).await;
     }
+    if !adjust_amount_ok(amount) {
+        return say(ctx, ECONOMY_ADMIN_ADJUST_TOO_BIG, true).await;
+    }
     let by = ctx.author().id;
     let cfg = ctx.data().economy.settings(guild).config;
     match db::adjust(&pool, guild, member.id, amount, by, &reason).await {
         Ok(balance) => {
+            let replied = say(
+                ctx,
+                format!(
+                    "{ECONOMY_ADMIN_ADJUST_DONE} {balance} {} {}.",
+                    cfg.currency_emoji, cfg.currency_name
+                ),
+                true,
+            )
+            .await;
             log(
                 ctx,
                 guild,
@@ -248,15 +274,7 @@ pub async fn adjust(
                 },
             )
             .await;
-            say(
-                ctx,
-                format!(
-                    "{ECONOMY_ADMIN_ADJUST_DONE} {balance} {} {}.",
-                    cfg.currency_emoji, cfg.currency_name
-                ),
-                true,
-            )
-            .await
+            replied
         },
         Err(MoveError::Insufficient { balance }) => {
             say(
@@ -329,5 +347,17 @@ mod tests {
         assert!(adjust_allowed(
             Permissions::MODERATE_MEMBERS | Permissions::MANAGE_GUILD
         ));
+        assert!(adjust_allowed(Permissions::ADMINISTRATOR));
+    }
+
+    #[test]
+    fn adjust_amount_ok_bounds() {
+        assert!(adjust_amount_ok(1));
+        assert!(adjust_amount_ok(1_000_000_000));
+        assert!(adjust_amount_ok(-1_000_000_000));
+        assert!(!adjust_amount_ok(1_000_000_001));
+        assert!(!adjust_amount_ok(-1_000_000_001));
+        assert!(!adjust_amount_ok(i64::MIN));
+        assert!(!adjust_amount_ok(i64::MAX));
     }
 }

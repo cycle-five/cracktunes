@@ -4,8 +4,8 @@ use crate::economy::settings::{ActionKind, EconomySettings};
 use crate::economy::shop::{buy_immunity, refusal_text, BuyError};
 use crate::messaging::messages::{
     ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL, ECONOMY_NO_DATABASE, ECONOMY_PURCHASE_FAILED,
-    ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
-    ECONOMY_YOU_HAVE,
+    ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_IMMUNITY_NOTE,
+    ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE, ECONOMY_YOU_HAVE,
 };
 use crate::{Context, Error};
 use chrono::{DateTime, Utc};
@@ -34,8 +34,12 @@ pub fn menu_text(settings: &EconomySettings) -> String {
         } else {
             lines.push(format!("{}: {ECONOMY_SHOP_NOT_SOLD}", kind.label()));
         }
+        match kind {
+            ActionKind::Immunity => lines.push(ECONOMY_SHOP_IMMUNITY_NOTE.to_string()),
+        }
     }
-    lines.push(format!("[{ECONOMY_SHOP_DOCS_LABEL}]({ECONOMY_DOCS_URL})"));
+    // Angle brackets keep Discord from unfurling the link into a preview.
+    lines.push(format!("[{ECONOMY_SHOP_DOCS_LABEL}](<{ECONOMY_DOCS_URL}>)"));
     lines.join("\n")
 }
 
@@ -49,7 +53,7 @@ pub fn immune_card_text(buyer: UserId, until: DateTime<Utc>) -> String {
 
 /// The private follow-up: what is left after buying.
 pub fn balance_followup_text(balance: i64, currency: &str, emoji: &str) -> String {
-    format!("{ECONOMY_YOU_HAVE} {balance} {emoji} {currency}.")
+    format!("{ECONOMY_YOU_HAVE} {balance} {emoji} {currency}. {ECONOMY_SHOP_IMMUNITY_NOTE}")
 }
 
 /// What the shop sells and for how much.
@@ -75,7 +79,7 @@ pub async fn menu(ctx: Context<'_>) -> Result<(), Error> {
     say(ctx, menu_text(&ctx.data().economy.settings(guild)), false).await
 }
 
-/// Buy immunity from pranks for a while.
+/// Buy immunity from pranks (pranks arrive in the next update).
 #[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn immunity(ctx: Context<'_>) -> Result<(), Error> {
@@ -114,7 +118,8 @@ mod tests {
         assert_eq!(
             menu_text(&s),
             "**Shop**\nImmunity: 200 🪙 credits\n\
-             [How the economy works](https://github.com/cycle-five/cracktunes/blob/master/docs/economy.md)"
+             Protects you from pranks, which arrive in the next update.\n\
+             [How the economy works](<https://github.com/cycle-five/cracktunes/blob/master/docs/economy.md>)"
         );
         let mut s = s;
         let mut p = ActionKind::Immunity.default_price();
@@ -135,7 +140,7 @@ mod tests {
         );
         assert_eq!(
             balance_followup_text(40, "credits", "🪙"),
-            "You have 40 🪙 credits."
+            "You have 40 🪙 credits. Protects you from pranks, which arrive in the next update."
         );
     }
 
@@ -146,7 +151,8 @@ mod tests {
         assert_eq!(
             menu_text(&s),
             "**Shop**\nImmunity: not sold here\n\
-             [How the economy works](https://github.com/cycle-five/cracktunes/blob/master/docs/economy.md)"
+             Protects you from pranks, which arrive in the next update.\n\
+             [How the economy works](<https://github.com/cycle-five/cracktunes/blob/master/docs/economy.md>)"
         );
     }
 }

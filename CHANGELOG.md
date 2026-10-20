@@ -50,8 +50,8 @@
   `/credits` shows a balance, the top ten, a private history, gifts between
   members, and opting out of the economy; `/shop` lists and sells immunity, which
   protects against the prank shop coming next; `/economy` lets moderators grant
-  and lift immunity and check the setup, and lets Manage Server holders adjust a
-  balance. A coinflip, 50/50 with no house edge, is available when the server
+  and lift immunity and check the setup, and moderators with Manage Server can
+  adjust a balance. A coinflip, 50/50 with no house edge, is available when the server
   turns gambling on. Opted-out members keep their balance but can't earn, buy,
   gamble, gift or be gifted. Turning an immunity source off stops new grants
   only; what was already granted lasts its term. Credits have no cash value. See

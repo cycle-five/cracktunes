@@ -333,6 +333,24 @@ mod tests {
     }
 
     #[test]
+    fn saving_keeps_unknown_top_level_fields() {
+        let config: EconomyConfig =
+            serde_json::from_str(r#"{"rename_hours":12,"max_bet":3}"#).unwrap();
+        let stored = EconomySettings {
+            guild: GuildId::new(5),
+            enabled: false,
+            config,
+        };
+        let out = apply_form(stored, form()).unwrap();
+        let raw = serde_json::to_string(&out.config).unwrap();
+        assert!(raw.contains(r#""rename_hours":12"#), "{raw}");
+        assert_eq!(
+            out.config.max_bet, 9,
+            "the form still wins on its own fields"
+        );
+    }
+
+    #[test]
     fn apply_form_sets_every_field() {
         let out = apply_form(EconomySettings::off(GuildId::new(5)), form()).unwrap();
         assert!(out.enabled);

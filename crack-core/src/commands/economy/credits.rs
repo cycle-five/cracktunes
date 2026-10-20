@@ -2,7 +2,7 @@
 //!
 //! The pure `*_text` and `check_gift` functions carry the wording and the
 //! rules; the poise functions are glue.
-use crate::db::economy::{self as db, LedgerEntry};
+use crate::db::economy::{self as db, LedgerEntry, WalletSummary};
 use crate::economy::gamble::{bet_refusal_text, BetRefusal};
 use crate::economy::wallet::MoveError;
 use crate::economy::{self, OptOutError};
@@ -10,20 +10,28 @@ use crate::messaging::courier;
 use crate::messaging::messages::{
     ECONOMY_BALANCE_HAS, ECONOMY_GIFT_FAILED, ECONOMY_GIFT_FROM_OPTED_OUT,
     ECONOMY_GIFT_NON_POSITIVE, ECONOMY_GIFT_SELF, ECONOMY_GIFT_SENT, ECONOMY_GIFT_TO,
-    ECONOMY_GIFT_TO_BOT, ECONOMY_GIFT_TO_OPTED_OUT, ECONOMY_HISTORY_EMPTY, ECONOMY_HISTORY_TITLE,
-    ECONOMY_NO_DATABASE, ECONOMY_OFF, ECONOMY_OPTED_IN_DONE, ECONOMY_OPTED_OUT_DONE,
-    ECONOMY_OPTOUT_ALREADY_IN, ECONOMY_OPTOUT_ALREADY_OUT, ECONOMY_OPTOUT_COOLDOWN_PREFIX,
-    ECONOMY_OPTOUT_DISABLED, ECONOMY_OPTOUT_FAILED, ECONOMY_READ_FAILED, ECONOMY_TOP_EMPTY,
-    ECONOMY_TOP_TITLE,
+    ECONOMY_GIFT_TO_BOT, ECONOMY_GIFT_TO_OPTED_OUT, ECONOMY_HISTORY_EARNED,
+    ECONOMY_HISTORY_FROM_MESSAGES, ECONOMY_HISTORY_IN_VOICE, ECONOMY_HISTORY_NO_ROWS,
+    ECONOMY_HISTORY_TITLE, ECONOMY_LEDGER_ADJUSTMENT, ECONOMY_LEDGER_COINFLIP_BET,
+    ECONOMY_LEDGER_COINFLIP_WIN, ECONOMY_LEDGER_GIFT_RECEIVED, ECONOMY_LEDGER_GIFT_SENT,
+    ECONOMY_LEDGER_PURCHASE, ECONOMY_LEDGER_REFUND, ECONOMY_NO_DATABASE, ECONOMY_OFF,
+    ECONOMY_OPTED_IN_DONE, ECONOMY_OPTED_OUT_DONE, ECONOMY_OPTOUT_ALREADY_IN,
+    ECONOMY_OPTOUT_ALREADY_OUT, ECONOMY_OPTOUT_COOLDOWN_PREFIX, ECONOMY_OPTOUT_DISABLED,
+    ECONOMY_OPTOUT_FAILED, ECONOMY_OPTOUT_SWITCH_BACK_PREFIX, ECONOMY_READ_FAILED,
+    ECONOMY_TOP_EMPTY, ECONOMY_TOP_TITLE,
 };
 use crate::messaging::render::Rendered;
 use crate::{Context, Error};
-use chrono::Utc;
+use chrono::{DateTime, Duration, Utc};
 use serenity::all::{GuildId, User, UserId};
 use sqlx::PgPool;
+use std::collections::HashSet;
 
 /// How many rows `/credits top` shows.
 const LIST_LEN: i64 = 10;
+/// Extra rows `/credits top` fetches so that hiding opted-out members still
+/// leaves [`LIST_LEN`] to show.
+const TOP_SLACK: i64 = 20;
 /// How many ledger rows `/credits history` shows.
 const HISTORY_LEN: i64 = 15;
 
@@ -98,21 +106,62 @@ pub fn top_text(rows: &[(UserId, i64)], currency: &str, emoji: &str) -> String {
     lines.join("\n")
 }
 
-/// The member's ledger, newest first, each change signed.
-pub fn history_text(rows: &[LedgerEntry], currency: &str, emoji: &str) -> String {
-    if rows.is_empty() {
-        return format!("**{ECONOMY_HISTORY_TITLE}**\n{ECONOMY_HISTORY_EMPTY}");
+/// The words for a stored ledger kind; a kind this build does not know shows
+/// as stored.
+pub fn ledger_label(kind: &str) -> &str {
+    match kind {
+        "purchase" => ECONOMY_LEDGER_PURCHASE,
+        "refund" => ECONOMY_LEDGER_REFUND,
+        "gift_sent" => ECONOMY_LEDGER_GIFT_SENT,
+        "gift_received" => ECONOMY_LEDGER_GIFT_RECEIVED,
+        "coinflip_stake" => ECONOMY_LEDGER_COINFLIP_BET,
+        "coinflip_win" => ECONOMY_LEDGER_COINFLIP_WIN,
+        "adjust" => ECONOMY_LEDGER_ADJUSTMENT,
+        other => other,
     }
-    let mut lines = vec![format!("**{ECONOMY_HISTORY_TITLE}**")];
+}
+
+/// The member's activity: what they earned so far, then their ledger, newest
+/// first, each change signed. Earnings are counters, so they are a line of
+/// totals and never rows.
+pub fn history_text(
+    earned: &WalletSummary,
+    rows: &[LedgerEntry],
+    currency: &str,
+    emoji: &str,
+) -> String {
+    let mut lines = vec![
+        format!("**{ECONOMY_HISTORY_TITLE}**"),
+        format!(
+            "{ECONOMY_HISTORY_EARNED} {} {emoji} {currency} {ECONOMY_HISTORY_IN_VOICE}, {} {emoji} {currency} {ECONOMY_HISTORY_FROM_MESSAGES}.",
+            earned.earned_voice, earned.earned_messages
+        ),
+    ];
+    if rows.is_empty() {
+        lines.push(ECONOMY_HISTORY_NO_ROWS.to_string());
+        return lines.join("\n");
+    }
     lines.extend(rows.iter().map(|e| {
         format!(
             "{:+} {emoji} {currency} · {} · <t:{}:R>",
             e.delta,
-            e.kind.replace('_', " "),
+            ledger_label(&e.kind),
             e.created_at.timestamp()
         )
     }));
     lines.join("\n")
+}
+
+/// The top rows without the opted-out members, at most `len`.
+pub fn visible_top(
+    rows: Vec<(UserId, i64)>,
+    opted_out: &HashSet<UserId>,
+    len: usize,
+) -> Vec<(UserId, i64)> {
+    rows.into_iter()
+        .filter(|(user, _)| !opted_out.contains(user))
+        .take(len)
+        .collect()
 }
 
 /// The words for an opt-out switch that changed nothing.
@@ -132,10 +181,23 @@ pub fn optout_error_text(err: OptOutError) -> String {
 }
 
 /// Opt-out/in result words, including the direction-specific "already".
-pub fn optout_result_text(out: bool, result: Result<(), OptOutError>) -> String {
+///
+/// `switch_back` is when the member may switch again; a success says so.
+pub fn optout_result_text(
+    out: bool,
+    result: Result<(), OptOutError>,
+    switch_back: Option<DateTime<Utc>>,
+) -> String {
+    let done = |text: &str| match switch_back {
+        Some(when) => format!(
+            "{text} {ECONOMY_OPTOUT_SWITCH_BACK_PREFIX} <t:{}:R>.",
+            when.timestamp()
+        ),
+        None => text.to_string(),
+    };
     match result {
-        Ok(()) if out => ECONOMY_OPTED_OUT_DONE.to_string(),
-        Ok(()) => ECONOMY_OPTED_IN_DONE.to_string(),
+        Ok(()) if out => done(ECONOMY_OPTED_OUT_DONE),
+        Ok(()) => done(ECONOMY_OPTED_IN_DONE),
         Err(OptOutError::AlreadyThere) if out => ECONOMY_OPTOUT_ALREADY_OUT.to_string(),
         Err(OptOutError::AlreadyThere) => ECONOMY_OPTOUT_ALREADY_IN.to_string(),
         Err(err) => optout_error_text(err),
@@ -221,8 +283,13 @@ pub async fn top(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     };
     let cfg = ctx.data().economy.settings(guild).config;
-    match db::top(&pool, guild, LIST_LEN).await {
+    match db::top(&pool, guild, LIST_LEN + TOP_SLACK).await {
         Ok(rows) => {
+            let rows = visible_top(
+                rows,
+                &ctx.data().economy.opted_out(guild),
+                LIST_LEN as usize,
+            );
             say(
                 ctx,
                 top_text(&rows, &cfg.currency_name, &cfg.currency_emoji),
@@ -243,7 +310,9 @@ pub async fn top(ctx: Context<'_>) -> Result<(), Error> {
 pub async fn gift(
     ctx: Context<'_>,
     #[description = "Who gets them"] member: User,
-    #[description = "How many"] amount: i64,
+    #[description = "How many"]
+    #[min = 1]
+    amount: i64,
 ) -> Result<(), Error> {
     let Some((guild, pool)) = gate(ctx).await? else {
         return Ok(());
@@ -298,20 +367,23 @@ pub async fn history(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     };
     let cfg = ctx.data().economy.settings(guild).config;
-    match db::history(&pool, guild, ctx.author().id, HISTORY_LEN).await {
-        Ok(rows) => {
-            say(
-                ctx,
-                history_text(&rows, &cfg.currency_name, &cfg.currency_emoji),
-                true,
-            )
-            .await
-        },
+    let user = ctx.author().id;
+    let (earned, rows) = match tokio::try_join!(
+        db::wallet_summary(&pool, guild, user),
+        db::history(&pool, guild, user, HISTORY_LEN)
+    ) {
+        Ok(both) => both,
         Err(err) => {
             tracing::warn!("economy: history in {guild} failed: {err}");
-            say(ctx, ECONOMY_READ_FAILED, true).await
+            return say(ctx, ECONOMY_READ_FAILED, true).await;
         },
-    }
+    };
+    say(
+        ctx,
+        history_text(&earned, &rows, &cfg.currency_name, &cfg.currency_emoji),
+        true,
+    )
+    .await
 }
 
 #[cfg(not(tarpaulin_include))]
@@ -319,8 +391,16 @@ async fn switch(ctx: Context<'_>, out: bool) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
     };
-    let result = economy::opt_out(&ctx.data(), guild, ctx.author().id, out, Utc::now()).await;
-    say(ctx, optout_result_text(out, result), true).await
+    let now = Utc::now();
+    let result = economy::opt_out(&ctx.data(), guild, ctx.author().id, out, now).await;
+    let days = ctx
+        .data()
+        .economy
+        .settings(guild)
+        .config
+        .optout_cooldown_days;
+    let switch_back = (days > 0).then(|| now + Duration::days(i64::from(days)));
+    say(ctx, optout_result_text(out, result, switch_back), true).await
 }
 
 /// Stop earning, buying, gambling and gifting here. Your credits are kept.
@@ -400,8 +480,16 @@ mod tests {
         );
     }
 
+    fn earned(voice: i64, messages: i64) -> WalletSummary {
+        WalletSummary {
+            balance: 0,
+            earned_voice: voice,
+            earned_messages: messages,
+        }
+    }
+
     #[test]
-    fn history_text_signs_amounts() {
+    fn history_text_signs_amounts_and_leads_with_earnings() {
         let at = chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap();
         let rows = [
             LedgerEntry {
@@ -416,36 +504,120 @@ mod tests {
             },
         ];
         assert_eq!(
-            history_text(&rows, "credits", "🪙"),
+            history_text(&earned(30, 12), &rows, "credits", "🪙"),
             "**Your recent activity**\n\
+             Earned so far: 30 🪙 credits in voice, 12 🪙 credits from messages.\n\
              +100 🪙 credits · coinflip win · <t:1700000000:R>\n\
              -50 🪙 credits · gift sent · <t:1700000000:R>"
         );
+    }
+
+    #[test]
+    fn history_with_no_rows_still_shows_earnings() {
         assert_eq!(
-            history_text(&[], "credits", "🪙"),
-            "**Your recent activity**\nNothing yet."
+            history_text(&earned(5, 0), &[], "credits", "🪙"),
+            "**Your recent activity**\n\
+             Earned so far: 5 🪙 credits in voice, 0 🪙 credits from messages.\n\
+             No purchases, gifts or bets yet."
         );
+    }
+
+    #[test]
+    fn ledger_labels_are_named_and_unknown_kinds_show_raw() {
+        for (kind, label) in [
+            ("purchase", "purchase"),
+            ("refund", "refund"),
+            ("gift_sent", "gift sent"),
+            ("gift_received", "gift received"),
+            ("coinflip_stake", "coinflip bet"),
+            ("coinflip_win", "coinflip win"),
+            ("adjust", "adjustment"),
+        ] {
+            assert_eq!(ledger_label(kind), label, "{kind}");
+        }
+        assert_eq!(ledger_label("prank_refund"), "prank_refund");
+    }
+
+    #[test]
+    fn every_ledger_kind_has_a_label() {
+        use crate::economy::wallet::LedgerKind::*;
+        let known = [
+            ECONOMY_LEDGER_PURCHASE,
+            ECONOMY_LEDGER_REFUND,
+            ECONOMY_LEDGER_GIFT_SENT,
+            ECONOMY_LEDGER_GIFT_RECEIVED,
+            ECONOMY_LEDGER_COINFLIP_BET,
+            ECONOMY_LEDGER_COINFLIP_WIN,
+            ECONOMY_LEDGER_ADJUSTMENT,
+        ];
+        let labels: HashSet<&str> = [
+            Purchase,
+            Refund,
+            GiftSent,
+            GiftReceived,
+            CoinflipStake,
+            CoinflipWin,
+            Adjust,
+        ]
+        .into_iter()
+        .map(|k| ledger_label(k.as_str()))
+        .collect();
+        assert_eq!(labels, HashSet::from(known), "each kind has its own label");
+    }
+
+    #[test]
+    fn visible_top_hides_the_opted_out_and_still_fills_the_list() {
+        let rows: Vec<(UserId, i64)> = (1..=5).map(|n| (u(n), 100 - n as i64)).collect();
+        let out = HashSet::from([u(1), u(3)]);
+        assert_eq!(
+            visible_top(rows.clone(), &out, 2),
+            vec![(u(2), 98), (u(4), 96)]
+        );
+        assert_eq!(visible_top(rows, &out, 10).len(), 3);
     }
 
     #[test]
     fn optout_words_by_direction() {
         let at = chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap();
         assert_eq!(
-            optout_result_text(true, Err(OptOutError::AlreadyThere)),
+            optout_result_text(true, Err(OptOutError::AlreadyThere), None),
             "You've already opted out."
         );
         assert_eq!(
-            optout_result_text(false, Err(OptOutError::AlreadyThere)),
+            optout_result_text(false, Err(OptOutError::AlreadyThere), None),
             "You're already opted in."
         );
         assert_eq!(
-            optout_result_text(true, Err(OptOutError::Cooldown(at))),
+            optout_result_text(true, Err(OptOutError::Cooldown(at)), None),
             "You switched recently. You can switch again <t:1700000000:R>."
         );
-        assert_eq!(optout_result_text(false, Ok(())), "You've opted back in.");
         assert_eq!(
-            optout_result_text(true, Err(OptOutError::Disabled)),
+            optout_result_text(false, Ok(()), None),
+            "You've opted back in."
+        );
+        assert_eq!(
+            optout_result_text(true, Err(OptOutError::Disabled), None),
             "This server doesn't allow opting out."
+        );
+    }
+
+    #[test]
+    fn a_successful_switch_states_when_you_can_switch_back() {
+        let at = chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap();
+        assert_eq!(
+            optout_result_text(false, Ok(()), Some(at)),
+            "You've opted back in. You can switch back <t:1700000000:R>."
+        );
+        assert!(optout_result_text(true, Ok(()), Some(at))
+            .ends_with(" You can switch back <t:1700000000:R>."));
+        // A refusal does not mention it, and a zero cooldown omits it.
+        assert_eq!(
+            optout_result_text(true, Err(OptOutError::AlreadyThere), Some(at)),
+            "You've already opted out."
+        );
+        assert_eq!(
+            optout_result_text(true, Ok(()), None),
+            ECONOMY_OPTED_OUT_DONE
         );
     }
 }

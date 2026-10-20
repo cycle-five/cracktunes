@@ -910,7 +910,22 @@ pub const ECONOMY_BALANCE_HAS: &str = "has";
 pub const ECONOMY_TOP_TITLE: &str = "Richest members";
 pub const ECONOMY_TOP_EMPTY: &str = "Nobody has any yet.";
 pub const ECONOMY_HISTORY_TITLE: &str = "Your recent activity";
-pub const ECONOMY_HISTORY_EMPTY: &str = "Nothing yet.";
+pub const ECONOMY_HISTORY_EARNED: &str = "Earned so far:";
+pub const ECONOMY_HISTORY_IN_VOICE: &str = "in voice";
+pub const ECONOMY_HISTORY_FROM_MESSAGES: &str = "from messages";
+pub const ECONOMY_HISTORY_NO_ROWS: &str = "No purchases, gifts or bets yet.";
+pub const ECONOMY_LEDGER_PURCHASE: &str = "purchase";
+pub const ECONOMY_LEDGER_REFUND: &str = "refund";
+pub const ECONOMY_LEDGER_GIFT_SENT: &str = "gift sent";
+pub const ECONOMY_LEDGER_GIFT_RECEIVED: &str = "gift received";
+pub const ECONOMY_LEDGER_COINFLIP_BET: &str = "coinflip bet";
+pub const ECONOMY_LEDGER_COINFLIP_WIN: &str = "coinflip win";
+pub const ECONOMY_LEDGER_ADJUSTMENT: &str = "adjustment";
+pub const ECONOMY_OPTOUT_SWITCH_BACK_PREFIX: &str = "You can switch back";
+pub const ECONOMY_SHOP_IMMUNITY_NOTE: &str =
+    "Protects you from pranks, which arrive in the next update.";
+pub const ECONOMY_ALREADY_IMMUNE: &str = "You're already immune until a moderator lifts it.";
+pub const ECONOMY_ADMIN_ADJUST_TOO_BIG: &str = "Adjust by at most 1,000,000,000 at a time.";
 pub const ECONOMY_READ_FAILED: &str = "Couldn't read that right now. Try again.";
 pub const ECONOMY_OPTED_OUT_DONE: &str =
     "You've opted out. You won't earn, buy, gamble, gift or be gifted, and your balance is kept.";

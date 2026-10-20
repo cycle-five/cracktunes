@@ -1,7 +1,7 @@
 //! Per-server economy settings: the on switch plus a typed config stored as
-//! JSONB. Missing fields take their defaults and a price key this build does
-//! not know is kept, so a config written by another release survives a
-//! load and save.
+//! JSONB. Missing fields take their defaults, and a price key or a top-level
+//! field this build does not know is kept, so a config written by another
+//! release survives a load and save.
 
 use serde::{Deserialize, Serialize};
 use serenity::all::GuildId;
@@ -84,6 +84,11 @@ pub struct EconomyConfig {
     pub bought_immunity_hours: u32,
     pub gambling_enabled: bool,
     pub max_bet: u32,
+    /// Opaque passthrough of top-level fields a later release owns. This
+    /// build neither reads nor validates them; it only keeps them, so a
+    /// rollback followed by a save does not reset what that release stored.
+    #[serde(flatten)]
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 impl Default for EconomyConfig {
@@ -102,6 +107,7 @@ impl Default for EconomyConfig {
             bought_immunity_hours: 24,
             gambling_enabled: false,
             max_bet: 500,
+            extra: BTreeMap::new(),
         }
     }
 }
@@ -316,6 +322,22 @@ mod tests {
         assert_eq!(with(|c| c.max_bet = 1), Ok(()));
         assert_eq!(with(|c| c.max_bet = 1_000_000), Ok(()));
         assert_eq!(with(|c| c.max_bet = 1_000_001), Err(E::BadMaxBet));
+    }
+
+    #[test]
+    fn unknown_top_level_fields_survive_a_round_trip() {
+        let c: EconomyConfig =
+            serde_json::from_str(r#"{"max_bet": 50, "rename_hours": 12}"#).unwrap();
+        assert_eq!(c.max_bet, 50);
+        let raw = serde_json::to_string(&c).unwrap();
+        assert!(raw.contains(r#""rename_hours":12"#), "{raw}");
+        // Known fields are not duplicated into the passthrough, and the
+        // passthrough does not take part in validation.
+        assert_eq!(c.extra.len(), 1);
+        assert!(EconomyConfig::default().extra.is_empty());
+        let mut s = EconomySettings::off(GuildId::new(1));
+        s.config = c;
+        assert_eq!(s.validate(true), Ok(()));
     }
 
     #[test]
