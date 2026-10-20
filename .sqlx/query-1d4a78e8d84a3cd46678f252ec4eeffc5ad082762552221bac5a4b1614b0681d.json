@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO economy_immunity AS i (guild_id, user_id, source, until)\n           VALUES ($1, $2, 'bought', $3::timestamptz + make_interval(hours => $4))\n           ON CONFLICT (guild_id, user_id, source) DO UPDATE SET\n               until = GREATEST(COALESCE(i.until, $3::timestamptz), $3::timestamptz)\n                       + make_interval(hours => $4)\n           RETURNING until AS \"until!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "until!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Timestamptz",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "1d4a78e8d84a3cd46678f252ec4eeffc5ad082762552221bac5a4b1614b0681d"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO economy_wallets (guild_id, user_id) VALUES ($1, $2)\n         ON CONFLICT (guild_id, user_id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "79f25129252dd91e5e7231e7ba114626cb722e408ddb7361171e1dfc19ff305e"
+}

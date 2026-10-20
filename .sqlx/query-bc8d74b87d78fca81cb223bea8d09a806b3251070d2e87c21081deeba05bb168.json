@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO economy_wallets (guild_id, user_id, opted_out_at, optout_changed_at)\n         VALUES ($1, $2, CASE WHEN $3 THEN $4::timestamptz END, $4)\n         ON CONFLICT (guild_id, user_id) DO UPDATE SET\n             opted_out_at = EXCLUDED.opted_out_at,\n             optout_changed_at = EXCLUDED.optout_changed_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Bool",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bc8d74b87d78fca81cb223bea8d09a806b3251070d2e87c21081deeba05bb168"
+}

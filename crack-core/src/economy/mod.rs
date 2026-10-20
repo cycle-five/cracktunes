@@ -1,8 +1,10 @@
 //! Per-server credits: earned in voice and by chatting, spent in the shop.
 //! Off by default; see `economy::settings`.
 
+pub mod immunity;
 pub mod registry;
 pub mod settings;
+pub mod wallet;
 
 use crate::Data;
 use serenity::all::GuildId;
