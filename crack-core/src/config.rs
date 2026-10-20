@@ -288,9 +288,7 @@ pub async fn poise_framework(
         None => None,
     };
 
-    let songbird_config =
-        songbird::Config::default().decode_mode(DecodeMode::Decode(Default::default()));
-    let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config);
+    let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config());
 
     // `/gp` games are written to the database as they run, so a restart does not
     // end them. Without a database the game runs in memory, as it always has.
@@ -490,4 +488,23 @@ fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
         }
     }
     None
+}
+
+/// songbird's driver settings. Nothing in the bot reads incoming voice, so it
+/// is neither decrypted nor decoded (`Pass`).
+pub(crate) fn songbird_config() -> songbird::Config {
+    songbird::Config::default().decode_mode(DecodeMode::Pass)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn songbird_decodes_nothing() {
+        assert_eq!(
+            songbird_config().decode_mode,
+            songbird::driver::DecodeMode::Pass
+        );
+    }
 }

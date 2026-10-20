@@ -27,11 +27,9 @@ pub fn offline_call() -> Arc<Mutex<Call>> {
 /// Which test that was depended on ordering: it failed CI once on ct#586 and
 /// every time under `--test-threads=1`. The scheduler is now created first,
 /// on a runtime that lives as long as the test process.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "the one sanctioned test constructor; see above"
-)]
-pub fn standalone_call(guild: GuildId, user: UserId) -> Call {
+/// Create songbird's process-wide mixer scheduler on a runtime that outlives
+/// every test (see [`standalone_call`]). Call it before building any `Call`.
+pub fn lasting_scheduler() {
     static LASTING: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
     let runtime = LASTING.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
@@ -41,10 +39,16 @@ pub fn standalone_call(guild: GuildId, user: UserId) -> Call {
             .build()
             .expect("a runtime for songbird's test scheduler")
     });
-    {
-        let _inside = runtime.enter();
-        songbird::driver::get_default_scheduler();
-    }
+    let _inside = runtime.enter();
+    songbird::driver::get_default_scheduler();
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the one sanctioned test constructor; see above"
+)]
+pub fn standalone_call(guild: GuildId, user: UserId) -> Call {
+    lasting_scheduler();
     Call::standalone(guild, user)
 }
 

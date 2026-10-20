@@ -170,9 +170,50 @@ pub(crate) async fn connected_call(
     }
 }
 
+/// songbird's two join stages, run by hand so the bot can deafen in between.
+/// Mirrors `Songbird::join_inner`.
+///
+/// Two constraints:
+/// - **Never deafen before stage 1.** `Call::deafen` sends a voice-state update
+///   for the `Call`'s connected channel, which on a fresh `Call` is `None`, and
+///   Discord reads `channel_id: null` as "leave voice". That would run the
+///   disconnect cleanup in the middle of a join (e.g. the `/gp` resume rejoin).
+/// - **Release the `Call` lock before awaiting stage 2.** The gateway events that
+///   complete the join need that lock.
+///
+/// A failed `deafen` is logged and the join carries on; an undeafened bot is no
+/// worse than before.
+async fn join_deafened(
+    manager: &songbird::Songbird,
+    guild_id: GuildId,
+    channel_id: ChannelId,
+) -> Result<Arc<Mutex<Call>>, JoinError> {
+    let call = manager.get_or_insert(guild_id);
+    let stage_1 = {
+        let mut handler = call.lock().await;
+        // The one permitted `Call::join` in the crate -- `clippy.toml` bans it
+        // (and `Songbird::join`) everywhere else, which is what makes
+        // `join_permitted` the only door rather than merely the recommended
+        // one. The attribute sits on the enclosing block because it cannot
+        // be attached to an expression statement.
+        #[allow(clippy::disallowed_methods)]
+        let joining = handler.join(channel_id).await;
+        if joining.is_ok() && !handler.is_deaf() {
+            if let Err(e) = handler.deafen(true).await {
+                tracing::warn!("Could not self-deafen in {channel_id:?} ({guild_id:?}): {e:?}");
+            }
+        }
+        joining
+    };
+    match stage_1 {
+        Ok(join) => join.await.map(|()| call),
+        Err(e) => Err(e),
+    }
+}
+
 /// Join the channel a [`JoinPermit`] was issued for.
 ///
-/// **The crate's only caller of `Songbird::join`.** Taking the permit by value
+/// **The crate's only way into voice**, and it joins self-deafened. Taking the permit by value
 /// is what makes that enforceable rather than aspirational: `ensure_can_join`
 /// is its only constructor, so a join that skipped the permission gate does
 /// not typecheck. This is the compiler doing the job `join_site_guard_tests`
@@ -190,11 +231,7 @@ pub(crate) async fn join_permitted(
     permit: JoinPermit,
 ) -> Result<Arc<Mutex<Call>>, JoinError> {
     let (guild_id, channel_id) = permit.into_parts();
-    // The one permitted `Songbird::join` in the crate -- `clippy.toml` bans it
-    // everywhere else, which is what makes this function the only door rather
-    // than merely the recommended one.
-    #[allow(clippy::disallowed_methods)]
-    let joined = manager.join(guild_id, channel_id).await;
+    let joined = join_deafened(manager, guild_id, channel_id).await;
     match joined {
         Ok(call) => Ok(call),
         Err(err) => match connected_call(manager, guild_id, Some(channel_id)).await {
@@ -370,4 +407,67 @@ pub async fn do_join(
     set_global_handlers(ctx, call.clone(), guild_id, channel_id.widen()).await;
     announce_join(ctx, channel_id).await;
     Ok(call)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::channel::mpsc::{unbounded, UnboundedReceiver};
+    use serenity::all::UserId;
+    use serenity::gateway::{ShardRunnerMessage, VoiceGatewayManager};
+
+    const G: GuildId = GuildId::new(7);
+    const C: ChannelId = ChannelId::new(70);
+
+    /// An offline manager whose gateway messages land in the returned receiver.
+    /// Nothing answers a join, so it times out after 50 ms.
+    async fn offline_manager() -> (
+        Arc<songbird::Songbird>,
+        UnboundedReceiver<ShardRunnerMessage>,
+    ) {
+        crate::music::ops::test_support::lasting_scheduler();
+        let manager = songbird::Songbird::serenity_from_config(
+            songbird::Config::default().gateway_timeout(Some(Duration::from_millis(50))),
+        );
+        manager.initialise_client_data(1, UserId::new(2));
+        let (tx, rx) = unbounded();
+        manager.register_shard(0, tx).await;
+        (manager, rx)
+    }
+
+    /// (channel, self_deaf) of every voice-state update sent for G, in order.
+    fn voice_updates(
+        rx: &mut UnboundedReceiver<ShardRunnerMessage>,
+    ) -> Vec<(Option<ChannelId>, bool)> {
+        let mut out = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            if let ShardRunnerMessage::UpdateVoiceState {
+                guild_id,
+                channel_id,
+                self_deaf,
+                ..
+            } = msg
+            {
+                if guild_id == G {
+                    out.push((channel_id, self_deaf));
+                }
+            }
+        }
+        out
+    }
+
+    #[tokio::test]
+    async fn first_join_ends_self_deafened_and_never_sends_a_leave() {
+        let (manager, mut rx) = offline_manager().await;
+        let err = join_deafened(&manager, G, C)
+            .await
+            .expect_err("nothing answers offline");
+        assert!(matches!(err, JoinError::TimedOut), "{err:?}");
+        let sent = voice_updates(&mut rx);
+        assert!(
+            sent.iter().all(|(ch, _)| *ch == Some(C)),
+            "a leave was sent: {sent:?}"
+        );
+        assert_eq!(sent.last(), Some(&(Some(C), true)), "{sent:?}");
+    }
 }
