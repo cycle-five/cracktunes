@@ -487,6 +487,17 @@ impl SerenityHandler {
         // earning nothing for the server until a read succeeds.
         if !crate::economy::load_settings(&self.data, guild.id).await {
             tracing::warn!("economy: loading the settings of {} failed", guild.id);
+            // One retry after 60 s, in the background. If it also fails the
+            // server stays unloaded (earning nothing, refusing saves) until
+            // the next GuildCreate, i.e. a reconnect or a restart.
+            let data = self.data.clone();
+            let gid = guild.id;
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                if !crate::economy::load_settings(&data, gid).await {
+                    tracing::warn!("economy: retrying the settings of {gid} failed too");
+                }
+            });
         }
 
         // The mod log's settings, likewise (off without a database); a server

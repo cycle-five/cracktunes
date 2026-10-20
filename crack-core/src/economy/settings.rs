@@ -66,10 +66,6 @@ impl Prices {
     pub fn set(&mut self, kind: ActionKind, price: ActionPrice) {
         self.0.insert(kind.key().to_string(), price);
     }
-
-    fn all(&self) -> impl Iterator<Item = &ActionPrice> {
-        self.0.values()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -166,7 +162,12 @@ impl EconomySettings {
         if !(10..=3600).contains(&c.message_cooldown_seconds) {
             return Err(E::BadCooldown);
         }
-        if c.prices.all().any(|p| !(1..=1_000_000).contains(&p.price)) {
+        // Only kinds this build knows: an unknown key from a newer release
+        // may have wider bounds and must not block every save here.
+        if ActionKind::ALL
+            .iter()
+            .any(|k| !(1..=1_000_000).contains(&c.prices.get(*k).price))
+        {
             return Err(E::BadPrice);
         }
         if c.optout_cooldown_days > 90 {
@@ -315,6 +316,18 @@ mod tests {
         assert_eq!(with(|c| c.max_bet = 1), Ok(()));
         assert_eq!(with(|c| c.max_bet = 1_000_000), Ok(()));
         assert_eq!(with(|c| c.max_bet = 1_000_001), Err(E::BadMaxBet));
+    }
+
+    #[test]
+    fn validate_ignores_unknown_price_keys() {
+        let mut s = EconomySettings::off(GuildId::new(1));
+        s.config =
+            serde_json::from_str(r#"{"prices": {"rename": {"price": 0, "on": true}}}"#).unwrap();
+        assert_eq!(s.validate(true), Ok(()));
+        s.config
+            .prices
+            .set(ActionKind::Immunity, ActionPrice { price: 0, on: true });
+        assert_eq!(s.validate(true), Err(E::BadPrice));
     }
 
     #[test]
