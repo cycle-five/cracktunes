@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO economy_actions\n             (guild_id, kind, buyer_id, target_id, price, note, signed, payload, state, expires_at)\n         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n         RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Int8",
+        "Int8",
+        "Int8",
+        "Text",
+        "Bool",
+        "Jsonb",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "4167c7f466ac89e83c6c9d2e3a7530b4b87551c488ea5512780944bdff4485fa"
+}

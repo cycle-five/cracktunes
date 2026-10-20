@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_actions\n         SET state = $2, ended_at = CASE WHEN $3 THEN now() ELSE ended_at END\n         WHERE id = $1 AND state NOT IN ('done', 'ended', 'failed')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "804592ca02c50e098b9bd4201c9cb1da16a840e6f452b246dbc9740ec425d6ae"
+}

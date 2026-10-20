@@ -27,7 +27,8 @@ use crate::{
     history::{HistoryPage, HistoryQuery},
     routes::WebState,
     settings::{
-        ChannelOption, ModLogSaveRefused, ModLogSettingsForm, ModLogSettingsView, RoomSettingsForm,
+        ChannelOption, EconomySaveRefused, EconomySettingsForm, EconomySettingsView,
+        ModLogSaveRefused, ModLogSettingsForm, ModLogSettingsView, RoomSettingsForm,
         RoomSettingsView, SaveRefused,
     },
     view::{view_from_state, PlanView, QueueView},
@@ -502,6 +503,30 @@ impl Backend for LiveBackend {
         after_save(&self.deps.data, self.deps.http.clone(), g);
         tracing::info!(guild = %g, user = %user, "dashboard saved mod log settings");
         Ok(self.mod_log_settings(g).await)
+    }
+
+    async fn economy_settings(&self, g: GuildId) -> EconomySettingsView {
+        EconomySettingsView::from_settings(&self.deps.data.economy.settings(g))
+    }
+
+    async fn save_economy_settings(
+        &self,
+        user: UserId,
+        g: GuildId,
+        f: EconomySettingsForm,
+    ) -> Result<EconomySettingsView, EconomySaveRefused> {
+        use crack_core::economy::{save_settings, EconomySaveError};
+        // From the stored settings, so a price this build does not know survives.
+        let settings = settings::apply_form(self.deps.data.economy.settings(g), f)?;
+        save_settings(&self.deps.data, settings)
+            .await
+            .map_err(|e| match e {
+                EconomySaveError::Invalid(e) => EconomySaveRefused::Invalid(e),
+                EconomySaveError::Db => EconomySaveRefused::Failed,
+                EconomySaveError::NotLoaded => EconomySaveRefused::NotLoaded,
+            })?;
+        tracing::info!(guild = %g, user = %user, "dashboard saved economy settings");
+        Ok(self.economy_settings(g).await)
     }
 
     async fn history(&self, g: GuildId, q: &HistoryQuery) -> Result<HistoryPage, HistoryError> {

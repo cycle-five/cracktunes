@@ -173,4 +173,101 @@
       }
     });
   }
+
+  // ---- Economy ----
+  const ecoForm = document.getElementById("economy-form");
+  if (ecoForm) {
+    const el = (id) => document.getElementById(id);
+    const ecoSave = el("e-save");
+    const ecoNote = el("e-note");
+
+    function ecoSay(text, bad) {
+      ecoNote.textContent = text || "";
+      ecoNote.hidden = !text;
+      ecoNote.className = bad ? "bad" : "";
+    }
+
+    function showEconomy(view) {
+      el("e-enabled").checked = view.enabled;
+      el("e-name").value = view.currency_name;
+      el("e-emoji").value = view.currency_emoji;
+      el("e-voice").value = view.voice_credits_per_minute;
+      el("e-message").value = view.message_credits;
+      el("e-cooldown").value = view.message_cooldown_seconds;
+      for (const p of view.prices) {
+        for (const row of el("e-prices").querySelectorAll("tr")) {
+          if (row.dataset.kind === p.kind) {
+            row.querySelector(".e-price-on").checked = p.on;
+            row.querySelector(".e-price").value = p.price;
+          }
+        }
+      }
+      el("e-optout").checked = view.immunity_optout;
+      el("e-shop").checked = view.immunity_shop;
+      el("e-mods").checked = view.immunity_mods;
+      el("e-optout-days").value = view.optout_cooldown_days;
+      el("e-hours").value = view.bought_immunity_hours;
+      el("e-gambling").checked = view.gambling_enabled;
+      el("e-max-bet").value = view.max_bet;
+    }
+
+    // A blank or non-numeric box is NaN, which JSON turns into null: the
+    // server then refuses the body as unreadable rather than guessing.
+    const num = (id) => (el(id).value.trim() === "" ? NaN : Number(el(id).value));
+
+    ecoForm.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      ecoSave.disabled = true;
+      ecoSay("");
+      const prices = [];
+      for (const row of el("e-prices").querySelectorAll("tr")) {
+        const price = row.querySelector(".e-price").value.trim();
+        prices.push({
+          kind: row.dataset.kind,
+          price: price === "" ? NaN : Number(price),
+          on: row.querySelector(".e-price-on").checked,
+        });
+      }
+      const body = {
+        enabled: el("e-enabled").checked,
+        currency_name: el("e-name").value,
+        currency_emoji: el("e-emoji").value,
+        voice_credits_per_minute: num("e-voice"),
+        message_credits: num("e-message"),
+        message_cooldown_seconds: num("e-cooldown"),
+        prices,
+        immunity_optout: el("e-optout").checked,
+        immunity_shop: el("e-shop").checked,
+        immunity_mods: el("e-mods").checked,
+        optout_cooldown_days: num("e-optout-days"),
+        bought_immunity_hours: num("e-hours"),
+        gambling_enabled: el("e-gambling").checked,
+        max_bet: num("e-max-bet"),
+      };
+      try {
+        const r = await fetch(`/g/${guild}/settings/economy`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const text = await r.text();
+        let data = null;
+        try {
+          data = JSON.parse(text);
+        } catch (_) {
+          data = null;
+        }
+        if (r.ok && data) {
+          showEconomy(data);
+          ecoSay(root.dataset.saved, false);
+        } else {
+          ecoSay((data && data.error) || `Error ${r.status}`, true);
+        }
+      } catch (_) {
+        ecoSay(root.dataset.offline, true);
+      } finally {
+        ecoSave.disabled = false;
+      }
+    });
+  }
 })();

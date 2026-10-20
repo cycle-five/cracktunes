@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT enabled, config AS \"config: Json<EconomyConfig>\"\n           FROM economy_settings WHERE guild_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "enabled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 1,
+        "name": "config: Json<EconomyConfig>",
+        "type_info": "Jsonb"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "3207bd1c1e3260b7880a802dcb97f715031e64869a284bfa3a66670fe2099396"
+}

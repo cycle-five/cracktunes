@@ -818,6 +818,16 @@ pub const MODLOG_TITLE_ROOM_KICK: &str = "👢 Kicked from a room";
 pub const MODLOG_TITLE_ROOM_UNBLOCK: &str = "✅ Let back into a room";
 pub const MODLOG_TITLE_ROOM_MUTE: &str = "🤐 Muted in a room";
 pub const MODLOG_TITLE_ROOM_UNMUTE: &str = "🗣️ Unmuted in a room";
+pub const MODLOG_TITLE_IMMUNITY_GRANTED: &str = "🛡️ Immunity granted";
+pub const MODLOG_TITLE_IMMUNITY_LIFTED: &str = "🛡️ Immunity lifted";
+pub const MODLOG_TITLE_CREDITS_ADJUSTED: &str = "🪙 Credits adjusted";
+pub const MODLOG_GRANTED_IMMUNITY_TO: &str = "granted immunity to";
+pub const MODLOG_LIFTED_IMMUNITY_OF: &str = "lifted the immunity of";
+pub const MODLOG_ADJUSTED_CREDITS_OF: &str = "adjusted the credits of";
+pub const MODLOG_UNTIL: &str = "until";
+pub const MODLOG_UNTIL_LIFTED: &str = "until lifted";
+/// U+2212 MINUS SIGN, for a negative amount (the repo has no other convention).
+pub const MODLOG_MINUS: &str = "\u{2212}";
 pub const MODLOG_AUDIT_FOOTER: &str = "Matched from Discord's audit log by timing";
 pub const MODLOG_REASON_FIELD: &str = "Reason";
 pub const MODLOG_BY: &str = "by";
@@ -863,3 +873,145 @@ pub const DASH_MODLOG_NO_CHANNEL_OPTION: &str = "None";
 pub const DASH_MODLOG_NO_CHANNEL_YET: &str = "No channel set yet — pick one and save.";
 pub const DASH_MODLOG_GUIDE: &str = "How the mod log works";
 pub const DASH_MODLOG_UNKNOWN_CHANNEL: &str = "That is not a text channel of this server.";
+pub const ECONOMY_OFF: &str = "The economy is off in this server.";
+pub const ECONOMY_NOT_FOR_SALE: &str = "That isn't for sale here.";
+pub const ECONOMY_BUYER_OPTED_OUT: &str =
+    "You've opted out of the economy, so you can't buy anything. Opt back in first.";
+pub const ECONOMY_CANT_AFFORD_PREFIX: &str = "You need";
+pub const ECONOMY_CANT_AFFORD_MIDDLE: &str = "more";
+pub const ECONOMY_NO_DATABASE: &str = "The economy needs a database.";
+pub const ECONOMY_PURCHASE_FAILED: &str =
+    "That didn't work, so nothing was bought. If you were charged, it will be refunded.";
+pub const ECONOMY_HEADS: &str = "Heads";
+pub const ECONOMY_TAILS: &str = "Tails";
+pub const ECONOMY_COIN_LANDED: &str = "The coin landed";
+pub const ECONOMY_COIN_YOU_CALLED: &str = "You called";
+pub const ECONOMY_COIN_WON: &str = "You win";
+pub const ECONOMY_COIN_LOST: &str = "You lose";
+pub const ECONOMY_COIN_BALANCE: &str = "Balance:";
+pub const ECONOMY_GAMBLING_OFF: &str = "Gambling is off in this server.";
+pub const ECONOMY_GAMBLER_OPTED_OUT: &str =
+    "You've opted out of the economy, so you can't gamble. Opt back in first.";
+pub const ECONOMY_BET_NON_POSITIVE: &str = "Bet at least 1.";
+pub const ECONOMY_BET_OVER_MAX_PREFIX: &str = "The most you can bet here is";
+pub const ECONOMY_YOU_HAVE: &str = "You have";
+pub const ECONOMY_BET_FAILED: &str = "That didn't work, and nothing was taken. Try again.";
+pub const ECONOMY_GIFT_SELF: &str = "You can't gift yourself.";
+pub const ECONOMY_GIFT_TO_BOT: &str = "Bots don't need credits.";
+pub const ECONOMY_GIFT_FROM_OPTED_OUT: &str =
+    "You've opted out of the economy, so you can't gift. Opt back in first.";
+pub const ECONOMY_GIFT_TO_OPTED_OUT: &str =
+    "That member has opted out of the economy, so they can't be gifted credits.";
+pub const ECONOMY_GIFT_NON_POSITIVE: &str = "Gift at least 1.";
+pub const ECONOMY_GIFT_SENT: &str = "gifted";
+pub const ECONOMY_GIFT_TO: &str = "to";
+pub const ECONOMY_GIFT_FAILED: &str = "That didn't work, and nothing was sent. Try again.";
+pub const ECONOMY_BALANCE_HAS: &str = "has";
+pub const ECONOMY_TOP_TITLE: &str = "Richest members";
+pub const ECONOMY_TOP_EMPTY: &str = "Nobody has any yet.";
+pub const ECONOMY_HISTORY_TITLE: &str = "Your recent activity";
+pub const ECONOMY_HISTORY_EARNED: &str = "Earned so far:";
+pub const ECONOMY_HISTORY_IN_VOICE: &str = "in voice";
+pub const ECONOMY_HISTORY_FROM_MESSAGES: &str = "from messages";
+pub const ECONOMY_HISTORY_NO_ROWS: &str = "No purchases, gifts or bets yet.";
+pub const ECONOMY_LEDGER_PURCHASE: &str = "purchase";
+pub const ECONOMY_LEDGER_REFUND: &str = "refund";
+pub const ECONOMY_LEDGER_GIFT_SENT: &str = "gift sent";
+pub const ECONOMY_LEDGER_GIFT_RECEIVED: &str = "gift received";
+pub const ECONOMY_LEDGER_COINFLIP_BET: &str = "coinflip bet";
+pub const ECONOMY_LEDGER_COINFLIP_WIN: &str = "coinflip win";
+pub const ECONOMY_LEDGER_ADJUSTMENT: &str = "adjustment";
+pub const ECONOMY_OPTOUT_SWITCH_BACK_PREFIX: &str = "You can switch back";
+pub const ECONOMY_SHOP_IMMUNITY_NOTE: &str =
+    "Protects you from pranks, which arrive in the next update.";
+pub const ECONOMY_ALREADY_IMMUNE: &str = "You're already immune until a moderator lifts it.";
+pub const ECONOMY_ADMIN_ADJUST_TOO_BIG: &str = "Adjust by at most 1,000,000,000 at a time.";
+pub const ECONOMY_READ_FAILED: &str = "Couldn't read that right now. Try again.";
+pub const ECONOMY_OPTED_OUT_DONE: &str =
+    "You've opted out. You won't earn, buy, gamble, gift or be gifted, and your balance is kept.";
+pub const ECONOMY_OPTED_IN_DONE: &str = "You've opted back in.";
+pub const ECONOMY_OPTOUT_DISABLED: &str = "This server doesn't allow opting out.";
+pub const ECONOMY_OPTOUT_ALREADY_OUT: &str = "You've already opted out.";
+pub const ECONOMY_OPTOUT_ALREADY_IN: &str = "You're already opted in.";
+pub const ECONOMY_OPTOUT_COOLDOWN_PREFIX: &str = "You switched recently. You can switch again";
+pub const ECONOMY_OPTOUT_FAILED: &str = "Couldn't change that. Try again.";
+pub const ECONOMY_SHOP_TITLE: &str = "Shop";
+pub const ECONOMY_SHOP_NOT_SOLD: &str = "not sold here";
+pub const ECONOMY_SHOP_DOCS_LABEL: &str = "How the economy works";
+pub const ECONOMY_DOCS_URL: &str =
+    "https://github.com/cycle-five/cracktunes/blob/master/docs/economy.md";
+pub const ECONOMY_IMMUNE_UNTIL: &str = "is immune until";
+pub const ECONOMY_SHOP_BOT_BUYER: &str = "Bots can't buy anything.";
+pub const ECONOMY_STATUS_TITLE: &str = "Economy status";
+pub const ECONOMY_STATUS_ON: &str = "on";
+pub const ECONOMY_STATUS_OFF: &str = "off";
+pub const ECONOMY_STATUS_CURRENCY: &str = "Currency";
+pub const ECONOMY_STATUS_WALLETS: &str = "Wallets";
+pub const ECONOMY_STATUS_HELD: &str = "Held in total";
+pub const ECONOMY_STATUS_EARNING: &str = "Earning";
+pub const ECONOMY_STATUS_PER_VOICE_MINUTE: &str = "per voice minute";
+pub const ECONOMY_STATUS_PER_MESSAGE: &str = "per message, at most once every";
+pub const ECONOMY_STATUS_SECONDS: &str = "s";
+pub const ECONOMY_STATUS_IMMUNITY: &str = "Immunity: opt-out";
+pub const ECONOMY_STATUS_SHOP: &str = "shop";
+pub const ECONOMY_STATUS_MODS: &str = "mod grants";
+pub const ECONOMY_STATUS_GAMBLING: &str = "Gambling";
+pub const ECONOMY_STATUS_MAX_BET: &str = "max bet";
+pub const ECONOMY_ADMIN_BOT_TARGET: &str = "Bots don't take part in the economy.";
+pub const ECONOMY_ADMIN_HOURS_RANGE: &str = "Hours must be between 1 and 8760 (a year).";
+pub const ECONOMY_ADMIN_GRANT_DISABLED: &str =
+    "This server has turned off moderator immunity grants.";
+pub const ECONOMY_ADMIN_GRANT_DONE: &str = "Immunity granted.";
+pub const ECONOMY_ADMIN_GRANT_FAILED: &str = "Couldn't grant that right now. Try again.";
+pub const ECONOMY_ADMIN_LIFT_DONE: &str = "Moderator immunity lifted.";
+pub const ECONOMY_ADMIN_LIFT_NONE: &str = "That member has no moderator grant to lift.";
+pub const ECONOMY_ADMIN_LIFT_FAILED: &str = "Couldn't lift that right now. Try again.";
+pub const ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE: &str =
+    "Adjusting credits needs the Manage Server permission.";
+pub const ECONOMY_ADMIN_ADJUST_ZERO: &str = "Adjust by a nonzero amount.";
+pub const ECONOMY_ADMIN_ADJUST_BELOW_ZERO_PREFIX: &str =
+    "That would take them below zero; they hold";
+pub const ECONOMY_ADMIN_ADJUST_DONE: &str = "Adjusted. They now hold";
+pub const ECONOMY_ADMIN_ADJUST_FAILED: &str = "Couldn't adjust that right now. Try again.";
+pub const ECONOMY_ADMIN_NEEDS_MODERATE: &str =
+    "This command needs the Moderate Members permission.";
+
+// ---- Economy: the dashboard section ----
+pub const DASH_ECONOMY_TITLE: &str = "Economy";
+pub const DASH_ECONOMY_ENABLED: &str = "Economy is on";
+pub const DASH_ECONOMY_CURRENCY_NAME: &str = "Currency name";
+pub const DASH_ECONOMY_CURRENCY_EMOJI: &str = "Currency emoji";
+pub const DASH_ECONOMY_VOICE_RATE: &str = "Credits per minute in voice";
+pub const DASH_ECONOMY_MESSAGE_RATE: &str = "Credits per message";
+pub const DASH_ECONOMY_MESSAGE_COOLDOWN: &str = "Seconds between paid messages";
+pub const DASH_ECONOMY_PRICES: &str = "Shop prices";
+pub const DASH_ECONOMY_PRICE_FOR_SALE: &str = "For sale";
+pub const DASH_ECONOMY_PRICE_COST: &str = "Price";
+pub const DASH_ECONOMY_IMMUNITY_OPTOUT: &str = "Members may opt out of the economy for immunity";
+pub const DASH_ECONOMY_IMMUNITY_SHOP: &str = "Members may buy immunity in the shop";
+pub const DASH_ECONOMY_IMMUNITY_MODS: &str = "Moderators may grant immunity";
+pub const DASH_ECONOMY_OPTOUT_COOLDOWN: &str = "Days between opting out and back in";
+pub const DASH_ECONOMY_IMMUNITY_HOURS: &str = "Hours of bought immunity";
+pub const DASH_ECONOMY_GAMBLING: &str = "Gambling (coinflip) is on";
+pub const DASH_ECONOMY_MAX_BET: &str = "Largest bet";
+pub const DASH_ECONOMY_GAMBLING_NOTE: &str =
+    "Credits have no cash value. Only turn this on where your members are adults.";
+pub const DASH_ECONOMY_GUIDE: &str = "How the economy works";
+pub const DASH_ECONOMY_NO_DATABASE: &str = "The economy needs a database.";
+pub const DASH_ECONOMY_BAD_CURRENCY_NAME: &str =
+    "The currency name must be 1 to 24 characters, with no control characters.";
+pub const DASH_ECONOMY_BAD_CURRENCY_EMOJI: &str =
+    "The currency emoji must be 1 to 64 characters, with no spaces or control characters.";
+pub const DASH_ECONOMY_BAD_RATE: &str = "Earning rates must be between 0 and 100.";
+pub const DASH_ECONOMY_BAD_COOLDOWN: &str =
+    "The message cooldown must be between 10 and 3600 seconds.";
+pub const DASH_ECONOMY_BAD_PRICE: &str = "Every price must be between 1 and 1,000,000.";
+pub const DASH_ECONOMY_BAD_OPTOUT_COOLDOWN: &str =
+    "The opt-out cooldown must be between 0 and 90 days.";
+pub const DASH_ECONOMY_BAD_IMMUNITY_HOURS: &str =
+    "Bought immunity must last between 1 and 720 hours.";
+pub const DASH_ECONOMY_BAD_MAX_BET: &str = "The largest bet must be between 1 and 1,000,000.";
+pub const DASH_ECONOMY_UNKNOWN_ACTION: &str = "That is not something this server can sell.";
+pub const DASH_ECONOMY_SETTINGS_NOT_LOADED: &str =
+    "Economy settings couldn't be read from the database yet — try again in a minute.";
+pub const DASH_ECONOMY_SAVE_FAILED: &str = "Couldn't save the economy settings — try again.";

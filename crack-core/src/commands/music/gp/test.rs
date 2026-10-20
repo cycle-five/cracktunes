@@ -2464,15 +2464,18 @@ fn command_registration() {
     for list in [&all, &registered] {
         assert!(list.iter().any(|c| c.name == "gp"), "gp not registered");
         // `gp` is registered on its own, not by chaining `game_commands()`:
-        // coinflip and rolldice are deliberately still unregistered, and
-        // pulling them in as a side effect of shipping `gp` is the mistake
-        // this guards against.
-        for unregistered in ["coinflip", "rolldice"] {
-            assert!(
-                !list.iter().any(|c| c.name == unregistered),
-                "{unregistered} must stay unregistered"
-            );
-        }
+        // rolldice is deliberately still unregistered, and pulling it in as
+        // a side effect of shipping `gp` is the mistake this guards against.
+        assert!(
+            !list.iter().any(|c| c.name == "rolldice"),
+            "rolldice must stay unregistered"
+        );
+        // The name `coinflip` is now the economy's bet command. The old
+        // no-argument game one (`game_commands()`) must stay unregistered.
+        let coinflips: Vec<_> = list.iter().filter(|c| c.name == "coinflip").collect();
+        assert_eq!(coinflips.len(), 1, "exactly one coinflip registered");
+        assert_eq!(coinflips[0].category.as_deref(), Some("Economy"));
+        assert!(coinflips[0].parameters.iter().any(|p| p.name == "bet"));
     }
 
     let cmd = gp();

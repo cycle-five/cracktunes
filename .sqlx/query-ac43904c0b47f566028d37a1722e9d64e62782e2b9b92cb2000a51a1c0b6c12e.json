@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_actions SET state = $2, ended_at = now()\n         WHERE id = $1 AND state = $3\n         RETURNING guild_id, buyer_id, price",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "guild_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "buyer_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "price",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ac43904c0b47f566028d37a1722e9d64e62782e2b9b92cb2000a51a1c0b6c12e"
+}

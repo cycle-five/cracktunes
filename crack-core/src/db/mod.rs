@@ -1,3 +1,4 @@
+pub mod economy;
 pub mod gp;
 pub mod guild;
 pub mod metadata;

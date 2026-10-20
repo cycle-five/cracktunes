@@ -1,0 +1,35 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT balance, earned_voice, earned_messages FROM economy_wallets\n         WHERE guild_id = $1 AND user_id = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "balance",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "earned_voice",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "earned_messages",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1d26429415ccc49ddb52c16b2866fcc26c9d3d73ce6f4ee1ab8734477a4cccbd"
+}

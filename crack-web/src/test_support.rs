@@ -9,8 +9,8 @@ use crate::{
     },
     routes::{router, WebState},
     settings::{
-        ModLogSaveRefused, ModLogSettingsForm, ModLogSettingsView, RoomSettingsForm,
-        RoomSettingsView, SaveRefused,
+        EconomySaveRefused, EconomySettingsForm, EconomySettingsView, ModLogSaveRefused,
+        ModLogSettingsForm, ModLogSettingsView, RoomSettingsForm, RoomSettingsView, SaveRefused,
     },
     view::{PlanView, QueueView, TrackView},
     watch::ViewSource,
@@ -89,6 +89,11 @@ pub struct FakeBackend {
     pub modlog_save_result: Mutex<Result<(), ModLogSaveRefused>>,
     /// Every mod log save the routes asked for: (guild, user, form).
     pub modlog_saves: Mutex<Vec<(GuildId, UserId, ModLogSettingsForm)>>,
+    /// What `economy_settings` answers.
+    pub economy_view: Mutex<EconomySettingsView>,
+    pub economy_save_result: Mutex<Result<(), EconomySaveRefused>>,
+    /// Every economy save the routes asked for: (guild, user, form).
+    pub economy_saves: Mutex<Vec<(GuildId, UserId, EconomySettingsForm)>>,
 }
 
 impl FakeBackend {
@@ -137,6 +142,11 @@ impl FakeBackend {
             }),
             modlog_save_result: Mutex::new(Ok(())),
             modlog_saves: Mutex::new(Vec::new()),
+            economy_view: Mutex::new(EconomySettingsView::from_settings(
+                &crack_core::economy::settings::EconomySettings::off(GuildId::new(5)),
+            )),
+            economy_save_result: Mutex::new(Ok(())),
+            economy_saves: Mutex::new(Vec::new()),
             plan: Mutex::new(PlanView::Premium),
             control_result: Mutex::new(Ok(())),
             controls: Mutex::new(Vec::new()),
@@ -313,6 +323,21 @@ impl Backend for FakeBackend {
         self.modlog_saves.lock().unwrap().push((g, user, f));
         (*self.modlog_save_result.lock().unwrap())?;
         Ok(self.modlog_view.lock().unwrap().clone())
+    }
+
+    async fn economy_settings(&self, _g: GuildId) -> EconomySettingsView {
+        self.economy_view.lock().unwrap().clone()
+    }
+
+    async fn save_economy_settings(
+        &self,
+        user: UserId,
+        g: GuildId,
+        f: EconomySettingsForm,
+    ) -> Result<EconomySettingsView, EconomySaveRefused> {
+        self.economy_saves.lock().unwrap().push((g, user, f));
+        (*self.economy_save_result.lock().unwrap())?;
+        Ok(self.economy_view.lock().unwrap().clone())
     }
 }
 
