@@ -3,6 +3,7 @@
 //! The pure `*_text` and `check_gift` functions carry the wording and the
 //! rules; the poise functions are glue.
 use crate::db::economy::{self as db, LedgerEntry};
+use crate::economy::gamble::{bet_refusal_text, BetRefusal};
 use crate::economy::wallet::MoveError;
 use crate::economy::{self, OptOutError};
 use crate::messaging::courier;
@@ -13,7 +14,7 @@ use crate::messaging::messages::{
     ECONOMY_NO_DATABASE, ECONOMY_OFF, ECONOMY_OPTED_IN_DONE, ECONOMY_OPTED_OUT_DONE,
     ECONOMY_OPTOUT_ALREADY_IN, ECONOMY_OPTOUT_ALREADY_OUT, ECONOMY_OPTOUT_COOLDOWN_PREFIX,
     ECONOMY_OPTOUT_DISABLED, ECONOMY_OPTOUT_FAILED, ECONOMY_READ_FAILED, ECONOMY_TOP_EMPTY,
-    ECONOMY_TOP_TITLE, ECONOMY_YOU_HAVE,
+    ECONOMY_TOP_TITLE,
 };
 use crate::messaging::render::Rendered;
 use crate::{Context, Error};
@@ -21,8 +22,10 @@ use chrono::Utc;
 use serenity::all::{GuildId, User, UserId};
 use sqlx::PgPool;
 
-/// How many rows `/credits top` and `/credits history` show.
+/// How many rows `/credits top` shows.
 const LIST_LEN: i64 = 10;
+/// How many ledger rows `/credits history` shows.
+const HISTORY_LEN: i64 = 15;
 
 /// Why a gift was refused before any credits moved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,7 +153,9 @@ pub(super) async fn say(
 }
 
 /// The checks every economy command starts with: a server, the economy on,
-/// a database. Replies privately and gives `None` when any is missing.
+/// a database. Replies privately and gives `None` when the economy is off or
+/// there is no database. With no server (impossible: every command is
+/// `guild_only`) it returns `None` silently.
 #[cfg(not(tarpaulin_include))]
 pub(super) async fn gate(ctx: Context<'_>) -> Result<Option<(GuildId, PgPool)>, Error> {
     let Some(guild) = ctx.guild_id() else {
@@ -269,7 +274,11 @@ pub async fn gift(
         Err(MoveError::Insufficient { balance }) => {
             say(
                 ctx,
-                format!("{ECONOMY_YOU_HAVE} {balance} {}.", cfg.currency_name),
+                bet_refusal_text(
+                    &BetRefusal::CantAfford { balance },
+                    &cfg.currency_name,
+                    &cfg.currency_emoji,
+                ),
                 true,
             )
             .await
@@ -289,7 +298,7 @@ pub async fn history(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     };
     let cfg = ctx.data().economy.settings(guild).config;
-    match db::history(&pool, guild, ctx.author().id, LIST_LEN).await {
+    match db::history(&pool, guild, ctx.author().id, HISTORY_LEN).await {
         Ok(rows) => {
             say(
                 ctx,

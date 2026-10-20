@@ -37,7 +37,12 @@ pub async fn coinflip(
         cfg.max_bet,
         balance,
     ) {
-        return say(ctx, bet_refusal_text(&refusal, currency), true).await;
+        return say(
+            ctx,
+            bet_refusal_text(&refusal, currency, &cfg.currency_emoji),
+            true,
+        )
+        .await;
     }
     let landed = flip(&mut rand::rng());
     match db::settle_coinflip(&pool, guild, user, bet, landed == call).await {
@@ -53,7 +58,11 @@ pub async fn coinflip(
         Err(MoveError::Insufficient { balance }) => {
             say(
                 ctx,
-                bet_refusal_text(&BetRefusal::CantAfford { balance }, currency),
+                bet_refusal_text(
+                    &BetRefusal::CantAfford { balance },
+                    currency,
+                    &cfg.currency_emoji,
+                ),
                 true,
             )
             .await

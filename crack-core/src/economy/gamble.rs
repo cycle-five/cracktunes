@@ -63,14 +63,16 @@ pub fn check_bet(
 }
 
 /// The words for a refusal, naming the server's currency.
-pub fn bet_refusal_text(r: &BetRefusal, currency: &str) -> String {
+pub fn bet_refusal_text(r: &BetRefusal, currency: &str, emoji: &str) -> String {
     match r {
         BetRefusal::GamblingOff => ECONOMY_GAMBLING_OFF.to_string(),
         BetRefusal::OptedOut => ECONOMY_GAMBLER_OPTED_OUT.to_string(),
         BetRefusal::NonPositive => ECONOMY_BET_NON_POSITIVE.to_string(),
-        BetRefusal::OverMax { max } => format!("{ECONOMY_BET_OVER_MAX_PREFIX} {max} {currency}."),
+        BetRefusal::OverMax { max } => {
+            format!("{ECONOMY_BET_OVER_MAX_PREFIX} {max} {emoji} {currency}.")
+        },
         BetRefusal::CantAfford { balance } => {
-            format!("{ECONOMY_YOU_HAVE} {balance} {currency}.")
+            format!("{ECONOMY_YOU_HAVE} {balance} {emoji} {currency}.")
         },
     }
 }
@@ -168,15 +170,15 @@ mod tests {
     #[test]
     fn refusal_texts_name_the_currency_and_numbers() {
         assert_eq!(
-            bet_refusal_text(&BetRefusal::OverMax { max: 500 }, "gold"),
-            "The most you can bet here is 500 gold."
+            bet_refusal_text(&BetRefusal::OverMax { max: 500 }, "gold", "🥇"),
+            "The most you can bet here is 500 🥇 gold."
         );
         assert_eq!(
-            bet_refusal_text(&BetRefusal::CantAfford { balance: 499 }, "gold"),
-            "You have 499 gold."
+            bet_refusal_text(&BetRefusal::CantAfford { balance: 499 }, "gold", "🥇"),
+            "You have 499 🥇 gold."
         );
         assert_eq!(
-            bet_refusal_text(&BetRefusal::GamblingOff, "gold"),
+            bet_refusal_text(&BetRefusal::GamblingOff, "gold", "🥇"),
             "Gambling is off in this server."
         );
     }
