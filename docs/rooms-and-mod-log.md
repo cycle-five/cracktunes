@@ -295,10 +295,12 @@ without one it cannot be turned on.
 | Muted / unmuted in a room | Who did it, to whom, in which room; a mute shows its reason if one was given. | Exact. |
 | Let back into a room | Who lifted a room kick. | Exact. |
 
-Server mutes and deafens appear as soon as Discord records them. A server mute
-or deafen that CrackTunes applies to itself (it deafens itself when it joins a
-channel) is not logged. A moderator muting CrackTunes is logged, and so is
-CrackTunes muting someone else.
+Server mutes and deafens appear as soon as Discord records them. CrackTunes
+deafens itself when it joins a channel, as if it had pressed the headphones
+button, and like every self-deafen that is never logged. A server mute or
+deafen that CrackTunes applied to itself would not be logged either. A
+moderator muting CrackTunes is logged, and so is CrackTunes muting someone
+else.
 
 Another bot's moderation is logged the same way, with "(bot)" after its name:
 its mutes and deafens, and its disconnects and moves (a temp-voice bot moving

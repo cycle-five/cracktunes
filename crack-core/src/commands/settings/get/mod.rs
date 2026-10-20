@@ -17,7 +17,6 @@ pub use get_welcome_settings::*;
 pub use log_channels::*;
 // pub use prefix::*;
 // pub use print_settings::*;
-// pub use self_deafen::*;
 // pub use set_all_log_channel::*;
 // pub use set_idle_timeout::*;
 

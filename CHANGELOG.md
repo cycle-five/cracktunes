@@ -232,6 +232,9 @@
 
 ### Changed
 
+- **CrackTunes joins voice deafened, and no longer decrypts or decodes what
+  it receives.** Nothing used the incoming audio, so the bot now shows the
+  deafened icon and Discord stops sending it any.
 - **`/gp` sends everything through the messaging layer.** Its prompts, songs,
   reveals, results, scoreboards, picker and button answers are rendered by
   the one renderer and delivered by the courier, like the music commands
@@ -299,6 +302,11 @@
 
 ### Fixed
 
+- **The self-deafen handler never worked.** It acted only when a guild's
+  setting was off, which no guild's was, and where it did act it
+  server-deafened the bot and panicked if the bot lacked the permission. It
+  is removed, along with the unregistered `/toggle selfdeafen` and the unused
+  voice receiver.
 - **A `/gp` game that could not be resumed could post its owed round results
   again on every gateway reconnect** while the database refused writes (#469).
   A game the resume closes out, lost or finished, now writes its tombstone

@@ -29,7 +29,7 @@ pub async fn toggle_autopause(ctx: Context<'_>) -> Result<(), Error> {
     )
     .await?;
 
-    ctx.say(format!("Self-deafen is now {}", res.self_deafen))
+    ctx.say(format!("Autopause is now {}", res.autopause))
         .await?;
     Ok(())
 }
