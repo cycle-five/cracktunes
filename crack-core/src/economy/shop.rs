@@ -1,15 +1,20 @@
 //! Buying things with credits: the checks, the charge, the grant, and the
 //! refund when the grant fails. Immunity is the first item for sale.
 
+use super::immunity::Protection;
 use super::settings::{ActionKind, ActionPrice};
 use super::wallet::{ActionPayload, MoveError};
 use crate::messaging::messages::{
-    ECONOMY_ALREADY_IMMUNE, ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANT_AFFORD_MIDDLE,
-    ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_NOT_FOR_SALE, ECONOMY_OFF,
+    ECONOMY_ALREADY_IMMUNE, ECONOMY_ALREADY_RUNNING_PREFIX, ECONOMY_BUYER_NOT_IN_VOICE,
+    ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION, ECONOMY_CANT_AFFORD_MIDDLE,
+    ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_NOT_FOR_SALE, ECONOMY_NO_JAIL_CHANNEL, ECONOMY_OFF,
+    ECONOMY_OUT_OF_REACH, ECONOMY_TARGET_IMMUNE_INDEFINITELY, ECONOMY_TARGET_IMMUNE_UNTIL,
+    ECONOMY_TARGET_IS_BOT, ECONOMY_TARGET_IS_SELF, ECONOMY_TARGET_NOT_IN_VOICE,
+    ECONOMY_TARGET_OPTED_OUT, ECONOMY_UNAVAILABLE_PREFIX, ECONOMY_UNAVAILABLE_SUFFIX,
 };
 use crate::Data;
 use chrono::{DateTime, Utc};
-use serenity::all::{GuildId, UserId};
+use serenity::all::{GuildId, Permissions, UserId};
 
 /// Everything [`check_purchase`] needs, read up front.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,7 +37,25 @@ pub enum Refusal {
     NotForSale,
     BuyerOptedOut,
     AlreadyImmune,
-    CantAfford { short: i64 },
+    CantAfford {
+        short: i64,
+    },
+    TargetIsBot,
+    TargetIsSelf,
+    OutOfReach,
+    TargetNotInVoice,
+    BuyerNotInVoice,
+    TargetOptedOut,
+    TargetImmune(Protection),
+    AlreadyRunning {
+        until: DateTime<Utc>,
+    },
+    CannotJoinDestination,
+    NoJailChannel,
+    /// Preflight: CrackTunes lacks these permissions for the action.
+    Unavailable {
+        missing: Permissions,
+    },
 }
 
 /// Check a purchase, refusing for the first reason that applies, in order:
@@ -75,6 +98,31 @@ pub fn refusal_text(r: &Refusal, currency: &str) -> String {
         Refusal::CantAfford { short } => {
             format!("{ECONOMY_CANT_AFFORD_PREFIX} {short} {ECONOMY_CANT_AFFORD_MIDDLE} {currency}.")
         },
+        Refusal::TargetIsBot => ECONOMY_TARGET_IS_BOT.to_string(),
+        Refusal::TargetIsSelf => ECONOMY_TARGET_IS_SELF.to_string(),
+        Refusal::OutOfReach => ECONOMY_OUT_OF_REACH.to_string(),
+        Refusal::TargetNotInVoice => ECONOMY_TARGET_NOT_IN_VOICE.to_string(),
+        Refusal::BuyerNotInVoice => ECONOMY_BUYER_NOT_IN_VOICE.to_string(),
+        Refusal::TargetOptedOut => ECONOMY_TARGET_OPTED_OUT.to_string(),
+        Refusal::TargetImmune(Protection::Until(t)) => {
+            format!("{ECONOMY_TARGET_IMMUNE_UNTIL} <t:{}:f>.", t.timestamp())
+        },
+        Refusal::TargetImmune(Protection::Indefinitely) => {
+            ECONOMY_TARGET_IMMUNE_INDEFINITELY.to_string()
+        },
+        Refusal::TargetImmune(Protection::OptedOut) => ECONOMY_TARGET_OPTED_OUT.to_string(),
+        Refusal::AlreadyRunning { until } => {
+            format!(
+                "{ECONOMY_ALREADY_RUNNING_PREFIX} <t:{}:R>.",
+                until.timestamp()
+            )
+        },
+        Refusal::CannotJoinDestination => ECONOMY_CANNOT_JOIN_DESTINATION.to_string(),
+        Refusal::NoJailChannel => ECONOMY_NO_JAIL_CHANNEL.to_string(),
+        Refusal::Unavailable { missing } => format!(
+            "{ECONOMY_UNAVAILABLE_PREFIX} {} {ECONOMY_UNAVAILABLE_SUFFIX}",
+            crate::rooms::card::perm_names(*missing, true)
+        ),
     }
 }
 
@@ -259,11 +307,58 @@ mod tests {
             Refusal::BuyerOptedOut,
             Refusal::AlreadyImmune,
             Refusal::CantAfford { short: 1 },
+            Refusal::TargetIsBot,
+            Refusal::TargetIsSelf,
+            Refusal::OutOfReach,
+            Refusal::TargetNotInVoice,
+            Refusal::BuyerNotInVoice,
+            Refusal::TargetOptedOut,
+            Refusal::TargetImmune(Protection::Until(t0())),
+            Refusal::TargetImmune(Protection::Indefinitely),
+            Refusal::AlreadyRunning { until: t0() },
+            Refusal::CannotJoinDestination,
+            Refusal::NoJailChannel,
+            Refusal::Unavailable {
+                missing: Permissions::MOVE_MEMBERS,
+            },
         ];
         let texts: std::collections::HashSet<_> =
             all.iter().map(|r| refusal_text(r, "credits")).collect();
         assert_eq!(texts.len(), all.len());
         assert_eq!(refusal_text(&Refusal::EconomyOff, "x"), ECONOMY_OFF);
+    }
+
+    #[test]
+    fn target_refusals_carry_their_facts() {
+        let t = t0().timestamp();
+        assert_eq!(
+            refusal_text(&Refusal::TargetImmune(Protection::Until(t0())), "c"),
+            format!("They're immune until <t:{t}:f>.")
+        );
+        assert_eq!(
+            refusal_text(&Refusal::TargetImmune(Protection::Indefinitely), "c"),
+            "They're immune until a moderator lifts it."
+        );
+        assert_eq!(
+            refusal_text(&Refusal::TargetImmune(Protection::OptedOut), "c"),
+            "They've opted out of the economy."
+        );
+        assert_eq!(
+            refusal_text(&Refusal::AlreadyRunning { until: t0() }, "c"),
+            format!("They're already pranked like that until <t:{t}:R>.")
+        );
+        let text = refusal_text(
+            &Refusal::Unavailable {
+                missing: Permissions::MOVE_MEMBERS | Permissions::MUTE_MEMBERS,
+            },
+            "c",
+        );
+        assert!(text.starts_with("CrackTunes is missing "), "{text}");
+        assert!(text.ends_with(" for that."), "{text}");
+        assert!(
+            text.contains("Move Members") && text.contains("Mute Members"),
+            "{text}"
+        );
     }
 
     fn t0() -> DateTime<Utc> {

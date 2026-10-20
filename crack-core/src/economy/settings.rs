@@ -342,7 +342,7 @@ pub fn validate_nick(raw: &str) -> Result<String, NickError> {
     if t.is_empty() {
         return Err(NickError::Empty);
     }
-    if t.chars().count() > 32 {
+    if t.encode_utf16().count() > 32 {
         return Err(NickError::TooLong);
     }
     if has_mention(t) {
@@ -703,10 +703,12 @@ mod tests {
         assert_eq!(validate_nick("HTTPS://x"), Err(NickError::Link));
         assert_eq!(validate_nick(&"a".repeat(32)).map(|s| s.len()), Ok(32));
         assert_eq!(validate_nick(&"a".repeat(33)), Err(NickError::TooLong));
+        // Discord counts UTF-16 units: a clown is 2, so 16 fit and 17 do not.
         assert_eq!(
-            validate_nick(&"🤡".repeat(32)).map(|s| s.chars().count()),
-            Ok(32)
+            validate_nick(&"🤡".repeat(16)).map(|s| s.chars().count()),
+            Ok(16)
         );
+        assert_eq!(validate_nick(&"🤡".repeat(17)), Err(NickError::TooLong));
         assert_eq!(
             validate_nick(&format!(" {} ", "a".repeat(32))).map(|s| s.len()),
             Ok(32)

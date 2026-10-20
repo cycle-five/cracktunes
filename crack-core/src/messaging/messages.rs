@@ -944,6 +944,21 @@ pub const ECONOMY_NICK_MENTION: &str = "The nickname can't mention anyone.";
 pub const ECONOMY_NICK_LINK: &str = "The nickname can't contain a link.";
 pub const ECONOMY_CLOWN_SUFFIX: &str = " 🤡";
 pub const ECONOMY_ALREADY_IMMUNE: &str = "You're already immune until a moderator lifts it.";
+pub const ECONOMY_TARGET_IS_BOT: &str = "You can't prank a bot.";
+pub const ECONOMY_TARGET_IS_SELF: &str = "You can't prank yourself.";
+pub const ECONOMY_OUT_OF_REACH: &str =
+    "CrackTunes can't change them (they're the owner, or their role is at or above CrackTunes').";
+pub const ECONOMY_TARGET_NOT_IN_VOICE: &str = "They need to be in a voice channel for that.";
+pub const ECONOMY_BUYER_NOT_IN_VOICE: &str = "Join a voice channel first.";
+pub const ECONOMY_TARGET_OPTED_OUT: &str = "They've opted out of the economy.";
+pub const ECONOMY_TARGET_IMMUNE_UNTIL: &str = "They're immune until";
+pub const ECONOMY_TARGET_IMMUNE_INDEFINITELY: &str = "They're immune until a moderator lifts it.";
+pub const ECONOMY_ALREADY_RUNNING_PREFIX: &str = "They're already pranked like that until";
+pub const ECONOMY_CANNOT_JOIN_DESTINATION: &str =
+    "They couldn't join your channel themselves, so CrackTunes won't drag them there.";
+pub const ECONOMY_NO_JAIL_CHANNEL: &str = "This server hasn't set a jail channel.";
+pub const ECONOMY_UNAVAILABLE_PREFIX: &str = "CrackTunes is missing";
+pub const ECONOMY_UNAVAILABLE_SUFFIX: &str = "for that.";
 pub const ECONOMY_ADMIN_ADJUST_TOO_BIG: &str = "Adjust by at most 1,000,000,000 at a time.";
 pub const ECONOMY_READ_FAILED: &str = "Couldn't read that right now. Try again.";
 pub const ECONOMY_OPTED_OUT_DONE: &str =

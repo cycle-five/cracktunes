@@ -9,6 +9,7 @@ pub mod preflight;
 pub mod registry;
 pub mod settings;
 pub mod shop;
+pub mod target;
 pub mod wallet;
 
 use crate::Data;

@@ -63,12 +63,6 @@ pub fn missing(
     out
 }
 
-/// Whether the bot lacks View Audit Log, so a lock cannot tell who changed a
-/// nickname.
-pub fn lock_needs_audit_log(perms: &BotPerms) -> bool {
-    !perms.guild.contains(Permissions::VIEW_AUDIT_LOG)
-}
-
 /// Read the bot's permissions from the cache. `None` when the cache cannot
 /// answer (guild, bot member or one of its roles not cached), rather than
 /// guessing from an under-reported bitset. A channel the cached server does
@@ -160,15 +154,17 @@ mod tests {
     #[test]
     fn lock_needs_view_audit_log() {
         let nick = Permissions::MANAGE_NICKNAMES;
-        assert!(lock_needs_audit_log(&perms(nick, &[])));
-        assert!(!lock_needs_audit_log(&perms(
-            nick | Permissions::VIEW_AUDIT_LOG,
-            &[]
-        )));
-        // And the audit log is part of what a lock needs.
         assert_eq!(
             missing(ActionKind::Lock, &perms(nick, &[]), &[]),
             vec![(None, Permissions::VIEW_AUDIT_LOG)]
+        );
+        assert_eq!(
+            missing(
+                ActionKind::Lock,
+                &perms(nick | Permissions::VIEW_AUDIT_LOG, &[]),
+                &[]
+            ),
+            vec![]
         );
     }
 }
