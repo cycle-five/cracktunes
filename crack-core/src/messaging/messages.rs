@@ -263,6 +263,12 @@ pub const SKIP_VOTE_USER: &str = "has voted to skip!";
 pub const SKIPPED_ALL: &str = "⏭️ Skipped until infinity!";
 pub const SKIPPED_TO: &str = "⏭️ Skipped to";
 pub const SKIPPED: &str = "⏭️ Skipped!";
+pub const DOWNVOTED_AND_SKIPPED: &str = "👎 Downvoted and skipped. It won't show in /playlog.";
+pub const SKIPPED_NOT_LOGGED: &str =
+    "⏭️ Skipped. This track wasn't logged, so there was nothing to hide from /playlog.";
+pub const MOVED_ON_NOT_SKIPPED: &str = "⏭️ The track had already moved on, so nothing was skipped.";
+pub const DOWNVOTED_BUT_MOVED_ON: &str =
+    "👎 Downvoted. The track had already moved on, so nothing was skipped.";
 // The old copy here asked "Did you forget to provide your Spotify application's
 // client ID and secret?" -- advice that stopped being actionable. Spotify has
 // blocked the creation of new Web API apps since roughly December 2025, so an

@@ -7,6 +7,10 @@ use sqlx::{Error, PgPool};
 
 use crate::db::Metadata;
 
+/// A play with more dislikes than this is hidden from `/playlog`: one
+/// downvote is enough.
+pub const PLAYLOG_MAX_DISLIKES: i32 = 0;
+
 #[derive(Debug, Clone)]
 pub struct PlayLog {
     pub id: i64,
@@ -88,7 +92,7 @@ impl PgPoolExtPlayLog for PgPool {
                 PlayLog::get_last_played_by_guild_filter_limit(
                     self,
                     *guild_id,
-                    query.max_dislikes.unwrap_or(1),
+                    query.max_dislikes.unwrap_or(PLAYLOG_MAX_DISLIKES),
                     query.limit.unwrap_or(i64::MAX),
                 )
                 .await
@@ -175,7 +179,11 @@ impl PlayLog {
         max_dislikes: i32,
         limit: i64,
     ) -> Result<Vec<String>, Error> {
-        let max_dislikes = if max_dislikes < 0 { 1 } else { max_dislikes };
+        let max_dislikes = if max_dislikes < 0 {
+            PLAYLOG_MAX_DISLIKES
+        } else {
+            max_dislikes
+        };
         //let last_played: Vec<TitleArtist> = sqlx::query_as!(
         let mut last_played: Vec<TitleArtist> = Vec::new();
         let mut last_played_stream = sqlx::query_as!(
@@ -206,7 +214,7 @@ impl PlayLog {
         conn: &PgPool,
         guild_id: i64,
     ) -> Result<Vec<String>, Error> {
-        Self::get_last_played_by_guild_filter(conn, guild_id, 1).await
+        Self::get_last_played_by_guild_filter(conn, guild_id, PLAYLOG_MAX_DISLIKES).await
     }
 
     /// Get the last played track for the given guild and return as metadata.
@@ -400,6 +408,57 @@ mod tests {
         play(&pool, 1, "https://example.test/a").await;
         let got = PlayLog::last_play_of_url(&pool, 1, "https://example.test/never").await?;
         assert_eq!(got, None);
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn last_play_of_url_is_scoped_to_the_guild(pool: PgPool) -> Result<(), Error> {
+        sqlx::query(
+            "INSERT INTO guild_settings (guild_id, guild_name, prefix) VALUES (2, 'two', 'r!')",
+        )
+        .execute(&pool)
+        .await?;
+        let (_, mine) = play(&pool, 1, "https://example.test/a").await;
+        let (_, _theirs_newer) = play(&pool, 2, "https://example.test/a").await;
+        let got = PlayLog::last_play_of_url(&pool, 1, "https://example.test/a").await?;
+        assert_eq!(got, Some(mine));
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn a_downvoted_play_is_hidden_from_playlog(pool: PgPool) -> Result<(), Error> {
+        use crate::db::TrackReaction;
+        let (_, keep1) = play(&pool, 1, "https://example.test/keep1").await;
+        let (_, bad) = play(&pool, 1, "https://example.test/bad").await;
+        let (_, keep2) = play(&pool, 1, "https://example.test/keep2").await;
+        let _ = (keep1, keep2);
+        sqlx::query("UPDATE metadata SET title = 'keep1' WHERE source_url LIKE '%keep1'")
+            .execute(&pool)
+            .await?;
+        sqlx::query("UPDATE metadata SET title = 'bad' WHERE source_url LIKE '%/bad'")
+            .execute(&pool)
+            .await?;
+        sqlx::query("UPDATE metadata SET title = 'keep2' WHERE source_url LIKE '%keep2'")
+            .execute(&pool)
+            .await?;
+        let before = PlayLog::get_last_played(&pool, None, Some(1)).await?;
+        assert_eq!(before.len(), 3);
+        let id = bad as i32;
+        TrackReaction::insert(&pool, id).await.unwrap();
+        TrackReaction::add_dislike(&pool, id).await.unwrap();
+        let after = PlayLog::get_last_played(&pool, None, Some(1)).await?;
+        assert_eq!(after.len(), 2, "{after:?}");
+        assert!(after.iter().all(|t| !t.starts_with("bad")), "{after:?}");
+        assert!(after.iter().any(|t| t.starts_with("keep1")));
+        assert!(after.iter().any(|t| t.starts_with("keep2")));
         Ok(())
     }
 }

@@ -850,3 +850,53 @@ mod redaction_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod downvote_tests {
+    use super::*;
+
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+    async fn play(pool: &sqlx::PgPool, url: &str) -> (i64, i64) {
+        let metadata_id: i64 = sqlx::query_scalar(
+            "INSERT INTO metadata (source_url) VALUES ($1) RETURNING id::bigint",
+        )
+        .bind(url)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let log = PlayLog::create(pool, 1, 1, metadata_id).await.unwrap();
+        (metadata_id, log.id)
+    }
+
+    /// 🪤 The original #207 bug: `downvote_track` took the newest *metadata*
+    /// id of the guild and used it as a play_log id, ignoring the URL.
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn downvote_track_dislikes_the_play_of_that_url(pool: sqlx::PgPool) {
+        // Shift metadata ids away from play_log ids.
+        for i in 0..3 {
+            sqlx::query("INSERT INTO metadata (source_url) VALUES ($1)")
+                .bind(format!("https://example.test/filler{i}"))
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        let (_, wanted) = play(&pool, "https://example.test/a").await;
+        let (_, _newest_other) = play(&pool, "https://example.test/b").await;
+        let data = Data(Arc::new(DataInner::default().with_database_pool(pool)));
+        let reaction = data
+            .downvote_track(GuildId::new(1), "https://example.test/a")
+            .await
+            .unwrap();
+        assert_eq!(reaction.play_log_id, wanted);
+        assert_eq!(reaction.dislikes, 1);
+        let unlogged = data
+            .downvote_track(GuildId::new(1), "https://example.test/never")
+            .await;
+        assert_eq!(unlogged.unwrap_err(), CrackedError::NoPlayLogged);
+    }
+}
