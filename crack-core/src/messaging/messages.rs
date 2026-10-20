@@ -818,6 +818,16 @@ pub const MODLOG_TITLE_ROOM_KICK: &str = "👢 Kicked from a room";
 pub const MODLOG_TITLE_ROOM_UNBLOCK: &str = "✅ Let back into a room";
 pub const MODLOG_TITLE_ROOM_MUTE: &str = "🤐 Muted in a room";
 pub const MODLOG_TITLE_ROOM_UNMUTE: &str = "🗣️ Unmuted in a room";
+pub const MODLOG_TITLE_IMMUNITY_GRANTED: &str = "🛡️ Immunity granted";
+pub const MODLOG_TITLE_IMMUNITY_LIFTED: &str = "🛡️ Immunity lifted";
+pub const MODLOG_TITLE_CREDITS_ADJUSTED: &str = "🪙 Credits adjusted";
+pub const MODLOG_GRANTED_IMMUNITY_TO: &str = "granted immunity to";
+pub const MODLOG_LIFTED_IMMUNITY_OF: &str = "lifted the immunity of";
+pub const MODLOG_ADJUSTED_CREDITS_OF: &str = "adjusted the credits of";
+pub const MODLOG_UNTIL: &str = "until";
+pub const MODLOG_UNTIL_LIFTED: &str = "until lifted";
+/// U+2212 MINUS SIGN, for a negative amount (the repo has no other convention).
+pub const MODLOG_MINUS: &str = "\u{2212}";
 pub const MODLOG_AUDIT_FOOTER: &str = "Matched from Discord's audit log by timing";
 pub const MODLOG_REASON_FIELD: &str = "Reason";
 pub const MODLOG_BY: &str = "by";

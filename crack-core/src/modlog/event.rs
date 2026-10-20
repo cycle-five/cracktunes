@@ -2,6 +2,7 @@
 use crate::messaging::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
 use crate::messaging::messages::*;
 use crate::messaging::render::{Mentions, RenderCx, Rendered};
+use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, CreateEmbed, CreateEmbedFooter, Timestamp, UserId};
 
 /// How many members a batch names before "and N more".
@@ -84,6 +85,22 @@ pub enum ModLogEvent {
         on: bool,
         reason: Option<String>,
     },
+    ImmunityGranted {
+        by: UserId,
+        target: UserId,
+        until: Option<DateTime<Utc>>,
+        reason: Option<String>,
+    },
+    ImmunityLifted {
+        by: UserId,
+        target: UserId,
+    },
+    CreditsAdjusted {
+        by: UserId,
+        target: UserId,
+        amount: i64,
+        reason: String,
+    },
 }
 
 /// For logs: the kind of event.
@@ -98,6 +115,9 @@ impl std::fmt::Display for ModLogEvent {
             Self::RoomKick { .. } => "room_kick",
             Self::RoomUnblock { .. } => "room_unblock",
             Self::RoomMute { .. } => "room_mute",
+            Self::ImmunityGranted { .. } => "immunity_granted",
+            Self::ImmunityLifted { .. } => "immunity_lifted",
+            Self::CreditsAdjusted { .. } => "credits_adjusted",
         };
         write!(f, "ModLog({kind})")
     }
@@ -305,6 +325,59 @@ fn parts(e: &ModLogEvent) -> Parts {
                 ),
             )
         },
+        ModLogEvent::ImmunityGranted {
+            by,
+            target,
+            until,
+            reason,
+        } => {
+            let until = until.map_or_else(
+                || MODLOG_UNTIL_LIFTED.to_owned(),
+                |t| format!("{MODLOG_UNTIL} <t:{}:f>", t.timestamp()),
+            );
+            Parts {
+                reason: reason.clone(),
+                ..plain(
+                    MODLOG_TITLE_IMMUNITY_GRANTED,
+                    format!(
+                        "{} {MODLOG_GRANTED_IMMUNITY_TO} {} {until}",
+                        user(*by),
+                        user(*target)
+                    ),
+                )
+            }
+        },
+        ModLogEvent::ImmunityLifted { by, target } => plain(
+            MODLOG_TITLE_IMMUNITY_LIFTED,
+            format!(
+                "{} {MODLOG_LIFTED_IMMUNITY_OF} {}",
+                user(*by),
+                user(*target)
+            ),
+        ),
+        ModLogEvent::CreditsAdjusted {
+            by,
+            target,
+            amount,
+            reason,
+        } => {
+            let signed = if *amount < 0 {
+                format!("{MODLOG_MINUS}{}", amount.unsigned_abs())
+            } else {
+                format!("+{amount}")
+            };
+            Parts {
+                reason: Some(reason.clone()),
+                ..plain(
+                    MODLOG_TITLE_CREDITS_ADJUSTED,
+                    format!(
+                        "{} {MODLOG_ADJUSTED_CREDITS_OF} {} {MODLOG_BY} {signed}",
+                        user(*by),
+                        user(*target)
+                    ),
+                )
+            }
+        },
     }
 }
 
@@ -421,6 +494,19 @@ mod tests {
                 actor: A,
                 on: false,
                 reason: None,
+            },
+            ModLogEvent::ImmunityGranted {
+                by: A,
+                target: T,
+                until: None,
+                reason: None,
+            },
+            ModLogEvent::ImmunityLifted { by: A, target: T },
+            ModLogEvent::CreditsAdjusted {
+                by: A,
+                target: T,
+                amount: 5,
+                reason: "x".into(),
             },
         ]
     }
@@ -618,5 +704,117 @@ mod tests {
             .to_owned();
         assert_eq!(v.chars().count(), FIELD_MAX);
         assert!(v.ends_with('…'));
+    }
+
+    fn fields(r: &Rendered) -> (String, String, Option<String>) {
+        let j = json(r);
+        (
+            j["title"].as_str().unwrap().to_owned(),
+            j["description"].as_str().unwrap().to_owned(),
+            j["fields"][0]["value"].as_str().map(str::to_owned),
+        )
+    }
+
+    #[test]
+    fn immunity_granted_shows_mod_target_until_and_reason() {
+        let until = chrono::DateTime::from_timestamp(1_700_100_000, 0).unwrap();
+        let finite = render(
+            &ModLogEvent::ImmunityGranted {
+                by: A,
+                target: T,
+                until: Some(until),
+                reason: Some("raid cleanup".into()),
+            },
+            &cx(),
+        );
+        assert_eq!(
+            fields(&finite),
+            (
+                "🛡️ Immunity granted".to_owned(),
+                "<@22> granted immunity to <@11> until <t:1700100000:f>".to_owned(),
+                Some("raid cleanup".to_owned()),
+            )
+        );
+        let open = render(
+            &ModLogEvent::ImmunityGranted {
+                by: A,
+                target: T,
+                until: None,
+                reason: None,
+            },
+            &cx(),
+        );
+        assert_eq!(
+            fields(&open),
+            (
+                "🛡️ Immunity granted".to_owned(),
+                "<@22> granted immunity to <@11> until lifted".to_owned(),
+                None,
+            )
+        );
+    }
+
+    #[test]
+    fn immunity_lifted_shows_mod_and_target() {
+        let r = render(&ModLogEvent::ImmunityLifted { by: A, target: T }, &cx());
+        assert_eq!(
+            fields(&r),
+            (
+                "🛡️ Immunity lifted".to_owned(),
+                "<@22> lifted the immunity of <@11>".to_owned(),
+                None,
+            )
+        );
+    }
+
+    #[test]
+    fn credits_adjusted_shows_signed_amount_and_reason() {
+        let up = render(
+            &ModLogEvent::CreditsAdjusted {
+                by: A,
+                target: T,
+                amount: 150,
+                reason: "event prize".into(),
+            },
+            &cx(),
+        );
+        assert_eq!(
+            fields(&up),
+            (
+                "🪙 Credits adjusted".to_owned(),
+                "<@22> adjusted the credits of <@11> by +150".to_owned(),
+                Some("event prize".to_owned()),
+            )
+        );
+        let down = render(
+            &ModLogEvent::CreditsAdjusted {
+                by: A,
+                target: T,
+                amount: -200,
+                reason: "mistake".into(),
+            },
+            &cx(),
+        );
+        assert_eq!(
+            fields(&down),
+            (
+                "🪙 Credits adjusted".to_owned(),
+                "<@22> adjusted the credits of <@11> by \u{2212}200".to_owned(),
+                Some("mistake".to_owned()),
+            )
+        );
+    }
+
+    #[test]
+    fn economy_events_log_their_kind() {
+        let shown: Vec<String> = all().iter().rev().take(3).map(|e| e.to_string()).collect();
+        assert_eq!(
+            shown,
+            [
+                "ModLog(credits_adjusted)",
+                "ModLog(immunity_lifted)",
+                "ModLog(immunity_granted)"
+            ]
+        );
     }
 }
