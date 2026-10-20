@@ -5,20 +5,27 @@
 use crate::{
     backend::GuildEntry,
     history::HistoryPage,
-    settings::{ModLogSettingsView, RoomSettingsView},
+    settings::{EconomySettingsView, ModLogSettingsView, RoomSettingsView},
     view::PageState,
 };
 use crack_core::{
     messaging::{
         message::REPO_LINK,
         messages::{
-            DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE, DASH_MODLOG_CHANNEL, DASH_MODLOG_ENABLED,
-            DASH_MODLOG_GUIDE, DASH_MODLOG_NO_CHANNEL_OPTION, DASH_MODLOG_NO_CHANNEL_YET,
-            DASH_MODLOG_TITLE, DASH_SETTINGS_ENABLED, DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE,
-            DASH_SETTINGS_HUB, DASH_SETTINGS_LIMIT, DASH_SETTINGS_LINK,
-            DASH_SETTINGS_NO_HUB_OPTION, DASH_SETTINGS_PERMISSIONS, DASH_SETTINGS_PREVIEW,
-            DASH_SETTINGS_SAVE, DASH_SETTINGS_SAVED, DASH_SETTINGS_SAVING_FAILED,
-            DASH_SETTINGS_TEMPLATE, DASH_SETTINGS_TITLE, DASH_SIGN_IN, JOIN_VOICE_FOR_CONTROLS,
+            DASH_ECONOMY_CURRENCY_EMOJI, DASH_ECONOMY_CURRENCY_NAME, DASH_ECONOMY_ENABLED,
+            DASH_ECONOMY_GAMBLING, DASH_ECONOMY_GAMBLING_NOTE, DASH_ECONOMY_GUIDE,
+            DASH_ECONOMY_IMMUNITY_HOURS, DASH_ECONOMY_IMMUNITY_MODS, DASH_ECONOMY_IMMUNITY_OPTOUT,
+            DASH_ECONOMY_IMMUNITY_SHOP, DASH_ECONOMY_MAX_BET, DASH_ECONOMY_MESSAGE_COOLDOWN,
+            DASH_ECONOMY_MESSAGE_RATE, DASH_ECONOMY_OPTOUT_COOLDOWN, DASH_ECONOMY_PRICES,
+            DASH_ECONOMY_PRICE_COST, DASH_ECONOMY_PRICE_FOR_SALE, DASH_ECONOMY_TITLE,
+            DASH_ECONOMY_VOICE_RATE, DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE,
+            DASH_MODLOG_CHANNEL, DASH_MODLOG_ENABLED, DASH_MODLOG_GUIDE,
+            DASH_MODLOG_NO_CHANNEL_OPTION, DASH_MODLOG_NO_CHANNEL_YET, DASH_MODLOG_TITLE,
+            DASH_SETTINGS_ENABLED, DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE, DASH_SETTINGS_HUB,
+            DASH_SETTINGS_LIMIT, DASH_SETTINGS_LINK, DASH_SETTINGS_NO_HUB_OPTION,
+            DASH_SETTINGS_PERMISSIONS, DASH_SETTINGS_PREVIEW, DASH_SETTINGS_SAVE,
+            DASH_SETTINGS_SAVED, DASH_SETTINGS_SAVING_FAILED, DASH_SETTINGS_TEMPLATE,
+            DASH_SETTINGS_TITLE, DASH_SIGN_IN, ECONOMY_DOCS_URL, JOIN_VOICE_FOR_CONTROLS,
             MODLOG_STATUS_READY, MODLOG_STATUS_UNKNOWN, PATREON_URL, PREMIUM_CONTROLS,
             PREMIUM_HISTORY, ROOM_STATUS_NO_HUB_YET, ROOM_STATUS_READY, ROOM_STATUS_UNKNOWN,
         },
@@ -237,7 +244,80 @@ pub fn settings_page(
     guild_id: GuildId,
     view: &RoomSettingsView,
     modlog: &ModLogSettingsView,
+    economy: &EconomySettingsView,
 ) -> String {
+    let check = |on: bool| if on { " checked" } else { "" };
+    let price_rows: String = economy
+        .prices
+        .iter()
+        .map(|p| {
+            format!(
+                "<tr data-kind=\"{kind}\"><td>{label}</td>\
+<td><input type=\"checkbox\" class=\"e-price-on\" aria-label=\"{for_sale}\"{on}></td>\
+<td><input type=\"number\" class=\"e-price\" aria-label=\"{cost}\" min=\"1\" max=\"1000000\" value=\"{price}\"></td></tr>",
+                kind = esc(&p.kind),
+                label = esc(&p.label),
+                for_sale = esc(DASH_ECONOMY_PRICE_FOR_SALE),
+                cost = esc(DASH_ECONOMY_PRICE_COST),
+                on = check(p.on),
+                price = p.price,
+            )
+        })
+        .collect();
+    let economy_html = format!(
+        "<h2>{title}</h2>\
+<form id=\"economy-form\" autocomplete=\"off\">\
+<label class=\"check\"><input type=\"checkbox\" id=\"e-enabled\"{enabled}> {enabled_text}</label>\
+<label>{name_text} <input type=\"text\" id=\"e-name\" maxlength=\"24\" value=\"{name}\"></label>\
+<label>{emoji_text} <input type=\"text\" id=\"e-emoji\" maxlength=\"64\" value=\"{emoji}\"></label>\
+<label>{voice_text} <input type=\"number\" id=\"e-voice\" min=\"0\" max=\"100\" value=\"{voice}\"></label>\
+<label>{message_text} <input type=\"number\" id=\"e-message\" min=\"0\" max=\"100\" value=\"{message}\"></label>\
+<label>{cooldown_text} <input type=\"number\" id=\"e-cooldown\" min=\"10\" max=\"3600\" value=\"{cooldown}\"></label>\
+<h3>{prices_text}</h3><table id=\"e-prices\"><tbody>{price_rows}</tbody></table>\
+<label class=\"check\"><input type=\"checkbox\" id=\"e-optout\"{optout}> {optout_text}</label>\
+<label class=\"check\"><input type=\"checkbox\" id=\"e-shop\"{shop}> {shop_text}</label>\
+<label class=\"check\"><input type=\"checkbox\" id=\"e-mods\"{mods}> {mods_text}</label>\
+<label>{optout_days_text} <input type=\"number\" id=\"e-optout-days\" min=\"0\" max=\"90\" value=\"{optout_days}\"></label>\
+<label>{hours_text} <input type=\"number\" id=\"e-hours\" min=\"1\" max=\"720\" value=\"{hours}\"></label>\
+<label class=\"check\"><input type=\"checkbox\" id=\"e-gambling\"{gambling}> {gambling_text}</label>\
+<p id=\"e-gambling-note\">{gambling_note}</p>\
+<label>{max_bet_text} <input type=\"number\" id=\"e-max-bet\" min=\"1\" max=\"1000000\" value=\"{max_bet}\"></label>\
+<button type=\"submit\" id=\"e-save\">{save}</button>\
+<p id=\"e-note\" role=\"status\" hidden></p></form>\
+<p class=\"links\"><a href=\"{guide}\">{guide_text}</a></p>",
+        title = esc(DASH_ECONOMY_TITLE),
+        enabled = check(economy.enabled),
+        enabled_text = esc(DASH_ECONOMY_ENABLED),
+        name_text = esc(DASH_ECONOMY_CURRENCY_NAME),
+        name = esc(&economy.currency_name),
+        emoji_text = esc(DASH_ECONOMY_CURRENCY_EMOJI),
+        emoji = esc(&economy.currency_emoji),
+        voice_text = esc(DASH_ECONOMY_VOICE_RATE),
+        voice = economy.voice_credits_per_minute,
+        message_text = esc(DASH_ECONOMY_MESSAGE_RATE),
+        message = economy.message_credits,
+        cooldown_text = esc(DASH_ECONOMY_MESSAGE_COOLDOWN),
+        cooldown = economy.message_cooldown_seconds,
+        prices_text = esc(DASH_ECONOMY_PRICES),
+        optout = check(economy.immunity_optout),
+        optout_text = esc(DASH_ECONOMY_IMMUNITY_OPTOUT),
+        shop = check(economy.immunity_shop),
+        shop_text = esc(DASH_ECONOMY_IMMUNITY_SHOP),
+        mods = check(economy.immunity_mods),
+        mods_text = esc(DASH_ECONOMY_IMMUNITY_MODS),
+        optout_days_text = esc(DASH_ECONOMY_OPTOUT_COOLDOWN),
+        optout_days = economy.optout_cooldown_days,
+        hours_text = esc(DASH_ECONOMY_IMMUNITY_HOURS),
+        hours = economy.bought_immunity_hours,
+        gambling = check(economy.gambling_enabled),
+        gambling_text = esc(DASH_ECONOMY_GAMBLING),
+        gambling_note = esc(DASH_ECONOMY_GAMBLING_NOTE),
+        max_bet_text = esc(DASH_ECONOMY_MAX_BET),
+        max_bet = economy.max_bet,
+        save = esc(DASH_SETTINGS_SAVE),
+        guide = esc(ECONOMY_DOCS_URL),
+        guide_text = esc(DASH_ECONOMY_GUIDE),
+    );
     let log_channels: String = modlog
         .text_channels
         .iter()
@@ -337,7 +417,7 @@ data-unknown=\"{unknown}\">{findings}</div>\
 <button type=\"submit\" id=\"m-save\">{save}</button>\
 <p id=\"m-note\" role=\"status\" hidden></p></form>\
 <h3>{permissions}</h3><div id=\"m-findings\" data-ready=\"{log_ready}\" data-no-channel=\"{log_no_channel}\" \
-data-unknown=\"{log_unknown}\">{log_findings}</div></section>",
+data-unknown=\"{log_unknown}\">{log_findings}</div>{economy_html}</section>",
             saved = esc(DASH_SETTINGS_SAVED),
             offline = esc(DASH_SETTINGS_SAVING_FAILED),
             title = esc(DASH_SETTINGS_TITLE),
@@ -374,6 +454,7 @@ data-unknown=\"{log_unknown}\">{log_findings}</div></section>",
             log_ready = esc(MODLOG_STATUS_READY),
             log_no_channel = esc(DASH_MODLOG_NO_CHANNEL_YET),
             log_unknown = esc(MODLOG_STATUS_UNKNOWN),
+            economy_html = economy_html,
         ),
         SETTINGS_SCRIPTS,
     )

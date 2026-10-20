@@ -960,3 +960,43 @@ pub const ECONOMY_ADMIN_ADJUST_DONE: &str = "Adjusted. They now hold";
 pub const ECONOMY_ADMIN_ADJUST_FAILED: &str = "Couldn't adjust that right now. Try again.";
 pub const ECONOMY_ADMIN_NEEDS_MODERATE: &str =
     "This command needs the Moderate Members permission.";
+
+// ---- Economy: the dashboard section ----
+pub const DASH_ECONOMY_TITLE: &str = "Economy";
+pub const DASH_ECONOMY_ENABLED: &str = "Economy is on";
+pub const DASH_ECONOMY_CURRENCY_NAME: &str = "Currency name";
+pub const DASH_ECONOMY_CURRENCY_EMOJI: &str = "Currency emoji";
+pub const DASH_ECONOMY_VOICE_RATE: &str = "Credits per minute in voice";
+pub const DASH_ECONOMY_MESSAGE_RATE: &str = "Credits per message";
+pub const DASH_ECONOMY_MESSAGE_COOLDOWN: &str = "Seconds between paid messages";
+pub const DASH_ECONOMY_PRICES: &str = "Shop prices";
+pub const DASH_ECONOMY_PRICE_FOR_SALE: &str = "For sale";
+pub const DASH_ECONOMY_PRICE_COST: &str = "Price";
+pub const DASH_ECONOMY_IMMUNITY_OPTOUT: &str = "Members may opt out of the economy for immunity";
+pub const DASH_ECONOMY_IMMUNITY_SHOP: &str = "Members may buy immunity in the shop";
+pub const DASH_ECONOMY_IMMUNITY_MODS: &str = "Moderators may grant immunity";
+pub const DASH_ECONOMY_OPTOUT_COOLDOWN: &str = "Days between opting out and back in";
+pub const DASH_ECONOMY_IMMUNITY_HOURS: &str = "Hours of bought immunity";
+pub const DASH_ECONOMY_GAMBLING: &str = "Gambling (coinflip) is on";
+pub const DASH_ECONOMY_MAX_BET: &str = "Largest bet";
+pub const DASH_ECONOMY_GAMBLING_NOTE: &str =
+    "Credits have no cash value. Only turn this on where your members are adults.";
+pub const DASH_ECONOMY_GUIDE: &str = "How the economy works";
+pub const DASH_ECONOMY_NO_DATABASE: &str = "The economy needs a database.";
+pub const DASH_ECONOMY_BAD_CURRENCY_NAME: &str =
+    "The currency name must be 1 to 24 characters, with no control characters.";
+pub const DASH_ECONOMY_BAD_CURRENCY_EMOJI: &str =
+    "The currency emoji must be 1 to 64 characters, with no spaces or control characters.";
+pub const DASH_ECONOMY_BAD_RATE: &str = "Earning rates must be between 0 and 100.";
+pub const DASH_ECONOMY_BAD_COOLDOWN: &str =
+    "The message cooldown must be between 10 and 3600 seconds.";
+pub const DASH_ECONOMY_BAD_PRICE: &str = "Every price must be between 1 and 1,000,000.";
+pub const DASH_ECONOMY_BAD_OPTOUT_COOLDOWN: &str =
+    "The opt-out cooldown must be between 0 and 90 days.";
+pub const DASH_ECONOMY_BAD_IMMUNITY_HOURS: &str =
+    "Bought immunity must last between 1 and 720 hours.";
+pub const DASH_ECONOMY_BAD_MAX_BET: &str = "The largest bet must be between 1 and 1,000,000.";
+pub const DASH_ECONOMY_UNKNOWN_ACTION: &str = "That is not something this server can sell.";
+pub const DASH_ECONOMY_SETTINGS_NOT_LOADED: &str =
+    "Economy settings couldn't be read from the database yet — try again in a minute.";
+pub const DASH_ECONOMY_SAVE_FAILED: &str = "Couldn't save the economy settings — try again.";

@@ -6,8 +6,8 @@ use crate::{
     access::{HistoryAccess, Presence},
     history::{HistoryPage, HistoryQuery},
     settings::{
-        ModLogSaveRefused, ModLogSettingsForm, ModLogSettingsView, RoomSettingsForm,
-        RoomSettingsView, SaveRefused,
+        EconomySaveRefused, EconomySettingsForm, EconomySettingsView, ModLogSaveRefused,
+        ModLogSettingsForm, ModLogSettingsView, RoomSettingsForm, RoomSettingsView, SaveRefused,
     },
     view::PlanView,
     watch::ViewSource,
@@ -90,4 +90,11 @@ pub trait Backend: ViewSource {
         g: GuildId,
         f: ModLogSettingsForm,
     ) -> impl Future<Output = Result<ModLogSettingsView, ModLogSaveRefused>> + Send;
+    fn economy_settings(&self, g: GuildId) -> impl Future<Output = EconomySettingsView> + Send;
+    fn save_economy_settings(
+        &self,
+        user: UserId,
+        g: GuildId,
+        f: EconomySettingsForm,
+    ) -> impl Future<Output = Result<EconomySettingsView, EconomySaveRefused>> + Send;
 }

@@ -8,7 +8,10 @@ use crate::{
     },
     limit::RateLimit,
     page,
-    settings::{self, ModLogSaveRefused, ModLogSettingsForm, RoomSettingsForm, SaveRefused},
+    settings::{
+        self, EconomySaveRefused, EconomySettingsForm, ModLogSaveRefused, ModLogSettingsForm,
+        RoomSettingsForm, SaveRefused,
+    },
     view::{
         ControlRequest, ControlResult, MoveRequest, MoveResult, PageState, PlanView, QueueView,
     },
@@ -27,6 +30,7 @@ use axum::{
 };
 use catacombs::auth::AuthenticatedUser;
 use crack_core::messaging::messages::{
+    DASH_ECONOMY_SAVE_FAILED, DASH_ECONOMY_SETTINGS_NOT_LOADED, DASH_ECONOMY_UNKNOWN_ACTION,
     DASH_MODLOG_UNKNOWN_CHANNEL, DASH_SETTINGS_FAILED, DASH_SETTINGS_NEEDS_MANAGE,
     DASH_SETTINGS_NOT_LOADED, DASH_SETTINGS_TOO_MANY, DASH_SETTINGS_UNKNOWN_CHANNEL,
     DASH_SETTINGS_UNREADABLE, MODLOG_SETTINGS_NOT_LOADED, MODLOG_SETTINGS_SAVE_FAILED,
@@ -282,11 +286,12 @@ async fn settings_page<B: Backend>(
     }
     let view = s.backend.room_settings(g).await;
     let modlog = s.backend.mod_log_settings(g).await;
+    let economy = s.backend.economy_settings(g).await;
     let name = s
         .backend
         .guild_name(g)
         .unwrap_or_else(|| "Server".to_owned());
-    Html(page::settings_page(&name, g, &view, &modlog)).into_response()
+    Html(page::settings_page(&name, g, &view, &modlog, &economy)).into_response()
 }
 
 /// JSON only and same-origin, as `/control`; the same Manage Server access
@@ -390,6 +395,59 @@ async fn save_modlog<B: Backend>(
         Err(ModLogSaveRefused::NotLoaded) => {
             error_json(StatusCode::SERVICE_UNAVAILABLE, MODLOG_SETTINGS_NOT_LOADED)
         },
+    }
+}
+
+/// The same ladder as `save_modlog`.
+async fn save_economy<B: Backend>(
+    State(s): State<WebState<B>>,
+    session: Session,
+    Path(raw): Path<String>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let Some(g) = parse_guild(&raw) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Some((user, _)) = user_id(session) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if !is_json(&headers) {
+        return StatusCode::UNSUPPORTED_MEDIA_TYPE.into_response();
+    }
+    if headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) != Some(&*s.origin) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    match s.backend.history_access(g, user).await {
+        HistoryAccess::Hidden => return StatusCode::NOT_FOUND.into_response(),
+        HistoryAccess::Unavailable => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        HistoryAccess::Forbidden => {
+            return error_json(StatusCode::FORBIDDEN, DASH_SETTINGS_NEEDS_MANAGE)
+        },
+        HistoryAccess::Allowed => {},
+    }
+    if !s.limiter.allow(user, Instant::now()) {
+        return error_json(StatusCode::TOO_MANY_REQUESTS, DASH_SETTINGS_TOO_MANY);
+    }
+    let Ok(form) = serde_json::from_slice::<EconomySettingsForm>(&body) else {
+        return error_json(StatusCode::BAD_REQUEST, DASH_SETTINGS_UNREADABLE);
+    };
+    match s.backend.save_economy_settings(user, g, form).await {
+        Ok(view) => Json(view).into_response(),
+        Err(EconomySaveRefused::Invalid(e)) => error_json(
+            StatusCode::BAD_REQUEST,
+            settings::economy_invalid_message(e),
+        ),
+        Err(EconomySaveRefused::UnknownAction) => {
+            error_json(StatusCode::BAD_REQUEST, DASH_ECONOMY_UNKNOWN_ACTION)
+        },
+        Err(EconomySaveRefused::Failed) => {
+            error_json(StatusCode::SERVICE_UNAVAILABLE, DASH_ECONOMY_SAVE_FAILED)
+        },
+        Err(EconomySaveRefused::NotLoaded) => error_json(
+            StatusCode::SERVICE_UNAVAILABLE,
+            DASH_ECONOMY_SETTINGS_NOT_LOADED,
+        ),
     }
 }
 
@@ -709,6 +767,7 @@ pub fn router<B: Backend>(state: WebState<B>) -> Router {
         .route("/g/{guild}/settings", get(settings_page::<B>))
         .route("/g/{guild}/settings/rooms", post(save_rooms::<B>))
         .route("/g/{guild}/settings/modlog", post(save_modlog::<B>))
+        .route("/g/{guild}/settings/economy", post(save_economy::<B>))
         .route_layer(axum::middleware::map_response(no_store));
     let timed = Router::new()
         .merge(per_user)
@@ -2675,6 +2734,274 @@ mod test {
             assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{bad}");
         }
         assert!(fake.modlog_saves.lock().unwrap().is_empty());
+    }
+
+    // ---- economy settings ----
+
+    use crate::settings::{
+        EconomySaveRefused, EconomySettingsForm, EconomySettingsView, PriceForm, PriceView,
+    };
+    use crack_core::economy::settings::EconomySettingsError;
+    use crack_core::messaging::messages::{
+        DASH_ECONOMY_BAD_PRICE, DASH_ECONOMY_GAMBLING_NOTE, DASH_ECONOMY_NO_DATABASE,
+        DASH_ECONOMY_SAVE_FAILED, DASH_ECONOMY_SETTINGS_NOT_LOADED, DASH_ECONOMY_UNKNOWN_ACTION,
+        ECONOMY_DOCS_URL,
+    };
+
+    const ECONOMY_FORM: &str = r#"{"enabled":true,"currency_name":"gems","currency_emoji":"X","voice_credits_per_minute":3,"message_credits":4,"message_cooldown_seconds":90,"prices":[{"kind":"immunity","price":77,"on":false}],"immunity_optout":false,"immunity_shop":true,"immunity_mods":false,"optout_cooldown_days":2,"bought_immunity_hours":5,"gambling_enabled":true,"max_bet":9}"#;
+
+    fn post_economy_req(
+        cookie: Option<&str>,
+        ctype: Option<&str>,
+        origin: Option<&str>,
+        text: &str,
+    ) -> Request<Body> {
+        let mut req = Request::post("/g/5/settings/economy");
+        if let Some(c) = cookie {
+            req = req.header(header::COOKIE, c);
+        }
+        if let Some(c) = ctype {
+            req = req.header(header::CONTENT_TYPE, c);
+        }
+        if let Some(o) = origin {
+            req = req.header(header::ORIGIN, o);
+        }
+        req.body(Body::from(text.to_owned())).unwrap()
+    }
+
+    async fn post_economy(
+        fake: std::sync::Arc<FakeBackend>,
+        text: &str,
+    ) -> axum::response::Response {
+        app(fake)
+            .oneshot(post_economy_req(
+                Some(&session(9)),
+                Some("application/json"),
+                Some(ORIGIN),
+                text,
+            ))
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn economy_save_403s_for_non_managers() {
+        // Access is checked before the body is parsed.
+        for body_text in [ECONOMY_FORM, "nope"] {
+            for (access, status) in [
+                (HistoryAccess::Hidden, StatusCode::NOT_FOUND),
+                (HistoryAccess::Unavailable, StatusCode::SERVICE_UNAVAILABLE),
+                (HistoryAccess::Forbidden, StatusCode::FORBIDDEN),
+            ] {
+                let fake = settings_fake(access);
+                let r = post_economy(fake.clone(), body_text).await;
+                assert_eq!(r.status(), status, "{access:?} {body_text}");
+                assert!(fake.economy_saves.lock().unwrap().is_empty(), "{access:?}");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn economy_save_guards_json_origin_login_and_rate() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        let router = app(fake.clone());
+        let json = Some("application/json");
+        let bad = [
+            (
+                Some(session(9)),
+                Some("text/plain"),
+                Some(ORIGIN),
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            ),
+            (
+                Some(session(9)),
+                json,
+                Some("https://evil.example"),
+                StatusCode::FORBIDDEN,
+            ),
+            (Some(session(9)), json, None, StatusCode::FORBIDDEN),
+            (None, json, Some(ORIGIN), StatusCode::UNAUTHORIZED),
+        ];
+        for (cookie, ctype, origin, status) in bad {
+            let r = router
+                .clone()
+                .oneshot(post_economy_req(
+                    cookie.as_deref(),
+                    ctype,
+                    origin,
+                    ECONOMY_FORM,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(r.status(), status);
+        }
+        assert!(fake.economy_saves.lock().unwrap().is_empty());
+        let ok = || post_economy_req(Some(&session(9)), json, Some(ORIGIN), ECONOMY_FORM);
+        for i in 0..5 {
+            let r = router.clone().oneshot(ok()).await.unwrap();
+            assert_eq!(r.status(), StatusCode::OK, "save {i}");
+        }
+        let r = router.clone().oneshot(ok()).await.unwrap();
+        assert_eq!(r.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(fake.economy_saves.lock().unwrap().len(), 5);
+    }
+
+    #[tokio::test]
+    async fn economy_save_passes_the_exact_form_to_the_backend() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        fake.economy_view.lock().unwrap().currency_name = "echoed".into();
+        let r = post_economy(fake.clone(), ECONOMY_FORM).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let got = body(r).await;
+        assert!(got.contains("\"currency_name\":\"echoed\""), "{got}");
+        assert_eq!(
+            fake.economy_saves.lock().unwrap().clone(),
+            vec![(
+                GuildId::new(5),
+                serenity::all::UserId::new(9),
+                EconomySettingsForm {
+                    enabled: true,
+                    currency_name: "gems".into(),
+                    currency_emoji: "X".into(),
+                    voice_credits_per_minute: 3,
+                    message_credits: 4,
+                    message_cooldown_seconds: 90,
+                    prices: vec![PriceForm {
+                        kind: "immunity".into(),
+                        price: 77,
+                        on: false,
+                    }],
+                    immunity_optout: false,
+                    immunity_shop: true,
+                    immunity_mods: false,
+                    optout_cooldown_days: 2,
+                    bought_immunity_hours: 5,
+                    gambling_enabled: true,
+                    max_bet: 9,
+                }
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn economy_save_refuses_an_unknown_action() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        *fake.economy_save_result.lock().unwrap() = Err(EconomySaveRefused::UnknownAction);
+        let r = post_economy(fake, ECONOMY_FORM).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        let got = body(r).await;
+        assert!(
+            got.contains(&serde_json::to_string(DASH_ECONOMY_UNKNOWN_ACTION).unwrap()),
+            "{got}"
+        );
+    }
+
+    #[tokio::test]
+    async fn economy_save_shows_validation_messages() {
+        for (refused, status, text) in [
+            (
+                EconomySaveRefused::Invalid(EconomySettingsError::NoDatabase),
+                StatusCode::BAD_REQUEST,
+                DASH_ECONOMY_NO_DATABASE,
+            ),
+            (
+                EconomySaveRefused::Invalid(EconomySettingsError::BadPrice),
+                StatusCode::BAD_REQUEST,
+                DASH_ECONOMY_BAD_PRICE,
+            ),
+            (
+                EconomySaveRefused::Failed,
+                StatusCode::SERVICE_UNAVAILABLE,
+                DASH_ECONOMY_SAVE_FAILED,
+            ),
+            (
+                EconomySaveRefused::NotLoaded,
+                StatusCode::SERVICE_UNAVAILABLE,
+                DASH_ECONOMY_SETTINGS_NOT_LOADED,
+            ),
+        ] {
+            let fake = settings_fake(HistoryAccess::Allowed);
+            *fake.economy_save_result.lock().unwrap() = Err(refused);
+            let r = post_economy(fake, ECONOMY_FORM).await;
+            assert_eq!(r.status(), status, "{refused:?}");
+            let got = body(r).await;
+            assert!(
+                got.contains(&format!(
+                    "\"error\":{}",
+                    serde_json::to_string(text).unwrap()
+                )),
+                "{refused:?}: {got}"
+            );
+        }
+        // Unreadable bodies never reach the backend.
+        let fake = settings_fake(HistoryAccess::Allowed);
+        for bad in ["{}", "nope", r#"{"enabled":true,"max_bet":null}"#] {
+            let r = post_economy(fake.clone(), bad).await;
+            assert_eq!(r.status(), StatusCode::BAD_REQUEST, "{bad}");
+        }
+        assert!(fake.economy_saves.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn settings_page_shows_the_economy_section_with_current_values() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        {
+            let mut v = fake.economy_view.lock().unwrap();
+            *v = EconomySettingsView {
+                enabled: true,
+                currency_name: "<b>gems</b>".into(),
+                currency_emoji: "X".into(),
+                voice_credits_per_minute: 3,
+                message_credits: 4,
+                message_cooldown_seconds: 90,
+                prices: vec![PriceView {
+                    kind: "immunity".into(),
+                    label: "Immunity".into(),
+                    price: 77,
+                    on: false,
+                }],
+                immunity_optout: true,
+                immunity_shop: false,
+                immunity_mods: true,
+                optout_cooldown_days: 2,
+                bought_immunity_hours: 5,
+                gambling_enabled: true,
+                max_bet: 9,
+            };
+        }
+        let r = get(fake, "/g/5/settings", Some(&session(9))).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        let html = body(r).await;
+        for needle in [
+            "id=\"economy-form\"",
+            "id=\"e-enabled\" checked",
+            "id=\"e-name\" maxlength=\"24\" value=\"&lt;b&gt;gems&lt;/b&gt;\"",
+            "id=\"e-voice\" min=\"0\" max=\"100\" value=\"3\"",
+            "<tr data-kind=\"immunity\"><td>Immunity</td>",
+            "class=\"e-price\" aria-label=\"Price\" min=\"1\" max=\"1000000\" value=\"77\"",
+            "id=\"e-optout\" checked",
+            "id=\"e-shop\"> ",
+            "id=\"e-gambling\" checked",
+            "id=\"e-max-bet\" min=\"1\" max=\"1000000\" value=\"9\"",
+            "Credits have no cash value. Only turn this on where your members are adults.",
+            ECONOMY_DOCS_URL,
+        ] {
+            assert!(html.contains(needle), "missing {needle}: {html}");
+        }
+        // The price row's "for sale" box is unchecked.
+        assert!(
+            html.contains("class=\"e-price-on\" aria-label=\"For sale\"><"),
+            "{html}"
+        );
+        assert_eq!(
+            DASH_ECONOMY_GAMBLING_NOTE,
+            "Credits have no cash value. Only turn this on where your members are adults."
+        );
+        // The note sits under the gambling switch, the docs link comes last.
+        let at = |n: &str| html.find(n).unwrap();
+        assert!(at("id=\"e-gambling\"") < at("id=\"e-gambling-note\""));
+        assert!(at("id=\"e-gambling-note\"") < at(ECONOMY_DOCS_URL));
+        assert!(at("id=\"modlog-form\"") < at("id=\"economy-form\""));
     }
 
     #[tokio::test]
