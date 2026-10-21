@@ -140,6 +140,19 @@ pub async fn finish(
             return Finished::Skipped;
         },
     };
+    // Escrow (a theme, a bounty) changed nothing in Discord, so there is
+    // nothing to undo: its end is the buyer's refund. This never reads
+    // `undo_plan` and never calls Discord.
+    if row.kind.is_escrow() {
+        return match economy::refund_active(pool, row.id, reason).await {
+            Ok(Some(_)) => Finished::Ended,
+            Ok(None) => Finished::Skipped,
+            Err(err) => {
+                tracing::warn!("economy: refunding action {} failed: {err}", row.id);
+                Finished::Skipped
+            },
+        };
+    }
     let plan = undo_plan(row);
     let outcome = match (&plan, row.target) {
         (UndoPlan::Nothing, _) => Ok(()),
@@ -229,7 +242,8 @@ pub async fn end_running_pranks(
     let Some(pool) = data.database_pool.as_ref() else {
         return Ok(EndedPranks::default());
     };
-    let mut rows = economy::active_of_kind(pool, guild, target, ActionKind::PRANKS).await?;
+    let mut rows =
+        economy::active_of_kind(pool, guild, target, ActionKind::RUNNING_ON_TARGET).await?;
     rows.sort_by_key(|r| (r.kind != ActionKind::Lock, r.id));
     let mut ended = EndedPranks::default();
     for row in &rows {
@@ -274,7 +288,8 @@ pub async fn sweep(
         Ok(due) => due,
         Err(err) => {
             tracing::warn!("economy: reading due actions failed: {err}");
-            return;
+            // Funds below are still due, whatever happened here.
+            return sweep_funds(pool, now).await;
         },
     };
     // Every due row was seen: a backoff for a row not among them is for one
@@ -284,13 +299,31 @@ pub async fn sweep(
         data.economy.keep_undo_backoff(&ids);
     }
     for (guild, row) in due {
-        if !held(guild) || !data.economy.undo_due(row.id, now) {
+        // Escrow makes no Discord call, so the cache has no say in it.
+        if (!row.kind.is_escrow() && !held(guild)) || !data.economy.undo_due(row.id, now) {
             continue;
         }
         match finish(data, discord, guild, &row, "expired", now).await {
             Finished::Retry => data.economy.undo_failed(row.id, now),
             _ => data.economy.undo_settled(row.id),
         }
+    }
+    sweep_funds(pool, now).await;
+}
+
+/// Funds that did not fill: refund every pledge. No Discord call, so no
+/// cached-guild check and no backoff. `expire_fund` re-checks the clock under
+/// the row lock, so a fund filled a moment ago is left alone.
+async fn sweep_funds(pool: &sqlx::PgPool, now: DateTime<Utc>) {
+    match economy::due_funds(pool, now, SWEEP_BATCH).await {
+        Ok(funds) => {
+            for (guild, row) in funds {
+                if let Err(err) = economy::expire_fund(pool, row.id).await {
+                    tracing::warn!("economy: expiring fund {} in {guild} failed: {err}", row.id);
+                }
+            }
+        },
+        Err(err) => tracing::warn!("economy: reading due funds failed: {err}"),
     }
 }
 
@@ -1933,5 +1966,346 @@ mod tests {
             state_of(&pool, ids[1]).await,
             ("ended".into(), Some("cleansed".into()))
         );
+    });
+
+    // ---- Part 3: themes, bounties, funds and the unplayed ----
+
+    const FRIEND: UserId = UserId::new(21);
+
+    async fn fund_wallet(pool: &PgPool, user: UserId, amount: i64) {
+        crate::db::economy::credit_earnings(
+            pool,
+            G,
+            &[crate::db::economy::EarnRow {
+                user,
+                voice: amount,
+                messages: 0,
+            }],
+        )
+        .await
+        .unwrap();
+    }
+
+    fn theme_payload() -> ActionPayload {
+        ActionPayload::Theme {
+            url: "https://example.com/clip".into(),
+            start_secs: 0,
+        }
+    }
+
+    /// Charge an escrow row to `BUYER` the way the shop does.
+    async fn escrow(
+        pool: &PgPool,
+        kind: ActionKind,
+        price: i64,
+        payload: &ActionPayload,
+        expires: DateTime<Utc>,
+    ) -> i64 {
+        let ledger = if kind == ActionKind::Bounty {
+            crate::economy::wallet::LedgerKind::BountyPlaced
+        } else {
+            crate::economy::wallet::LedgerKind::Purchase
+        };
+        crate::db::economy::charge_active(
+            pool,
+            &crate::db::economy::NewAction {
+                guild: G,
+                kind,
+                buyer: BUYER,
+                target: Some(U),
+                price,
+                note: None,
+                signed: false,
+                payload,
+                expires_at: Some(expires),
+            },
+            ledger,
+        )
+        .await
+        .unwrap()
+        .action_id
+    }
+
+    /// Every wallet equals what it was given plus its ledger rows.
+    async fn agree(pool: &PgPool, given: &[(UserId, i64)]) {
+        for (user, start) in given {
+            let delta: i64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(delta), 0)::bigint FROM economy_ledger WHERE user_id = $1",
+            )
+            .bind(user.get() as i64)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+            assert_eq!(
+                crate::db::economy::balance(pool, G, *user).await.unwrap(),
+                start + delta,
+                "wallet of {user} disagrees with its ledger"
+            );
+        }
+    }
+
+    #[test]
+    fn dedications_and_jumps_never_count_as_landed() {
+        let view = FakeView::default();
+        let song = || "a song".to_string();
+        for payload in [
+            ActionPayload::Dedicate { song: song() },
+            ActionPayload::Jump { song: song() },
+        ] {
+            let kind = match payload {
+                ActionPayload::Dedicate { .. } => ActionKind::Dedicate,
+                _ => ActionKind::Jump,
+            };
+            assert_eq!(landed(&view, G, &row(kind, payload)), Some(false));
+        }
+    }
+
+    db_test!(an_expired_theme_refunds_its_buyer, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        let due = escrow(
+            &pool,
+            ActionKind::Theme,
+            60,
+            &theme_payload(),
+            t0() - mins(1),
+        )
+        .await;
+        let later = escrow(
+            &pool,
+            ActionKind::Theme,
+            10,
+            &theme_payload(),
+            t0() + mins(5),
+        )
+        .await;
+        assert_eq!(balance(&pool).await, 30);
+        sweep(&data, &fake, t0(), &|_| true).await;
+        assert!(fake.calls().is_empty(), "{:?}", fake.calls());
+        assert_eq!(balance(&pool).await, 90);
+        assert_eq!(
+            state_of(&pool, due).await,
+            ("ended".into(), Some("expired".into()))
+        );
+        assert_eq!(state_of(&pool, later).await.0, "active", "not due yet");
+        // A second sweep refunds nothing twice.
+        sweep(&data, &fake, t0(), &|_| true).await;
+        assert_eq!(balance(&pool).await, 90);
+        agree(&pool, &[(BUYER, 100)]).await;
+    });
+
+    db_test!(an_expired_bounty_refunds_its_placer, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        let id = escrow(
+            &pool,
+            ActionKind::Bounty,
+            70,
+            &ActionPayload::Bounty,
+            t0() - mins(1),
+        )
+        .await;
+        assert_eq!(balance(&pool).await, 30);
+        // The cache not holding the guild changes nothing: no Discord call.
+        sweep(&data, &fake, t0(), &|_| false).await;
+        assert!(fake.calls().is_empty());
+        assert_eq!(balance(&pool).await, 100);
+        assert_eq!(
+            state_of(&pool, id).await,
+            ("ended".into(), Some("expired".into()))
+        );
+        agree(&pool, &[(BUYER, 100)]).await;
+    });
+
+    db_test!(finish_skips_an_escrow_row_that_already_ended, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        let id = escrow(
+            &pool,
+            ActionKind::Theme,
+            60,
+            &theme_payload(),
+            t0() + mins(5),
+        )
+        .await;
+        let live = economy::due_actions(&pool, t0() + mins(10), 10)
+            .await
+            .unwrap();
+        let row = live.into_iter().find(|(_, r)| r.id == id).unwrap().1;
+        assert_eq!(
+            finish(&data, &fake, G, &row, "cleansed", t0()).await,
+            Finished::Ended
+        );
+        // The caller's copy is stale; the database says it is over.
+        assert_eq!(
+            finish(&data, &fake, G, &row, "expired", t0()).await,
+            Finished::Skipped
+        );
+        assert_eq!(balance(&pool).await, 100);
+        assert_eq!(
+            state_of(&pool, id).await,
+            ("ended".into(), Some("cleansed".into()))
+        );
+        assert!(fake.calls().is_empty());
+        agree(&pool, &[(BUYER, 100)]).await;
+    });
+
+    db_test!(cleanse_ends_a_waiting_theme_and_refunds_it, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        let theme = escrow(
+            &pool,
+            ActionKind::Theme,
+            60,
+            &theme_payload(),
+            t0() + mins(60),
+        )
+        .await;
+        // A bounty on the same member is not touched.
+        let bounty = escrow(
+            &pool,
+            ActionKind::Bounty,
+            20,
+            &ActionPayload::Bounty,
+            t0() + mins(60),
+        )
+        .await;
+        let rename = rename_row(&pool, "active", t0() + mins(60)).await;
+        let ended = end_running_pranks(&data, &fake, G, U, "cleansed", t0())
+            .await
+            .unwrap();
+        assert_eq!(
+            ended,
+            EndedPranks {
+                all: 2,
+                were_active: 2
+            }
+        );
+        // Only the rename touched Discord.
+        assert_eq!(
+            fake.calls(),
+            vec![Call::Nick(U, Some("Al".into()), ActionKind::Rename)]
+        );
+        assert_eq!(
+            state_of(&pool, theme).await,
+            ("ended".into(), Some("cleansed".into()))
+        );
+        assert_eq!(state_of(&pool, bounty).await.0, "active");
+        assert_eq!(state_of(&pool, rename).await.0, "ended");
+        assert_eq!(
+            balance(&pool).await,
+            80,
+            "the theme's 60 is back, the bounty's 20 is not"
+        );
+        agree(&pool, &[(BUYER, 100)]).await;
+    });
+
+    db_test!(an_unfilled_fund_is_refunded_after_24h, |pool| {
+        use crate::db::economy as db;
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        fund_wallet(&pool, FRIEND, 100).await;
+        let payload = pending_rename();
+        let new = |price: i64, kind: ActionKind| db::NewAction {
+            guild: G,
+            kind,
+            buyer: BUYER,
+            target: Some(U),
+            price,
+            note: None,
+            signed: false,
+            payload: &payload,
+            expires_at: Some(Utc::now() + ChronoDuration::hours(24)),
+        };
+        let lapsed = db::open_fund(&pool, &new(90, ActionKind::Rename), Some((40, false)))
+            .await
+            .unwrap()
+            .action_id;
+        db::pledge(&pool, lapsed, G, FRIEND, 30, true)
+            .await
+            .unwrap();
+        // Another fund, on another prank, still has time.
+        let open = db::open_fund(&pool, &new(90, ActionKind::Clown), Some((10, false)))
+            .await
+            .unwrap()
+            .action_id;
+        sqlx::query(
+            "UPDATE economy_actions SET expires_at = now() - interval '1 minute' WHERE id = $1",
+        )
+        .bind(lapsed)
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert_eq!(balance(&pool).await, 50);
+        sweep(&data, &fake, Utc::now(), &|_| false).await;
+        assert!(fake.calls().is_empty(), "{:?}", fake.calls());
+        assert_eq!(
+            state_of(&pool, lapsed).await,
+            ("ended".into(), Some("unfunded".into()))
+        );
+        assert_eq!(state_of(&pool, open).await.0, "funding");
+        assert_eq!(balance(&pool).await, 90, "the 40 is back, the 10 is not");
+        assert_eq!(
+            crate::db::economy::balance(&pool, G, FRIEND).await.unwrap(),
+            100
+        );
+        agree(&pool, &[(BUYER, 100), (FRIEND, 100)]).await;
+        // A second sweep refunds nothing twice.
+        sweep(&data, &fake, Utc::now(), &|_| false).await;
+        assert_eq!(balance(&pool).await, 90);
+        // A sweep whose clock runs ahead of the database's still leaves a fund
+        // that has time (or was filled a moment ago): `expire_fund` judges.
+        sweep(&data, &fake, t0(), &|_| false).await;
+        assert_eq!(state_of(&pool, open).await.0, "funding");
+        assert_eq!(balance(&pool).await, 90);
+    });
+
+    db_test!(reconcile_refunds_a_pending_dedication, |pool| {
+        use crate::db::economy as db;
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        let mut ids = Vec::new();
+        for (kind, payload) in [
+            (
+                ActionKind::Dedicate,
+                ActionPayload::Dedicate { song: "x".into() },
+            ),
+            (ActionKind::Jump, ActionPayload::Jump { song: "y".into() }),
+        ] {
+            ids.push(
+                db::charge_for_action(
+                    &pool,
+                    &db::NewAction {
+                        guild: G,
+                        kind,
+                        buyer: BUYER,
+                        target: None,
+                        price: 40,
+                        note: None,
+                        signed: false,
+                        payload: &payload,
+                        expires_at: None,
+                    },
+                )
+                .await
+                .unwrap()
+                .action_id,
+            );
+        }
+        assert_eq!(balance(&pool).await, 20);
+        // `data_with` started at t0, after both charges.
+        reconcile(&data, &fake, &FakeView::default(), G, Utc::now()).await;
+        assert!(fake.calls().is_empty());
+        assert_eq!(balance(&pool).await, 100);
+        for id in ids {
+            assert_eq!(state_of(&pool, id).await.0, "failed");
+        }
+        agree(&pool, &[(BUYER, 100)]).await;
     });
 }
