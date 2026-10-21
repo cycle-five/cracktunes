@@ -9,9 +9,10 @@ use super::settings::{clown_name, ActionKind, ActionPrice, EconomyConfig};
 use super::target::{check_target, TargetFacts, TargetOutcome};
 use super::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::messages::{
-    ECONOMY_ALREADY_IMMUNE, ECONOMY_ALREADY_REVEALED, ECONOMY_ALREADY_RUNNING_PREFIX,
-    ECONOMY_BUYER_NOT_IN_VOICE, ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION,
-    ECONOMY_CANT_AFFORD_MIDDLE, ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_MIRROR_ALREADY_UP,
+    ECONOMY_ALREADY_DEAFENED, ECONOMY_ALREADY_IMMUNE, ECONOMY_ALREADY_MUTED,
+    ECONOMY_ALREADY_REVEALED, ECONOMY_ALREADY_RUNNING_PREFIX, ECONOMY_BUYER_NOT_IN_VOICE,
+    ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION, ECONOMY_CANT_AFFORD_MIDDLE,
+    ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_CANT_TELL, ECONOMY_MIRROR_ALREADY_UP,
     ECONOMY_NOTHING_TO_CLEANSE, ECONOMY_NOTHING_TO_REVEAL, ECONOMY_NOT_FOR_SALE,
     ECONOMY_NO_DATABASE, ECONOMY_NO_JAIL_CHANNEL, ECONOMY_OFF, ECONOMY_OUT_OF_REACH,
     ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PICK_AGO, ECONOMY_REVEAL_PICK_DAY,
@@ -72,6 +73,14 @@ pub enum Refusal {
     NothingToReveal,
     /// The picked prank was unmasked already.
     AlreadyRevealed,
+    /// A mute on a member who is already server-muted: whoever muted them
+    /// owns it, and the shop's undo would lift it.
+    AlreadyMuted,
+    /// The same for a deafen.
+    AlreadyDeafened,
+    /// A role position nobody could read (the cache can't place one of the
+    /// member's roles, or the bot's): not the hierarchy, so not out of reach.
+    CantTell,
 }
 
 /// Check a purchase, refusing for the first reason that applies, in order:
@@ -143,6 +152,9 @@ pub fn refusal_text(r: &Refusal, currency: &str) -> String {
         Refusal::NothingToCleanse => ECONOMY_NOTHING_TO_CLEANSE.to_string(),
         Refusal::NothingToReveal => ECONOMY_NOTHING_TO_REVEAL.to_string(),
         Refusal::AlreadyRevealed => ECONOMY_ALREADY_REVEALED.to_string(),
+        Refusal::AlreadyMuted => ECONOMY_ALREADY_MUTED.to_string(),
+        Refusal::AlreadyDeafened => ECONOMY_ALREADY_DEAFENED.to_string(),
+        Refusal::CantTell => ECONOMY_CANT_TELL.to_string(),
     }
 }
 
@@ -958,6 +970,9 @@ mod tests {
             Refusal::NothingToCleanse,
             Refusal::NothingToReveal,
             Refusal::AlreadyRevealed,
+            Refusal::AlreadyMuted,
+            Refusal::AlreadyDeafened,
+            Refusal::CantTell,
         ];
         let texts: std::collections::HashSet<_> =
             all.iter().map(|r| refusal_text(r, "credits")).collect();
@@ -1243,8 +1258,10 @@ mod tests {
             is_self: false,
             is_owner: false,
             top_role_position: Some(1),
-            bot_top_role_position: 5,
+            bot_top_role_position: Some(5),
             in_voice: Some(VC),
+            server_mute: false,
+            server_deaf: false,
             opted_out: false,
             protection: None,
             has_mirror: false,
@@ -1491,6 +1508,74 @@ mod tests {
         );
         assert_eq!(count(&pool, "SELECT count(*) FROM economy_ledger").await, 1);
         assert_eq!(fake.calls(), vec![]);
+    });
+
+    /// A moderator already server-muted (or deafened) the target: the shop's
+    /// mute is refused before any charge, so its undo can never lift theirs.
+    async fn a_moderators_flag_cannot_be_bought_off(pool: PgPool, kind: ActionKind) {
+        let data = shop_data(&pool, 500).await;
+        let fake = FakeEconomyDiscord::default();
+        let (flagged, want) = match kind {
+            ActionKind::Mute => (
+                TargetFacts {
+                    server_mute: true,
+                    ..clean()
+                },
+                Refusal::AlreadyMuted,
+            ),
+            _ => (
+                TargetFacts {
+                    server_deaf: true,
+                    ..clean()
+                },
+                Refusal::AlreadyDeafened,
+            ),
+        };
+        assert_eq!(
+            buy_it(&data, &fake, flagged.clone(), req(kind)).await,
+            Err(BuyError::Refused(want))
+        );
+        assert_eq!(db::balance(&pool, G, U).await.unwrap(), 500);
+        assert_eq!(
+            count(&pool, "SELECT count(*) FROM economy_actions").await,
+            0
+        );
+        assert_eq!(count(&pool, "SELECT count(*) FROM economy_ledger").await, 0);
+        assert_eq!(fake.calls(), vec![]);
+        assert_eq!(
+            refusal_text(&want, "credits"),
+            if kind == ActionKind::Mute {
+                "They're already server-muted."
+            } else {
+                "They're already server-deafened."
+            }
+        );
+
+        // The bounce goes through the buyer's facts: a buyer a moderator
+        // muted is blocked, and their mute is not touched either.
+        victim_mirrors(&pool, &data, &fake).await;
+        let mirrored = TargetFacts {
+            has_mirror: true,
+            ..clean()
+        };
+        let flagged_me = TargetFacts {
+            server_mute: flagged.server_mute,
+            server_deaf: flagged.server_deaf,
+            ..me()
+        };
+        let bought = buy(&data, &fake, mirrored, flagged_me, Some(MY_VC), req(kind))
+            .await
+            .unwrap();
+        assert_eq!(bought.outcome, BuyOutcome::Blocked);
+        assert_eq!(fake.calls(), vec![], "nothing is done to anyone");
+    }
+
+    db_test!(a_moderators_mute_cannot_be_bought_off, |pool: PgPool| {
+        a_moderators_flag_cannot_be_bought_off(pool, ActionKind::Mute)
+    });
+
+    db_test!(a_moderators_deafen_cannot_be_bought_off, |pool: PgPool| {
+        a_moderators_flag_cannot_be_bought_off(pool, ActionKind::Deafen)
     });
 
     db_test!(a_discord_failure_refunds, |pool: PgPool| async {

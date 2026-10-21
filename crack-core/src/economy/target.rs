@@ -11,7 +11,7 @@ use crate::rooms::guard::{member_can_join, BaselineView};
 use crate::rooms::state::StoredOverwrite;
 use crate::Data;
 use chrono::{DateTime, Utc};
-use serenity::all::{Cache, ChannelId, GuildId, Permissions, RoleId, UserId};
+use serenity::all::{Cache, ChannelId, Guild, GuildId, Member, Permissions, RoleId, UserId};
 use std::collections::HashMap;
 
 /// What [`check_target`] needs to know about the member being pranked.
@@ -20,11 +20,18 @@ pub struct TargetFacts {
     pub is_bot: bool,
     pub is_self: bool,
     pub is_owner: bool,
-    /// `None` when the cache cannot say: a prank is then out of reach.
+    /// `None` when one of their roles can't be placed: a prank is then
+    /// refused as "can't tell" (fails closed).
     pub top_role_position: Option<u16>,
-    /// 0 when unknown, which fails closed: `>= 0` is always true.
-    pub bot_top_role_position: u16,
+    /// The bot's own; `None` when it can't be placed, which fails closed the
+    /// same way.
+    pub bot_top_role_position: Option<u16>,
     pub in_voice: Option<ChannelId>,
+    /// Server-muted now, by anyone, from the cached voice state; false when
+    /// the member has no voice state.
+    pub server_mute: bool,
+    /// Server-deafened now, likewise.
+    pub server_deaf: bool,
     pub opted_out: bool,
     pub protection: Option<Protection>,
     pub has_mirror: bool,
@@ -50,10 +57,12 @@ pub enum TargetOutcome {
 }
 
 /// Check a target, refusing for the first reason that applies, in order:
-/// bot, self, out of reach, voice needs, opted out, then a mirror (which
-/// returns [`TargetOutcome::Mirrored`] before immunity is read), immunity, the
-/// same prank already running, and the never-widen destination check (drag
-/// only: jail is exempt, spec ruling Q4).
+/// bot, self, out of reach (the owner; then can't tell when a role position
+/// is unknown; then the hierarchy), voice needs, already server-muted or -deafened
+/// (a moderator's mute is never taken over, so never undone), opted out, then
+/// a mirror (which returns [`TargetOutcome::Mirrored`] before immunity is
+/// read), immunity, the same prank already running, and the never-widen
+/// destination check (drag only: jail is exempt, spec ruling Q4).
 pub fn check_target(
     kind: ActionKind,
     t: &TargetFacts,
@@ -66,11 +75,14 @@ pub fn check_target(
         if t.is_self {
             return Err(Refusal::TargetIsSelf);
         }
-        if t.is_owner
-            || t.top_role_position
-                .is_none_or(|p| p >= t.bot_top_role_position)
-        {
+        if t.is_owner {
             return Err(Refusal::OutOfReach);
+        }
+        match (t.top_role_position, t.bot_top_role_position) {
+            (Some(top), Some(bot)) if top < bot => {},
+            (Some(_), Some(_)) => return Err(Refusal::OutOfReach),
+            // Not the hierarchy: a position nobody could read.
+            _ => return Err(Refusal::CantTell),
         }
     }
     match kind {
@@ -86,6 +98,13 @@ pub fn check_target(
             return Err(Refusal::TargetNotInVoice);
         },
         _ => {},
+    }
+    // Whoever muted them owns it: the shop's undo would lift their mute.
+    if kind == ActionKind::Mute && t.server_mute {
+        return Err(Refusal::AlreadyMuted);
+    }
+    if kind == ActionKind::Deafen && t.server_deaf {
+        return Err(Refusal::AlreadyDeafened);
     }
     if t.opted_out {
         return Err(Refusal::TargetOptedOut);
@@ -137,44 +156,70 @@ pub fn can_join(cache: &Cache, guild: GuildId, member: UserId, channel: ChannelI
     Some(member_can_join(&view, member, &m.roles))
 }
 
-/// The member's highest role position from the cache; `Some(0)` for no
-/// roles, `None` when the cache cannot answer (guild or member missing, or a
-/// role not cached), which callers treat as out of reach.
+/// The highest position among `roles`, placed by `position` (the server's
+/// role positions; `None` for a role it doesn't know). `Some(0)` for no
+/// roles; `None` when @everyone or any of the roles can't be placed, which
+/// callers treat as "can't tell".
+pub fn top_position_from(
+    guild: GuildId,
+    roles: &[RoleId],
+    position: impl Fn(RoleId) -> Option<u16>,
+) -> Option<u16> {
+    if !roles_resolvable(guild, roles, |r| position(r).is_some()) {
+        return None;
+    }
+    Some(top_of(roles, position))
+}
+
+/// A role's position in a cached server.
+fn cached_position(g: &Guild, r: RoleId) -> Option<u16> {
+    g.roles
+        .get(&r)
+        .map(|role| role.position.max(0).cast_unsigned())
+}
+
+/// A cached member's highest role position (the bot's own, which the cache
+/// always holds); `None` when the cache cannot answer.
 pub fn top_position(cache: &Cache, guild: GuildId, member: UserId) -> Option<u16> {
     let g = cache.guild(guild)?;
     let m = g.members.get(&member)?;
-    if !roles_resolvable(guild, &m.roles, |r| g.roles.contains_key(&r)) {
-        return None;
+    top_position_from(guild, &m.roles, |r| cached_position(&g, r))
+}
+
+/// What a member's own record says about them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberFacts {
+    /// `None` when one of their roles can't be placed.
+    pub top_role_position: Option<u16>,
+    pub current_nick: Option<String>,
+    /// Nickname, else global name, else username.
+    pub display_name: String,
+}
+
+/// [`MemberFacts`] from the member as Discord resolved them (an interaction
+/// carries their roles and nickname), placed by the server's role positions.
+/// The member need not be in the cache: most members who only type never are.
+pub fn member_facts(
+    guild: GuildId,
+    member: &Member,
+    position: impl Fn(RoleId) -> Option<u16>,
+) -> MemberFacts {
+    let current_nick = member.nick.as_ref().map(ToString::to_string);
+    let display_name = current_nick
+        .clone()
+        .or_else(|| member.user.global_name.as_ref().map(ToString::to_string))
+        .unwrap_or_else(|| member.user.name.to_string());
+    MemberFacts {
+        top_role_position: top_position_from(guild, &member.roles, position),
+        current_nick,
+        display_name,
     }
-    Some(top_of(&m.roles, |r| {
-        g.roles
-            .get(&r)
-            .map(|role| role.position.max(0).cast_unsigned())
-    }))
 }
 
 /// Whether `member` owns the server (always out of reach). `false` when the
 /// guild is not cached.
 pub fn is_owner(cache: &Cache, guild: GuildId, member: UserId) -> bool {
     cache.guild(guild).is_some_and(|g| g.owner_id == member)
-}
-
-/// A member's nickname and display name from the cache: `(nickname, shown)`.
-/// `None` when the guild or member is not cached.
-pub fn cached_names(
-    cache: &Cache,
-    guild: GuildId,
-    member: UserId,
-) -> Option<(Option<String>, String)> {
-    let g = cache.guild(guild)?;
-    let m = g.members.get(&member)?;
-    let shown = m
-        .nick
-        .as_ref()
-        .map(ToString::to_string)
-        .or_else(|| m.user.global_name.as_ref().map(ToString::to_string))
-        .unwrap_or_else(|| m.user.name.to_string());
-    Some((m.nick.as_ref().map(ToString::to_string), shown))
 }
 
 /// The voice channel a member is in, from the cache.
@@ -184,6 +229,15 @@ pub fn voice_of(cache: &Cache, guild: GuildId, member: UserId) -> Option<Channel
         .voice_states
         .get(&member)
         .and_then(|v| v.channel_id)
+}
+
+/// Whether a member is server-muted and server-deafened, from their cached
+/// voice state; `(false, false)` when they have none.
+pub fn voice_flags(cache: &Cache, guild: GuildId, member: UserId) -> (bool, bool) {
+    cache
+        .guild(guild)
+        .and_then(|g| g.voice_states.get(&member).map(|v| (v.mute(), v.deaf())))
+        .unwrap_or_default()
 }
 
 /// The end of a running (`active`, not winding down) prank of these kinds on
@@ -196,36 +250,37 @@ fn running_end(rows: &[ActionRow]) -> Option<DateTime<Utc>> {
 
 /// Who [`gather_facts`] describes.
 #[derive(Debug, Clone, Copy)]
-pub struct Subject {
-    pub member: UserId,
-    pub is_bot: bool,
+pub struct Subject<'a> {
+    /// The member as Discord resolved them: the interaction's, or fetched.
+    pub member: &'a Member,
     /// The member is the buyer.
     pub is_self: bool,
 }
 
-/// Everything [`check_target`] needs about `member`, from the cache and the
+/// Everything [`check_target`] needs about a member. Their roles, nickname
+/// and shown name come from the [`Member`] passed in (Discord resolves it in
+/// the interaction), placed by the cached server roles; their voice state
+/// from the cache; opt-out, immunity, mirror and running rows from the
 /// database. Used for the target of a prank and, the same way, for the buyer
 /// (so a mirror can bounce a prank onto them).
 ///
-/// The cache gaps fail closed: a member or a role the cache does not hold
-/// leaves `top_role_position` `None` (out of reach), and a drag with no
-/// answer for the destination reads `None` (refused). A member the cache
-/// cannot name gets empty names, but is then out of reach too, so nothing is
-/// ever restored from them.
+/// The gaps fail closed: a role the cache cannot place leaves
+/// `top_role_position` `None` (refused, can't tell), and a drag with no
+/// answer for the destination reads `None` (refused).
 pub async fn gather_facts(
     data: &Data,
     cache: &Cache,
     guild: GuildId,
-    who: Subject,
+    who: Subject<'_>,
     kind: ActionKind,
     buyer_voice: Option<ChannelId>,
     now: DateTime<Utc>,
 ) -> Result<TargetFacts, BuyError> {
     let Subject {
-        member,
-        is_bot,
+        member: resolved,
         is_self,
     } = who;
+    let member = resolved.user.id;
     let Some(pool) = data.database_pool.as_ref() else {
         return Err(BuyError::NoDatabase);
     };
@@ -246,23 +301,24 @@ pub async fn gather_facts(
     let same = economy::active_of_kind(pool, guild, member, same_kinds)
         .await
         .map_err(|e| fail("running pranks", e))?;
-    let names = cached_names(cache, guild, member);
-    let top_role_position = names
-        .as_ref()
-        .and_then(|_| top_position(cache, guild, member));
+    let own = {
+        let g = cache.guild(guild);
+        member_facts(guild, resolved, |r| {
+            g.as_ref().and_then(|g| cached_position(g, r))
+        })
+    };
     let bot_id = cache.current_user().id;
-    // 0 when unknown: `top >= 0` is always true, so it fails closed.
-    // Unknown reads as 0, which puts every prank out of reach (fails closed).
-    let bot_top_role_position = top_position(cache, guild, bot_id).unwrap_or_default();
-    // No names means no cached member, which is already out of reach above.
-    let (current_nick, display_name) = names.unwrap_or_default();
+    let bot_top_role_position = top_position(cache, guild, bot_id);
+    let (server_mute, server_deaf) = voice_flags(cache, guild, member);
     Ok(TargetFacts {
-        is_bot,
+        is_bot: resolved.user.bot(),
         is_self,
         is_owner: is_owner(cache, guild, member),
-        top_role_position,
+        top_role_position: own.top_role_position,
         bot_top_role_position,
         in_voice: voice_of(cache, guild, member),
+        server_mute,
+        server_deaf,
         opted_out: data.economy.is_opted_out(guild, member),
         protection,
         has_mirror: mirrors.iter().any(|r| r.state == ActionState::Active),
@@ -272,8 +328,8 @@ pub async fn gather_facts(
         } else {
             None
         },
-        current_nick,
-        display_name,
+        current_nick: own.current_nick,
+        display_name: own.display_name,
     })
 }
 
@@ -296,8 +352,10 @@ mod tests {
             is_self: false,
             is_owner: false,
             top_role_position: Some(1),
-            bot_top_role_position: 5,
+            bot_top_role_position: Some(5),
             in_voice: Some(VC),
+            server_mute: false,
+            server_deaf: false,
             opted_out: false,
             protection: None,
             has_mirror: false,
@@ -315,8 +373,10 @@ mod tests {
             is_self: true,
             is_owner: true,
             top_role_position: Some(9),
-            bot_top_role_position: 5,
+            bot_top_role_position: Some(5),
             in_voice: None,
+            server_mute: true,
+            server_deaf: true,
             opted_out: true,
             protection: Some(Protection::Indefinitely),
             has_mirror: true,
@@ -367,6 +427,59 @@ mod tests {
         );
         f.can_join_destination = Some(true);
         assert_eq!(check_target(kind, &f, buyer), Ok(TargetOutcome::Lands));
+
+        // Mute and deafen: an existing server mute or deafen comes right
+        // after the voice needs, before opt-out and the mirror.
+        for (kind, want) in [
+            (ActionKind::Mute, Refusal::AlreadyMuted),
+            (ActionKind::Deafen, Refusal::AlreadyDeafened),
+        ] {
+            let mut f = all_wrong();
+            f.is_bot = false;
+            f.is_self = false;
+            f.is_owner = false;
+            f.top_role_position = Some(1);
+            assert_eq!(
+                check_target(kind, &f, None),
+                Err(Refusal::TargetNotInVoice),
+                "{kind:?}"
+            );
+            f.in_voice = Some(VC);
+            assert_eq!(check_target(kind, &f, None), Err(want), "{kind:?}");
+            f.server_mute = false;
+            f.server_deaf = false;
+            assert_eq!(
+                check_target(kind, &f, None),
+                Err(Refusal::TargetOptedOut),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_mute_and_a_deafen_are_separate() {
+        // Muted by a moderator: a deafen can still be bought, and the other
+        // way round; and neither touches the name pranks.
+        let mut f = clean();
+        f.server_mute = true;
+        assert_eq!(
+            check_target(ActionKind::Deafen, &f, None),
+            Ok(TargetOutcome::Lands)
+        );
+        assert_eq!(
+            check_target(ActionKind::Rename, &f, None),
+            Ok(TargetOutcome::Lands)
+        );
+        f.server_mute = false;
+        f.server_deaf = true;
+        assert_eq!(
+            check_target(ActionKind::Mute, &f, None),
+            Ok(TargetOutcome::Lands)
+        );
+        assert_eq!(
+            check_target(ActionKind::Deafen, &f, None),
+            Err(Refusal::AlreadyDeafened)
+        );
     }
 
     #[test]
@@ -481,10 +594,8 @@ mod tests {
     }
 
     #[test]
-    fn unknown_target_position_is_out_of_reach() {
-        let mut f = clean();
-        f.top_role_position = None;
-        for k in [
+    fn an_unresolvable_role_position_cant_tell() {
+        let pranks = [
             ActionKind::Rename,
             ActionKind::Lock,
             ActionKind::Clown,
@@ -492,20 +603,126 @@ mod tests {
             ActionKind::Mute,
             ActionKind::Deafen,
             ActionKind::Jail,
-        ] {
-            assert_eq!(
-                check_target(k, &f, Some(VC)),
-                Err(Refusal::OutOfReach),
-                "{k:?}"
-            );
+        ];
+        // The target's position, or the bot's own, unknown: not the
+        // hierarchy, so not "out of reach".
+        for (top, bot) in [(None, Some(5)), (Some(1), None), (None, None)] {
+            let f = TargetFacts {
+                top_role_position: top,
+                bot_top_role_position: bot,
+                ..clean()
+            };
+            for k in pranks {
+                assert_eq!(
+                    check_target(k, &f, Some(OTHER_VC)),
+                    Err(Refusal::CantTell),
+                    "{k:?} {top:?} {bot:?}"
+                );
+            }
+            for k in [ActionKind::Mirror, ActionKind::Cleanse, ActionKind::Reveal] {
+                assert_eq!(
+                    check_target(k, &f, Some(VC)),
+                    Ok(TargetOutcome::Lands),
+                    "{k:?}"
+                );
+            }
         }
-        for k in [ActionKind::Mirror, ActionKind::Cleanse, ActionKind::Reveal] {
-            assert_eq!(
-                check_target(k, &f, Some(VC)),
-                Ok(TargetOutcome::Lands),
-                "{k:?}"
-            );
+        // The owner is out of reach whatever is known.
+        let owner = TargetFacts {
+            is_owner: true,
+            top_role_position: None,
+            ..clean()
+        };
+        assert_eq!(
+            check_target(ActionKind::Rename, &owner, None),
+            Err(Refusal::OutOfReach)
+        );
+        // And the words say so.
+        assert_eq!(
+            crate::economy::shop::refusal_text(&Refusal::CantTell, "c"),
+            "CrackTunes can't see that member right now. Try again in a moment."
+        );
+    }
+
+    const SERVER: GuildId = GuildId::new(100);
+
+    /// A member as an interaction resolves them, in no cache.
+    fn resolved(id: u64, roles: &[u64], nick: Option<&str>) -> Member {
+        let mut m = Member::default();
+        m.user.id = UserId::new(id);
+        m.user.name = serenity::small_fixed_array::FixedString::from_str_trunc("bobby");
+        m.roles = roles
+            .iter()
+            .map(|r| RoleId::new(*r))
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        m.nick = nick.map(serenity::small_fixed_array::FixedString::from_str_trunc);
+        m
+    }
+
+    /// Only the server's roles are known: @everyone, a "member" role at 2, a
+    /// "mod" role at 8.
+    fn guild_roles(r: RoleId) -> Option<u16> {
+        match r.get() {
+            100 => Some(0),
+            7 => Some(2),
+            9 => Some(8),
+            _ => None,
         }
+    }
+
+    #[test]
+    fn facts_from_a_passed_in_member_are_not_out_of_reach() {
+        let m = resolved(20, &[7], Some("Al"));
+        let own = member_facts(SERVER, &m, guild_roles);
+        assert_eq!(
+            own,
+            MemberFacts {
+                top_role_position: Some(2),
+                current_nick: Some("Al".into()),
+                display_name: "Al".into(),
+            }
+        );
+        let f = TargetFacts {
+            top_role_position: own.top_role_position,
+            current_nick: own.current_nick,
+            display_name: own.display_name,
+            ..clean()
+        };
+        assert_eq!(
+            check_target(ActionKind::Rename, &f, None),
+            Ok(TargetOutcome::Lands)
+        );
+        // Their highest role decides, and no nickname shows the username.
+        let modded = member_facts(SERVER, &resolved(21, &[7, 9], None), guild_roles);
+        assert_eq!(modded.top_role_position, Some(8));
+        assert_eq!(modded.current_nick, None);
+        assert_eq!(modded.display_name, "bobby");
+        // No roles at all is the bottom, not unknown.
+        assert_eq!(
+            member_facts(SERVER, &resolved(22, &[], None), guild_roles).top_role_position,
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn a_role_the_server_cannot_place_cant_tell() {
+        let own = member_facts(SERVER, &resolved(20, &[7, 55], None), guild_roles);
+        assert_eq!(own.top_role_position, None);
+        let f = TargetFacts {
+            top_role_position: own.top_role_position,
+            ..clean()
+        };
+        assert_eq!(
+            check_target(ActionKind::Rename, &f, None),
+            Err(Refusal::CantTell)
+        );
+        // Without @everyone the server's roles aren't loaded at all.
+        assert_eq!(
+            top_position_from(SERVER, &[RoleId::new(7)], |r| (r.get() == 7).then_some(2)),
+            None
+        );
     }
 
     #[test]
@@ -651,13 +868,17 @@ mod tests {
         }
 
         async fn facts(data: &Data, kind: ActionKind, who: UserId) -> TargetFacts {
+            let mut m = Member::default();
+            m.user.id = who;
+            m.nick = Some(serenity::small_fixed_array::FixedString::from_str_trunc(
+                "Al",
+            ));
             gather_facts(
                 data,
                 &Cache::default(),
                 G,
                 Subject {
-                    member: who,
-                    is_bot: false,
+                    member: &m,
                     is_self: false,
                 },
                 kind,
@@ -676,17 +897,19 @@ mod tests {
         async fn a_cache_that_knows_nothing_fails_closed(pool: PgPool) {
             let data = data(&pool).await;
             let f = facts(&data, ActionKind::Drag, M).await;
-            assert_eq!(f.top_role_position, None, "out of reach");
-            assert_eq!(f.bot_top_role_position, 0);
+            assert_eq!(f.top_role_position, None, "no roles to place it by");
+            assert_eq!(f.bot_top_role_position, None);
             assert_eq!(f.can_join_destination, None, "a drag is refused");
             assert_eq!(f.in_voice, None);
+            assert_eq!((f.server_mute, f.server_deaf), (false, false));
             assert!(!f.is_owner);
-            assert_eq!(f.current_nick, None);
-            assert_eq!(f.display_name, "");
+            // The names are the passed-in member's own.
+            assert_eq!(f.current_nick, Some("Al".into()));
+            assert_eq!(f.display_name, "Al");
             // And that is what check_target makes of it.
             assert_eq!(
                 check_target(ActionKind::Rename, &f, None),
-                Err(Refusal::OutOfReach)
+                Err(Refusal::CantTell)
             );
         }
 

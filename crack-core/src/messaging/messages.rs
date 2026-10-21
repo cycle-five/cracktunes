@@ -958,6 +958,9 @@ pub const ECONOMY_TARGET_IS_BOT: &str = "You can't prank a bot.";
 pub const ECONOMY_TARGET_IS_SELF: &str = "You can't prank yourself.";
 pub const ECONOMY_OUT_OF_REACH: &str =
     "CrackTunes can't change them (they're the owner, or their role is at or above CrackTunes').";
+pub const ECONOMY_CANT_TELL: &str =
+    "CrackTunes can't see that member right now. Try again in a moment.";
+pub const ECONOMY_TARGET_LEFT: &str = "They're not in this server any more.";
 pub const ECONOMY_TARGET_NOT_IN_VOICE: &str = "They need to be in a voice channel for that.";
 pub const ECONOMY_BUYER_NOT_IN_VOICE: &str = "Join a voice channel first.";
 pub const ECONOMY_TARGET_OPTED_OUT: &str = "They've opted out of the economy.";
@@ -967,6 +970,8 @@ pub const ECONOMY_ALREADY_RUNNING_PREFIX: &str = "They're already pranked like t
 pub const ECONOMY_CANNOT_JOIN_DESTINATION: &str =
     "They couldn't join your channel themselves, so CrackTunes won't drag them there.";
 pub const ECONOMY_MIRROR_ALREADY_UP: &str = "Your mirror is already up.";
+pub const ECONOMY_ALREADY_MUTED: &str = "They're already server-muted.";
+pub const ECONOMY_ALREADY_DEAFENED: &str = "They're already server-deafened.";
 pub const ECONOMY_CARD_POSSESSIVE: &str = "'s";
 pub const ECONOMY_CARD_SOMEONE: &str = "Someone";
 pub const ECONOMY_CARD_RENAMED: &str = "renamed";

@@ -185,6 +185,9 @@ async fn on_nick_change(
             });
             match locked {
                 Some(locked) => {
+                    // A lock bought before the rename or clown holds the
+                    // prank's name, not the one it captured first.
+                    let locked = prank_name(&rows).map(Some).unwrap_or(locked);
                     if locked != new {
                         if let Err(err) = discord
                             .set_nick(guild, target, locked.as_deref(), ActionKind::Lock)
@@ -200,6 +203,18 @@ async fn on_nick_change(
             }
         },
     }
+}
+
+/// The name a running (`active`) rename or clown among `rows` put on the
+/// member, if one runs.
+fn prank_name(rows: &[ActionRow]) -> Option<String> {
+    rows.iter()
+        .filter(|r| r.state == ActionState::Active)
+        .find_map(|r| match &r.payload {
+            ActionPayload::Rename { name, .. } => Some(name.clone()),
+            ActionPayload::Clown { applied, .. } => Some(applied.clone()),
+            _ => None,
+        })
 }
 
 /// A member's voice channel changed (`to` is None for a disconnect).
@@ -371,6 +386,64 @@ mod tests {
         );
         assert_eq!(state_of(&pool, rename).await.0, "active");
         assert_eq!(state_of(&pool, lock).await.0, "active");
+    });
+
+    db_test!(lock_bought_before_a_rename_holds_the_prank_name, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        // The lock first, while they are still "Al"; then the rename.
+        let lock = seed(
+            &pool,
+            ActionKind::Lock,
+            &ActionPayload::Lock {
+                locked: Some("Al".into()),
+            },
+            "active",
+        )
+        .await;
+        let rename = rename_row(&pool).await;
+        assert!(lock < rename, "bought in that order");
+        on_audit_entry(&data, &fake, G, &nick_entry(U, "Mine"), BOT).await;
+        assert_eq!(
+            fake.calls(),
+            vec![Call::Nick(U, Some("Goblin".into()), ActionKind::Lock)],
+            "the paid rename holds, not the name the lock captured"
+        );
+        assert_eq!(state_of(&pool, rename).await.0, "active");
+        assert_eq!(state_of(&pool, lock).await.0, "active");
+
+        // A clown holds the same way.
+        sqlx::query("UPDATE economy_actions SET state = 'ended' WHERE id = $1")
+            .bind(rename)
+            .execute(&pool)
+            .await
+            .unwrap();
+        seed(
+            &pool,
+            ActionKind::Clown,
+            &ActionPayload::Clown {
+                applied: "Al 🤡".into(),
+                restore: Some("Al".into()),
+            },
+            "active",
+        )
+        .await;
+        on_audit_entry(&data, &fake, G, &nick_entry(U, "Mine"), BOT).await;
+        assert_eq!(
+            fake.calls()[1],
+            Call::Nick(U, Some("Al 🤡".into()), ActionKind::Lock)
+        );
+
+        // With the name prank over, the lock holds what it captured.
+        sqlx::query("UPDATE economy_actions SET state = 'ended' WHERE kind = 'clown'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        on_audit_entry(&data, &fake, G, &nick_entry(U, "Mine"), BOT).await;
+        assert_eq!(
+            fake.calls()[2],
+            Call::Nick(U, Some("Al".into()), ActionKind::Lock)
+        );
     });
 
     db_test!(a_self_rename_without_a_lock_escapes_the_prank, |pool| {

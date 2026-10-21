@@ -6,6 +6,7 @@
 //! works after a restart. Only a landed rename or clown card carries them.
 //! Every press is answered: a card from before the economy was switched off
 //! gets the refusal the commands give.
+use super::discord::EconDiscordError;
 use super::settings::ActionKind;
 use super::shop::{buy_error_text, reveal, BuyOutcome};
 use crate::commands::economy::shop::{
@@ -15,8 +16,8 @@ use crate::db::economy::{self as db, ActionRow};
 use crate::messaging::messages::{
     ECONOMY_BACK_DESC, ECONOMY_BACK_LABEL, ECONOMY_BACK_MODAL_TITLE, ECONOMY_BACK_PLACEHOLDER,
     ECONOMY_BACK_REVEAL_FIRST, ECONOMY_BUTTON_NOT_YOURS, ECONOMY_BUTTON_RENAME_BACK,
-    ECONOMY_BUTTON_REVEAL, ECONOMY_BUTTON_STALE, ECONOMY_NO_DATABASE, ECONOMY_OFF,
-    ECONOMY_PURCHASE_FAILED,
+    ECONOMY_BUTTON_REVEAL, ECONOMY_BUTTON_STALE, ECONOMY_CANT_TELL, ECONOMY_NO_DATABASE,
+    ECONOMY_OFF, ECONOMY_PURCHASE_FAILED, ECONOMY_TARGET_LEFT,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::{DiscordModalPress, DiscordPress, Press};
@@ -160,6 +161,19 @@ pub fn unusable(enabled: bool, has_database: bool) -> Option<&'static str> {
         Some(ECONOMY_NO_DATABASE)
     } else {
         None
+    }
+}
+
+/// What a Rename them back submit hears when the original buyer can't be
+/// read: gone from the server, or (anything else) not readable right now.
+/// Either way nothing is charged.
+pub fn member_fetch_refusal(err: &EconDiscordError) -> &'static str {
+    match err {
+        EconDiscordError::UnknownMember => ECONOMY_TARGET_LEFT,
+        other => {
+            tracing::warn!("economy: reading a rename-back target failed: {other:?}");
+            ECONOMY_CANT_TELL
+        },
     }
 }
 
@@ -352,12 +366,28 @@ pub async fn handle_submit(data: &Data, ctx: &serenity::all::Context, i: &ModalI
     let Some(original_buyer) = Some(row.buyer).filter(|b| *b != submitter) else {
         return refuse_after(&press, ECONOMY_BUTTON_STALE).await;
     };
+    // Nothing resolved the original buyer for us: the cache first, then
+    // Discord. Already deferred, so the fetch has time.
+    let target = match guild.member(ctx, original_buyer).await {
+        Ok(m) => m,
+        Err(err) => return refuse_after(&press, member_fetch_refusal(&err.into())).await,
+    };
+    // The submitter as the interaction resolved them.
+    let buyer = match i.member.as_deref() {
+        Some(m) => m.clone(),
+        None => match guild.member(ctx, submitter).await {
+            Ok(m) => m,
+            Err(err) => {
+                tracing::warn!("economy: reading rename-back submitter {submitter}: {err}");
+                return refuse_after(&press, ECONOMY_CANT_TELL).await;
+            },
+        },
+    };
     let env = PrankEnv {
         data,
         ctx,
         guild,
-        buyer: submitter,
-        buyer_is_bot: i.user.bot(),
+        buyer: &buyer,
         invoked_in: ChannelId::new(i.channel_id.get()),
         answer: &PressAnswer(&press),
     };
@@ -366,7 +396,7 @@ pub async fn handle_submit(data: &Data, ctx: &serenity::all::Context, i: &ModalI
     if let Err(err) = run_prank(
         &env,
         ActionKind::Rename,
-        Some((original_buyer, false)),
+        Some(&target),
         Some(nick),
         None,
         false,
@@ -538,6 +568,23 @@ mod tests {
         )
         .unwrap();
         assert_eq!(read_nick(&data.components), None);
+    }
+
+    #[test]
+    fn a_rename_back_target_who_left_is_said_so() {
+        assert_eq!(
+            member_fetch_refusal(&EconDiscordError::UnknownMember),
+            "They're not in this server any more."
+        );
+        for err in [
+            EconDiscordError::MissingPermissions,
+            EconDiscordError::Other("timeout".into()),
+        ] {
+            assert_eq!(
+                member_fetch_refusal(&err),
+                "CrackTunes can't see that member right now. Try again in a moment."
+            );
+        }
     }
 
     #[test]

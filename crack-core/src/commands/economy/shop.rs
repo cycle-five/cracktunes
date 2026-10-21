@@ -15,13 +15,13 @@ use crate::economy::shop::{
 use crate::economy::target::{gather_facts, voice_of, Subject};
 use crate::messaging::courier;
 use crate::messaging::messages::{
-    ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL, ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK,
-    ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG, ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK,
-    ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG, ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED,
-    ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED,
-    ECONOMY_SHOP_CLEANSED_PREFIX, ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL,
-    ECONOMY_SHOP_DONE, ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_NOT_SOLD,
-    ECONOMY_SHOP_TITLE, ECONOMY_YOU_HAVE,
+    ECONOMY_CANT_TELL, ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL, ECONOMY_NICK_EMPTY,
+    ECONOMY_NICK_LINK, ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG, ECONOMY_NOTE_EMPTY,
+    ECONOMY_NOTE_LINK, ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG, ECONOMY_REVEAL_PREFIX,
+    ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER,
+    ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX, ECONOMY_SHOP_CLEANSED_SUFFIX,
+    ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE, ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP,
+    ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE, ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
@@ -31,7 +31,7 @@ use crate::modlog::live::ChannelSink;
 use crate::{Context, Data, Error};
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
-use serenity::all::{ChannelId, GenericChannelId, GuildId, User, UserId};
+use serenity::all::{ChannelId, GenericChannelId, GuildId, Member, UserId};
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -235,8 +235,8 @@ pub(crate) struct PrankEnv<'a> {
     pub data: &'a Data,
     pub ctx: &'a serenity::all::Context,
     pub guild: GuildId,
-    pub buyer: UserId,
-    pub buyer_is_bot: bool,
+    /// The buyer as Discord resolved them (the interaction's member).
+    pub buyer: &'a Member,
     /// The channel the command or button was used in.
     pub invoked_in: ChannelId,
     pub answer: &'a dyn Answer,
@@ -252,8 +252,8 @@ async fn log_event(env: &PrankEnv<'_>, event: ModLogEvent) {
     sink.post(env.guild, event).await;
 }
 
-/// Buy a prank (or a mirror, with no target; `target` is the member and
-/// whether it is a bot). Validate, gather facts, preflight, buy; then reply
+/// Buy a prank (or a mirror, with no target; `target` is the member as
+/// Discord resolved them). Validate, gather facts, preflight, buy; then reply
 /// privately with the balance, post the card, and log the purchase. A mirror
 /// posts nothing public and logs nothing. The slash commands and the Rename
 /// them back button both come through here.
@@ -261,7 +261,7 @@ async fn log_event(env: &PrankEnv<'_>, event: ModLogEvent) {
 pub(crate) async fn run_prank(
     env: &PrankEnv<'_>,
     kind: ActionKind,
-    target: Option<(UserId, bool)>,
+    target: Option<&Member>,
     nick: Option<String>,
     note: Option<String>,
     signed: bool,
@@ -270,11 +270,11 @@ pub(crate) async fn run_prank(
         data,
         ctx,
         guild,
-        buyer,
         answer,
         ..
     } = *env;
-    if env.buyer_is_bot {
+    let buyer = env.buyer.user.id;
+    if env.buyer.user.bot() {
         return answer.private(ECONOMY_SHOP_BOT_BUYER.to_string()).await;
     }
     let note = match note.as_deref().map(validate_note).transpose() {
@@ -289,23 +289,24 @@ pub(crate) async fn run_prank(
     let now = Utc::now();
     let cache = &ctx.cache;
     let buyer_voice = voice_of(cache, guild, buyer);
-    let gather = |member: UserId, is_bot: bool| {
-        let who = Subject {
+    fn who(member: &Member, buyer: UserId) -> Subject<'_> {
+        Subject {
             member,
-            is_bot,
-            is_self: member == buyer,
-        };
-        gather_facts(data, cache, guild, who, kind, buyer_voice, now)
-    };
-    let buyer_facts = match gather(buyer, false).await {
+            is_self: member.user.id == buyer,
+        }
+    }
+    let me = who(env.buyer, buyer);
+    let buyer_facts = match gather_facts(data, cache, guild, me, kind, buyer_voice, now).await {
         Ok(f) => f,
         Err(e) => return answer.private(buy_error_text(&e, &cfg.currency_name)).await,
     };
     // A mirror protects the buyer: their own facts stand in for a target's.
     let facts = match target {
-        Some((t, is_bot)) => match gather(t, is_bot).await {
-            Ok(f) => f,
-            Err(e) => return answer.private(buy_error_text(&e, &cfg.currency_name)).await,
+        Some(t) => {
+            match gather_facts(data, cache, guild, who(t, buyer), kind, buyer_voice, now).await {
+                Ok(f) => f,
+                Err(e) => return answer.private(buy_error_text(&e, &cfg.currency_name)).await,
+            }
         },
         None => buyer_facts.clone(),
     };
@@ -322,7 +323,7 @@ pub(crate) async fn run_prank(
         guild,
         buyer,
         kind,
-        target: target.map(|(t, _)| t),
+        target: target.map(|t| t.user.id),
         nick: nick.clone(),
         note: note.clone(),
         signed,
@@ -354,7 +355,7 @@ pub(crate) async fn run_prank(
             &cfg.currency_emoji,
         ))
         .await;
-    let Some((target, _)) = target else {
+    let Some(target) = target.map(|t| t.user.id) else {
         return replied;
     };
     let channel = card_channel(
@@ -412,7 +413,7 @@ pub(crate) async fn run_prank(
 async fn prank(
     ctx: Context<'_>,
     kind: ActionKind,
-    target: Option<User>,
+    target: Option<Member>,
     nick: Option<String>,
     note: Option<String>,
     signed: Option<bool>,
@@ -420,21 +421,23 @@ async fn prank(
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
     };
-    let buyer = ctx.author();
+    // The interaction's own member: roles and nickname, cached or not.
+    let Some(buyer) = ctx.author_member().await else {
+        return say(ctx, ECONOMY_CANT_TELL, true).await;
+    };
     let data = ctx.data();
     let env = PrankEnv {
         data: &data,
         ctx: ctx.serenity_context(),
         guild,
-        buyer: buyer.id,
-        buyer_is_bot: buyer.bot(),
+        buyer: &buyer,
         invoked_in: ChannelId::new(ctx.channel_id().get()),
         answer: &CommandAnswer(ctx),
     };
     run_prank(
         &env,
         kind,
-        target.map(|t| (t.id, t.bot())),
+        target.as_ref(),
         nick,
         note,
         signed.unwrap_or(false),
@@ -447,7 +450,7 @@ async fn prank(
 #[poise::command(slash_command, guild_only)]
 pub async fn rename(
     ctx: Context<'_>,
-    #[description = "Who"] member: User,
+    #[description = "Who"] member: Member,
     #[description = "Their new nickname"] name: String,
     #[description = "A note shown on the card"] note: Option<String>,
     #[description = "Put your name on the card"] signed: Option<bool>,
@@ -468,7 +471,7 @@ pub async fn rename(
 #[poise::command(slash_command, guild_only)]
 pub async fn lock(
     ctx: Context<'_>,
-    #[description = "Who"] member: User,
+    #[description = "Who"] member: Member,
     #[description = "A note shown on the card"] note: Option<String>,
     #[description = "Put your name on the card"] signed: Option<bool>,
 ) -> Result<(), Error> {
@@ -480,7 +483,7 @@ pub async fn lock(
 #[poise::command(slash_command, guild_only)]
 pub async fn clown(
     ctx: Context<'_>,
-    #[description = "Who"] member: User,
+    #[description = "Who"] member: Member,
     #[description = "A note shown on the card"] note: Option<String>,
     #[description = "Put your name on the card"] signed: Option<bool>,
 ) -> Result<(), Error> {
@@ -492,7 +495,7 @@ pub async fn clown(
 #[poise::command(slash_command, guild_only)]
 pub async fn drag(
     ctx: Context<'_>,
-    #[description = "Who"] member: User,
+    #[description = "Who"] member: Member,
     #[description = "A note shown on the card"] note: Option<String>,
     #[description = "Put your name on the card"] signed: Option<bool>,
 ) -> Result<(), Error> {
@@ -504,7 +507,7 @@ pub async fn drag(
 #[poise::command(slash_command, guild_only)]
 pub async fn mute(
     ctx: Context<'_>,
-    #[description = "Who"] member: User,
+    #[description = "Who"] member: Member,
     #[description = "A note shown on the card"] note: Option<String>,
     #[description = "Put your name on the card"] signed: Option<bool>,
 ) -> Result<(), Error> {
@@ -516,7 +519,7 @@ pub async fn mute(
 #[poise::command(slash_command, guild_only)]
 pub async fn deafen(
     ctx: Context<'_>,
-    #[description = "Who"] member: User,
+    #[description = "Who"] member: Member,
     #[description = "A note shown on the card"] note: Option<String>,
     #[description = "Put your name on the card"] signed: Option<bool>,
 ) -> Result<(), Error> {
@@ -528,7 +531,7 @@ pub async fn deafen(
 #[poise::command(slash_command, guild_only)]
 pub async fn jail(
     ctx: Context<'_>,
-    #[description = "Who"] member: User,
+    #[description = "Who"] member: Member,
     #[description = "A note shown on the card"] note: Option<String>,
     #[description = "Put your name on the card"] signed: Option<bool>,
 ) -> Result<(), Error> {
