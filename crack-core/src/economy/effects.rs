@@ -71,6 +71,28 @@ async fn apply(
     }
 }
 
+/// What [`finish`] did with a row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Finished {
+    /// Undone (or nothing to undo) and marked `ended`.
+    Ended,
+    /// The member is not in voice: marked `ending`, finished at their next join.
+    Ending,
+    /// An early end whose undo failed: its end was brought forward to now, so
+    /// the sweeper retries it every tick, and gives up an hour later.
+    Scheduled,
+    /// Nothing changed: the row was no longer running, or the sweeper's own
+    /// retry failed and waits for the next tick.
+    Skipped,
+}
+
+impl Finished {
+    /// Whether this call ended the row or took charge of ending it.
+    pub fn took_effect(self) -> bool {
+        self != Finished::Skipped
+    }
+}
+
 /// End a running row: undo what the bot did, then mark it.
 ///
 /// A row that is no longer `active` or `ending` in the database (a mod
@@ -81,9 +103,11 @@ async fn apply(
 /// - undone, or nothing to undo: `ended(reason)`;
 /// - member not in voice: `ending`, finished at their next voice join;
 /// - member left the server: `ended("left")`;
-/// - anything else (missing permission): the row stays as it is and is
-///   retried by the next sweep, then `ended("undo_failed")` an hour after it
-///   was due.
+/// - anything else (missing permission): the sweeper's own retry leaves the
+///   row as it is for the next tick, then `ended("undo_failed")` an hour after
+///   it was due. An early end (any `reason` but `expired`) of an `active` row
+///   instead schedules it: its end moves to now with `reason` stored, so the
+///   sweeper retries it within a tick and the hour counts from now.
 pub async fn finish(
     data: &Data,
     discord: &dyn EconomyDiscord,
@@ -91,17 +115,17 @@ pub async fn finish(
     row: &ActionRow,
     reason: &str,
     now: DateTime<Utc>,
-) {
+) -> Finished {
     let Some(pool) = data.database_pool.as_ref() else {
-        return;
+        return Finished::Skipped;
     };
     // Fresh, not the caller's copy: the row may have been ended since.
     let live = match economy::action_state(pool, row.id).await {
         Ok(Some(live @ (ActionState::Active | ActionState::Ending))) => live,
-        Ok(_) => return,
+        Ok(_) => return Finished::Skipped,
         Err(err) => {
             tracing::warn!("economy: reading action {} failed: {err}", row.id);
-            return;
+            return Finished::Skipped;
         },
     };
     let plan = undo_plan(row, now);
@@ -131,18 +155,38 @@ pub async fn finish(
                     row.kind
                 );
                 (ActionState::Ended, "undo_failed")
+            } else if live == ActionState::Active && reason != "expired" {
+                tracing::warn!(
+                    "economy: undoing action {} ({:?}) in {guild} for {reason} failed, scheduling a retry: {err:?}",
+                    row.id,
+                    row.kind
+                );
+                return match economy::schedule_early_end(pool, row.id, reason, now).await {
+                    Ok(true) => Finished::Scheduled,
+                    Ok(false) => Finished::Skipped,
+                    Err(err) => {
+                        tracing::warn!("economy: scheduling action {} failed: {err}", row.id);
+                        Finished::Skipped
+                    },
+                };
             } else {
                 tracing::warn!(
                     "economy: undoing action {} ({:?}) in {guild} failed, will retry: {err:?}",
                     row.id,
                     row.kind
                 );
-                return;
+                return Finished::Skipped;
             }
         },
     };
-    if let Err(err) = economy::end_action(pool, row.id, state, why).await {
-        tracing::warn!("economy: marking action {} {state:?} failed: {err}", row.id);
+    match economy::end_action(pool, row.id, state, why).await {
+        Ok(true) if state == ActionState::Ending => Finished::Ending,
+        Ok(true) => Finished::Ended,
+        Ok(false) => Finished::Skipped,
+        Err(err) => {
+            tracing::warn!("economy: marking action {} {state:?} failed: {err}", row.id);
+            Finished::Skipped
+        },
     }
 }
 
@@ -150,7 +194,8 @@ pub async fn finish(
 /// undone as if it had expired, with `reason` as the end reason. A standing
 /// mirror is kept. Locks go first so the restoring rename is not fought by an
 /// active lock. A row that cannot be undone right now is warned about by
-/// [`finish`] and left for the sweeper. Returns how many rows were attempted.
+/// [`finish`] and scheduled for the sweeper. Returns how many rows this call
+/// ended, set aside for the member's next join, or scheduled.
 pub async fn end_running_pranks(
     data: &Data,
     discord: &dyn EconomyDiscord,
@@ -162,17 +207,18 @@ pub async fn end_running_pranks(
     let Some(pool) = data.database_pool.as_ref() else {
         return Ok(0);
     };
-    let kinds: Vec<ActionKind> = ActionKind::ALL
-        .iter()
-        .copied()
-        .filter(|k| k.is_prank())
-        .collect();
-    let mut rows = economy::active_of_kind(pool, guild, target, &kinds).await?;
+    let mut rows = economy::active_of_kind(pool, guild, target, ActionKind::PRANKS).await?;
     rows.sort_by_key(|r| (r.kind != ActionKind::Lock, r.id));
+    let mut took = 0;
     for row in &rows {
-        finish(data, discord, guild, row, reason, now).await;
+        if finish(data, discord, guild, row, reason, now)
+            .await
+            .took_effect()
+        {
+            took += 1;
+        }
     }
-    Ok(rows.len())
+    Ok(took)
 }
 
 /// Finish every row whose time is up, in every server, the economy on or off.
@@ -1398,6 +1444,47 @@ mod tests {
         assert_eq!(
             ids(db::pending_for_guild(&pool, G, t0()).await.unwrap()),
             vec![pending]
+        );
+    });
+
+    db_test!(an_override_beats_a_stored_reason, |pool| {
+        let mut ids = Vec::new();
+        for _ in 0..2 {
+            ids.push(
+                seed(
+                    &pool,
+                    ActionKind::Mute,
+                    Some(U),
+                    &ActionPayload::Mute,
+                    "active",
+                    Some(t0() + mins(30)),
+                    t0() - mins(10),
+                )
+                .await,
+            );
+        }
+        sqlx::query("UPDATE economy_actions SET end_reason = 'cleansed'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        // A specific reason replaces the stored one; the generic one keeps it.
+        assert!(
+            economy::end_action(&pool, ids[0], ActionState::Ended, "overridden")
+                .await
+                .unwrap()
+        );
+        assert!(
+            economy::end_action(&pool, ids[1], ActionState::Ended, "expired")
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            state_of(&pool, ids[0]).await,
+            ("ended".into(), Some("overridden".into()))
+        );
+        assert_eq!(
+            state_of(&pool, ids[1]).await,
+            ("ended".into(), Some("cleansed".into()))
         );
     });
 }

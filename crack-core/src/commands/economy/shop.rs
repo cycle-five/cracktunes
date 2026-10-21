@@ -16,10 +16,11 @@ use crate::messaging::messages::{
     ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL, ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK,
     ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG, ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK,
     ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG, ECONOMY_NO_DATABASE, ECONOMY_PURCHASE_FAILED,
-    ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER,
-    ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX, ECONOMY_SHOP_CLEANSED_SUFFIX,
-    ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE, ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP,
-    ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE, ECONOMY_YOU_HAVE,
+    ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED,
+    ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX,
+    ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE,
+    ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
+    ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
@@ -123,8 +124,54 @@ pub fn cleansed_reply_text(ended: usize, balance: i64, currency: &str, emoji: &s
 }
 
 /// The public unmasking. Mentions here ping nobody (cards render with none).
-pub fn unmasked_text(presser: UserId, buyer: UserId) -> String {
-    format!("{ECONOMY_REVEAL_PREFIX} <@{presser}> {ECONOMY_REVEAL_UNMASKED} <@{buyer}>")
+pub fn unmasked_text(presser: UserId, kind: ActionKind, buyer: UserId) -> String {
+    format!(
+        "{ECONOMY_REVEAL_PREFIX} <@{presser}> {ECONOMY_REVEAL_UNMASKED} {}: <@{buyer}>",
+        kind.label().to_lowercase()
+    )
+}
+
+/// The private reply to a reveal. It names the buyer too, so a failed public
+/// post does not lose what was paid for.
+pub fn revealed_reply_text(
+    kind: ActionKind,
+    buyer: UserId,
+    balance: i64,
+    currency: &str,
+    emoji: &str,
+) -> String {
+    format!(
+        "{ECONOMY_REVEAL_WAS} <@{buyer}> ({}). {ECONOMY_YOU_HAVE} {balance} {emoji} {currency}.",
+        kind.label().to_lowercase()
+    )
+}
+
+/// The mod log entry for a purchase. Only an action that changed a member is
+/// logged (spec 5.4): a prank a mirror blocked changed nobody, so it has none.
+/// A bounce is logged against the buyer, naming whose mirror sent it back.
+pub fn shop_event(
+    kind: ActionKind,
+    outcome: BuyOutcome,
+    buyer: UserId,
+    target: UserId,
+    note: Option<String>,
+    signed: bool,
+    until: Option<DateTime<Utc>>,
+) -> Option<ModLogEvent> {
+    let (target, mirrored_from) = match outcome {
+        BuyOutcome::Landed => (target, None),
+        BuyOutcome::Bounced => (buyer, Some(target)),
+        BuyOutcome::Blocked => return None,
+    };
+    Some(ModLogEvent::ShopAction {
+        action: kind,
+        buyer,
+        target,
+        note,
+        signed,
+        until,
+        mirrored_from,
+    })
 }
 
 /// How a prank is shown in the reveal picker: "Rename \u{b7} 5 minutes ago".
@@ -282,31 +329,30 @@ async fn prank(
     if let Err(err) = courier::post_message(
         &transport,
         GenericChannelId::new(channel.get()),
-        &Rendered::text(card),
+        &Rendered::text(card.clone()),
     )
     .await
     {
-        tracing::warn!("economy: posting the {kind:?} card in {channel} failed: {err:?}");
+        // The destination may be a channel the bot cannot post in: a public
+        // follow-up in the invoking channel needs no channel permissions.
+        tracing::warn!(
+            "economy: posting the {kind:?} card in {channel} failed, answering in the invoking channel: {err:?}"
+        );
+        if let Err(err) = say(ctx, card, false).await {
+            tracing::warn!("economy: the {kind:?} card follow-up failed: {err:?}");
+        }
     }
-    let (log_target, mirrored_from) = match bought.outcome {
-        BuyOutcome::Landed => (target.id, None),
-        BuyOutcome::Bounced => (buyer.id, Some(target.id)),
-        BuyOutcome::Blocked => (target.id, Some(target.id)),
-    };
-    log(
-        ctx,
-        guild,
-        ModLogEvent::ShopAction {
-            action: kind,
-            buyer: buyer.id,
-            target: log_target,
-            note,
-            signed,
-            until: bought.until,
-            mirrored_from,
-        },
-    )
-    .await;
+    if let Some(event) = shop_event(
+        kind,
+        bought.outcome,
+        buyer.id,
+        target.id,
+        note,
+        signed,
+        bought.until,
+    ) {
+        log(ctx, guild, event).await;
+    }
     replied
 }
 
@@ -468,11 +514,7 @@ pub async fn immunity(ctx: Context<'_>) -> Result<(), Error> {
             )
             .await
         },
-        Err(BuyError::Refused(r)) => say(ctx, refusal_text(&r, &cfg.currency_name), true).await,
-        Err(BuyError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
-        Err(BuyError::Db | BuyError::Discord(_) | BuyError::Invalid) => {
-            say(ctx, ECONOMY_PURCHASE_FAILED, true).await
-        },
+        Err(e) => say_buy_error(ctx, e, &cfg.currency_name).await,
     }
 }
 
@@ -564,9 +606,9 @@ pub async fn reveal_command(
         Ok(done) => {
             let replied = say(
                 ctx,
-                bought_reply_text(
-                    ActionKind::Reveal,
-                    BuyOutcome::Landed,
+                revealed_reply_text(
+                    done.kind,
+                    done.buyer,
                     done.balance,
                     &cfg.currency_name,
                     &cfg.currency_emoji,
@@ -574,7 +616,13 @@ pub async fn reveal_command(
                 true,
             )
             .await;
-            say(ctx, unmasked_text(presser.id, done.buyer), false).await?;
+            // The private reply already names the buyer: a failed public post
+            // loses nothing.
+            if let Err(err) =
+                say(ctx, unmasked_text(presser.id, done.kind, done.buyer), false).await
+            {
+                tracing::warn!("economy: the public unmasking failed: {err:?}");
+            }
             replied
         },
         Err(e) => say_buy_error(ctx, e, &cfg.currency_name).await,
@@ -698,8 +746,8 @@ mod tests {
     #[test]
     fn unmasking_names_both_and_the_picker_reads_in_words() {
         assert_eq!(
-            unmasked_text(UserId::new(1), UserId::new(2)),
-            "🔍 <@1> unmasked it: <@2>"
+            unmasked_text(UserId::new(1), ActionKind::Lock, UserId::new(2)),
+            "🔍 <@1> unmasked the lock nickname: <@2>"
         );
         let now = chrono::TimeZone::timestamp_opt(&Utc, 1_800_000_000, 0).unwrap();
         let label = reveal_label(ActionKind::Rename, now, now - chrono::Duration::minutes(5));
@@ -720,5 +768,41 @@ mod tests {
         assert_eq!(ids(involved_channels(ActionKind::Jail, t, b, j)), [3]);
         assert!(involved_channels(ActionKind::Jail, t, b, None).is_empty());
         assert!(involved_channels(ActionKind::Mute, t, b, j).is_empty());
+    }
+
+    #[test]
+    fn the_private_reveal_names_the_buyer_too() {
+        assert_eq!(
+            revealed_reply_text(ActionKind::Mute, UserId::new(2), 40, "credits", "🪙"),
+            "It was <@2> (mute). You have 40 🪙 credits."
+        );
+    }
+
+    #[test]
+    fn only_actions_that_changed_a_member_are_logged() {
+        let (b, t) = (UserId::new(1), UserId::new(2));
+        let log = |o| shop_event(ActionKind::Rename, o, b, t, Some("gg".into()), false, None);
+        let Some(ModLogEvent::ShopAction {
+            buyer,
+            target,
+            mirrored_from,
+            ..
+        }) = log(BuyOutcome::Landed)
+        else {
+            panic!("a landed prank is logged");
+        };
+        assert_eq!((buyer, target, mirrored_from), (b, t, None));
+        // A bounce changed the buyer, and names whose mirror sent it back.
+        let Some(ModLogEvent::ShopAction {
+            target,
+            mirrored_from,
+            ..
+        }) = log(BuyOutcome::Bounced)
+        else {
+            panic!("a bounce is logged");
+        };
+        assert_eq!((target, mirrored_from), (b, Some(t)));
+        // A blocked one changed nobody.
+        assert_eq!(log(BuyOutcome::Blocked), None);
     }
 }

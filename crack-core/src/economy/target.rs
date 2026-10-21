@@ -252,6 +252,7 @@ pub async fn gather_facts(
         .and_then(|_| top_position(cache, guild, member));
     let bot_id = cache.current_user().id;
     // 0 when unknown: `top >= 0` is always true, so it fails closed.
+    // Unknown reads as 0, which puts every prank out of reach (fails closed).
     let bot_top_role_position = top_position(cache, guild, bot_id).unwrap_or_default();
     // No names means no cached member, which is already out of reach above.
     let (current_nick, display_name) = names.unwrap_or_default();

@@ -323,6 +323,28 @@ pub struct ActionRow {
     pub revealed_at: Option<DateTime<Utc>>,
 }
 
+/// Bring an `active` row's end forward to `now` and record why, so the
+/// sweeper retries its undo every tick (an early end whose undo failed). The
+/// end never moves later. False when the row is not `active`.
+pub async fn schedule_early_end(
+    pool: &PgPool,
+    action_id: i64,
+    reason: &str,
+    now: DateTime<Utc>,
+) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE economy_actions
+         SET expires_at = LEAST(COALESCE(expires_at, $3), $3), end_reason = $2
+         WHERE id = $1 AND state = 'active'",
+        action_id,
+        reason,
+        now
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
 /// The running (`active` or `ending`) actions of these kinds aimed at
 /// `target`, oldest first.
 pub async fn active_of_kind(
@@ -374,7 +396,8 @@ struct RawCandidate {
 }
 
 /// The pranks (spec 4.1) other people bought against `target` that could be
-/// unmasked: unsigned, landed (not refunded, not blocked), newest first. A
+/// unmasked: unsigned, not refunded (a blocked prank was still aimed at the
+/// mirror's owner), newest first. A
 /// bounced prank (its buyer is its own target) and a mirror (its target is
 /// its owner) never qualify. `only` narrows to one action id, and
 /// `unrevealed_only` drops the ones already unmasked.
@@ -386,9 +409,8 @@ pub async fn reveal_candidates(
     unrevealed_only: bool,
     limit: i64,
 ) -> sqlx::Result<Vec<RevealCandidate>> {
-    let keys: Vec<String> = ActionKind::ALL
+    let keys: Vec<String> = ActionKind::PRANKS
         .iter()
-        .filter(|k| k.is_prank())
         .map(|k| k.key().to_string())
         .collect();
     let raw = sqlx::query_as!(
@@ -400,7 +422,6 @@ pub async fn reveal_candidates(
            WHERE guild_id = $1 AND target_id = $2 AND buyer_id <> $2
              AND kind = ANY($3) AND signed = false
              AND state IN ('active', 'ending', 'ended', 'done')
-             AND end_reason IS DISTINCT FROM 'blocked'
              AND ($4::bigint IS NULL OR id = $4)
              AND (NOT $5 OR revealed_at IS NULL)
            ORDER BY id DESC
@@ -438,17 +459,46 @@ pub async fn reveal_candidates(
 }
 
 /// Stamp a prank as unmasked by `by`. False when it already was (nothing
-/// changed), so a racing second reveal can be refunded.
-pub async fn mark_revealed(pool: &PgPool, action_id: i64, by: UserId) -> sqlx::Result<bool> {
+/// changed), so a racing second reveal is told so and refunded.
+pub async fn mark_revealed(
+    conn: &mut sqlx::PgConnection,
+    action_id: i64,
+    by: UserId,
+) -> sqlx::Result<bool> {
     let done = sqlx::query!(
         "UPDATE economy_actions SET revealed_at = now(), revealed_by = $2
          WHERE id = $1 AND revealed_at IS NULL",
         action_id,
         by.get() as i64
     )
-    .execute(pool)
+    .execute(conn)
     .await?;
     Ok(done.rows_affected() > 0)
+}
+
+/// Unmask `prank` and mark the paid `reveal` purchase `done`, in one
+/// transaction: a reveal left `pending` always means nothing was unmasked, so
+/// reconcile's refund stays right. False (nothing written) when the prank was
+/// already unmasked.
+pub async fn reveal_action(
+    pool: &PgPool,
+    reveal_id: i64,
+    prank_id: i64,
+    by: UserId,
+) -> sqlx::Result<bool> {
+    let mut tx = pool.begin().await?;
+    if !mark_revealed(&mut tx, prank_id, by).await? {
+        return Ok(false);
+    }
+    sqlx::query!(
+        "UPDATE economy_actions SET state = 'done', ended_at = now()
+         WHERE id = $1 AND state = 'pending'",
+        reveal_id
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(true)
 }
 
 /// Move a `pending` action to what it becomes once the effect has landed:
@@ -732,12 +782,11 @@ pub async fn pending_for_guild(
 }
 
 /// Move a running (`active` or `ending`) row to `Ended` (final, stamped) or
-/// `Ending` (waits for the member's next voice join), with the reason. An
-/// `ending` row that ends keeps the reason it was set aside with (a cleanse
-/// stays "cleansed" after the rejoin), except that a member who left the
-/// server is "left". False
-/// when the row was not running, or `state` is neither of those: nothing
-/// changed.
+/// `Ending` (waits for the member's next voice join), with the reason. The
+/// reason `expired` is the generic one and never overwrites a stored reason
+/// (a cleanse set aside or scheduled stays "cleansed" after the retry); any
+/// specific reason (`left`, `overridden`, `cleansed`, ...) wins. False when
+/// the row was not running, or `state` is neither of those: nothing changed.
 pub async fn end_action(
     pool: &PgPool,
     action_id: i64,
@@ -750,8 +799,7 @@ pub async fn end_action(
     let done = sqlx::query!(
         "UPDATE economy_actions
          SET state = $2,
-             end_reason = CASE WHEN state = 'ending' AND $2 IN ('ended', 'ending') AND $3 <> 'left'
-                               THEN COALESCE(end_reason, $3) ELSE $3 END,
+             end_reason = CASE WHEN $3 = 'expired' THEN COALESCE(end_reason, $3) ELSE $3 END,
              ended_at = CASE WHEN $4 THEN now() ELSE ended_at END
          WHERE id = $1 AND state IN ('active', 'ending')",
         action_id,

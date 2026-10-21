@@ -98,17 +98,19 @@ impl ActionKind {
     }
 
     /// The seven pranks (spec 4.1): the kinds aimed at another member.
+    pub const PRANKS: &'static [ActionKind] = &[
+        ActionKind::Rename,
+        ActionKind::Lock,
+        ActionKind::Clown,
+        ActionKind::Drag,
+        ActionKind::Mute,
+        ActionKind::Deafen,
+        ActionKind::Jail,
+    ];
+
+    /// Whether this is one of [`Self::PRANKS`].
     pub fn is_prank(self) -> bool {
-        matches!(
-            self,
-            ActionKind::Rename
-                | ActionKind::Lock
-                | ActionKind::Clown
-                | ActionKind::Drag
-                | ActionKind::Mute
-                | ActionKind::Deafen
-                | ActionKind::Jail
-        )
+        Self::PRANKS.contains(&self)
     }
 
     /// True when the effect lasts a while and is undone by the sweeper.
