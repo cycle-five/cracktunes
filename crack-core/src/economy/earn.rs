@@ -203,7 +203,7 @@ pub fn start(data: Data, cache: Arc<Cache>) {
     let Some(pool) = data.database_pool.clone() else {
         return;
     };
-    tokio::spawn(async move {
+    super::effects::spawn_supervised("earn", async move {
         let mut tick = tokio::time::interval(TICK);
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
         tick.tick().await; // the first tick is immediate; skip it

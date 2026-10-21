@@ -4,6 +4,7 @@
 pub mod cards;
 pub mod discord;
 pub mod earn;
+pub mod effects;
 pub mod gamble;
 pub mod immunity;
 pub mod preflight;

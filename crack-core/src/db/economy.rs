@@ -470,6 +470,196 @@ pub async fn refund_action(pool: &PgPool, action_id: i64) -> sqlx::Result<Option
     Ok(Some(back))
 }
 
+/// An `economy_actions` row as the sweep queries read it.
+struct RawAction {
+    id: i64,
+    guild_id: i64,
+    kind: String,
+    buyer_id: i64,
+    target_id: Option<i64>,
+    payload: Json<ActionPayload>,
+    state: String,
+    expires_at: Option<DateTime<Utc>>,
+    note: Option<String>,
+    signed: bool,
+    revealed_at: Option<DateTime<Utc>>,
+}
+
+impl RawAction {
+    /// A row this build cannot read (unknown kind, bad id) is skipped.
+    fn into_row(self) -> Option<(GuildId, ActionRow)> {
+        let guild = u64::try_from(self.guild_id)
+            .ok()
+            .filter(|g| *g != 0 && *g != u64::MAX)
+            .map(GuildId::new)?;
+        Some((
+            guild,
+            ActionRow {
+                id: self.id,
+                kind: ActionKind::from_key(&self.kind)?,
+                buyer: uid(self.buyer_id)?,
+                target: self.target_id.and_then(uid),
+                payload: self.payload.0,
+                state: ActionState::parse(&self.state)?,
+                expires_at: self.expires_at,
+                note: self.note,
+                signed: self.signed,
+                revealed_at: self.revealed_at,
+            },
+        ))
+    }
+}
+
+fn rows_of(raw: Vec<RawAction>) -> Vec<(GuildId, ActionRow)> {
+    raw.into_iter().filter_map(RawAction::into_row).collect()
+}
+
+/// Across all guilds, `active` rows whose time is up, oldest first. A row
+/// with no `expires_at` (a mirror) is never due.
+pub async fn due_actions(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+    limit: i64,
+) -> sqlx::Result<Vec<(GuildId, ActionRow)>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE state = 'active' AND expires_at IS NOT NULL AND expires_at <= $1
+           ORDER BY expires_at, id
+           LIMIT $2"#,
+        now,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw))
+}
+
+/// One server's `active` rows whose time is up.
+pub async fn overdue_for_guild(
+    pool: &PgPool,
+    guild: GuildId,
+    now: DateTime<Utc>,
+) -> sqlx::Result<Vec<ActionRow>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND state = 'active'
+             AND expires_at IS NOT NULL AND expires_at <= $2
+           ORDER BY expires_at, id"#,
+        guild.get() as i64,
+        now
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
+/// The `ending` rows (undone on the member's next voice join) aimed at one
+/// member.
+pub async fn ending_for(
+    pool: &PgPool,
+    guild: GuildId,
+    user: UserId,
+) -> sqlx::Result<Vec<ActionRow>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND target_id = $2 AND state = 'ending'
+           ORDER BY id"#,
+        guild.get() as i64,
+        user.get() as i64
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
+/// All of one server's `ending` rows.
+pub async fn ending_for_guild(pool: &PgPool, guild: GuildId) -> sqlx::Result<Vec<ActionRow>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND state = 'ending'
+           ORDER BY id"#,
+        guild.get() as i64
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
+/// One server's `pending` rows charged before `cutoff`: a purchase between
+/// its charge and its activate is younger than that and is left alone.
+pub async fn pending_for_guild(
+    pool: &PgPool,
+    guild: GuildId,
+    cutoff: DateTime<Utc>,
+) -> sqlx::Result<Vec<ActionRow>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND state = 'pending' AND created_at < $2
+           ORDER BY id"#,
+        guild.get() as i64,
+        cutoff
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
+/// Move a running (`active` or `ending`) row to `Ended` (final, stamped) or
+/// `Ending` (waits for the member's next voice join), with the reason. False
+/// when the row was not running, or `state` is neither of those: nothing
+/// changed.
+pub async fn end_action(
+    pool: &PgPool,
+    action_id: i64,
+    state: ActionState,
+    end_reason: &str,
+) -> sqlx::Result<bool> {
+    if !matches!(state, ActionState::Ended | ActionState::Ending) {
+        return Ok(false);
+    }
+    let done = sqlx::query!(
+        "UPDATE economy_actions
+         SET state = $2, end_reason = $3,
+             ended_at = CASE WHEN $4 THEN now() ELSE ended_at END
+         WHERE id = $1 AND state IN ('active', 'ending')",
+        action_id,
+        state.as_str(),
+        end_reason,
+        state.is_final()
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// The row's state now, `None` when there is no such row.
+pub async fn action_state(pool: &PgPool, action_id: i64) -> sqlx::Result<Option<ActionState>> {
+    let row = sqlx::query!("SELECT state FROM economy_actions WHERE id = $1", action_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.and_then(|r| ActionState::parse(&r.state)))
+}
+
 /// Gift credits. Both wallets are locked in ascending user-id order so two
 /// opposite gifts cannot deadlock. Returns (sender, receiver) balances.
 pub async fn transfer(

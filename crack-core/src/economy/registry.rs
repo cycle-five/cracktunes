@@ -22,6 +22,7 @@ pub struct EconomyRegistry {
     last_counted: DashMap<(GuildId, UserId), Instant>,
     /// The earning tick has been spawned.
     started: Arc<AtomicBool>,
+    sweeper_started: Arc<AtomicBool>,
 }
 
 impl EconomyRegistry {
@@ -117,6 +118,11 @@ impl EconomyRegistry {
         !self.started.swap(true, Ordering::SeqCst)
     }
 
+    /// True the first time only: the caller then spawns the sweeper.
+    pub fn start_sweeper_once(&self) -> bool {
+        !self.sweeper_started.swap(true, Ordering::SeqCst)
+    }
+
     pub fn set_one_opted_out(&self, g: GuildId, u: UserId, out: bool) {
         let mut set = self.opted_out.entry(g).or_default();
         if out {
@@ -184,6 +190,14 @@ mod tests {
         assert!(reg.start_once());
         assert!(!reg.start_once());
         assert!(!reg.clone().start_once(), "clones share the flag");
+    }
+
+    #[test]
+    fn start_sweeper_once_is_true_once_and_apart_from_the_earner() {
+        let reg = EconomyRegistry::default();
+        assert!(reg.start_sweeper_once());
+        assert!(!reg.start_sweeper_once());
+        assert!(reg.start_once(), "its own flag");
     }
 
     #[test]

@@ -58,6 +58,24 @@ impl EventHandler for SerenityHandler {
                 // timed when it arrived. It takes CrackTunes' own changes too
                 // (their audit units must be consumed, M8a).
                 crate::modlog::live::on_voice_state(&self.data, ctx, old.as_ref(), new);
+                // A member who just joined voice has pranks waiting to be
+                // undone (their mute could not land while they were away).
+                if let (None, Some(guild)) = (old.as_ref().and_then(|o| o.channel_id), new.guild_id)
+                {
+                    if new.channel_id.is_some() {
+                        let discord = crate::economy::discord::LiveEconomyDiscord {
+                            http: ctx.http.clone(),
+                        };
+                        crate::economy::effects::on_voice_join(
+                            &self.data,
+                            &discord,
+                            guild,
+                            new.user_id,
+                            chrono::Utc::now(),
+                        )
+                        .await;
+                    }
+                }
                 // Then voice rooms: the handler below returns early for
                 // anyone but the bot.
                 crate::rooms::lifecycle::on_voice_state(&self.data, ctx, old.as_ref(), new).await;
@@ -266,6 +284,8 @@ impl SerenityHandler {
         if let Some(cache) = ctx.cache() {
             crate::economy::earn::start(self.data.clone(), cache.clone());
         }
+        // And the sweeper that ends timed pranks on time.
+        crate::economy::effects::start_sweeper(self.data.clone(), ctx.http.clone());
 
         // Process-level background work, moved off `CacheReady`.
         //
@@ -515,6 +535,23 @@ impl SerenityHandler {
                     tracing::warn!("economy: retrying the settings of {gid} failed too");
                 }
             });
+        }
+
+        // Pranks the last run left behind: pending purchases resolved, rows
+        // that came due while the bot was down finished. After the settings
+        // load, though it needs none: the sweeper runs with the economy off.
+        if let Some(cache) = ctx.cache() {
+            let discord = crate::economy::discord::LiveEconomyDiscord {
+                http: ctx.http.clone(),
+            };
+            crate::economy::effects::reconcile(
+                &self.data,
+                &discord,
+                cache.as_ref(),
+                guild.id,
+                chrono::Utc::now(),
+            )
+            .await;
         }
 
         // The mod log's settings, likewise (off without a database); a server
