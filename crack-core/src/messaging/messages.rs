@@ -1096,6 +1096,22 @@ pub const DASH_ECONOMY_BAD_RENAME_HOURS: &str =
     "Hours a rename, lock or clown lasts must be between 1 and 168.";
 pub const DASH_ECONOMY_BAD_SHORT_EFFECT: &str =
     "Minutes a mute, deafen or jail lasts must be between 1 and 60.";
+pub const DASH_ECONOMY_RENAME_HOURS: &str = "Hours a rename, lock or clown lasts";
+pub const DASH_ECONOMY_SHORT_EFFECT: &str = "Minutes a mute, deafen or jail lasts";
+pub const DASH_ECONOMY_JAIL_CHANNEL: &str = "Jail channel";
+pub const DASH_ECONOMY_ANNOUNCE_CHANNEL: &str = "Announcement channel";
+pub const DASH_ECONOMY_NO_CHANNEL_OPTION: &str = "None";
+pub const DASH_ECONOMY_JAIL_NOTE: &str = "Members are moved here even if they can't see it.";
+pub const DASH_ECONOMY_UNKNOWN_CHANNEL: &str =
+    "The jail channel must be a voice channel and the announcement channel a text channel of this server.";
+pub const DASH_ECONOMY_PREFLIGHT: &str = "What CrackTunes needs for each prank";
+pub const DASH_ECONOMY_PREFLIGHT_READY: &str = "Ready.";
+pub const DASH_ECONOMY_PREFLIGHT_UNKNOWN: &str = "Couldn't check permissions right now.";
+pub const DASH_ECONOMY_PREFLIGHT_NO_JAIL: &str = "Choose a jail channel first.";
+pub const DASH_ECONOMY_ANNOUNCE_STATUS: &str = "Announcements";
+pub const DASH_ECONOMY_FINDING_GIVE: &str = "Give CrackTunes";
+pub const DASH_ECONOMY_FINDING_SERVER: &str = "in Server Settings → Roles";
+pub const DASH_ECONOMY_FINDING_IN: &str = "in";
 pub const DASH_ECONOMY_UNKNOWN_ACTION: &str = "That is not something this server can sell.";
 pub const DASH_ECONOMY_SETTINGS_NOT_LOADED: &str =
     "Economy settings couldn't be read from the database yet — try again in a minute.";

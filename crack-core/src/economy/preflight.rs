@@ -11,6 +11,11 @@ use std::collections::HashMap;
 /// What a channel must offer the bot for drag and jail.
 pub const NEED_CHANNEL: Permissions = Permissions::VIEW_CHANNEL.union(Permissions::CONNECT);
 
+/// What the announcement channel must offer the bot for cards (spec 7).
+pub const NEED_CARD: Permissions = Permissions::VIEW_CHANNEL
+    .union(Permissions::SEND_MESSAGES)
+    .union(Permissions::EMBED_LINKS);
+
 /// The bot's computed permissions: server-wide, and in the channels asked about.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BotPerms {

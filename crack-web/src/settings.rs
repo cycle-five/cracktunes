@@ -2,23 +2,28 @@
 //! serde; saving goes through crack-core's one save path.
 
 use crack_core::{
-    economy::settings::{ActionKind, ActionPrice, EconomySettings, EconomySettingsError},
+    economy::{
+        preflight::{missing, BotPerms, NEED_CARD},
+        settings::{ActionKind, ActionPrice, EconomyConfig, EconomySettings, EconomySettingsError},
+    },
     messaging::messages::{
         DASH_ECONOMY_BAD_COOLDOWN, DASH_ECONOMY_BAD_CURRENCY_EMOJI, DASH_ECONOMY_BAD_CURRENCY_NAME,
         DASH_ECONOMY_BAD_IMMUNITY_HOURS, DASH_ECONOMY_BAD_MAX_BET,
         DASH_ECONOMY_BAD_OPTOUT_COOLDOWN, DASH_ECONOMY_BAD_PRICE, DASH_ECONOMY_BAD_RATE,
-        DASH_ECONOMY_BAD_RENAME_HOURS, DASH_ECONOMY_BAD_SHORT_EFFECT, DASH_ECONOMY_NO_DATABASE,
-        DASH_SETTINGS_BAD_GRACE, DASH_SETTINGS_BAD_LIMIT, DASH_SETTINGS_BAD_TEMPLATE,
-        DASH_SETTINGS_NO_DATABASE, DASH_SETTINGS_NO_HUB, DASH_SETTINGS_UNKNOWN_CHANNEL,
-        MODLOG_NO_CHANNEL, MODLOG_NO_DATABASE,
+        DASH_ECONOMY_BAD_RENAME_HOURS, DASH_ECONOMY_BAD_SHORT_EFFECT, DASH_ECONOMY_FINDING_GIVE,
+        DASH_ECONOMY_FINDING_IN, DASH_ECONOMY_FINDING_SERVER, DASH_ECONOMY_NO_DATABASE,
+        DASH_ECONOMY_PREFLIGHT_NO_JAIL, DASH_SETTINGS_BAD_GRACE, DASH_SETTINGS_BAD_LIMIT,
+        DASH_SETTINGS_BAD_TEMPLATE, DASH_SETTINGS_NO_DATABASE, DASH_SETTINGS_NO_HUB,
+        DASH_SETTINGS_UNKNOWN_CHANNEL, MODLOG_NO_CHANNEL, MODLOG_NO_DATABASE,
     },
     modlog::settings::ModLogSettingsError,
-    rooms::settings::SettingsError,
+    rooms::{card::perm_names, settings::SettingsError},
 };
 use serde::{Deserialize, Serialize};
+use serenity::all::{ChannelId, Permissions};
 
 /// A voice channel the hub can be.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChannelOption {
     pub id: String,
     pub name: String,
@@ -143,11 +148,115 @@ pub struct EconomySettingsView {
     pub bought_immunity_hours: u32,
     pub gambling_enabled: bool,
     pub max_bet: u32,
+    pub rename_hours: u32,
+    pub short_effect_minutes: u32,
+    /// Ids are strings, as for rooms.
+    pub jail_channel: Option<String>,
+    pub announce_channel: Option<String>,
+    /// The jail picker's options. Without a cache: the stored channel only.
+    pub voice_channels: Vec<ChannelOption>,
+    /// The announcement picker's options.
+    pub text_channels: Vec<ChannelOption>,
+    /// One entry per prank, in `ActionKind::PRANKS` order.
+    pub preflight: Vec<ActionPreflight>,
+    /// What the announcement channel lacks for cards; `None` when no
+    /// channel is set or the cache cannot say.
+    pub announce_findings: Option<Vec<String>>,
+}
+
+/// What one prank still needs, in words.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ActionPreflight {
+    pub kind: String,
+    pub label: String,
+    /// `None`: could not be checked. Empty: ready.
+    pub needs: Option<Vec<String>>,
+}
+
+/// The kind of channel a picker takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelKind {
+    Voice,
+    Text,
+}
+
+fn stored_option(c: Option<ChannelId>) -> Vec<ChannelOption> {
+    c.into_iter()
+        .map(|id| ChannelOption {
+            id: id.to_string(),
+            name: format!("channel {id}"),
+        })
+        .collect()
+}
+
+/// The per-prank permission report in words, and the announcement channel's
+/// card gaps. `perms` is `None` when the cache cannot answer, which reads
+/// as "can't tell", never as ready.
+pub fn economy_preflight(
+    c: &EconomyConfig,
+    perms: Option<&BotPerms>,
+    name_of: impl Fn(ChannelId) -> String,
+) -> (Vec<ActionPreflight>, Option<Vec<String>>) {
+    let line = |at: Option<ChannelId>, p: Permissions| match at {
+        None => format!(
+            "{DASH_ECONOMY_FINDING_GIVE} {} {DASH_ECONOMY_FINDING_SERVER}",
+            perm_names(p, false)
+        ),
+        Some(ch) => format!(
+            "{DASH_ECONOMY_FINDING_GIVE} {} {DASH_ECONOMY_FINDING_IN} {}",
+            perm_names(p, false),
+            name_of(ch)
+        ),
+    };
+    let actions = ActionKind::PRANKS
+        .iter()
+        .map(|&k| {
+            let channels: Vec<ChannelId> = if k == ActionKind::Jail {
+                c.jail_channel_id.into_iter().collect()
+            } else {
+                Vec::new()
+            };
+            let mut needs = perms.map(|p| {
+                missing(k, p, &channels)
+                    .into_iter()
+                    .map(|(at, gap)| line(at, gap))
+                    .collect::<Vec<_>>()
+            });
+            if k == ActionKind::Jail && c.jail_channel_id.is_none() {
+                needs
+                    .get_or_insert_with(Vec::new)
+                    .push(DASH_ECONOMY_PREFLIGHT_NO_JAIL.to_owned());
+            }
+            ActionPreflight {
+                kind: k.key().to_owned(),
+                label: k.label().to_owned(),
+                needs,
+            }
+        })
+        .collect();
+    let announce = c.announce_channel_id.zip(perms).map(|(ch, p)| {
+        let have = p
+            .in_channel
+            .get(&ch)
+            .copied()
+            .unwrap_or_else(Permissions::empty);
+        let gap = NEED_CARD - have;
+        if gap.is_empty() {
+            Vec::new()
+        } else {
+            vec![line(Some(ch), gap)]
+        }
+    });
+    (actions, announce)
 }
 
 impl EconomySettingsView {
     pub fn from_settings(s: &EconomySettings) -> Self {
         let c = &s.config;
+        // No cache here: the pickers hold the stored channel and the report
+        // says it can't tell. The live backend fills both in.
+        let (preflight, announce_findings) =
+            economy_preflight(c, None, |ch| format!("channel {ch}"));
         Self {
             enabled: s.enabled,
             currency_name: c.currency_name.clone(),
@@ -174,6 +283,14 @@ impl EconomySettingsView {
             bought_immunity_hours: c.bought_immunity_hours,
             gambling_enabled: c.gambling_enabled,
             max_bet: c.max_bet,
+            rename_hours: c.rename_hours,
+            short_effect_minutes: c.short_effect_minutes,
+            jail_channel: c.jail_channel_id.map(|c| c.to_string()),
+            announce_channel: c.announce_channel_id.map(|c| c.to_string()),
+            voice_channels: stored_option(c.jail_channel_id),
+            text_channels: stored_option(c.announce_channel_id),
+            preflight,
+            announce_findings,
         }
     }
 }
@@ -203,6 +320,10 @@ pub struct EconomySettingsForm {
     pub bought_immunity_hours: u32,
     pub gambling_enabled: bool,
     pub max_bet: u32,
+    pub rename_hours: u32,
+    pub short_effect_minutes: u32,
+    pub jail_channel: Option<String>,
+    pub announce_channel: Option<String>,
 }
 
 /// Why an economy save changed nothing.
@@ -211,6 +332,9 @@ pub enum EconomySaveRefused {
     Invalid(EconomySettingsError),
     /// A price row names an action this build does not know.
     UnknownAction,
+    /// The jail channel is not a voice channel, or the announcement channel
+    /// not a text channel, of this server.
+    UnknownChannel,
     /// The database refused the write.
     Failed,
     /// The stored settings have not been read yet.
@@ -236,12 +360,22 @@ pub fn economy_invalid_message(e: EconomySettingsError) -> &'static str {
 
 /// Merge a posted form into the stored settings. It starts from the stored
 /// config and sets each price row, never rebuilding `Prices`, so a price key
-/// this build does not know survives the save.
+/// this build does not know survives the save. `resolve` turns a posted
+/// channel id into a channel of that kind in this server, or `None`.
 pub fn apply_form(
     stored: EconomySettings,
     form: EconomySettingsForm,
+    resolve: impl Fn(ChannelKind, &str) -> Option<ChannelId>,
 ) -> Result<EconomySettings, EconomySaveRefused> {
     let mut s = stored;
+    let pick = |kind, raw: &Option<String>| match raw {
+        Some(r) => resolve(kind, r)
+            .map(Some)
+            .ok_or(EconomySaveRefused::UnknownChannel),
+        None => Ok(None),
+    };
+    let jail = pick(ChannelKind::Voice, &form.jail_channel)?;
+    let announce = pick(ChannelKind::Text, &form.announce_channel)?;
     // Resolve every row first so a bad one changes nothing.
     let rows = form
         .prices
@@ -277,6 +411,10 @@ pub fn apply_form(
     c.bought_immunity_hours = form.bought_immunity_hours;
     c.gambling_enabled = form.gambling_enabled;
     c.max_bet = form.max_bet;
+    c.rename_hours = form.rename_hours;
+    c.short_effect_minutes = form.short_effect_minutes;
+    c.jail_channel_id = jail;
+    c.announce_channel_id = announce;
     Ok(s)
 }
 
@@ -306,7 +444,16 @@ mod tests {
             bought_immunity_hours: 5,
             gambling_enabled: true,
             max_bet: 9,
+            rename_hours: 48,
+            short_effect_minutes: 7,
+            jail_channel: Some("111".into()),
+            announce_channel: Some("222".into()),
         }
+    }
+
+    /// Every id is a channel of the right kind.
+    fn any_channel(_: ChannelKind, raw: &str) -> Option<ChannelId> {
+        raw.parse().ok().map(ChannelId::new)
     }
 
     #[test]
@@ -322,7 +469,7 @@ mod tests {
             enabled: false,
             config,
         };
-        let out = apply_form(stored, form()).unwrap();
+        let out = apply_form(stored, form(), any_channel).unwrap();
         let raw = serde_json::to_string(&out.config).unwrap();
         assert!(raw.contains(r#""future":{"price":5,"on":true}"#), "{raw}");
         assert_eq!(
@@ -344,9 +491,10 @@ mod tests {
             enabled: false,
             config,
         };
-        let out = apply_form(stored, form()).unwrap();
+        let out = apply_form(stored, form(), any_channel).unwrap();
         let raw = serde_json::to_string(&out.config).unwrap();
         assert!(raw.contains(r#""future_field":12"#), "{raw}");
+        assert_eq!(out.config.rename_hours, 48, "new fields do not disturb it");
         assert_eq!(
             out.config.max_bet, 9,
             "the form still wins on its own fields"
@@ -355,7 +503,7 @@ mod tests {
 
     #[test]
     fn apply_form_sets_every_field() {
-        let out = apply_form(EconomySettings::off(GuildId::new(5)), form()).unwrap();
+        let out = apply_form(EconomySettings::off(GuildId::new(5)), form(), any_channel).unwrap();
         assert!(out.enabled);
         let c = &out.config;
         assert_eq!(c.currency_name, "gems");
@@ -371,6 +519,172 @@ mod tests {
     }
 
     #[test]
+    fn economy_save_passes_the_new_fields() {
+        let out = apply_form(EconomySettings::off(GuildId::new(5)), form(), any_channel).unwrap();
+        let c = &out.config;
+        assert_eq!(c.rename_hours, 48);
+        assert_eq!(c.short_effect_minutes, 7);
+        assert_eq!(c.jail_channel_id, Some(ChannelId::new(111)));
+        assert_eq!(c.announce_channel_id, Some(ChannelId::new(222)));
+        // Empty selects clear both.
+        let mut f = form();
+        f.jail_channel = None;
+        f.announce_channel = None;
+        let mut stored = EconomySettings::off(GuildId::new(5));
+        stored.config.jail_channel_id = Some(ChannelId::new(5));
+        stored.config.announce_channel_id = Some(ChannelId::new(6));
+        let out = apply_form(stored, f, any_channel).unwrap();
+        assert_eq!(out.config.jail_channel_id, None);
+        assert_eq!(out.config.announce_channel_id, None);
+    }
+
+    #[test]
+    fn economy_save_refuses_a_foreign_jail_channel() {
+        let mut stored = EconomySettings::off(GuildId::new(5));
+        stored.config.jail_channel_id = Some(ChannelId::new(7));
+        // The jail must be a voice channel and the announcement a text one.
+        let right_kind = |kind: ChannelKind, raw: &str| match (kind, raw) {
+            (ChannelKind::Voice, "111") => Some(ChannelId::new(111)),
+            (ChannelKind::Text, "222") => Some(ChannelId::new(222)),
+            _ => None,
+        };
+        assert!(apply_form(stored.clone(), form(), right_kind).is_ok());
+        let mut only_jail = form();
+        only_jail.announce_channel = None;
+        assert!(apply_form(stored.clone(), only_jail, right_kind).is_ok());
+        let mut only_announce = form();
+        only_announce.jail_channel = None;
+        assert!(apply_form(stored.clone(), only_announce, right_kind).is_ok());
+        // The same ids as the wrong kinds are refused.
+        let wrong_kind = |kind: ChannelKind, raw: &str| match (kind, raw) {
+            (ChannelKind::Text, "111") => Some(ChannelId::new(111)),
+            (ChannelKind::Voice, "222") => Some(ChannelId::new(222)),
+            _ => None,
+        };
+        let mut only_jail = form();
+        only_jail.announce_channel = None;
+        assert_eq!(
+            apply_form(stored.clone(), only_jail, wrong_kind),
+            Err(EconomySaveRefused::UnknownChannel)
+        );
+        let mut only_announce = form();
+        only_announce.jail_channel = None;
+        assert_eq!(
+            apply_form(stored.clone(), only_announce, wrong_kind),
+            Err(EconomySaveRefused::UnknownChannel)
+        );
+        // Each channel alone is checked.
+        let mut f = form();
+        f.jail_channel = None;
+        assert_eq!(
+            apply_form(stored.clone(), f, |_, _| None),
+            Err(EconomySaveRefused::UnknownChannel)
+        );
+        // A foreign id is refused (no cache means nothing resolves).
+        assert_eq!(
+            apply_form(stored, form(), |_, _| None),
+            Err(EconomySaveRefused::UnknownChannel)
+        );
+    }
+
+    fn all_perms() -> BotPerms {
+        BotPerms {
+            guild: Permissions::MANAGE_NICKNAMES
+                | Permissions::VIEW_AUDIT_LOG
+                | Permissions::MOVE_MEMBERS
+                | Permissions::MUTE_MEMBERS
+                | Permissions::DEAFEN_MEMBERS,
+            in_channel: [(
+                ChannelId::new(111),
+                crack_core::economy::preflight::NEED_CHANNEL,
+            )]
+            .into_iter()
+            .collect(),
+        }
+    }
+
+    fn needs_of(p: &[ActionPreflight], key: &str) -> Option<Vec<String>> {
+        p.iter().find(|a| a.kind == key).unwrap().needs.clone()
+    }
+
+    #[test]
+    fn preflight_says_ready_or_what_is_missing_per_prank() {
+        let mut c = EconomyConfig::default();
+        c.jail_channel_id = Some(ChannelId::new(111));
+        let (all, _) = economy_preflight(&c, Some(&all_perms()), |ch| format!("#{ch}"));
+        let kinds: Vec<_> = all.iter().map(|a| a.kind.as_str()).collect();
+        assert_eq!(
+            kinds,
+            ["rename", "lock", "clown", "drag", "mute", "deafen", "jail"]
+        );
+        assert!(all.iter().all(|a| a.needs == Some(vec![])), "{all:?}");
+
+        // No View Audit Log: only lock is short.
+        let mut p = all_perms();
+        p.guild -= Permissions::VIEW_AUDIT_LOG;
+        let (got, _) = economy_preflight(&c, Some(&p), |ch| format!("#{ch}"));
+        assert_eq!(
+            needs_of(&got, "lock"),
+            Some(vec![
+                "Give CrackTunes View Audit Log in Server Settings → Roles".to_owned()
+            ])
+        );
+        assert_eq!(needs_of(&got, "rename"), Some(vec![]));
+
+        // The jail channel misses Connect: named by channel.
+        let mut p = all_perms();
+        p.in_channel
+            .insert(ChannelId::new(111), Permissions::VIEW_CHANNEL);
+        let (got, _) = economy_preflight(&c, Some(&p), |ch| format!("#{ch}"));
+        assert_eq!(
+            needs_of(&got, "jail"),
+            Some(vec!["Give CrackTunes Connect in #111".to_owned()])
+        );
+        // Drag's channels are unknown, so it shows guild needs only.
+        assert_eq!(needs_of(&got, "drag"), Some(vec![]));
+    }
+
+    #[test]
+    fn preflight_without_a_jail_channel_or_a_cache() {
+        let c = EconomyConfig::default();
+        let (got, ann) = economy_preflight(&c, Some(&all_perms()), |ch| format!("#{ch}"));
+        assert_eq!(
+            needs_of(&got, "jail"),
+            Some(vec!["Choose a jail channel first.".to_owned()])
+        );
+        assert_eq!(ann, None);
+        // No cache: can't tell (None), never ready; jail still says why.
+        let (got, _) = economy_preflight(&c, None, |ch| format!("#{ch}"));
+        assert_eq!(needs_of(&got, "rename"), None);
+        assert_eq!(needs_of(&got, "lock"), None);
+        assert_eq!(
+            needs_of(&got, "jail"),
+            Some(vec!["Choose a jail channel first.".to_owned()])
+        );
+    }
+
+    #[test]
+    fn preflight_checks_the_announce_channel_for_cards() {
+        let mut c = EconomyConfig::default();
+        c.announce_channel_id = Some(ChannelId::new(222));
+        let mut p = all_perms();
+        p.in_channel.insert(
+            ChannelId::new(222),
+            Permissions::VIEW_CHANNEL | Permissions::SEND_MESSAGES,
+        );
+        let (_, ann) = economy_preflight(&c, Some(&p), |ch| format!("#{ch}"));
+        assert_eq!(
+            ann,
+            Some(vec!["Give CrackTunes Embed Links in #222".to_owned()])
+        );
+        p.in_channel.insert(ChannelId::new(222), NEED_CARD);
+        let (_, ann) = economy_preflight(&c, Some(&p), |ch| format!("#{ch}"));
+        assert_eq!(ann, Some(vec![]));
+        let (_, ann) = economy_preflight(&c, None, |ch| format!("#{ch}"));
+        assert_eq!(ann, None);
+    }
+
+    #[test]
     fn an_unknown_action_is_refused() {
         let mut f = form();
         f.prices.push(PriceForm {
@@ -379,7 +693,7 @@ mod tests {
             on: true,
         });
         assert_eq!(
-            apply_form(EconomySettings::off(GuildId::new(5)), f),
+            apply_form(EconomySettings::off(GuildId::new(5)), f, any_channel),
             Err(EconomySaveRefused::UnknownAction)
         );
     }

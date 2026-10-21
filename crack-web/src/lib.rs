@@ -506,7 +506,48 @@ impl Backend for LiveBackend {
     }
 
     async fn economy_settings(&self, g: GuildId) -> EconomySettingsView {
-        EconomySettingsView::from_settings(&self.deps.data.economy.settings(g))
+        use crack_core::economy::preflight::bot_perms;
+        let stored = self.deps.data.economy.settings(g);
+        let mut view = EconomySettingsView::from_settings(&stored);
+        // Without the guild in the cache the view keeps its fallbacks: the
+        // stored channels by id, and a report that can't tell.
+        let Some(guild) = self.deps.cache.guild(g) else {
+            return view;
+        };
+        let options = |kind: ChannelType| {
+            let mut v: Vec<_> = guild
+                .channels
+                .iter()
+                .filter(|c| c.base.kind == kind)
+                .map(|c| (c.position, c.id, c.base.name.to_string()))
+                .collect();
+            v.sort();
+            v.into_iter()
+                .map(|(_, id, name)| ChannelOption {
+                    id: id.to_string(),
+                    name,
+                })
+                .collect::<Vec<_>>()
+        };
+        view.voice_channels = options(ChannelType::Voice);
+        view.text_channels = options(ChannelType::Text);
+        let name_of = |c: ChannelId| {
+            guild
+                .channels
+                .get(&c)
+                .map(|ch| ch.base.name.to_string())
+                .unwrap_or_else(|| format!("channel {c}"))
+        };
+        let c = &stored.config;
+        let channels: Vec<ChannelId> = c
+            .jail_channel_id
+            .into_iter()
+            .chain(c.announce_channel_id)
+            .collect();
+        let perms = bot_perms(&self.deps.cache, g, &channels);
+        (view.preflight, view.announce_findings) =
+            settings::economy_preflight(c, perms.as_ref(), name_of);
+        view
     }
 
     async fn save_economy_settings(
@@ -517,7 +558,15 @@ impl Backend for LiveBackend {
     ) -> Result<EconomySettingsView, EconomySaveRefused> {
         use crack_core::economy::{save_settings, EconomySaveError};
         // From the stored settings, so a price this build does not know survives.
-        let settings = settings::apply_form(self.deps.data.economy.settings(g), f)?;
+        let settings =
+            settings::apply_form(
+                self.deps.data.economy.settings(g),
+                f,
+                |kind, raw| match kind {
+                    settings::ChannelKind::Voice => self.voice_channel_of(g, raw),
+                    settings::ChannelKind::Text => self.text_channel_of(g, raw),
+                },
+            )?;
         save_settings(&self.deps.data, settings)
             .await
             .map_err(|e| match e {

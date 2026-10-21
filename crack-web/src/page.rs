@@ -12,22 +12,26 @@ use crack_core::{
     messaging::{
         message::REPO_LINK,
         messages::{
+            DASH_ECONOMY_ANNOUNCE_CHANNEL, DASH_ECONOMY_ANNOUNCE_STATUS,
             DASH_ECONOMY_CURRENCY_EMOJI, DASH_ECONOMY_CURRENCY_NAME, DASH_ECONOMY_ENABLED,
             DASH_ECONOMY_GAMBLING, DASH_ECONOMY_GAMBLING_NOTE, DASH_ECONOMY_GUIDE,
             DASH_ECONOMY_IMMUNITY_HOURS, DASH_ECONOMY_IMMUNITY_MODS, DASH_ECONOMY_IMMUNITY_OPTOUT,
-            DASH_ECONOMY_IMMUNITY_SHOP, DASH_ECONOMY_MAX_BET, DASH_ECONOMY_MESSAGE_COOLDOWN,
-            DASH_ECONOMY_MESSAGE_RATE, DASH_ECONOMY_OPTOUT_COOLDOWN, DASH_ECONOMY_PRICES,
-            DASH_ECONOMY_PRICE_COST, DASH_ECONOMY_PRICE_FOR_SALE, DASH_ECONOMY_TITLE,
-            DASH_ECONOMY_VOICE_RATE, DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE,
-            DASH_MODLOG_CHANNEL, DASH_MODLOG_ENABLED, DASH_MODLOG_GUIDE,
-            DASH_MODLOG_NO_CHANNEL_OPTION, DASH_MODLOG_NO_CHANNEL_YET, DASH_MODLOG_TITLE,
-            DASH_SETTINGS_ENABLED, DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE, DASH_SETTINGS_HUB,
-            DASH_SETTINGS_LIMIT, DASH_SETTINGS_LINK, DASH_SETTINGS_NO_HUB_OPTION,
-            DASH_SETTINGS_PERMISSIONS, DASH_SETTINGS_PREVIEW, DASH_SETTINGS_SAVE,
-            DASH_SETTINGS_SAVED, DASH_SETTINGS_SAVING_FAILED, DASH_SETTINGS_TEMPLATE,
-            DASH_SETTINGS_TITLE, DASH_SIGN_IN, ECONOMY_DOCS_URL, JOIN_VOICE_FOR_CONTROLS,
-            MODLOG_STATUS_READY, MODLOG_STATUS_UNKNOWN, PATREON_URL, PREMIUM_CONTROLS,
-            PREMIUM_HISTORY, ROOM_STATUS_NO_HUB_YET, ROOM_STATUS_READY, ROOM_STATUS_UNKNOWN,
+            DASH_ECONOMY_IMMUNITY_SHOP, DASH_ECONOMY_JAIL_CHANNEL, DASH_ECONOMY_JAIL_NOTE,
+            DASH_ECONOMY_MAX_BET, DASH_ECONOMY_MESSAGE_COOLDOWN, DASH_ECONOMY_MESSAGE_RATE,
+            DASH_ECONOMY_NO_CHANNEL_OPTION, DASH_ECONOMY_OPTOUT_COOLDOWN, DASH_ECONOMY_PREFLIGHT,
+            DASH_ECONOMY_PREFLIGHT_READY, DASH_ECONOMY_PREFLIGHT_UNKNOWN, DASH_ECONOMY_PRICES,
+            DASH_ECONOMY_PRICE_COST, DASH_ECONOMY_PRICE_FOR_SALE, DASH_ECONOMY_RENAME_HOURS,
+            DASH_ECONOMY_SHORT_EFFECT, DASH_ECONOMY_TITLE, DASH_ECONOMY_VOICE_RATE,
+            DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE, DASH_MODLOG_CHANNEL, DASH_MODLOG_ENABLED,
+            DASH_MODLOG_GUIDE, DASH_MODLOG_NO_CHANNEL_OPTION, DASH_MODLOG_NO_CHANNEL_YET,
+            DASH_MODLOG_TITLE, DASH_SETTINGS_ENABLED, DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE,
+            DASH_SETTINGS_HUB, DASH_SETTINGS_LIMIT, DASH_SETTINGS_LINK,
+            DASH_SETTINGS_NO_HUB_OPTION, DASH_SETTINGS_PERMISSIONS, DASH_SETTINGS_PREVIEW,
+            DASH_SETTINGS_SAVE, DASH_SETTINGS_SAVED, DASH_SETTINGS_SAVING_FAILED,
+            DASH_SETTINGS_TEMPLATE, DASH_SETTINGS_TITLE, DASH_SIGN_IN, ECONOMY_DOCS_URL,
+            JOIN_VOICE_FOR_CONTROLS, MODLOG_STATUS_READY, MODLOG_STATUS_UNKNOWN, PATREON_URL,
+            PREMIUM_CONTROLS, PREMIUM_HISTORY, ROOM_STATUS_NO_HUB_YET, ROOM_STATUS_READY,
+            ROOM_STATUS_UNKNOWN,
         },
     },
     rooms::settings::{render_room_name, GRACE_CHOICES, ROOM_NAME_MAX},
@@ -264,6 +268,50 @@ pub fn settings_page(
             )
         })
         .collect();
+    let channel_options =
+        |list: &[crate::settings::ChannelOption], chosen: &Option<String>| -> String {
+            list.iter()
+                .map(|c| {
+                    format!(
+                        "<option value=\"{id}\"{sel}>{name}</option>",
+                        id = esc(&c.id),
+                        sel = if chosen.as_deref() == Some(c.id.as_str()) {
+                            " selected"
+                        } else {
+                            ""
+                        },
+                        name = esc(&c.name),
+                    )
+                })
+                .collect()
+        };
+    let jail_options = channel_options(&economy.voice_channels, &economy.jail_channel);
+    let announce_options = channel_options(&economy.text_channels, &economy.announce_channel);
+    let lines = |needs: &Option<Vec<String>>| match needs {
+        None => esc(DASH_ECONOMY_PREFLIGHT_UNKNOWN),
+        Some(l) if l.is_empty() => esc(DASH_ECONOMY_PREFLIGHT_READY),
+        Some(l) => l.iter().map(|f| esc(f)).collect::<Vec<_>>().join("; "),
+    };
+    let preflight_rows: String = economy
+        .preflight
+        .iter()
+        .map(|a| {
+            format!(
+                "<li data-kind=\"{kind}\"><strong>{label}</strong>: <span>{text}</span></li>",
+                kind = esc(&a.kind),
+                label = esc(&a.label),
+                text = lines(&a.needs),
+            )
+        })
+        .collect();
+    let announce_row = match (&economy.announce_channel, &economy.announce_findings) {
+        (None, _) => String::new(),
+        (Some(_), found) => format!(
+            "<li data-kind=\"announce\"><strong>{label}</strong>: <span>{text}</span></li>",
+            label = esc(DASH_ECONOMY_ANNOUNCE_STATUS),
+            text = lines(found),
+        ),
+    };
     let economy_html = format!(
         "<h2>{title}</h2>\
 <form id=\"economy-form\" autocomplete=\"off\">\
@@ -273,6 +321,11 @@ pub fn settings_page(
 <label>{voice_text} <input type=\"number\" id=\"e-voice\" min=\"0\" max=\"100\" value=\"{voice}\"></label>\
 <label>{message_text} <input type=\"number\" id=\"e-message\" min=\"0\" max=\"100\" value=\"{message}\"></label>\
 <label>{cooldown_text} <input type=\"number\" id=\"e-cooldown\" min=\"10\" max=\"3600\" value=\"{cooldown}\"></label>\
+<label>{rename_hours_text} <input type=\"number\" id=\"e-rename-hours\" min=\"1\" max=\"168\" value=\"{rename_hours}\"></label>\
+<label>{short_text} <input type=\"number\" id=\"e-short\" min=\"1\" max=\"60\" value=\"{short}\"></label>\
+<label>{jail_text} <select id=\"e-jail\"><option value=\"\">{no_channel}</option>{jail_options}</select></label>\
+<p id=\"e-jail-note\">{jail_note}</p>\
+<label>{announce_text} <select id=\"e-announce\"><option value=\"\">{no_channel}</option>{announce_options}</select></label>\
 <h3>{prices_text}</h3><table id=\"e-prices\"><tbody>{price_rows}</tbody></table>\
 <label class=\"check\"><input type=\"checkbox\" id=\"e-optout\"{optout}> {optout_text}</label>\
 <label class=\"check\"><input type=\"checkbox\" id=\"e-shop\"{shop}> {shop_text}</label>\
@@ -284,6 +337,8 @@ pub fn settings_page(
 <label>{max_bet_text} <input type=\"number\" id=\"e-max-bet\" min=\"1\" max=\"1000000\" value=\"{max_bet}\"></label>\
 <button type=\"submit\" id=\"e-save\">{save}</button>\
 <p id=\"e-note\" role=\"status\" hidden></p></form>\
+<h3>{preflight_text}</h3><ul id=\"e-preflight\" data-ready=\"{ready_text}\" data-unknown=\"{unknown_text}\" \
+data-announce=\"{announce_status}\">{preflight_rows}{announce_row}</ul>\
 <p class=\"links\"><a href=\"{guide}\">{guide_text}</a></p>",
         title = esc(DASH_ECONOMY_TITLE),
         enabled = check(economy.enabled),
@@ -314,6 +369,22 @@ pub fn settings_page(
         gambling_note = esc(DASH_ECONOMY_GAMBLING_NOTE),
         max_bet_text = esc(DASH_ECONOMY_MAX_BET),
         max_bet = economy.max_bet,
+        rename_hours_text = esc(DASH_ECONOMY_RENAME_HOURS),
+        rename_hours = economy.rename_hours,
+        short_text = esc(DASH_ECONOMY_SHORT_EFFECT),
+        short = economy.short_effect_minutes,
+        jail_text = esc(DASH_ECONOMY_JAIL_CHANNEL),
+        no_channel = esc(DASH_ECONOMY_NO_CHANNEL_OPTION),
+        jail_options = jail_options,
+        jail_note = esc(DASH_ECONOMY_JAIL_NOTE),
+        announce_text = esc(DASH_ECONOMY_ANNOUNCE_CHANNEL),
+        announce_options = announce_options,
+        preflight_text = esc(DASH_ECONOMY_PREFLIGHT),
+        ready_text = esc(DASH_ECONOMY_PREFLIGHT_READY),
+        unknown_text = esc(DASH_ECONOMY_PREFLIGHT_UNKNOWN),
+        announce_status = esc(DASH_ECONOMY_ANNOUNCE_STATUS),
+        preflight_rows = preflight_rows,
+        announce_row = announce_row,
         save = esc(DASH_SETTINGS_SAVE),
         guide = esc(ECONOMY_DOCS_URL),
         guide_text = esc(DASH_ECONOMY_GUIDE),

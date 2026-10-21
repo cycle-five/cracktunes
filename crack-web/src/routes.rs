@@ -31,9 +31,10 @@ use axum::{
 use catacombs::auth::AuthenticatedUser;
 use crack_core::messaging::messages::{
     DASH_ECONOMY_SAVE_FAILED, DASH_ECONOMY_SETTINGS_NOT_LOADED, DASH_ECONOMY_UNKNOWN_ACTION,
-    DASH_MODLOG_UNKNOWN_CHANNEL, DASH_SETTINGS_FAILED, DASH_SETTINGS_NEEDS_MANAGE,
-    DASH_SETTINGS_NOT_LOADED, DASH_SETTINGS_TOO_MANY, DASH_SETTINGS_UNKNOWN_CHANNEL,
-    DASH_SETTINGS_UNREADABLE, MODLOG_SETTINGS_NOT_LOADED, MODLOG_SETTINGS_SAVE_FAILED,
+    DASH_ECONOMY_UNKNOWN_CHANNEL, DASH_MODLOG_UNKNOWN_CHANNEL, DASH_SETTINGS_FAILED,
+    DASH_SETTINGS_NEEDS_MANAGE, DASH_SETTINGS_NOT_LOADED, DASH_SETTINGS_TOO_MANY,
+    DASH_SETTINGS_UNKNOWN_CHANNEL, DASH_SETTINGS_UNREADABLE, MODLOG_SETTINGS_NOT_LOADED,
+    MODLOG_SETTINGS_SAVE_FAILED,
 };
 use serenity::all::{GuildId, UserId};
 use std::{
@@ -440,6 +441,9 @@ async fn save_economy<B: Backend>(
         ),
         Err(EconomySaveRefused::UnknownAction) => {
             error_json(StatusCode::BAD_REQUEST, DASH_ECONOMY_UNKNOWN_ACTION)
+        },
+        Err(EconomySaveRefused::UnknownChannel) => {
+            error_json(StatusCode::BAD_REQUEST, DASH_ECONOMY_UNKNOWN_CHANNEL)
         },
         Err(EconomySaveRefused::Failed) => {
             error_json(StatusCode::SERVICE_UNAVAILABLE, DASH_ECONOMY_SAVE_FAILED)
@@ -2743,12 +2747,12 @@ mod test {
     };
     use crack_core::economy::settings::EconomySettingsError;
     use crack_core::messaging::messages::{
-        DASH_ECONOMY_BAD_PRICE, DASH_ECONOMY_GAMBLING_NOTE, DASH_ECONOMY_NO_DATABASE,
-        DASH_ECONOMY_SAVE_FAILED, DASH_ECONOMY_SETTINGS_NOT_LOADED, DASH_ECONOMY_UNKNOWN_ACTION,
-        ECONOMY_DOCS_URL,
+        DASH_ECONOMY_BAD_PRICE, DASH_ECONOMY_GAMBLING_NOTE, DASH_ECONOMY_JAIL_NOTE,
+        DASH_ECONOMY_NO_DATABASE, DASH_ECONOMY_SAVE_FAILED, DASH_ECONOMY_SETTINGS_NOT_LOADED,
+        DASH_ECONOMY_UNKNOWN_ACTION, DASH_ECONOMY_UNKNOWN_CHANNEL, ECONOMY_DOCS_URL,
     };
 
-    const ECONOMY_FORM: &str = r#"{"enabled":true,"currency_name":"gems","currency_emoji":"X","voice_credits_per_minute":3,"message_credits":4,"message_cooldown_seconds":90,"prices":[{"kind":"immunity","price":77,"on":false}],"immunity_optout":false,"immunity_shop":true,"immunity_mods":false,"optout_cooldown_days":2,"bought_immunity_hours":5,"gambling_enabled":true,"max_bet":9}"#;
+    const ECONOMY_FORM: &str = r#"{"enabled":true,"currency_name":"gems","currency_emoji":"X","voice_credits_per_minute":3,"message_credits":4,"message_cooldown_seconds":90,"prices":[{"kind":"immunity","price":77,"on":false}],"immunity_optout":false,"immunity_shop":true,"immunity_mods":false,"optout_cooldown_days":2,"bought_immunity_hours":5,"gambling_enabled":true,"max_bet":9,"rename_hours":48,"short_effect_minutes":7,"jail_channel":"111","announce_channel":null}"#;
 
     fn post_economy_req(
         cookie: Option<&str>,
@@ -2878,8 +2882,25 @@ mod test {
                     bought_immunity_hours: 5,
                     gambling_enabled: true,
                     max_bet: 9,
+                    rename_hours: 48,
+                    short_effect_minutes: 7,
+                    jail_channel: Some("111".into()),
+                    announce_channel: None,
                 }
             )]
+        );
+    }
+
+    #[tokio::test]
+    async fn economy_save_refuses_an_unknown_channel() {
+        let fake = settings_fake(HistoryAccess::Allowed);
+        *fake.economy_save_result.lock().unwrap() = Err(EconomySaveRefused::UnknownChannel);
+        let r = post_economy(fake, ECONOMY_FORM).await;
+        assert_eq!(r.status(), StatusCode::BAD_REQUEST);
+        let got = body(r).await;
+        assert!(
+            got.contains(&serde_json::to_string(DASH_ECONOMY_UNKNOWN_CHANNEL).unwrap()),
+            "{got}"
         );
     }
 
@@ -2967,6 +2988,14 @@ mod test {
                 bought_immunity_hours: 5,
                 gambling_enabled: true,
                 max_bet: 9,
+                rename_hours: 48,
+                short_effect_minutes: 7,
+                jail_channel: None,
+                announce_channel: None,
+                voice_channels: vec![],
+                text_channels: vec![],
+                preflight: vec![],
+                announce_findings: None,
             };
         }
         let r = get(fake, "/g/5/settings", Some(&session(9))).await;
@@ -2983,6 +3012,8 @@ mod test {
             "id=\"e-shop\"> ",
             "id=\"e-gambling\" checked",
             "id=\"e-max-bet\" min=\"1\" max=\"1000000\" value=\"9\"",
+            "id=\"e-rename-hours\" min=\"1\" max=\"168\" value=\"48\"",
+            "id=\"e-short\" min=\"1\" max=\"60\" value=\"7\"",
             "Credits have no cash value. Only turn this on where your members are adults.",
             ECONOMY_DOCS_URL,
         ] {
@@ -3002,6 +3033,73 @@ mod test {
         assert!(at("id=\"e-gambling\"") < at("id=\"e-gambling-note\""));
         assert!(at("id=\"e-gambling-note\"") < at(ECONOMY_DOCS_URL));
         assert!(at("id=\"modlog-form\"") < at("id=\"economy-form\""));
+    }
+
+    #[tokio::test]
+    async fn settings_page_shows_the_jail_note_and_preflight() {
+        use crate::settings::{ActionPreflight, ChannelOption};
+        let fake = settings_fake(HistoryAccess::Allowed);
+        {
+            let mut v = fake.economy_view.lock().unwrap();
+            v.jail_channel = Some("111".into());
+            v.announce_channel = Some("222".into());
+            v.voice_channels = vec![
+                ChannelOption {
+                    id: "110".into(),
+                    name: "Lobby".into(),
+                },
+                ChannelOption {
+                    id: "111".into(),
+                    name: "Brig <b>".into(),
+                },
+            ];
+            v.text_channels = vec![ChannelOption {
+                id: "222".into(),
+                name: "news".into(),
+            }];
+            v.preflight = vec![
+                ActionPreflight {
+                    kind: "rename".into(),
+                    label: "Rename".into(),
+                    needs: Some(vec![]),
+                },
+                ActionPreflight {
+                    kind: "lock".into(),
+                    label: "Lock".into(),
+                    needs: Some(vec![
+                        "Give CrackTunes View Audit Log in Server Settings".into()
+                    ]),
+                },
+                ActionPreflight {
+                    kind: "mute".into(),
+                    label: "Mute".into(),
+                    needs: None,
+                },
+            ];
+            v.announce_findings = Some(vec![]);
+        }
+        let r = get(fake, "/g/5/settings", Some(&session(9))).await;
+        let html = body(r).await;
+        assert_eq!(
+            DASH_ECONOMY_JAIL_NOTE,
+            "Members are moved here even if they can't see it."
+        );
+        for needle in [
+            "<option value=\"111\" selected>Brig &lt;b&gt;</option>",
+            "<option value=\"110\">Lobby</option>",
+            "<option value=\"222\" selected>news</option>",
+            "<p id=\"e-jail-note\">Members are moved here even if they can't see it.</p>",
+            "<li data-kind=\"rename\"><strong>Rename</strong>: <span>Ready.</span></li>",
+            "<li data-kind=\"lock\"><strong>Lock</strong>: <span>Give CrackTunes View Audit Log in Server Settings</span></li>",
+            "<li data-kind=\"mute\"><strong>Mute</strong>: <span>Couldn't check permissions right now.</span></li>",
+            "<li data-kind=\"announce\"><strong>Announcements</strong>: <span>Ready.</span></li>",
+        ] {
+            let escaped = needle.replace('\'', "&#39;");
+            assert!(html.contains(&escaped), "missing {needle}: {html}");
+        }
+        let at = |n: &str| html.find(n).unwrap();
+        assert!(at("id=\"e-jail\"") < at("id=\"e-jail-note\""));
+        assert!(at("id=\"e-jail-note\"") < at("id=\"e-announce\""));
     }
 
     #[tokio::test]
