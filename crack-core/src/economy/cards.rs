@@ -5,7 +5,8 @@ use super::shop::BuyOutcome;
 use crate::messaging::format::escape;
 use crate::messaging::messages::{
     ECONOMY_BOUNTY_SIGN_ANON, ECONOMY_BOUNTY_SIGN_DASH, ECONOMY_DEDICATE_CARD_PREFIX,
-    ECONOMY_JUMP_CARD, ECONOMY_THEME_CARD_PREFIX, ECONOMY_THEME_CARD_SUFFIX,
+    ECONOMY_JUMP_CARD_PREFIX, ECONOMY_JUMP_CARD_SUFFIX, ECONOMY_THEME_CARD_PREFIX,
+    ECONOMY_THEME_CARD_SUFFIX,
 };
 use crate::messaging::messages::{
     ECONOMY_CARD_BACK_AT_THEM, ECONOMY_CARD_BLOCKED_TAIL, ECONOMY_CARD_CLOWNED,
@@ -231,12 +232,18 @@ pub fn theme_card_text(target: UserId, note: Option<&str>, buyer: Option<UserId>
     text
 }
 
-/// The note and signature lines every aimed card ends with.
-fn note_and_sign(mut text: String, note: Option<&str>, buyer: Option<UserId>) -> String {
+/// The quoted note line a card carries, if there is a note.
+fn with_note(mut text: String, note: Option<&str>) -> String {
     if let Some(note) = note.filter(|n| !n.trim().is_empty()) {
         text.push_str("\n> ");
         text.push_str(&escape(note));
     }
+    text
+}
+
+/// The note and signature lines every aimed card ends with.
+fn note_and_sign(text: String, note: Option<&str>, buyer: Option<UserId>) -> String {
+    let mut text = with_note(text, note);
     let by = buyer.map_or_else(|| ECONOMY_BOUNTY_SIGN_ANON.to_string(), mention);
     text.push_str(&format!("\n{ECONOMY_BOUNTY_SIGN_DASH} {by}"));
     text
@@ -254,10 +261,16 @@ pub fn dedication_card_text(target: UserId, note: Option<&str>, buyer: UserId) -
     )
 }
 
-/// The card for a paid jump: the note, and the buyer, always (as a
-/// dedication).
+/// The card for a paid jump, which names its buyer up front (signed by
+/// nature, as a dedication), then the note.
 pub fn jump_card_text(note: Option<&str>, buyer: UserId) -> String {
-    note_and_sign(ECONOMY_JUMP_CARD.to_string(), note, Some(buyer))
+    with_note(
+        format!(
+            "{ECONOMY_JUMP_CARD_PREFIX} {} {ECONOMY_JUMP_CARD_SUFFIX}",
+            mention(buyer)
+        ),
+        note,
+    )
 }
 
 /// The channel a card goes to. Drag, jail, mute and deafen happen in voice,
@@ -329,14 +342,15 @@ mod tests {
     }
 
     #[test]
-    fn jump_card_text_always_names_the_buyer() {
+    fn jump_card_text_names_the_buyer_up_front() {
         assert_eq!(
-            jump_card_text(Some("hurry"), B),
-            "⏭️ Someone paid to play this next\n> hurry\n— <@10>"
+            jump_card_text(Some("*hurry*"), B),
+            "⏭️ <@10> paid to play this next\n> \\*hurry\\*"
         );
+        assert_eq!(jump_card_text(None, B), "⏭️ <@10> paid to play this next");
         assert_eq!(
-            jump_card_text(None, B),
-            "⏭️ Someone paid to play this next\n— <@10>"
+            jump_card_text(Some("  "), B),
+            "⏭️ <@10> paid to play this next"
         );
     }
 

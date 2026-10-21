@@ -122,12 +122,13 @@ pub enum ModLogEvent {
     },
     /// A crowdfund was opened (with the starter's own first pledge). The
     /// starter is always named here, signed or not, as a shop purchase's
-    /// buyer is: its public card may say only "Someone".
+    /// buyer is; `signed` says whether the public card named them too.
     CrowdfundStarted {
         action: ActionKind,
         starter: UserId,
         target: UserId,
         note: Option<String>,
+        signed: bool,
     },
     /// A filled crowdfund landed. Every contributor is named, signed or not:
     /// the starter first, then each pledger once in pledge order.
@@ -460,15 +461,17 @@ fn parts(e: &ModLogEvent) -> Parts {
             starter,
             target,
             note,
+            signed,
         } => Parts {
             reason: note.clone(),
             ..plain(
                 MODLOG_TITLE_CROWDFUND_STARTED,
                 format!(
-                    "{} {MODLOG_CROWDFUND_STARTED} {} {MODLOG_SHOP_ON} {}",
+                    "{} {MODLOG_CROWDFUND_STARTED} {} {MODLOG_SHOP_ON} {} ({})",
                     user(*starter),
                     action.label(),
-                    user(*target)
+                    user(*target),
+                    toggle(*signed, MODLOG_SHOP_SIGNED, MODLOG_SHOP_ANONYMOUS)
                 ),
             )
         },
@@ -635,6 +638,7 @@ mod tests {
                 starter: A,
                 target: T,
                 note: None,
+                signed: false,
             },
             ModLogEvent::CrowdfundExecuted {
                 action: ActionKind::Mute,
@@ -773,27 +777,30 @@ mod tests {
             starter: A,
             target: T,
             note: Some("gg".into()),
+            signed: true,
         };
         let j = json(&render(&e, &cx()));
         assert_eq!(j["title"], "🎉 Crowdfund started");
         assert_eq!(
             j["description"],
-            "<@22> started a crowdfund for Rename on <@11>"
+            "<@22> started a crowdfund for Rename on <@11> (signed)"
         );
         assert_eq!(j["fields"][0]["value"], "gg");
         assert_eq!(render(&e, &cx()).mentions, Mentions::None);
         assert_eq!(e.to_string(), "ModLog(crowdfund_started)");
-        // No note, no reason field; the starter is still named.
+        // Unsigned, with no note: no reason field, and the starter is still
+        // named, marked as anonymous on the public card.
         let bare = ModLogEvent::CrowdfundStarted {
             action: ActionKind::Mute,
             starter: A,
             target: T,
             note: None,
+            signed: false,
         };
         let j = json(&render(&bare, &cx()));
         assert_eq!(
             j["description"],
-            "<@22> started a crowdfund for Mute on <@11>"
+            "<@22> started a crowdfund for Mute on <@11> (anonymous)"
         );
         assert!(j["fields"].as_array().is_none_or(Vec::is_empty), "{j}");
     }
@@ -1044,7 +1051,7 @@ mod tests {
 
     #[test]
     fn economy_events_log_their_kind() {
-        let shown: Vec<String> = all().iter().rev().take(6).map(|e| e.to_string()).collect();
+        let shown: Vec<String> = all().iter().rev().take(7).map(|e| e.to_string()).collect();
         assert_eq!(
             shown,
             [
@@ -1053,7 +1060,8 @@ mod tests {
                 "ModLog(shop_cancelled)",
                 "ModLog(shop_action)",
                 "ModLog(credits_adjusted)",
-                "ModLog(immunity_lifted)"
+                "ModLog(immunity_lifted)",
+                "ModLog(immunity_granted)"
             ]
         );
     }

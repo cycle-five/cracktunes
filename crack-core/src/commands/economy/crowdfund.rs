@@ -488,6 +488,7 @@ pub async fn start(
             starter: starter_id,
             target,
             note: log_note,
+            signed,
         },
     )
     .await;

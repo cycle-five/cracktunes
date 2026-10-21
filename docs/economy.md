@@ -400,16 +400,16 @@ most `12:00:00`).
 - **`/shop dedicate`** queues a song like `/play` and posts "🎵 This one goes
   out to @target", with the note.
 - **`/shop jump`** queues a song to play next, like `/playnext`, and posts "⏭️
-  Someone paid to play this next".
-- **Signed by nature.** The card always ends with the buyer ("— @buyer"): the
-  `/play` reply and now playing's "Requested by" name them anyway, so there is
-  no `signed` to leave off, and reveal has nothing to unmask.
+  @buyer paid to play this next", with the note.
+- **Signed by nature.** Both cards name the buyer (a dedication ends "—
+  @buyer"): the `/play` reply and now playing's "Requested by" name them anyway,
+  so there is no `signed` to leave off, and reveal has nothing to unmask.
 - **One song.** A paid play takes one song, not a playlist: a playlist link (a
-  YouTube link with a list, a Spotify playlist or album, a SoundCloud set) is
-  refused with "Paid plays take one song, not a playlist." before anything is
-  charged. Search text is always one song.
-- **The music rules apply:** the music channel. Both are blocked while a `/gp`
-  game is running.
+  YouTube link with a list, a Spotify playlist or album, as a link or a
+  `spotify:` URI, a SoundCloud set) is refused with "Paid plays take one song,
+  not a playlist." before anything is charged. Search text is always one song.
+- **The music rules apply:** the music channel. Dedications and jumps are
+  blocked while a `/gp` game is running.
 - **Charging.** If nothing is queued, nothing is charged, and a blank song is
   refused. If the song was queued but Discord failed afterwards, the charge
   stands. A dedication or jump interrupted by a restart is refunded.

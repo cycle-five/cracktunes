@@ -741,11 +741,19 @@ pub fn song_is_blank(song: &str) -> bool {
 }
 
 /// Whether `song` is a link to more than one song, which a paid play refuses
-/// before the charge (one price, one song): a YouTube link with a `list=`
-/// or a `/playlist` path, a Spotify playlist or album, or a SoundCloud set.
-/// Search text is never a link, whatever it says.
+/// before the charge (one price, one song): every form `/play` expands into a
+/// list. A YouTube link with a `list` or `playlist` key (as
+/// `crack_types::canonical_youtube_playlist_url` reads it) or a `/playlist`
+/// path; a Spotify playlist or album, as a link or as a `spotify:album:` /
+/// `spotify:playlist:` URI (which `/play` resolves through sleevenote); a
+/// SoundCloud set. Search text is never a link, whatever it says.
 pub fn is_playlist_link(song: &str) -> bool {
-    let Ok(url) = url::Url::parse(song.trim()) else {
+    let song = song.trim();
+    // The desktop client's URI form: `spotify:<kind>:<id>`.
+    if let Some(rest) = song.to_ascii_lowercase().strip_prefix("spotify:") {
+        return matches!(rest.split(':').next(), Some("album" | "playlist"));
+    }
+    let Ok(url) = url::Url::parse(song) else {
         return false;
     };
     if !matches!(url.scheme(), "http" | "https") {
@@ -758,7 +766,9 @@ pub fn is_playlist_link(song: &str) -> bool {
     let on = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
     let path = url.path().to_ascii_lowercase();
     if on("youtube.com") || on("youtu.be") || on("youtube-nocookie.com") {
-        url.query_pairs().any(|(k, _)| k == "list") || path.starts_with("/playlist")
+        url.query_pairs()
+            .any(|(k, _)| k == "list" || k == "playlist")
+            || path.starts_with("/playlist")
     } else if on("spotify.com") {
         path.contains("/playlist/") || path.contains("/album/")
     } else if on("soundcloud.com") {
@@ -1237,6 +1247,9 @@ mod tests {
             ("https://www.youtube.com/watch?v=abc", false),
             ("https://youtu.be/abc?t=42", false),
             ("https://www.youtube.com/watch?v=abc&index=2", false),
+            // `/play` reads `playlist=` as a list too.
+            ("https://www.youtube.com/watch?v=x&playlist=PL123", true),
+            ("https://youtu.be/abc?playlist=PL123", true),
             // Spotify: a playlist or an album.
             ("https://open.spotify.com/playlist/37i9dQZF1DX", true),
             (
@@ -1248,6 +1261,12 @@ mod tests {
                 "https://open.spotify.com/track/11dFghVXANMlKmJXsNCbNl",
                 false,
             ),
+            // The desktop client's URIs, which `/play` resolves too.
+            ("spotify:album:4aawyAB9", true),
+            ("spotify:playlist:37i9dQZF1DX", true),
+            ("  Spotify:Playlist:37i9dQZF1DX ", true),
+            ("spotify:track:11dFghVXANMlKmJXsNCbNl", false),
+            ("spotify:", false),
             // SoundCloud: a set.
             ("https://soundcloud.com/artist/sets/the-album", true),
             ("https://soundcloud.com/artist/a-song", false),
@@ -1259,7 +1278,7 @@ mod tests {
             ("my playlist", false),
             ("youtube.com/playlist?list=PL1", false),
             ("lofi list=PL123 album/sets", false),
-            ("spotify:album:4aawyAB9", false),
+            ("my spotify:album:4aawyAB9", false),
             ("", false),
         ];
         for (song, want) in table {
