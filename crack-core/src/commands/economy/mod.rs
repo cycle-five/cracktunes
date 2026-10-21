@@ -64,11 +64,22 @@ mod tests {
         let shop = &cmds[2];
         let mut want = [
             "menu", "immunity", "rename", "lock", "clown", "drag", "mute", "deafen", "jail",
-            "mirror", "cleanse", "reveal", "theme",
+            "mirror", "cleanse", "reveal", "theme", "dedicate", "jump",
         ];
         want.sort();
         assert_eq!(subs(shop), want);
-        assert_eq!(shop.subcommands.len(), 13);
+        assert_eq!(shop.subcommands.len(), 15);
+        // The paid plays run the music check, and the game blocks them by
+        // their qualified names.
+        for name in ["dedicate", "jump"] {
+            let sub = shop.subcommands.iter().find(|c| c.name == name).unwrap();
+            assert!(!sub.checks.is_empty(), "{name} must carry cmd_check_music");
+            let qualified = format!("shop {name}");
+            assert!(
+                crate::commands::music::gp::GP_BLOCKED_COMMANDS.contains(&qualified.as_str()),
+                "{qualified}"
+            );
+        }
         let economy = &cmds[3];
         assert_eq!(
             subs(economy),

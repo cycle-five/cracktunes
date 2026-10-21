@@ -1,9 +1,14 @@
 //! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|theme|cleanse|reveal`.
 use super::admin::{log, log_to};
 use super::credits::{gate, live, say};
+use crate::commands::music::doplay::{play_core, play_settlement, PlayOutcome, Settlement};
+use crate::commands::permissions::cmd_check_music;
+use crate::db::economy as db;
 use crate::economy::bounty;
 use crate::economy::buttons::{card_buttons, carries_buttons};
-use crate::economy::cards::{card_channel, card_text};
+use crate::economy::cards::{
+    card_channel, card_destination, card_text, dedication_card_text, jump_card_text,
+};
 use crate::economy::discord::LiveEconomyDiscord;
 use crate::economy::preflight::{self, report_for, ActionPreflight};
 use crate::economy::settings::{
@@ -13,19 +18,23 @@ use crate::economy::shop::{
     ago_words, buy, buy_error_text, buy_immunity, cleanse, preflight_refusal, refusal_text, reveal,
     reveal_choices, BuyError, BuyOutcome, BuyRequest,
 };
+use crate::economy::shop::{cant_afford, check_purchase, PurchaseFacts};
+use crate::economy::target::check_target;
 use crate::economy::target::{gather_facts, voice_of, Subject};
 use crate::economy::theme::{buy_theme, parse_start, StartError, ThemeRequest};
+use crate::economy::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::courier;
 use crate::messaging::messages::{
     DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_CANT_TELL, ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL,
     ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK, ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG,
     ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK, ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG,
-    ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED,
-    ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX,
-    ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE,
-    ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
-    ECONOMY_THEME_BOUGHT_PREFIX, ECONOMY_THEME_BOUGHT_SUFFIX, ECONOMY_THEME_START_MALFORMED,
-    ECONOMY_THEME_START_TOO_LATE, ECONOMY_YOU_HAVE,
+    ECONOMY_PLAY_NOT_CHARGED, ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PREFIX,
+    ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER,
+    ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX, ECONOMY_SHOP_CLEANSED_SUFFIX,
+    ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE, ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP,
+    ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE, ECONOMY_THEME_BOUGHT_PREFIX,
+    ECONOMY_THEME_BOUGHT_SUFFIX, ECONOMY_THEME_START_MALFORMED, ECONOMY_THEME_START_TOO_LATE,
+    ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
@@ -695,6 +704,228 @@ pub async fn theme(
     replied
 }
 
+/// The private balance line after a kept paid play.
+pub fn paid_play_balance_text(balance: i64, currency: &str, emoji: &str) -> String {
+    balance_followup_text(balance, currency, emoji)
+}
+
+/// Which of the two paid plays is running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PaidPlay {
+    Dedicate,
+    Jump,
+}
+
+/// Charge, run `/play`'s own path, then keep the charge or refund it.
+///
+/// 🔑 No defer before the play (ruling P6): `/play` chooses its reply's
+/// visibility, so every check up to the charge reads only the cache and the
+/// database.
+#[cfg(not(tarpaulin_include))]
+async fn paid_play(
+    ctx: Context<'_>,
+    which: PaidPlay,
+    member: Option<Member>,
+    song: String,
+    note: Option<String>,
+    signed: Option<bool>,
+) -> Result<(), Error> {
+    let Some((guild, pool)) = gate(ctx).await? else {
+        return Ok(());
+    };
+    let Some(buyer) = ctx.author_member().await else {
+        return say(ctx, ECONOMY_CANT_TELL, true).await;
+    };
+    let data = ctx.data();
+    let cfg = data.economy.settings(guild).config;
+    if buyer.user.bot() {
+        return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
+    }
+    let note = match note.as_deref().map(validate_note).transpose() {
+        Ok(n) => n,
+        Err(e) => return say(ctx, note_error_text(e), true).await,
+    };
+    let signed = signed.unwrap_or(false);
+    let buyer_id = buyer.user.id;
+    let kind = match which {
+        PaidPlay::Dedicate => ActionKind::Dedicate,
+        PaidPlay::Jump => ActionKind::Jump,
+    };
+    let target = member.as_ref().map(|m| m.user.id);
+    if let Some(member) = member.as_ref() {
+        let facts = match gather_facts(
+            &data,
+            &ctx.serenity_context().cache,
+            guild,
+            Subject {
+                member,
+                is_self: member.user.id == buyer_id,
+            },
+            kind,
+            None,
+            Utc::now(),
+        )
+        .await
+        {
+            Ok(f) => f,
+            Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
+        };
+        if let Err(r) = check_target(kind, &facts, None) {
+            return say(ctx, refusal_text(&r, &cfg.currency_name), true).await;
+        }
+    }
+    let price = cfg.prices.get(kind);
+    let balance = match db::balance(&pool, guild, buyer_id).await {
+        Ok(b) => b,
+        Err(err) => {
+            tracing::warn!("economy: reading balance of {buyer_id} in {guild} failed: {err}");
+            return say(ctx, ECONOMY_PURCHASE_FAILED, true).await;
+        },
+    };
+    if let Err(r) = check_purchase(&PurchaseFacts {
+        enabled: data.economy.is_enabled(guild),
+        price,
+        source_on: true,
+        buyer_opted_out: data.economy.is_opted_out(guild, buyer_id),
+        already_immune_indefinitely: false,
+        balance,
+    }) {
+        return say(ctx, refusal_text(&r, &cfg.currency_name), true).await;
+    }
+    let price = i64::from(price.price);
+    let payload = match which {
+        PaidPlay::Dedicate => ActionPayload::Dedicate { song: song.clone() },
+        PaidPlay::Jump => ActionPayload::Jump { song: song.clone() },
+    };
+    let charged = match db::charge_for_action(
+        &pool,
+        &db::NewAction {
+            guild,
+            kind,
+            buyer: buyer_id,
+            target,
+            price,
+            note: note.as_deref(),
+            signed,
+            payload: &payload,
+            expires_at: None,
+        },
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(MoveError::Insufficient { balance }) => {
+            let r = cant_afford(price, balance);
+            return say(ctx, refusal_text(&r, &cfg.currency_name), true).await;
+        },
+        Err(err) => {
+            tracing::warn!("economy: charging {buyer_id} in {guild} for a play failed: {err:?}");
+            return say(ctx, ECONOMY_PURCHASE_FAILED, true).await;
+        },
+    };
+    let mode = match which {
+        PaidPlay::Dedicate => None,
+        PaidPlay::Jump => Some("next".to_string()),
+    };
+    let played = play_core(ctx, mode, None, Some(song)).await;
+    let verdict = play_settlement(&played.as_ref().map(|o| *o).map_err(|_| ()));
+    match verdict {
+        Settlement::Refund => {
+            if let Err(err) = db::refund_action(&pool, charged.action_id).await {
+                // The row stays pending: reconcile refunds it (ruling P5).
+                tracing::error!(
+                    "economy: refunding action {} for {buyer_id} in {guild} failed: {err}",
+                    charged.action_id
+                );
+            }
+            return match played {
+                // Poise's handler renders it exactly as `/play` would.
+                Err(e) => Err(e),
+                Ok(PlayOutcome::NothingQueued | PlayOutcome::Queued) => {
+                    say(ctx, ECONOMY_PLAY_NOT_CHARGED, true).await
+                },
+            };
+        },
+        Settlement::Keep => {},
+    }
+    if let Err(err) = db::finish_action(&pool, charged.action_id, ActionState::Done).await {
+        tracing::warn!(
+            "economy: marking action {} done failed: {err}",
+            charged.action_id
+        );
+    }
+    let replied = say(
+        ctx,
+        paid_play_balance_text(charged.balance, &cfg.currency_name, &cfg.currency_emoji),
+        true,
+    )
+    .await;
+    let by = signed.then_some(buyer_id);
+    let text = match target {
+        Some(t) => dedication_card_text(t, note.as_deref(), by),
+        None => jump_card_text(note.as_deref(), by),
+    };
+    let channel = card_destination(
+        kind,
+        None,
+        ChannelId::new(ctx.channel_id().get()),
+        cfg.announce_channel_id,
+    );
+    let rendered = Rendered::text(text);
+    let transport = DiscordTransport::of(ctx.serenity_context());
+    if let Err(err) =
+        courier::post_message(&transport, GenericChannelId::new(channel.get()), &rendered).await
+    {
+        tracing::warn!("economy: posting the play card in {channel} failed: {err:?}");
+        if let Err(err) = courier::reply_rendered(ctx, rendered, false).await {
+            tracing::warn!("economy: the play card follow-up failed: {err:?}");
+        }
+    }
+    if let Some(target) = target {
+        log_to(
+            &data,
+            ctx.serenity_context(),
+            guild,
+            ModLogEvent::ShopAction {
+                action: ActionKind::Dedicate,
+                buyer: buyer_id,
+                target,
+                note,
+                signed,
+                until: None,
+                mirrored_from: None,
+            },
+        )
+        .await;
+    }
+    replied
+}
+
+/// Queue a song like /play, and say it goes out to someone.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(slash_command, guild_only, check = "cmd_check_music")]
+pub async fn dedicate(
+    ctx: Context<'_>,
+    #[description = "Who it goes out to"] member: Member,
+    #[description = "Song link or search query"] song: String,
+    #[description = "A note shown on the card"] note: Option<String>,
+    #[description = "Put your name on the card"] signed: Option<bool>,
+) -> Result<(), Error> {
+    paid_play(ctx, PaidPlay::Dedicate, Some(member), song, note, signed).await
+}
+
+/// Queue a song to play next, like /playnext.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(slash_command, guild_only, check = "cmd_check_music")]
+pub async fn jump(
+    ctx: Context<'_>,
+    #[description = "Song link or search query"] song: String,
+    #[description = "A note shown on the card"] note: Option<String>,
+    #[description = "Put your name on the card"] signed: Option<bool>,
+) -> Result<(), Error> {
+    paid_play(ctx, PaidPlay::Jump, None, song, note, signed).await
+}
+
 /// What the shop sells and for how much.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
@@ -713,6 +944,8 @@ pub async fn theme(
         "jail",
         "mirror",
         "theme",
+        "dedicate",
+        "jump",
         "cleanse_command",
         "reveal_command"
     ),

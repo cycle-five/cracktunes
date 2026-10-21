@@ -2395,6 +2395,13 @@ fn nowplaying_is_blocked_during_a_game() {
     assert!(GP_BLOCKED_COMMANDS.contains(&"nowplaying"));
 }
 
+/// The shop's paid plays queue songs, so a game must refuse them.
+#[test]
+fn gp_blocks_dedicate_and_jump() {
+    assert!(GP_BLOCKED_COMMANDS.contains(&"shop dedicate"));
+    assert!(GP_BLOCKED_COMMANDS.contains(&"shop jump"));
+}
+
 /// Every blocked name must be a real top-level music command (so the list
 /// cannot silently rot), and none of the game's own subcommands may be
 /// caught by it. poise fills `qualified_name` only at framework start, so
@@ -2406,7 +2413,9 @@ fn blocklist_matches_registry() {
         .into_iter()
         .map(|c| c.name.to_string())
         .collect();
-    for blocked in GP_BLOCKED_COMMANDS {
+    // A qualified name ("shop jump") is a subcommand elsewhere; the economy's
+    // registry test checks those carry the music check.
+    for blocked in GP_BLOCKED_COMMANDS.iter().filter(|b| !b.contains(' ')) {
         assert!(
             music.contains(&blocked.to_string()),
             "{blocked} is not a registered music command"
@@ -2443,7 +2452,7 @@ fn blocklist_matches_registry() {
         .into_iter()
         .map(|c| (c.name.to_string(), c.checks.len()))
         .collect();
-    for blocked in GP_BLOCKED_COMMANDS {
+    for blocked in GP_BLOCKED_COMMANDS.iter().filter(|b| !b.contains(' ')) {
         assert_ne!(
             by_name.get(*blocked).copied().unwrap_or_default(),
             0,

@@ -487,6 +487,8 @@ fn with_notice(mut out: Rendered, notice: Option<NoticeDelivery>) -> Rendered {
 struct FilledReply {
     shortfall: Option<ListingShortfall>,
     was_empty: bool,
+    /// The queue's length before `match_mode` ran, read beside `was_empty`.
+    len_before: usize,
     queue_len: usize,
     after_query_type: std::time::Instant,
     after_move_on: std::time::Instant,
@@ -531,7 +533,11 @@ async fn fill_search_reply(
     // And no earlier: resolving the query above takes seconds, and a track
     // that ended in that window would leave the new song under "Finished".
     // 🔑 The Call guard is a temporary, released at the end of the statement.
-    let was_empty = call.lock().await.queue().is_empty();
+    let (was_empty, len_before) = {
+        let handler = call.lock().await;
+        let queue = handler.queue();
+        (queue.is_empty(), queue.len())
+    };
 
     // FIXME: Super hacky, fix this shit.
     // This is actually where the track gets queued into the internal queue, it's the main work function.
@@ -573,6 +579,7 @@ async fn fill_search_reply(
     Ok(FilledReply {
         shortfall,
         was_empty,
+        len_before,
         queue_len: queue.len(),
         after_query_type,
         after_move_on,
@@ -581,8 +588,39 @@ async fn fill_search_reply(
     })
 }
 
+/// Did a `/play` put anything in the queue?
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayOutcome {
+    Queued,
+    NothingQueued,
+}
+
+/// `Queued` only when the queue grew across `match_mode`.
+pub fn queued_outcome(len_before: usize, len_after: usize) -> PlayOutcome {
+    if len_after > len_before {
+        PlayOutcome::Queued
+    } else {
+        PlayOutcome::NothingQueued
+    }
+}
+
+/// What a paid play does with its charge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Settlement {
+    Keep,
+    Refund,
+}
+
+/// A paid play keeps its charge only when something was queued; a play that
+/// queued nothing, or failed, is refunded.
+pub fn play_settlement(r: &Result<PlayOutcome, ()>) -> Settlement {
+    match r {
+        Ok(PlayOutcome::Queued) => Settlement::Keep,
+        Ok(PlayOutcome::NothingQueued) | Err(()) => Settlement::Refund,
+    }
+}
+
 /// Does the actual playing of the song, all the other commands use this.
-//#[tracing::instrument(skip(ctx))]
 #[cfg(not(tarpaulin_include))]
 pub async fn play_internal(
     ctx: Context<'_>,
@@ -590,6 +628,19 @@ pub async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
+    play_core(ctx, mode, file, query_or_url).await.map(|_| ())
+}
+
+/// [`play_internal`]'s body, saying whether it queued anything: the paid
+/// shop plays settle their charge on it.
+//#[tracing::instrument(skip(ctx))]
+#[cfg(not(tarpaulin_include))]
+pub async fn play_core(
+    ctx: Context<'_>,
+    mode: Option<String>,
+    file: Option<serenity::Attachment>,
+    query_or_url: Option<String>,
+) -> Result<PlayOutcome, Error> {
     // FIXME: This should be generalized.
     // Get current time for timing purposes.
 
@@ -619,11 +670,12 @@ pub async fn play_internal(
 
     if msg.is_none() && file.is_none() {
         if ctx.is_paused().await.unwrap_or_default() {
-            return resume_internal(ctx).await;
+            resume_internal(ctx).await?;
+            return Ok(PlayOutcome::NothingQueued);
         }
         // An error, so red, as every rendered error is.
         courier::reply(ctx, CrackedMessage::CrackedError(CrackedError::NoQuery)).await?;
-        return Ok(());
+        return Ok(PlayOutcome::NothingQueued);
     }
 
     let _after_msg_parse = std::time::Instant::now();
@@ -655,6 +707,7 @@ pub async fn play_internal(
     let FilledReply {
         shortfall,
         was_empty,
+        len_before,
         queue_len,
         after_query_type: _after_query_type,
         after_move_on: _after_move_on,
@@ -754,7 +807,7 @@ pub async fn play_internal(
         _after_edit_embed.duration_since(_start),
         _after_edit_embed.duration_since(_after_embed),
     );
-    Ok(())
+    Ok(queued_outcome(len_before, queue_len))
 }
 pub enum MessageOrInteraction {
     Message(Message),
@@ -1445,5 +1498,23 @@ mod tests {
 
         assert_eq!(text, PLAY_PLAYLIST);
         assert!(!text.contains("PlaylistQueued"), "{text}");
+    }
+
+    #[test]
+    fn play_settlement_keeps_only_a_queued_play() {
+        assert_eq!(play_settlement(&Ok(PlayOutcome::Queued)), Settlement::Keep);
+        assert_eq!(
+            play_settlement(&Ok(PlayOutcome::NothingQueued)),
+            Settlement::Refund
+        );
+        assert_eq!(play_settlement(&Err(())), Settlement::Refund);
+    }
+
+    #[test]
+    fn a_play_is_queued_only_when_the_queue_grew() {
+        assert_eq!(queued_outcome(0, 1), PlayOutcome::Queued);
+        assert_eq!(queued_outcome(3, 53), PlayOutcome::Queued);
+        assert_eq!(queued_outcome(2, 2), PlayOutcome::NothingQueued);
+        assert_eq!(queued_outcome(0, 0), PlayOutcome::NothingQueued);
     }
 }

@@ -499,6 +499,48 @@ mod tests {
     }
 
     #[test]
+    fn dedicate_refusals() {
+        let k = ActionKind::Dedicate;
+        let refused = |f: TargetFacts| check_target(k, &f, None);
+        assert_eq!(
+            refused(TargetFacts {
+                is_self: true,
+                ..clean()
+            }),
+            Err(Refusal::TargetIsSelf)
+        );
+        assert_eq!(
+            refused(TargetFacts {
+                is_bot: true,
+                ..clean()
+            }),
+            Err(Refusal::TargetIsBot)
+        );
+        assert_eq!(
+            refused(TargetFacts {
+                protection: Some(Protection::Indefinitely),
+                ..clean()
+            }),
+            Err(Refusal::TargetImmune(Protection::Indefinitely))
+        );
+        assert_eq!(
+            refused(TargetFacts {
+                opted_out: true,
+                ..clean()
+            }),
+            Err(Refusal::TargetOptedOut)
+        );
+        // A mirror holder is dedicated to like anyone: it lands, no bounce.
+        assert_eq!(
+            refused(TargetFacts {
+                has_mirror: true,
+                ..clean()
+            }),
+            Ok(TargetOutcome::Lands)
+        );
+    }
+
+    #[test]
     fn check_target_aimed_kinds() {
         for kind in [ActionKind::Theme, ActionKind::Dedicate, ActionKind::Bounty] {
             // Yourself is refused, as for a prank.

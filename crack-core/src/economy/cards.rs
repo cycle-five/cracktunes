@@ -4,8 +4,8 @@ use super::settings::ActionKind;
 use super::shop::BuyOutcome;
 use crate::messaging::format::escape;
 use crate::messaging::messages::{
-    ECONOMY_BOUNTY_SIGN_ANON, ECONOMY_BOUNTY_SIGN_DASH, ECONOMY_THEME_CARD_PREFIX,
-    ECONOMY_THEME_CARD_SUFFIX,
+    ECONOMY_BOUNTY_SIGN_ANON, ECONOMY_BOUNTY_SIGN_DASH, ECONOMY_DEDICATE_CARD_PREFIX,
+    ECONOMY_JUMP_CARD, ECONOMY_THEME_CARD_PREFIX, ECONOMY_THEME_CARD_SUFFIX,
 };
 use crate::messaging::messages::{
     ECONOMY_CARD_BACK_AT_THEM, ECONOMY_CARD_BLOCKED_TAIL, ECONOMY_CARD_CLOWNED,
@@ -229,6 +229,32 @@ pub fn theme_card_text(target: UserId, note: Option<&str>, buyer: Option<UserId>
     text
 }
 
+/// The note and signature lines every aimed card ends with.
+fn note_and_sign(mut text: String, note: Option<&str>, buyer: Option<UserId>) -> String {
+    if let Some(note) = note.filter(|n| !n.trim().is_empty()) {
+        text.push_str("\n> ");
+        text.push_str(&escape(note));
+    }
+    let by = buyer.map_or_else(|| ECONOMY_BOUNTY_SIGN_ANON.to_string(), mention);
+    text.push_str(&format!("\n{ECONOMY_BOUNTY_SIGN_DASH} {by}"));
+    text
+}
+
+/// The card for a dedicated song: who it goes out to, the note, the signer
+/// ("someone" when unsigned). Never the song: the play reply shows that.
+pub fn dedication_card_text(target: UserId, note: Option<&str>, buyer: Option<UserId>) -> String {
+    note_and_sign(
+        format!("{ECONOMY_DEDICATE_CARD_PREFIX} {}", mention(target)),
+        note,
+        buyer,
+    )
+}
+
+/// The card for a paid jump. It names nobody unless the buyer signed.
+pub fn jump_card_text(note: Option<&str>, buyer: Option<UserId>) -> String {
+    note_and_sign(ECONOMY_JUMP_CARD.to_string(), note, buyer)
+}
+
 /// The channel a card goes to. Drag, jail, mute and deafen happen in voice,
 /// so they post in the target's voice channel's chat while they are still in
 /// one; everything else (and those, once the target has left voice) goes to
@@ -279,6 +305,34 @@ mod tests {
 
     fn until() -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).unwrap()
+    }
+
+    #[test]
+    fn dedication_card_text_names_the_target_and_never_the_song() {
+        assert_eq!(
+            dedication_card_text(T, Some("for *you*"), Some(B)),
+            "🎵 This one goes out to <@20>\n> for \\*you\\*\n— <@10>"
+        );
+        assert_eq!(
+            dedication_card_text(T, None, None),
+            "🎵 This one goes out to <@20>\n— someone"
+        );
+        assert_eq!(
+            dedication_card_text(T, Some("  "), None),
+            "🎵 This one goes out to <@20>\n— someone"
+        );
+    }
+
+    #[test]
+    fn jump_card_text_names_nobody_unless_signed() {
+        assert_eq!(
+            jump_card_text(Some("hurry"), Some(B)),
+            "⏭️ Someone paid to play this next\n> hurry\n— <@10>"
+        );
+        assert_eq!(
+            jump_card_text(None, None),
+            "⏭️ Someone paid to play this next\n— someone"
+        );
     }
 
     #[test]
