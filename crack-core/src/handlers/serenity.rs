@@ -84,6 +84,17 @@ impl EventHandler for SerenityHandler {
                             );
                         }
                     }
+                    // A walk-on theme waiting for them plays now. Spawned:
+                    // it never holds up this event.
+                    if let Some(channel) = new.channel_id {
+                        crate::economy::theme::on_voice_join(
+                            self.data.clone(),
+                            ctx.clone(),
+                            guild,
+                            new.user_id,
+                            channel,
+                        );
+                    }
                 }
                 // A jailed member who changed channel is moved back.
                 if let Some(guild) = new.guild_id {

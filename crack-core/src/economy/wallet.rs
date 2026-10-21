@@ -123,6 +123,7 @@ pub enum ActionPayload {
     },
     /// A walk-on clip for the target's next join. The link is never shown.
     Theme {
+        /// Reaches yt-dlp only through `crack_types::ytdl_for_url`; never shown.
         url: String,
         start_secs: u32,
     },

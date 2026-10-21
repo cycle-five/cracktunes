@@ -1,19 +1,32 @@
 //! Walk-on themes: a member pays to have a link play, for a few seconds, the
-//! next time another member joins voice. This is the purchase; playing it is
-//! done on the join. The credits stay in escrow until then and come back if
-//! it never plays.
+//! next time another member joins voice. The purchase escrows the price; the
+//! target's next join plays the clip ([`on_voice_join`]) and spends it. If it
+//! never plays, the buyer gets it back.
 
+use super::cards::theme_card_text;
+use super::immunity::Protection;
 use super::settings::ActionKind;
 use super::shop::{
     cant_afford, check_purchase, Bought, BuyError, BuyOutcome, PurchaseFacts, Refusal,
 };
-use super::target::{check_target, TargetFacts};
-use super::wallet::{ActionPayload, LedgerKind, MoveError};
-use crate::db::economy as db;
+use super::target::{check_target, voice_of, TargetFacts};
+use super::wallet::{ActionPayload, ActionState, LedgerKind, MoveError};
+use crate::commands::music_utils::{connected_call, join_permitted, set_global_handlers_with};
+use crate::db::economy::{self as db, ActionRow};
+use crate::messaging::{courier, render::Rendered, status::DiscordTransport};
+use crate::music::audit::{Actor, BotReason};
 use crate::Data;
+use ::serenity::async_trait;
 use chrono::{DateTime, Duration as Days, Utc};
-use serenity::all::{GuildId, UserId};
+use serenity::all::{ChannelId, Context as SerenityContext, GenericChannelId, GuildId, UserId};
+use songbird::tracks::TrackHandle;
+use songbird::{Call, Event, EventContext, EventHandler, TrackEvent};
+use std::future::Future;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::{mpsc, Mutex};
+use tokio::time::{timeout, timeout_at, Instant};
+use uuid::Uuid;
 
 /// How long a theme waits for its target's next join.
 pub const THEME_DAYS: i64 = 7;
@@ -174,14 +187,463 @@ pub async fn buy_theme(
     })
 }
 
+// --- Playing it, on the target's next voice join ---------------------------
+
+/// How long a started theme has to become audible.
+pub const THEME_READY_WITHIN: Duration = Duration::from_secs(20);
+
+/// How long a theme track stays marked after its player is done. Its end
+/// reaches the global track-end handler within a tick of the stop; this only
+/// bounds the set when no end ever comes (the bot left first).
+const THEME_TRACK_FORGET_AFTER: Duration = Duration::from_secs(60);
+
+/// Where a theme plays, decided when its target joins voice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemePlan {
+    /// The bot is in the target's channel: mix the clip over whatever plays.
+    MixHere,
+    /// The bot is in no voice channel in the server: join, play, leave.
+    JoinPlayLeave,
+    /// Not now: the theme waits for a later join.
+    Wait,
+}
+
+/// Decide the [`ThemePlan`]. A `/gp` game, another theme playing in the
+/// server, or the bot busy in another channel make the theme wait.
+pub fn theme_plan(
+    bot_in: Option<ChannelId>,
+    target_in: ChannelId,
+    game_running: bool,
+    playing_elsewhere: bool,
+) -> ThemePlan {
+    if game_running || playing_elsewhere {
+        return ThemePlan::Wait;
+    }
+    match bot_in {
+        None => ThemePlan::JoinPlayLeave,
+        Some(here) if here == target_in => ThemePlan::MixHere,
+        Some(_) => ThemePlan::Wait,
+    }
+}
+
+/// The refund's reason when a theme can't reach its target now: `opt_out`
+/// (the opt-out path's own reason) for a member out of the economy,
+/// `immunity` for one immune. `None` when nothing protects them.
+pub fn protected_reason(opted_out: bool, protection: Option<Protection>) -> Option<&'static str> {
+    match (opted_out, protection) {
+        (true, _) | (_, Some(Protection::OptedOut)) => Some("opt_out"),
+        (_, Some(Protection::Until(_) | Protection::Indefinitely)) => Some("immunity"),
+        (false, None) => None,
+    }
+}
+
+/// After a join-play-leave: leave only if nobody started music meanwhile
+/// (the queue is empty) and the bot is still where it joined.
+pub fn leave_after_theme(queue_empty: bool, here: Option<ChannelId>, joined: ChannelId) -> bool {
+    queue_empty && here == Some(joined)
+}
+
+/// What a theme's track tells the task playing it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipEvent {
+    Playable,
+    Errored,
+    Ended,
+}
+
+/// Why a theme did not play.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unplayable {
+    /// The track failed (yt-dlp, the stream, the decoder) or ended unheard.
+    Failed,
+    /// The seek to its start failed. songbird removes such a track.
+    SeekFailed,
+    /// Not audible within the time allowed.
+    TimedOut,
+}
+
+/// Wait until the clip is audible at its start: the seek (when there is one)
+/// confirmed, then `Playable` seen, both within `within` of the call. A
+/// `Playable` that came before a failed seek does not count: songbird fires
+/// one when the stream opens, before a seek queued behind it runs.
+pub async fn audible<F, T, E>(
+    seek: Option<F>,
+    events: &mut mpsc::UnboundedReceiver<ClipEvent>,
+    within: Duration,
+) -> Result<(), Unplayable>
+where
+    F: Future<Output = Result<T, E>>,
+{
+    let deadline = Instant::now() + within;
+    if let Some(seek) = seek {
+        match timeout_at(deadline, seek).await {
+            Ok(Ok(_)) => {},
+            Ok(Err(_)) => return Err(Unplayable::SeekFailed),
+            Err(_) => return Err(Unplayable::TimedOut),
+        }
+    }
+    match timeout_at(deadline, events.recv()).await {
+        Ok(Some(ClipEvent::Playable)) => Ok(()),
+        Ok(Some(ClipEvent::Errored | ClipEvent::Ended) | None) => Err(Unplayable::Failed),
+        Err(_) => Err(Unplayable::TimedOut),
+    }
+}
+
+/// Let an audible clip play for `clip`, or until it ends by itself. True
+/// when it ran its time and must be stopped.
+pub async fn clip_runs_out(
+    events: &mut mpsc::UnboundedReceiver<ClipEvent>,
+    clip: Duration,
+) -> bool {
+    let ended = async {
+        // A second `Playable` (the one after a seek) is not an end.
+        while let Some(ClipEvent::Playable) = events.recv().await {}
+    };
+    timeout(clip, ended).await.is_err()
+}
+
+/// Steps 1-2 of a join: the target's oldest waiting theme, if it may play.
+///
+/// - Only `active` rows before their end count; one past it is the sweeper's
+///   to refund. Duplicates (two bought at once) wait for later joins.
+/// - A protected target (opted out, or immune) gets none: every theme waiting
+///   for them is refunded to its buyer, and `None` returned.
+/// - A read that fails plays nothing and refunds nothing.
+pub async fn claim_theme(
+    data: &Data,
+    guild: GuildId,
+    user: UserId,
+    now: DateTime<Utc>,
+) -> Option<ActionRow> {
+    let pool = data.database_pool.as_ref()?;
+    let rows = match db::active_of_kind(pool, guild, user, &[ActionKind::Theme]).await {
+        Ok(rows) => rows,
+        Err(err) => {
+            tracing::warn!(
+                "economy: reading the themes waiting for {user} in {guild} failed: {err}"
+            );
+            return None;
+        },
+    };
+    // Oldest first: the query orders by id.
+    let waiting: Vec<ActionRow> = rows
+        .into_iter()
+        .filter(|r| r.state == ActionState::Active && r.expires_at.is_some_and(|end| end > now))
+        .collect();
+    let oldest = waiting.first()?.clone();
+    let protection = match crate::economy::protection(data, guild, user, now).await {
+        Ok(p) => p,
+        Err(err) => {
+            tracing::warn!("economy: reading the protection of {user} in {guild} failed: {err}");
+            return None;
+        },
+    };
+    let Some(reason) = protected_reason(data.economy.is_opted_out(guild, user), protection) else {
+        return Some(oldest);
+    };
+    for row in &waiting {
+        if let Err(err) = db::refund_active(pool, row.id, reason).await {
+            tracing::warn!(
+                "economy: refunding theme {} ({reason}) failed: {err}",
+                row.id
+            );
+        }
+    }
+    None
+}
+
+/// A member joined voice: play the theme waiting for them, off the event
+/// path. Nothing happens for the bot itself, or in a server with no
+/// database or the economy off; the row waits, and is refunded at its end
+/// if it never plays.
+pub fn on_voice_join(
+    data: Data,
+    ctx: SerenityContext,
+    guild: GuildId,
+    user: UserId,
+    channel: ChannelId,
+) {
+    if data.database_pool.is_none() || !data.economy.is_enabled(guild) {
+        return;
+    }
+    if user == ctx.cache.current_user().id {
+        return;
+    }
+    super::effects::spawn_one_shot("theme", async move {
+        play_on_join(&data, &ctx, guild, user, channel).await;
+    });
+}
+
+/// Claim, plan, play, settle, and leave if the bot came only for this.
+async fn play_on_join(
+    data: &Data,
+    ctx: &SerenityContext,
+    guild: GuildId,
+    user: UserId,
+    channel: ChannelId,
+) {
+    let Some(row) = claim_theme(data, guild, user, Utc::now()).await else {
+        return;
+    };
+    // The reads took a moment: they may have left or moved since.
+    if voice_of(&ctx.cache, guild, user) != Some(channel) {
+        return;
+    }
+    let turn = data.economy.try_theme_guard(guild);
+    let call = connected_call(&data.songbird, guild, None).await;
+    let bot_in = match &call {
+        Some(call) => call
+            .lock()
+            .await
+            .current_channel()
+            .map(|c| ChannelId::new(c.get())),
+        None => None,
+    };
+    let plan = theme_plan(bot_in, channel, data.gp_is_active(guild), turn.is_none());
+    let call = match (plan, call) {
+        (ThemePlan::MixHere, Some(call)) => call,
+        (ThemePlan::JoinPlayLeave, _) => match join_for_theme(data, ctx, guild, channel).await {
+            Some(call) => call,
+            None => return,
+        },
+        _ => {
+            tracing::debug!("economy: theme {} in {guild} waits ({plan:?})", row.id);
+            return;
+        },
+    };
+    let track = play(data, ctx, guild, &call, &row, user, channel).await;
+    if plan == ThemePlan::JoinPlayLeave {
+        leave_if_idle(data, guild, &call, channel).await;
+    }
+    drop(turn);
+    if let Some(track) = track {
+        tokio::time::sleep(THEME_TRACK_FORGET_AFTER).await;
+        data.economy.take_theme_track(track);
+    }
+}
+
+/// Join `channel` for a theme, as the queue resume does. A join refused or
+/// failed is a wait: the theme stays for a later join.
+async fn join_for_theme(
+    data: &Data,
+    ctx: &SerenityContext,
+    guild: GuildId,
+    channel: ChannelId,
+) -> Option<Arc<Mutex<Call>>> {
+    let permit = match crate::music::perms::ensure_can_join(&ctx.cache, guild, channel) {
+        Ok(permit) => permit,
+        Err(err) => {
+            tracing::info!("economy: no theme in {channel} ({guild}): can't join: {err}");
+            return None;
+        },
+    };
+    let call = match join_permitted(data, &data.songbird, permit).await {
+        Ok(call) => call,
+        Err(err) => {
+            tracing::warn!("economy: joining {channel} in {guild} for a theme failed: {err:?}");
+            return None;
+        },
+    };
+    set_global_handlers_with(
+        ctx,
+        Arc::new(data.clone()),
+        call.clone(),
+        guild,
+        GenericChannelId::new(channel.get()),
+    )
+    .await;
+    Some(call)
+}
+
+/// Play `row`'s clip over `call`'s queue and settle it: spent and carded
+/// once audible, refunded if it never is. Returns once the clip has stopped,
+/// with the track's id when one was started.
+async fn play(
+    data: &Data,
+    ctx: &SerenityContext,
+    guild: GuildId,
+    call: &Arc<Mutex<Call>>,
+    row: &ActionRow,
+    target: UserId,
+    channel: ChannelId,
+) -> Option<Uuid> {
+    let pool = data.database_pool.as_ref()?;
+    let unplayable = |why: &str| {
+        tracing::warn!("economy: theme {} in {guild} could not play: {why}", row.id);
+    };
+    // Claimed a moment ago, but a cleanse, a cancel or its end may have
+    // refunded it since.
+    match db::action_state(pool, row.id).await {
+        Ok(Some(ActionState::Active)) => {},
+        Ok(state) => {
+            tracing::debug!("economy: theme {} is {state:?} now; not playing it", row.id);
+            return None;
+        },
+        Err(err) => {
+            tracing::warn!("economy: reading theme {} failed: {err}", row.id);
+            return None;
+        },
+    }
+    let ActionPayload::Theme { url, start_secs } = &row.payload else {
+        unplayable("its payload is not a theme's");
+        refund_unplayable(pool, row.id).await;
+        return None;
+    };
+    // The link's only way to yt-dlp.
+    let input = match crack_types::ytdl_for_url(crate::http_utils::get_client_old().clone(), url) {
+        Ok(ytdl) => ytdl.into(),
+        Err(err) => {
+            unplayable(&format!("its link was refused: {err}"));
+            refund_unplayable(pool, row.id).await;
+            return None;
+        },
+    };
+    // Marked before the track exists, so its end can never reach the
+    // queue's handler unmarked.
+    let id = Uuid::new_v4();
+    data.economy.add_theme_track(id);
+    let handle = {
+        let mut call = call.lock().await;
+        crate::music::queue::play_beside_queue(
+            &mut call,
+            crate::music::queue::new_track(input, None, Some(row.buyer)),
+            id,
+        )
+    };
+    // Armed before anything is awaited: the seek below is what opens the
+    // stream, and so what fires `Playable` (as `/gp`'s clip does).
+    let (tx, mut events) = mpsc::unbounded_channel();
+    for (event, signal) in [
+        (TrackEvent::Playable, ClipEvent::Playable),
+        (TrackEvent::Error, ClipEvent::Errored),
+        (TrackEvent::End, ClipEvent::Ended),
+    ] {
+        let armed = crate::handlers::add_track_handler(
+            &handle,
+            Event::Track(event),
+            ClipSignal {
+                tx: tx.clone(),
+                event: signal,
+            },
+        );
+        if let Err(err) = armed {
+            unplayable(&format!("arming its {event:?} handler failed: {err}"));
+            stop_theme(&handle, guild);
+            refund_unplayable(pool, row.id).await;
+            return Some(id);
+        }
+    }
+    // Only the handlers hold a sender now: when the track goes, so do they.
+    drop(tx);
+    let seek = (*start_secs > 0).then(|| {
+        handle
+            .seek(Duration::from_secs(u64::from(*start_secs)))
+            .result_async()
+    });
+    if let Err(why) = audible(seek, &mut events, THEME_READY_WITHIN).await {
+        unplayable(&format!("{why:?}"));
+        stop_theme(&handle, guild);
+        refund_unplayable(pool, row.id).await;
+        return Some(id);
+    }
+    // Audible: the buyer's credits are spent. A row refunded meanwhile gets
+    // no card, but the clip has started and plays on.
+    match db::finish_action(pool, row.id, ActionState::Done).await {
+        Ok(true) => post_card(ctx, guild, row, target, channel).await,
+        Ok(false) => tracing::debug!("economy: theme {} ended as it played; no card", row.id),
+        Err(err) => tracing::warn!("economy: marking theme {} played failed: {err}", row.id),
+    }
+    if clip_runs_out(&mut events, THEME_CLIP).await {
+        stop_theme(&handle, guild);
+    }
+    Some(id)
+}
+
+/// Give the buyer their credits back: the theme never played.
+async fn refund_unplayable(pool: &sqlx::PgPool, id: i64) {
+    if let Err(err) = db::refund_active(pool, id, "unplayable").await {
+        tracing::warn!("economy: refunding unplayable theme {id} failed: {err}");
+    }
+}
+
+/// The theme card, in the chat of the target's voice channel. A failed post
+/// is logged: there is no interaction to answer instead.
+async fn post_card(
+    ctx: &SerenityContext,
+    guild: GuildId,
+    row: &ActionRow,
+    target: UserId,
+    channel: ChannelId,
+) {
+    let text = theme_card_text(target, row.note.as_deref(), row.signed.then_some(row.buyer));
+    if let Err(err) = courier::post_message(
+        &DiscordTransport::of(ctx),
+        GenericChannelId::new(channel.get()),
+        &Rendered::text(text),
+    )
+    .await
+    {
+        tracing::warn!("economy: posting the theme card in {channel} ({guild}) failed: {err:?}");
+    }
+}
+
+/// Leave after a join-play-leave, unless music started meanwhile.
+async fn leave_if_idle(data: &Data, guild: GuildId, call: &Arc<Mutex<Call>>, joined: ChannelId) {
+    let (empty, here) = {
+        let call = call.lock().await;
+        (
+            call.queue().is_empty(),
+            call.current_channel().map(|c| ChannelId::new(c.get())),
+        )
+    };
+    if !leave_after_theme(empty, here, joined) {
+        return;
+    }
+    if let Err(err) = crate::music::disconnect::disconnect(
+        data,
+        &data.songbird,
+        guild,
+        Actor::bot(BotReason::Theme),
+    )
+    .await
+    {
+        tracing::warn!("economy: leaving {joined} in {guild} after a theme failed: {err:?}");
+    }
+}
+
+/// Stop a theme's track. It may have gone already (ended, or removed by a
+/// failed seek): that is no error.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a walk-on theme ending its own clip: it is mixed over the queue, not in it, so this is no skip"
+)]
+fn stop_theme(handle: &TrackHandle, guild: GuildId) {
+    if let Err(err) = handle.stop() {
+        tracing::debug!("economy: the theme in {guild} had already stopped: {err}");
+    }
+}
+
+/// Passes one of a theme track's events to the task playing it.
+struct ClipSignal {
+    tx: mpsc::UnboundedSender<ClipEvent>,
+    event: ClipEvent,
+}
+
+#[async_trait]
+impl EventHandler for ClipSignal {
+    async fn act(&self, _ctx: &EventContext<'_>) -> Option<Event> {
+        // The player may have given up and gone: nobody left to tell.
+        let _ = self.tx.send(self.event);
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::economy::immunity::Protection;
     use crate::economy::settings::{ActionPrice, EconomySettings};
     use crate::DataInner;
     use sqlx::PgPool;
-    use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
     const A: UserId = UserId::new(10);
@@ -498,4 +960,308 @@ mod tests {
             2
         );
     });
+
+    const VC: ChannelId = ChannelId::new(5);
+    const OTHER_VC: ChannelId = ChannelId::new(6);
+
+    #[test]
+    fn theme_plan_a_game_or_another_theme_waits_first() {
+        // Whatever the bot is doing, a game or another theme in the server
+        // makes it wait.
+        for bot_in in [None, Some(VC), Some(OTHER_VC)] {
+            assert_eq!(theme_plan(bot_in, VC, true, false), ThemePlan::Wait);
+            assert_eq!(theme_plan(bot_in, VC, false, true), ThemePlan::Wait);
+            assert_eq!(theme_plan(bot_in, VC, true, true), ThemePlan::Wait);
+        }
+    }
+
+    #[test]
+    fn theme_plan_mixes_joins_or_waits_by_where_the_bot_is() {
+        assert_eq!(theme_plan(Some(VC), VC, false, false), ThemePlan::MixHere);
+        assert_eq!(theme_plan(None, VC, false, false), ThemePlan::JoinPlayLeave);
+        assert_eq!(
+            theme_plan(Some(OTHER_VC), VC, false, false),
+            ThemePlan::Wait,
+            "busy in another channel"
+        );
+    }
+
+    #[test]
+    fn protected_reason_names_the_protection() {
+        let later = Utc::now() + Days::hours(1);
+        assert_eq!(protected_reason(false, None), None);
+        assert_eq!(protected_reason(true, None), Some("opt_out"), "in memory");
+        assert_eq!(
+            protected_reason(false, Some(Protection::OptedOut)),
+            Some("opt_out"),
+            "stored"
+        );
+        assert_eq!(
+            protected_reason(false, Some(Protection::Until(later))),
+            Some("immunity")
+        );
+        assert_eq!(
+            protected_reason(false, Some(Protection::Indefinitely)),
+            Some("immunity")
+        );
+        assert_eq!(
+            protected_reason(true, Some(Protection::Indefinitely)),
+            Some("opt_out")
+        );
+    }
+
+    #[test]
+    fn leave_after_theme_only_when_idle_and_where_it_joined() {
+        assert!(leave_after_theme(true, Some(VC), VC));
+        assert!(!leave_after_theme(false, Some(VC), VC), "music started");
+        assert!(!leave_after_theme(true, Some(OTHER_VC), VC), "moved");
+        assert!(!leave_after_theme(true, None, VC), "already gone");
+    }
+
+    /// Sends `events` into a fresh channel at the given times (from now),
+    /// then drops the sender unless `keep_open`.
+    fn events_at(
+        events: Vec<(u64, ClipEvent)>,
+        keep_open: bool,
+    ) -> mpsc::UnboundedReceiver<ClipEvent> {
+        let (tx, rx) = mpsc::unbounded_channel();
+        tokio::spawn(async move {
+            let start = Instant::now();
+            for (at, e) in events {
+                tokio::time::sleep_until(start + secs(at)).await;
+                let _ = tx.send(e);
+            }
+            if keep_open {
+                std::future::pending::<()>().await;
+            }
+        });
+        rx
+    }
+
+    /// A seek that settles `after` seconds from now.
+    async fn seek_after(after: u64, ok: bool) -> Result<Duration, &'static str> {
+        tokio::time::sleep(secs(after)).await;
+        if ok {
+            Ok(secs(83))
+        } else {
+            Err("removed")
+        }
+    }
+
+    type NoSeek = std::future::Ready<Result<Duration, &'static str>>;
+
+    #[tokio::test(start_paused = true)]
+    async fn a_theme_is_audible_only_once_playable_within_20s() {
+        use ClipEvent::*;
+        let within = THEME_READY_WITHIN;
+        let t = Instant::now();
+        let mut rx = events_at(vec![(19, Playable)], true);
+        assert_eq!(audible(None::<NoSeek>, &mut rx, within).await, Ok(()));
+        assert_eq!(t.elapsed(), secs(19));
+
+        let t = Instant::now();
+        let mut rx = events_at(vec![(21, Playable)], true);
+        assert_eq!(
+            audible(None::<NoSeek>, &mut rx, within).await,
+            Err(Unplayable::TimedOut)
+        );
+        assert_eq!(t.elapsed(), within, "gives up at 20 s");
+
+        for dead in [vec![(1, Errored), (1, Ended)], vec![(1, Ended)]] {
+            let mut rx = events_at(dead, true);
+            assert_eq!(
+                audible(None::<NoSeek>, &mut rx, within).await,
+                Err(Unplayable::Failed)
+            );
+        }
+        // Every sender gone (the track and its handlers dropped): failed.
+        let mut rx = events_at(vec![], false);
+        assert_eq!(
+            audible(None::<NoSeek>, &mut rx, within).await,
+            Err(Unplayable::Failed)
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_seeked_theme_needs_the_seek_and_playable_inside_one_budget() {
+        use ClipEvent::*;
+        let within = THEME_READY_WITHIN;
+        // Seek confirmed, then Playable: audible.
+        let mut rx = events_at(vec![(2, Playable)], true);
+        assert_eq!(
+            audible(Some(seek_after(2, true)), &mut rx, within).await,
+            Ok(())
+        );
+        // The stream opened (Playable) before the queued seek failed:
+        // songbird removed the track, so it never played.
+        let mut rx = events_at(vec![(1, Playable)], true);
+        assert_eq!(
+            audible(Some(seek_after(2, false)), &mut rx, within).await,
+            Err(Unplayable::SeekFailed)
+        );
+        // A seek that hangs past the budget.
+        let t = Instant::now();
+        let mut rx = events_at(vec![], true);
+        assert_eq!(
+            audible(Some(seek_after(25, true)), &mut rx, within).await,
+            Err(Unplayable::TimedOut)
+        );
+        assert_eq!(t.elapsed(), within);
+        // One budget, not one per stage: a 15 s seek leaves 5 s.
+        let t = Instant::now();
+        let mut rx = events_at(vec![(21, Playable)], true);
+        assert_eq!(
+            audible(Some(seek_after(15, true)), &mut rx, within).await,
+            Err(Unplayable::TimedOut)
+        );
+        assert_eq!(t.elapsed(), within);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_clip_stops_at_10s_unless_it_ends_first() {
+        use ClipEvent::*;
+        let t = Instant::now();
+        let mut rx = events_at(vec![(3, Ended)], true);
+        assert!(!clip_runs_out(&mut rx, THEME_CLIP).await, "ended itself");
+        assert_eq!(t.elapsed(), secs(3));
+
+        // A second Playable (after the seek) is not an end.
+        let t = Instant::now();
+        let mut rx = events_at(vec![(1, Playable)], true);
+        assert!(clip_runs_out(&mut rx, THEME_CLIP).await, "must be stopped");
+        assert_eq!(t.elapsed(), THEME_CLIP);
+
+        let mut rx = events_at(vec![(4, Errored)], true);
+        assert!(!clip_runs_out(&mut rx, THEME_CLIP).await);
+        let mut rx = events_at(vec![], false);
+        assert!(!clip_runs_out(&mut rx, THEME_CLIP).await, "track gone");
+    }
+
+    async fn rich(pool: &PgPool, user: UserId, credits: i64) {
+        db::credit_earnings(
+            pool,
+            G,
+            &[db::EarnRow {
+                user,
+                voice: credits,
+                messages: 0,
+            }],
+        )
+        .await
+        .unwrap();
+    }
+
+    async fn state_of(pool: &PgPool, id: i64) -> (String, Option<String>) {
+        sqlx::query_as("SELECT state, end_reason FROM economy_actions WHERE id = $1")
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    /// A theme from A on `target`, bought at `now`, through the shop.
+    async fn theme_on(data: &Data, target: UserId, now: DateTime<Utc>) -> i64 {
+        buy_theme(
+            data,
+            clean(),
+            ThemeRequest {
+                target,
+                ..request(LINK, now)
+            },
+        )
+        .await
+        .unwrap()
+        .action_id
+    }
+
+    db_test!(
+        a_protected_target_gets_no_theme_and_the_buyer_is_refunded,
+        |pool: PgPool| async {
+            let data = themed_data(&pool).await;
+            rich(&pool, A, 1000).await;
+            // The real clock: the database compares ends with now().
+            let now = Utc::now();
+            let (immune, stored_out, memory_out) =
+                (UserId::new(21), UserId::new(22), UserId::new(23));
+            let free = theme_on(&data, T, now).await;
+            // Two waiting for the immune one: both go back.
+            let i1 = theme_on(&data, immune, now).await;
+            let i2 = theme_on(&data, immune, now).await;
+            let so = theme_on(&data, stored_out, now).await;
+            let mo = theme_on(&data, memory_out, now).await;
+            assert_eq!(db::balance(&pool, G, A).await.unwrap(), 500);
+
+            db::grant_mod(&pool, G, immune, None, UserId::new(99), None)
+                .await
+                .unwrap();
+            db::set_opted_out(&pool, G, stored_out, true, now)
+                .await
+                .unwrap();
+            data.economy.set_one_opted_out(G, memory_out, true);
+
+            let later = Utc::now();
+            assert_eq!(claim_theme(&data, G, immune, later).await, None);
+            assert_eq!(claim_theme(&data, G, stored_out, later).await, None);
+            assert_eq!(claim_theme(&data, G, memory_out, later).await, None);
+            for (id, why) in [
+                (i1, "immunity"),
+                (i2, "immunity"),
+                (so, "opt_out"),
+                (mo, "opt_out"),
+            ] {
+                assert_eq!(
+                    state_of(&pool, id).await,
+                    ("ended".to_string(), Some(why.to_string())),
+                    "{id}"
+                );
+            }
+            assert_eq!(db::balance(&pool, G, A).await.unwrap(), 900, "four back");
+            assert_eq!(
+                count(
+                    &pool,
+                    "SELECT count(*) FROM economy_ledger WHERE kind = 'refund' AND delta = 100"
+                )
+                .await,
+                4
+            );
+            // The unprotected target's theme is claimed, and left as it was.
+            let row = claim_theme(&data, G, T, later).await.expect("claimed");
+            assert_eq!(row.id, free);
+            assert_eq!(state_of(&pool, free).await, ("active".to_string(), None));
+            assert_eq!(db::balance(&pool, G, A).await.unwrap(), 900);
+        }
+    );
+
+    db_test!(
+        claim_theme_takes_the_oldest_and_leaves_the_rest,
+        |pool: PgPool| async {
+            let data = themed_data(&pool).await;
+            rich(&pool, A, 1000).await;
+            let now = Utc::now();
+            // Already past its end (bought eight days ago): the sweeper's.
+            let lapsed = theme_on(&data, T, now - Days::days(8)).await;
+            let first = theme_on(&data, T, now).await;
+            let second = theme_on(&data, T, now).await;
+            assert_eq!(claim_theme(&data, G, UserId::new(77), now).await, None);
+            let row = claim_theme(&data, G, T, Utc::now()).await.expect("claimed");
+            assert_eq!(row.id, first, "the oldest still waiting");
+            assert_eq!(
+                row.payload,
+                ActionPayload::Theme {
+                    url: LINK.to_string(),
+                    start_secs: 83
+                }
+            );
+            // Nothing moved: the claim settles nothing.
+            for id in [lapsed, first, second] {
+                assert_eq!(state_of(&pool, id).await, ("active".to_string(), None));
+            }
+            // Once it has played, the next one is up.
+            assert!(db::finish_action(&pool, first, ActionState::Done)
+                .await
+                .unwrap());
+            let row = claim_theme(&data, G, T, Utc::now()).await.expect("next");
+            assert_eq!(row.id, second);
+        }
+    );
 }

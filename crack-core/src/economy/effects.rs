@@ -646,10 +646,20 @@ pub fn spawn_supervised<F>(name: &'static str, fut: F)
 where
     F: Future<Output = ()> + Send + 'static,
 {
-    spawn_supervised_with(name, fut, |line| tracing::error!("{line}"));
+    spawn_supervised_with(name, fut, true, |line| tracing::error!("{line}"));
 }
 
-fn spawn_supervised_with<F, L>(name: &'static str, fut: F, log: L)
+/// Run a one-off `fut` as a task and log at error if it panics. It is meant
+/// to end, so ending is not logged.
+pub fn spawn_one_shot<F>(name: &'static str, fut: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    spawn_supervised_with(name, fut, false, |line| tracing::error!("{line}"));
+}
+
+/// `forever`: whether ending is worth a line (a loop that should never end).
+fn spawn_supervised_with<F, L>(name: &'static str, fut: F, forever: bool, log: L)
 where
     F: Future<Output = ()> + Send + 'static,
     L: Fn(&str) + Send + 'static,
@@ -657,6 +667,7 @@ where
     let task = tokio::spawn(fut);
     tokio::spawn(async move {
         match task.await {
+            Ok(()) if !forever => {},
             Ok(()) => log(&format!(
                 "economy: task {name} ended; it should run forever"
             )),
@@ -806,7 +817,7 @@ mod tests {
     async fn a_supervised_task_that_ends_is_logged() {
         let lines = Arc::new(Mutex::new(Vec::<String>::new()));
         let sink = lines.clone();
-        spawn_supervised_with("loop", async {}, move |l| {
+        spawn_supervised_with("loop", async {}, true, move |l| {
             sink.lock().unwrap().push(l.to_string())
         });
         let sink = lines.clone();
@@ -815,6 +826,7 @@ mod tests {
             async {
                 panic!("on purpose");
             },
+            true,
             move |l| sink.lock().unwrap().push(l.to_string()),
         );
         for _ in 0..100 {
@@ -840,11 +852,42 @@ mod tests {
     async fn a_supervised_task_that_keeps_running_is_not_logged() {
         let lines = Arc::new(Mutex::new(Vec::<String>::new()));
         let sink = lines.clone();
-        spawn_supervised_with("loop", std::future::pending(), move |l| {
+        spawn_supervised_with("loop", std::future::pending(), true, move |l| {
             sink.lock().unwrap().push(l.to_string())
         });
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert!(lines.lock().unwrap().is_empty());
+    }
+
+    /// A one-shot task (a theme played on a join) ends quietly, but its
+    /// panic is still loud.
+    #[tokio::test]
+    async fn a_one_shot_task_is_logged_only_when_it_panics() {
+        let lines = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sink = lines.clone();
+        spawn_supervised_with("theme", async {}, false, move |l| {
+            sink.lock().unwrap().push(l.to_string())
+        });
+        let sink = lines.clone();
+        spawn_supervised_with(
+            "theme",
+            async {
+                panic!("on purpose");
+            },
+            false,
+            move |l| sink.lock().unwrap().push(l.to_string()),
+        );
+        for _ in 0..100 {
+            if !lines.lock().unwrap().is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        // Long enough for the quiet one to have ended too.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let got = lines.lock().unwrap().clone();
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert!(got[0].contains("theme panicked: on purpose"), "{got:?}");
     }
 
     // A cache stand-in.

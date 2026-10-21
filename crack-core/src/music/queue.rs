@@ -309,6 +309,24 @@ fn enqueue(call: &mut Call, track: QueuedTrack, preload: Option<Duration>) -> Tr
     call.enqueue_with_preload(track.0, preload)
 }
 
+/// Play `track` over `call`'s queue rather than in it: a walk-on theme, mixed
+/// with whatever the queue plays and gone when it ends. It is a
+/// [`QueuedTrack`], so a reader that meets it finds its [`TrackData`], but it
+/// is not queued: the queue's order, its audit log and `/queue` never see it.
+/// `uuid` is the track's id, chosen by the caller so it can be marked before
+/// the track exists (see `handlers::track_end::without_themes`).
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a walk-on theme is mixed beside the queue on purpose; it carries TrackData (new_track)"
+)]
+pub(crate) fn play_beside_queue(
+    call: &mut Call,
+    track: QueuedTrack,
+    uuid: uuid::Uuid,
+) -> TrackHandle {
+    call.play(track.0.uuid(uuid))
+}
+
 /// Record one `Add` for everything a single entry-point call queued. Nothing
 /// queued, nothing recorded.
 fn record_add(guard: &QueueGuard, handler: &Call, handles: &[TrackHandle], at: AddAt) {
@@ -1354,6 +1372,30 @@ mod test {
         };
         assert!(source.create_async().await.is_ok());
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    /// A walk-on theme plays beside the queue: not in it, under the id the
+    /// caller chose, and with the track data every reader expects.
+    #[tokio::test]
+    async fn a_theme_plays_beside_the_queue_under_its_own_id() {
+        let call = offline_call();
+        let id = uuid::Uuid::from_u128(42);
+        let source = songbird::input::File::new("/nonexistent/theme.opus");
+        let handle = {
+            let mut h = call.lock().await;
+            play_beside_queue(
+                &mut h,
+                new_track(source.into(), None, Some(UserId::new(9))),
+                id,
+            )
+        };
+        assert_eq!(handle.uuid(), id);
+        assert!(call.lock().await.queue().is_empty(), "not queued");
+        // TrackData is there: a reader gets an answer, not a panic.
+        assert_eq!(
+            get_requesting_user(&handle).await.ok(),
+            Some(UserId::new(9))
+        );
     }
 
     fn actor() -> Actor {

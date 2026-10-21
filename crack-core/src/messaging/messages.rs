@@ -1003,6 +1003,8 @@ pub const ECONOMY_THEME_START_TOO_LATE: &str = "Start time can be at most 12:00:
 pub const ECONOMY_THEME_BOUGHT_PREFIX: &str =
     "Their theme plays the next time they join voice, within 7 days. If it never does, you get your";
 pub const ECONOMY_THEME_BOUGHT_SUFFIX: &str = "back.";
+pub const ECONOMY_THEME_CARD_PREFIX: &str = "🎺";
+pub const ECONOMY_THEME_CARD_SUFFIX: &str = "'s walk-on theme";
 pub const ECONOMY_BOUNTY_CARD_PREFIX: &str = "💰";
 pub const ECONOMY_BOUNTY_CARD_ON: &str = "on";
 pub const ECONOMY_BOUNTY_CARD_HEAD: &str = "'s head until";

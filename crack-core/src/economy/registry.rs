@@ -1,5 +1,6 @@
 //! The economy's in-memory state, on `Data`: per-server settings, which
-//! servers' stored settings have been read, and who is opted out.
+//! servers' stored settings have been read, who is opted out, and which
+//! walk-on themes are playing.
 
 use super::earn::cooldown_allows;
 use super::lock::{jail_decision, JailMove};
@@ -12,6 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::time::Instant;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Default)]
 pub struct EconomyRegistry {
@@ -37,6 +39,27 @@ pub struct EconomyRegistry {
     /// When this process started, on the database's clock: a `pending` row
     /// older than this was left by a previous process.
     process_start: Arc<OnceLock<DateTime<Utc>>>,
+    /// Servers where a walk-on theme is playing: one at a time per server.
+    /// Held by a [`ThemeGuard`], which lets go when dropped.
+    theme_playing: Arc<DashSet<GuildId>>,
+    /// The tracks that are walk-on themes, mixed over a queue rather than in
+    /// it. A theme's end is not the queue moving on: the global track-end
+    /// handler leaves these alone.
+    theme_tracks: Arc<DashSet<Uuid>>,
+}
+
+/// A server's turn to play a walk-on theme. Dropping it ends the turn.
+#[must_use = "the turn ends when the guard is dropped"]
+#[derive(Debug)]
+pub struct ThemeGuard {
+    playing: Arc<DashSet<GuildId>>,
+    guild: GuildId,
+}
+
+impl Drop for ThemeGuard {
+    fn drop(&mut self) {
+        self.playing.remove(&self.guild);
+    }
 }
 
 impl EconomyRegistry {
@@ -212,6 +235,31 @@ impl EconomyRegistry {
         !self.sweeper_started.swap(true, Ordering::SeqCst)
     }
 
+    /// The server's turn to play a walk-on theme; `None` while another one
+    /// plays there.
+    pub fn try_theme_guard(&self, g: GuildId) -> Option<ThemeGuard> {
+        self.theme_playing.insert(g).then(|| ThemeGuard {
+            playing: self.theme_playing.clone(),
+            guild: g,
+        })
+    }
+
+    /// Mark `track` as a walk-on theme, before it can play.
+    pub fn add_theme_track(&self, track: Uuid) {
+        self.theme_tracks.insert(track);
+    }
+
+    /// Whether `track` is a walk-on theme. If it is, it is forgotten: a
+    /// track ends once.
+    pub fn take_theme_track(&self, track: Uuid) -> bool {
+        self.theme_tracks.remove(&track).is_some()
+    }
+
+    /// Whether `track` is a walk-on theme still remembered.
+    pub fn is_theme_track(&self, track: Uuid) -> bool {
+        self.theme_tracks.contains(&track)
+    }
+
     pub fn set_one_opted_out(&self, g: GuildId, u: UserId, out: bool) {
         let mut set = self.opted_out.entry(g).or_default();
         if out {
@@ -328,6 +376,33 @@ mod tests {
         assert!(reg.start_sweeper_once());
         assert!(!reg.start_sweeper_once());
         assert!(reg.start_once(), "its own flag");
+    }
+
+    #[test]
+    fn one_theme_plays_per_server_until_its_guard_drops() {
+        let reg = EconomyRegistry::default();
+        let other = GuildId::new(9);
+        let held = reg.try_theme_guard(G).expect("free");
+        assert!(reg.try_theme_guard(G).is_none(), "taken");
+        let elsewhere = reg.try_theme_guard(other).expect("per server");
+        drop(held);
+        assert!(reg.try_theme_guard(G).is_some(), "released on drop");
+        assert!(reg.try_theme_guard(other).is_none(), "still held");
+        drop(elsewhere);
+        assert!(reg.try_theme_guard(other).is_some());
+    }
+
+    #[test]
+    fn theme_tracks_are_remembered_until_taken() {
+        let reg = EconomyRegistry::default();
+        let (a, b) = (Uuid::from_u128(1), Uuid::from_u128(2));
+        reg.add_theme_track(a);
+        assert!(reg.is_theme_track(a));
+        assert!(!reg.is_theme_track(b));
+        assert!(!reg.take_theme_track(b), "not a theme");
+        assert!(reg.take_theme_track(a));
+        assert!(!reg.is_theme_track(a), "taken once");
+        assert!(!reg.take_theme_track(a));
     }
 
     #[test]

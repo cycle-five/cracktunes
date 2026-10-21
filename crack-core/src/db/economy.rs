@@ -309,9 +309,14 @@ async fn charge_as(
 }
 
 /// Move an action to a new state, stamping `ended_at` when it is final. A
-/// row in a final state never moves again.
-pub async fn finish_action(pool: &PgPool, action_id: i64, state: ActionState) -> sqlx::Result<()> {
-    sqlx::query!(
+/// row in a final state never moves again. True when the row moved: false
+/// for one already final (a theme refunded as it played).
+pub async fn finish_action(
+    pool: &PgPool,
+    action_id: i64,
+    state: ActionState,
+) -> sqlx::Result<bool> {
+    let moved = sqlx::query!(
         "UPDATE economy_actions
          SET state = $2, ended_at = CASE WHEN $3 THEN now() ELSE ended_at END
          WHERE id = $1 AND state NOT IN ('done', 'ended', 'failed')",
@@ -321,7 +326,7 @@ pub async fn finish_action(pool: &PgPool, action_id: i64, state: ActionState) ->
     )
     .execute(pool)
     .await?;
-    Ok(())
+    Ok(moved.rows_affected() > 0)
 }
 
 /// A bought action as stored.
@@ -3058,6 +3063,46 @@ mod tests {
         agree(&pool, &[(A, 100)]).await;
         Ok(())
     });
+
+    db_test!(
+        finish_action_says_whether_it_moved_the_row,
+        |pool: PgPool| async {
+            fund(&pool, A, 200).await;
+            let payload = theme();
+            // The real clock: nothing here may read as past its end.
+            let a = aimed(
+                ActionKind::Theme,
+                A,
+                T,
+                60,
+                &payload,
+                Some(Utc::now() + Duration::days(7)),
+            );
+            let played = charge_active(&pool, &a, LedgerKind::Purchase)
+                .await
+                .unwrap()
+                .action_id;
+            let refunded = charge_active(&pool, &a, LedgerKind::Purchase)
+                .await
+                .unwrap()
+                .action_id;
+            assert!(finish_action(&pool, played, ActionState::Done).await?);
+            assert_eq!(state_of(&pool, played).await, "done");
+            assert!(
+                !finish_action(&pool, played, ActionState::Done).await?,
+                "final: it never moves again"
+            );
+            // Refunded as it played: the play finds nothing to mark.
+            assert_eq!(refund_active(&pool, refunded, "cleansed").await?, Some(140));
+            assert!(!finish_action(&pool, refunded, ActionState::Done).await?);
+            assert_eq!(state_of(&pool, refunded).await, "ended");
+            // A played theme is spent: its end refunds nothing.
+            assert_eq!(refund_active(&pool, played, "expired").await?, None);
+            assert_eq!(balance(&pool, G, A).await?, 140);
+            agree(&pool, &[(A, 200)]).await;
+            Ok(())
+        }
+    );
 
     async fn place_bounty(pool: &PgPool, buyer: UserId, price: i64) -> i64 {
         let a = aimed(

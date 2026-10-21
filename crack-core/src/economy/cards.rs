@@ -4,6 +4,10 @@ use super::settings::ActionKind;
 use super::shop::BuyOutcome;
 use crate::messaging::format::escape;
 use crate::messaging::messages::{
+    ECONOMY_BOUNTY_SIGN_ANON, ECONOMY_BOUNTY_SIGN_DASH, ECONOMY_THEME_CARD_PREFIX,
+    ECONOMY_THEME_CARD_SUFFIX,
+};
+use crate::messaging::messages::{
     ECONOMY_CARD_BACK_AT_THEM, ECONOMY_CARD_BLOCKED_TAIL, ECONOMY_CARD_CLOWNED,
     ECONOMY_CARD_DEAFENED, ECONOMY_CARD_DRAGGED, ECONOMY_CARD_DRAGGED_TAIL, ECONOMY_CARD_JAILED,
     ECONOMY_CARD_LOCKED, ECONOMY_CARD_MIRROR, ECONOMY_CARD_MIRROR_BOUNCED, ECONOMY_CARD_MUTED,
@@ -209,6 +213,22 @@ pub fn fund_failed_card_text(target: UserId, reason: &str) -> String {
     )
 }
 
+/// The card a walk-on theme posts as it plays: whose theme, the note, then
+/// the buyer when they signed ("someone" when not). The link is never on it.
+pub fn theme_card_text(target: UserId, note: Option<&str>, buyer: Option<UserId>) -> String {
+    let mut text = format!(
+        "{ECONOMY_THEME_CARD_PREFIX} {}{ECONOMY_THEME_CARD_SUFFIX}",
+        mention(target)
+    );
+    if let Some(note) = note.filter(|n| !n.trim().is_empty()) {
+        text.push_str("\n> ");
+        text.push_str(&escape(note));
+    }
+    let by = buyer.map_or_else(|| ECONOMY_BOUNTY_SIGN_ANON.to_string(), mention);
+    text.push_str(&format!("\n{ECONOMY_BOUNTY_SIGN_DASH} {by}"));
+    text
+}
+
 /// The channel a card goes to. Drag, jail, mute and deafen happen in voice,
 /// so they post in the target's voice channel's chat while they are still in
 /// one; everything else (and those, once the target has left voice) goes to
@@ -259,6 +279,23 @@ mod tests {
 
     fn until() -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).unwrap()
+    }
+
+    #[test]
+    fn theme_card_names_the_target_the_note_and_the_signer() {
+        assert_eq!(
+            theme_card_text(T, Some("for *you*"), Some(B)),
+            "🎺 <@20>'s walk-on theme\n> for \\*you\\*\n— <@10>"
+        );
+        assert_eq!(
+            theme_card_text(T, None, None),
+            "🎺 <@20>'s walk-on theme\n— someone"
+        );
+        assert_eq!(
+            theme_card_text(T, Some("  "), None),
+            "🎺 <@20>'s walk-on theme\n— someone",
+            "a blank note is no note"
+        );
     }
 
     #[test]
