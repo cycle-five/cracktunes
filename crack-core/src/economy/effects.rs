@@ -445,10 +445,12 @@ async fn resolve_pending(
     let Some(pool) = data.database_pool.as_ref() else {
         return;
     };
-    // A timed prank is charged with its end already set, so a pending one
-    // with none was never prepared: a filled crowdfund waits that way until
-    // its executor writes the payload and the end together, and the executor
-    // never acts before that write. Nothing happened to the member; refund it
+    // A pending timed prank with no end never touched the member. `buy()`
+    // charges one that lands or bounces with its end already set; the two
+    // that have none are a filled crowdfund, which waits that way until its
+    // executor writes the payload and the end together (it never acts before
+    // that write), and a mirror-blocked charge (it never lands at all; its
+    // crash-left row is refunded here too, ruling T5h). Refund it
     // (pledge-aware), with no undo.
     if row.kind.is_timed() && row.expires_at.is_none() {
         if let Err(err) = economy::refund_action(pool, row.id).await {
@@ -470,8 +472,9 @@ async fn resolve_pending(
         }
         return;
     }
-    // Known gap: a row left pending because `finish_blocked` failed (a
-    // blocked mirror bounce) looks not-landed here and is refunded.
+    // Known gap, for a kind with no end (a timed one was handled above): a
+    // row left pending because `finish_blocked` failed (a blocked mirror
+    // bounce) looks not-landed here and is refunded.
     match economy::refund_action(pool, row.id).await {
         Ok(Some(_)) => {},
         // Someone else already resolved the row: its effect is theirs.
@@ -925,6 +928,15 @@ mod tests {
         }));
         data.economy.set_process_start(at);
         data
+    }
+
+    /// A process that started after every row written so far, on the
+    /// database's clock: a restart. For rows the database stamped itself
+    /// (`created_at` = its `now()`), which a fixed `t0()` can't be placed
+    /// against once the calendar passes it.
+    async fn restarted(pool: &PgPool) -> Data {
+        let db_now = crate::db::economy::db_now(pool).await.unwrap();
+        data_started(pool, db_now + mins(1))
     }
 
     async fn seed(
@@ -1454,8 +1466,11 @@ mod tests {
     });
 
     db_test!(reconcile_leaves_a_fresh_pending_row_alone, |pool| {
-        // This process started before the row: a purchase in flight.
-        let data = data_started(&pool, t0() - mins(60));
+        // On the database's clock, which judges the grace: this process
+        // started an hour ago, before the row, which is 30 s old (inside the
+        // grace): a purchase in flight.
+        let db_now = crate::db::economy::db_now(&pool).await.unwrap();
+        let data = data_started(&pool, db_now - mins(60));
         let fake = FakeEconomyDiscord::default();
         let fresh = seed(
             &pool,
@@ -1464,10 +1479,10 @@ mod tests {
             &ActionPayload::Immunity { hours: 24 },
             "pending",
             None,
-            t0() - ChronoDuration::seconds(30),
+            db_now - ChronoDuration::seconds(30),
         )
         .await;
-        reconcile(&data, &fake, &FakeView::default(), G, t0()).await;
+        reconcile(&data, &fake, &FakeView::default(), G, Utc::now()).await;
         assert_eq!(state_of(&pool, fresh).await.0, "pending");
         assert_eq!(balance(&pool).await, 0);
     });
@@ -2317,14 +2332,17 @@ mod tests {
         assert_eq!(balance(&pool).await, 90);
         // A sweep whose clock runs ahead of the database's still leaves a fund
         // that has time (or was filled a moment ago): `expire_fund` judges.
-        sweep(&data, &fake, t0(), &|_| false).await;
+        // Ahead of the real clock, not a fixed date that the calendar passes.
+        sweep(&data, &fake, Utc::now() + ChronoDuration::days(2), &|_| {
+            false
+        })
+        .await;
         assert_eq!(state_of(&pool, open).await.0, "funding");
         assert_eq!(balance(&pool).await, 90);
     });
 
     db_test!(reconcile_refunds_a_pending_dedication, |pool| {
         use crate::db::economy as db;
-        let data = data_with(&pool);
         let fake = FakeEconomyDiscord::default();
         fund_wallet(&pool, BUYER, 100).await;
         let mut ids = Vec::new();
@@ -2356,7 +2374,8 @@ mod tests {
             );
         }
         assert_eq!(balance(&pool).await, 20);
-        // `data_with` started at t0, after both charges.
+        // A process that started after both charges: a restart lost the plays.
+        let data = restarted(&pool).await;
         reconcile(&data, &fake, &FakeView::default(), G, Utc::now()).await;
         assert!(fake.calls().is_empty());
         assert_eq!(balance(&pool).await, 100);
@@ -2400,9 +2419,10 @@ mod tests {
     db_test!(
         reconcile_refunds_an_unprepared_filled_fund_without_acting,
         |pool| {
-            let data = data_with(&pool);
             let fake = FakeEconomyDiscord::default();
             let id = filled_mute_fund(&pool).await;
+            // A restart after the fill (which stamped the row's time).
+            let data = restarted(&pool).await;
             // Even with the target showing as muted: nothing was prepared, so
             // nothing of ours is on them to own or undo.
             let mut view = FakeView::default();
@@ -2428,7 +2448,6 @@ mod tests {
     );
 
     db_test!(reconcile_activates_a_prepared_landed_mute_fund, |pool| {
-        let data = data_with(&pool);
         let fake = FakeEconomyDiscord::default();
         let id = filled_mute_fund(&pool).await;
         // What the executor writes before it acts.
@@ -2438,6 +2457,8 @@ mod tests {
                 .await
                 .unwrap()
         );
+        // A restart between that write and the activate.
+        let data = restarted(&pool).await;
         let mut view = FakeView::default();
         view.voice.insert(U, facts(5, true, false));
         reconcile(&data, &fake, &view, G, Utc::now()).await;

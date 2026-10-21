@@ -324,8 +324,14 @@ mod tests {
 
     static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
+    /// The moment this test run starts, on the real clock: the database
+    /// judges a bounty's liveness by its own (`claim_bounties`,
+    /// `live_bounty_stakes`), so a fixed date goes stale.
     fn t0() -> DateTime<Utc> {
-        DateTime::from_timestamp(1_800_000_000, 0).unwrap()
+        static START: std::sync::OnceLock<DateTime<Utc>> = std::sync::OnceLock::new();
+        // Whole microseconds, as the database stores them.
+        *START
+            .get_or_init(|| DateTime::from_timestamp_micros(Utc::now().timestamp_micros()).unwrap())
     }
 
     fn clean() -> TargetFacts {
@@ -832,5 +838,13 @@ mod tests {
             );
         }
         assert_eq!(db::active_bounties(&pool, G).await.unwrap().len(), 1);
+        // It was collectable all along: a landing takes it. Without this, a
+        // bounty nobody could collect would pass every line above.
+        assert_eq!(
+            collect(&pool, G, T, C, ActionKind::Rename, BuyOutcome::Landed)
+                .await
+                .unwrap(),
+            50
+        );
     });
 }
