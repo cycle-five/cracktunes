@@ -1023,6 +1023,12 @@ pub const ECONOMY_PLEDGE_OVER_SHARE_SUFFIX: &str =
     "into one crowdfund. It takes at least two people.";
 pub const ECONOMY_FUND_STARTED: &str = "Crowdfund started.";
 pub const ECONOMY_FUND_START_CARD_STARTED: &str = "started a crowdfund to";
+pub const ECONOMY_FUND_TO_RENAME: &str = "rename";
+pub const ECONOMY_FUND_TO_CLOWN: &str = "make a clown of";
+pub const ECONOMY_FUND_TO_LOCK: &str = "lock the nickname of";
+pub const ECONOMY_FUND_TO_MUTE: &str = "mute";
+pub const ECONOMY_FUND_TO_DEAFEN: &str = "deafen";
+pub const ECONOMY_FUND_TO_JAIL: &str = "jail";
 pub const ECONOMY_FUND_START_CARD_TAIL: &str = "Chip in with /crowdfund pledge.";
 pub const ECONOMY_FUND_PLEDGED: &str = "Pledged";
 pub const ECONOMY_FUND_OF: &str = "of";

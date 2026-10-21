@@ -12,6 +12,8 @@ use crate::messaging::messages::{
     ECONOMY_FUND_CARD_OTHERS, ECONOMY_FUND_CARD_PREFIX, ECONOMY_FUND_CARD_TO,
     ECONOMY_FUND_CARD_UNTIL, ECONOMY_FUND_FAILED_CARD_MIDDLE, ECONOMY_FUND_FAILED_CARD_PREFIX,
     ECONOMY_FUND_FAILED_CARD_SUFFIX, ECONOMY_FUND_START_CARD_STARTED, ECONOMY_FUND_START_CARD_TAIL,
+    ECONOMY_FUND_TO_CLOWN, ECONOMY_FUND_TO_DEAFEN, ECONOMY_FUND_TO_JAIL, ECONOMY_FUND_TO_LOCK,
+    ECONOMY_FUND_TO_MUTE, ECONOMY_FUND_TO_RENAME,
 };
 use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, UserId};
@@ -161,6 +163,24 @@ pub fn fund_card_text(
     text
 }
 
+/// What a crowdfunded prank would do to `target`, as an infinitive ("to
+/// mute @t"), for the card announcing a new fund.
+fn fund_intent(kind: ActionKind, target: UserId, nick: Option<&str>) -> Option<String> {
+    let t = mention(target);
+    Some(match kind {
+        ActionKind::Rename => format!(
+            "{ECONOMY_FUND_TO_RENAME} {t} {ECONOMY_FUND_CARD_TO} **{}**",
+            escape(nick.unwrap_or_default())
+        ),
+        ActionKind::Clown => format!("{ECONOMY_FUND_TO_CLOWN} {t}"),
+        ActionKind::Lock => format!("{ECONOMY_FUND_TO_LOCK} {t}"),
+        ActionKind::Mute => format!("{ECONOMY_FUND_TO_MUTE} {t}"),
+        ActionKind::Deafen => format!("{ECONOMY_FUND_TO_DEAFEN} {t}"),
+        ActionKind::Jail => format!("{ECONOMY_FUND_TO_JAIL} {t}"),
+        _ => return None,
+    })
+}
+
 /// The card for a crowdfund that has just opened, so others can chip in. The
 /// starter is named only when the fund is signed.
 pub fn fund_started_card_text(
@@ -172,7 +192,7 @@ pub fn fund_started_card_text(
     currency: &str,
     starter: Option<UserId>,
 ) -> String {
-    let Some(deed) = fund_deed(kind, target, nick) else {
+    let Some(deed) = fund_intent(kind, target, nick) else {
         return String::new();
     };
     let who = starter.map_or_else(|| ECONOMY_CARD_SOMEONE.to_string(), mention);
@@ -491,15 +511,40 @@ mod tests {
         );
         assert_eq!(
             signed,
-            "🎉 <@10> started a crowdfund to muted <@20>: 30/90 credits. Chip in with /crowdfund pledge."
+            "🎉 <@10> started a crowdfund to mute <@20>: 30/90 credits. Chip in with /crowdfund pledge."
         );
         let anon =
             fund_started_card_text(ActionKind::Rename, T, Some("Bean"), 0, 120, "credits", None);
         assert_eq!(
             anon,
-            "🎉 Someone started a crowdfund to renamed <@20> to **Bean**: 0/120 credits. Chip in with /crowdfund pledge."
+            "🎉 Someone started a crowdfund to rename <@20> to **Bean**: 0/120 credits. Chip in with /crowdfund pledge."
         );
         assert!(!anon.contains("<@10>"));
+        // The words for every fundable kind.
+        let words: Vec<String> = ActionKind::FUNDABLE
+            .iter()
+            .map(|k| fund_started_card_text(*k, T, Some("x"), 0, 1, "c", None))
+            .map(|c| {
+                c.split("crowdfund to ")
+                    .nth(1)
+                    .unwrap()
+                    .split(": ")
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            words,
+            [
+                "rename <@20> to **x**",
+                "make a clown of <@20>",
+                "lock the nickname of <@20>",
+                "mute <@20>",
+                "deafen <@20>",
+                "jail <@20>"
+            ]
+        );
         assert_eq!(
             fund_started_card_text(ActionKind::Drag, T, None, 0, 1, "c", None),
             ""
