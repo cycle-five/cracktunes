@@ -7,7 +7,8 @@ use crate::messaging::messages::{
     ECONOMY_CARD_BACK_AT_THEM, ECONOMY_CARD_BLOCKED_TAIL, ECONOMY_CARD_CLOWNED,
     ECONOMY_CARD_DEAFENED, ECONOMY_CARD_DRAGGED, ECONOMY_CARD_DRAGGED_TAIL, ECONOMY_CARD_JAILED,
     ECONOMY_CARD_LOCKED, ECONOMY_CARD_MIRROR, ECONOMY_CARD_MIRROR_BOUNCED, ECONOMY_CARD_MUTED,
-    ECONOMY_CARD_RENAMED, ECONOMY_CARD_SOMEONE, ECONOMY_CARD_TO, ECONOMY_CARD_UNTIL,
+    ECONOMY_CARD_POSSESSIVE, ECONOMY_CARD_RENAMED, ECONOMY_CARD_SOMEONE, ECONOMY_CARD_TO,
+    ECONOMY_CARD_UNTIL,
 };
 use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, UserId};
@@ -45,12 +46,12 @@ pub fn card_text(
     let mut text = match outcome {
         BuyOutcome::Landed => landed(kind, &who, &t, nick, until),
         BuyOutcome::Bounced => format!(
-            "{ECONOMY_CARD_MIRROR} {t}'s {ECONOMY_CARD_MIRROR_BOUNCED} {who}'s {} {ECONOMY_CARD_BACK_AT_THEM}{}.",
+            "{ECONOMY_CARD_MIRROR} {t}{ECONOMY_CARD_POSSESSIVE} {ECONOMY_CARD_MIRROR_BOUNCED} {who}{ECONOMY_CARD_POSSESSIVE} {} {ECONOMY_CARD_BACK_AT_THEM}{}.",
             kind.label().to_lowercase(),
             until_text(until)
         ),
         BuyOutcome::Blocked => format!(
-            "{ECONOMY_CARD_MIRROR} {t}'s {ECONOMY_CARD_MIRROR_BOUNCED} {who}'s {}, {ECONOMY_CARD_BLOCKED_TAIL}",
+            "{ECONOMY_CARD_MIRROR} {t}{ECONOMY_CARD_POSSESSIVE} {ECONOMY_CARD_MIRROR_BOUNCED} {who}{ECONOMY_CARD_POSSESSIVE} {}, {ECONOMY_CARD_BLOCKED_TAIL}",
             kind.label().to_lowercase()
         ),
     };

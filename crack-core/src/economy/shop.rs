@@ -5,7 +5,7 @@ use super::discord::{EconDiscordError, EconomyDiscord};
 use super::immunity::Protection;
 use super::settings::{clown_name, ActionKind, ActionPrice, EconomyConfig};
 use super::target::{check_target, TargetFacts, TargetOutcome};
-use super::wallet::{ActionPayload, MoveError};
+use super::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::messages::{
     ECONOMY_ALREADY_IMMUNE, ECONOMY_ALREADY_RUNNING_PREFIX, ECONOMY_BUYER_NOT_IN_VOICE,
     ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION, ECONOMY_CANT_AFFORD_MIDDLE,
@@ -336,11 +336,25 @@ fn db_failed(what: &str, err: &sqlx::Error) -> BuyError {
     BuyError::Db
 }
 
+/// End a charged purchase as blocked (no refund) and say so.
+async fn blocked(pool: &sqlx::PgPool, id: i64, balance: i64) -> Bought {
+    if let Err(err) = crate::db::economy::finish_blocked(pool, id).await {
+        tracing::error!("economy: ending blocked action {id} failed: {err}");
+    }
+    Bought {
+        action_id: id,
+        balance,
+        outcome: BuyOutcome::Blocked,
+        until: None,
+    }
+}
+
 /// Buy a prank (rename, lock, clown, drag, mute, deafen, jail) or a mirror:
 /// check, charge, act in Discord, then activate. `facts` describes the target;
 /// `buyer_facts` the buyer seen as a target, for a mirror's bounce.
 ///
-/// Cleanse, reveal and immunity are not sold here (`BuyError::Invalid`).
+/// Cleanse, reveal and immunity are not sold here (`BuyError::Invalid`, from
+/// `payload_for`, before anything is charged).
 /// The caller posts the card and the mod log event.
 ///
 /// A target's mirror is spent whether the prank bounces onto the buyer or is
@@ -360,9 +374,6 @@ pub async fn buy(
         return Err(BuyError::NoDatabase);
     };
     let (g, buyer, kind) = (req.guild, req.buyer, req.kind);
-    if !kind.is_prank() && kind != ActionKind::Mirror {
-        return Err(BuyError::Invalid);
-    }
     let settings = data.economy.settings(g);
     let cfg = &settings.config;
     let price = cfg.prices.get(kind);
@@ -391,12 +402,13 @@ pub async fn buy(
     }
 
     // Who it lands on, and whether a mirror is in the way.
-    let (victim, outcome) = if kind == ActionKind::Mirror {
-        (buyer, BuyOutcome::Landed)
+    // The third item is whose mirror was hit, when one was.
+    let (victim, outcome, mirror_owner) = if kind == ActionKind::Mirror {
+        (buyer, BuyOutcome::Landed, None)
     } else {
         let target = req.target.ok_or(BuyError::Invalid)?;
         match check_target(kind, &facts, buyer_voice).map_err(BuyError::Refused)? {
-            TargetOutcome::Lands => (target, BuyOutcome::Landed),
+            TargetOutcome::Lands => (target, BuyOutcome::Landed, None),
             TargetOutcome::Mirrored => {
                 let bounce = TargetFacts {
                     is_self: false,
@@ -404,9 +416,9 @@ pub async fn buy(
                     ..buyer_facts.clone()
                 };
                 if kind != ActionKind::Drag && check_target(kind, &bounce, buyer_voice).is_ok() {
-                    (buyer, BuyOutcome::Bounced)
+                    (buyer, BuyOutcome::Bounced, Some(target))
                 } else {
-                    (target, BuyOutcome::Blocked)
+                    (target, BuyOutcome::Blocked, Some(target))
                 }
             },
         }
@@ -447,8 +459,10 @@ pub async fn buy(
         ActionKind::Rename | ActionKind::Clown => {
             Some(req.now + chrono::Duration::hours(i64::from(cfg.rename_hours)))
         },
+        // Only a running (`active`) name prank sets the end, not one winding down.
         ActionKind::Lock => running
             .iter()
+            .filter(|r| r.state == ActionState::Active)
             .find_map(|r| r.expires_at)
             .or_else(|| Some(req.now + chrono::Duration::hours(i64::from(cfg.rename_hours)))),
         ActionKind::Mute | ActionKind::Deafen | ActionKind::Jail => {
@@ -489,10 +503,8 @@ pub async fn buy(
         }
     };
 
-    if outcome != BuyOutcome::Landed {
+    if let Some(owner) = mirror_owner {
         // The mirror is spent after the charge, so a failed charge keeps it.
-        // The target is the original: `victim` is the buyer on a bounce.
-        let owner = req.target.ok_or(BuyError::Invalid)?;
         match db::consume_mirror(pool, g, owner).await {
             Ok(true) => {},
             Ok(false) => {
@@ -510,20 +522,17 @@ pub async fn buy(
             },
         }
         if outcome == BuyOutcome::Blocked {
-            if let Err(err) = db::finish_blocked(pool, id).await {
-                tracing::error!("economy: ending blocked action {id} failed: {err}");
-            }
-            return Ok(Bought {
-                action_id: id,
-                balance: charged.balance,
-                outcome,
-                until: None,
-            });
+            return Ok(blocked(pool, id, charged.balance).await);
         }
     }
 
     if let Err(err) = act(discord, g, victim, kind, &payload).await {
         tracing::warn!("economy: {kind:?} on {victim} in {g} failed in Discord: {err:?}");
+        if outcome == BuyOutcome::Bounced {
+            // The defender's mirror is spent and the bounce could not land on
+            // the attacker: blocked, and the attacker is charged all the same.
+            return Ok(blocked(pool, id, charged.balance).await);
+        }
         refund().await;
         return Err(BuyError::Discord(err));
     }
@@ -912,7 +921,6 @@ mod tests {
 
     use crate::db::economy as db;
     use crate::economy::discord::fake::{Call, CallKind, FakeEconomyDiscord};
-    use crate::economy::wallet::ActionState;
 
     const VICTIM: UserId = UserId::new(20);
     const VC: ChannelId = ChannelId::new(5);
@@ -1110,6 +1118,15 @@ mod tests {
                 Refusal::TargetImmune(Protection::Indefinitely),
             ),
             (
+                "immune until",
+                k,
+                TargetFacts {
+                    protection: Some(Protection::Until(t0())),
+                    ..clean()
+                },
+                Refusal::TargetImmune(Protection::Until(t0())),
+            ),
+            (
                 "already running",
                 k,
                 TargetFacts {
@@ -1136,6 +1153,12 @@ mod tests {
             );
             assert_eq!(db::balance(&pool, G, U).await.unwrap(), 500, "{name}");
         }
+        // A drag needs the buyer in voice too.
+        assert_eq!(
+            buy(&data, &fake, clean(), me(), None, req(ActionKind::Drag)).await,
+            Err(BuyError::Refused(Refusal::BuyerNotInVoice))
+        );
+        assert_eq!(db::balance(&pool, G, U).await.unwrap(), 500);
         // Jail without a channel, and a second mirror.
         set_jail(&data, None);
         assert_eq!(
@@ -1452,8 +1475,173 @@ mod tests {
                 "{k:?}"
             );
         }
+        // Refused before any charge: no money moved and no row was written.
         assert_eq!(db::balance(&pool, G, U).await.unwrap(), 500);
+        assert_eq!(
+            count(&pool, "SELECT count(*) FROM economy_actions").await,
+            0
+        );
+        assert_eq!(count(&pool, "SELECT count(*) FROM economy_ledger").await, 0);
+        assert_eq!(fake.calls(), vec![]);
     });
+
+    db_test!(
+        a_bounce_that_fails_in_discord_is_blocked_and_still_charges,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 500).await;
+            let fake = FakeEconomyDiscord::default();
+            victim_mirrors(&pool, &data, &fake).await;
+            fake.fail_next(CallKind::Nick, EconDiscordError::MissingPermissions);
+            let facts = TargetFacts {
+                has_mirror: true,
+                ..clean()
+            };
+            let bought = buy_it(&data, &fake, facts, req(ActionKind::Rename))
+                .await
+                .unwrap();
+            assert_eq!(bought.outcome, BuyOutcome::Blocked);
+            assert_eq!(bought.balance, 380);
+            assert_eq!(bought.until, None);
+            // The attempt on the buyer was made, and failed.
+            assert_eq!(
+                fake.calls(),
+                vec![Call::Nick(U, Some("Bean".into()), ActionKind::Rename)]
+            );
+            assert_eq!(db::balance(&pool, G, U).await.unwrap(), 380);
+            assert_eq!(
+                state_and_reason(&pool, bought.action_id).await,
+                ("done".to_string(), Some("blocked".to_string()))
+            );
+            assert_eq!(
+                count(
+                    &pool,
+                    "SELECT count(*) FROM economy_ledger WHERE kind = 'refund'"
+                )
+                .await,
+                0
+            );
+            assert_eq!(
+                count(
+                    &pool,
+                    "SELECT count(*) FROM economy_actions
+                     WHERE kind = 'mirror' AND end_reason = 'fired'"
+                )
+                .await,
+                1
+            );
+        }
+    );
+
+    db_test!(
+        a_bounce_on_a_buyer_with_their_own_mirror_and_immunity_is_blocked,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 500).await;
+            let fake = FakeEconomyDiscord::default();
+            // The buyer holds a mirror of their own (150), and so does the victim.
+            buy_it(&data, &fake, clean(), req(ActionKind::Mirror))
+                .await
+                .unwrap();
+            victim_mirrors(&pool, &data, &fake).await;
+            let buyer_facts = TargetFacts {
+                has_mirror: true,
+                protection: Some(Protection::Indefinitely),
+                ..me()
+            };
+            let facts = TargetFacts {
+                has_mirror: true,
+                ..clean()
+            };
+            let bought = buy(
+                &data,
+                &fake,
+                facts,
+                buyer_facts,
+                Some(MY_VC),
+                req(ActionKind::Clown),
+            )
+            .await
+            .unwrap();
+            // A bounce never bounces again: the immune buyer is blocked.
+            assert_eq!(bought.outcome, BuyOutcome::Blocked);
+            assert_eq!(fake.calls(), vec![]);
+            // The victim's mirror fired; the buyer's own stands.
+            let own = db::active_of_kind(&pool, G, U, &[ActionKind::Mirror])
+                .await
+                .unwrap();
+            assert_eq!(own.len(), 1);
+            assert_eq!(own[0].state, ActionState::Active);
+            assert!(db::active_of_kind(&pool, G, VICTIM, &[ActionKind::Mirror])
+                .await
+                .unwrap()
+                .is_empty());
+        }
+    );
+
+    db_test!(
+        a_second_name_prank_keeps_the_first_restore,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 1000).await;
+            let fake = FakeEconomyDiscord::default();
+            for first_restore in [Some("orig".to_string()), None] {
+                sqlx::query("DELETE FROM economy_actions")
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+                let first = TargetFacts {
+                    current_nick: first_restore.clone(),
+                    ..clean()
+                };
+                buy_it(&data, &fake, first, req(ActionKind::Rename))
+                    .await
+                    .unwrap();
+                // The target now shows the prank's name; a clown must not
+                // capture that as the name to restore.
+                let second = TargetFacts {
+                    current_nick: Some("Bean".to_string()),
+                    ..clean()
+                };
+                buy_it(&data, &fake, second, req(ActionKind::Clown))
+                    .await
+                    .unwrap();
+                let rows = db::active_of_kind(&pool, G, VICTIM, &[ActionKind::Clown])
+                    .await
+                    .unwrap();
+                let [r] = rows.as_slice() else {
+                    panic!("{rows:?}")
+                };
+                assert_eq!(
+                    r.payload,
+                    ActionPayload::Clown {
+                        applied: "disp \u{1F921}".into(),
+                        restore: first_restore.clone()
+                    },
+                    "{first_restore:?}"
+                );
+            }
+        }
+    );
+
+    db_test!(
+        a_lock_ends_only_with_an_active_name_prank,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 500).await;
+            let fake = FakeEconomyDiscord::default();
+            buy_it(&data, &fake, clean(), req(ActionKind::Rename))
+                .await
+                .unwrap();
+            // The rename is winding down: it no longer sets the lock's end.
+            sqlx::query("UPDATE economy_actions SET state = 'ending'")
+                .execute(&pool)
+                .await
+                .unwrap();
+            let later = BuyRequest {
+                now: t0() + chrono::Duration::hours(1),
+                ..req(ActionKind::Lock)
+            };
+            let lock = buy_it(&data, &fake, clean(), later).await.unwrap();
+            assert_eq!(lock.until, Some(t0() + chrono::Duration::hours(25)));
+        }
+    );
 
     #[tokio::test]
     async fn without_a_pool_buying_says_no_database() {

@@ -829,7 +829,7 @@ pub const MODLOG_TITLE_SHOP_CANCELLED: &str = "🧼 Shop pranks cleansed";
 pub const MODLOG_SHOP_USED: &str = "used";
 pub const MODLOG_SHOP_ON: &str = "on";
 pub const MODLOG_SHOP_BOUNCED_PREFIX: &str = "(bounced by";
-pub const MODLOG_SHOP_BOUNCED_SUFFIX: &str = "mirror)";
+pub const MODLOG_SHOP_BOUNCED_SUFFIX: &str = "'s mirror)";
 pub const MODLOG_SHOP_SIGNED: &str = "signed";
 pub const MODLOG_SHOP_ANONYMOUS: &str = "anonymous";
 pub const MODLOG_SHOP_CLEANSED: &str = "cleansed the pranks on";
@@ -967,6 +967,7 @@ pub const ECONOMY_ALREADY_RUNNING_PREFIX: &str = "They're already pranked like t
 pub const ECONOMY_CANNOT_JOIN_DESTINATION: &str =
     "They couldn't join your channel themselves, so CrackTunes won't drag them there.";
 pub const ECONOMY_MIRROR_ALREADY_UP: &str = "Your mirror is already up.";
+pub const ECONOMY_CARD_POSSESSIVE: &str = "'s";
 pub const ECONOMY_CARD_SOMEONE: &str = "Someone";
 pub const ECONOMY_CARD_RENAMED: &str = "renamed";
 pub const ECONOMY_CARD_TO: &str = "to";

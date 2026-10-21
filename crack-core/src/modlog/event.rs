@@ -418,7 +418,7 @@ fn parts(e: &ModLogEvent) -> Parts {
             }
             if let Some(owner) = mirrored_from {
                 d.push_str(&format!(
-                    " {MODLOG_SHOP_BOUNCED_PREFIX} {}'s {MODLOG_SHOP_BOUNCED_SUFFIX}",
+                    " {MODLOG_SHOP_BOUNCED_PREFIX} {}{MODLOG_SHOP_BOUNCED_SUFFIX}",
                     user(*owner)
                 ));
             }

@@ -382,18 +382,18 @@ pub fn clown_name(current: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use EconomySettingsError as E;
+
     #[test]
     fn stays_active_is_timed_plus_mirror() {
-        use super::ActionKind::*;
+        use ActionKind::*;
         let active = [Rename, Lock, Clown, Mute, Deafen, Jail, Mirror];
-        for &k in super::ActionKind::ALL {
+        for &k in ActionKind::ALL {
             assert_eq!(k.stays_active(), active.contains(&k), "{k:?}");
         }
         assert!(!Drag.stays_active() && !Immunity.stays_active());
     }
-
-    use super::*;
-    use EconomySettingsError as E;
 
     fn with(f: impl FnOnce(&mut EconomyConfig)) -> Result<(), EconomySettingsError> {
         let mut s = EconomySettings::off(GuildId::new(1));
