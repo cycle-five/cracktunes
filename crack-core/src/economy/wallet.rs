@@ -53,6 +53,19 @@ impl ActionState {
         }
     }
 
+    pub fn parse(s: &str) -> Option<Self> {
+        [
+            ActionState::Pending,
+            ActionState::Active,
+            ActionState::Ending,
+            ActionState::Done,
+            ActionState::Ended,
+            ActionState::Failed,
+        ]
+        .into_iter()
+        .find(|st| st.as_str() == s)
+    }
+
     /// True when the action will not change again.
     pub fn is_final(self) -> bool {
         matches!(
@@ -132,6 +145,21 @@ impl std::error::Error for MoveError {}
 #[cfg(test)]
 mod payload_tests {
     use super::*;
+
+    #[test]
+    fn action_state_text_round_trips() {
+        for st in [
+            ActionState::Pending,
+            ActionState::Active,
+            ActionState::Ending,
+            ActionState::Done,
+            ActionState::Ended,
+            ActionState::Failed,
+        ] {
+            assert_eq!(ActionState::parse(st.as_str()), Some(st));
+        }
+        assert_eq!(ActionState::parse("nope"), None);
+    }
 
     #[test]
     fn payload_round_trips_every_variant() {

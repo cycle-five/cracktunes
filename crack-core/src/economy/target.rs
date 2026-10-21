@@ -33,6 +33,8 @@ pub struct TargetFacts {
     pub can_join_destination: Option<bool>,
     /// What a name prank restores.
     pub current_nick: Option<String>,
+    /// Nickname, else global name, else username: what a clown is built from.
+    pub display_name: String,
 }
 
 /// Where a purchase that passed the checks goes.
@@ -101,7 +103,7 @@ pub fn check_target(
 }
 
 /// The highest of `roles`' positions; 0 when none is known.
-pub fn top_of(roles: &[RoleId], position: impl Fn(RoleId) -> Option<u16>) -> u16 {
+fn top_of(roles: &[RoleId], position: impl Fn(RoleId) -> Option<u16>) -> u16 {
     roles.iter().filter_map(|r| position(*r)).max().unwrap_or(0)
 }
 
@@ -181,6 +183,7 @@ mod tests {
             running_same_kind: None,
             can_join_destination: Some(true),
             current_nick: None,
+            display_name: "bob".to_string(),
         }
     }
 
@@ -199,6 +202,7 @@ mod tests {
             running_same_kind: Some(t0()),
             can_join_destination: Some(false),
             current_nick: None,
+            display_name: "bob".to_string(),
         }
     }
 

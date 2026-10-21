@@ -1,6 +1,7 @@
 //! Per-server credits: earned in voice and by chatting, spent in the shop.
 //! Off by default; see `economy::settings`.
 
+pub mod cards;
 pub mod discord;
 pub mod earn;
 pub mod gamble;

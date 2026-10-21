@@ -106,7 +106,9 @@ pub async fn immunity(ctx: Context<'_>) -> Result<(), Error> {
         },
         Err(BuyError::Refused(r)) => say(ctx, refusal_text(&r, &cfg.currency_name), true).await,
         Err(BuyError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
-        Err(BuyError::Db) => say(ctx, ECONOMY_PURCHASE_FAILED, true).await,
+        Err(BuyError::Db | BuyError::Discord(_) | BuyError::Invalid) => {
+            say(ctx, ECONOMY_PURCHASE_FAILED, true).await
+        },
     }
 }
 

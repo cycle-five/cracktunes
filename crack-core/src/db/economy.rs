@@ -306,6 +306,127 @@ pub async fn finish_action(pool: &PgPool, action_id: i64, state: ActionState) ->
     Ok(())
 }
 
+/// A bought action as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionRow {
+    pub id: i64,
+    pub kind: ActionKind,
+    pub buyer: UserId,
+    /// A mirror's row names its owner here, so it is found like any other
+    /// action aimed at that member.
+    pub target: Option<UserId>,
+    pub payload: ActionPayload,
+    pub state: ActionState,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub note: Option<String>,
+    pub signed: bool,
+    pub revealed_at: Option<DateTime<Utc>>,
+}
+
+/// The running (`active` or `ending`) actions of these kinds aimed at
+/// `target`, oldest first. A row this build cannot read is skipped.
+pub async fn active_of_kind(
+    pool: &PgPool,
+    guild: GuildId,
+    target: UserId,
+    kinds: &[ActionKind],
+) -> sqlx::Result<Vec<ActionRow>> {
+    let keys: Vec<String> = kinds.iter().map(|k| k.key().to_string()).collect();
+    let rows = sqlx::query!(
+        r#"SELECT id, kind, buyer_id, target_id, payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND target_id = $2 AND kind = ANY($3)
+             AND state IN ('active', 'ending')
+           ORDER BY id"#,
+        guild.get() as i64,
+        target.get() as i64,
+        &keys
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| {
+            Some(ActionRow {
+                id: r.id,
+                kind: ActionKind::from_key(&r.kind)?,
+                buyer: uid(r.buyer_id)?,
+                target: r.target_id.and_then(uid),
+                payload: r.payload.0,
+                state: ActionState::parse(&r.state)?,
+                expires_at: r.expires_at,
+                note: r.note,
+                signed: r.signed,
+                revealed_at: r.revealed_at,
+            })
+        })
+        .collect())
+}
+
+/// Move a `pending` action to what it becomes once the effect has landed:
+/// `active` for a kind that [`ActionKind::stays_active`], else `done`.
+/// False when the row was not pending (nothing changed).
+pub async fn activate_action(
+    pool: &PgPool,
+    action_id: i64,
+    kind: ActionKind,
+    expires_at: Option<DateTime<Utc>>,
+) -> sqlx::Result<bool> {
+    let state = if kind.stays_active() {
+        ActionState::Active
+    } else {
+        ActionState::Done
+    };
+    let done = sqlx::query!(
+        "UPDATE economy_actions
+         SET state = $2, expires_at = $3,
+             ended_at = CASE WHEN $4 THEN now() ELSE ended_at END
+         WHERE id = $1 AND state = 'pending'",
+        action_id,
+        state.as_str(),
+        expires_at,
+        state.is_final()
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// End a still-`pending` purchase that was paid for but could not land (a
+/// mirror bounced it into a wall): `done`, `end_reason = 'blocked'`, and no
+/// refund. False when the row was not pending.
+pub async fn finish_blocked(pool: &PgPool, action_id: i64) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE economy_actions
+         SET state = 'done', ended_at = now(), end_reason = 'blocked'
+         WHERE id = $1 AND state = 'pending'",
+        action_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// Spend `owner`'s standing mirror: `ended`, `end_reason = 'fired'`. True
+/// for exactly one caller when several race for it.
+pub async fn consume_mirror(pool: &PgPool, guild: GuildId, owner: UserId) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE economy_actions
+         SET state = 'ended', ended_at = now(), end_reason = 'fired'
+         WHERE state = 'active'
+           AND id = (SELECT id FROM economy_actions
+                     WHERE guild_id = $1 AND target_id = $2 AND kind = 'mirror'
+                       AND state = 'active'
+                     ORDER BY id LIMIT 1)",
+        guild.get() as i64,
+        owner.get() as i64
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
 /// Give a still-`pending` purchase's price back. `None` (and nothing
 /// changed) when it is not pending, so a second call does nothing.
 pub async fn refund_action(pool: &PgPool, action_id: i64) -> sqlx::Result<Option<i64>> {

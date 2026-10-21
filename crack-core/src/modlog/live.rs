@@ -9,6 +9,7 @@ use super::attribution::Change;
 use super::audit::{nonzero, AuditSource, LiveAudit};
 use super::batch::{self, ModLogSink};
 use super::event::{Actor, ModLogEvent};
+use crate::economy::discord::SHOP_AUDIT_REASON_PREFIX;
 use crate::messaging::courier::{self, Destination};
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::RenderCx;
@@ -73,6 +74,15 @@ fn events_of(entry: &AuditLogEntry, bot: UserId, actor_is_bot: bool) -> Vec<ModL
         return Vec::new();
     };
     if actor == bot && target == bot {
+        return Vec::new();
+    }
+    // The shop's own changes are logged by the shop, with the buyer named.
+    if actor == bot
+        && entry
+            .reason
+            .as_deref()
+            .is_some_and(|r| r.starts_with(SHOP_AUDIT_REASON_PREFIX))
+    {
         return Vec::new();
     }
     let actor = Actor {
@@ -441,6 +451,32 @@ mod tests {
             panic!("{posted:?}");
         };
         assert_eq!(*actor, Actor::bot(MOD));
+    }
+
+    /// The bot's own entry for a mute, with `reason`.
+    fn bot_mute(reason: &str) -> AuditLogEntry {
+        entry(&format!(
+            r#"{{"id": "901", "action_type": 24, "user_id": "{BOT}", "target_id": "{T}",
+                "reason": "{reason}", "changes": [{MUTE_ON}]}}"#
+        ))
+    }
+
+    #[tokio::test]
+    async fn events_of_skips_the_shops_own_mute() {
+        let data = data_on();
+        assert!(posted(&data, &bot_mute("CrackTunes shop: mute"))
+            .await
+            .is_empty());
+        // The same bot-authored entry with another reason is still logged.
+        let other = posted(&data, &bot_mute("an admin command")).await;
+        let [(_, ModLogEvent::ServerMute { actor, reason, .. })] = other.as_slice() else {
+            panic!("{other:?}");
+        };
+        assert_eq!(actor.id, BOT);
+        assert_eq!(reason.as_deref(), Some("an admin command"));
+        // A moderator quoting the prefix is not the shop.
+        let spoof = member_update(MUTE_ON, Some("CrackTunes shop: mute"));
+        assert_eq!(posted(&data, &spoof).await.len(), 1);
     }
 
     #[tokio::test]

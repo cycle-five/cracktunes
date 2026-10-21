@@ -123,6 +123,13 @@ impl ActionKind {
                 | ActionKind::Jail
         )
     }
+
+    /// True when a bought row stays `active` until something ends it: the
+    /// timed kinds, and a mirror (which stands until it fires). The other
+    /// kinds are over once done.
+    pub fn stays_active(self) -> bool {
+        self.is_timed() || self == ActionKind::Mirror
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -375,6 +382,16 @@ pub fn clown_name(current: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn stays_active_is_timed_plus_mirror() {
+        use super::ActionKind::*;
+        let active = [Rename, Lock, Clown, Mute, Deafen, Jail, Mirror];
+        for &k in super::ActionKind::ALL {
+            assert_eq!(k.stays_active(), active.contains(&k), "{k:?}");
+        }
+        assert!(!Drag.stays_active() && !Immunity.stays_active());
+    }
+
     use super::*;
     use EconomySettingsError as E;
 
