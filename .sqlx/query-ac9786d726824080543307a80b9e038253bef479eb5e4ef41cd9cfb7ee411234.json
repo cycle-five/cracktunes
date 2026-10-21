@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, guild_id, kind, buyer_id, target_id,\n                  payload AS \"payload: Json<ActionPayload>\",\n                  state, expires_at, note, signed, revealed_at, created_at\n           FROM economy_actions\n           WHERE guild_id = $1 AND target_id = $2 AND buyer_id <> $2\n             AND kind = ANY($3) AND signed = false\n             AND state IN ('active', 'ending', 'ended', 'done')\n             AND ($4::bigint IS NULL OR id = $4)\n             AND (NOT $5 OR revealed_at IS NULL)\n           ORDER BY id DESC\n           LIMIT $6",
+  "query": "SELECT id, guild_id, kind, buyer_id, target_id,\n                  payload AS \"payload: Json<ActionPayload>\",\n                  state, expires_at, note, signed, revealed_at, created_at\n           FROM economy_actions\n           WHERE guild_id = $1 AND target_id = $2 AND buyer_id <> $2\n             AND kind = ANY($3) AND signed = false\n             AND state IN ('active', 'ending', 'ended', 'done')\n             AND NOT (kind = 'theme' AND state = 'ended')\n             AND end_reason IS DISTINCT FROM 'unfunded'\n             AND ($4::bigint IS NULL OR id = $4)\n             AND (NOT $5 OR revealed_at IS NULL)\n           ORDER BY id DESC\n           LIMIT $6",
   "describe": {
     "columns": [
       {
@@ -89,5 +89,5 @@
       false
     ]
   },
-  "hash": "beda4731095ed0117bd4806a285a8627bd114cf95b55e3edf358eef6e715d6f7"
+  "hash": "ac9786d726824080543307a80b9e038253bef479eb5e4ef41cd9cfb7ee411234"
 }

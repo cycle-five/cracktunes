@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT guild_id FROM economy_actions\n         WHERE id = $1 AND state = 'funding'\n           AND expires_at IS NOT NULL AND expires_at <= now()\n         FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "guild_id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ad5fae49d924e21aa450f3afdd488a6a7854f8f754a4301d4d66688fbebccd84"
+}

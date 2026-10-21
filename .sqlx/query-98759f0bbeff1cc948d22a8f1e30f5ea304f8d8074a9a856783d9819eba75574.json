@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_actions\n         SET state = $2, ended_at = now(), end_reason = 'unfunded'\n         WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "98759f0bbeff1cc948d22a8f1e30f5ea304f8d8074a9a856783d9819eba75574"
+}

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, price FROM economy_actions\n         WHERE guild_id = $1 AND target_id = $2 AND kind = 'bounty'\n           AND state = 'active' AND buyer_id <> $3\n         ORDER BY id\n         FOR UPDATE",
+  "query": "SELECT id, price FROM economy_actions\n         WHERE guild_id = $1 AND target_id = $2 AND kind = $4\n           AND state = 'active' AND buyer_id <> $3\n           AND expires_at IS NOT NULL AND expires_at > now()\n         ORDER BY id\n         FOR UPDATE",
   "describe": {
     "columns": [
       {
@@ -18,7 +18,8 @@
       "Left": [
         "Int8",
         "Int8",
-        "Int8"
+        "Int8",
+        "Text"
       ]
     },
     "nullable": [
@@ -26,5 +27,5 @@
       false
     ]
   },
-  "hash": "6f6b9467ef3e05767484a63aef0c28aad87b037accd31995c5797ef74e10d264"
+  "hash": "485b0a89b0fd27e3e83f0580900e3a461dee850f68ac97a2dd07110ca7874109"
 }

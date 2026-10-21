@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE economy_actions SET state = $2 WHERE id = $1",
+  "query": "UPDATE economy_actions SET state = $2, created_at = now() WHERE id = $1",
   "describe": {
     "columns": [],
     "parameters": {
@@ -11,5 +11,5 @@
     },
     "nullable": []
   },
-  "hash": "2ca08ffdaf4f96a9cfd907e2c7367af38719b017b6ccc73cc29896ce78e0e077"
+  "hash": "364faff595cb42c619ee645ad833046ee14c00f3bb9d5bb1c6cde77e8aeea6e9"
 }
