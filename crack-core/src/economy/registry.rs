@@ -20,6 +20,8 @@ pub struct EconomyRegistry {
     pending_messages: DashMap<GuildId, HashMap<UserId, u32>>,
     /// When each member's last message was counted (the cooldown's clock).
     last_counted: DashMap<(GuildId, UserId), Instant>,
+    /// When each jailed member was last moved back (the jail's rate limit).
+    last_jail_move: DashMap<(GuildId, UserId), Instant>,
     /// The earning tick has been spawned.
     started: Arc<AtomicBool>,
     sweeper_started: Arc<AtomicBool>,
@@ -102,6 +104,29 @@ impl EconomyRegistry {
             .or_default()
             .entry(u)
             .or_insert(0) += 1;
+        true
+    }
+
+    /// Whether a jailed member may be moved back at `now`: not within
+    /// `cooldown` of the last time. Records `now` when it answers yes.
+    pub fn jail_move_allowed(
+        &self,
+        g: GuildId,
+        u: UserId,
+        now: Instant,
+        cooldown: Duration,
+    ) -> bool {
+        match self.last_jail_move.entry((g, u)) {
+            Entry::Occupied(mut e) => {
+                if !cooldown_allows(Some(*e.get()), now, cooldown) {
+                    return false;
+                }
+                e.insert(now);
+            },
+            Entry::Vacant(e) => {
+                e.insert(now);
+            },
+        }
         true
     }
 

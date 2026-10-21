@@ -7,6 +7,7 @@ pub mod earn;
 pub mod effects;
 pub mod gamble;
 pub mod immunity;
+pub mod lock;
 pub mod preflight;
 pub mod registry;
 pub mod settings;

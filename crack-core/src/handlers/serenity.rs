@@ -85,6 +85,29 @@ impl EventHandler for SerenityHandler {
                         }
                     }
                 }
+                // A jailed member who changed channel is moved back.
+                if let Some(guild) = new.guild_id {
+                    let from = old.as_ref().and_then(|o| o.channel_id);
+                    if from != new.channel_id {
+                        let discord = crate::economy::discord::LiveEconomyDiscord {
+                            http: ctx.http.clone(),
+                        };
+                        let moved = crate::economy::lock::on_voice_move(
+                            &self.data,
+                            &discord,
+                            guild,
+                            new.user_id,
+                            new.channel_id,
+                            tokio::time::Instant::now(),
+                        );
+                        if tokio::time::timeout(std::time::Duration::from_secs(5), moved)
+                            .await
+                            .is_err()
+                        {
+                            tracing::warn!("economy: moving jailed {} back timed out", new.user_id);
+                        }
+                    }
+                }
                 // Then voice rooms: the handler below returns early for
                 // anyone but the bot.
                 crate::rooms::lifecycle::on_voice_state(&self.data, ctx, old.as_ref(), new).await;
@@ -94,7 +117,23 @@ impl EventHandler for SerenityHandler {
             // Server mutes and deafens for the mod log. The event log after
             // this match sees the entry too.
             FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
+                // Read out first: the cache guard must not be held across an await.
+                let bot = ctx.cache.current_user().id;
                 crate::modlog::live::on_audit_event(&self.data, ctx, *guild_id, entry).await;
+                // The lock and moderators' overrides act whether or not the
+                // mod log is on.
+                let discord = crate::economy::discord::LiveEconomyDiscord {
+                    http: ctx.http.clone(),
+                };
+                let audit = crate::economy::lock::on_audit_entry(
+                    &self.data, &discord, *guild_id, entry, bot,
+                );
+                if tokio::time::timeout(std::time::Duration::from_secs(5), audit)
+                    .await
+                    .is_err()
+                {
+                    tracing::warn!("economy: handling an audit entry in {guild_id} timed out");
+                }
             },
             // A voice room deleted by hand drops its row and its timer.
             FullEvent::ChannelDelete { channel, .. } => {
