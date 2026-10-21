@@ -16,12 +16,13 @@ use crate::messaging::messages::{
     ECONOMY_CANT_TELL, ECONOMY_FUND_ALREADY_OPEN, ECONOMY_FUND_CLOSED, ECONOMY_MIRROR_ALREADY_UP,
     ECONOMY_NOTHING_TO_CLEANSE, ECONOMY_NOTHING_TO_REVEAL, ECONOMY_NOT_FOR_SALE,
     ECONOMY_NO_DATABASE, ECONOMY_NO_JAIL_CHANNEL, ECONOMY_OFF, ECONOMY_OUT_OF_REACH,
-    ECONOMY_PLEDGE_ON_SELF, ECONOMY_PLEDGE_TOO_SMALL_PREFIX, ECONOMY_PLEDGE_TOO_SMALL_SUFFIX,
-    ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PICK_AGO, ECONOMY_REVEAL_PICK_DAY,
-    ECONOMY_REVEAL_PICK_HOUR, ECONOMY_REVEAL_PICK_JUST_NOW, ECONOMY_REVEAL_PICK_MINUTE,
-    ECONOMY_TARGET_IMMUNE_INDEFINITELY, ECONOMY_TARGET_IMMUNE_UNTIL, ECONOMY_TARGET_IS_BOT,
-    ECONOMY_TARGET_IS_SELF, ECONOMY_TARGET_NOT_IN_VOICE, ECONOMY_TARGET_OPTED_OUT,
-    ECONOMY_UNAVAILABLE_PREFIX, ECONOMY_UNAVAILABLE_SUFFIX,
+    ECONOMY_PLEDGE_ON_SELF, ECONOMY_PLEDGE_OVER_SHARE_PREFIX, ECONOMY_PLEDGE_OVER_SHARE_SUFFIX,
+    ECONOMY_PLEDGE_TOO_SMALL_PREFIX, ECONOMY_PLEDGE_TOO_SMALL_SUFFIX, ECONOMY_PURCHASE_FAILED,
+    ECONOMY_REVEAL_PICK_AGO, ECONOMY_REVEAL_PICK_DAY, ECONOMY_REVEAL_PICK_HOUR,
+    ECONOMY_REVEAL_PICK_JUST_NOW, ECONOMY_REVEAL_PICK_MINUTE, ECONOMY_TARGET_IMMUNE_INDEFINITELY,
+    ECONOMY_TARGET_IMMUNE_UNTIL, ECONOMY_TARGET_IS_BOT, ECONOMY_TARGET_IS_SELF,
+    ECONOMY_TARGET_NOT_IN_VOICE, ECONOMY_TARGET_OPTED_OUT, ECONOMY_UNAVAILABLE_PREFIX,
+    ECONOMY_UNAVAILABLE_SUFFIX,
 };
 use crate::Data;
 use chrono::{DateTime, Utc};
@@ -95,6 +96,11 @@ pub enum Refusal {
     /// A pledge below the minimum that is not what the fund still needs.
     PledgeTooSmall {
         min: i64,
+    },
+    /// A pledge from a member who has put in their share of the fund (half
+    /// its price, rounded up): a fund takes at least two people.
+    PledgeOverShare {
+        max: i64,
     },
     /// A role position nobody could read (the cache can't place one of the
     /// member's roles, or the bot's): not the hierarchy, so not out of reach.
@@ -180,6 +186,11 @@ pub fn refusal_text(r: &Refusal, currency: &str) -> String {
         Refusal::FundAlreadyOpen => ECONOMY_FUND_ALREADY_OPEN.to_string(),
         Refusal::FundClosed => ECONOMY_FUND_CLOSED.to_string(),
         Refusal::PledgeOnSelf => ECONOMY_PLEDGE_ON_SELF.to_string(),
+        Refusal::PledgeOverShare { max } => {
+            format!(
+                "{ECONOMY_PLEDGE_OVER_SHARE_PREFIX} {max} {currency} {ECONOMY_PLEDGE_OVER_SHARE_SUFFIX}"
+            )
+        },
         Refusal::PledgeTooSmall { min } => {
             format!(
                 "{ECONOMY_PLEDGE_TOO_SMALL_PREFIX} {min} {currency}, {ECONOMY_PLEDGE_TOO_SMALL_SUFFIX}"
@@ -1051,6 +1062,7 @@ mod tests {
             Refusal::FundClosed,
             Refusal::PledgeOnSelf,
             Refusal::PledgeTooSmall { min: 10 },
+            Refusal::PledgeOverShare { max: 45 },
         ];
         let texts: std::collections::HashSet<_> =
             all.iter().map(|r| refusal_text(r, "credits")).collect();

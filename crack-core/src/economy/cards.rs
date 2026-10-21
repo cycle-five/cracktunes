@@ -11,7 +11,7 @@ use crate::messaging::messages::{
     ECONOMY_CARD_UNTIL, ECONOMY_FUND_CARD_AND, ECONOMY_FUND_CARD_CROWD, ECONOMY_FUND_CARD_OTHER,
     ECONOMY_FUND_CARD_OTHERS, ECONOMY_FUND_CARD_PREFIX, ECONOMY_FUND_CARD_TO,
     ECONOMY_FUND_CARD_UNTIL, ECONOMY_FUND_FAILED_CARD_MIDDLE, ECONOMY_FUND_FAILED_CARD_PREFIX,
-    ECONOMY_FUND_FAILED_CARD_SUFFIX,
+    ECONOMY_FUND_FAILED_CARD_SUFFIX, ECONOMY_FUND_START_CARD_STARTED, ECONOMY_FUND_START_CARD_TAIL,
 };
 use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, UserId};
@@ -115,18 +115,10 @@ fn fund_signoff(signers: &[UserId]) -> String {
     }
 }
 
-/// The card for a crowdfund that landed: what was done to `target`, the note,
-/// then the signed contributors (never an unsigned one).
-pub fn fund_card_text(
-    kind: ActionKind,
-    target: UserId,
-    nick: Option<&str>,
-    until: Option<DateTime<Utc>>,
-    note: Option<&str>,
-    signers: &[UserId],
-) -> String {
+/// What a crowdfunded prank does to `target`, in words.
+fn fund_deed(kind: ActionKind, target: UserId, nick: Option<&str>) -> Option<String> {
     let t = mention(target);
-    let did = match kind {
+    Some(match kind {
         ActionKind::Rename => format!(
             "{ECONOMY_CARD_RENAMED} {t} {ECONOMY_FUND_CARD_TO} **{}**",
             escape(nick.unwrap_or_default())
@@ -137,7 +129,22 @@ pub fn fund_card_text(
         ActionKind::Deafen => format!("{ECONOMY_CARD_DEAFENED} {t}"),
         ActionKind::Jail => format!("{ECONOMY_CARD_JAILED} {t}"),
         // Not fundable: `/crowdfund` never opens one.
-        _ => return String::new(),
+        _ => return None,
+    })
+}
+
+/// The card for a crowdfund that landed: what was done to `target`, the note,
+/// then the signed contributors (never an unsigned one).
+pub fn fund_card_text(
+    kind: ActionKind,
+    target: UserId,
+    nick: Option<&str>,
+    until: Option<DateTime<Utc>>,
+    note: Option<&str>,
+    signers: &[UserId],
+) -> String {
+    let Some(did) = fund_deed(kind, target, nick) else {
+        return String::new();
     };
     let mut text = format!("{ECONOMY_FUND_CARD_PREFIX} {did}");
     if let Some(until) = until {
@@ -152,6 +159,26 @@ pub fn fund_card_text(
     }
     text.push_str(&format!("\n\u{2014} {}", fund_signoff(signers)));
     text
+}
+
+/// The card for a crowdfund that has just opened, so others can chip in. The
+/// starter is named only when the fund is signed.
+pub fn fund_started_card_text(
+    kind: ActionKind,
+    target: UserId,
+    nick: Option<&str>,
+    pledged: i64,
+    price: i64,
+    currency: &str,
+    starter: Option<UserId>,
+) -> String {
+    let Some(deed) = fund_deed(kind, target, nick) else {
+        return String::new();
+    };
+    let who = starter.map_or_else(|| ECONOMY_CARD_SOMEONE.to_string(), mention);
+    format!(
+        "\u{1F389} {who} {ECONOMY_FUND_START_CARD_STARTED} {deed}: {pledged}/{price} {currency}. {ECONOMY_FUND_START_CARD_TAIL}"
+    )
 }
 
 /// The card for a filled crowdfund that could not land.
@@ -448,6 +475,34 @@ mod tests {
         assert_eq!(
             fund_failed_card_text(T, "they aren't in voice"),
             "The crowdfund against <@20> couldn't land (they aren't in voice). Everyone was refunded."
+        );
+    }
+
+    #[test]
+    fn fund_started_card_names_the_starter_only_when_signed() {
+        let signed = fund_started_card_text(
+            ActionKind::Mute,
+            T,
+            None,
+            30,
+            90,
+            "credits",
+            Some(UserId::new(10)),
+        );
+        assert_eq!(
+            signed,
+            "🎉 <@10> started a crowdfund to muted <@20>: 30/90 credits. Chip in with /crowdfund pledge."
+        );
+        let anon =
+            fund_started_card_text(ActionKind::Rename, T, Some("Bean"), 0, 120, "credits", None);
+        assert_eq!(
+            anon,
+            "🎉 Someone started a crowdfund to renamed <@20> to **Bean**: 0/120 credits. Chip in with /crowdfund pledge."
+        );
+        assert!(!anon.contains("<@10>"));
+        assert_eq!(
+            fund_started_card_text(ActionKind::Drag, T, None, 0, 1, "c", None),
+            ""
         );
     }
 }

@@ -445,6 +445,20 @@ async fn resolve_pending(
     let Some(pool) = data.database_pool.as_ref() else {
         return;
     };
+    // A timed prank is charged with its end already set, so a pending one
+    // with none was never prepared: a filled crowdfund waits that way until
+    // its executor writes the payload and the end together, and the executor
+    // never acts before that write. Nothing happened to the member; refund it
+    // (pledge-aware), with no undo.
+    if row.kind.is_timed() && row.expires_at.is_none() {
+        if let Err(err) = economy::refund_action(pool, row.id).await {
+            tracing::warn!(
+                "economy: refunding unprepared action {} failed: {err}",
+                row.id
+            );
+        }
+        return;
+    }
     let verdict = landed(view, guild, row);
     // A server mute or deafen outlives a disconnect, so a member who is not in
     // voice now may well be muted. Refunding would leave nothing owning it;
@@ -2307,5 +2321,94 @@ mod tests {
             assert_eq!(state_of(&pool, id).await.0, "failed");
         }
         agree(&pool, &[(BUYER, 100)]).await;
+    });
+
+    /// A mute fund, filled by two members and left `pending`: what a fill
+    /// leaves behind (no end yet), for a crash to find.
+    async fn filled_mute_fund(pool: &PgPool) -> i64 {
+        use crate::db::economy as db;
+        let other = UserId::new(11);
+        fund_wallet(pool, BUYER, 100).await;
+        fund_wallet(pool, other, 100).await;
+        let f = db::open_fund(
+            pool,
+            &db::NewAction {
+                guild: G,
+                kind: ActionKind::Mute,
+                buyer: BUYER,
+                target: Some(U),
+                price: 90,
+                note: None,
+                signed: true,
+                payload: &ActionPayload::Mute,
+                expires_at: Some(Utc::now() + ChronoDuration::hours(24)),
+            },
+            Some((45, true)),
+        )
+        .await
+        .unwrap();
+        let p = db::pledge(pool, f.action_id, G, other, 45, false)
+            .await
+            .unwrap();
+        assert!(p.filled);
+        f.action_id
+    }
+
+    db_test!(
+        reconcile_refunds_an_unprepared_filled_fund_without_acting,
+        |pool| {
+            let data = data_with(&pool);
+            let fake = FakeEconomyDiscord::default();
+            let id = filled_mute_fund(&pool).await;
+            // Even with the target showing as muted: nothing was prepared, so
+            // nothing of ours is on them to own or undo.
+            let mut view = FakeView::default();
+            view.voice.insert(U, facts(5, true, false));
+            reconcile(&data, &fake, &view, G, Utc::now()).await;
+            assert_eq!(state_of(&pool, id).await.0, "failed");
+            assert!(fake.calls().is_empty());
+            assert_eq!(balance(&pool).await, 100, "the starter's pledge came back");
+            assert_eq!(
+                crate::db::economy::balance(&pool, G, UserId::new(11))
+                    .await
+                    .unwrap(),
+                100
+            );
+            let refunds: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM economy_ledger WHERE kind = 'pledge_refund'",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(refunds, 2);
+        }
+    );
+
+    db_test!(reconcile_activates_a_prepared_landed_mute_fund, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        let id = filled_mute_fund(&pool).await;
+        // What the executor writes before it acts.
+        let end = Utc::now() + mins(5);
+        assert!(
+            crate::db::economy::prepare_fund(&pool, id, &ActionPayload::Mute, Some(end))
+                .await
+                .unwrap()
+        );
+        let mut view = FakeView::default();
+        view.voice.insert(U, facts(5, true, false));
+        reconcile(&data, &fake, &view, G, Utc::now()).await;
+        assert_eq!(state_of(&pool, id).await.0, "active");
+        assert!(fake.calls().is_empty());
+        let row = crate::db::economy::action_by_id(&pool, G, id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            row.expires_at.map(|t| t.timestamp_micros()),
+            Some(end.timestamp_micros())
+        );
+        // Nobody was refunded.
+        assert_eq!(balance(&pool).await, 55);
     });
 }

@@ -70,6 +70,25 @@ pub fn check_target(
     t: &TargetFacts,
     buyer_in_voice: Option<ChannelId>,
 ) -> Result<TargetOutcome, Refusal> {
+    check_target_with(kind, t, buyer_in_voice, VoiceStep::Apply)
+}
+
+/// Whether [`check_target_with`] makes the voice checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VoiceStep {
+    Apply,
+    /// A crowdfund's start: voice is looked at again when it fills.
+    Skip,
+}
+
+/// [`check_target`] with the voice step optional, so a caller never has to
+/// fake a voice state to get past it.
+pub fn check_target_with(
+    kind: ActionKind,
+    t: &TargetFacts,
+    buyer_in_voice: Option<ChannelId>,
+    voice: VoiceStep,
+) -> Result<TargetOutcome, Refusal> {
     if t.is_bot {
         return Err(Refusal::TargetIsBot);
     }
@@ -88,6 +107,7 @@ pub fn check_target(
         }
     }
     match kind {
+        _ if voice == VoiceStep::Skip => {},
         ActionKind::Drag => {
             if buyer_in_voice.is_none() {
                 return Err(Refusal::BuyerNotInVoice);
@@ -1126,6 +1146,39 @@ mod tests {
             );
             data.economy.set_one_opted_out(G, M, true);
             assert!(facts(&data, ActionKind::Mute, M).await.opted_out);
+        }
+    }
+
+    #[test]
+    fn the_voice_step_can_be_skipped_and_nothing_else() {
+        let away = TargetFacts {
+            in_voice: None,
+            ..clean()
+        };
+        for kind in [ActionKind::Mute, ActionKind::Deafen, ActionKind::Jail] {
+            assert_eq!(
+                check_target_with(kind, &away, None, VoiceStep::Apply),
+                Err(Refusal::TargetNotInVoice),
+                "{kind:?}"
+            );
+            assert_eq!(
+                check_target(kind, &away, None),
+                Err(Refusal::TargetNotInVoice)
+            );
+            assert_eq!(
+                check_target_with(kind, &away, None, VoiceStep::Skip),
+                Ok(TargetOutcome::Lands),
+                "{kind:?}"
+            );
+            // Every other check still runs.
+            let immune = TargetFacts {
+                protection: Some(Protection::Indefinitely),
+                ..away.clone()
+            };
+            assert_eq!(
+                check_target_with(kind, &immune, None, VoiceStep::Skip),
+                Err(Refusal::TargetImmune(Protection::Indefinitely))
+            );
         }
     }
 }

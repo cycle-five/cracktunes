@@ -9,7 +9,7 @@ use super::shop::{
     act, cant_afford, captured_restore, check_purchase, db_failed, payload_for, prank_expiry,
     refusal_text, running_name_pranks, BuyError, PurchaseFacts, Refusal,
 };
-use super::target::{check_target, TargetFacts};
+use super::target::{check_target, check_target_with, TargetFacts, VoiceStep};
 use super::wallet::{ActionPayload, MoveError};
 use crate::db::economy::{self as db, ActionRow, FundError, OpenedFund, Pledged};
 use crate::messaging::messages::{
@@ -18,7 +18,7 @@ use crate::messaging::messages::{
 };
 use crate::Data;
 use chrono::{DateTime, Duration, Utc};
-use serenity::all::{ChannelId, GuildId, UserId};
+use serenity::all::{GuildId, UserId};
 
 /// How long a fund has to fill before the sweeper refunds it.
 pub const FUND_HOURS: i64 = 24;
@@ -31,28 +31,40 @@ pub const LIST_MAX_FUNDS: usize = 15;
 /// left to the moment the fund fills ("re-checked at that moment"), and the
 /// mirror never applies: a fund is never bounced (spec 4.2).
 pub fn check_fund_start(kind: ActionKind, t: &TargetFacts) -> Result<(), Refusal> {
-    // Reuse the one order rather than copy it: a target "in voice" somewhere
-    // passes the voice step, and no mirror skips the bounce.
-    let at_start = TargetFacts {
-        in_voice: Some(ChannelId::new(1)),
+    // The one order, shared: with the voice step skipped, and no mirror so
+    // there is no bounce.
+    let no_mirror = TargetFacts {
         has_mirror: false,
         ..t.clone()
     };
-    check_target(kind, &at_start, None).map(|_| ())
+    check_target_with(kind, &no_mirror, None, VoiceStep::Skip).map(|_| ())
 }
 
-/// What a pledge of `amount` takes from a fund that still needs `left`, or
-/// why it is refused. Below the minimum is refused unless it covers what the
-/// fund still needs (the last top-up may be small); more than is needed is
-/// capped at `left`.
-pub fn check_pledge_amount(min: i64, left: i64, amount: i64) -> Result<i64, Refusal> {
+/// What a pledge of `amount` takes, or why it is refused. `left` is what the
+/// fund still needs; `mine` what this member has already put in, against a
+/// per-member `max` (a fund takes two people: [`db::fund_share`]). More than
+/// either allows is capped; nothing left of the member's share is refused.
+/// Below the minimum is refused unless it covers all that the member may
+/// still put in (a last top-up may be small).
+pub fn check_pledge_amount(
+    min: i64,
+    left: i64,
+    mine: i64,
+    max: i64,
+    amount: i64,
+) -> Result<i64, Refusal> {
     if left <= 0 {
         return Err(Refusal::FundClosed);
     }
-    if amount <= 0 || (amount < min && amount < left) {
+    let share_left = max - mine;
+    if share_left <= 0 {
+        return Err(Refusal::PledgeOverShare { max });
+    }
+    let room = left.min(share_left);
+    if amount <= 0 || (amount < min && amount < room) {
         return Err(Refusal::PledgeTooSmall { min });
     }
-    Ok(amount.min(left))
+    Ok(amount.min(room))
 }
 
 /// What to open.
@@ -122,7 +134,8 @@ pub async fn start(
         None => None,
         Some(asked) => {
             let min = i64::from(crowdfund.price);
-            let taken = check_pledge_amount(min, amount, asked).map_err(BuyError::Refused)?;
+            let taken = check_pledge_amount(min, amount, 0, db::fund_share(amount), asked)
+                .map_err(BuyError::Refused)?;
             let balance = db::balance(pool, g, starter)
                 .await
                 .map_err(|e| db_failed(&format!("reading balance of {starter} in {g}"), &e))?;
@@ -156,7 +169,7 @@ pub async fn start(
             let wanted = first.map_or(0, |(a, _)| a);
             BuyError::Refused(cant_afford(wanted, balance))
         },
-        FundError::Closed | FundError::Money(_) => BuyError::Db,
+        FundError::Closed | FundError::OverShare { .. } | FundError::Money(_) => BuyError::Db,
         FundError::Db(e) => db_failed(&format!("opening a fund for {starter} in {g}"), &e),
     })
 }
@@ -200,23 +213,35 @@ pub async fn pledge(data: &Data, req: PledgeRequest) -> Result<PledgeDone, BuyEr
         balance: i64::MAX,
     })
     .map_err(BuyError::Refused)?;
-    let funds = db::open_funds(pool, g)
+    let view = db::fund_view(pool, g, req.fund, pledger)
         .await
-        .map_err(|e| db_failed(&format!("listing the funds in {g}"), &e))?;
-    let Some((fund, pledged)) = funds.into_iter().find(|(f, _)| f.id == req.fund) else {
+        .map_err(|e| db_failed(&format!("reading fund {} in {g}", req.fund), &e))?;
+    let Some(db::FundView {
+        row: fund,
+        price,
+        pledged,
+        mine,
+    }) = view
+    else {
         return Err(BuyError::Refused(Refusal::FundClosed));
     };
     if fund.target == Some(pledger) {
         return Err(BuyError::Refused(Refusal::PledgeOnSelf));
     }
-    let price = i64::from(settings.config.prices.get(fund.kind).price);
-    let left = price.saturating_sub(pledged);
     let min = i64::from(crowdfund.price);
-    let wanted = check_pledge_amount(min, left, req.amount).map_err(BuyError::Refused)?;
+    let wanted = check_pledge_amount(
+        min,
+        price.saturating_sub(pledged),
+        mine,
+        db::fund_share(price),
+        req.amount,
+    )
+    .map_err(BuyError::Refused)?;
     let done = db::pledge(pool, req.fund, g, pledger, wanted, req.signed)
         .await
         .map_err(|err| match err {
             FundError::Closed => BuyError::Refused(Refusal::FundClosed),
+            FundError::OverShare { max } => BuyError::Refused(Refusal::PledgeOverShare { max }),
             FundError::Money(MoveError::Insufficient { balance }) => {
                 BuyError::Refused(cant_afford(wanted, balance))
             },
@@ -271,9 +296,11 @@ pub struct FillFacts {
 /// Run a filled fund, now `pending`, like a bought prank.
 /// 1. [`check_target`] with no mirror (voice is checked here, as the fund
 ///    fills), then the preflight the caller made for the kind;
-/// 2. rebuild the payload, capturing what to restore as a purchase does;
+/// 2. rebuild the payload, capturing what to restore as a purchase does, and
+///    its end; write both in one statement (a fill leaves the row without an
+///    end, which reconcile reads as never prepared, never acted on);
 /// 3. do it in Discord;
-/// 4. make the row `active`, ending the kind's time from `now`.
+/// 4. make the row `active`.
 ///
 /// Anything that stops it refunds every pledge. `facts` is the target as of
 /// now; the target is never the pledger, so `is_self` is cleared. The caller
@@ -304,8 +331,15 @@ pub async fn execute(
         has_mirror: false,
         ..facts
     };
-    let refused = check_target(kind, &facts, None)
-        .map(|_| ())
+    // The switch for the prank itself is read again: turning it off stops a
+    // fund that has not landed yet.
+    let on = if cfg.prices.get(kind).on {
+        Ok(())
+    } else {
+        Err(Refusal::NotForSale)
+    };
+    let refused = on
+        .and_then(|()| check_target(kind, &facts, None).map(|_| ()))
         .and_then(|()| {
             if kind == ActionKind::Jail && cfg.jail_channel_id.is_none() {
                 Err(Refusal::NoJailChannel)
@@ -345,14 +379,24 @@ pub async fn execute(
             return Err(NotLanded::Db);
         },
     };
-    match db::set_payload(pool, id, &payload).await {
+    let expires = prank_expiry(kind, &running, now, cfg);
+    // Read before acting: a failed read must not leave an effect behind.
+    let pledges = match db::fund_pledges(pool, id).await {
+        Ok(p) => p,
+        Err(err) => {
+            tracing::warn!("economy: reading the pledges of fund {id} failed: {err}");
+            refund(pool, id, "failed").await;
+            return Err(NotLanded::Db);
+        },
+    };
+    match db::prepare_fund(pool, id, &payload, expires).await {
         Ok(true) => {},
         Ok(false) => {
             tracing::warn!("economy: fund {id} was no longer pending at execution");
             return Err(NotLanded::Db);
         },
         Err(err) => {
-            tracing::error!("economy: writing the payload of fund {id} failed: {err}");
+            tracing::error!("economy: preparing fund {id} failed: {err}");
             refund(pool, id, "failed").await;
             return Err(NotLanded::Db);
         },
@@ -361,21 +405,21 @@ pub async fn execute(
         tracing::warn!(
             "economy: fund {id}: {kind:?} on {target} in {g} failed in Discord: {err:?}"
         );
-        refund(pool, id, "failed").await;
+        let reason = if err == EconDiscordError::UnknownMember {
+            "left"
+        } else {
+            "failed"
+        };
+        refund(pool, id, reason).await;
         return Err(NotLanded::Discord(err));
     }
-    let expires = prank_expiry(kind, &running, now, cfg);
-    // The effect has landed. If this write fails the row stays `pending` and
-    // reconcile resolves it; the contributors still get their card.
+    // The effect has landed. If this write fails the row stays `pending`,
+    // prepared, and reconcile resolves it; the contributors still get their card.
     match db::activate_action(pool, id, kind, expires).await {
         Ok(true) => {},
         Ok(false) => tracing::warn!("economy: fund {id} was no longer pending at activation"),
         Err(err) => tracing::error!("economy: activating fund {id} failed: {err}"),
     }
-    let pledges = db::fund_pledges(pool, id).await.unwrap_or_else(|err| {
-        tracing::warn!("economy: reading the pledges of fund {id} failed: {err}");
-        Vec::new()
-    });
     let mut contributors = vec![fund.buyer];
     let mut signers = if fund.signed {
         vec![fund.buyer]
@@ -431,12 +475,17 @@ mod tests {
     const B: UserId = UserId::new(11);
     const C: UserId = UserId::new(12);
     const T: UserId = UserId::new(20);
-    const VC: ChannelId = ChannelId::new(5);
+    const VC: serenity::all::ChannelId = serenity::all::ChannelId::new(5);
 
     static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
+    /// The moment this test run starts, on the real clock: the database
+    /// judges a fund's liveness by its own, so a fixed date goes stale.
     fn t0() -> DateTime<Utc> {
-        DateTime::from_timestamp(1_800_000_000, 0).unwrap()
+        static START: std::sync::OnceLock<DateTime<Utc>> = std::sync::OnceLock::new();
+        // Whole microseconds, as the database stores them.
+        *START
+            .get_or_init(|| DateTime::from_timestamp_micros(Utc::now().timestamp_micros()).unwrap())
     }
 
     fn clean() -> TargetFacts {
@@ -518,30 +567,44 @@ mod tests {
 
     #[test]
     fn a_pledge_below_the_minimum_must_cover_what_is_left() {
-        // min 10, 50 left.
-        assert_eq!(check_pledge_amount(10, 50, 10), Ok(10));
-        assert_eq!(
-            check_pledge_amount(10, 50, 9),
-            Err(Refusal::PledgeTooSmall { min: 10 })
-        );
-        assert_eq!(
-            check_pledge_amount(10, 50, 0),
-            Err(Refusal::PledgeTooSmall { min: 10 })
-        );
-        assert_eq!(
-            check_pledge_amount(10, 50, -4),
-            Err(Refusal::PledgeTooSmall { min: 10 })
-        );
+        // min 10, a share of 90 so far untouched.
+        let check = |left, amount| check_pledge_amount(10, left, 0, 90, amount);
+        assert_eq!(check(50, 10), Ok(10));
+        for bad in [9, 0, -4] {
+            assert_eq!(
+                check(50, bad),
+                Err(Refusal::PledgeTooSmall { min: 10 }),
+                "{bad}"
+            );
+        }
         // Exactly what is left may be small; more than that is capped.
-        assert_eq!(check_pledge_amount(10, 4, 4), Ok(4));
-        assert_eq!(check_pledge_amount(10, 4, 8), Ok(4));
-        assert_eq!(
-            check_pledge_amount(10, 4, 3),
-            Err(Refusal::PledgeTooSmall { min: 10 })
-        );
-        assert_eq!(check_pledge_amount(10, 50, 500), Ok(50));
+        assert_eq!(check(4, 4), Ok(4));
+        assert_eq!(check(4, 8), Ok(4));
+        assert_eq!(check(4, 3), Err(Refusal::PledgeTooSmall { min: 10 }));
+        assert_eq!(check(50, 500), Ok(50));
         // Nothing left: closed.
-        assert_eq!(check_pledge_amount(10, 0, 10), Err(Refusal::FundClosed));
+        assert_eq!(check(0, 10), Err(Refusal::FundClosed));
+    }
+
+    #[test]
+    fn a_pledge_is_capped_by_the_members_share() {
+        // A fund of 90: 45 each. 30 already put in leaves 15.
+        let check = |mine, amount| check_pledge_amount(10, 60, mine, 45, amount);
+        assert_eq!(check(0, 45), Ok(45));
+        assert_eq!(check(0, 500), Ok(45));
+        assert_eq!(check(30, 40), Ok(15));
+        // What is left of the share may be below the minimum when it is all
+        // the member can put in; less than that is too small.
+        assert_eq!(check(40, 5), Ok(5));
+        assert_eq!(check(40, 4), Err(Refusal::PledgeTooSmall { min: 10 }));
+        // Nothing left of it: over share, whatever the fund needs.
+        assert_eq!(check(45, 10), Err(Refusal::PledgeOverShare { max: 45 }));
+        assert_eq!(check(50, 10), Err(Refusal::PledgeOverShare { max: 45 }));
+        // A closed fund is closed first.
+        assert_eq!(
+            check_pledge_amount(10, 0, 45, 45, 10),
+            Err(Refusal::FundClosed)
+        );
     }
 
     #[test]
@@ -653,15 +716,15 @@ mod tests {
         db::action_by_id(pool, G, id).await.unwrap().unwrap()
     }
 
-    /// A mute fund (90) filled by A (60, signed) and B (30, unsigned);
-    /// returns the filled row.
+    /// A mute fund (90) filled by A (45, signed) and B (45, unsigned), each
+    /// at their share; returns the filled row.
     async fn filled_mute(pool: &PgPool, data: &Data) -> ActionRow {
         fund_wallet(pool, A, 100).await;
         fund_wallet(pool, B, 100).await;
-        let f = start(data, clean(), fund_request(A, ActionKind::Mute, Some(60)))
+        let f = start(data, clean(), fund_request(A, ActionKind::Mute, Some(45)))
             .await
             .unwrap();
-        let p = pledge(data, pledge_request(B, f.action_id, 30, false))
+        let p = pledge(data, pledge_request(B, f.action_id, 45, false))
             .await
             .unwrap();
         assert!(p.pledged.filled);
@@ -932,6 +995,7 @@ mod tests {
         |pool: PgPool| async {
             let data = fund_data(&pool, |_| {}).await;
             fund_wallet(&pool, A, 100).await;
+            fund_wallet(&pool, B, 100).await;
             // Someone's rename is running with an older name to restore.
             let running = crate::economy::wallet::ActionPayload::Rename {
                 name: "Old".into(),
@@ -950,7 +1014,7 @@ mod tests {
             let f = start(&data, clean(), fund_request(A, ActionKind::Lock, Some(30)))
                 .await
                 .unwrap();
-            let p = pledge(&data, pledge_request(A, f.action_id, 30, false))
+            let p = pledge(&data, pledge_request(B, f.action_id, 30, false))
                 .await
                 .unwrap();
             assert!(p.pledged.filled);
@@ -983,7 +1047,7 @@ mod tests {
         );
         assert_eq!(
             go(Some(50)).await,
-            Err(BuyError::Refused(Refusal::CantAfford { short: 10 }))
+            Err(BuyError::Refused(Refusal::CantAfford { short: 5 }))
         );
         assert_eq!(
             count(&pool, "SELECT count(*) FROM economy_actions").await,
@@ -1102,8 +1166,10 @@ mod tests {
         |pool: PgPool| async {
             let data = fund_data(&pool, |_| {}).await;
             fund_wallet(&pool, A, 100).await;
-            fund_wallet(&pool, B, 50).await;
+            fund_wallet(&pool, B, 40).await;
+            fund_wallet(&pool, C, 5).await;
             fund_wallet(&pool, T, 100).await;
+            // 90 to fill, 45 each at most.
             let f = start(&data, clean(), fund_request(A, ActionKind::Mute, Some(20)))
                 .await
                 .unwrap();
@@ -1118,10 +1184,10 @@ mod tests {
                 pledge(&data, pledge_request(B, id, 9, false)).await,
                 Err(BuyError::Refused(Refusal::PledgeTooSmall { min: 10 }))
             );
-            // Too poor.
+            // Too poor: 60 is capped to the 45 share, and B has 40.
             assert_eq!(
                 pledge(&data, pledge_request(B, id, 60, false)).await,
-                Err(BuyError::Refused(Refusal::CantAfford { short: 10 }))
+                Err(BuyError::Refused(Refusal::CantAfford { short: 5 }))
             );
             // An unknown fund, and one from another server.
             assert_eq!(
@@ -1155,37 +1221,233 @@ mod tests {
                 Err(BuyError::Refused(Refusal::BuyerOptedOut))
             );
             data.economy.set_opted_out(G, Default::default());
-            assert_eq!(db::balance(&pool, G, B).await.unwrap(), 50);
-            // The last top-up may be below the minimum: 90 - 20 = 70, B has 50,
-            // so fill it in two goes, the second exactly what is left.
-            let p = pledge(&data, pledge_request(B, id, 50, true))
+            assert_eq!(db::balance(&pool, G, B).await.unwrap(), 40);
+            // B puts in 40 of the 70 still needed.
+            let p = pledge(&data, pledge_request(B, id, 40, true))
                 .await
                 .unwrap();
-            assert_eq!((p.pledged.taken, p.pledged.filled), (50, false));
+            assert_eq!((p.pledged.taken, p.pledged.filled), (40, false));
             assert_eq!(p.fund.id, id);
             assert_eq!(p.fund.target, Some(T));
-            fund_wallet(&pool, C, 5).await;
-            db::credit_earnings(
-                &pool,
-                G,
-                &[db::EarnRow {
-                    user: A,
-                    voice: 0,
-                    messages: 0,
-                }],
-            )
-            .await
-            .unwrap();
-            // 20 left now; a pledge of 20 is the minimum-covering fill.
-            let mut c = pledge_request(A, id, 20, false);
-            c.amount = 20;
-            let last = pledge(&data, c).await.unwrap();
+            // A has 20 in, so only 25 more of their 45 share, though 30 is
+            // still needed and 30 was asked: the share caps it.
+            let p = pledge(&data, pledge_request(A, id, 30, false))
+                .await
+                .unwrap();
+            assert_eq!(
+                (p.pledged.taken, p.pledged.total, p.pledged.filled),
+                (25, 85, false)
+            );
+            // A's share is used up, whatever the fund still needs.
+            assert_eq!(
+                pledge(&data, pledge_request(A, id, 10, false)).await,
+                Err(BuyError::Refused(Refusal::PledgeOverShare { max: 45 }))
+            );
+            // C covers the 5 left, below the minimum, and fills it.
+            let last = pledge(&data, pledge_request(C, id, 5, false))
+                .await
+                .unwrap();
             assert!(last.pledged.filled);
             // And it is closed to the next one.
             assert_eq!(
                 pledge(&data, pledge_request(C, id, 5, false)).await,
                 Err(BuyError::Refused(Refusal::FundClosed))
             );
+            assert_ledger_agrees(&pool, &[(A, 100), (B, 40), (C, 5)]).await;
+        }
+    );
+
+    /// Every wallet equals what it started with plus its ledger.
+    async fn assert_ledger_agrees(pool: &PgPool, given: &[(UserId, i64)]) {
+        for (user, start) in given {
+            let delta: i64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(delta), 0)::bigint FROM economy_ledger WHERE user_id = $1",
+            )
+            .bind(user.get() as i64)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+            assert_eq!(
+                db::balance(pool, G, *user).await.unwrap(),
+                start + delta,
+                "wallet of {user} disagrees with its ledger"
+            );
+        }
+    }
+
+    db_test!(
+        a_solo_starter_cannot_fill_a_fund_but_two_members_can,
+        |pool: PgPool| async {
+            let data = fund_data(&pool, |_| {}).await;
+            fund_wallet(&pool, A, 200).await;
+            fund_wallet(&pool, B, 200).await;
+            // Asking for the whole 90 takes only A's half, 45.
+            let opened = start(&data, clean(), fund_request(A, ActionKind::Mute, Some(90)))
+                .await
+                .unwrap();
+            assert_eq!((opened.pledged, opened.balance), (45, Some(155)));
+            let id = opened.action_id;
+            assert_eq!(
+                row_of(&pool, id).await.state,
+                crate::economy::wallet::ActionState::Funding
+            );
+            // A cannot top it up.
+            assert_eq!(
+                pledge(&data, pledge_request(A, id, 45, true)).await,
+                Err(BuyError::Refused(Refusal::PledgeOverShare { max: 45 }))
+            );
+            assert_eq!(db::balance(&pool, G, A).await.unwrap(), 155);
+            // Another member's half fills it, whatever they ask.
+            let p = pledge(&data, pledge_request(B, id, 90, false))
+                .await
+                .unwrap();
+            assert_eq!((p.pledged.taken, p.pledged.filled), (45, true));
+            assert_ledger_agrees(&pool, &[(A, 200), (B, 200)]).await;
+        }
+    );
+
+    db_test!(
+        a_fund_the_starter_did_not_pledge_to_still_names_them,
+        |pool: PgPool| async {
+            let data = fund_data(&pool, |_| {}).await;
+            fund_wallet(&pool, B, 100).await;
+            fund_wallet(&pool, C, 100).await;
+            // A signed fund the starter put nothing into.
+            let signed = start(&data, clean(), fund_request(A, ActionKind::Mute, None))
+                .await
+                .unwrap();
+            pledge(&data, pledge_request(B, signed.action_id, 45, true))
+                .await
+                .unwrap();
+            let p = pledge(&data, pledge_request(C, signed.action_id, 45, false))
+                .await
+                .unwrap();
+            assert!(p.pledged.filled);
+            let row = row_of(&pool, signed.action_id).await;
+            let fake = FakeEconomyDiscord::default();
+            let done = run(&data, &fake, clean(), &row).await.unwrap();
+            assert_eq!(done.contributors, vec![A, B, C]);
+            // The starter signed, B signed, C did not.
+            assert_eq!(done.signers, vec![A, B]);
+            // An unsigned fund: the starter is a contributor, never a signer.
+            let mut r = fund_request(A, ActionKind::Deafen, None);
+            r.signed = false;
+            let unsigned = start(&data, clean(), r).await.unwrap();
+            for who in [B, C] {
+                pledge(&data, pledge_request(who, unsigned.action_id, 45, who == B))
+                    .await
+                    .unwrap();
+            }
+            let row = row_of(&pool, unsigned.action_id).await;
+            let done = run(&data, &fake, clean(), &row).await.unwrap();
+            assert_eq!(done.contributors, vec![A, B, C]);
+            assert_eq!(done.signers, vec![B]);
+        }
+    );
+
+    db_test!(
+        a_pledge_is_judged_against_the_funds_own_price,
+        |pool: PgPool| async {
+            let data = fund_data(&pool, |_| {}).await;
+            fund_wallet(&pool, A, 100).await;
+            fund_wallet(&pool, B, 100).await;
+            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, Some(20)))
+                .await
+                .unwrap();
+            // The owner reprices mutes to 30 while the 90 fund is open.
+            let cheaper = fund_data(&pool, |s| {
+                s.config.prices.set(
+                    ActionKind::Mute,
+                    ActionPrice {
+                        price: 30,
+                        on: true,
+                    },
+                );
+            })
+            .await;
+            let p = pledge(&cheaper, pledge_request(B, f.action_id, 45, false))
+                .await
+                .unwrap();
+            assert_eq!((p.pledged.taken, p.pledged.price), (45, 90));
+            assert!(!p.pledged.filled);
+        }
+    );
+
+    db_test!(an_opted_out_starter_cannot_start, |pool: PgPool| async {
+        let data = fund_data(&pool, |_| {}).await;
+        fund_wallet(&pool, A, 100).await;
+        data.economy.set_opted_out(G, [A].into_iter().collect());
+        assert_eq!(
+            start(&data, clean(), fund_request(A, ActionKind::Mute, Some(20))).await,
+            Err(BuyError::Refused(Refusal::BuyerOptedOut))
+        );
+        assert_eq!(db::balance(&pool, G, A).await.unwrap(), 100);
+        assert_eq!(
+            count(&pool, "SELECT count(*) FROM economy_actions").await,
+            0
+        );
+    });
+
+    db_test!(
+        a_prank_switched_off_before_the_fill_refunds_everyone,
+        |pool: PgPool| async {
+            let data = fund_data(&pool, |_| {}).await;
+            let row = filled_mute(&pool, &data).await;
+            // The owner turns mutes off while the fund fills.
+            let mut cfg = data.economy.settings(G).config;
+            cfg.prices.set(
+                ActionKind::Mute,
+                ActionPrice {
+                    price: 90,
+                    on: false,
+                },
+            );
+            let fake = FakeEconomyDiscord::default();
+            let out = execute(
+                &data,
+                &fake,
+                FillFacts {
+                    guild: G,
+                    target: clean(),
+                    preflight: Ok(()),
+                },
+                &row,
+                &cfg,
+                t0(),
+            )
+            .await;
+            assert_eq!(out, Err(NotLanded::Refused(Refusal::NotForSale)));
+            assert!(fake.calls().is_empty());
+            assert_everyone_refunded(&pool, row.id, "refused").await;
+        }
+    );
+
+    db_test!(
+        a_member_who_left_during_the_act_refunds_as_left,
+        |pool: PgPool| async {
+            let data = fund_data(&pool, |_| {}).await;
+            let row = filled_mute(&pool, &data).await;
+            let fake = FakeEconomyDiscord::default();
+            fake.fail_next(CallKind::Mute, EconDiscordError::UnknownMember);
+            assert_eq!(
+                run(&data, &fake, clean(), &row).await,
+                Err(NotLanded::Discord(EconDiscordError::UnknownMember))
+            );
+            assert_everyone_refunded(&pool, row.id, "left").await;
+        }
+    );
+
+    db_test!(
+        a_filled_fund_is_prepared_before_it_acts,
+        |pool: PgPool| async {
+            let data = fund_data(&pool, |_| {}).await;
+            let row = filled_mute(&pool, &data).await;
+            // A fill leaves no end: that is what marks it unprepared.
+            assert_eq!(row.expires_at, None);
+            let fake = FakeEconomyDiscord::default();
+            run(&data, &fake, clean(), &row).await.unwrap();
+            let after = row_of(&pool, row.id).await;
+            assert_eq!(after.expires_at, Some(t0() + Duration::minutes(5)));
         }
     );
 
@@ -1195,7 +1457,10 @@ mod tests {
             let data = fund_data(&pool, |_| {}).await;
             fund_wallet(&pool, A, 100).await;
             fund_wallet(&pool, B, 100).await;
-            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, Some(85)))
+            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, Some(45)))
+                .await
+                .unwrap();
+            pledge(&data, pledge_request(B, f.action_id, 40, false))
                 .await
                 .unwrap();
             // 5 left, minimum 10: 5 fills, 4 does not.

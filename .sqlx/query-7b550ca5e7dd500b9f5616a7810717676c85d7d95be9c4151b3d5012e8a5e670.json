@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_actions SET payload = $2, expires_at = $3\n         WHERE id = $1 AND state = 'pending'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Jsonb",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7b550ca5e7dd500b9f5616a7810717676c85d7d95be9c4151b3d5012e8a5e670"
+}

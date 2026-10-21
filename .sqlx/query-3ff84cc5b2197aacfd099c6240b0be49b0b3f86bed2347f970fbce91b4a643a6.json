@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT a.id, a.guild_id, a.kind, a.buyer_id, a.target_id,\n                  a.payload AS \"payload: Json<ActionPayload>\",\n                  a.state, a.expires_at, a.note, a.signed, a.revealed_at,\n                  COALESCE((SELECT SUM(p.amount) FROM economy_pledges p\n                            WHERE p.action_id = a.id AND p.refunded_at IS NULL), 0)::bigint\n                      AS \"pledged!\"\n           FROM economy_actions a\n           WHERE a.guild_id = $1 AND a.state = 'funding' AND a.kind = ANY($2)\n           ORDER BY a.id DESC",
+  "query": "SELECT a.id, a.guild_id, a.kind, a.buyer_id, a.target_id,\n                  a.payload AS \"payload: Json<ActionPayload>\",\n                  a.state, a.expires_at, a.note, a.signed, a.revealed_at, a.price,\n                  COALESCE((SELECT SUM(p.amount) FROM economy_pledges p\n                            WHERE p.action_id = a.id AND p.refunded_at IS NULL), 0)::bigint\n                      AS \"pledged!\"\n           FROM economy_actions a\n           WHERE a.guild_id = $1 AND a.state = 'funding' AND a.kind = ANY($2)\n           ORDER BY a.id DESC",
   "describe": {
     "columns": [
       {
@@ -60,6 +60,11 @@
       },
       {
         "ordinal": 11,
+        "name": "price",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 12,
         "name": "pledged!",
         "type_info": "Int8"
       }
@@ -82,8 +87,9 @@
       true,
       false,
       true,
+      false,
       null
     ]
   },
-  "hash": "66ecf888ae2cc007112af798523e783dadc6404815629db7655a2f98d3158cc9"
+  "hash": "3ff84cc5b2197aacfd099c6240b0be49b0b3f86bed2347f970fbce91b4a643a6"
 }

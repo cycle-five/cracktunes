@@ -451,15 +451,16 @@ fn parts(e: &ModLogEvent) -> Parts {
             contributors,
             until,
         } => {
-            let mut d = format!(
-                "{} {MODLOG_CROWDFUNDED} {} {MODLOG_SHOP_ON} {}",
-                users(contributors),
-                action.label(),
-                user(*target)
-            );
+            // The action and the target first, so a long list of
+            // contributors can only ever clip its own tail.
+            let mut d = format!("{} {MODLOG_SHOP_ON} {}", action.label(), user(*target));
             if let Some(t) = until {
                 d.push_str(&format!(" {MODLOG_UNTIL} <t:{}:f>", t.timestamp()));
             }
+            d.push_str(&format!(
+                " ({MODLOG_CROWDFUNDED_BY} {})",
+                users(contributors)
+            ));
             plain(MODLOG_TITLE_CROWDFUND, d)
         },
     }
@@ -746,7 +747,7 @@ mod tests {
         assert_eq!(j["title"], "🎉 Crowdfund executed");
         assert_eq!(
             j["description"],
-            "<@22>, <@33>, <@44> crowdfunded Rename on <@11> until <t:1800000000:f>"
+            "Rename on <@11> until <t:1800000000:f> (crowdfunded by <@22>, <@33>, <@44>)"
         );
         assert_eq!(render(&e, &cx()).mentions, Mentions::None);
         assert_eq!(e.to_string(), "ModLog(crowdfund_executed)");

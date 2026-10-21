@@ -5,7 +5,7 @@ use super::shop::{involved_channels, nick_error_text, note_error_text};
 use crate::db::economy as db;
 use crate::db::economy::ActionRow;
 use crate::economy::cards::{
-    card_channel, card_destination, fund_card_text, fund_failed_card_text,
+    card_channel, card_destination, fund_card_text, fund_failed_card_text, fund_started_card_text,
 };
 use crate::economy::crowdfund::{
     execute, not_landed_reason, pledge as pledge_to, start as start_fund, FillFacts, FundRequest,
@@ -117,10 +117,16 @@ pub fn fund_label(kind: ActionKind, target_name: &str, pledged: i64, price: i64)
     )
 }
 
+/// Whether a picker label matches what the member has typed: case-insensitive,
+/// anywhere in the label. Nothing typed matches everything.
+pub fn label_matches(label: &str, typed: &str) -> bool {
+    label.to_lowercase().contains(&typed.trim().to_lowercase())
+}
+
 /// `/crowdfund list`: each open fund with its target, what is pledged, and
 /// when it ends, newest first, at most [`LIST_MAX_FUNDS`], then a line saying
 /// how many more; and if even those are too long for Discord, fewer.
-pub fn fund_list_text(funds: &[(ActionRow, i64)], cfg: &EconomyConfig) -> String {
+pub fn fund_list_text(funds: &[(ActionRow, i64, i64)], cfg: &EconomyConfig) -> String {
     let head = format!("**{ECONOMY_FUND_LIST_TITLE}**");
     if funds.is_empty() {
         return format!("{head}\n{ECONOMY_FUND_LIST_NONE}");
@@ -128,12 +134,12 @@ pub fn fund_list_text(funds: &[(ActionRow, i64)], cfg: &EconomyConfig) -> String
     let lines: Vec<String> = funds
         .iter()
         .take(LIST_MAX_FUNDS)
-        .map(|(row, pledged)| {
+        .map(|(row, pledged, price)| {
             let mut line = format!(
                 "{} {ECONOMY_FUND_LIST_ON} {}: {pledged}/{} {} {}",
                 row.kind.label(),
                 row.target.map_or_else(String::new, |t| format!("<@{t}>")),
-                cfg.prices.get(row.kind).price,
+                price,
                 cfg.currency_emoji,
                 cfg.currency_name
             );
@@ -180,6 +186,15 @@ impl Fate {
     }
 }
 
+/// Refund a filled fund that cannot be run, logging a refund that fails
+/// (reconcile finds the row `pending` and refunds it).
+#[cfg(not(tarpaulin_include))]
+async fn refund_failed(pool: &sqlx::PgPool, fund_id: i64) {
+    if let Err(e) = db::refund_fund(pool, fund_id, "failed").await {
+        tracing::error!("economy: refunding fund {fund_id} failed: {e}");
+    }
+}
+
 /// Run a fund that just filled (the row is `pending`): read its target, make
 /// the checks that need the live server, [`execute`] it, then post the card
 /// and the mod log entry. A target who left, or who can't be read, refunds
@@ -197,12 +212,14 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
     let row = match db::action_by_id(pool, guild, fund_id).await {
         Ok(Some(r)) => r,
         other => {
-            // Reconcile refunds a filled fund left `pending`.
+            // Every failure ends with a refund, so the words are true.
             tracing::error!("economy: reading the filled fund {fund_id} failed: {other:?}");
+            refund_failed(pool, fund_id).await;
             return Fate::Failed(not_landed_reason(&NotLanded::Db, &cfg.currency_name));
         },
     };
     let Some(target) = row.target else {
+        refund_failed(pool, fund_id).await;
         return Fate::Failed(not_landed_reason(&NotLanded::Db, &cfg.currency_name));
     };
     let kind = row.kind;
@@ -436,6 +453,7 @@ pub async fn start(
     } else {
         Ok(())
     };
+    let row_nick = nick.clone();
     let opened = match start_fund(
         &data,
         facts,
@@ -444,7 +462,7 @@ pub async fn start(
             starter: starter_id,
             target,
             kind,
-            nick,
+            nick: nick.clone(),
             note,
             signed,
             first_pledge: pledge,
@@ -484,6 +502,18 @@ pub async fn start(
         ));
     }
     if !filled {
+        // Tell the room, so others can chip in.
+        let card = fund_started_card_text(
+            kind,
+            target,
+            row_nick.as_deref(),
+            opened.pledged,
+            price,
+            &cfg.currency_name,
+            signed.then_some(starter_id),
+        );
+        let here = ChannelId::new(ctx.channel_id().get());
+        post(ctx, kind, None, &cfg, here, card).await;
         reply.push(' ');
         reply.push_str(ECONOMY_FUND_OPEN_HINT);
     }
@@ -503,7 +533,7 @@ async fn fresh_balance(data: &Data, guild: GuildId, user: UserId, fallback: i64)
 #[cfg(not(tarpaulin_include))]
 async fn fund_autocomplete<'a>(
     ctx: poise::ApplicationContext<'_, Data, Error>,
-    _partial: &'a str,
+    partial: &'a str,
 ) -> CreateAutocompleteResponse<'a> {
     let Some(guild) = ctx.interaction.guild_id else {
         return CreateAutocompleteResponse::new();
@@ -515,12 +545,10 @@ async fn fund_autocomplete<'a>(
     if !data.economy.is_enabled(guild) {
         return CreateAutocompleteResponse::new();
     }
-    let cfg = data.economy.settings(guild).config;
     let funds = db::open_funds(pool, guild).await.unwrap_or_default();
     let choices: Vec<AutocompleteChoice<'a>> = funds
         .into_iter()
-        .take(25)
-        .filter_map(|(row, pledged)| {
+        .filter_map(|(row, pledged, price)| {
             let target = row.target?;
             let name = ctx
                 .serenity_context()
@@ -528,17 +556,14 @@ async fn fund_autocomplete<'a>(
                 .guild(guild)
                 .and_then(|g| g.members.get(&target).map(|m| m.display_name().to_string()))
                 .unwrap_or_else(|| target.to_string());
-            let label = fund_label(
-                row.kind,
-                &name,
-                pledged,
-                i64::from(cfg.prices.get(row.kind).price),
-            );
+            let label = fit(&fund_label(row.kind, &name, pledged, price), 100);
+            label_matches(&label, partial).then_some(())?;
             Some(AutocompleteChoice::new(
-                Cow::Owned(fit(&label, 100)),
+                Cow::Owned(label),
                 u64::try_from(row.id).ok()?,
             ))
         })
+        .take(25)
         .collect();
     CreateAutocompleteResponse::new().set_choices(Cow::Owned(choices))
 }
@@ -689,22 +714,32 @@ mod tests {
         );
         let list = fund_list_text(
             &[
-                (row(2, ActionKind::Mute, 20), 30),
-                (row(1, ActionKind::Rename, 21), 5),
+                (row(2, ActionKind::Mute, 20), 30, 50),
+                (row(1, ActionKind::Rename, 21), 5, 120),
             ],
             &cfg,
         );
         assert_eq!(
             list,
-            "**Open crowdfunds**\nMute on <@20>: 30/90 🪙 credits · ends <t:1800000000:R>\nRename on <@21>: 5/120 🪙 credits · ends <t:1800000000:R>"
+            "**Open crowdfunds**\nMute on <@20>: 30/50 🪙 credits · ends <t:1800000000:R>\nRename on <@21>: 5/120 🪙 credits · ends <t:1800000000:R>"
         );
+    }
+
+    #[test]
+    fn the_picker_filters_on_what_is_typed() {
+        let label = "Mute on Bob: 30/90";
+        assert!(label_matches(label, ""));
+        assert!(label_matches(label, "bob"));
+        assert!(label_matches(label, "  MUTE "));
+        assert!(!label_matches(label, "alice"));
+        assert!(!label_matches(label, "rename"));
     }
 
     #[test]
     fn the_fund_list_caps_and_fits() {
         let cfg = EconomyConfig::default();
         let many: Vec<_> = (0..20)
-            .map(|i| (row(i, ActionKind::Mute, 100 + i as u64), 1))
+            .map(|i| (row(i, ActionKind::Mute, 100 + i as u64), 1, 90))
             .collect();
         let list = fund_list_text(&many, &cfg);
         assert_eq!(list.lines().count(), 1 + LIST_MAX_FUNDS + 1);
