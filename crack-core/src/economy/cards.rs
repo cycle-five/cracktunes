@@ -8,7 +8,10 @@ use crate::messaging::messages::{
     ECONOMY_CARD_DEAFENED, ECONOMY_CARD_DRAGGED, ECONOMY_CARD_DRAGGED_TAIL, ECONOMY_CARD_JAILED,
     ECONOMY_CARD_LOCKED, ECONOMY_CARD_MIRROR, ECONOMY_CARD_MIRROR_BOUNCED, ECONOMY_CARD_MUTED,
     ECONOMY_CARD_POSSESSIVE, ECONOMY_CARD_RENAMED, ECONOMY_CARD_SOMEONE, ECONOMY_CARD_TO,
-    ECONOMY_CARD_UNTIL,
+    ECONOMY_CARD_UNTIL, ECONOMY_FUND_CARD_AND, ECONOMY_FUND_CARD_CROWD, ECONOMY_FUND_CARD_OTHER,
+    ECONOMY_FUND_CARD_OTHERS, ECONOMY_FUND_CARD_PREFIX, ECONOMY_FUND_CARD_TO,
+    ECONOMY_FUND_CARD_UNTIL, ECONOMY_FUND_FAILED_CARD_MIDDLE, ECONOMY_FUND_FAILED_CARD_PREFIX,
+    ECONOMY_FUND_FAILED_CARD_SUFFIX,
 };
 use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, UserId};
@@ -86,6 +89,77 @@ fn landed(
         // Not pranks: `card_text` returns before here.
         _ => String::new(),
     }
+}
+
+/// The credit line of a crowdfund card: the signed contributors, "a crowd"
+/// when nobody signed. Two are named; more than two read "@a, @b and N
+/// others".
+fn fund_signoff(signers: &[UserId]) -> String {
+    match signers {
+        [] => ECONOMY_FUND_CARD_CROWD.to_string(),
+        [a] => mention(*a),
+        [a, b] => format!("{} {ECONOMY_FUND_CARD_AND} {}", mention(*a), mention(*b)),
+        [a, b, rest @ ..] => {
+            let n = rest.len();
+            let word = if n == 1 {
+                ECONOMY_FUND_CARD_OTHER
+            } else {
+                ECONOMY_FUND_CARD_OTHERS
+            };
+            format!(
+                "{}, {} {ECONOMY_FUND_CARD_AND} {n} {word}",
+                mention(*a),
+                mention(*b)
+            )
+        },
+    }
+}
+
+/// The card for a crowdfund that landed: what was done to `target`, the note,
+/// then the signed contributors (never an unsigned one).
+pub fn fund_card_text(
+    kind: ActionKind,
+    target: UserId,
+    nick: Option<&str>,
+    until: Option<DateTime<Utc>>,
+    note: Option<&str>,
+    signers: &[UserId],
+) -> String {
+    let t = mention(target);
+    let did = match kind {
+        ActionKind::Rename => format!(
+            "{ECONOMY_CARD_RENAMED} {t} {ECONOMY_FUND_CARD_TO} **{}**",
+            escape(nick.unwrap_or_default())
+        ),
+        ActionKind::Lock => format!("{ECONOMY_CARD_LOCKED} {t}"),
+        ActionKind::Clown => format!("{ECONOMY_CARD_CLOWNED} {t}"),
+        ActionKind::Mute => format!("{ECONOMY_CARD_MUTED} {t}"),
+        ActionKind::Deafen => format!("{ECONOMY_CARD_DEAFENED} {t}"),
+        ActionKind::Jail => format!("{ECONOMY_CARD_JAILED} {t}"),
+        // Not fundable: `/crowdfund` never opens one.
+        _ => return String::new(),
+    };
+    let mut text = format!("{ECONOMY_FUND_CARD_PREFIX} {did}");
+    if let Some(until) = until {
+        text.push_str(&format!(
+            " {ECONOMY_FUND_CARD_UNTIL} <t:{}:f>",
+            until.timestamp()
+        ));
+    }
+    if let Some(note) = note.filter(|n| !n.trim().is_empty()) {
+        text.push_str("\n> ");
+        text.push_str(&escape(note));
+    }
+    text.push_str(&format!("\n\u{2014} {}", fund_signoff(signers)));
+    text
+}
+
+/// The card for a filled crowdfund that could not land.
+pub fn fund_failed_card_text(target: UserId, reason: &str) -> String {
+    format!(
+        "{ECONOMY_FUND_FAILED_CARD_PREFIX} {} {ECONOMY_FUND_FAILED_CARD_MIDDLE} ({reason}). {ECONOMY_FUND_FAILED_CARD_SUFFIX}",
+        mention(target)
+    )
 }
 
 /// The channel a card goes to. Drag, jail, mute and deafen happen in voice,
@@ -311,6 +385,69 @@ mod tests {
         assert_eq!(
             card_channel(ActionKind::Mute, Landed, None, my_vc, jail, here, announce).get(),
             5
+        );
+    }
+
+    #[test]
+    fn fund_card_names_only_signers() {
+        let d = until();
+        let ts = d.timestamp();
+        let a = UserId::new(10);
+        let b = UserId::new(11);
+        let c = UserId::new(12);
+        let e = UserId::new(13);
+        // Nobody signed: a crowd, and no one is named.
+        let crowd = fund_card_text(
+            ActionKind::Rename,
+            T,
+            Some("Bean"),
+            Some(d),
+            Some("gg"),
+            &[],
+        );
+        assert_eq!(
+            crowd,
+            format!(
+                "🎉 A crowdfund renamed <@20> to **Bean** until <t:{ts}:f>\n> gg\n\u{2014} a crowd"
+            )
+        );
+        let one = fund_card_text(ActionKind::Mute, T, None, Some(d), None, &[a]);
+        assert_eq!(
+            one,
+            format!("🎉 A crowdfund muted <@20> until <t:{ts}:f>\n\u{2014} <@10>")
+        );
+        let two = fund_card_text(ActionKind::Jail, T, None, Some(d), None, &[a, b]);
+        assert!(two.ends_with("\u{2014} <@10> and <@11>"), "{two}");
+        let three = fund_card_text(ActionKind::Lock, T, None, Some(d), None, &[a, b, c]);
+        assert!(
+            three.ends_with("\u{2014} <@10>, <@11> and 1 other"),
+            "{three}"
+        );
+        let four = fund_card_text(ActionKind::Clown, T, None, Some(d), None, &[a, b, c, e]);
+        assert!(
+            four.ends_with("\u{2014} <@10>, <@11> and 2 others"),
+            "{four}"
+        );
+        assert!(!four.contains("<@12>") && !four.contains("<@13>"));
+        // Every fundable kind has words; drag has none.
+        for k in ActionKind::FUNDABLE {
+            assert!(
+                fund_card_text(*k, T, Some("x"), Some(d), None, &[]).starts_with("🎉 A crowdfund "),
+                "{k:?}"
+            );
+        }
+        assert_eq!(
+            fund_card_text(ActionKind::Drag, T, None, None, None, &[]),
+            ""
+        );
+        // A note's markdown is escaped.
+        assert!(
+            fund_card_text(ActionKind::Mute, T, None, None, Some("**x**"), &[])
+                .contains("\\*\\*x\\*\\*")
+        );
+        assert_eq!(
+            fund_failed_card_text(T, "they aren't in voice"),
+            "The crowdfund against <@20> couldn't land (they aren't in voice). Everyone was refunded."
         );
     }
 }

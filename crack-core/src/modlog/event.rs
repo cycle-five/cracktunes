@@ -120,6 +120,14 @@ pub enum ModLogEvent {
         by: UserId,
         target: UserId,
     },
+    /// A filled crowdfund landed. Every contributor is named, signed or not:
+    /// the starter first, then each pledger once in pledge order.
+    CrowdfundExecuted {
+        action: ActionKind,
+        target: UserId,
+        contributors: Vec<UserId>,
+        until: Option<DateTime<Utc>>,
+    },
 }
 
 /// For logs: the kind of event.
@@ -139,6 +147,7 @@ impl std::fmt::Display for ModLogEvent {
             Self::CreditsAdjusted { .. } => "credits_adjusted",
             Self::ShopAction { .. } => "shop_action",
             Self::ShopCancelled { .. } => "shop_cancelled",
+            Self::CrowdfundExecuted { .. } => "crowdfund_executed",
         };
         write!(f, "ModLog({kind})")
     }
@@ -436,6 +445,23 @@ fn parts(e: &ModLogEvent) -> Parts {
             MODLOG_TITLE_SHOP_CANCELLED,
             format!("{} {MODLOG_SHOP_CLEANSED} {}", user(*by), user(*target)),
         ),
+        ModLogEvent::CrowdfundExecuted {
+            action,
+            target,
+            contributors,
+            until,
+        } => {
+            let mut d = format!(
+                "{} {MODLOG_CROWDFUNDED} {} {MODLOG_SHOP_ON} {}",
+                users(contributors),
+                action.label(),
+                user(*target)
+            );
+            if let Some(t) = until {
+                d.push_str(&format!(" {MODLOG_UNTIL} <t:{}:f>", t.timestamp()));
+            }
+            plain(MODLOG_TITLE_CROWDFUND, d)
+        },
     }
 }
 
@@ -576,6 +602,12 @@ mod tests {
                 mirrored_from: None,
             },
             ModLogEvent::ShopCancelled { by: A, target: T },
+            ModLogEvent::CrowdfundExecuted {
+                action: ActionKind::Mute,
+                target: T,
+                contributors: vec![A, T],
+                until: None,
+            },
         ]
     }
 
@@ -698,6 +730,26 @@ mod tests {
             j["description"],
             "<@22> used Rename on <@11> (bounced by <@11>'s mirror) (signed)"
         );
+    }
+
+    #[test]
+    fn crowdfund_executed_renders_every_contributor() {
+        let until = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
+        let c = UserId::new(33);
+        let e = ModLogEvent::CrowdfundExecuted {
+            action: ActionKind::Rename,
+            target: T,
+            contributors: vec![A, c, UserId::new(44)],
+            until: Some(until),
+        };
+        let j = json(&render(&e, &cx()));
+        assert_eq!(j["title"], "🎉 Crowdfund executed");
+        assert_eq!(
+            j["description"],
+            "<@22>, <@33>, <@44> crowdfunded Rename on <@11> until <t:1800000000:f>"
+        );
+        assert_eq!(render(&e, &cx()).mentions, Mentions::None);
+        assert_eq!(e.to_string(), "ModLog(crowdfund_executed)");
     }
 
     #[test]
@@ -926,10 +978,11 @@ mod tests {
 
     #[test]
     fn economy_events_log_their_kind() {
-        let shown: Vec<String> = all().iter().rev().take(5).map(|e| e.to_string()).collect();
+        let shown: Vec<String> = all().iter().rev().take(6).map(|e| e.to_string()).collect();
         assert_eq!(
             shown,
             [
+                "ModLog(crowdfund_executed)",
                 "ModLog(shop_cancelled)",
                 "ModLog(shop_action)",
                 "ModLog(credits_adjusted)",

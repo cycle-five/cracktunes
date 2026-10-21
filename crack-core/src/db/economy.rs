@@ -3019,7 +3019,9 @@ mod tests {
             T,
             price,
             payload,
-            Some(now() + Duration::hours(24)),
+            // The database judges "live" by its own clock, so this follows
+            // the real one: a fixed date goes stale and the fund reads closed.
+            Some(Utc::now() + Duration::hours(24)),
         )
     }
 

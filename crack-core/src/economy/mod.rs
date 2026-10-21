@@ -4,6 +4,7 @@
 pub mod bounty;
 pub mod buttons;
 pub mod cards;
+pub mod crowdfund;
 pub mod discord;
 pub mod earn;
 pub mod effects;

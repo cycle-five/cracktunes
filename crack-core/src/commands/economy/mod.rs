@@ -4,6 +4,7 @@ pub mod admin;
 pub mod bounty;
 pub mod coinflip;
 pub mod credits;
+pub mod crowdfund;
 pub mod shop;
 
 /// Every economy command.
@@ -14,6 +15,7 @@ pub fn commands() -> Vec<crate::Command> {
         shop::shop(),
         admin::economy(),
         bounty::bounty(),
+        crowdfund::crowdfund(),
     ]
 }
 
@@ -23,7 +25,17 @@ mod tests {
     fn economy_commands_are_guild_only_slash_commands() {
         let cmds = super::commands();
         let names: Vec<_> = cmds.iter().map(|c| c.name.as_ref()).collect();
-        assert_eq!(names, ["credits", "coinflip", "shop", "economy", "bounty"]);
+        assert_eq!(
+            names,
+            [
+                "credits",
+                "coinflip",
+                "shop",
+                "economy",
+                "bounty",
+                "crowdfund"
+            ]
+        );
         assert!(cmds
             .iter()
             .all(|c| c.guild_only && c.slash_action.is_some()));
@@ -93,5 +105,37 @@ mod tests {
             .unwrap();
         let params: Vec<_> = place.parameters.iter().map(|p| p.name.as_ref()).collect();
         assert_eq!(params, ["member", "amount", "note", "signed"]);
+        // /crowdfund starts, pledges and lists; start's choices are exactly
+        // the fundable pranks, and pledge offers its picker.
+        let fund = &cmds[5];
+        assert_eq!(subs(fund), ["list", "pledge", "start"]);
+        assert!(fund
+            .subcommands
+            .iter()
+            .all(|c| c.guild_only && c.slash_action.is_some()));
+        let start = fund.subcommands.iter().find(|c| c.name == "start").unwrap();
+        let params: Vec<_> = start.parameters.iter().map(|p| p.name.as_ref()).collect();
+        assert_eq!(
+            params,
+            ["action", "member", "name", "note", "signed", "pledge"]
+        );
+        let choices: Vec<_> = start.parameters[0]
+            .choices
+            .iter()
+            .map(|c| c.name.as_ref())
+            .collect();
+        let want: Vec<_> = crate::economy::settings::ActionKind::FUNDABLE
+            .iter()
+            .map(|k| k.label())
+            .collect();
+        assert_eq!(choices, want);
+        let pledge = fund
+            .subcommands
+            .iter()
+            .find(|c| c.name == "pledge")
+            .unwrap();
+        let params: Vec<_> = pledge.parameters.iter().map(|p| p.name.as_ref()).collect();
+        assert_eq!(params, ["fund", "amount", "signed"]);
+        assert!(pledge.parameters[0].autocomplete_callback.is_some());
     }
 }
