@@ -13,19 +13,22 @@ use super::target::{check_target, voice_of, TargetFacts};
 use super::wallet::{ActionPayload, ActionState, LedgerKind, MoveError};
 use crate::commands::music_utils::{connected_call, join_permitted, set_global_handlers_with};
 use crate::db::economy::{self as db, ActionRow};
+use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::{courier, render::Rendered, status::DiscordTransport};
 use crate::music::audit::{Actor, BotReason};
 use crate::Data;
 use ::serenity::async_trait;
 use chrono::{DateTime, Duration as Days, Utc};
-use serenity::all::{ChannelId, Context as SerenityContext, GenericChannelId, GuildId, UserId};
+use serenity::all::{
+    ChannelId, Context as SerenityContext, GenericChannelId, GuildId, UserId, VoiceState,
+};
 use songbird::tracks::TrackHandle;
 use songbird::{Call, Event, EventContext, EventHandler, TrackEvent};
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
-use tokio::time::{timeout, timeout_at, Instant};
+use tokio::time::{timeout_at, Instant};
 use uuid::Uuid;
 
 /// How long a theme waits for its target's next join.
@@ -192,10 +195,36 @@ pub async fn buy_theme(
 /// How long a started theme has to become audible.
 pub const THEME_READY_WITHIN: Duration = Duration::from_secs(20);
 
+/// An end this soon after becoming audible means nothing was heard (a seek
+/// that landed at the end of the media opens, then ends at once).
+pub const THEME_TOO_SOON: Duration = Duration::from_millis(500);
+
+/// After a join-play-leave, how long the bot stays before it leaves: a
+/// `/play` resolving into the call meanwhile must not have it dropped.
+const THEME_LEAVE_GRACE: Duration = Duration::from_secs(30);
+
 /// How long a theme track stays marked after its player is done. Its end
 /// reaches the global track-end handler within a tick of the stop; this only
 /// bounds the set when no end ever comes (the bot left first).
 const THEME_TRACK_FORGET_AFTER: Duration = Duration::from_secs(60);
+
+/// The channel a voice change plays a waiting theme in, if any: a join, or
+/// the move out of the voice-rooms hub (`hub`, when rooms are on) into the
+/// room made for them. A join into the hub plays nothing; the move follows.
+/// Any other move, and a leave, play nothing.
+pub fn theme_trigger(
+    old: Option<ChannelId>,
+    new: Option<ChannelId>,
+    hub: Option<ChannelId>,
+) -> Option<ChannelId> {
+    let new = new?;
+    match old {
+        // A join, unless into the hub.
+        None => (Some(new) != hub).then_some(new),
+        // Out of the hub into another channel.
+        Some(old) => (Some(old) == hub && old != new).then_some(new),
+    }
+}
 
 /// Where a theme plays, decided when its target joins voice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,10 +266,27 @@ pub fn protected_reason(opted_out: bool, protection: Option<Protection>) -> Opti
     }
 }
 
-/// After a join-play-leave: leave only if nobody started music meanwhile
-/// (the queue is empty) and the bot is still where it joined.
-pub fn leave_after_theme(queue_empty: bool, here: Option<ChannelId>, joined: ChannelId) -> bool {
-    queue_empty && here == Some(joined)
+/// Whether a claimed theme may start now: its row still `active`, and its
+/// target still in the channel it is about to play in. Anything else is a
+/// wait: nothing plays and nothing settles.
+pub fn still_on(
+    state: Option<ActionState>,
+    target_in: Option<ChannelId>,
+    channel: ChannelId,
+) -> bool {
+    state == Some(ActionState::Active) && target_in == Some(channel)
+}
+
+/// After a join-play-leave and its grace: leave only if nobody started
+/// music meanwhile (the queue is empty), the bot is still where it joined,
+/// and no other theme is playing.
+pub fn leave_after_theme(
+    queue_empty: bool,
+    here: Option<ChannelId>,
+    joined: ChannelId,
+    theme_playing: bool,
+) -> bool {
+    queue_empty && here == Some(joined) && !theme_playing
 }
 
 /// What a theme's track tells the task playing it.
@@ -289,17 +335,80 @@ where
     }
 }
 
-/// Let an audible clip play for `clip`, or until it ends by itself. True
-/// when it ran its time and must be stopped.
-pub async fn clip_runs_out(
+/// What settling a played theme found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Settled {
+    /// It was `active` and is now `done`: the credits are spent.
+    Spent,
+    /// It was no longer `active`: refunded meanwhile (a cleanse, a cancel,
+    /// protection, its end).
+    Gone,
+    /// The write failed; the row is as it was.
+    Unknown,
+}
+
+/// How an audible clip ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClipOutcome {
+    /// Over within [`THEME_TOO_SOON`]: nothing was heard. Not settled.
+    EndedAtOnce,
+    /// Settling found it refunded, and it was stopped then.
+    Refunded,
+    /// It played. `ran_out`: it was stopped at [`THEME_CLIP`].
+    Played { ran_out: bool, settled: Settled },
+}
+
+/// Ends when the clip does: an end, an error, or the track gone. A second
+/// `Playable` (the one after a seek) is not an end.
+async fn clip_over(events: &mut mpsc::UnboundedReceiver<ClipEvent>) {
+    while let Some(ClipEvent::Playable) = events.recv().await {}
+}
+
+/// Run a clip that became audible at `audible_at`. An end within
+/// [`THEME_TOO_SOON`] is [`ClipOutcome::EndedAtOnce`], and `settle` is never
+/// started. Otherwise `settle` runs beside the clip, which is `stop`ped
+/// [`THEME_CLIP`] after `audible_at` whatever the settle is doing, or at once
+/// when the settle finds the row refunded. A settle still running when the
+/// clip ends is awaited after the stop.
+pub async fn run_clip<S>(
     events: &mut mpsc::UnboundedReceiver<ClipEvent>,
-    clip: Duration,
-) -> bool {
-    let ended = async {
-        // A second `Playable` (the one after a seek) is not an end.
-        while let Some(ClipEvent::Playable) = events.recv().await {}
+    audible_at: Instant,
+    settle: S,
+    mut stop: impl FnMut(),
+) -> ClipOutcome
+where
+    S: Future<Output = Settled>,
+{
+    if timeout_at(audible_at + THEME_TOO_SOON, clip_over(events))
+        .await
+        .is_ok()
+    {
+        return ClipOutcome::EndedAtOnce;
+    }
+    let clip = timeout_at(audible_at + THEME_CLIP, clip_over(events));
+    tokio::pin!(clip);
+    tokio::pin!(settle);
+    let mut settled = None;
+    let ran_out = loop {
+        tokio::select! {
+            done = &mut settle, if settled.is_none() => {
+                if done == Settled::Gone {
+                    stop();
+                    return ClipOutcome::Refunded;
+                }
+                settled = Some(done);
+            },
+            over = &mut clip => break over.is_err(),
+        }
     };
-    timeout(clip, ended).await.is_err()
+    if ran_out {
+        stop();
+    }
+    let settled = match settled {
+        Some(done) => done,
+        None => settle.await,
+    };
+    ClipOutcome::Played { ran_out, settled }
 }
 
 /// Steps 1-2 of a join: the target's oldest waiting theme, if it may play.
@@ -352,8 +461,31 @@ pub async fn claim_theme(
     None
 }
 
-/// A member joined voice: play the theme waiting for them, off the event
-/// path. Nothing happens for the bot itself, or in a server with no
+/// A voice change: play the theme waiting for this member if it is a join
+/// (or the move out of the rooms hub, [`theme_trigger`]). Never waits: the
+/// work is spawned.
+pub fn on_voice_state(
+    data: &Data,
+    ctx: &SerenityContext,
+    old: Option<&VoiceState>,
+    new: &VoiceState,
+) {
+    let Some(guild) = new.guild_id else {
+        return;
+    };
+    // Off (the default) costs nothing more than this.
+    if data.database_pool.is_none() || !data.economy.is_enabled(guild) {
+        return;
+    }
+    let rooms = data.rooms.settings(guild);
+    let hub = rooms.hub.filter(|_| rooms.enabled);
+    if let Some(channel) = theme_trigger(old.and_then(|o| o.channel_id), new.channel_id, hub) {
+        on_voice_join(data.clone(), ctx.clone(), guild, new.user_id, channel);
+    }
+}
+
+/// A member arrived in `channel`: play the theme waiting for them, off the
+/// event path. Nothing happens for the bot itself, or in a server with no
 /// database or the economy off; the row waits, and is refunded at its end
 /// if it never plays.
 pub fn on_voice_join(
@@ -374,7 +506,15 @@ pub fn on_voice_join(
     });
 }
 
-/// Claim, plan, play, settle, and leave if the bot came only for this.
+/// The channel the bot is connected to through `call`, if any.
+async fn channel_of(call: Option<&Arc<Mutex<Call>>>) -> Option<ChannelId> {
+    let call = call?;
+    let channel = call.lock().await.current_channel();
+    channel.map(|c| ChannelId::new(c.get()))
+}
+
+/// Claim, plan, play and settle; then, after a join-play-leave, leave if
+/// the bot came only for this.
 async fn play_on_join(
     data: &Data,
     ctx: &SerenityContext,
@@ -391,19 +531,12 @@ async fn play_on_join(
     }
     let turn = data.economy.try_theme_guard(guild);
     let call = connected_call(&data.songbird, guild, None).await;
-    let bot_in = match &call {
-        Some(call) => call
-            .lock()
-            .await
-            .current_channel()
-            .map(|c| ChannelId::new(c.get())),
-        None => None,
-    };
+    let bot_in = channel_of(call.as_ref()).await;
     let plan = theme_plan(bot_in, channel, data.gp_is_active(guild), turn.is_none());
-    let call = match (plan, call) {
-        (ThemePlan::MixHere, Some(call)) => call,
+    let (call, plan) = match (plan, call) {
+        (ThemePlan::MixHere, Some(call)) => (call, ThemePlan::MixHere),
         (ThemePlan::JoinPlayLeave, _) => match join_for_theme(data, ctx, guild, channel).await {
-            Some(call) => call,
+            Some(joined) => joined,
             None => return,
         },
         _ => {
@@ -412,24 +545,29 @@ async fn play_on_join(
         },
     };
     let track = play(data, ctx, guild, &call, &row, user, channel).await;
+    // The clip is over: the next theme in this server may play.
+    drop(turn);
     if plan == ThemePlan::JoinPlayLeave {
+        tokio::time::sleep(THEME_LEAVE_GRACE).await;
         leave_if_idle(data, guild, &call, channel).await;
     }
-    drop(turn);
     if let Some(track) = track {
         tokio::time::sleep(THEME_TRACK_FORGET_AFTER).await;
         data.economy.take_theme_track(track);
     }
 }
 
-/// Join `channel` for a theme, as the queue resume does. A join refused or
-/// failed is a wait: the theme stays for a later join.
+/// Join `channel` for a theme, as the queue resume does. Just before the
+/// join the plan is made again: a `/play` may have connected the bot since.
+/// Connected in `channel` now, the theme mixes there (and the bot stays);
+/// anywhere else, or a game started, or a join refused or failed, and the
+/// theme waits for a later join.
 async fn join_for_theme(
     data: &Data,
     ctx: &SerenityContext,
     guild: GuildId,
     channel: ChannelId,
-) -> Option<Arc<Mutex<Call>>> {
+) -> Option<(Arc<Mutex<Call>>, ThemePlan)> {
     let permit = match crate::music::perms::ensure_can_join(&ctx.cache, guild, channel) {
         Ok(permit) => permit,
         Err(err) => {
@@ -437,6 +575,19 @@ async fn join_for_theme(
             return None;
         },
     };
+    let now = connected_call(&data.songbird, guild, None).await;
+    let bot_in = channel_of(now.as_ref()).await;
+    match (
+        theme_plan(bot_in, channel, data.gp_is_active(guild), false),
+        now,
+    ) {
+        (ThemePlan::JoinPlayLeave, _) => {},
+        (ThemePlan::MixHere, Some(call)) => return Some((call, ThemePlan::MixHere)),
+        (plan, _) => {
+            tracing::debug!("economy: no theme join in {guild}: the bot moved ({plan:?})");
+            return None;
+        },
+    }
     let call = match join_permitted(data, &data.songbird, permit).await {
         Ok(call) => call,
         Err(err) => {
@@ -452,7 +603,7 @@ async fn join_for_theme(
         GenericChannelId::new(channel.get()),
     )
     .await;
-    Some(call)
+    Some((call, ThemePlan::JoinPlayLeave))
 }
 
 /// Play `row`'s clip over `call`'s queue and settle it: spent and carded
@@ -472,17 +623,18 @@ async fn play(
         tracing::warn!("economy: theme {} in {guild} could not play: {why}", row.id);
     };
     // Claimed a moment ago, but a cleanse, a cancel or its end may have
-    // refunded it since.
-    match db::action_state(pool, row.id).await {
-        Ok(Some(ActionState::Active)) => {},
-        Ok(state) => {
-            tracing::debug!("economy: theme {} is {state:?} now; not playing it", row.id);
-            return None;
-        },
+    // refunded it since, and the target may have left or moved (a join
+    // takes seconds).
+    let state = match db::action_state(pool, row.id).await {
+        Ok(state) => state,
         Err(err) => {
             tracing::warn!("economy: reading theme {} failed: {err}", row.id);
             return None;
         },
+    };
+    if !still_on(state, voice_of(&ctx.cache, guild, target), channel) {
+        tracing::debug!("economy: theme {} waits ({state:?}, target moved?)", row.id);
+        return None;
     }
     let ActionPayload::Theme { url, start_secs } = &row.payload else {
         unplayable("its payload is not a theme's");
@@ -498,6 +650,8 @@ async fn play(
             return None;
         },
     };
+    // The guild's music volume, as the queue's tracks play at.
+    let (volume, _) = data.get_volume(guild).await;
     // Marked before the track exists, so its end can never reach the
     // queue's handler unmarked.
     let id = Uuid::new_v4();
@@ -508,6 +662,7 @@ async fn play(
             &mut call,
             crate::music::queue::new_track(input, None, Some(row.buyer)),
             id,
+            volume,
         )
     };
     // Armed before anything is awaited: the seek below is what opens the
@@ -546,15 +701,41 @@ async fn play(
         refund_unplayable(pool, row.id).await;
         return Some(id);
     }
-    // Audible: the buyer's credits are spent. A row refunded meanwhile gets
-    // no card, but the clip has started and plays on.
-    match db::finish_action(pool, row.id, ActionState::Done).await {
-        Ok(true) => post_card(ctx, guild, row, target, channel).await,
-        Ok(false) => tracing::debug!("economy: theme {} ended as it played; no card", row.id),
-        Err(err) => tracing::warn!("economy: marking theme {} played failed: {err}", row.id),
-    }
-    if clip_runs_out(&mut events, THEME_CLIP).await {
-        stop_theme(&handle, guild);
+    // Audible: the 10 s run from here, whatever the settle and the card do.
+    let audible_at = Instant::now();
+    let settle = async {
+        match db::finish_action(pool, row.id, ActionState::Done).await {
+            Ok(true) => {
+                // Spawned: a slow post never holds anything up.
+                let (ctx, row) = (ctx.clone(), row.clone());
+                super::effects::spawn_one_shot("theme card", async move {
+                    post_card(&ctx, guild, &row, target, channel).await;
+                });
+                Settled::Spent
+            },
+            Ok(false) => Settled::Gone,
+            Err(err) => {
+                tracing::warn!("economy: marking theme {} played failed: {err}", row.id);
+                Settled::Unknown
+            },
+        }
+    };
+    match run_clip(&mut events, audible_at, settle, || {
+        stop_theme(&handle, guild)
+    })
+    .await
+    {
+        ClipOutcome::EndedAtOnce => {
+            unplayable("it ended as it started");
+            refund_unplayable(pool, row.id).await;
+        },
+        ClipOutcome::Refunded => {
+            tracing::debug!(
+                "economy: theme {} was refunded as it played; stopped",
+                row.id
+            );
+        },
+        ClipOutcome::Played { .. } => {},
     }
     Some(id)
 }
@@ -587,8 +768,11 @@ async fn post_card(
     }
 }
 
-/// Leave after a join-play-leave, unless music started meanwhile.
+/// Leave after a join-play-leave's grace, unless music started meanwhile,
+/// the bot moved, or another theme is playing. The theme guard is held
+/// while leaving, so no theme starts into a call being dropped.
 async fn leave_if_idle(data: &Data, guild: GuildId, call: &Arc<Mutex<Call>>, joined: ChannelId) {
+    let turn = data.economy.try_theme_guard(guild);
     let (empty, here) = {
         let call = call.lock().await;
         (
@@ -596,7 +780,7 @@ async fn leave_if_idle(data: &Data, guild: GuildId, call: &Arc<Mutex<Call>>, joi
             call.current_channel().map(|c| ChannelId::new(c.get())),
         )
     };
-    if !leave_after_theme(empty, here, joined) {
+    if !leave_after_theme(empty, here, joined, turn.is_none()) {
         return;
     }
     if let Err(err) = crate::music::disconnect::disconnect(
@@ -1012,10 +1196,17 @@ mod tests {
 
     #[test]
     fn leave_after_theme_only_when_idle_and_where_it_joined() {
-        assert!(leave_after_theme(true, Some(VC), VC));
-        assert!(!leave_after_theme(false, Some(VC), VC), "music started");
-        assert!(!leave_after_theme(true, Some(OTHER_VC), VC), "moved");
-        assert!(!leave_after_theme(true, None, VC), "already gone");
+        assert!(leave_after_theme(true, Some(VC), VC, false));
+        assert!(
+            !leave_after_theme(false, Some(VC), VC, false),
+            "music started"
+        );
+        assert!(!leave_after_theme(true, Some(OTHER_VC), VC, false), "moved");
+        assert!(!leave_after_theme(true, None, VC, false), "already gone");
+        assert!(
+            !leave_after_theme(true, Some(VC), VC, true),
+            "another theme is playing"
+        );
     }
 
     /// Sends `events` into a fresh channel at the given times (from now),
@@ -1117,24 +1308,202 @@ mod tests {
         assert_eq!(t.elapsed(), within);
     }
 
+    /// A settle that takes `after` seconds, recording that it was started.
+    fn settle_after(
+        after: u64,
+        outcome: Settled,
+        started: Arc<std::sync::atomic::AtomicBool>,
+    ) -> impl Future<Output = Settled> {
+        async move {
+            started.store(true, std::sync::atomic::Ordering::SeqCst);
+            tokio::time::sleep(secs(after)).await;
+            outcome
+        }
+    }
+
+    /// Runs `run_clip` from now, and says when `stop` was called (from now).
+    async fn clip_with(
+        events: Vec<(u64, ClipEvent)>,
+        millis_events: Vec<(u64, ClipEvent)>,
+        settle: impl Future<Output = Settled>,
+    ) -> (ClipOutcome, Option<Duration>, Duration) {
+        let t = Instant::now();
+        let mut rx = if millis_events.is_empty() {
+            events_at(events, true)
+        } else {
+            let (tx, rx) = mpsc::unbounded_channel();
+            tokio::spawn(async move {
+                for (at, e) in millis_events {
+                    tokio::time::sleep_until(t + Duration::from_millis(at)).await;
+                    let _ = tx.send(e);
+                }
+                std::future::pending::<()>().await;
+            });
+            rx
+        };
+        let stopped = std::sync::Mutex::new(None);
+        let outcome = run_clip(&mut rx, t, settle, || {
+            *stopped.lock().unwrap() = Some(t.elapsed());
+        })
+        .await;
+        let at = *stopped.lock().unwrap();
+        (outcome, at, t.elapsed())
+    }
+
+    fn flag() -> Arc<std::sync::atomic::AtomicBool> {
+        Arc::new(std::sync::atomic::AtomicBool::new(false))
+    }
+
     #[tokio::test(start_paused = true)]
     async fn a_clip_stops_at_10s_unless_it_ends_first() {
         use ClipEvent::*;
-        let t = Instant::now();
-        let mut rx = events_at(vec![(3, Ended)], true);
-        assert!(!clip_runs_out(&mut rx, THEME_CLIP).await, "ended itself");
-        assert_eq!(t.elapsed(), secs(3));
+        // Ends by itself at 3 s: not stopped.
+        let (out, stopped, took) = clip_with(
+            vec![(3, Ended)],
+            vec![],
+            settle_after(0, Settled::Spent, flag()),
+        )
+        .await;
+        assert_eq!(
+            out,
+            ClipOutcome::Played {
+                ran_out: false,
+                settled: Settled::Spent
+            }
+        );
+        assert_eq!((stopped, took), (None, secs(3)));
+        // A second Playable (after the seek) is not an end: stopped at 10 s.
+        let (out, stopped, _) = clip_with(
+            vec![(1, Playable)],
+            vec![],
+            settle_after(0, Settled::Spent, flag()),
+        )
+        .await;
+        assert_eq!(
+            out,
+            ClipOutcome::Played {
+                ran_out: true,
+                settled: Settled::Spent
+            }
+        );
+        assert_eq!(stopped, Some(THEME_CLIP));
+        // The track gone (every sender dropped) is an end.
+        let mut rx = events_at(vec![(4, Errored)], false);
+        let out = run_clip(&mut rx, Instant::now(), async { Settled::Spent }, || {
+            panic!("nothing to stop")
+        })
+        .await;
+        assert!(matches!(out, ClipOutcome::Played { ran_out: false, .. }));
+    }
 
-        // A second Playable (after the seek) is not an end.
-        let t = Instant::now();
-        let mut rx = events_at(vec![(1, Playable)], true);
-        assert!(clip_runs_out(&mut rx, THEME_CLIP).await, "must be stopped");
-        assert_eq!(t.elapsed(), THEME_CLIP);
+    /// I1: the 10 s run from becoming audible; a slow settle (or a stalled
+    /// card) never holds the stop.
+    #[tokio::test(start_paused = true)]
+    async fn a_slow_settle_never_holds_the_stop() {
+        let (out, stopped, took) =
+            clip_with(vec![], vec![], settle_after(5, Settled::Spent, flag())).await;
+        assert_eq!(stopped, Some(THEME_CLIP), "5 s settle, stop at 10 s");
+        assert_eq!(took, THEME_CLIP);
+        assert_eq!(
+            out,
+            ClipOutcome::Played {
+                ran_out: true,
+                settled: Settled::Spent
+            }
+        );
+        // Stalled past the clip: stopped on time, then the settle (started
+        // once the first 500 ms passed) is waited out, never dropped
+        // half-written.
+        let (out, stopped, took) =
+            clip_with(vec![], vec![], settle_after(15, Settled::Spent, flag())).await;
+        assert_eq!(stopped, Some(THEME_CLIP));
+        assert_eq!(took, THEME_TOO_SOON + secs(15));
+        assert_eq!(
+            out,
+            ClipOutcome::Played {
+                ran_out: true,
+                settled: Settled::Spent
+            }
+        );
+    }
 
-        let mut rx = events_at(vec![(4, Errored)], true);
-        assert!(!clip_runs_out(&mut rx, THEME_CLIP).await);
-        let mut rx = events_at(vec![], false);
-        assert!(!clip_runs_out(&mut rx, THEME_CLIP).await, "track gone");
+    /// I2: refunded as it played (a cleanse, its end): stopped at once.
+    #[tokio::test(start_paused = true)]
+    async fn a_theme_refunded_as_it_plays_stops_at_once() {
+        let (out, stopped, took) =
+            clip_with(vec![], vec![], settle_after(2, Settled::Gone, flag())).await;
+        assert_eq!(out, ClipOutcome::Refunded);
+        // The settle starts once the first 500 ms passed.
+        let at = THEME_TOO_SOON + secs(2);
+        assert_eq!((stopped, took), (Some(at), at));
+    }
+
+    /// M6: an end within 500 ms of becoming audible (a seek that landed at
+    /// the end) heard nothing: not settled, the caller refunds.
+    #[tokio::test(start_paused = true)]
+    async fn an_end_within_500ms_of_audible_is_unplayable() {
+        use ClipEvent::*;
+        let started = flag();
+        let (out, stopped, _) = clip_with(
+            vec![],
+            vec![(300, Ended)],
+            settle_after(0, Settled::Spent, started.clone()),
+        )
+        .await;
+        assert_eq!(out, ClipOutcome::EndedAtOnce);
+        assert_eq!(stopped, None);
+        assert!(
+            !started.load(std::sync::atomic::Ordering::SeqCst),
+            "never settled"
+        );
+        // Past the 500 ms: it played.
+        let started = flag();
+        let (out, _, _) = clip_with(
+            vec![],
+            vec![(600, Ended)],
+            settle_after(0, Settled::Spent, started.clone()),
+        )
+        .await;
+        assert_eq!(
+            out,
+            ClipOutcome::Played {
+                ran_out: false,
+                settled: Settled::Spent
+            }
+        );
+        assert!(started.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn theme_trigger_plays_on_a_join_or_the_move_out_of_the_hub() {
+        const HUB: ChannelId = ChannelId::new(7);
+        let hub = Some(HUB);
+        // A join.
+        assert_eq!(theme_trigger(None, Some(VC), hub), Some(VC));
+        assert_eq!(theme_trigger(None, Some(VC), None), Some(VC), "no rooms");
+        // A join into the hub: the move into their room follows.
+        assert_eq!(theme_trigger(None, Some(HUB), hub), None);
+        // The move out of the hub is the join.
+        assert_eq!(theme_trigger(Some(HUB), Some(VC), hub), Some(VC));
+        // An ordinary move, a stay, and a leave play nothing.
+        assert_eq!(theme_trigger(Some(OTHER_VC), Some(VC), hub), None);
+        assert_eq!(theme_trigger(Some(OTHER_VC), Some(VC), None), None);
+        assert_eq!(theme_trigger(Some(VC), Some(VC), hub), None);
+        assert_eq!(theme_trigger(Some(VC), None, hub), None);
+        assert_eq!(theme_trigger(Some(HUB), None, hub), None, "left the hub");
+        assert_eq!(theme_trigger(None, None, hub), None);
+    }
+
+    #[test]
+    fn still_on_needs_an_active_row_and_the_target_still_there() {
+        use ActionState::*;
+        assert!(still_on(Some(Active), Some(VC), VC));
+        assert!(!still_on(Some(Active), Some(OTHER_VC), VC), "moved");
+        assert!(!still_on(Some(Active), None, VC), "left");
+        for gone in [Ended, Done, Pending, Ending, Failed] {
+            assert!(!still_on(Some(gone), Some(VC), VC), "{gone:?}");
+        }
+        assert!(!still_on(None, Some(VC), VC), "no row");
     }
 
     async fn rich(pool: &PgPool, user: UserId, credits: i64) {

@@ -688,6 +688,7 @@ mod tests {
                     &mut h,
                     crate::music::queue::new_track(source.into(), None, None),
                     id,
+                    1.0,
                 )
             }
         };

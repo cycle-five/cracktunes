@@ -309,12 +309,19 @@ fn enqueue(call: &mut Call, track: QueuedTrack, preload: Option<Duration>) -> Tr
     call.enqueue_with_preload(track.0, preload)
 }
 
+/// The songbird track for [`play_beside_queue`]: `track` under the caller's
+/// `uuid`, at `volume` (the guild's music volume).
+fn beside_queue(track: QueuedTrack, uuid: uuid::Uuid, volume: f32) -> Track {
+    track.0.uuid(uuid).volume(volume)
+}
+
 /// Play `track` over `call`'s queue rather than in it: a walk-on theme, mixed
 /// with whatever the queue plays and gone when it ends. It is a
 /// [`QueuedTrack`], so a reader that meets it finds its [`TrackData`], but it
 /// is not queued: the queue's order, its audit log and `/queue` never see it.
 /// `uuid` is the track's id, chosen by the caller so it can be marked before
-/// the track exists (see `handlers::track_end::without_themes`).
+/// the track exists (see `handlers::track_end::without_themes`). It plays at
+/// `volume`, the guild's music volume.
 #[expect(
     clippy::disallowed_methods,
     reason = "a walk-on theme is mixed beside the queue on purpose; it carries TrackData (new_track)"
@@ -323,8 +330,9 @@ pub(crate) fn play_beside_queue(
     call: &mut Call,
     track: QueuedTrack,
     uuid: uuid::Uuid,
+    volume: f32,
 ) -> TrackHandle {
-    call.play(track.0.uuid(uuid))
+    call.play(beside_queue(track, uuid, volume))
 }
 
 /// Record one `Add` for everything a single entry-point call queued. Nothing
@@ -1387,6 +1395,7 @@ mod test {
                 &mut h,
                 new_track(source.into(), None, Some(UserId::new(9))),
                 id,
+                1.0,
             )
         };
         assert_eq!(handle.uuid(), id);
@@ -1396,6 +1405,15 @@ mod test {
             get_requesting_user(&handle).await.ok(),
             Some(UserId::new(9))
         );
+    }
+
+    /// It plays at the guild's music volume, not songbird's 1.0.
+    #[test]
+    fn a_theme_track_carries_its_id_and_the_guild_volume() {
+        let id = uuid::Uuid::from_u128(43);
+        let source = songbird::input::File::new("/nonexistent/theme.opus");
+        let track = beside_queue(new_track(source.into(), None, None), id, 0.3);
+        assert_eq!((track.uuid, track.volume), (id, 0.3));
     }
 
     fn actor() -> Actor {
