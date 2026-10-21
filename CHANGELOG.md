@@ -70,6 +70,28 @@
   how long things last, the jail channel and the announcement channel are on the
   dashboard; each prank is sold only while CrackTunes has the permissions it
   needs. See `docs/economy.md`.
+- **v0.34.0, the economy, part 3: music and group play.** Credits now buy
+  things for the whole room. `/shop theme` plays up to 10 seconds of a song
+  (from a start you choose) when a member next joins voice within a week, mixed
+  over the music or, if CrackTunes is idle, by joining briefly; `/shop dedicate`
+  queues a song "for" someone and `/shop jump` queues one to play next, both
+  under the music channel and role rules and never during a `/gp` game.
+  `/bounty place` puts a stake on a member's head for 7 days, and whoever next
+  lands a prank on them collects every bounty on them but their own;
+  `/crowdfund start | pledge | list` lets members pool credits for a prank
+  (rename, clown, lock, mute, deafen or jail) against someone, which runs when
+  the goal, the prank's price, is met within 24 hours, and no one may pledge
+  more than half of it. Everything that never happens is refunded: a theme
+  that doesn't play, a bounty nobody collects, a fund that doesn't fill or can't
+  land, a dedication or jump that queued nothing. Reveal covers themes,
+  dedications, bounties and crowdfunded pranks, and the mod log names every
+  buyer and contributor. `/shop menu` groups Music and Group play, and the
+  dashboard explains the bounty, crowdfund and jump prices. To make jumping the
+  queue a paid perk, restrict `/playnext` for members in Server Settings →
+  Integrations. **Rolling back below v0.34.0:** first make sure no crowdfund is
+  open or mid-fill (`funding` or `pending`), because older versions neither
+  expire nor correctly refund them; the migration is additive and otherwise
+  safe to leave. See `docs/economy.md`.
 - **`/downvote` is registered.** It skips the current track and records a
   dislike against that track's newest play in this server, and one dislike is
   enough to hide the play from `/playlog`. When the track has no logged play to

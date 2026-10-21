@@ -2980,6 +2980,7 @@ mod test {
                     label: "Immunity".into(),
                     price: 77,
                     on: false,
+                    hint: None,
                 }],
                 immunity_optout: true,
                 immunity_shop: false,

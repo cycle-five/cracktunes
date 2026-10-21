@@ -31,10 +31,11 @@ use crate::messaging::messages::{
     ECONOMY_PLAY_NAME_A_SONG, ECONOMY_PLAY_NOT_CHARGED, ECONOMY_PURCHASE_FAILED,
     ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED,
     ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX,
-    ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE,
-    ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
-    ECONOMY_THEME_BOUGHT_PREFIX, ECONOMY_THEME_BOUGHT_SUFFIX, ECONOMY_THEME_START_MALFORMED,
-    ECONOMY_THEME_START_TOO_LATE, ECONOMY_YOU_HAVE,
+    ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE, ECONOMY_SHOP_FROM,
+    ECONOMY_SHOP_GROUP_PLAY, ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP,
+    ECONOMY_SHOP_MUSIC, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE, ECONOMY_THEME_BOUGHT_PREFIX,
+    ECONOMY_THEME_BOUGHT_SUFFIX, ECONOMY_THEME_START_MALFORMED, ECONOMY_THEME_START_TOO_LATE,
+    ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
@@ -64,11 +65,22 @@ fn unmet(report: &[ActionPreflight], kind: ActionKind) -> Option<String> {
 pub fn menu_text(settings: &EconomySettings, report: &[ActionPreflight]) -> String {
     let cfg = &settings.config;
     let mut lines = vec![format!("**{ECONOMY_SHOP_TITLE}**")];
+    let mut last_heading: Option<&str> = None;
     for kind in ActionKind::ALL {
         let price = cfg.prices.get(*kind);
         if !price.on {
             continue;
         }
+        // Music and group play each get a heading above their first item.
+        let heading = match kind {
+            ActionKind::Theme | ActionKind::Dedicate | ActionKind::Jump => Some(ECONOMY_SHOP_MUSIC),
+            ActionKind::Bounty | ActionKind::Crowdfund => Some(ECONOMY_SHOP_GROUP_PLAY),
+            _ => None,
+        };
+        if heading.is_some() && heading != last_heading {
+            lines.push(format!("**{}**", heading.unwrap_or_default()));
+        }
+        last_heading = heading;
         let why = unmet(report, *kind);
         let sold = match kind {
             ActionKind::Immunity => cfg.immunity_shop,
@@ -77,8 +89,13 @@ pub fn menu_text(settings: &EconomySettings, report: &[ActionPreflight]) -> Stri
             _ => why.is_none(),
         };
         if sold {
+            // A bounty's or a crowdfund's price is only a minimum.
+            let from = match kind {
+                ActionKind::Bounty | ActionKind::Crowdfund => format!("{ECONOMY_SHOP_FROM} "),
+                _ => String::new(),
+            };
             lines.push(format!(
-                "{}: {} {} {}",
+                "{}: {from}{} {} {}",
                 kind.label(),
                 price.price,
                 cfg.currency_emoji,
@@ -1171,9 +1188,9 @@ mod tests {
                  Drag: 60 🪙 credits\nMute: 90 🪙 credits\nDeafen: 90 🪙 credits\n\
                  Jail: not sold here (Choose a jail channel first.)\nMirror: 150 🪙 credits\n\
                  Cleanse: 80 🪙 credits\nReveal: 100 🪙 credits\n\
-                 Walk-on theme: 100 🪙 credits\nDedication: 40 🪙 credits\n\
-                 Queue jump: 40 🪙 credits\nBounty: 50 🪙 credits\n\
-                 Crowdfund: 10 🪙 credits\n{DOCS}"
+                 **Music**\nWalk-on theme: 100 🪙 credits\nDedication: 40 🪙 credits\n\
+                 Queue jump: 40 🪙 credits\n**Group play**\nBounty: from 50 🪙 credits\n\
+                 Crowdfund: from 10 🪙 credits\n{DOCS}"
             )
         );
         s.config.jail_channel_id = Some(serenity::all::ChannelId::new(9));
@@ -1191,6 +1208,32 @@ mod tests {
         s.config.prices.set(ActionKind::Clown, p);
         assert!(!menu_text(&s).contains("Clown"));
         assert!(!menu_text(&s).contains("next update"));
+    }
+
+    #[test]
+    fn menu_lists_music_and_group_play() {
+        let mut s = EconomySettings::off(GuildId::new(1));
+        let text = menu(&s, Some(&able()));
+        let at = |needle: &str| {
+            text.find(needle)
+                .unwrap_or_else(|| panic!("{needle}: {text}"))
+        };
+        assert!(at("Reveal:") < at("**Music**"));
+        assert!(at("**Music**") < at("Walk-on theme: 100"));
+        assert!(at("Queue jump: 40") < at("**Group play**"));
+        assert!(at("**Group play**") < at("Bounty: from 50"));
+        assert!(text.contains("Bounty: from 50 🪙 credits"), "{text}");
+        assert!(text.contains("Crowdfund: from 10 🪙 credits"), "{text}");
+        assert_eq!(text.matches("**Music**").count(), 1);
+        // A heading is shown only while something under it is on.
+        for k in [ActionKind::Theme, ActionKind::Dedicate, ActionKind::Jump] {
+            let mut p = k.default_price();
+            p.on = false;
+            s.config.prices.set(k, p);
+        }
+        let text = menu(&s, Some(&able()));
+        assert!(!text.contains("**Music**"), "{text}");
+        assert!(text.contains("**Group play**"), "{text}");
     }
 
     #[test]

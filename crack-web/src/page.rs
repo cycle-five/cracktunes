@@ -255,8 +255,13 @@ pub fn settings_page(
         .prices
         .iter()
         .map(|p| {
+            // The hint rides in the label cell, so the script's row-by-row
+            // read of prices never meets a row without an input.
+            let hint = p.hint.as_deref().map_or_else(String::new, |h| {
+                format!("<br><small class=\"e-hint\">{}</small>", esc(h))
+            });
             format!(
-                "<tr data-kind=\"{kind}\"><td>{label}</td>\
+                "<tr data-kind=\"{kind}\"><td>{label}{hint}</td>\
 <td><input type=\"checkbox\" class=\"e-price-on\" aria-label=\"{for_sale}\"{on}></td>\
 <td><input type=\"number\" class=\"e-price\" aria-label=\"{cost}\" min=\"1\" max=\"1000000\" value=\"{price}\"></td></tr>",
                 kind = esc(&p.kind),
@@ -544,6 +549,7 @@ pub fn message_page(title: &str, text: &str) -> String {
 mod test {
     use super::*;
     use crate::view::{QueueView, TrackView};
+    use crack_core::economy::settings::EconomySettings;
     use uuid::Uuid;
 
     #[test]
@@ -621,6 +627,46 @@ mod test {
         );
         assert!(!html.contains("<b>me") && !html.contains("<i>G") && !html.contains("<u>c"));
         assert!(html.contains("href=\"/g/5\""));
+    }
+
+    #[test]
+    fn price_hints_render_under_their_row_escaped() {
+        let rooms = RoomSettingsView {
+            enabled: false,
+            hub: None,
+            name_template: String::new(),
+            default_limit: 0,
+            empty_grace_secs: 0,
+            voice_channels: vec![],
+            findings: None,
+        };
+        let modlog = ModLogSettingsView {
+            enabled: false,
+            channel: None,
+            text_channels: vec![],
+            findings: None,
+            visibility: None,
+        };
+        let mut economy =
+            EconomySettingsView::from_settings(&EconomySettings::off(GuildId::new(5)));
+        let bounty = economy
+            .prices
+            .iter_mut()
+            .find(|p| p.kind == "bounty")
+            .unwrap();
+        assert_eq!(bounty.hint.as_deref(), Some("Minimum stake."));
+        bounty.hint = Some("<b>Minimum</b> stake.".into());
+        let html = settings_page("G", GuildId::new(5), &rooms, &modlog, &economy);
+        assert!(
+            html.contains(
+                "<td>Bounty<br><small class=\"e-hint\">&lt;b&gt;Minimum&lt;/b&gt; stake.</small></td>"
+            ),
+            "{html}"
+        );
+        assert!(!html.contains("<b>Minimum"));
+        // Rows with no hint stay as they were.
+        assert!(html.contains("<td>Rename</td>"), "{html}");
+        assert_eq!(html.matches("class=\"e-hint\"").count(), 3);
     }
 
     #[test]

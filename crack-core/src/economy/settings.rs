@@ -10,6 +10,7 @@ use crate::messaging::messages::{
     ECONOMY_LABEL_MIRROR, ECONOMY_LABEL_MUTE, ECONOMY_LABEL_RENAME, ECONOMY_LABEL_REVEAL,
     ECONOMY_LABEL_THEME,
 };
+use crate::messaging::messages::{ECONOMY_HINT_BOUNTY, ECONOMY_HINT_CROWDFUND, ECONOMY_HINT_JUMP};
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId};
 use std::collections::BTreeMap;
@@ -124,6 +125,17 @@ impl ActionKind {
             ActionKind::Jump => ECONOMY_LABEL_JUMP,
             ActionKind::Bounty => ECONOMY_LABEL_BOUNTY,
             ActionKind::Crowdfund => ECONOMY_LABEL_CROWDFUND,
+        }
+    }
+
+    /// What the dashboard says under a kind's price row, for the kinds whose
+    /// price needs explaining (spec 4.4).
+    pub fn price_hint(self) -> Option<&'static str> {
+        match self {
+            ActionKind::Bounty => Some(ECONOMY_HINT_BOUNTY),
+            ActionKind::Crowdfund => Some(ECONOMY_HINT_CROWDFUND),
+            ActionKind::Jump => Some(ECONOMY_HINT_JUMP),
+            _ => None,
         }
     }
 
@@ -674,6 +686,24 @@ mod tests {
     }
 
     #[test]
+    fn price_hints_for_bounty_crowdfund_and_jump() {
+        assert_eq!(ActionKind::Bounty.price_hint(), Some("Minimum stake."));
+        assert_eq!(
+            ActionKind::Crowdfund.price_hint(),
+            Some("Minimum pledge. A fund's goal is its prank's price.")
+        );
+        assert_eq!(
+            ActionKind::Jump.price_hint(),
+            Some("To make jumping the queue a paid perk, restrict /playnext for members in Server Settings → Integrations.")
+        );
+        for k in ActionKind::ALL {
+            if ![ActionKind::Bounty, ActionKind::Crowdfund, ActionKind::Jump].contains(k) {
+                assert_eq!(k.price_hint(), None, "{k:?}");
+            }
+        }
+    }
+
+    #[test]
     fn prank_defaults_match_the_spec() {
         let want = [
             ("immunity", 200),
@@ -689,7 +719,11 @@ mod tests {
             ("reveal", 100),
         ];
         // PR 3 appends its kinds after these; their own test pins them.
-        assert_eq!(&ActionKind::ALL[..want.len()], &ActionKind::ALL[..11]);
+        use ActionKind::*;
+        let first_eleven = [
+            Immunity, Rename, Lock, Clown, Drag, Mute, Deafen, Jail, Mirror, Cleanse, Reveal,
+        ];
+        assert_eq!(&ActionKind::ALL[..want.len()], &first_eleven[..]);
         assert_eq!(ActionKind::ALL.len(), want.len() + 5);
         for (k, (key, price)) in ActionKind::ALL.iter().zip(want) {
             assert_eq!(k.key(), key);

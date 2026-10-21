@@ -126,6 +126,8 @@ pub struct PriceView {
     pub label: String,
     pub price: u32,
     pub on: bool,
+    /// What the page says under the row, for prices that need explaining.
+    pub hint: Option<String>,
 }
 
 /// What the page shows for the economy: every config field, the prices in
@@ -201,6 +203,7 @@ impl EconomySettingsView {
                         label: k.label().to_owned(),
                         price: p.price,
                         on: p.on,
+                        hint: k.price_hint().map(str::to_owned),
                     }
                 })
                 .collect(),
@@ -546,5 +549,50 @@ mod tests {
         assert_eq!(got[0], ("immunity", 200, true));
         assert_eq!(got[1], ("rename", 120, true));
         assert_eq!(v.prices[1].label, "Rename");
+        let hints: Vec<_> = v
+            .prices
+            .iter()
+            .filter_map(|p| Some((p.kind.as_str(), p.hint.as_deref()?)))
+            .collect();
+        assert_eq!(
+            hints,
+            vec![
+                ("jump", ActionKind::Jump.price_hint().unwrap()),
+                ("bounty", "Minimum stake."),
+                ("crowdfund", ActionKind::Crowdfund.price_hint().unwrap()),
+            ]
+        );
+    }
+
+    #[test]
+    fn save_round_trips_the_new_prices() {
+        let mut f = form();
+        f.prices = [
+            ("theme", 111, true),
+            ("dedicate", 41, false),
+            ("jump", 42, true),
+            ("bounty", 55, true),
+            ("crowdfund", 12, false),
+        ]
+        .into_iter()
+        .map(|(k, price, on)| PriceForm {
+            kind: k.into(),
+            price,
+            on,
+        })
+        .collect();
+        let out = apply_form(EconomySettings::off(GuildId::new(5)), f, any_channel).unwrap();
+        let v = EconomySettingsView::from_settings(&out);
+        let get = |k: &str| {
+            let p = v.prices.iter().find(|p| p.kind == k).unwrap();
+            (p.price, p.on)
+        };
+        assert_eq!(get("theme"), (111, true));
+        assert_eq!(get("dedicate"), (41, false));
+        assert_eq!(get("jump"), (42, true));
+        assert_eq!(get("bounty"), (55, true));
+        assert_eq!(get("crowdfund"), (12, false));
+        // Kinds the form left out keep their defaults.
+        assert_eq!(get("rename"), (120, true));
     }
 }

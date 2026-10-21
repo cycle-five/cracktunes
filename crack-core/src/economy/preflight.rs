@@ -219,7 +219,9 @@ mod tests {
         assert_eq!(needs(Jail), Permissions::MOVE_MEMBERS);
         assert_eq!(needs(Mute), Permissions::MUTE_MEMBERS);
         assert_eq!(needs(Deafen), Permissions::DEAFEN_MEMBERS);
-        for k in [Immunity, Mirror, Cleanse, Reveal] {
+        for k in [
+            Immunity, Mirror, Cleanse, Reveal, Theme, Dedicate, Jump, Bounty, Crowdfund,
+        ] {
             assert_eq!(needs(k), Permissions::empty(), "{k:?}");
         }
     }
