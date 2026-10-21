@@ -16,6 +16,7 @@ pub mod registry;
 pub mod settings;
 pub mod shop;
 pub mod target;
+pub mod theme;
 pub mod wallet;
 
 use crate::Data;

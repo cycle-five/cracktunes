@@ -1,4 +1,4 @@
-//! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|cleanse|reveal`.
+//! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|theme|cleanse|reveal`.
 use super::admin::{log, log_to};
 use super::credits::{gate, live, say};
 use crate::economy::bounty;
@@ -14,6 +14,7 @@ use crate::economy::shop::{
     reveal_choices, BuyError, BuyOutcome, BuyRequest,
 };
 use crate::economy::target::{gather_facts, voice_of, Subject};
+use crate::economy::theme::{buy_theme, parse_start, StartError, ThemeRequest};
 use crate::messaging::courier;
 use crate::messaging::messages::{
     DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_CANT_TELL, ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL,
@@ -23,7 +24,8 @@ use crate::messaging::messages::{
     ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX,
     ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE,
     ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
-    ECONOMY_YOU_HAVE,
+    ECONOMY_THEME_BOUGHT_PREFIX, ECONOMY_THEME_BOUGHT_SUFFIX, ECONOMY_THEME_START_MALFORMED,
+    ECONOMY_THEME_START_TOO_LATE, ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
@@ -580,6 +582,119 @@ pub async fn mirror(ctx: Context<'_>) -> Result<(), Error> {
     prank(ctx, ActionKind::Mirror, None, None, None, None).await
 }
 
+/// The words for a refused start time.
+pub fn start_error_text(e: StartError) -> &'static str {
+    match e {
+        StartError::Malformed => ECONOMY_THEME_START_MALFORMED,
+        StartError::TooLate => ECONOMY_THEME_START_TOO_LATE,
+    }
+}
+
+/// The private reply to a bought theme: when it plays, then what is left.
+pub fn theme_reply_text(balance: i64, currency: &str, emoji: &str) -> String {
+    format!(
+        "{ECONOMY_THEME_BOUGHT_PREFIX} {currency} {ECONOMY_THEME_BOUGHT_SUFFIX}\n{}",
+        balance_followup_text(balance, currency, emoji)
+    )
+}
+
+/// Have a song play for someone the next time they join voice.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(slash_command, guild_only)]
+pub async fn theme(
+    ctx: Context<'_>,
+    #[description = "Who"] member: Member,
+    #[description = "A link to the song or video"] link: String,
+    #[description = "Where it starts: 83, 1:23 or 1:02:03"] start: Option<String>,
+    #[description = "A note shown in the mod log"] note: Option<String>,
+    #[description = "Put your name in the mod log"] signed: Option<bool>,
+) -> Result<(), Error> {
+    let Some((guild, _pool)) = gate(ctx).await? else {
+        return Ok(());
+    };
+    // Reads the database and Discord before the first reply, as a prank does.
+    ctx.defer_ephemeral().await?;
+    let Some(buyer) = ctx.author_member().await else {
+        return say(ctx, ECONOMY_CANT_TELL, true).await;
+    };
+    let data = ctx.data();
+    let cfg = data.economy.settings(guild).config;
+    if buyer.user.bot() {
+        return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
+    }
+    // Both are answered before anything is read or charged.
+    let start = match start.as_deref().map(parse_start).transpose() {
+        Ok(s) => s.unwrap_or_default(),
+        Err(e) => return say(ctx, start_error_text(e), true).await,
+    };
+    let note = match note.as_deref().map(validate_note).transpose() {
+        Ok(n) => n,
+        Err(e) => return say(ctx, note_error_text(e), true).await,
+    };
+    let signed = signed.unwrap_or(false);
+    let now = Utc::now();
+    let (buyer_id, target) = (buyer.user.id, member.user.id);
+    let facts = match gather_facts(
+        &data,
+        &ctx.serenity_context().cache,
+        guild,
+        Subject {
+            member: &member,
+            is_self: target == buyer_id,
+        },
+        ActionKind::Theme,
+        None,
+        now,
+    )
+    .await
+    {
+        Ok(f) => f,
+        Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
+    };
+    let bought = match buy_theme(
+        &data,
+        facts,
+        ThemeRequest {
+            guild,
+            buyer: buyer_id,
+            target,
+            url: link,
+            start,
+            note: note.clone(),
+            signed,
+            now,
+        },
+    )
+    .await
+    {
+        Ok(b) => b,
+        Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
+    };
+    // No card: the theme announces itself when it plays. Reply first, then log.
+    let replied = say(
+        ctx,
+        theme_reply_text(bought.balance, &cfg.currency_name, &cfg.currency_emoji),
+        true,
+    )
+    .await;
+    log_to(
+        &data,
+        ctx.serenity_context(),
+        guild,
+        ModLogEvent::ShopAction {
+            action: ActionKind::Theme,
+            buyer: buyer_id,
+            target,
+            note,
+            signed,
+            until: bought.until,
+            mirrored_from: None,
+        },
+    )
+    .await;
+    replied
+}
+
 /// What the shop sells and for how much.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
@@ -597,6 +712,7 @@ pub async fn mirror(ctx: Context<'_>) -> Result<(), Error> {
         "deafen",
         "jail",
         "mirror",
+        "theme",
         "cleanse_command",
         "reveal_command"
     ),
@@ -905,6 +1021,27 @@ mod tests {
             nick_error_text(NickError::TooLong),
             "That name is too long: 32 characters at most (an emoji counts as 2 or more)."
         );
+    }
+
+    #[test]
+    fn theme_texts_say_when_it_plays_and_what_is_left() {
+        assert_eq!(
+            start_error_text(StartError::Malformed),
+            "Start time looks like 83, 1:23 or 1:02:03."
+        );
+        assert_eq!(
+            start_error_text(StartError::TooLate),
+            "Start time can be at most 12:00:00."
+        );
+        let text = theme_reply_text(150, "credits", "🪙");
+        assert_eq!(
+            text,
+            format!(
+                "Their theme plays the next time they join voice, within 7 days. If it never does, you get your credits back.\n{}",
+                balance_followup_text(150, "credits", "🪙")
+            )
+        );
+        assert!(text.contains("You have 150"), "{text}");
     }
 
     #[test]

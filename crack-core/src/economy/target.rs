@@ -1077,6 +1077,69 @@ mod tests {
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
         )]
+        async fn a_second_theme_is_refused_with_the_first_ones_end(pool: PgPool) {
+            let data = data(&pool).await;
+            let theme = || ActionPayload::Theme {
+                url: "https://youtu.be/dQw4w9WgXcQ".into(),
+                start_secs: 0,
+            };
+            // Nothing waiting yet: a theme lands.
+            let f = facts(&data, ActionKind::Theme, M).await;
+            assert_eq!(f.running_same_kind, None);
+            assert_eq!(
+                check_target(ActionKind::Theme, &f, None),
+                Ok(TargetOutcome::Lands)
+            );
+            // A theme is escrow: bought straight into `active`, as the shop does.
+            crate::db::economy::credit_earnings(
+                &pool,
+                G,
+                &[crate::db::economy::EarnRow {
+                    user: BUYER,
+                    voice: 100,
+                    messages: 0,
+                }],
+            )
+            .await
+            .unwrap();
+            crate::db::economy::charge_active(
+                &pool,
+                &crate::db::economy::NewAction {
+                    guild: G,
+                    kind: ActionKind::Theme,
+                    buyer: BUYER,
+                    target: Some(M),
+                    price: 10,
+                    note: None,
+                    signed: false,
+                    payload: &theme(),
+                    expires_at: Some(t0() + chrono::Duration::hours(1)),
+                },
+                crate::economy::wallet::LedgerKind::Purchase,
+            )
+            .await
+            .unwrap();
+            let end = Some(t0() + chrono::Duration::hours(1));
+            let f = facts(&data, ActionKind::Theme, M).await;
+            assert_eq!(f.running_same_kind, end);
+            assert_eq!(
+                check_target(ActionKind::Theme, &f, None),
+                Err(Refusal::AlreadyRunning {
+                    until: t0() + chrono::Duration::hours(1)
+                })
+            );
+            // Another kind of purchase on the same member is not blocked by it.
+            assert_eq!(
+                facts(&data, ActionKind::Bounty, M).await.running_same_kind,
+                None
+            );
+        }
+
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
         async fn name_pranks_share_a_slot_and_a_lock_has_its_own(pool: PgPool) {
             let data = data(&pool).await;
             let rename = ActionPayload::Rename {

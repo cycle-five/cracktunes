@@ -64,11 +64,11 @@ mod tests {
         let shop = &cmds[2];
         let mut want = [
             "menu", "immunity", "rename", "lock", "clown", "drag", "mute", "deafen", "jail",
-            "mirror", "cleanse", "reveal",
+            "mirror", "cleanse", "reveal", "theme",
         ];
         want.sort();
         assert_eq!(subs(shop), want);
-        assert_eq!(shop.subcommands.len(), 12);
+        assert_eq!(shop.subcommands.len(), 13);
         let economy = &cmds[3];
         assert_eq!(
             subs(economy),
