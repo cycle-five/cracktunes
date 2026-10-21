@@ -199,7 +199,9 @@ async fn refund_failed(pool: &sqlx::PgPool, fund_id: i64) {
 /// the checks that need the live server, [`execute`] it, then post the card
 /// and the mod log entry. A target who left, or who can't be read, refunds
 /// everyone. A card that can't be posted where it belongs falls back to a
-/// public follow-up in the invoking channel.
+/// public follow-up in the invoking channel. The public couldn't-land card
+/// never says why; the reason (which may be the target's immunity or
+/// opt-out) goes only in the private reply.
 #[cfg(not(tarpaulin_include))]
 async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
     let data = ctx.data();
@@ -242,7 +244,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 None,
                 &cfg,
                 invoked_in,
-                fund_failed_card_text(target, &why),
+                fund_failed_card_text(target),
             )
             .await;
             return Fate::Failed(why);
@@ -275,7 +277,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 None,
                 &cfg,
                 invoked_in,
-                fund_failed_card_text(target, &why),
+                fund_failed_card_text(target),
             )
             .await;
             return Fate::Failed(why);
@@ -338,7 +340,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 None,
                 &cfg,
                 invoked_in,
-                fund_failed_card_text(target, &why),
+                fund_failed_card_text(target),
             )
             .await;
             Fate::Failed(why)
@@ -392,10 +394,10 @@ pub async fn start(
     ctx: Context<'_>,
     #[description = "The prank"] action: FundKind,
     #[description = "Who it is against"] member: Member,
+    #[description = "Your own pledge, to start it"] pledge: i64,
     #[description = "Their new nickname (for Rename)"] name: Option<String>,
     #[description = "A note shown on the card"] note: Option<String>,
     #[description = "Put your name on the card"] signed: Option<bool>,
-    #[description = "Pledge this much to start it"] pledge: Option<i64>,
 ) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
@@ -454,6 +456,7 @@ pub async fn start(
         Ok(())
     };
     let row_nick = nick.clone();
+    let log_note = note.clone();
     let opened = match start_fund(
         &data,
         facts,
@@ -475,9 +478,23 @@ pub async fn start(
         Ok(o) => o,
         Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
     };
+    // The mod log always names the starter, whatever the card says.
+    log_to(
+        &data,
+        ctx.serenity_context(),
+        guild,
+        ModLogEvent::CrowdfundStarted {
+            action: kind,
+            starter: starter_id,
+            target,
+            note: log_note,
+        },
+    )
+    .await;
     let price = i64::from(cfg.prices.get(kind).price);
     let mut reply = ECONOMY_FUND_STARTED.to_string();
-    // A first pledge that covers the whole price fills the fund at once.
+    // The share cap keeps a first pledge below the price (a fund costs at
+    // least `MIN_FUNDABLE_PRICE`); were one ever to cover it, it fills at once.
     let filled = opened.pledged >= price;
     let fate = if filled {
         Some(run_fill(ctx, guild, opened.action_id).await)

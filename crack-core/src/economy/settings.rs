@@ -4,13 +4,12 @@
 //! release survives a load and save.
 
 use crate::messaging::messages::{
-    ECONOMY_CLOWN_SUFFIX, ECONOMY_LABEL_BOUNTY, ECONOMY_LABEL_CLEANSE, ECONOMY_LABEL_CLOWN,
-    ECONOMY_LABEL_CROWDFUND, ECONOMY_LABEL_DEAFEN, ECONOMY_LABEL_DEDICATE, ECONOMY_LABEL_DRAG,
-    ECONOMY_LABEL_IMMUNITY, ECONOMY_LABEL_JAIL, ECONOMY_LABEL_JUMP, ECONOMY_LABEL_LOCK,
-    ECONOMY_LABEL_MIRROR, ECONOMY_LABEL_MUTE, ECONOMY_LABEL_RENAME, ECONOMY_LABEL_REVEAL,
-    ECONOMY_LABEL_THEME,
+    ECONOMY_CLOWN_SUFFIX, ECONOMY_HINT_BOUNTY, ECONOMY_HINT_CROWDFUND, ECONOMY_HINT_JUMP,
+    ECONOMY_LABEL_BOUNTY, ECONOMY_LABEL_CLEANSE, ECONOMY_LABEL_CLOWN, ECONOMY_LABEL_CROWDFUND,
+    ECONOMY_LABEL_DEAFEN, ECONOMY_LABEL_DEDICATE, ECONOMY_LABEL_DRAG, ECONOMY_LABEL_IMMUNITY,
+    ECONOMY_LABEL_JAIL, ECONOMY_LABEL_JUMP, ECONOMY_LABEL_LOCK, ECONOMY_LABEL_MIRROR,
+    ECONOMY_LABEL_MUTE, ECONOMY_LABEL_RENAME, ECONOMY_LABEL_REVEAL, ECONOMY_LABEL_THEME,
 };
-use crate::messaging::messages::{ECONOMY_HINT_BOUNTY, ECONOMY_HINT_CROWDFUND, ECONOMY_HINT_JUMP};
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId};
 use std::collections::BTreeMap;
@@ -163,7 +162,9 @@ impl ActionKind {
         ActionKind::Theme,
     ];
 
-    /// What `/shop reveal` can name: the pranks and the aimed kinds.
+    /// What `/shop reveal` can name: the pranks, themes and bounties. Not a
+    /// dedication: a paid play is signed by nature (its `/play` reply and
+    /// now-playing's "Requested by" already name the buyer).
     pub const REVEALABLE: &'static [ActionKind] = &[
         ActionKind::Rename,
         ActionKind::Lock,
@@ -173,7 +174,6 @@ impl ActionKind {
         ActionKind::Deafen,
         ActionKind::Jail,
         ActionKind::Theme,
-        ActionKind::Dedicate,
         ActionKind::Bounty,
     ];
 
@@ -825,7 +825,7 @@ mod tests {
         );
         assert_eq!(
             ActionKind::REVEALABLE,
-            [Rename, Lock, Clown, Drag, Mute, Deafen, Jail, Theme, Dedicate, Bounty]
+            [Rename, Lock, Clown, Drag, Mute, Deafen, Jail, Theme, Bounty]
         );
         assert_eq!(
             ActionKind::FUNDABLE,

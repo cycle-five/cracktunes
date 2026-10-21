@@ -442,11 +442,12 @@ struct RawCandidate {
     created_at: DateTime<Utc>,
 }
 
-/// The revealable kinds (spec 4.1 and P4: the pranks, themes, dedications
-/// and bounties) other people bought against `target` that could be
-/// unmasked, as far as the target could see them: unsigned, never a `funding`
-/// row, never a theme that ended without playing (a played theme is `done`)
-/// and never a fund that did not fill (`unfunded`). A bounty that was
+/// The revealable kinds (spec 4.1 and P4: the pranks, themes and bounties)
+/// other people bought against `target` that could be unmasked, as far as
+/// the target could see them: unsigned, never a `funding` row, a theme only
+/// once it played (`done`: one still waiting is a surprise, and one that
+/// ended without playing was never heard) and never a fund that did not fill
+/// (`unfunded`). A bounty that was
 /// refunded or expired stays revealable, since its card was public. Not
 /// refunded (a blocked prank was still aimed at the mirror's owner), newest
 /// first. A bounced prank (its buyer is its own target) and a mirror (its
@@ -473,7 +474,7 @@ pub async fn reveal_candidates(
            WHERE guild_id = $1 AND target_id = $2 AND buyer_id <> $2
              AND kind = ANY($3) AND signed = false
              AND state IN ('active', 'ending', 'ended', 'done')
-             AND NOT (kind = 'theme' AND state = 'ended')
+             AND NOT (kind = 'theme' AND state <> 'done')
              AND end_reason IS DISTINCT FROM 'unfunded'
              AND ($4::bigint IS NULL OR id = $4)
              AND (NOT $5 OR revealed_at IS NULL)
@@ -1311,18 +1312,6 @@ pub async fn expire_fund(pool: &PgPool, id: i64) -> sqlx::Result<bool> {
     .await?;
     tx.commit().await?;
     Ok(true)
-}
-
-/// Set a `pending` row's payload. False when the row is not `pending`.
-pub async fn set_payload(pool: &PgPool, id: i64, payload: &ActionPayload) -> sqlx::Result<bool> {
-    let done = sqlx::query!(
-        "UPDATE economy_actions SET payload = $2 WHERE id = $1 AND state = 'pending'",
-        id,
-        Json(payload) as Json<&ActionPayload>
-    )
-    .execute(pool)
-    .await?;
-    Ok(done.rows_affected() > 0)
 }
 
 /// Prepare a filled (`pending`) fund to run: write the payload (with what to
@@ -3672,38 +3661,6 @@ mod tests {
         Ok(())
     });
 
-    db_test!(set_payload_only_while_pending, |pool: PgPool| async {
-        fund(&pool, A, 100).await;
-        fund(&pool, B, 100).await;
-        let payload = rename();
-        let f = open_fund(&pool, &fund_action(40, &payload), None)
-            .await
-            .unwrap();
-        let new = ActionPayload::Rename {
-            name: "y".into(),
-            restore: Some("z".into()),
-        };
-        assert!(
-            !set_payload(&pool, f.action_id, &new).await?,
-            "funding is not pending"
-        );
-        pledge(&pool, f.action_id, G, A, 20, false).await.unwrap();
-        pledge(&pool, f.action_id, G, B, 20, false).await.unwrap();
-        assert!(set_payload(&pool, f.action_id, &new).await?);
-        assert_eq!(
-            action_by_id(&pool, G, f.action_id).await?.unwrap().payload,
-            new
-        );
-        activate_action(&pool, f.action_id, ActionKind::Rename, None).await?;
-        assert!(!set_payload(&pool, f.action_id, &payload).await?);
-        assert_eq!(
-            action_by_id(&pool, G, f.action_id).await?.unwrap().payload,
-            new
-        );
-        agree(&pool, &[(A, 100), (B, 100)]).await;
-        Ok(())
-    });
-
     db_test!(
         active_bounties_lists_only_standing_bounties,
         |pool: PgPool| async {
@@ -3738,10 +3695,10 @@ mod tests {
     );
 
     db_test!(
-        reveal_now_covers_themes_dedications_and_bounties,
+        reveal_covers_played_themes_and_bounties,
         |pool: PgPool| async {
             fund(&pool, A, 500).await;
-            let end = Some(now() + Duration::days(1));
+            let end = Some(Utc::now() + Duration::days(1));
             let t = theme();
             let theme_id = charge_active(
                 &pool,
@@ -3752,6 +3709,8 @@ mod tests {
             .unwrap()
             .action_id;
             let bounty_id = place_bounty(&pool, A, 20).await;
+            // A dedication is signed by nature (the play names its buyer),
+            // so it is not revealable, even as an unsigned row.
             let d = ActionPayload::Dedicate { song: "s".into() };
             let ded = charge_for_action(&pool, &aimed(ActionKind::Dedicate, A, T, 30, &d, None))
                 .await
@@ -3763,11 +3722,19 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(state_of(&pool, f.action_id).await, "funding");
+            let ids = |got: Vec<RevealCandidate>| {
+                let mut ids: Vec<i64> = got.iter().map(|c| c.row.id).collect();
+                ids.sort_unstable();
+                ids
+            };
+            // The theme is still waiting: a surprise, not yet something the
+            // target heard, so it isn't listed.
             let got = reveal_candidates(&pool, G, T, None, false, 10).await?;
-            let mut ids: Vec<i64> = got.iter().map(|c| c.row.id).collect();
-            ids.sort_unstable();
-            assert_eq!(ids, vec![theme_id, bounty_id, ded.action_id]);
-            assert!(!ids.contains(&f.action_id));
+            assert_eq!(ids(got), vec![bounty_id]);
+            // Once it played, it is.
+            assert!(finish_action(&pool, theme_id, ActionState::Done).await?);
+            let got = reveal_candidates(&pool, G, T, None, false, 10).await?;
+            assert_eq!(ids(got), vec![theme_id, bounty_id]);
             agree(&pool, &[(A, 500)]).await;
             Ok(())
         }

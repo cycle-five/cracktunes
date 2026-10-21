@@ -14,9 +14,9 @@ use crate::messaging::messages::{
     ECONOMY_BAD_LINK, ECONOMY_BOUNTY_TOO_SMALL_PREFIX, ECONOMY_BUYER_NOT_IN_VOICE,
     ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION, ECONOMY_CANT_AFFORD_MIDDLE,
     ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_CANT_TELL, ECONOMY_FUND_ALREADY_OPEN, ECONOMY_FUND_CLOSED,
-    ECONOMY_MIRROR_ALREADY_UP, ECONOMY_NOTHING_TO_CLEANSE, ECONOMY_NOTHING_TO_REVEAL,
-    ECONOMY_NOT_FOR_SALE, ECONOMY_NO_DATABASE, ECONOMY_NO_JAIL_CHANNEL, ECONOMY_OFF,
-    ECONOMY_OUT_OF_REACH, ECONOMY_PLEDGE_ON_SELF, ECONOMY_PLEDGE_OVER_SHARE_PREFIX,
+    ECONOMY_FUND_TOO_CHEAP, ECONOMY_MIRROR_ALREADY_UP, ECONOMY_NOTHING_TO_CLEANSE,
+    ECONOMY_NOTHING_TO_REVEAL, ECONOMY_NOT_FOR_SALE, ECONOMY_NO_DATABASE, ECONOMY_NO_JAIL_CHANNEL,
+    ECONOMY_OFF, ECONOMY_OUT_OF_REACH, ECONOMY_PLEDGE_ON_SELF, ECONOMY_PLEDGE_OVER_SHARE_PREFIX,
     ECONOMY_PLEDGE_OVER_SHARE_SUFFIX, ECONOMY_PLEDGE_TOO_SMALL_PREFIX,
     ECONOMY_PLEDGE_TOO_SMALL_SUFFIX, ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PICK_AGO,
     ECONOMY_REVEAL_PICK_DAY, ECONOMY_REVEAL_PICK_HOUR, ECONOMY_REVEAL_PICK_JUST_NOW,
@@ -91,6 +91,9 @@ pub enum Refusal {
     FundAlreadyOpen,
     /// The crowdfund is closed, full, expired, or not in this server.
     FundClosed,
+    /// A crowdfund for a prank priced below 2: one member's share (half,
+    /// rounded up) would fill it alone.
+    FundTooCheap,
     /// A pledge to a crowdfund aimed at the pledger.
     PledgeOnSelf,
     /// A pledge below the minimum that is not what the fund still needs.
@@ -189,6 +192,7 @@ pub fn refusal_text(r: &Refusal, currency: &str) -> String {
         Refusal::BadLink => ECONOMY_BAD_LINK.to_string(),
         Refusal::FundAlreadyOpen => ECONOMY_FUND_ALREADY_OPEN.to_string(),
         Refusal::FundClosed => ECONOMY_FUND_CLOSED.to_string(),
+        Refusal::FundTooCheap => ECONOMY_FUND_TOO_CHEAP.to_string(),
         Refusal::PledgeOnSelf => ECONOMY_PLEDGE_ON_SELF.to_string(),
         Refusal::PledgeOverShare { max } => {
             format!(
@@ -1065,6 +1069,7 @@ mod tests {
             Refusal::BountyTooSmall { min: 50 },
             Refusal::FundAlreadyOpen,
             Refusal::FundClosed,
+            Refusal::FundTooCheap,
             Refusal::PledgeOnSelf,
             Refusal::PledgeTooSmall { min: 10 },
             Refusal::PledgeOverShare { max: 45 },

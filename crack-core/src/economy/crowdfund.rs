@@ -26,6 +26,11 @@ pub const FUND_HOURS: i64 = 24;
 /// `/crowdfund list` shows at most this many funds.
 pub const LIST_MAX_FUNDS: usize = 15;
 
+/// The lowest price a prank can be crowdfunded at. Below it one member's
+/// share ([`db::fund_share`], half rounded up) is the whole price, so one
+/// member could fill the fund alone: a way round the mirror.
+pub const MIN_FUNDABLE_PRICE: u32 = 2;
+
 /// Check the target of a new fund, refusing for the first reason that
 /// applies: [`check_target`]'s order, less two steps. The voice step is
 /// left to the moment the fund fills ("re-checked at that moment"), and the
@@ -78,19 +83,24 @@ pub struct FundRequest {
     pub nick: Option<String>,
     pub note: Option<String>,
     pub signed: bool,
-    pub first_pledge: Option<i64>,
+    /// The starter's own pledge, which opening a fund takes: the minimum
+    /// pledge at least (unless it uses up their share), capped at the share.
+    pub first_pledge: i64,
     /// The permission check for the kind, made by the caller (it needs the
     /// cache); applied after the target is checked.
     pub preflight: Result<(), Refusal>,
     pub now: DateTime<Utc>,
 }
 
-/// Open a fund, taking the starter's first pledge if there is one. Checks,
-/// in order: the economy, `Crowdfund` and the kind are on; the starter hasn't
-/// opted out; a rename has a valid name; the target ([`check_fund_start`]);
-/// the preflight; the first pledge (at least the minimum, affordable). The
-/// payload is the prank's, with nothing to restore yet: that is captured when
-/// the fund fills. The caller validates the note and posts the card.
+/// Open a fund, taking the starter's first pledge: a fund is never free to
+/// open. Checks, in order: the economy, `Crowdfund` and the kind are on; the
+/// starter hasn't opted out; the prank costs at least [`MIN_FUNDABLE_PRICE`];
+/// a rename has a valid name; the target ([`check_fund_start`]); the
+/// preflight; the first pledge ([`check_pledge_amount`]: at least the
+/// minimum, capped at the share; affordable). Nothing is written before all
+/// of them pass. The payload is the prank's, with nothing to restore yet:
+/// that is captured when the fund fills. The caller validates the note, posts
+/// the card and logs the start.
 pub async fn start(
     data: &Data,
     facts: TargetFacts,
@@ -119,6 +129,9 @@ pub async fn start(
         balance: i64::MAX,
     })
     .map_err(BuyError::Refused)?;
+    if price.price < MIN_FUNDABLE_PRICE {
+        return Err(BuyError::Refused(Refusal::FundTooCheap));
+    }
     let nick = match (kind, req.nick.as_deref()) {
         (ActionKind::Rename, Some(raw)) => Some(validate_nick(raw).map_err(|_| BuyError::Invalid)?),
         (ActionKind::Rename, None) => return Err(BuyError::Invalid),
@@ -130,21 +143,15 @@ pub async fn start(
     }
     req.preflight.map_err(BuyError::Refused)?;
     let amount = i64::from(price.price);
-    let first = match req.first_pledge {
-        None => None,
-        Some(asked) => {
-            let min = i64::from(crowdfund.price);
-            let taken = check_pledge_amount(min, amount, 0, db::fund_share(amount), asked)
-                .map_err(BuyError::Refused)?;
-            let balance = db::balance(pool, g, starter)
-                .await
-                .map_err(|e| db_failed(&format!("reading balance of {starter} in {g}"), &e))?;
-            if balance < taken {
-                return Err(BuyError::Refused(cant_afford(taken, balance)));
-            }
-            Some((taken, req.signed))
-        },
-    };
+    let min = i64::from(crowdfund.price);
+    let taken = check_pledge_amount(min, amount, 0, db::fund_share(amount), req.first_pledge)
+        .map_err(BuyError::Refused)?;
+    let balance = db::balance(pool, g, starter)
+        .await
+        .map_err(|e| db_failed(&format!("reading balance of {starter} in {g}"), &e))?;
+    if balance < taken {
+        return Err(BuyError::Refused(cant_afford(taken, balance)));
+    }
     let payload = payload_for(kind, &facts, None, cfg, nick.as_deref(), None, None)?;
     db::open_fund(
         pool,
@@ -159,15 +166,14 @@ pub async fn start(
             payload: &payload,
             expires_at: Some(req.now + Duration::hours(FUND_HOURS)),
         },
-        first,
+        Some((taken, req.signed)),
     )
     .await
     .map_err(|err| match err {
         FundError::AlreadyOpen => BuyError::Refused(Refusal::FundAlreadyOpen),
         // The balance moved between the check and the pledge.
         FundError::Money(MoveError::Insufficient { balance }) => {
-            let wanted = first.map_or(0, |(a, _)| a);
-            BuyError::Refused(cant_afford(wanted, balance))
+            BuyError::Refused(cant_afford(taken, balance))
         },
         FundError::Closed | FundError::OverShare { .. } | FundError::Money(_) => BuyError::Db,
         FundError::Db(e) => db_failed(&format!("opening a fund for {starter} in {g}"), &e),
@@ -683,7 +689,7 @@ mod tests {
         data
     }
 
-    fn fund_request(starter: UserId, kind: ActionKind, first: Option<i64>) -> FundRequest {
+    fn fund_request(starter: UserId, kind: ActionKind, first: i64) -> FundRequest {
         FundRequest {
             guild: G,
             starter,
@@ -721,7 +727,7 @@ mod tests {
     async fn filled_mute(pool: &PgPool, data: &Data) -> ActionRow {
         fund_wallet(pool, A, 100).await;
         fund_wallet(pool, B, 100).await;
-        let f = start(data, clean(), fund_request(A, ActionKind::Mute, Some(45)))
+        let f = start(data, clean(), fund_request(A, ActionKind::Mute, 45))
             .await
             .unwrap();
         let p = pledge(data, pledge_request(B, f.action_id, 45, false))
@@ -762,13 +768,9 @@ mod tests {
             fund_wallet(&pool, C, 100).await;
             // Rename costs 120: A opens with 50 (signed), B adds 40 unsigned,
             // C's 30 fills it (signed).
-            let opened = start(
-                &data,
-                clean(),
-                fund_request(A, ActionKind::Rename, Some(50)),
-            )
-            .await
-            .unwrap();
+            let opened = start(&data, clean(), fund_request(A, ActionKind::Rename, 50))
+                .await
+                .unwrap();
             assert_eq!((opened.pledged, opened.balance), (50, Some(50)));
             let id = opened.action_id;
             // Still funding: its payload keeps the name and no restore yet.
@@ -1011,7 +1013,7 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-            let f = start(&data, clean(), fund_request(A, ActionKind::Lock, Some(30)))
+            let f = start(&data, clean(), fund_request(A, ActionKind::Lock, 30))
                 .await
                 .unwrap();
             let p = pledge(&data, pledge_request(B, f.action_id, 30, false))
@@ -1036,30 +1038,39 @@ mod tests {
     db_test!(starting_a_fund_checks_in_order, |pool: PgPool| async {
         let data = fund_data(&pool, |_| {}).await;
         fund_wallet(&pool, A, 40).await;
-        let go = |first: Option<i64>| {
+        let go = |first: i64| {
             let data = data.clone();
             async move { start(&data, clean(), fund_request(A, ActionKind::Mute, first)).await }
         };
-        // Too small, then too poor.
+        // Opening a fund costs a pledge of at least the minimum: nothing, too
+        // little or a negative one is refused, then too poor is.
+        for bad in [0, -5, 9] {
+            assert_eq!(
+                go(bad).await,
+                Err(BuyError::Refused(Refusal::PledgeTooSmall { min: 10 })),
+                "{bad}"
+            );
+        }
         assert_eq!(
-            go(Some(9)).await,
-            Err(BuyError::Refused(Refusal::PledgeTooSmall { min: 10 }))
-        );
-        assert_eq!(
-            go(Some(50)).await,
+            go(50).await,
             Err(BuyError::Refused(Refusal::CantAfford { short: 5 }))
         );
-        assert_eq!(
-            count(&pool, "SELECT count(*) FROM economy_actions").await,
-            0
-        );
+        // None of those wrote anything: no fund, no pledge, no money moved.
+        for table in [
+            "SELECT count(*) FROM economy_actions",
+            "SELECT count(*) FROM economy_pledges",
+            "SELECT count(*) FROM economy_ledger",
+        ] {
+            assert_eq!(count(&pool, table).await, 0, "{table}");
+        }
+        assert_eq!(db::balance(&pool, G, A).await.unwrap(), 40);
         // The target is refused before the pledge is looked at.
         let immune = TargetFacts {
             protection: Some(Protection::Indefinitely),
             ..clean()
         };
         assert_eq!(
-            start(&data, immune, fund_request(A, ActionKind::Mute, Some(1))).await,
+            start(&data, immune, fund_request(A, ActionKind::Mute, 1)).await,
             Err(BuyError::Refused(Refusal::TargetImmune(
                 Protection::Indefinitely
             )))
@@ -1068,39 +1079,87 @@ mod tests {
         let gap = Refusal::Unavailable {
             missing: serenity::all::Permissions::MUTE_MEMBERS,
         };
-        let mut r = fund_request(A, ActionKind::Mute, Some(1));
+        let mut r = fund_request(A, ActionKind::Mute, 1);
         r.preflight = Err(gap);
         assert_eq!(start(&data, clean(), r).await, Err(BuyError::Refused(gap)));
         // A rename needs a valid name; a name on a mute is ignored.
-        let mut r = fund_request(A, ActionKind::Rename, None);
+        let mut r = fund_request(A, ActionKind::Rename, 20);
         r.nick = None;
         assert_eq!(start(&data, clean(), r).await, Err(BuyError::Invalid));
-        let mut r = fund_request(A, ActionKind::Rename, None);
+        let mut r = fund_request(A, ActionKind::Rename, 20);
         r.nick = Some("   ".into());
         assert_eq!(start(&data, clean(), r).await, Err(BuyError::Invalid));
         // Drag is never funded.
         assert_eq!(
-            start(&data, clean(), fund_request(A, ActionKind::Drag, None)).await,
+            start(&data, clean(), fund_request(A, ActionKind::Drag, 20)).await,
             Err(BuyError::Invalid)
         );
-        // Opening with no pledge at all is allowed; a second like it is not.
-        let ok = go(None).await.unwrap();
-        assert_eq!((ok.pledged, ok.balance), (0, None));
+        // The minimum opens it, and is taken; a second like it is refused.
+        let ok = go(10).await.unwrap();
+        assert_eq!((ok.pledged, ok.balance), (10, Some(30)));
         assert_eq!(
-            go(Some(20)).await,
+            go(20).await,
             Err(BuyError::Refused(Refusal::FundAlreadyOpen))
         );
         // A different prank on the same target is a different fund.
-        let other = start(
-            &data,
-            clean(),
-            fund_request(A, ActionKind::Deafen, Some(20)),
-        )
-        .await
-        .unwrap();
+        let other = start(&data, clean(), fund_request(A, ActionKind::Deafen, 20))
+            .await
+            .unwrap();
         assert_eq!(other.pledged, 20);
-        assert_eq!(db::balance(&pool, G, A).await.unwrap(), 20);
+        assert_eq!(db::balance(&pool, G, A).await.unwrap(), 10);
+        assert_ledger_agrees(&pool, &[(A, 40)]).await;
     });
+
+    db_test!(
+        a_prank_priced_below_two_cannot_be_crowdfunded,
+        |pool: PgPool| async {
+            let price = |p: u32| {
+                move |s: &mut EconomySettings| {
+                    s.config
+                        .prices
+                        .set(ActionKind::Mute, ActionPrice { price: p, on: true })
+                }
+            };
+            let one = fund_data(&pool, price(1)).await;
+            fund_wallet(&pool, A, 100).await;
+            // One member's share of 1 is all of it. Refused as soon as the
+            // switches are read, before the target.
+            let immune = TargetFacts {
+                protection: Some(Protection::Indefinitely),
+                ..clean()
+            };
+            for facts in [immune, clean()] {
+                assert_eq!(
+                    start(&one, facts, fund_request(A, ActionKind::Mute, 10)).await,
+                    Err(BuyError::Refused(Refusal::FundTooCheap))
+                );
+            }
+            assert_eq!(
+                count(&pool, "SELECT count(*) FROM economy_actions").await,
+                0
+            );
+            assert_eq!(db::balance(&pool, G, A).await.unwrap(), 100);
+            assert_eq!(
+                refusal_text(&Refusal::FundTooCheap, "credits"),
+                "That prank costs too little to crowdfund."
+            );
+            // At 2 it opens, and still takes two members: the share is 1.
+            let two = fund_data(&pool, price(2)).await;
+            let f = start(&two, clean(), fund_request(A, ActionKind::Mute, 10))
+                .await
+                .unwrap();
+            assert_eq!((f.pledged, f.balance), (1, Some(99)));
+            assert_eq!(
+                pledge(&two, pledge_request(A, f.action_id, 1, false)).await,
+                Err(BuyError::Refused(Refusal::PledgeOverShare { max: 1 }))
+            );
+            fund_wallet(&pool, B, 10).await;
+            let p = pledge(&two, pledge_request(B, f.action_id, 10, false))
+                .await
+                .unwrap();
+            assert_eq!((p.pledged.taken, p.pledged.filled), (1, true));
+        }
+    );
 
     db_test!(
         a_fund_needs_crowdfund_and_its_kind_on,
@@ -1116,7 +1175,7 @@ mod tests {
             })
             .await;
             assert_eq!(
-                start(&off, clean(), fund_request(A, ActionKind::Mute, None)).await,
+                start(&off, clean(), fund_request(A, ActionKind::Mute, 10)).await,
                 Err(BuyError::Refused(Refusal::NotForSale))
             );
             let off = fund_data(&pool, |s| {
@@ -1130,13 +1189,14 @@ mod tests {
             })
             .await;
             assert_eq!(
-                start(&off, clean(), fund_request(A, ActionKind::Mute, None)).await,
+                start(&off, clean(), fund_request(A, ActionKind::Mute, 10)).await,
                 Err(BuyError::Refused(Refusal::NotForSale))
             );
             // A pledge needs only Crowdfund.
             let data = fund_data(&pool, |_| {}).await;
+            fund_wallet(&pool, A, 50).await;
             fund_wallet(&pool, B, 50).await;
-            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, None))
+            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, 10))
                 .await
                 .unwrap();
             let off = fund_data(&pool, |s| {
@@ -1170,7 +1230,7 @@ mod tests {
             fund_wallet(&pool, C, 5).await;
             fund_wallet(&pool, T, 100).await;
             // 90 to fill, 45 each at most.
-            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, Some(20)))
+            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, 20))
                 .await
                 .unwrap();
             let id = f.action_id;
@@ -1282,7 +1342,7 @@ mod tests {
             fund_wallet(&pool, A, 200).await;
             fund_wallet(&pool, B, 200).await;
             // Asking for the whole 90 takes only A's half, 45.
-            let opened = start(&data, clean(), fund_request(A, ActionKind::Mute, Some(90)))
+            let opened = start(&data, clean(), fund_request(A, ActionKind::Mute, 90))
                 .await
                 .unwrap();
             assert_eq!((opened.pledged, opened.balance), (45, Some(155)));
@@ -1307,36 +1367,42 @@ mod tests {
     );
 
     db_test!(
-        a_fund_the_starter_did_not_pledge_to_still_names_them,
+        a_funds_starter_is_named_once_and_signs_as_the_fund_does,
         |pool: PgPool| async {
             let data = fund_data(&pool, |_| {}).await;
+            fund_wallet(&pool, A, 100).await;
             fund_wallet(&pool, B, 100).await;
             fund_wallet(&pool, C, 100).await;
-            // A signed fund the starter put nothing into.
-            let signed = start(&data, clean(), fund_request(A, ActionKind::Mute, None))
+            // A signed fund: the starter's own pledge (the minimum), then B
+            // (signed) and C (not) fill it.
+            let signed = start(&data, clean(), fund_request(A, ActionKind::Mute, 10))
                 .await
                 .unwrap();
             pledge(&data, pledge_request(B, signed.action_id, 45, true))
                 .await
                 .unwrap();
-            let p = pledge(&data, pledge_request(C, signed.action_id, 45, false))
+            let p = pledge(&data, pledge_request(C, signed.action_id, 35, false))
                 .await
                 .unwrap();
             assert!(p.pledged.filled);
             let row = row_of(&pool, signed.action_id).await;
             let fake = FakeEconomyDiscord::default();
             let done = run(&data, &fake, clean(), &row).await.unwrap();
+            // The starter once, though they are both starter and pledger.
             assert_eq!(done.contributors, vec![A, B, C]);
             // The starter signed, B signed, C did not.
             assert_eq!(done.signers, vec![A, B]);
             // An unsigned fund: the starter is a contributor, never a signer.
-            let mut r = fund_request(A, ActionKind::Deafen, None);
+            let mut r = fund_request(A, ActionKind::Deafen, 10);
             r.signed = false;
             let unsigned = start(&data, clean(), r).await.unwrap();
-            for who in [B, C] {
-                pledge(&data, pledge_request(who, unsigned.action_id, 45, who == B))
-                    .await
-                    .unwrap();
+            for (who, amount) in [(B, 45), (C, 35)] {
+                pledge(
+                    &data,
+                    pledge_request(who, unsigned.action_id, amount, who == B),
+                )
+                .await
+                .unwrap();
             }
             let row = row_of(&pool, unsigned.action_id).await;
             let done = run(&data, &fake, clean(), &row).await.unwrap();
@@ -1351,7 +1417,7 @@ mod tests {
             let data = fund_data(&pool, |_| {}).await;
             fund_wallet(&pool, A, 100).await;
             fund_wallet(&pool, B, 100).await;
-            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, Some(20)))
+            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, 20))
                 .await
                 .unwrap();
             // The owner reprices mutes to 30 while the 90 fund is open.
@@ -1378,7 +1444,7 @@ mod tests {
         fund_wallet(&pool, A, 100).await;
         data.economy.set_opted_out(G, [A].into_iter().collect());
         assert_eq!(
-            start(&data, clean(), fund_request(A, ActionKind::Mute, Some(20))).await,
+            start(&data, clean(), fund_request(A, ActionKind::Mute, 20)).await,
             Err(BuyError::Refused(Refusal::BuyerOptedOut))
         );
         assert_eq!(db::balance(&pool, G, A).await.unwrap(), 100);
@@ -1457,7 +1523,7 @@ mod tests {
             let data = fund_data(&pool, |_| {}).await;
             fund_wallet(&pool, A, 100).await;
             fund_wallet(&pool, B, 100).await;
-            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, Some(45)))
+            let f = start(&data, clean(), fund_request(A, ActionKind::Mute, 45))
                 .await
                 .unwrap();
             pledge(&data, pledge_request(B, f.action_id, 40, false))

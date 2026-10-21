@@ -120,6 +120,15 @@ pub enum ModLogEvent {
         by: UserId,
         target: UserId,
     },
+    /// A crowdfund was opened (with the starter's own first pledge). The
+    /// starter is always named here, signed or not, as a shop purchase's
+    /// buyer is: its public card may say only "Someone".
+    CrowdfundStarted {
+        action: ActionKind,
+        starter: UserId,
+        target: UserId,
+        note: Option<String>,
+    },
     /// A filled crowdfund landed. Every contributor is named, signed or not:
     /// the starter first, then each pledger once in pledge order.
     CrowdfundExecuted {
@@ -147,6 +156,7 @@ impl std::fmt::Display for ModLogEvent {
             Self::CreditsAdjusted { .. } => "credits_adjusted",
             Self::ShopAction { .. } => "shop_action",
             Self::ShopCancelled { .. } => "shop_cancelled",
+            Self::CrowdfundStarted { .. } => "crowdfund_started",
             Self::CrowdfundExecuted { .. } => "crowdfund_executed",
         };
         write!(f, "ModLog({kind})")
@@ -445,6 +455,23 @@ fn parts(e: &ModLogEvent) -> Parts {
             MODLOG_TITLE_SHOP_CANCELLED,
             format!("{} {MODLOG_SHOP_CLEANSED} {}", user(*by), user(*target)),
         ),
+        ModLogEvent::CrowdfundStarted {
+            action,
+            starter,
+            target,
+            note,
+        } => Parts {
+            reason: note.clone(),
+            ..plain(
+                MODLOG_TITLE_CROWDFUND_STARTED,
+                format!(
+                    "{} {MODLOG_CROWDFUND_STARTED} {} {MODLOG_SHOP_ON} {}",
+                    user(*starter),
+                    action.label(),
+                    user(*target)
+                ),
+            )
+        },
         ModLogEvent::CrowdfundExecuted {
             action,
             target,
@@ -603,6 +630,12 @@ mod tests {
                 mirrored_from: None,
             },
             ModLogEvent::ShopCancelled { by: A, target: T },
+            ModLogEvent::CrowdfundStarted {
+                action: ActionKind::Mute,
+                starter: A,
+                target: T,
+                note: None,
+            },
             ModLogEvent::CrowdfundExecuted {
                 action: ActionKind::Mute,
                 target: T,
@@ -731,6 +764,38 @@ mod tests {
             j["description"],
             "<@22> used Rename on <@11> (bounced by <@11>'s mirror) (signed)"
         );
+    }
+
+    #[test]
+    fn crowdfund_started_names_the_starter() {
+        let e = ModLogEvent::CrowdfundStarted {
+            action: ActionKind::Rename,
+            starter: A,
+            target: T,
+            note: Some("gg".into()),
+        };
+        let j = json(&render(&e, &cx()));
+        assert_eq!(j["title"], "🎉 Crowdfund started");
+        assert_eq!(
+            j["description"],
+            "<@22> started a crowdfund for Rename on <@11>"
+        );
+        assert_eq!(j["fields"][0]["value"], "gg");
+        assert_eq!(render(&e, &cx()).mentions, Mentions::None);
+        assert_eq!(e.to_string(), "ModLog(crowdfund_started)");
+        // No note, no reason field; the starter is still named.
+        let bare = ModLogEvent::CrowdfundStarted {
+            action: ActionKind::Mute,
+            starter: A,
+            target: T,
+            note: None,
+        };
+        let j = json(&render(&bare, &cx()));
+        assert_eq!(
+            j["description"],
+            "<@22> started a crowdfund for Mute on <@11>"
+        );
+        assert!(j["fields"].as_array().is_none_or(Vec::is_empty), "{j}");
     }
 
     #[test]
@@ -984,11 +1049,11 @@ mod tests {
             shown,
             [
                 "ModLog(crowdfund_executed)",
+                "ModLog(crowdfund_started)",
                 "ModLog(shop_cancelled)",
                 "ModLog(shop_action)",
                 "ModLog(credits_adjusted)",
-                "ModLog(immunity_lifted)",
-                "ModLog(immunity_granted)"
+                "ModLog(immunity_lifted)"
             ]
         );
     }

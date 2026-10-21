@@ -1019,6 +1019,7 @@ pub const ECONOMY_DEDICATE_CARD_PREFIX: &str = "🎵 This one goes out to";
 pub const ECONOMY_JUMP_CARD: &str = "⏭️ Someone paid to play this next";
 pub const ECONOMY_PLAY_NAME_A_SONG: &str = "Name a song or paste a link.";
 pub const ECONOMY_PLAY_NOT_CHARGED: &str = "Nothing was queued, so nothing was charged.";
+pub const ECONOMY_PLAY_ONE_SONG: &str = "Paid plays take one song, not a playlist.";
 pub const ECONOMY_BOUNTY_SIGN_DASH: &str = "—";
 pub const ECONOMY_BOUNTY_SIGN_ANON: &str = "someone";
 pub const ECONOMY_BOUNTY_COLLECTED_PREFIX: &str = "💰 You collected";
@@ -1034,6 +1035,7 @@ pub const ECONOMY_BOUNTY_LIST_MORE_SUFFIX: &str = "more";
 pub const ECONOMY_FUND_ALREADY_OPEN: &str =
     "A crowdfund like that is already open. Pledge to it with /crowdfund pledge.";
 pub const ECONOMY_FUND_CLOSED: &str = "That crowdfund has closed.";
+pub const ECONOMY_FUND_TOO_CHEAP: &str = "That prank costs too little to crowdfund.";
 pub const ECONOMY_PLEDGE_ON_SELF: &str = "You can't pledge to a crowdfund against yourself.";
 pub const ECONOMY_PLEDGE_TOO_SMALL_PREFIX: &str = "A pledge starts at";
 pub const ECONOMY_PLEDGE_TOO_SMALL_SUFFIX: &str = "unless it covers what the fund still needs.";
@@ -1062,7 +1064,10 @@ pub const ECONOMY_FUND_CARD_AND: &str = "and";
 pub const ECONOMY_FUND_CARD_OTHER: &str = "other";
 pub const ECONOMY_FUND_CARD_OTHERS: &str = "others";
 pub const ECONOMY_FUND_FAILED_CARD_PREFIX: &str = "The crowdfund against";
-pub const ECONOMY_FUND_FAILED_CARD_MIDDLE: &str = "couldn't land";
+pub const ECONOMY_FUND_FAILED_CARD_MIDDLE: &str = "ended";
+/// The public card's reason, whatever the real one: the specific refusal
+/// (an immunity, an opt-out) goes only in the pledger's private reply.
+pub const ECONOMY_FUND_FAILED_CARD_WHY: &str = "it couldn't land on them right now";
 pub const ECONOMY_FUND_FAILED_CARD_SUFFIX: &str = "Everyone was refunded.";
 pub const ECONOMY_FUND_WHY_PERMISSIONS: &str = "CrackTunes lacks the permission";
 pub const ECONOMY_FUND_WHY_NOT_IN_VOICE: &str = "they aren't in voice";
@@ -1076,6 +1081,8 @@ pub const ECONOMY_FUND_LIST_ENDS: &str = "ends";
 pub const ECONOMY_FUND_LIST_MORE_PREFIX: &str = "…and";
 pub const ECONOMY_FUND_LIST_MORE_SUFFIX: &str = "more";
 pub const MODLOG_TITLE_CROWDFUND: &str = "🎉 Crowdfund executed";
+pub const MODLOG_TITLE_CROWDFUND_STARTED: &str = "🎉 Crowdfund started";
+pub const MODLOG_CROWDFUND_STARTED: &str = "started a crowdfund for";
 pub const MODLOG_CROWDFUNDED_BY: &str = "crowdfunded by";
 pub const ECONOMY_CARD_MIRROR: &str = "🪞";
 pub const ECONOMY_CARD_MIRROR_BOUNCED: &str = "mirror bounced";

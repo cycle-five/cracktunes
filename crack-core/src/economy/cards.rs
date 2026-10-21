@@ -15,9 +15,9 @@ use crate::messaging::messages::{
     ECONOMY_CARD_UNTIL, ECONOMY_FUND_CARD_AND, ECONOMY_FUND_CARD_CROWD, ECONOMY_FUND_CARD_OTHER,
     ECONOMY_FUND_CARD_OTHERS, ECONOMY_FUND_CARD_PREFIX, ECONOMY_FUND_CARD_TO,
     ECONOMY_FUND_CARD_UNTIL, ECONOMY_FUND_FAILED_CARD_MIDDLE, ECONOMY_FUND_FAILED_CARD_PREFIX,
-    ECONOMY_FUND_FAILED_CARD_SUFFIX, ECONOMY_FUND_START_CARD_STARTED, ECONOMY_FUND_START_CARD_TAIL,
-    ECONOMY_FUND_TO_CLOWN, ECONOMY_FUND_TO_DEAFEN, ECONOMY_FUND_TO_JAIL, ECONOMY_FUND_TO_LOCK,
-    ECONOMY_FUND_TO_MUTE, ECONOMY_FUND_TO_RENAME,
+    ECONOMY_FUND_FAILED_CARD_SUFFIX, ECONOMY_FUND_FAILED_CARD_WHY, ECONOMY_FUND_START_CARD_STARTED,
+    ECONOMY_FUND_START_CARD_TAIL, ECONOMY_FUND_TO_CLOWN, ECONOMY_FUND_TO_DEAFEN,
+    ECONOMY_FUND_TO_JAIL, ECONOMY_FUND_TO_LOCK, ECONOMY_FUND_TO_MUTE, ECONOMY_FUND_TO_RENAME,
 };
 use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, UserId};
@@ -205,10 +205,12 @@ pub fn fund_started_card_text(
     )
 }
 
-/// The card for a filled crowdfund that could not land.
-pub fn fund_failed_card_text(target: UserId, reason: &str) -> String {
+/// The public card for a filled crowdfund that could not land. Its reason is
+/// always the generic one: the real refusal (the target's immunity or
+/// opt-out, say) is theirs, and goes only in the private reply.
+pub fn fund_failed_card_text(target: UserId) -> String {
     format!(
-        "{ECONOMY_FUND_FAILED_CARD_PREFIX} {} {ECONOMY_FUND_FAILED_CARD_MIDDLE} ({reason}). {ECONOMY_FUND_FAILED_CARD_SUFFIX}",
+        "{ECONOMY_FUND_FAILED_CARD_PREFIX} {} {ECONOMY_FUND_FAILED_CARD_MIDDLE}: {ECONOMY_FUND_FAILED_CARD_WHY}. {ECONOMY_FUND_FAILED_CARD_SUFFIX}",
         mention(target)
     )
 }
@@ -240,19 +242,22 @@ fn note_and_sign(mut text: String, note: Option<&str>, buyer: Option<UserId>) ->
     text
 }
 
-/// The card for a dedicated song: who it goes out to, the note, the signer
-/// ("someone" when unsigned). Never the song: the play reply shows that.
-pub fn dedication_card_text(target: UserId, note: Option<&str>, buyer: Option<UserId>) -> String {
+/// The card for a dedicated song: who it goes out to, the note, and the
+/// buyer, always: a paid play is signed by nature (its `/play` reply and
+/// now-playing's "Requested by" name them anyway). Never the song: the play
+/// reply shows that.
+pub fn dedication_card_text(target: UserId, note: Option<&str>, buyer: UserId) -> String {
     note_and_sign(
         format!("{ECONOMY_DEDICATE_CARD_PREFIX} {}", mention(target)),
         note,
-        buyer,
+        Some(buyer),
     )
 }
 
-/// The card for a paid jump. It names nobody unless the buyer signed.
-pub fn jump_card_text(note: Option<&str>, buyer: Option<UserId>) -> String {
-    note_and_sign(ECONOMY_JUMP_CARD.to_string(), note, buyer)
+/// The card for a paid jump: the note, and the buyer, always (as a
+/// dedication).
+pub fn jump_card_text(note: Option<&str>, buyer: UserId) -> String {
+    note_and_sign(ECONOMY_JUMP_CARD.to_string(), note, Some(buyer))
 }
 
 /// The channel a card goes to. Drag, jail, mute and deafen happen in voice,
@@ -308,30 +313,30 @@ mod tests {
     }
 
     #[test]
-    fn dedication_card_text_names_the_target_and_never_the_song() {
+    fn dedication_card_text_names_the_target_and_the_buyer_never_the_song() {
         assert_eq!(
-            dedication_card_text(T, Some("for *you*"), Some(B)),
+            dedication_card_text(T, Some("for *you*"), B),
             "🎵 This one goes out to <@20>\n> for \\*you\\*\n— <@10>"
         );
         assert_eq!(
-            dedication_card_text(T, None, None),
-            "🎵 This one goes out to <@20>\n— someone"
+            dedication_card_text(T, None, B),
+            "🎵 This one goes out to <@20>\n— <@10>"
         );
         assert_eq!(
-            dedication_card_text(T, Some("  "), None),
-            "🎵 This one goes out to <@20>\n— someone"
+            dedication_card_text(T, Some("  "), B),
+            "🎵 This one goes out to <@20>\n— <@10>"
         );
     }
 
     #[test]
-    fn jump_card_text_names_nobody_unless_signed() {
+    fn jump_card_text_always_names_the_buyer() {
         assert_eq!(
-            jump_card_text(Some("hurry"), Some(B)),
+            jump_card_text(Some("hurry"), B),
             "⏭️ Someone paid to play this next\n> hurry\n— <@10>"
         );
         assert_eq!(
-            jump_card_text(None, None),
-            "⏭️ Someone paid to play this next\n— someone"
+            jump_card_text(None, B),
+            "⏭️ Someone paid to play this next\n— <@10>"
         );
     }
 
@@ -583,9 +588,11 @@ mod tests {
             fund_card_text(ActionKind::Mute, T, None, None, Some("**x**"), &[])
                 .contains("\\*\\*x\\*\\*")
         );
+        // The public card never says why: that could publish an immunity or
+        // an opt-out.
         assert_eq!(
-            fund_failed_card_text(T, "they aren't in voice"),
-            "The crowdfund against <@20> couldn't land (they aren't in voice). Everyone was refunded."
+            fund_failed_card_text(T),
+            "The crowdfund against <@20> ended: it couldn't land on them right now. Everyone was refunded."
         );
     }
 

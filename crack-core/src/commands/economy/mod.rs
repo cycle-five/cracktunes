@@ -80,6 +80,27 @@ mod tests {
                 "{qualified}"
             );
         }
+        // A paid play is signed by nature: no `signed` to leave off.
+        let params_of = |name: &str| -> Vec<String> {
+            let sub = shop.subcommands.iter().find(|c| c.name == name).unwrap();
+            sub.parameters.iter().map(|p| p.name.to_string()).collect()
+        };
+        assert_eq!(params_of("dedicate"), ["member", "song", "note"]);
+        assert_eq!(params_of("jump"), ["song", "note"]);
+        // The theme's note and signature show on its public card.
+        let theme = shop.subcommands.iter().find(|c| c.name == "theme").unwrap();
+        let described: Vec<_> = theme
+            .parameters
+            .iter()
+            .map(|p| (p.name.as_ref(), p.description.as_deref()))
+            .collect();
+        assert_eq!(
+            described[3..],
+            [
+                ("note", Some("A note shown on the card")),
+                ("signed", Some("Put your name on the card"))
+            ]
+        );
         let economy = &cmds[3];
         assert_eq!(
             subs(economy),
@@ -126,10 +147,14 @@ mod tests {
             .all(|c| c.guild_only && c.slash_action.is_some()));
         let start = fund.subcommands.iter().find(|c| c.name == "start").unwrap();
         let params: Vec<_> = start.parameters.iter().map(|p| p.name.as_ref()).collect();
+        // The starter's pledge is required (Discord lists required options
+        // first): opening a fund is never free.
         assert_eq!(
             params,
-            ["action", "member", "name", "note", "signed", "pledge"]
+            ["action", "member", "pledge", "name", "note", "signed"]
         );
+        assert!(start.parameters[2].required);
+        assert!(start.parameters[3..].iter().all(|p| !p.required));
         let choices: Vec<_> = start.parameters[0]
             .choices
             .iter()
