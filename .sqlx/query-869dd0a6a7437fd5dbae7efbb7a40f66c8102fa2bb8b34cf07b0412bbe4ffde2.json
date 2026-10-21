@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_actions SET revealed_at = now(), revealed_by = $2\n         WHERE id = $1 AND revealed_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "869dd0a6a7437fd5dbae7efbb7a40f66c8102fa2bb8b34cf07b0412bbe4ffde2"
+}

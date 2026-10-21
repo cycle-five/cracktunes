@@ -17,6 +17,7 @@ pub mod wallet;
 
 use crate::Data;
 use chrono::{DateTime, Utc};
+use discord::EconomyDiscord;
 use immunity::{can_switch_optout, is_protected, Protection};
 use serenity::all::{GuildId, UserId};
 use settings::{EconomySettings, EconomySettingsError};
@@ -103,6 +104,7 @@ pub enum OptOutError {
 /// server reads default settings here.
 pub async fn opt_out(
     data: &Data,
+    discord: &dyn EconomyDiscord,
     g: GuildId,
     u: UserId,
     out: bool,
@@ -134,7 +136,7 @@ pub async fn opt_out(
         })?;
     data.economy.set_one_opted_out(g, u, out);
     if out {
-        // PR 2: end running pranks on the target here
+        end_pranks_on(data, discord, g, u, "opt_out", now).await;
     }
     Ok(())
 }
@@ -166,6 +168,7 @@ pub enum GrantError {
 /// A moderator grants a member immunity (`until: None` lasts until lifted).
 pub async fn mod_grant(
     data: &Data,
+    discord: &dyn EconomyDiscord,
     g: GuildId,
     target: UserId,
     until: Option<DateTime<Utc>>,
@@ -184,8 +187,44 @@ pub async fn mod_grant(
             tracing::warn!("economy: granting immunity to {target} in {g} failed: {err}");
             GrantError::Db
         })?;
-    // PR 2: end running pranks on the target here
+    end_pranks_on(data, discord, g, target, "immunity", Utc::now()).await;
     Ok(())
+}
+
+/// End the pranks running on a member for a reason that is not theirs to
+/// undo (they opted out, a moderator granted immunity): each is undone as if
+/// it had expired. A failure is logged; the sweeper retries what is left.
+async fn end_pranks_on(
+    data: &Data,
+    discord: &dyn EconomyDiscord,
+    g: GuildId,
+    u: UserId,
+    reason: &str,
+    now: DateTime<Utc>,
+) {
+    if let Err(err) = effects::end_running_pranks(data, discord, g, u, reason, now).await {
+        tracing::warn!("economy: ending the pranks on {u} in {g} ({reason}) failed: {err}");
+    }
+}
+
+/// A moderator cancels everything running on a member (`/economy cancel`):
+/// each prank is undone as if it had expired. Returns how many were ended.
+pub async fn mod_cancel(
+    data: &Data,
+    discord: &dyn EconomyDiscord,
+    g: GuildId,
+    target: UserId,
+    now: DateTime<Utc>,
+) -> Result<usize, GrantError> {
+    if data.database_pool.is_none() {
+        return Err(GrantError::NoDatabase);
+    }
+    effects::end_running_pranks(data, discord, g, target, "mod_cancelled", now)
+        .await
+        .map_err(|err| {
+            tracing::warn!("economy: cancelling the pranks on {target} in {g} failed: {err}");
+            GrantError::Db
+        })
 }
 
 /// Remove a member's moderator grant; true when there was one. Always
@@ -205,7 +244,10 @@ pub async fn mod_lift(data: &Data, g: GuildId, target: UserId) -> Result<bool, G
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::economy::discord::fake::{Call, FakeEconomyDiscord};
+    use crate::economy::wallet::ActionPayload;
     use crate::DataInner;
+    use settings::ActionKind;
     use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
@@ -389,7 +431,10 @@ mod tests {
     async fn opt_out_updates_db_and_registry(pool: sqlx::PgPool) {
         let data = live(&pool, on()).await;
         let now = t0();
-        assert_eq!(opt_out(&data, G, U, true, now).await, Ok(()));
+        assert_eq!(
+            opt_out(&data, &FakeEconomyDiscord::default(), G, U, true, now).await,
+            Ok(())
+        );
         assert!(data.economy.is_opted_out(G, U));
         let st = crate::db::economy::optout_state(&pool, G, U).await.unwrap();
         assert_eq!((st.out, st.changed_at), (true, Some(now)));
@@ -399,19 +444,22 @@ mod tests {
         );
         // already out
         assert_eq!(
-            opt_out(&data, G, U, true, now).await,
+            opt_out(&data, &FakeEconomyDiscord::default(), G, U, true, now).await,
             Err(OptOutError::AlreadyThere)
         );
         // back in within the cooldown is refused, state untouched
         let soon = now + chrono::Duration::days(6);
         assert_eq!(
-            opt_out(&data, G, U, false, soon).await,
+            opt_out(&data, &FakeEconomyDiscord::default(), G, U, false, soon).await,
             Err(OptOutError::Cooldown(now + chrono::Duration::days(7)))
         );
         assert!(data.economy.is_opted_out(G, U));
         // after it, allowed
         let later = now + chrono::Duration::days(7);
-        assert_eq!(opt_out(&data, G, U, false, later).await, Ok(()));
+        assert_eq!(
+            opt_out(&data, &FakeEconomyDiscord::default(), G, U, false, later).await,
+            Ok(())
+        );
         assert!(!data.economy.is_opted_out(G, U));
         let st = crate::db::economy::optout_state(&pool, G, U).await.unwrap();
         assert_eq!((st.out, st.changed_at), (false, Some(later)));
@@ -425,18 +473,24 @@ mod tests {
     async fn opting_out_is_refused_when_disabled_but_opting_in_is_not(pool: sqlx::PgPool) {
         let now = t0();
         let data = live(&pool, on()).await;
-        assert_eq!(opt_out(&data, G, U, true, now).await, Ok(()));
+        assert_eq!(
+            opt_out(&data, &FakeEconomyDiscord::default(), G, U, true, now).await,
+            Ok(())
+        );
         // The server then turns opt-out off, with a zero cooldown.
         let mut s = on();
         s.config.immunity_optout = false;
         s.config.optout_cooldown_days = 0;
         assert_eq!(save_settings(&data, s).await, Ok(()));
         // Opting back in still works,
-        assert_eq!(opt_out(&data, G, U, false, now).await, Ok(()));
+        assert_eq!(
+            opt_out(&data, &FakeEconomyDiscord::default(), G, U, false, now).await,
+            Ok(())
+        );
         assert!(!data.economy.is_opted_out(G, U));
         // but opting out again is refused, and nothing is written.
         assert_eq!(
-            opt_out(&data, G, U, true, now).await,
+            opt_out(&data, &FakeEconomyDiscord::default(), G, U, true, now).await,
             Err(OptOutError::Disabled)
         );
         assert!(!data.economy.is_opted_out(G, U));
@@ -453,11 +507,11 @@ mod tests {
         let data = Data(Arc::new(DataInner::default()));
         let now = t0();
         assert_eq!(
-            opt_out(&data, G, U, true, now).await,
+            opt_out(&data, &FakeEconomyDiscord::default(), G, U, true, now).await,
             Err(OptOutError::NoDatabase)
         );
         assert_eq!(
-            mod_grant(&data, G, U, None, MOD, None).await,
+            mod_grant(&data, &FakeEconomyDiscord::default(), G, U, None, MOD, None).await,
             Err(GrantError::NoDatabase)
         );
         assert_eq!(mod_lift(&data, G, U).await, Err(GrantError::NoDatabase));
@@ -473,7 +527,16 @@ mod tests {
         let data = live(&pool, on()).await;
         let now = t0();
         assert_eq!(
-            mod_grant(&data, G, U, None, MOD, Some("raid")).await,
+            mod_grant(
+                &data,
+                &FakeEconomyDiscord::default(),
+                G,
+                U,
+                None,
+                MOD,
+                Some("raid")
+            )
+            .await,
             Ok(())
         );
         assert_eq!(
@@ -493,7 +556,7 @@ mod tests {
         s.config.immunity_mods = false;
         assert_eq!(save_settings(&data, s).await, Ok(()));
         assert_eq!(
-            mod_grant(&data, G, U, None, MOD, None).await,
+            mod_grant(&data, &FakeEconomyDiscord::default(), G, U, None, MOD, None).await,
             Err(GrantError::Disabled)
         );
         assert_eq!(mod_lift(&data, G, U).await, Ok(true));
@@ -502,5 +565,173 @@ mod tests {
             Some(Protection::Until(now + chrono::Duration::hours(2)))
         );
         assert_eq!(mod_lift(&data, G, U).await, Ok(false));
+    }
+
+    /// A prank row `kind` on `target`, bought by `buyer` and running.
+    async fn running(
+        pool: &sqlx::PgPool,
+        buyer: UserId,
+        target: UserId,
+        kind: ActionKind,
+        payload: ActionPayload,
+    ) -> i64 {
+        crate::db::economy::credit_earnings(
+            pool,
+            G,
+            &[crate::db::economy::EarnRow {
+                user: buyer,
+                voice: 100,
+                messages: 0,
+            }],
+        )
+        .await
+        .unwrap();
+        let until = Some(t0() + chrono::Duration::hours(1));
+        let charged = crate::db::economy::charge_for_action(
+            pool,
+            &crate::db::economy::NewAction {
+                guild: G,
+                kind,
+                buyer,
+                target: Some(target),
+                price: 10,
+                note: None,
+                signed: false,
+                payload: &payload,
+                expires_at: until,
+            },
+        )
+        .await
+        .unwrap();
+        crate::db::economy::activate_action(pool, charged.action_id, kind, until)
+            .await
+            .unwrap();
+        charged.action_id
+    }
+
+    async fn row_state(pool: &sqlx::PgPool, id: i64) -> (String, Option<String>) {
+        sqlx::query_as("SELECT state, end_reason FROM economy_actions WHERE id = $1")
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    const OTHER: UserId = UserId::new(12);
+
+    /// A mute on `U`, a mute on someone else, and a standing mirror on `U`.
+    async fn pranked(pool: &sqlx::PgPool) -> (i64, i64, i64) {
+        let mute = running(pool, MOD, U, ActionKind::Mute, ActionPayload::Mute).await;
+        let other = running(pool, MOD, OTHER, ActionKind::Mute, ActionPayload::Mute).await;
+        let mirror = running(pool, MOD, U, ActionKind::Mirror, ActionPayload::Mirror).await;
+        (mute, other, mirror)
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn opting_out_ends_running_pranks(pool: sqlx::PgPool) {
+        let data = live(&pool, on()).await;
+        let (mute, other, mirror) = pranked(&pool).await;
+        let fake = FakeEconomyDiscord::default();
+        assert_eq!(opt_out(&data, &fake, G, U, true, t0()).await, Ok(()));
+        assert_eq!(fake.calls(), vec![Call::Mute(U, false, ActionKind::Mute)]);
+        assert_eq!(
+            row_state(&pool, mute).await,
+            ("ended".to_string(), Some("opt_out".to_string()))
+        );
+        // Someone else's prank and the standing mirror are not touched.
+        assert_eq!(row_state(&pool, other).await.0, "active");
+        assert_eq!(row_state(&pool, mirror).await.0, "active");
+        // Opting back in ends nothing.
+        let later = t0() + chrono::Duration::days(7);
+        let again = FakeEconomyDiscord::default();
+        assert_eq!(opt_out(&data, &again, G, U, false, later).await, Ok(()));
+        assert!(again.calls().is_empty());
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn a_mod_grant_ends_running_pranks(pool: sqlx::PgPool) {
+        let data = live(&pool, on()).await;
+        let (mute, other, mirror) = pranked(&pool).await;
+        let fake = FakeEconomyDiscord::default();
+        assert_eq!(mod_grant(&data, &fake, G, U, None, MOD, None).await, Ok(()));
+        assert_eq!(fake.calls(), vec![Call::Mute(U, false, ActionKind::Mute)]);
+        assert_eq!(
+            row_state(&pool, mute).await,
+            ("ended".to_string(), Some("immunity".to_string()))
+        );
+        assert_eq!(row_state(&pool, other).await.0, "active");
+        assert_eq!(row_state(&pool, mirror).await.0, "active");
+        // A refused grant ends nothing.
+        let mut s = on();
+        s.config.immunity_mods = false;
+        assert_eq!(save_settings(&data, s).await, Ok(()));
+        let refused = FakeEconomyDiscord::default();
+        assert_eq!(
+            mod_grant(&data, &refused, G, OTHER, None, MOD, None).await,
+            Err(GrantError::Disabled)
+        );
+        assert!(refused.calls().is_empty());
+        assert_eq!(row_state(&pool, other).await.0, "active");
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn cancel_ends_running_pranks(pool: sqlx::PgPool) {
+        let data = live(&pool, on()).await;
+        let (mute, other, mirror) = pranked(&pool).await;
+        let nick = running(
+            &pool,
+            MOD,
+            U,
+            ActionKind::Rename,
+            ActionPayload::Rename {
+                name: "Bean".into(),
+                restore: Some("old".into()),
+            },
+        )
+        .await;
+        let fake = FakeEconomyDiscord::default();
+        assert_eq!(mod_cancel(&data, &fake, G, U, t0()).await, Ok(2));
+        let calls = fake.calls();
+        assert!(
+            calls.contains(&Call::Mute(U, false, ActionKind::Mute)),
+            "{calls:?}"
+        );
+        assert!(
+            calls.contains(&Call::Nick(U, Some("old".into()), ActionKind::Rename)),
+            "{calls:?}"
+        );
+        for id in [mute, nick] {
+            assert_eq!(
+                row_state(&pool, id).await,
+                ("ended".to_string(), Some("mod_cancelled".to_string()))
+            );
+        }
+        assert_eq!(row_state(&pool, other).await.0, "active");
+        assert_eq!(row_state(&pool, mirror).await.0, "active");
+        // Nothing left: nothing ended, nothing sent.
+        let none = FakeEconomyDiscord::default();
+        assert_eq!(mod_cancel(&data, &none, G, U, t0()).await, Ok(0));
+        assert!(none.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn cancel_without_a_database_says_so() {
+        let data = Data(Arc::new(DataInner::default()));
+        assert_eq!(
+            mod_cancel(&data, &FakeEconomyDiscord::default(), G, U, t0()).await,
+            Err(GrantError::NoDatabase)
+        );
     }
 }

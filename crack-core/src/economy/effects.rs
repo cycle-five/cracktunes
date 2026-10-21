@@ -146,6 +146,35 @@ pub async fn finish(
     }
 }
 
+/// End every running (`active` or `ending`) prank aimed at `target`, each
+/// undone as if it had expired, with `reason` as the end reason. A standing
+/// mirror is kept. Locks go first so the restoring rename is not fought by an
+/// active lock. A row that cannot be undone right now is warned about by
+/// [`finish`] and left for the sweeper. Returns how many rows were attempted.
+pub async fn end_running_pranks(
+    data: &Data,
+    discord: &dyn EconomyDiscord,
+    guild: GuildId,
+    target: UserId,
+    reason: &str,
+    now: DateTime<Utc>,
+) -> Result<usize, sqlx::Error> {
+    let Some(pool) = data.database_pool.as_ref() else {
+        return Ok(0);
+    };
+    let kinds: Vec<ActionKind> = ActionKind::ALL
+        .iter()
+        .copied()
+        .filter(|k| k.is_prank())
+        .collect();
+    let mut rows = economy::active_of_kind(pool, guild, target, &kinds).await?;
+    rows.sort_by_key(|r| (r.kind != ActionKind::Lock, r.id));
+    for row in &rows {
+        finish(data, discord, guild, row, reason, now).await;
+    }
+    Ok(rows.len())
+}
+
 /// Finish every row whose time is up, in every server, the economy on or off.
 pub async fn sweep(data: &Data, discord: &dyn EconomyDiscord, now: DateTime<Utc>) {
     let Some(pool) = data.database_pool.as_ref() else {

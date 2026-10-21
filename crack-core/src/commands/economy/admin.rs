@@ -1,15 +1,16 @@
 //! `/economy status|grant|lift|adjust`, for moderators.
-use super::credits::{gate, say};
+use super::credits::{gate, live, say};
 use crate::db::economy as db;
 use crate::economy::settings::EconomySettings;
 use crate::economy::wallet::MoveError;
-use crate::economy::{mod_grant, mod_lift, GrantError};
+use crate::economy::{mod_cancel, mod_grant, mod_lift, GrantError};
 use crate::messaging::messages::{
     ECONOMY_ADMIN_ADJUST_BELOW_ZERO_PREFIX, ECONOMY_ADMIN_ADJUST_DONE, ECONOMY_ADMIN_ADJUST_FAILED,
     ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE, ECONOMY_ADMIN_ADJUST_TOO_BIG, ECONOMY_ADMIN_ADJUST_ZERO,
     ECONOMY_ADMIN_BOT_TARGET, ECONOMY_ADMIN_GRANT_DISABLED, ECONOMY_ADMIN_GRANT_DONE,
     ECONOMY_ADMIN_GRANT_FAILED, ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE,
     ECONOMY_ADMIN_LIFT_FAILED, ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE,
+    ECONOMY_CANCEL_DONE_PREFIX, ECONOMY_CANCEL_DONE_SUFFIX, ECONOMY_CANCEL_NONE,
     ECONOMY_NO_DATABASE, ECONOMY_READ_FAILED, ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING,
     ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET,
     ECONOMY_STATUS_MODS, ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
@@ -104,7 +105,7 @@ pub fn adjust_amount_ok(amount: i64) -> bool {
 
 /// Post a mod log event; nothing happens while the log is off.
 #[cfg(not(tarpaulin_include))]
-async fn log(ctx: Context<'_>, guild: GuildId, event: ModLogEvent) {
+pub(super) async fn log(ctx: Context<'_>, guild: GuildId, event: ModLogEvent) {
     let sink = ChannelSink {
         data: (*ctx.data()).clone(),
         transport: Arc::new(DiscordTransport::of(ctx.serenity_context())),
@@ -119,7 +120,7 @@ async fn log(ctx: Context<'_>, guild: GuildId, event: ModLogEvent) {
     slash_command,
     guild_only,
     default_member_permissions = "MODERATE_MEMBERS",
-    subcommands("status", "grant", "lift", "adjust"),
+    subcommands("status", "grant", "lift", "cancel", "adjust"),
     subcommand_required
 )]
 pub async fn economy(_ctx: Context<'_>) -> Result<(), Error> {
@@ -171,7 +172,17 @@ pub async fn grant(
     }
     let until = hours.map(|h| Utc::now() + Duration::hours(i64::from(h)));
     let by = ctx.author().id;
-    match mod_grant(&ctx.data(), guild, member.id, until, by, reason.as_deref()).await {
+    match mod_grant(
+        &ctx.data(),
+        &live(ctx),
+        guild,
+        member.id,
+        until,
+        by,
+        reason.as_deref(),
+    )
+    .await
+    {
         Ok(()) => {
             // Reply first: a slow log channel must not time the interaction out.
             let replied = say(ctx, ECONOMY_ADMIN_GRANT_DONE, true).await;
@@ -221,6 +232,41 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
         Ok(false) => say(ctx, ECONOMY_ADMIN_LIFT_NONE, true).await,
         Err(GrantError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
         Err(_) => say(ctx, ECONOMY_ADMIN_LIFT_FAILED, true).await,
+    }
+}
+
+/// End every prank running on a member, undone as if it had expired.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(slash_command, guild_only)]
+pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Result<(), Error> {
+    let Some((guild, _pool)) = gate(ctx).await? else {
+        return Ok(());
+    };
+    if !mod_gate(ctx).await? {
+        return Ok(());
+    }
+    match mod_cancel(&ctx.data(), &live(ctx), guild, member.id, Utc::now()).await {
+        Ok(0) => say(ctx, ECONOMY_CANCEL_NONE, true).await,
+        Ok(n) => {
+            let replied = say(
+                ctx,
+                format!("{ECONOMY_CANCEL_DONE_PREFIX} {n} {ECONOMY_CANCEL_DONE_SUFFIX}"),
+                true,
+            )
+            .await;
+            log(
+                ctx,
+                guild,
+                ModLogEvent::ShopCancelled {
+                    by: ctx.author().id,
+                    target: member.id,
+                },
+            )
+            .await;
+            replied
+        },
+        Err(GrantError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
+        Err(_) => say(ctx, ECONOMY_READ_FAILED, true).await,
     }
 }
 

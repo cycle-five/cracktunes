@@ -350,6 +350,107 @@ pub async fn active_of_kind(
     Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
 }
 
+/// A prank that could be unmasked, with when it was bought.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevealCandidate {
+    pub row: ActionRow,
+    pub bought_at: DateTime<Utc>,
+}
+
+/// [`RawAction`] plus the purchase time.
+struct RawCandidate {
+    id: i64,
+    guild_id: i64,
+    kind: String,
+    buyer_id: i64,
+    target_id: Option<i64>,
+    payload: Json<ActionPayload>,
+    state: String,
+    expires_at: Option<DateTime<Utc>>,
+    note: Option<String>,
+    signed: bool,
+    revealed_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+}
+
+/// The pranks (spec 4.1) other people bought against `target` that could be
+/// unmasked: unsigned, landed (not refunded, not blocked), newest first. A
+/// bounced prank (its buyer is its own target) and a mirror (its target is
+/// its owner) never qualify. `only` narrows to one action id, and
+/// `unrevealed_only` drops the ones already unmasked.
+pub async fn reveal_candidates(
+    pool: &PgPool,
+    guild: GuildId,
+    target: UserId,
+    only: Option<i64>,
+    unrevealed_only: bool,
+    limit: i64,
+) -> sqlx::Result<Vec<RevealCandidate>> {
+    let keys: Vec<String> = ActionKind::ALL
+        .iter()
+        .filter(|k| k.is_prank())
+        .map(|k| k.key().to_string())
+        .collect();
+    let raw = sqlx::query_as!(
+        RawCandidate,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at, created_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND target_id = $2 AND buyer_id <> $2
+             AND kind = ANY($3) AND signed = false
+             AND state IN ('active', 'ending', 'ended', 'done')
+             AND end_reason IS DISTINCT FROM 'blocked'
+             AND ($4::bigint IS NULL OR id = $4)
+             AND (NOT $5 OR revealed_at IS NULL)
+           ORDER BY id DESC
+           LIMIT $6"#,
+        guild.get() as i64,
+        target.get() as i64,
+        &keys,
+        only,
+        unrevealed_only,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|c| {
+            let bought_at = c.created_at;
+            RawAction {
+                id: c.id,
+                guild_id: c.guild_id,
+                kind: c.kind,
+                buyer_id: c.buyer_id,
+                target_id: c.target_id,
+                payload: c.payload,
+                state: c.state,
+                expires_at: c.expires_at,
+                note: c.note,
+                signed: c.signed,
+                revealed_at: c.revealed_at,
+            }
+            .into_row()
+            .map(|(_, row)| RevealCandidate { row, bought_at })
+        })
+        .collect())
+}
+
+/// Stamp a prank as unmasked by `by`. False when it already was (nothing
+/// changed), so a racing second reveal can be refunded.
+pub async fn mark_revealed(pool: &PgPool, action_id: i64, by: UserId) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE economy_actions SET revealed_at = now(), revealed_by = $2
+         WHERE id = $1 AND revealed_at IS NULL",
+        action_id,
+        by.get() as i64
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
 /// Move a `pending` action to what it becomes once the effect has landed:
 /// `active` for a kind that [`ActionKind::stays_active`], else `done`.
 /// False when the row was not pending (nothing changed).

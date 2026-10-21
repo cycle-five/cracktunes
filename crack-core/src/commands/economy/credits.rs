@@ -3,6 +3,7 @@
 //! The pure `*_text` and `check_gift` functions carry the wording and the
 //! rules; the poise functions are glue.
 use crate::db::economy::{self as db, LedgerEntry, WalletSummary};
+use crate::economy::discord::LiveEconomyDiscord;
 use crate::economy::gamble::{bet_refusal_text, BetRefusal};
 use crate::economy::wallet::MoveError;
 use crate::economy::{self, OptOutError};
@@ -214,6 +215,14 @@ pub(super) async fn say(
     Ok(())
 }
 
+/// The real Discord the shop acts through, from the command's context.
+#[cfg(not(tarpaulin_include))]
+pub(super) fn live(ctx: Context<'_>) -> LiveEconomyDiscord {
+    LiveEconomyDiscord {
+        http: ctx.serenity_context().http.clone(),
+    }
+}
+
 /// The checks every economy command starts with: a server, the economy on,
 /// a database. Replies privately and gives `None` when the economy is off or
 /// there is no database. With no server (impossible: every command is
@@ -392,7 +401,7 @@ async fn switch(ctx: Context<'_>, out: bool) -> Result<(), Error> {
         return Ok(());
     };
     let now = Utc::now();
-    let result = economy::opt_out(&ctx.data(), guild, ctx.author().id, out, now).await;
+    let result = economy::opt_out(&ctx.data(), &live(ctx), guild, ctx.author().id, out, now).await;
     let days = ctx
         .data()
         .economy

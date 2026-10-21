@@ -2,18 +2,22 @@
 //! refund when the grant fails. Immunity is the first item for sale.
 
 use super::discord::{EconDiscordError, EconomyDiscord};
+use super::effects::end_running_pranks;
 use super::immunity::Protection;
+use super::preflight::{self, BotPerms};
 use super::settings::{clown_name, ActionKind, ActionPrice, EconomyConfig};
 use super::target::{check_target, TargetFacts, TargetOutcome};
 use super::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::messages::{
-    ECONOMY_ALREADY_IMMUNE, ECONOMY_ALREADY_RUNNING_PREFIX, ECONOMY_BUYER_NOT_IN_VOICE,
-    ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION, ECONOMY_CANT_AFFORD_MIDDLE,
-    ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_MIRROR_ALREADY_UP, ECONOMY_NOT_FOR_SALE,
-    ECONOMY_NO_JAIL_CHANNEL, ECONOMY_OFF, ECONOMY_OUT_OF_REACH, ECONOMY_TARGET_IMMUNE_INDEFINITELY,
-    ECONOMY_TARGET_IMMUNE_UNTIL, ECONOMY_TARGET_IS_BOT, ECONOMY_TARGET_IS_SELF,
-    ECONOMY_TARGET_NOT_IN_VOICE, ECONOMY_TARGET_OPTED_OUT, ECONOMY_UNAVAILABLE_PREFIX,
-    ECONOMY_UNAVAILABLE_SUFFIX,
+    ECONOMY_ALREADY_IMMUNE, ECONOMY_ALREADY_REVEALED, ECONOMY_ALREADY_RUNNING_PREFIX,
+    ECONOMY_BUYER_NOT_IN_VOICE, ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION,
+    ECONOMY_CANT_AFFORD_MIDDLE, ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_MIRROR_ALREADY_UP,
+    ECONOMY_NOTHING_TO_CLEANSE, ECONOMY_NOTHING_TO_REVEAL, ECONOMY_NOT_FOR_SALE,
+    ECONOMY_NO_JAIL_CHANNEL, ECONOMY_OFF, ECONOMY_OUT_OF_REACH, ECONOMY_REVEAL_PICK_AGO,
+    ECONOMY_REVEAL_PICK_DAY, ECONOMY_REVEAL_PICK_HOUR, ECONOMY_REVEAL_PICK_JUST_NOW,
+    ECONOMY_REVEAL_PICK_MINUTE, ECONOMY_TARGET_IMMUNE_INDEFINITELY, ECONOMY_TARGET_IMMUNE_UNTIL,
+    ECONOMY_TARGET_IS_BOT, ECONOMY_TARGET_IS_SELF, ECONOMY_TARGET_NOT_IN_VOICE,
+    ECONOMY_TARGET_OPTED_OUT, ECONOMY_UNAVAILABLE_PREFIX, ECONOMY_UNAVAILABLE_SUFFIX,
 };
 use crate::Data;
 use chrono::{DateTime, Utc};
@@ -61,6 +65,12 @@ pub enum Refusal {
     Unavailable {
         missing: Permissions,
     },
+    /// Cleanse with no prank running on the buyer.
+    NothingToCleanse,
+    /// Reveal with no unsigned prank to unmask.
+    NothingToReveal,
+    /// The picked prank was unmasked already.
+    AlreadyRevealed,
 }
 
 /// Check a purchase, refusing for the first reason that applies, in order:
@@ -129,6 +139,9 @@ pub fn refusal_text(r: &Refusal, currency: &str) -> String {
             "{ECONOMY_UNAVAILABLE_PREFIX} {} {ECONOMY_UNAVAILABLE_SUFFIX}",
             crate::rooms::card::perm_names(*missing, true)
         ),
+        Refusal::NothingToCleanse => ECONOMY_NOTHING_TO_CLEANSE.to_string(),
+        Refusal::NothingToReveal => ECONOMY_NOTHING_TO_REVEAL.to_string(),
+        Refusal::AlreadyRevealed => ECONOMY_ALREADY_REVEALED.to_string(),
     }
 }
 
@@ -551,6 +564,260 @@ pub async fn buy(
     })
 }
 
+/// Refuse a purchase before charging when CrackTunes lacks what the action
+/// needs (spec 7: each action is sold only while its needs are met).
+/// `channels` are the ones involved: the target's voice and the buyer's for a
+/// drag, the jail channel for jail. `perms` of `None` (the cache cannot say)
+/// fails closed: everything counts as missing.
+pub fn preflight_refusal(
+    kind: ActionKind,
+    perms: Option<&BotPerms>,
+    channels: &[ChannelId],
+) -> Result<(), Refusal> {
+    let none = BotPerms::default();
+    let gaps = preflight::missing(kind, perms.unwrap_or(&none), channels);
+    let missing = gaps
+        .into_iter()
+        .fold(Permissions::empty(), |all, (_, gap)| all | gap);
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(Refusal::Unavailable { missing })
+    }
+}
+
+/// How long ago, in words (autocomplete labels are plain text, so no
+/// `<t:..:R>`): "just now", "5 minutes ago", "1 hour ago", "2 days ago".
+pub fn ago_words(now: DateTime<Utc>, then: DateTime<Utc>) -> String {
+    let minutes = now.signed_duration_since(then).num_minutes().max(0);
+    let (n, unit) = if minutes < 1 {
+        return ECONOMY_REVEAL_PICK_JUST_NOW.to_string();
+    } else if minutes < 60 {
+        (minutes, ECONOMY_REVEAL_PICK_MINUTE)
+    } else if minutes < 60 * 24 {
+        (minutes / 60, ECONOMY_REVEAL_PICK_HOUR)
+    } else {
+        (minutes / (60 * 24), ECONOMY_REVEAL_PICK_DAY)
+    };
+    let plural = if n == 1 { "" } else { "s" };
+    format!("{n} {unit}{plural} {ECONOMY_REVEAL_PICK_AGO}")
+}
+
+/// A completed cleanse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cleansed {
+    /// How many running pranks were ended (or are winding down).
+    pub ended: usize,
+    pub balance: i64,
+}
+
+/// Buy a cleanse: check, refuse before charging when nothing is running,
+/// charge, end every running prank on the buyer (`cleansed`), then mark the
+/// purchase `done`. A prank that cannot be undone right now is warned about
+/// and left for the sweeper; nothing is refunded for it. A standing mirror is
+/// kept.
+pub async fn cleanse(
+    data: &Data,
+    discord: &dyn EconomyDiscord,
+    g: GuildId,
+    user: UserId,
+    now: DateTime<Utc>,
+) -> Result<Cleansed, BuyError> {
+    use crate::db::economy as db;
+    let Some(pool) = data.database_pool.as_ref() else {
+        return Err(BuyError::NoDatabase);
+    };
+    let settings = data.economy.settings(g);
+    let price = settings.config.prices.get(ActionKind::Cleanse);
+    let balance = db::balance(pool, g, user)
+        .await
+        .map_err(|e| db_failed(&format!("reading balance of {user} in {g}"), &e))?;
+    check_purchase(&PurchaseFacts {
+        enabled: data.economy.is_enabled(g),
+        price,
+        source_on: true,
+        buyer_opted_out: data.economy.is_opted_out(g, user),
+        already_immune_indefinitely: false,
+        balance,
+    })
+    .map_err(BuyError::Refused)?;
+    let kinds: Vec<ActionKind> = ActionKind::ALL
+        .iter()
+        .copied()
+        .filter(|k| k.is_prank())
+        .collect();
+    let running = db::active_of_kind(pool, g, user, &kinds)
+        .await
+        .map_err(|e| db_failed(&format!("reading pranks on {user} in {g}"), &e))?;
+    if running.is_empty() {
+        return Err(BuyError::Refused(Refusal::NothingToCleanse));
+    }
+    let amount = i64::from(price.price);
+    let charged = db::charge_for_action(
+        pool,
+        &db::NewAction {
+            guild: g,
+            kind: ActionKind::Cleanse,
+            buyer: user,
+            target: Some(user),
+            price: amount,
+            note: None,
+            signed: false,
+            payload: &ActionPayload::Cleanse,
+            expires_at: None,
+        },
+    )
+    .await
+    .map_err(|err| match err {
+        MoveError::Insufficient { balance } => BuyError::Refused(cant_afford(amount, balance)),
+        MoveError::Invalid => BuyError::Db,
+        MoveError::Db(err) => db_failed(&format!("charging {user} in {g}"), &err),
+    })?;
+    // Charged: whatever happens next, the buyer keeps no refund.
+    let ended = match end_running_pranks(data, discord, g, user, "cleansed", now).await {
+        Ok(n) => n,
+        Err(err) => {
+            tracing::warn!("economy: ending the pranks on {user} in {g} failed: {err}");
+            0
+        },
+    };
+    match db::activate_action(pool, charged.action_id, ActionKind::Cleanse, None).await {
+        Ok(true) => {},
+        Ok(false) => tracing::warn!(
+            "economy: cleanse {} was no longer pending at activation",
+            charged.action_id
+        ),
+        Err(err) => tracing::error!(
+            "economy: activating cleanse {} failed: {err}",
+            charged.action_id
+        ),
+    }
+    Ok(Cleansed {
+        ended,
+        balance: charged.balance,
+    })
+}
+
+/// A completed reveal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Revealed {
+    /// Who bought the unmasked prank.
+    pub buyer: UserId,
+    pub kind: ActionKind,
+    pub balance: i64,
+}
+
+/// The pranks `user` could unmask, newest first, at most `limit`: unsigned,
+/// unrevealed, aimed at them by someone else (spec 4.3). Autocomplete reads
+/// these too.
+pub async fn reveal_choices(
+    data: &Data,
+    g: GuildId,
+    user: UserId,
+    limit: i64,
+) -> Vec<crate::db::economy::RevealCandidate> {
+    let Some(pool) = data.database_pool.as_ref() else {
+        return Vec::new();
+    };
+    crate::db::economy::reveal_candidates(pool, g, user, None, true, limit)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!("economy: listing reveals for {user} in {g} failed: {err}");
+            Vec::new()
+        })
+}
+
+/// Buy a reveal: name the buyer of an unsigned prank aimed at `user`.
+/// `action_id` of `None` picks the most recent unrevealed one; a picked id
+/// that is not an unsigned prank aimed at `user` is `NothingToReveal`
+/// (nobody unmasks other people's pranks), and one already unmasked is
+/// `AlreadyRevealed`. Both refuse before charging.
+pub async fn reveal(
+    data: &Data,
+    g: GuildId,
+    user: UserId,
+    action_id: Option<i64>,
+) -> Result<Revealed, BuyError> {
+    use crate::db::economy as db;
+    let Some(pool) = data.database_pool.as_ref() else {
+        return Err(BuyError::NoDatabase);
+    };
+    let settings = data.economy.settings(g);
+    let price = settings.config.prices.get(ActionKind::Reveal);
+    let balance = db::balance(pool, g, user)
+        .await
+        .map_err(|e| db_failed(&format!("reading balance of {user} in {g}"), &e))?;
+    check_purchase(&PurchaseFacts {
+        enabled: data.economy.is_enabled(g),
+        price,
+        source_on: true,
+        buyer_opted_out: data.economy.is_opted_out(g, user),
+        already_immune_indefinitely: false,
+        balance,
+    })
+    .map_err(BuyError::Refused)?;
+    let found = db::reveal_candidates(pool, g, user, action_id, action_id.is_none(), 1)
+        .await
+        .map_err(|e| db_failed(&format!("reading pranks on {user} in {g}"), &e))?;
+    let Some(prank) = found.into_iter().next().map(|c| c.row) else {
+        return Err(BuyError::Refused(Refusal::NothingToReveal));
+    };
+    if prank.revealed_at.is_some() {
+        return Err(BuyError::Refused(Refusal::AlreadyRevealed));
+    }
+    let amount = i64::from(price.price);
+    let charged = db::charge_for_action(
+        pool,
+        &db::NewAction {
+            guild: g,
+            kind: ActionKind::Reveal,
+            buyer: user,
+            target: Some(user),
+            price: amount,
+            note: None,
+            signed: false,
+            payload: &ActionPayload::Reveal {
+                action_id: prank.id,
+            },
+            expires_at: None,
+        },
+    )
+    .await
+    .map_err(|err| match err {
+        MoveError::Insufficient { balance } => BuyError::Refused(cant_afford(amount, balance)),
+        MoveError::Invalid => BuyError::Db,
+        MoveError::Db(err) => db_failed(&format!("charging {user} in {g}"), &err),
+    })?;
+    let id = charged.action_id;
+    let refund = || async {
+        if let Err(err) = db::refund_action(pool, id).await {
+            tracing::error!("economy: refunding action {id} failed: {err}");
+        }
+    };
+    match db::mark_revealed(pool, prank.id, user).await {
+        Ok(true) => {},
+        Ok(false) => {
+            // Another press unmasked it between the check and now.
+            refund().await;
+            return Err(BuyError::Refused(Refusal::AlreadyRevealed));
+        },
+        Err(err) => {
+            refund().await;
+            return Err(db_failed(&format!("unmasking action {}", prank.id), &err));
+        },
+    }
+    match db::activate_action(pool, id, ActionKind::Reveal, None).await {
+        Ok(true) => {},
+        Ok(false) => tracing::warn!("economy: reveal {id} was no longer pending at activation"),
+        Err(err) => tracing::error!("economy: activating reveal {id} failed: {err}"),
+    }
+    Ok(Revealed {
+        buyer: prank.buyer,
+        kind: prank.kind,
+        balance: charged.balance,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -648,6 +915,9 @@ mod tests {
             Refusal::Unavailable {
                 missing: Permissions::MOVE_MEMBERS,
             },
+            Refusal::NothingToCleanse,
+            Refusal::NothingToReveal,
+            Refusal::AlreadyRevealed,
         ];
         let texts: std::collections::HashSet<_> =
             all.iter().map(|r| refusal_text(r, "credits")).collect();
@@ -1651,4 +1921,416 @@ mod tests {
             Err(BuyError::NoDatabase)
         );
     }
+
+    // ---- preflight, wording ----
+
+    fn perms(guild: Permissions, chans: &[(ChannelId, Permissions)]) -> BotPerms {
+        BotPerms {
+            guild,
+            in_channel: chans.iter().copied().collect(),
+        }
+    }
+
+    #[test]
+    fn preflight_refuses_with_the_missing_permissions_in_words() {
+        let nick = Permissions::MANAGE_NICKNAMES;
+        let none = Permissions::empty();
+        // Rename needs Manage Nicknames.
+        assert_eq!(
+            preflight_refusal(ActionKind::Rename, Some(&perms(none, &[])), &[]),
+            Err(Refusal::Unavailable { missing: nick })
+        );
+        assert_eq!(
+            preflight_refusal(ActionKind::Rename, Some(&perms(nick, &[])), &[]),
+            Ok(())
+        );
+        // Lock also needs the audit log.
+        let text = refusal_text(
+            &preflight_refusal(ActionKind::Lock, Some(&perms(nick, &[])), &[]).unwrap_err(),
+            "credits",
+        );
+        assert!(text.contains("View Audit Log"), "{text}");
+        // A drag needs both channels: the one missing is named.
+        let both = Permissions::VIEW_CHANNEL | Permissions::CONNECT;
+        let have = perms(
+            Permissions::MOVE_MEMBERS,
+            &[(VC, both), (MY_VC, Permissions::VIEW_CHANNEL)],
+        );
+        assert_eq!(
+            preflight_refusal(ActionKind::Drag, Some(&have), &[VC, MY_VC]),
+            Err(Refusal::Unavailable {
+                missing: Permissions::CONNECT
+            })
+        );
+        // Jail checks the jail channel.
+        assert_eq!(
+            preflight_refusal(
+                ActionKind::Jail,
+                Some(&perms(Permissions::MOVE_MEMBERS, &[])),
+                &[JAIL]
+            ),
+            Err(Refusal::Unavailable { missing: both })
+        );
+        // The cache cannot say: fail closed.
+        assert_eq!(
+            preflight_refusal(ActionKind::Mute, None, &[]),
+            Err(Refusal::Unavailable {
+                missing: Permissions::MUTE_MEMBERS
+            })
+        );
+        // Defence and unmasking need nothing.
+        for k in [ActionKind::Mirror, ActionKind::Cleanse, ActionKind::Reveal] {
+            assert_eq!(preflight_refusal(k, None, &[]), Ok(()), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn ago_words_reads_as_plain_text() {
+        let now = t0();
+        let ago = |secs: i64| ago_words(now, now - chrono::Duration::seconds(secs));
+        assert_eq!(ago(10), "just now");
+        assert_eq!(ago(60), "1 minute ago");
+        assert_eq!(ago(5 * 60), "5 minutes ago");
+        assert_eq!(ago(3600), "1 hour ago");
+        assert_eq!(ago(3 * 3600), "3 hours ago");
+        assert_eq!(ago(2 * 86_400), "2 days ago");
+        // A clock that ran backwards is not negative time.
+        assert_eq!(
+            ago_words(now, now + chrono::Duration::minutes(5)),
+            "just now"
+        );
+    }
+
+    // ---- cleanse and reveal ----
+
+    async fn fund(pool: &PgPool, user: UserId, credits: i64) {
+        db::credit_earnings(
+            pool,
+            G,
+            &[db::EarnRow {
+                user,
+                voice: credits,
+                messages: 0,
+            }],
+        )
+        .await
+        .unwrap();
+    }
+
+    db_test!(
+        cleanse_ends_running_pranks_and_restores,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 1000).await;
+            fund(&pool, VICTIM, 300).await;
+            let fake = FakeEconomyDiscord::default();
+            let facts = TargetFacts {
+                current_nick: Some("old".to_string()),
+                ..clean()
+            };
+            let rename = buy_it(&data, &fake, facts, req(ActionKind::Rename))
+                .await
+                .unwrap();
+            let mute = buy_it(&data, &fake, clean(), req(ActionKind::Mute))
+                .await
+                .unwrap();
+            // The victim also holds a mirror, which a cleanse keeps.
+            let r = BuyRequest {
+                buyer: VICTIM,
+                ..req(ActionKind::Mirror)
+            };
+            let mirror = buy(&data, &fake, clean(), clean(), None, r).await.unwrap();
+            let before = fake.calls().len();
+
+            let cleansed = cleanse(&data, &fake, G, VICTIM, t0()).await.unwrap();
+            assert_eq!(
+                cleansed,
+                Cleansed {
+                    ended: 2,
+                    balance: 70
+                }
+            );
+            let sent: Vec<_> = fake.calls().into_iter().skip(before).collect();
+            assert_eq!(sent.len(), 2, "{sent:?}");
+            assert!(sent.contains(&Call::Nick(VICTIM, Some("old".into()), ActionKind::Rename)));
+            assert!(sent.contains(&Call::Mute(VICTIM, false, ActionKind::Mute)));
+            for id in [rename.action_id, mute.action_id] {
+                assert_eq!(
+                    state_and_reason(&pool, id).await,
+                    ("ended".to_string(), Some("cleansed".to_string()))
+                );
+            }
+            assert_eq!(state_and_reason(&pool, mirror.action_id).await.0, "active");
+            // 80 credits left the victim's wallet, recorded against a done cleanse.
+            assert_eq!(db::balance(&pool, G, VICTIM).await.unwrap(), 70);
+            let (state, price): (String, i64) =
+                sqlx::query_as("SELECT state, price FROM economy_actions WHERE kind = 'cleanse'")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            assert_eq!((state.as_str(), price), ("done", 80));
+        }
+    );
+
+    db_test!(
+        cleanse_with_nothing_running_is_refused_before_charging,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 0).await;
+            fund(&pool, VICTIM, 500).await;
+            let fake = FakeEconomyDiscord::default();
+            // A standing mirror is not a prank.
+            let r = BuyRequest {
+                buyer: VICTIM,
+                ..req(ActionKind::Mirror)
+            };
+            buy(&data, &fake, clean(), clean(), None, r).await.unwrap();
+            let held = db::balance(&pool, G, VICTIM).await.unwrap();
+            assert_eq!(
+                cleanse(&data, &fake, G, VICTIM, t0()).await,
+                Err(BuyError::Refused(Refusal::NothingToCleanse))
+            );
+            assert_eq!(db::balance(&pool, G, VICTIM).await.unwrap(), held);
+            assert_eq!(
+                count(
+                    &pool,
+                    "SELECT count(*) FROM economy_actions WHERE kind = 'cleanse'"
+                )
+                .await,
+                0
+            );
+            assert_eq!(fake.calls().len(), 0);
+        }
+    );
+
+    db_test!(
+        a_failed_undo_in_a_cleanse_keeps_the_charge,
+        |pool: PgPool| async {
+            use crate::economy::discord::fake::CallKind;
+            let data = shop_data(&pool, 500).await;
+            fund(&pool, VICTIM, 100).await;
+            let fake = FakeEconomyDiscord::default();
+            let mute = buy_it(&data, &fake, clean(), req(ActionKind::Mute))
+                .await
+                .unwrap();
+            fake.fail_next(CallKind::Mute, EconDiscordError::MissingPermissions);
+            let done = cleanse(&data, &fake, G, VICTIM, t0()).await.unwrap();
+            // Charged, and the row that could not be undone is left for the sweeper.
+            assert_eq!(done.balance, 20);
+            assert_eq!(state_and_reason(&pool, mute.action_id).await.0, "active");
+            assert_eq!(
+            count(&pool, "SELECT count(*) FROM economy_actions WHERE kind = 'cleanse' AND state = 'done'")
+                .await,
+            1
+        );
+        }
+    );
+
+    /// `U` pranks `VICTIM` with a rename, a mute, then a signed clown.
+    async fn three_pranks(data: &Data, fake: &FakeEconomyDiscord) -> (i64, i64, i64) {
+        let rename = buy_it(data, fake, clean(), req(ActionKind::Rename))
+            .await
+            .unwrap();
+        let mute = buy_it(data, fake, clean(), req(ActionKind::Mute))
+            .await
+            .unwrap();
+        let signed = BuyRequest {
+            signed: true,
+            ..req(ActionKind::Clown)
+        };
+        let clown = buy_it(data, fake, clean(), signed).await.unwrap();
+        (rename.action_id, mute.action_id, clown.action_id)
+    }
+
+    async fn revealed(pool: &PgPool, id: i64) -> (bool, Option<i64>) {
+        sqlx::query_as(
+            "SELECT revealed_at IS NOT NULL, revealed_by FROM economy_actions WHERE id = $1",
+        )
+        .bind(id)
+        .fetch_one(pool)
+        .await
+        .unwrap()
+    }
+
+    db_test!(
+        reveal_picks_the_latest_unsigned_unrevealed,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 1000).await;
+            fund(&pool, VICTIM, 350).await;
+            let fake = FakeEconomyDiscord::default();
+            let (rename, mute, clown) = three_pranks(&data, &fake).await;
+
+            // The newest is signed (the buyer is already known): the mute is next.
+            let first = reveal(&data, G, VICTIM, None).await.unwrap();
+            assert_eq!(
+                first,
+                Revealed {
+                    buyer: U,
+                    kind: ActionKind::Mute,
+                    balance: 250
+                }
+            );
+            assert_eq!(
+                revealed(&pool, mute).await,
+                (true, Some(VICTIM.get() as i64))
+            );
+            assert_eq!(revealed(&pool, rename).await.0, false);
+            assert_eq!(revealed(&pool, clown).await.0, false);
+            // Then the rename; then nothing is left to unmask.
+            let second = reveal(&data, G, VICTIM, None).await.unwrap();
+            assert_eq!((second.kind, second.balance), (ActionKind::Rename, 150));
+            assert_eq!(revealed(&pool, rename).await.0, true);
+            assert_eq!(
+                reveal(&data, G, VICTIM, None).await,
+                Err(BuyError::Refused(Refusal::NothingToReveal))
+            );
+            assert_eq!(db::balance(&pool, G, VICTIM).await.unwrap(), 150);
+            // Each reveal is its own done purchase.
+            assert_eq!(
+                count(
+                    &pool,
+                    "SELECT count(*) FROM economy_actions WHERE kind = 'reveal' AND state = 'done'"
+                )
+                .await,
+                2
+            );
+        }
+    );
+
+    db_test!(
+        reveal_refuses_before_charging_when_nothing_to_reveal,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 0).await;
+            fund(&pool, VICTIM, 500).await;
+            assert_eq!(
+                reveal(&data, G, VICTIM, None).await,
+                Err(BuyError::Refused(Refusal::NothingToReveal))
+            );
+            assert_eq!(
+                reveal(&data, G, VICTIM, Some(12345)).await,
+                Err(BuyError::Refused(Refusal::NothingToReveal))
+            );
+            assert_eq!(db::balance(&pool, G, VICTIM).await.unwrap(), 500);
+            assert_eq!(
+                count(&pool, "SELECT count(*) FROM economy_actions").await,
+                0
+            );
+        }
+    );
+
+    db_test!(
+        revealing_twice_is_refused_before_charging,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 1000).await;
+            fund(&pool, VICTIM, 300).await;
+            let fake = FakeEconomyDiscord::default();
+            let (rename, _mute, _clown) = three_pranks(&data, &fake).await;
+            let done = reveal(&data, G, VICTIM, Some(rename)).await.unwrap();
+            assert_eq!(done.balance, 200);
+            assert_eq!(
+                reveal(&data, G, VICTIM, Some(rename)).await,
+                Err(BuyError::Refused(Refusal::AlreadyRevealed))
+            );
+            assert_eq!(db::balance(&pool, G, VICTIM).await.unwrap(), 200);
+            assert_eq!(
+                count(
+                    &pool,
+                    "SELECT count(*) FROM economy_actions WHERE kind = 'reveal'"
+                )
+                .await,
+                1
+            );
+        }
+    );
+
+    db_test!(
+        reveal_refuses_an_action_aimed_at_someone_else,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 1000).await;
+            let bystander = UserId::new(30);
+            fund(&pool, bystander, 500).await;
+            let fake = FakeEconomyDiscord::default();
+            let (rename, _mute, clown) = three_pranks(&data, &fake).await;
+            // Picking the victim's prank, signed or not, unmasks nothing.
+            for id in [rename, clown] {
+                assert_eq!(
+                    reveal(&data, G, bystander, Some(id)).await,
+                    Err(BuyError::Refused(Refusal::NothingToReveal))
+                );
+            }
+            assert_eq!(db::balance(&pool, G, bystander).await.unwrap(), 500);
+            assert_eq!(revealed(&pool, rename).await.0, false);
+            // Their own latest, by default, is still nothing: no prank is aimed at them.
+            assert_eq!(
+                reveal(&data, G, bystander, None).await,
+                Err(BuyError::Refused(Refusal::NothingToReveal))
+            );
+        }
+    );
+
+    db_test!(reveal_ignores_bounces_and_mirrors, |pool: PgPool| async {
+        let data = shop_data(&pool, 1000).await;
+        let fake = FakeEconomyDiscord::default();
+        victim_mirrors(&pool, &data, &fake).await;
+        // U's rename bounces onto U: a row whose buyer is its own target.
+        let bounced = buy_it(
+            &data,
+            &fake,
+            TargetFacts {
+                has_mirror: true,
+                ..clean()
+            },
+            req(ActionKind::Rename),
+        )
+        .await
+        .unwrap();
+        assert_eq!(bounced.outcome, BuyOutcome::Bounced);
+        fund(&pool, VICTIM, 300).await;
+        let mirror_row: i64 =
+            sqlx::query_scalar("SELECT id FROM economy_actions WHERE kind = 'mirror'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        for (who, pick) in [
+            (U, Some(bounced.action_id)),
+            (U, None),
+            (VICTIM, Some(mirror_row)),
+            (VICTIM, None),
+        ] {
+            assert_eq!(
+                reveal(&data, G, who, pick).await,
+                Err(BuyError::Refused(Refusal::NothingToReveal)),
+                "{who} {pick:?}"
+            );
+        }
+    });
+
+    db_test!(
+        reveal_choices_lists_the_latest_ten_unsigned,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 5000).await;
+            let fake = FakeEconomyDiscord::default();
+            for _ in 0..12 {
+                sqlx::query("UPDATE economy_actions SET state = 'ended'")
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+                buy_it(&data, &fake, clean(), req(ActionKind::Deafen))
+                    .await
+                    .unwrap();
+            }
+            let signed = BuyRequest {
+                signed: true,
+                ..req(ActionKind::Deafen)
+            };
+            buy_it(&data, &fake, clean(), signed).await.unwrap();
+            let picks = reveal_choices(&data, G, VICTIM, 10).await;
+            assert_eq!(picks.len(), 10);
+            assert!(picks
+                .iter()
+                .all(|c| !c.row.signed && c.row.revealed_at.is_none()));
+            assert!(
+                picks.windows(2).all(|w| w[0].row.id > w[1].row.id),
+                "newest first"
+            );
+        }
+    );
 }

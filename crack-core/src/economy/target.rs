@@ -3,10 +3,13 @@
 
 use super::immunity::Protection;
 use super::settings::ActionKind;
-use super::shop::Refusal;
+use super::shop::{BuyError, Refusal};
+use super::wallet::ActionState;
+use crate::db::economy::{self, ActionRow};
 use crate::music::perms::roles_resolvable;
 use crate::rooms::guard::{member_can_join, BaselineView};
 use crate::rooms::state::StoredOverwrite;
+use crate::Data;
 use chrono::{DateTime, Utc};
 use serenity::all::{Cache, ChannelId, GuildId, Permissions, RoleId, UserId};
 use std::collections::HashMap;
@@ -154,6 +157,123 @@ pub fn top_position(cache: &Cache, guild: GuildId, member: UserId) -> Option<u16
 /// guild is not cached.
 pub fn is_owner(cache: &Cache, guild: GuildId, member: UserId) -> bool {
     cache.guild(guild).is_some_and(|g| g.owner_id == member)
+}
+
+/// A member's nickname and display name from the cache: `(nickname, shown)`.
+/// `None` when the guild or member is not cached.
+pub fn cached_names(
+    cache: &Cache,
+    guild: GuildId,
+    member: UserId,
+) -> Option<(Option<String>, String)> {
+    let g = cache.guild(guild)?;
+    let m = g.members.get(&member)?;
+    let shown = m
+        .nick
+        .as_ref()
+        .map(ToString::to_string)
+        .or_else(|| m.user.global_name.as_ref().map(ToString::to_string))
+        .unwrap_or_else(|| m.user.name.to_string());
+    Some((m.nick.as_ref().map(ToString::to_string), shown))
+}
+
+/// The voice channel a member is in, from the cache.
+pub fn voice_of(cache: &Cache, guild: GuildId, member: UserId) -> Option<ChannelId> {
+    cache
+        .guild(guild)?
+        .voice_states
+        .get(&member)
+        .and_then(|v| v.channel_id)
+}
+
+/// The end of a running (`active`, not winding down) prank of these kinds on
+/// `member`.
+fn running_end(rows: &[ActionRow]) -> Option<DateTime<Utc>> {
+    rows.iter()
+        .filter(|r| r.state == ActionState::Active)
+        .find_map(|r| r.expires_at)
+}
+
+/// Who [`gather_facts`] describes.
+#[derive(Debug, Clone, Copy)]
+pub struct Subject {
+    pub member: UserId,
+    pub is_bot: bool,
+    /// The member is the buyer.
+    pub is_self: bool,
+}
+
+/// Everything [`check_target`] needs about `member`, from the cache and the
+/// database. Used for the target of a prank and, the same way, for the buyer
+/// (so a mirror can bounce a prank onto them).
+///
+/// The cache gaps fail closed: a member or a role the cache does not hold
+/// leaves `top_role_position` `None` (out of reach), and a drag with no
+/// answer for the destination reads `None` (refused). A member the cache
+/// cannot name gets empty names, but is then out of reach too, so nothing is
+/// ever restored from them.
+pub async fn gather_facts(
+    data: &Data,
+    cache: &Cache,
+    guild: GuildId,
+    who: Subject,
+    kind: ActionKind,
+    buyer_voice: Option<ChannelId>,
+    now: DateTime<Utc>,
+) -> Result<TargetFacts, BuyError> {
+    let Subject {
+        member,
+        is_bot,
+        is_self,
+    } = who;
+    let Some(pool) = data.database_pool.as_ref() else {
+        return Err(BuyError::NoDatabase);
+    };
+    let fail = |what: &str, err: sqlx::Error| {
+        tracing::warn!("economy: reading {what} of {member} in {guild} failed: {err}");
+        BuyError::Db
+    };
+    let protection = crate::economy::protection(data, guild, member, now)
+        .await
+        .map_err(|e| fail("protection", e))?;
+    let mirrors = economy::active_of_kind(pool, guild, member, &[ActionKind::Mirror])
+        .await
+        .map_err(|e| fail("mirror", e))?;
+    let same_kinds: &[ActionKind] = match kind {
+        ActionKind::Rename | ActionKind::Clown => &[ActionKind::Rename, ActionKind::Clown],
+        _ => std::slice::from_ref(&kind),
+    };
+    let same = economy::active_of_kind(pool, guild, member, same_kinds)
+        .await
+        .map_err(|e| fail("running pranks", e))?;
+    let names = cached_names(cache, guild, member);
+    let top_role_position = names
+        .as_ref()
+        .and_then(|_| top_position(cache, guild, member));
+    let bot_id = cache.current_user().id;
+    // 0 when unknown: `top >= 0` is always true, so it fails closed.
+    let bot_top_role_position = top_position(cache, guild, bot_id).unwrap_or_default();
+    // No names means no cached member, which is already out of reach above.
+    let (current_nick, display_name) = names.unwrap_or_default();
+    Ok(TargetFacts {
+        is_bot,
+        is_self,
+        is_owner: is_owner(cache, guild, member),
+        top_role_position,
+        bot_top_role_position,
+        in_voice: voice_of(cache, guild, member),
+        opted_out: data.economy.is_opted_out(guild, member),
+        protection,
+        has_mirror: mirrors.iter().any(|r| r.state == ActionState::Active),
+        running_same_kind: running_end(&same),
+        can_join_destination: if kind == ActionKind::Drag {
+            buyer_voice.and_then(|ch| can_join(cache, guild, member, ch))
+        } else {
+            None
+        },
+        current_nick,
+        display_name,
+    })
 }
 
 #[cfg(test)]
@@ -461,5 +581,188 @@ mod tests {
         };
         assert!(!member_can_join(&view, UserId::new(1), &[role]));
         assert!(member_can_join(&view, UserId::new(1), &[]));
+    }
+
+    // ---- gather_facts: the database half, and the cache gaps ----
+
+    mod gather {
+        use super::*;
+        use crate::economy::settings::EconomySettings;
+        use crate::economy::wallet::ActionPayload;
+        use crate::DataInner;
+        use sqlx::PgPool;
+        use std::sync::Arc;
+
+        const G: GuildId = GuildId::new(1);
+        const M: UserId = UserId::new(20);
+        const BUYER: UserId = UserId::new(10);
+
+        static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+
+        async fn data(pool: &PgPool) -> Data {
+            let s = EconomySettings {
+                enabled: true,
+                ..EconomySettings::off(G)
+            };
+            crate::db::economy::save_settings(pool, &s).await.unwrap();
+            let data = Data(Arc::new(DataInner {
+                database_pool: Some(pool.clone()),
+                ..Default::default()
+            }));
+            assert!(crate::economy::load_settings(&data, G).await);
+            data
+        }
+
+        /// A running prank of `kind` on `M`, ending an hour after `t0`.
+        async fn running(pool: &PgPool, kind: ActionKind, payload: ActionPayload) -> i64 {
+            crate::db::economy::credit_earnings(
+                pool,
+                G,
+                &[crate::db::economy::EarnRow {
+                    user: BUYER,
+                    voice: 100,
+                    messages: 0,
+                }],
+            )
+            .await
+            .unwrap();
+            let until = Some(t0() + chrono::Duration::hours(1));
+            let c = crate::db::economy::charge_for_action(
+                pool,
+                &crate::db::economy::NewAction {
+                    guild: G,
+                    kind,
+                    buyer: BUYER,
+                    target: Some(M),
+                    price: 10,
+                    note: None,
+                    signed: false,
+                    payload: &payload,
+                    expires_at: until,
+                },
+            )
+            .await
+            .unwrap();
+            crate::db::economy::activate_action(pool, c.action_id, kind, until)
+                .await
+                .unwrap();
+            c.action_id
+        }
+
+        async fn facts(data: &Data, kind: ActionKind, who: UserId) -> TargetFacts {
+            gather_facts(
+                data,
+                &Cache::default(),
+                G,
+                Subject {
+                    member: who,
+                    is_bot: false,
+                    is_self: false,
+                },
+                kind,
+                Some(VC),
+                t0(),
+            )
+            .await
+            .unwrap()
+        }
+
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
+        async fn a_cache_that_knows_nothing_fails_closed(pool: PgPool) {
+            let data = data(&pool).await;
+            let f = facts(&data, ActionKind::Drag, M).await;
+            assert_eq!(f.top_role_position, None, "out of reach");
+            assert_eq!(f.bot_top_role_position, 0);
+            assert_eq!(f.can_join_destination, None, "a drag is refused");
+            assert_eq!(f.in_voice, None);
+            assert!(!f.is_owner);
+            assert_eq!(f.current_nick, None);
+            assert_eq!(f.display_name, "");
+            // And that is what check_target makes of it.
+            assert_eq!(
+                check_target(ActionKind::Rename, &f, None),
+                Err(Refusal::OutOfReach)
+            );
+        }
+
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
+        async fn name_pranks_share_a_slot_and_a_lock_has_its_own(pool: PgPool) {
+            let data = data(&pool).await;
+            let rename = ActionPayload::Rename {
+                name: "x".into(),
+                restore: None,
+            };
+            running(&pool, ActionKind::Rename, rename).await;
+            let end = Some(t0() + chrono::Duration::hours(1));
+            assert_eq!(
+                facts(&data, ActionKind::Rename, M).await.running_same_kind,
+                end
+            );
+            assert_eq!(
+                facts(&data, ActionKind::Clown, M).await.running_same_kind,
+                end
+            );
+            assert_eq!(
+                facts(&data, ActionKind::Lock, M).await.running_same_kind,
+                None
+            );
+            assert_eq!(
+                facts(&data, ActionKind::Mute, M).await.running_same_kind,
+                None
+            );
+            // Someone else has nothing running.
+            let other = facts(&data, ActionKind::Rename, UserId::new(21)).await;
+            assert_eq!(other.running_same_kind, None);
+            // A winding-down prank no longer blocks the slot.
+            sqlx::query("UPDATE economy_actions SET state = 'ending'")
+                .execute(&pool)
+                .await
+                .unwrap();
+            assert_eq!(
+                facts(&data, ActionKind::Rename, M).await.running_same_kind,
+                None
+            );
+        }
+
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
+        async fn mirror_protection_and_opt_out_are_read(pool: PgPool) {
+            let data = data(&pool).await;
+            assert!(!facts(&data, ActionKind::Mute, M).await.has_mirror);
+            running(&pool, ActionKind::Mirror, ActionPayload::Mirror).await;
+            assert!(facts(&data, ActionKind::Mute, M).await.has_mirror);
+            assert!(
+                !facts(&data, ActionKind::Mute, UserId::new(21))
+                    .await
+                    .has_mirror
+            );
+            // A spent mirror is gone.
+            assert!(crate::db::economy::consume_mirror(&pool, G, M)
+                .await
+                .unwrap());
+            assert!(!facts(&data, ActionKind::Mute, M).await.has_mirror);
+
+            assert_eq!(facts(&data, ActionKind::Mute, M).await.protection, None);
+            crate::db::economy::extend_bought(&pool, G, M, 2, t0())
+                .await
+                .unwrap();
+            assert_eq!(
+                facts(&data, ActionKind::Mute, M).await.protection,
+                Some(Protection::Until(t0() + chrono::Duration::hours(2)))
+            );
+            data.economy.set_one_opted_out(G, M, true);
+            assert!(facts(&data, ActionKind::Mute, M).await.opted_out);
+        }
     }
 }

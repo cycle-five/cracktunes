@@ -107,6 +107,28 @@ pub fn card_destination(
     }
 }
 
+/// Where a card for a purchase goes, from what really happened: a landed
+/// drag leaves the target in the buyer's channel, a landed or bounced jail in
+/// the jail channel, any other bounce on the buyer (so in their channel), and
+/// the rest where the target is. Then [`card_destination`] picks voice chat
+/// or the fallback.
+pub fn card_channel(
+    kind: ActionKind,
+    outcome: BuyOutcome,
+    target_voice: Option<ChannelId>,
+    buyer_voice: Option<ChannelId>,
+    jail: Option<ChannelId>,
+    invoked_in: ChannelId,
+    announce: Option<ChannelId>,
+) -> ChannelId {
+    let voice = match (kind, outcome) {
+        (ActionKind::Jail, BuyOutcome::Landed | BuyOutcome::Bounced) => jail,
+        (ActionKind::Drag, BuyOutcome::Landed) | (_, BuyOutcome::Bounced) => buyer_voice,
+        _ => target_voice,
+    };
+    card_destination(kind, voice, invoked_in, announce)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,5 +265,52 @@ mod tests {
             );
             assert_eq!(card_destination(k, Some(voice), here, None), here, "{k:?}");
         }
+    }
+
+    #[test]
+    fn card_channel_follows_where_the_target_ends_up() {
+        let (target_vc, my_vc, jail, here, announce) = (
+            Some(ChannelId::new(1)),
+            Some(ChannelId::new(2)),
+            Some(ChannelId::new(3)),
+            ChannelId::new(4),
+            Some(ChannelId::new(5)),
+        );
+        let at = |kind, outcome| {
+            card_channel(kind, outcome, target_vc, my_vc, jail, here, announce).get()
+        };
+        use BuyOutcome::*;
+        // A landed drag leaves them in the buyer's channel; jail in the jail.
+        assert_eq!(at(ActionKind::Drag, Landed), 2);
+        assert_eq!(at(ActionKind::Jail, Landed), 3);
+        assert_eq!(at(ActionKind::Mute, Landed), 1);
+        assert_eq!(at(ActionKind::Deafen, Landed), 1);
+        // A bounce lands on the buyer, so it goes where the buyer is.
+        assert_eq!(at(ActionKind::Mute, Bounced), 2);
+        assert_eq!(at(ActionKind::Jail, Bounced), 3);
+        // A blocked drag moved nobody: the target's channel.
+        assert_eq!(at(ActionKind::Drag, Blocked), 1);
+        // Name pranks never go to voice chat.
+        assert_eq!(at(ActionKind::Rename, Landed), 5);
+        assert_eq!(at(ActionKind::Rename, Bounced), 5);
+        // No announce channel: where the command ran.
+        assert_eq!(
+            card_channel(
+                ActionKind::Clown,
+                Landed,
+                target_vc,
+                my_vc,
+                jail,
+                here,
+                None
+            )
+            .get(),
+            4
+        );
+        // Out of voice: the fallback.
+        assert_eq!(
+            card_channel(ActionKind::Mute, Landed, None, my_vc, jail, here, announce).get(),
+            5
+        );
     }
 }
