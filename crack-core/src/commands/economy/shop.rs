@@ -1,6 +1,7 @@
 //! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|cleanse|reveal`.
 use super::admin::{log, log_to};
 use super::credits::{gate, live, say};
+use crate::economy::bounty;
 use crate::economy::buttons::{card_buttons, carries_buttons};
 use crate::economy::cards::{card_channel, card_text};
 use crate::economy::discord::LiveEconomyDiscord;
@@ -351,16 +352,36 @@ pub(crate) async fn run_prank(
         Ok(b) => b,
         Err(e) => return answer.private(buy_error_text(&e, &cfg.currency_name)).await,
     };
+    // A prank that landed collects the bounties on its target. The prank is
+    // done whatever this says, so a failed claim is logged and nothing more.
+    let claimed = match (target, data.database_pool.as_ref()) {
+        (Some(t), Some(pool)) => {
+            let t = t.user.id;
+            match bounty::collect(pool, guild, t, buyer, kind, bought.outcome).await {
+                Ok(total) => total,
+                Err(err) => {
+                    tracing::warn!(
+                        "economy: claiming the bounties on {t} in {guild} failed: {err}"
+                    );
+                    0
+                },
+            }
+        },
+        _ => 0,
+    };
+    let mut reply = bought_reply_text(
+        kind,
+        bought.outcome,
+        bought.balance,
+        &cfg.currency_name,
+        &cfg.currency_emoji,
+    );
+    if claimed > 0 {
+        reply.push('\n');
+        reply.push_str(&bounty::collected_reply_line(claimed, &cfg.currency_name));
+    }
     // Reply first: a slow card or log channel must not time the interaction out.
-    let replied = answer
-        .private(bought_reply_text(
-            kind,
-            bought.outcome,
-            bought.balance,
-            &cfg.currency_name,
-            &cfg.currency_emoji,
-        ))
-        .await;
+    let replied = answer.private(reply).await;
     let Some(target) = target.map(|t| t.user.id) else {
         return replied;
     };
@@ -373,7 +394,7 @@ pub(crate) async fn run_prank(
         env.invoked_in,
         cfg.announce_channel_id,
     );
-    let card = card_text(
+    let mut card = card_text(
         kind,
         target,
         nick.as_deref(),
@@ -382,6 +403,10 @@ pub(crate) async fn run_prank(
         signed.then_some(buyer),
         bought.outcome,
     );
+    if claimed > 0 {
+        card.push('\n');
+        card.push_str(&bounty::collected_card_line(target));
+    }
     let mut rendered = Rendered::text(card);
     if carries_buttons(kind, bought.outcome) {
         rendered = rendered.with_components(card_buttons(bought.action_id));

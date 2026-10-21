@@ -129,12 +129,12 @@ pub fn recent_line(a: &RecentAction) -> String {
 /// A message's length as Discord limits it. Counted in UTF-16 units, which
 /// is never fewer than the characters Discord counts, so a text within
 /// [`CONTENT_MAX`] of these is within Discord's limit either way.
-fn discord_len(s: &str) -> usize {
+pub(super) fn discord_len(s: &str) -> usize {
     s.encode_utf16().count()
 }
 
 /// `s` cut to at most `max` [`discord_len`] units, ending in "…" when cut.
-fn fit(s: &str, max: usize) -> String {
+pub(super) fn fit(s: &str, max: usize) -> String {
     if discord_len(s) <= max {
         return s.to_owned();
     }

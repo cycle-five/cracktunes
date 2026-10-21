@@ -1391,6 +1391,45 @@ pub async fn active_bounties(pool: &PgPool, guild: GuildId) -> sqlx::Result<Vec<
     Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
 }
 
+/// One standing bounty as `/bounty list` shows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BountyStake {
+    pub target: UserId,
+    pub placer: UserId,
+    pub amount: i64,
+    pub signed: bool,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// One server's live bounties (`active` and not yet expired), oldest first,
+/// with what was staked. A row with an id this build can't read is skipped.
+pub async fn live_bounty_stakes(pool: &PgPool, guild: GuildId) -> sqlx::Result<Vec<BountyStake>> {
+    let rows = sqlx::query!(
+        r#"SELECT buyer_id, target_id AS "target_id!", price, signed,
+                  expires_at AS "expires_at!"
+           FROM economy_actions
+           WHERE guild_id = $1 AND kind = $2 AND state = 'active'
+             AND target_id IS NOT NULL AND expires_at > now()
+           ORDER BY id"#,
+        guild.get() as i64,
+        ActionKind::Bounty.key()
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| {
+            Some(BountyStake {
+                target: uid(r.target_id)?,
+                placer: uid(r.buyer_id)?,
+                amount: r.price,
+                signed: r.signed,
+                expires_at: r.expires_at,
+            })
+        })
+        .collect())
+}
+
 /// An `economy_actions` row as the sweep queries read it.
 struct RawAction {
     id: i64,

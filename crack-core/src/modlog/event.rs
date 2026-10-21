@@ -102,7 +102,7 @@ pub enum ModLogEvent {
         amount: i64,
         reason: String,
     },
-    /// A shop purchase that changed a member. The buyer is always named
+    /// A shop purchase aimed at a member. The buyer is always named
     /// here, signed or not (owner ruling): moderators see who did it.
     ShopAction {
         action: ActionKind,

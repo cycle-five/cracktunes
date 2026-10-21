@@ -11,11 +11,11 @@ use super::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::messages::{
     ECONOMY_ALREADY_DEAFENED, ECONOMY_ALREADY_IMMUNE, ECONOMY_ALREADY_MUTED,
     ECONOMY_ALREADY_REVEALED, ECONOMY_ALREADY_RUNNING_PREFIX, ECONOMY_ALREADY_THERE,
-    ECONOMY_BUYER_NOT_IN_VOICE, ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION,
-    ECONOMY_CANT_AFFORD_MIDDLE, ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_CANT_TELL,
-    ECONOMY_MIRROR_ALREADY_UP, ECONOMY_NOTHING_TO_CLEANSE, ECONOMY_NOTHING_TO_REVEAL,
-    ECONOMY_NOT_FOR_SALE, ECONOMY_NO_DATABASE, ECONOMY_NO_JAIL_CHANNEL, ECONOMY_OFF,
-    ECONOMY_OUT_OF_REACH, ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PICK_AGO,
+    ECONOMY_BOUNTY_TOO_SMALL_PREFIX, ECONOMY_BUYER_NOT_IN_VOICE, ECONOMY_BUYER_OPTED_OUT,
+    ECONOMY_CANNOT_JOIN_DESTINATION, ECONOMY_CANT_AFFORD_MIDDLE, ECONOMY_CANT_AFFORD_PREFIX,
+    ECONOMY_CANT_TELL, ECONOMY_MIRROR_ALREADY_UP, ECONOMY_NOTHING_TO_CLEANSE,
+    ECONOMY_NOTHING_TO_REVEAL, ECONOMY_NOT_FOR_SALE, ECONOMY_NO_DATABASE, ECONOMY_NO_JAIL_CHANNEL,
+    ECONOMY_OFF, ECONOMY_OUT_OF_REACH, ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PICK_AGO,
     ECONOMY_REVEAL_PICK_DAY, ECONOMY_REVEAL_PICK_HOUR, ECONOMY_REVEAL_PICK_JUST_NOW,
     ECONOMY_REVEAL_PICK_MINUTE, ECONOMY_TARGET_IMMUNE_INDEFINITELY, ECONOMY_TARGET_IMMUNE_UNTIL,
     ECONOMY_TARGET_IS_BOT, ECONOMY_TARGET_IS_SELF, ECONOMY_TARGET_NOT_IN_VOICE,
@@ -80,6 +80,10 @@ pub enum Refusal {
     AlreadyDeafened,
     /// A drag whose target is already in the buyer's channel.
     AlreadyThere,
+    /// A bounty below the minimum stake (or not above zero).
+    BountyTooSmall {
+        min: i64,
+    },
     /// A role position nobody could read (the cache can't place one of the
     /// member's roles, or the bot's): not the hierarchy, so not out of reach.
     CantTell,
@@ -158,6 +162,9 @@ pub fn refusal_text(r: &Refusal, currency: &str) -> String {
         Refusal::AlreadyDeafened => ECONOMY_ALREADY_DEAFENED.to_string(),
         Refusal::CantTell => ECONOMY_CANT_TELL.to_string(),
         Refusal::AlreadyThere => ECONOMY_ALREADY_THERE.to_string(),
+        Refusal::BountyTooSmall { min } => {
+            format!("{ECONOMY_BOUNTY_TOO_SMALL_PREFIX} {min} {currency}.")
+        },
     }
 }
 
@@ -988,6 +995,7 @@ mod tests {
             Refusal::AlreadyDeafened,
             Refusal::CantTell,
             Refusal::AlreadyThere,
+            Refusal::BountyTooSmall { min: 50 },
         ];
         let texts: std::collections::HashSet<_> =
             all.iter().map(|r| refusal_text(r, "credits")).collect();

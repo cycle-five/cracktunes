@@ -1,6 +1,7 @@
 //! Member-facing economy commands: `/credits`, `/coinflip`, `/shop` and `/economy`.
 
 pub mod admin;
+pub mod bounty;
 pub mod coinflip;
 pub mod credits;
 pub mod shop;
@@ -12,6 +13,7 @@ pub fn commands() -> Vec<crate::Command> {
         coinflip::coinflip(),
         shop::shop(),
         admin::economy(),
+        bounty::bounty(),
     ]
 }
 
@@ -21,7 +23,7 @@ mod tests {
     fn economy_commands_are_guild_only_slash_commands() {
         let cmds = super::commands();
         let names: Vec<_> = cmds.iter().map(|c| c.name.as_ref()).collect();
-        assert_eq!(names, ["credits", "coinflip", "shop", "economy"]);
+        assert_eq!(names, ["credits", "coinflip", "shop", "economy", "bounty"]);
         assert!(cmds
             .iter()
             .all(|c| c.guild_only && c.slash_action.is_some()));
@@ -77,5 +79,19 @@ mod tests {
             .iter()
             .all(|p| p.autocomplete_callback.is_some()));
         assert_eq!(reveal.parameters.len(), 1);
+        // /bounty places and lists, and place takes the member and the stake.
+        let bounty = &cmds[4];
+        assert_eq!(subs(bounty), ["list", "place"]);
+        assert!(bounty
+            .subcommands
+            .iter()
+            .all(|c| c.guild_only && c.slash_action.is_some()));
+        let place = bounty
+            .subcommands
+            .iter()
+            .find(|c| c.name == "place")
+            .unwrap();
+        let params: Vec<_> = place.parameters.iter().map(|p| p.name.as_ref()).collect();
+        assert_eq!(params, ["member", "amount", "note", "signed"]);
     }
 }
