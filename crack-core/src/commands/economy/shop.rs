@@ -1,7 +1,7 @@
 //! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|theme|cleanse|reveal`.
 use super::admin::{log, log_to};
 use super::credits::{gate, live, say};
-use crate::commands::music::doplay::{play_core, play_settlement, PlayOutcome, Settlement};
+use crate::commands::music::doplay::{play_core, play_settlement, Settlement};
 use crate::commands::permissions::cmd_check_music;
 use crate::db::economy as db;
 use crate::economy::bounty;
@@ -28,13 +28,13 @@ use crate::messaging::messages::{
     DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_CANT_TELL, ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL,
     ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK, ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG,
     ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK, ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG,
-    ECONOMY_PLAY_NOT_CHARGED, ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PREFIX,
-    ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER,
-    ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX, ECONOMY_SHOP_CLEANSED_SUFFIX,
-    ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE, ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP,
-    ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE, ECONOMY_THEME_BOUGHT_PREFIX,
-    ECONOMY_THEME_BOUGHT_SUFFIX, ECONOMY_THEME_START_MALFORMED, ECONOMY_THEME_START_TOO_LATE,
-    ECONOMY_YOU_HAVE,
+    ECONOMY_PLAY_NAME_A_SONG, ECONOMY_PLAY_NOT_CHARGED, ECONOMY_PURCHASE_FAILED,
+    ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED,
+    ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX,
+    ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE,
+    ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
+    ECONOMY_THEME_BOUGHT_PREFIX, ECONOMY_THEME_BOUGHT_SUFFIX, ECONOMY_THEME_START_MALFORMED,
+    ECONOMY_THEME_START_TOO_LATE, ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
@@ -709,6 +709,11 @@ pub fn paid_play_balance_text(balance: i64, currency: &str, emoji: &str) -> Stri
     balance_followup_text(balance, currency, emoji)
 }
 
+/// A blank song is refused before any charge.
+pub fn song_is_blank(song: &str) -> bool {
+    song.trim().is_empty()
+}
+
 /// Which of the two paid plays is running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PaidPlay {
@@ -745,6 +750,11 @@ async fn paid_play(
         Ok(n) => n,
         Err(e) => return say(ctx, note_error_text(e), true).await,
     };
+    // Never reaches `play_core`'s empty-query branch, which can resume a
+    // paused bot.
+    if song_is_blank(&song) {
+        return say(ctx, ECONOMY_PLAY_NAME_A_SONG, true).await;
+    }
     let signed = signed.unwrap_or(false);
     let buyer_id = buyer.user.id;
     let kind = match which {
@@ -828,7 +838,10 @@ async fn paid_play(
         PaidPlay::Jump => Some("next".to_string()),
     };
     let played = play_core(ctx, mode, None, Some(song)).await;
-    let verdict = play_settlement(&played.as_ref().map(|o| *o).map_err(|_| ()));
+    let verdict = play_settlement(&played);
+    // An error after the song was queued still keeps the charge; it is
+    // returned last so poise renders it exactly as `/play` would.
+    let late_error = played.err().map(|failed| failed.err);
     match verdict {
         Settlement::Refund => {
             if let Err(err) = db::refund_action(&pool, charged.action_id).await {
@@ -838,19 +851,23 @@ async fn paid_play(
                     charged.action_id
                 );
             }
-            return match played {
+            return match late_error {
                 // Poise's handler renders it exactly as `/play` would.
-                Err(e) => Err(e),
-                Ok(PlayOutcome::NothingQueued | PlayOutcome::Queued) => {
-                    say(ctx, ECONOMY_PLAY_NOT_CHARGED, true).await
-                },
+                Some(e) => Err(e),
+                None => say(ctx, ECONOMY_PLAY_NOT_CHARGED, true).await,
             };
         },
         Settlement::Keep => {},
     }
-    if let Err(err) = db::finish_action(&pool, charged.action_id, ActionState::Done).await {
-        tracing::warn!(
-            "economy: marking action {} done failed: {err}",
+    // Retried once: a row left pending would be refunded by reconcile, though
+    // the play was kept.
+    let mut done = db::finish_action(&pool, charged.action_id, ActionState::Done).await;
+    if done.is_err() {
+        done = db::finish_action(&pool, charged.action_id, ActionState::Done).await;
+    }
+    if let Err(err) = done {
+        tracing::error!(
+            "economy: marking action {} done failed twice; reconcile will refund a kept play: {err}",
             charged.action_id
         );
     }
@@ -898,7 +915,10 @@ async fn paid_play(
         )
         .await;
     }
-    replied
+    match late_error {
+        Some(e) => Err(e),
+        None => replied,
+    }
 }
 
 /// Queue a song like /play, and say it goes out to someone.
@@ -1130,6 +1150,14 @@ mod tests {
     fn menu(s: &EconomySettings, perms: Option<&preflight::BotPerms>) -> String {
         let (report, _) = preflight::economy_preflight(&s.config, perms, |c| format!("<#{c}>"));
         menu_text(s, &report)
+    }
+
+    #[test]
+    fn a_blank_song_is_refused_before_any_charge() {
+        assert!(song_is_blank(""));
+        assert!(song_is_blank("  \t\n "));
+        assert!(!song_is_blank(" a "));
+        assert_eq!(ECONOMY_PLAY_NAME_A_SONG, "Name a song or paste a link.");
     }
 
     #[test]

@@ -36,8 +36,10 @@ use crack_types::{search_result_to_aux_metadata, Mode, NewAuxMetadata};
 use poise::{serenity_prelude as serenity, ReplyHandle};
 use songbird::{tracks::TrackHandle, Call};
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::{cmp::Ordering, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 /// Get the guild name.
 #[cfg(not(tarpaulin_include))]
@@ -487,8 +489,8 @@ fn with_notice(mut out: Rendered, notice: Option<NoticeDelivery>) -> Rendered {
 struct FilledReply {
     shortfall: Option<ListingShortfall>,
     was_empty: bool,
-    /// The queue's length before `match_mode` ran, read beside `was_empty`.
-    len_before: usize,
+    /// Whether `match_mode` put a track in the queue.
+    outcome: PlayOutcome,
     queue_len: usize,
     after_query_type: std::time::Instant,
     after_move_on: std::time::Instant,
@@ -506,6 +508,7 @@ async fn fill_search_reply(
     call: Arc<Mutex<Call>>,
     mode: Mode,
     search_msg: &ReplyHandle<'_>,
+    watch: &mut QueueWatch,
 ) -> Result<FilledReply, Error> {
     // determine whether this is a link or a query string
     let query_type = query_type_from_url(ctx, url, file).await?;
@@ -533,10 +536,11 @@ async fn fill_search_reply(
     // And no earlier: resolving the query above takes seconds, and a track
     // that ended in that window would leave the new song under "Finished".
     // 🔑 The Call guard is a temporary, released at the end of the statement.
-    let (was_empty, len_before) = {
+    let was_empty = {
         let handler = call.lock().await;
         let queue = handler.queue();
-        (queue.is_empty(), queue.len())
+        watch.before = Some(queue_ids(&queue.current_queue()));
+        queue.is_empty()
     };
 
     // FIXME: Super hacky, fix this shit.
@@ -579,7 +583,10 @@ async fn fill_search_reply(
     Ok(FilledReply {
         shortfall,
         was_empty,
-        len_before,
+        outcome: queued_outcome(
+            watch.before.as_ref().unwrap_or(&HashSet::new()),
+            &queue_ids(&queue),
+        ),
         queue_len: queue.len(),
         after_query_type,
         after_move_on,
@@ -595,13 +602,48 @@ pub enum PlayOutcome {
     NothingQueued,
 }
 
-/// `Queued` only when the queue grew across `match_mode`.
-pub fn queued_outcome(len_before: usize, len_after: usize) -> PlayOutcome {
-    if len_after > len_before {
+/// The ids of the tracks in a queue.
+fn queue_ids(queue: &[TrackHandle]) -> HashSet<Uuid> {
+    queue.iter().map(|t| t.uuid()).collect()
+}
+
+/// `Queued` when any track is in the queue now that was not in it before.
+/// By id, not by length: a track that ends while the query resolves would
+/// hide an add from a length comparison.
+pub fn queued_outcome(before: &HashSet<Uuid>, after: &HashSet<Uuid>) -> PlayOutcome {
+    if after.iter().any(|id| !before.contains(id)) {
         PlayOutcome::Queued
     } else {
         PlayOutcome::NothingQueued
     }
+}
+
+/// What `play_core` saw of the queue, kept outside its body so a late error
+/// can still say whether anything was queued.
+#[derive(Default)]
+pub struct QueueWatch {
+    call: Option<Arc<Mutex<Call>>>,
+    /// The track ids just before `match_mode` ran.
+    before: Option<HashSet<Uuid>>,
+}
+
+impl QueueWatch {
+    /// Whether the queue holds a track it did not hold before `match_mode`.
+    async fn outcome(&self) -> PlayOutcome {
+        match (&self.call, &self.before) {
+            (Some(call), Some(before)) => {
+                let now = queue_ids(&call.lock().await.queue().current_queue());
+                queued_outcome(before, &now)
+            },
+            _ => PlayOutcome::NothingQueued,
+        }
+    }
+}
+
+/// A `/play` that failed, and whether it had queued anything first.
+pub struct PlayError {
+    pub outcome: PlayOutcome,
+    pub err: Error,
 }
 
 /// What a paid play does with its charge.
@@ -611,12 +653,16 @@ pub enum Settlement {
     Refund,
 }
 
-/// A paid play keeps its charge only when something was queued; a play that
-/// queued nothing, or failed, is refunded.
-pub fn play_settlement(r: &Result<PlayOutcome, ()>) -> Settlement {
-    match r {
-        Ok(PlayOutcome::Queued) => Settlement::Keep,
-        Ok(PlayOutcome::NothingQueued) | Err(()) => Settlement::Refund,
+/// A paid play keeps its charge when something was queued, even if an error
+/// came after; a play that queued nothing is refunded.
+pub fn play_settlement(r: &Result<PlayOutcome, PlayError>) -> Settlement {
+    let outcome = match r {
+        Ok(outcome) => *outcome,
+        Err(failed) => failed.outcome,
+    };
+    match outcome {
+        PlayOutcome::Queued => Settlement::Keep,
+        PlayOutcome::NothingQueued => Settlement::Refund,
     }
 }
 
@@ -628,7 +674,10 @@ pub async fn play_internal(
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
 ) -> Result<(), Error> {
-    play_core(ctx, mode, file, query_or_url).await.map(|_| ())
+    play_core(ctx, mode, file, query_or_url)
+        .await
+        .map(|_| ())
+        .map_err(|failed| failed.err)
 }
 
 /// [`play_internal`]'s body, saying whether it queued anything: the paid
@@ -640,6 +689,23 @@ pub async fn play_core(
     mode: Option<String>,
     file: Option<serenity::Attachment>,
     query_or_url: Option<String>,
+) -> Result<PlayOutcome, PlayError> {
+    let mut watch = QueueWatch::default();
+    match play_body(ctx, mode, file, query_or_url, &mut watch).await {
+        Ok(outcome) => Ok(outcome),
+        Err(err) => Err(PlayError {
+            outcome: watch.outcome().await,
+            err,
+        }),
+    }
+}
+
+async fn play_body(
+    ctx: Context<'_>,
+    mode: Option<String>,
+    file: Option<serenity::Attachment>,
+    query_or_url: Option<String>,
+    watch: &mut QueueWatch,
 ) -> Result<PlayOutcome, Error> {
     // FIXME: This should be generalized.
     // Get current time for timing purposes.
@@ -695,6 +761,7 @@ pub async fn play_core(
     tracing::warn!(target: "PLAY", "url: {}", url);
 
     let call = get_call_or_join_author(ctx).await?;
+    watch.call = Some(call.clone());
 
     let _after_call = std::time::Instant::now();
 
@@ -707,7 +774,7 @@ pub async fn play_core(
     let FilledReply {
         shortfall,
         was_empty,
-        len_before,
+        outcome,
         queue_len,
         after_query_type: _after_query_type,
         after_move_on: _after_move_on,
@@ -718,7 +785,7 @@ pub async fn play_core(
             ctx,
             handle: &search_msg,
         },
-        fill_search_reply(ctx, url, file, call.clone(), mode, &search_msg).await,
+        fill_search_reply(ctx, url, file, call.clone(), mode, &search_msg, watch).await,
     )
     .await?;
 
@@ -807,7 +874,7 @@ pub async fn play_core(
         _after_edit_embed.duration_since(_start),
         _after_edit_embed.duration_since(_after_embed),
     );
-    Ok(queued_outcome(len_before, queue_len))
+    Ok(outcome)
 }
 pub enum MessageOrInteraction {
     Message(Message),
@@ -1500,21 +1567,67 @@ mod tests {
         assert!(!text.contains("PlaylistQueued"), "{text}");
     }
 
+    fn ids(n: &[u128]) -> HashSet<Uuid> {
+        n.iter().map(|n| Uuid::from_u128(*n)).collect()
+    }
+
+    fn failed(outcome: PlayOutcome) -> PlayError {
+        PlayError {
+            outcome,
+            err: CrackedError::Other("late").into(),
+        }
+    }
+
     #[test]
-    fn play_settlement_keeps_only_a_queued_play() {
+    fn play_settlement_keeps_whatever_was_queued() {
         assert_eq!(play_settlement(&Ok(PlayOutcome::Queued)), Settlement::Keep);
         assert_eq!(
             play_settlement(&Ok(PlayOutcome::NothingQueued)),
             Settlement::Refund
         );
-        assert_eq!(play_settlement(&Err(())), Settlement::Refund);
+        // An error after the queue grew keeps the charge: the song is there.
+        assert_eq!(
+            play_settlement(&Err(failed(PlayOutcome::Queued))),
+            Settlement::Keep
+        );
+        assert_eq!(
+            play_settlement(&Err(failed(PlayOutcome::NothingQueued))),
+            Settlement::Refund
+        );
     }
 
     #[test]
-    fn a_play_is_queued_only_when_the_queue_grew() {
-        assert_eq!(queued_outcome(0, 1), PlayOutcome::Queued);
-        assert_eq!(queued_outcome(3, 53), PlayOutcome::Queued);
-        assert_eq!(queued_outcome(2, 2), PlayOutcome::NothingQueued);
-        assert_eq!(queued_outcome(0, 0), PlayOutcome::NothingQueued);
+    fn a_play_is_queued_when_a_new_track_id_appears() {
+        // Added, from empty and from busy.
+        assert_eq!(queued_outcome(&ids(&[]), &ids(&[1])), PlayOutcome::Queued);
+        assert_eq!(
+            queued_outcome(&ids(&[1]), &ids(&[1, 2])),
+            PlayOutcome::Queued
+        );
+        // Nothing added.
+        assert_eq!(
+            queued_outcome(&ids(&[1, 2]), &ids(&[1, 2])),
+            PlayOutcome::NothingQueued
+        );
+        assert_eq!(
+            queued_outcome(&ids(&[]), &ids(&[])),
+            PlayOutcome::NothingQueued
+        );
+        // One ended and one was added: the length is the same, the song is in.
+        assert_eq!(queued_outcome(&ids(&[1]), &ids(&[2])), PlayOutcome::Queued);
+        // One ended and nothing was added.
+        assert_eq!(
+            queued_outcome(&ids(&[1, 2]), &ids(&[2])),
+            PlayOutcome::NothingQueued
+        );
+        assert_eq!(
+            queued_outcome(&ids(&[1]), &ids(&[])),
+            PlayOutcome::NothingQueued
+        );
+        // A playlist adds several.
+        assert_eq!(
+            queued_outcome(&ids(&[1]), &ids(&[1, 2, 3, 4])),
+            PlayOutcome::Queued
+        );
     }
 }

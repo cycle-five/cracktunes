@@ -1011,6 +1011,7 @@ pub const ECONOMY_BOUNTY_CARD_HEAD: &str = "'s head until";
 pub const ECONOMY_BOUNTY_CARD_TAIL: &str = "Land a prank on them to collect it.";
 pub const ECONOMY_DEDICATE_CARD_PREFIX: &str = "🎵 This one goes out to";
 pub const ECONOMY_JUMP_CARD: &str = "⏭️ Someone paid to play this next";
+pub const ECONOMY_PLAY_NAME_A_SONG: &str = "Name a song or paste a link.";
 pub const ECONOMY_PLAY_NOT_CHARGED: &str = "Nothing was queued, so nothing was charged.";
 pub const ECONOMY_BOUNTY_SIGN_DASH: &str = "—";
 pub const ECONOMY_BOUNTY_SIGN_ANON: &str = "someone";
