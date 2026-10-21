@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, price FROM economy_actions\n         WHERE guild_id = $1 AND target_id = $2 AND kind = 'bounty'\n           AND state = 'active' AND buyer_id <> $3\n         ORDER BY id\n         FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "price",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "6f6b9467ef3e05767484a63aef0c28aad87b037accd31995c5797ef74e10d264"
+}

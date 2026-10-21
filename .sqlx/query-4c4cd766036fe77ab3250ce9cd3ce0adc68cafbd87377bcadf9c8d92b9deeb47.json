@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_pledges SET refunded_at = now() WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "4c4cd766036fe77ab3250ce9cd3ce0adc68cafbd87377bcadf9c8d92b9deeb47"
+}
