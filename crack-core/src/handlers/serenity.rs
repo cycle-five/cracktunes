@@ -58,6 +58,70 @@ impl EventHandler for SerenityHandler {
                 // timed when it arrived. It takes CrackTunes' own changes too
                 // (their audit units must be consumed, M8a).
                 crate::modlog::live::on_voice_state(&self.data, ctx, old.as_ref(), new);
+                // A member who just joined voice has pranks waiting to be
+                // undone (their mute could not land while they were away).
+                if let (None, Some(guild)) = (old.as_ref().and_then(|o| o.channel_id), new.guild_id)
+                {
+                    if new.channel_id.is_some() {
+                        let discord = crate::economy::discord::LiveEconomyDiscord {
+                            http: ctx.http.clone(),
+                        };
+                        let join = crate::economy::effects::on_voice_join(
+                            &self.data,
+                            &discord,
+                            guild,
+                            new.user_id,
+                            chrono::Utc::now(),
+                        );
+                        // Bounded: rooms' handling waits behind this.
+                        if tokio::time::timeout(std::time::Duration::from_secs(5), join)
+                            .await
+                            .is_err()
+                        {
+                            tracing::warn!(
+                                "economy: undoing pranks for {} on joining voice timed out",
+                                new.user_id
+                            );
+                        }
+                    }
+                }
+                // A jailed member who changed channel is moved back.
+                if let Some(guild) = new.guild_id {
+                    let from = old.as_ref().and_then(|o| o.channel_id);
+                    if from != new.channel_id {
+                        let discord = crate::economy::discord::LiveEconomyDiscord {
+                            http: ctx.http.clone(),
+                        };
+                        let moved = crate::economy::lock::on_voice_move(
+                            &self.data,
+                            &discord,
+                            guild,
+                            new.user_id,
+                            new.channel_id,
+                            tokio::time::Instant::now(),
+                            chrono::Utc::now(),
+                        );
+                        match tokio::time::timeout(std::time::Duration::from_secs(5), moved).await {
+                            // Out again inside the rate limit: one re-check
+                            // at its end, so moving twice doesn't escape.
+                            Ok(Some(at)) => crate::economy::lock::spawn_jail_recheck(
+                                self.data.clone(),
+                                ctx.http.clone(),
+                                ctx.cache.clone(),
+                                guild,
+                                new.user_id,
+                                at,
+                            ),
+                            Ok(None) => {},
+                            Err(_) => {
+                                tracing::warn!(
+                                    "economy: moving jailed {} back timed out",
+                                    new.user_id
+                                );
+                            },
+                        }
+                    }
+                }
                 // Then voice rooms: the handler below returns early for
                 // anyone but the bot.
                 crate::rooms::lifecycle::on_voice_state(&self.data, ctx, old.as_ref(), new).await;
@@ -67,7 +131,23 @@ impl EventHandler for SerenityHandler {
             // Server mutes and deafens for the mod log. The event log after
             // this match sees the entry too.
             FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
+                // Read out first: the cache guard must not be held across an await.
+                let bot = ctx.cache.current_user().id;
                 crate::modlog::live::on_audit_event(&self.data, ctx, *guild_id, entry).await;
+                // The lock and moderators' overrides act whether or not the
+                // mod log is on.
+                let discord = crate::economy::discord::LiveEconomyDiscord {
+                    http: ctx.http.clone(),
+                };
+                let audit = crate::economy::lock::on_audit_entry(
+                    &self.data, &discord, *guild_id, entry, bot,
+                );
+                if tokio::time::timeout(std::time::Duration::from_secs(5), audit)
+                    .await
+                    .is_err()
+                {
+                    tracing::warn!("economy: handling an audit entry in {guild_id} timed out");
+                }
             },
             // A voice room deleted by hand drops its row and its timer.
             FullEvent::ChannelDelete { channel, .. } => {
@@ -114,6 +194,26 @@ impl EventHandler for SerenityHandler {
                 .starts_with(crate::rooms::ids::ROOM_MODAL_PREFIX) =>
             {
                 crate::rooms::interact::handle_submit(&self.data, ctx, mi).await;
+            },
+            // Prank card buttons (`econ:`), and the modal Rename them back
+            // opens (`econm:`). Neither prefix starts with the other.
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Component(mci),
+            } if mci
+                .data
+                .custom_id
+                .starts_with(crate::economy::buttons::BUTTON_PREFIX) =>
+            {
+                crate::economy::buttons::handle_press(&self.data, ctx, mci).await;
+            },
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Modal(mi),
+            } if mi
+                .data
+                .custom_id
+                .starts_with(crate::economy::buttons::MODAL_PREFIX) =>
+            {
+                crate::economy::buttons::handle_submit(&self.data, ctx, mi).await;
             },
             _ => {},
         }
@@ -266,6 +366,12 @@ impl SerenityHandler {
         if let Some(cache) = ctx.cache() {
             crate::economy::earn::start(self.data.clone(), cache.clone());
         }
+        // And the sweeper that ends timed pranks on time.
+        crate::economy::effects::start_sweeper(
+            self.data.clone(),
+            ctx.http.clone(),
+            ctx.cache.clone(),
+        );
 
         // Process-level background work, moved off `CacheReady`.
         //
@@ -514,6 +620,27 @@ impl SerenityHandler {
                 if !crate::economy::load_settings(&data, gid).await {
                     tracing::warn!("economy: retrying the settings of {gid} failed too");
                 }
+            });
+        }
+
+        // Pranks the last run left behind: pending purchases resolved, rows
+        // that came due while the bot was down finished. After the settings
+        // load, though it needs none: the sweeper runs with the economy off.
+        if let Some(cache) = ctx.cache().cloned() {
+            let data = self.data.clone();
+            let http = ctx.http.clone();
+            let gid = guild.id;
+            // Off the handler: Discord calls here must not delay the work below.
+            tokio::spawn(async move {
+                let discord = crate::economy::discord::LiveEconomyDiscord { http };
+                crate::economy::effects::reconcile(
+                    &data,
+                    &discord,
+                    cache.as_ref(),
+                    gid,
+                    chrono::Utc::now(),
+                )
+                .await;
             });
         }
 

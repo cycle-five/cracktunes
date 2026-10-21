@@ -53,6 +53,23 @@
   with Manage Server adjust a balance. A 50/50 coinflip with no house edge is
   there when the server turns gambling on. Credits have no cash value. See
   `docs/economy.md`.
+- **The economy, part 2: the prank shop.** Credits now buy things the bot does
+  to another member for a while, under `/shop`: rename someone, lock their
+  nickname, add a clown to it, drag them into your voice channel, server-mute or
+  deafen them, or jail them in a channel the admin picks. A prank posts a public
+  card that says "someone" unless the buyer signs it, and the mod log always
+  names the buyer. Defences and a way out: a mirror bounces the next prank back
+  at whoever bought it, cleanse ends what is running on you, reveal unmasks an
+  unsigned buyer, and the target's card has a "Rename them back" button.
+  Immunity blocks every prank aimed at its holder (a mirror they hold still
+  fires first), moderators win over a prank and a moderator's server mute or
+  deafen is never taken over, pranks end on their own (and survive a restart),
+  and `/economy cancel` ends them early, even with the economy turned off.
+  `/economy status` shows what CrackTunes needs for each prank and the last ten
+  shop actions with their buyers. Prices,
+  how long things last, the jail channel and the announcement channel are on the
+  dashboard; each prank is sold only while CrackTunes has the permissions it
+  needs. See `docs/economy.md`.
 - **`/downvote` is registered.** It skips the current track and records a
   dislike against that track's newest play in this server, and one dislike is
   enough to hide the play from `/playlog`. When the track has no logged play to

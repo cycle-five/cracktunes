@@ -209,6 +209,45 @@
       el("e-hours").value = view.bought_immunity_hours;
       el("e-gambling").checked = view.gambling_enabled;
       el("e-max-bet").value = view.max_bet;
+      el("e-rename-hours").value = view.rename_hours;
+      el("e-short").value = view.short_effect_minutes;
+      fillChannels(el("e-jail"), view.voice_channels, view.jail_channel);
+      fillChannels(el("e-announce"), view.text_channels, view.announce_channel);
+      showPreflight(view);
+    }
+
+    function fillChannels(select, options, chosen) {
+      const none = select.options[0];
+      select.replaceChildren(none);
+      for (const c of options) {
+        const o = document.createElement("option");
+        o.value = c.id;
+        o.textContent = c.name;
+        select.append(o);
+      }
+      select.value = chosen || "";
+    }
+
+    function showPreflight(view) {
+      const list = el("e-preflight");
+      const words = (needs) =>
+        needs === null ? list.dataset.unknown : needs.length === 0 ? list.dataset.ready : needs.join("; ");
+      const rows = view.preflight.map((a) => [a.kind, a.label, words(a.needs)]);
+      if (view.announce_channel) {
+        rows.push(["announce", list.dataset.announce, words(view.announce_findings)]);
+      }
+      list.replaceChildren(
+        ...rows.map(([kind, label, text]) => {
+          const li = document.createElement("li");
+          li.dataset.kind = kind;
+          const strong = document.createElement("strong");
+          strong.textContent = label;
+          const span = document.createElement("span");
+          span.textContent = text;
+          li.append(strong, ": ", span);
+          return li;
+        }),
+      );
     }
 
     // A blank or non-numeric box is NaN, which JSON turns into null: the
@@ -243,6 +282,10 @@
         bought_immunity_hours: num("e-hours"),
         gambling_enabled: el("e-gambling").checked,
         max_bet: num("e-max-bet"),
+        rename_hours: num("e-rename-hours"),
+        short_effect_minutes: num("e-short"),
+        jail_channel: el("e-jail").value || null,
+        announce_channel: el("e-announce").value || null,
       };
       try {
         const r = await fetch(`/g/${guild}/settings/economy`, {

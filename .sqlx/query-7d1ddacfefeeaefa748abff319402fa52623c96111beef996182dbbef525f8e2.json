@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_actions\n         SET expires_at = LEAST(COALESCE(expires_at, $3), $3), end_reason = $2\n         WHERE id = $1 AND state = 'active'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7d1ddacfefeeaefa748abff319402fa52623c96111beef996182dbbef525f8e2"
+}

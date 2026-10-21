@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_actions\n         SET state = $2,\n             end_reason = CASE WHEN $3 = 'expired' THEN COALESCE(end_reason, $3) ELSE $3 END,\n             ended_at = CASE WHEN $4 THEN now() ELSE ended_at END\n         WHERE id = $1 AND state IN ('active', 'ending')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2c95a14268a90cebe53f79b1a63b384a9356174f034212210c3f23ec931e10a8"
+}

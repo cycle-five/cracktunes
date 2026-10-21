@@ -1,4 +1,5 @@
 //! The events the mod log posts, and the one embed each renders to.
+use crate::economy::settings::ActionKind;
 use crate::messaging::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
 use crate::messaging::messages::*;
 use crate::messaging::render::{Mentions, RenderCx, Rendered};
@@ -101,6 +102,24 @@ pub enum ModLogEvent {
         amount: i64,
         reason: String,
     },
+    /// A shop purchase that changed a member. The buyer is always named
+    /// here, signed or not (owner ruling): moderators see who did it.
+    ShopAction {
+        action: ActionKind,
+        buyer: UserId,
+        target: UserId,
+        note: Option<String>,
+        signed: bool,
+        until: Option<DateTime<Utc>>,
+        /// Whose mirror bounced the prank onto the buyer.
+        mirrored_from: Option<UserId>,
+    },
+    /// The pranks running on `target` were ended early: by `target`'s own
+    /// cleanse (`by == target`) or a moderator's `/economy cancel`.
+    ShopCancelled {
+        by: UserId,
+        target: UserId,
+    },
 }
 
 /// For logs: the kind of event.
@@ -118,6 +137,8 @@ impl std::fmt::Display for ModLogEvent {
             Self::ImmunityGranted { .. } => "immunity_granted",
             Self::ImmunityLifted { .. } => "immunity_lifted",
             Self::CreditsAdjusted { .. } => "credits_adjusted",
+            Self::ShopAction { .. } => "shop_action",
+            Self::ShopCancelled { .. } => "shop_cancelled",
         };
         write!(f, "ModLog({kind})")
     }
@@ -378,6 +399,43 @@ fn parts(e: &ModLogEvent) -> Parts {
                 )
             }
         },
+        ModLogEvent::ShopAction {
+            action,
+            buyer,
+            target,
+            note,
+            signed,
+            until,
+            mirrored_from,
+        } => {
+            let mut d = format!(
+                "{} {MODLOG_SHOP_USED} {} {MODLOG_SHOP_ON} {}",
+                user(*buyer),
+                action.label(),
+                user(*target)
+            );
+            if let Some(t) = until {
+                d.push_str(&format!(" {MODLOG_UNTIL} <t:{}:f>", t.timestamp()));
+            }
+            if let Some(owner) = mirrored_from {
+                d.push_str(&format!(
+                    " {MODLOG_SHOP_BOUNCED_PREFIX} {}{MODLOG_SHOP_BOUNCED_SUFFIX}",
+                    user(*owner)
+                ));
+            }
+            d.push_str(&format!(
+                " ({})",
+                toggle(*signed, MODLOG_SHOP_SIGNED, MODLOG_SHOP_ANONYMOUS)
+            ));
+            Parts {
+                reason: note.clone(),
+                ..plain(MODLOG_TITLE_SHOP_ACTION, d)
+            }
+        },
+        ModLogEvent::ShopCancelled { by, target } => plain(
+            MODLOG_TITLE_SHOP_CANCELLED,
+            format!("{} {MODLOG_SHOP_CLEANSED} {}", user(*by), user(*target)),
+        ),
     }
 }
 
@@ -508,6 +566,16 @@ mod tests {
                 amount: 5,
                 reason: "x".into(),
             },
+            ModLogEvent::ShopAction {
+                action: ActionKind::Rename,
+                buyer: A,
+                target: T,
+                note: Some("hi".into()),
+                signed: false,
+                until: None,
+                mirrored_from: None,
+            },
+            ModLogEvent::ShopCancelled { by: A, target: T },
         ]
     }
 
@@ -527,6 +595,23 @@ mod tests {
                 j["timestamp"].as_str().unwrap()[..19],
                 *"2023-11-14T22:13:20",
                 "{e:?}"
+            );
+        }
+    }
+
+    /// One event for a member's cleanse and a moderator's cancel, so its
+    /// words fit both.
+    #[test]
+    fn ended_pranks_read_the_same_for_a_cleanse_and_a_cancel() {
+        for by in [A, T] {
+            let j = json(&render(
+                &ModLogEvent::ShopCancelled { by, target: T },
+                &cx(),
+            ));
+            assert_eq!(j["title"], "🧼 Shop pranks ended");
+            assert_eq!(
+                j["description"],
+                format!("<@{by}> ended the pranks on <@{T}>").as_str()
             );
         }
     }
@@ -579,6 +664,40 @@ mod tests {
         };
         let j = json(&render(&person, &cx()));
         assert_eq!(j["description"], format!("<@22> {MODLOG_MUTED} <@11>"));
+    }
+
+    #[test]
+    fn shop_action_renders_buyer_even_unsigned() {
+        let until = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
+        let e = ModLogEvent::ShopAction {
+            action: ActionKind::Rename,
+            buyer: A,
+            target: T,
+            note: Some("gg".into()),
+            signed: false,
+            until: Some(until),
+            mirrored_from: None,
+        };
+        let j = json(&render(&e, &cx()));
+        assert_eq!(
+            j["description"],
+            "<@22> used Rename on <@11> until <t:1800000000:f> (anonymous)"
+        );
+        assert_eq!(j["fields"][0]["value"], "gg");
+        let bounced = ModLogEvent::ShopAction {
+            action: ActionKind::Rename,
+            buyer: A,
+            target: T,
+            note: None,
+            signed: true,
+            until: None,
+            mirrored_from: Some(T),
+        };
+        let j = json(&render(&bounced, &cx()));
+        assert_eq!(
+            j["description"],
+            "<@22> used Rename on <@11> (bounced by <@11>'s mirror) (signed)"
+        );
     }
 
     #[test]
@@ -807,10 +926,12 @@ mod tests {
 
     #[test]
     fn economy_events_log_their_kind() {
-        let shown: Vec<String> = all().iter().rev().take(3).map(|e| e.to_string()).collect();
+        let shown: Vec<String> = all().iter().rev().take(5).map(|e| e.to_string()).collect();
         assert_eq!(
             shown,
             [
+                "ModLog(shop_cancelled)",
+                "ModLog(shop_action)",
                 "ModLog(credits_adjusted)",
                 "ModLog(immunity_lifted)",
                 "ModLog(immunity_granted)"

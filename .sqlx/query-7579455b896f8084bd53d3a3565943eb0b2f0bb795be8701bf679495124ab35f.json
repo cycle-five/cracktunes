@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_actions\n         SET state = 'ended', ended_at = now(), end_reason = 'fired'\n         WHERE state = 'active'\n           AND id = (SELECT id FROM economy_actions\n                     WHERE guild_id = $1 AND target_id = $2 AND kind = 'mirror'\n                       AND state = 'active'\n                     ORDER BY id LIMIT 1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7579455b896f8084bd53d3a3565943eb0b2f0bb795be8701bf679495124ab35f"
+}

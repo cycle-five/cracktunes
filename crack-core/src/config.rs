@@ -322,6 +322,8 @@ pub async fn poise_framework(
         musicreco,
         ..Default::default()
     }));
+    // Before the gateway connects, so no purchase of this process is older.
+    crate::economy::record_process_start(&data).await;
 
     // No MESSAGE_CONTENT. The bot is Discord-verified without it, and it is not
     // coming back for an application in 100+ guilds without a review. Message

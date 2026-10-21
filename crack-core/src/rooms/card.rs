@@ -382,7 +382,7 @@ fn refusal_text(refusal: RoomRefusal) -> String {
     }
 }
 
-pub(crate) fn perm_names(perms: Permissions, bold: bool) -> String {
+pub fn perm_names(perms: Permissions, bold: bool) -> String {
     perms
         .get_permission_names()
         .iter()

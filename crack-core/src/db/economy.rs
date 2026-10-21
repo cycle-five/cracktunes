@@ -306,6 +306,366 @@ pub async fn finish_action(pool: &PgPool, action_id: i64, state: ActionState) ->
     Ok(())
 }
 
+/// A bought action as stored.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionRow {
+    pub id: i64,
+    pub kind: ActionKind,
+    pub buyer: UserId,
+    /// A mirror's row names its owner here, so it is found like any other
+    /// action aimed at that member.
+    pub target: Option<UserId>,
+    pub payload: ActionPayload,
+    pub state: ActionState,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub note: Option<String>,
+    pub signed: bool,
+    pub revealed_at: Option<DateTime<Utc>>,
+}
+
+/// One action by id, if it belongs to `guild`. A button on a card reads the
+/// action it was drawn for; an id from another server is no action here.
+pub async fn action_by_id(
+    pool: &PgPool,
+    guild: GuildId,
+    action_id: i64,
+) -> sqlx::Result<Option<ActionRow>> {
+    let keys = known_kinds();
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE id = $1 AND guild_id = $2 AND kind = ANY($3)"#,
+        action_id,
+        guild.get() as i64,
+        &keys
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(raw.and_then(RawAction::into_row).map(|(_, r)| r))
+}
+
+/// Bring an `active` row's end forward to `now` and record why, so the
+/// sweeper retries its undo every tick (an early end whose undo failed). The
+/// end never moves later. False when the row is not `active`.
+pub async fn schedule_early_end(
+    pool: &PgPool,
+    action_id: i64,
+    reason: &str,
+    now: DateTime<Utc>,
+) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE economy_actions
+         SET expires_at = LEAST(COALESCE(expires_at, $3), $3), end_reason = $2
+         WHERE id = $1 AND state = 'active'",
+        action_id,
+        reason,
+        now
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// The running (`active` or `ending`) actions of these kinds aimed at
+/// `target`, oldest first.
+pub async fn active_of_kind(
+    pool: &PgPool,
+    guild: GuildId,
+    target: UserId,
+    kinds: &[ActionKind],
+) -> sqlx::Result<Vec<ActionRow>> {
+    let keys: Vec<String> = kinds.iter().map(|k| k.key().to_string()).collect();
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND target_id = $2 AND kind = ANY($3)
+             AND state IN ('active', 'ending')
+           ORDER BY id"#,
+        guild.get() as i64,
+        target.get() as i64,
+        &keys
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
+/// A prank that could be unmasked, with when it was bought.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevealCandidate {
+    pub row: ActionRow,
+    pub bought_at: DateTime<Utc>,
+}
+
+/// [`RawAction`] plus the purchase time.
+struct RawCandidate {
+    id: i64,
+    guild_id: i64,
+    kind: String,
+    buyer_id: i64,
+    target_id: Option<i64>,
+    payload: Json<ActionPayload>,
+    state: String,
+    expires_at: Option<DateTime<Utc>>,
+    note: Option<String>,
+    signed: bool,
+    revealed_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+}
+
+/// The pranks (spec 4.1) other people bought against `target` that could be
+/// unmasked: unsigned, not refunded (a blocked prank was still aimed at the
+/// mirror's owner), newest first. A
+/// bounced prank (its buyer is its own target) and a mirror (its target is
+/// its owner) never qualify. `only` narrows to one action id, and
+/// `unrevealed_only` drops the ones already unmasked.
+pub async fn reveal_candidates(
+    pool: &PgPool,
+    guild: GuildId,
+    target: UserId,
+    only: Option<i64>,
+    unrevealed_only: bool,
+    limit: i64,
+) -> sqlx::Result<Vec<RevealCandidate>> {
+    let keys: Vec<String> = ActionKind::PRANKS
+        .iter()
+        .map(|k| k.key().to_string())
+        .collect();
+    let raw = sqlx::query_as!(
+        RawCandidate,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at, created_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND target_id = $2 AND buyer_id <> $2
+             AND kind = ANY($3) AND signed = false
+             AND state IN ('active', 'ending', 'ended', 'done')
+             AND ($4::bigint IS NULL OR id = $4)
+             AND (NOT $5 OR revealed_at IS NULL)
+           ORDER BY id DESC
+           LIMIT $6"#,
+        guild.get() as i64,
+        target.get() as i64,
+        &keys,
+        only,
+        unrevealed_only,
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|c| {
+            let bought_at = c.created_at;
+            RawAction {
+                id: c.id,
+                guild_id: c.guild_id,
+                kind: c.kind,
+                buyer_id: c.buyer_id,
+                target_id: c.target_id,
+                payload: c.payload,
+                state: c.state,
+                expires_at: c.expires_at,
+                note: c.note,
+                signed: c.signed,
+                revealed_at: c.revealed_at,
+            }
+            .into_row()
+            .map(|(_, row)| RevealCandidate { row, bought_at })
+        })
+        .collect())
+}
+
+/// An action for `/economy status`: the row, why it ended, and when it was
+/// bought.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecentAction {
+    pub row: ActionRow,
+    pub end_reason: Option<String>,
+    pub bought_at: DateTime<Utc>,
+}
+
+/// [`RawAction`] plus why it ended and when it was bought.
+struct RawRecent {
+    id: i64,
+    guild_id: i64,
+    kind: String,
+    buyer_id: i64,
+    target_id: Option<i64>,
+    payload: Json<ActionPayload>,
+    state: String,
+    expires_at: Option<DateTime<Utc>>,
+    note: Option<String>,
+    signed: bool,
+    revealed_at: Option<DateTime<Utc>>,
+    end_reason: Option<String>,
+    created_at: DateTime<Utc>,
+}
+
+/// A server's last `limit` actions of every kind this build knows, newest
+/// first, whatever their state: the record moderators read when the mod
+/// log is off (spec 5.4).
+pub async fn recent_actions(
+    pool: &PgPool,
+    guild: GuildId,
+    limit: i64,
+) -> sqlx::Result<Vec<RecentAction>> {
+    let raw = sqlx::query_as!(
+        RawRecent,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at, end_reason, created_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND kind = ANY($2)
+           ORDER BY id DESC
+           LIMIT $3"#,
+        guild.get() as i64,
+        &known_kinds(),
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(raw.into_iter().filter_map(RawRecent::into_recent).collect())
+}
+
+impl RawRecent {
+    /// As [`RawAction::into_row`], keeping why it ended and when it was bought.
+    fn into_recent(self) -> Option<RecentAction> {
+        let (end_reason, bought_at) = (self.end_reason, self.created_at);
+        RawAction {
+            id: self.id,
+            guild_id: self.guild_id,
+            kind: self.kind,
+            buyer_id: self.buyer_id,
+            target_id: self.target_id,
+            payload: self.payload,
+            state: self.state,
+            expires_at: self.expires_at,
+            note: self.note,
+            signed: self.signed,
+            revealed_at: self.revealed_at,
+        }
+        .into_row()
+        .map(|(_, row)| RecentAction {
+            row,
+            end_reason,
+            bought_at,
+        })
+    }
+}
+
+/// Stamp a prank as unmasked by `by`. False when it already was (nothing
+/// changed), so a racing second reveal is told so and refunded.
+pub async fn mark_revealed(
+    conn: &mut sqlx::PgConnection,
+    action_id: i64,
+    by: UserId,
+) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE economy_actions SET revealed_at = now(), revealed_by = $2
+         WHERE id = $1 AND revealed_at IS NULL",
+        action_id,
+        by.get() as i64
+    )
+    .execute(conn)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// Unmask `prank` and mark the paid `reveal` purchase `done`, in one
+/// transaction: a reveal left `pending` always means nothing was unmasked, so
+/// reconcile's refund stays right. False (nothing written) when the prank was
+/// already unmasked.
+pub async fn reveal_action(
+    pool: &PgPool,
+    reveal_id: i64,
+    prank_id: i64,
+    by: UserId,
+) -> sqlx::Result<bool> {
+    let mut tx = pool.begin().await?;
+    if !mark_revealed(&mut tx, prank_id, by).await? {
+        return Ok(false);
+    }
+    sqlx::query!(
+        "UPDATE economy_actions SET state = 'done', ended_at = now()
+         WHERE id = $1 AND state = 'pending'",
+        reveal_id
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
+/// Move a `pending` action to what it becomes once the effect has landed:
+/// `active` for a kind that [`ActionKind::stays_active`], else `done`.
+/// False when the row was not pending (nothing changed).
+pub async fn activate_action(
+    pool: &PgPool,
+    action_id: i64,
+    kind: ActionKind,
+    expires_at: Option<DateTime<Utc>>,
+) -> sqlx::Result<bool> {
+    let state = if kind.stays_active() {
+        ActionState::Active
+    } else {
+        ActionState::Done
+    };
+    let done = sqlx::query!(
+        "UPDATE economy_actions
+         SET state = $2, expires_at = $3,
+             ended_at = CASE WHEN $4 THEN now() ELSE ended_at END
+         WHERE id = $1 AND state = 'pending'",
+        action_id,
+        state.as_str(),
+        expires_at,
+        state.is_final()
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// End a still-`pending` purchase that was paid for but could not land (a
+/// mirror bounced it into a wall): `done`, `end_reason = 'blocked'`, and no
+/// refund. False when the row was not pending.
+pub async fn finish_blocked(pool: &PgPool, action_id: i64) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE economy_actions
+         SET state = 'done', ended_at = now(), end_reason = 'blocked'
+         WHERE id = $1 AND state = 'pending'",
+        action_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// Spend `owner`'s standing mirror: `ended`, `end_reason = 'fired'`. True
+/// for exactly one caller when several race for it.
+pub async fn consume_mirror(pool: &PgPool, guild: GuildId, owner: UserId) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE economy_actions
+         SET state = 'ended', ended_at = now(), end_reason = 'fired'
+         WHERE state = 'active'
+           AND id = (SELECT id FROM economy_actions
+                     WHERE guild_id = $1 AND target_id = $2 AND kind = 'mirror'
+                       AND state = 'active'
+                     ORDER BY id LIMIT 1)",
+        guild.get() as i64,
+        owner.get() as i64
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
 /// Give a still-`pending` purchase's price back. `None` (and nothing
 /// changed) when it is not pending, so a second call does nothing.
 pub async fn refund_action(pool: &PgPool, action_id: i64) -> sqlx::Result<Option<i64>> {
@@ -347,6 +707,263 @@ pub async fn refund_action(pool: &PgPool, action_id: i64) -> sqlx::Result<Option
     .await?;
     tx.commit().await?;
     Ok(Some(back))
+}
+
+/// An `economy_actions` row as the sweep queries read it.
+struct RawAction {
+    id: i64,
+    guild_id: i64,
+    kind: String,
+    buyer_id: i64,
+    target_id: Option<i64>,
+    payload: Json<ActionPayload>,
+    state: String,
+    expires_at: Option<DateTime<Utc>>,
+    note: Option<String>,
+    signed: bool,
+    revealed_at: Option<DateTime<Utc>>,
+}
+
+impl RawAction {
+    /// A row with a bad id or an unreadable state is skipped. An unknown
+    /// kind never gets here: the queries select only [`known_kinds`], because
+    /// a payload this build cannot decode would fail the whole fetch (an
+    /// image-only rollback below a version that added kinds).
+    fn into_row(self) -> Option<(GuildId, ActionRow)> {
+        let guild = u64::try_from(self.guild_id)
+            .ok()
+            .filter(|g| *g != 0 && *g != u64::MAX)
+            .map(GuildId::new)?;
+        Some((
+            guild,
+            ActionRow {
+                id: self.id,
+                kind: ActionKind::from_key(&self.kind)?,
+                buyer: uid(self.buyer_id)?,
+                target: self.target_id.and_then(uid),
+                payload: self.payload.0,
+                state: ActionState::parse(&self.state)?,
+                expires_at: self.expires_at,
+                note: self.note,
+                signed: self.signed,
+                revealed_at: self.revealed_at,
+            },
+        ))
+    }
+}
+
+/// Every kind this build knows, as stored.
+fn known_kinds() -> Vec<String> {
+    ActionKind::ALL
+        .iter()
+        .map(|k| k.key().to_string())
+        .collect()
+}
+
+fn rows_of(raw: Vec<RawAction>) -> Vec<(GuildId, ActionRow)> {
+    raw.into_iter().filter_map(RawAction::into_row).collect()
+}
+
+/// Across all guilds, `active` rows whose time is up, oldest first. A row
+/// with no `expires_at` (a mirror) is never due.
+pub async fn due_actions(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+    limit: i64,
+) -> sqlx::Result<Vec<(GuildId, ActionRow)>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE state = 'active' AND expires_at IS NOT NULL AND expires_at <= $1
+             AND kind = ANY($3)
+           ORDER BY expires_at, id
+           LIMIT $2"#,
+        now,
+        limit,
+        &known_kinds()
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw))
+}
+
+/// One server's `active` rows whose time is up.
+pub async fn overdue_for_guild(
+    pool: &PgPool,
+    guild: GuildId,
+    now: DateTime<Utc>,
+) -> sqlx::Result<Vec<ActionRow>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND state = 'active'
+             AND expires_at IS NOT NULL AND expires_at <= $2
+             AND kind = ANY($3)
+           ORDER BY expires_at, id"#,
+        guild.get() as i64,
+        now,
+        &known_kinds()
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
+/// One server's `active` rows of these kinds, whatever their end, each with
+/// when it was bought (the database's clock).
+pub async fn active_for_guild(
+    pool: &PgPool,
+    guild: GuildId,
+    kinds: &[ActionKind],
+) -> sqlx::Result<Vec<(ActionRow, DateTime<Utc>)>> {
+    let keys: Vec<String> = kinds.iter().map(|k| k.key().to_string()).collect();
+    let raw = sqlx::query_as!(
+        RawRecent,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at, end_reason, created_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND state = 'active' AND kind = ANY($2)
+           ORDER BY id"#,
+        guild.get() as i64,
+        &keys
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|r| {
+            let created_at = r.created_at;
+            r.into_recent().map(|a| (a.row, created_at))
+        })
+        .collect())
+}
+
+/// The `ending` rows (undone on the member's next voice join) aimed at one
+/// member.
+pub async fn ending_for(
+    pool: &PgPool,
+    guild: GuildId,
+    user: UserId,
+) -> sqlx::Result<Vec<ActionRow>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND target_id = $2 AND state = 'ending'
+             AND kind = ANY($3)
+           ORDER BY id"#,
+        guild.get() as i64,
+        user.get() as i64,
+        &known_kinds()
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
+/// All of one server's `ending` rows.
+pub async fn ending_for_guild(pool: &PgPool, guild: GuildId) -> sqlx::Result<Vec<ActionRow>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND state = 'ending' AND kind = ANY($2)
+           ORDER BY id"#,
+        guild.get() as i64,
+        &known_kinds()
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
+/// The database's clock now.
+pub async fn db_now(pool: &PgPool) -> sqlx::Result<DateTime<Utc>> {
+    sqlx::query_scalar!(r#"SELECT now() AS "now!""#)
+        .fetch_one(pool)
+        .await
+}
+
+/// One server's `pending` rows that nothing is still working on: every row
+/// charged before `process_start` (a previous process left it, whatever its
+/// age), and any row older than `grace_secs` on the database's clock. A
+/// purchase of this process between its charge and its activate is younger
+/// than both and is left alone. Without a recorded start only the grace
+/// counts.
+pub async fn pending_for_guild(
+    pool: &PgPool,
+    guild: GuildId,
+    process_start: Option<DateTime<Utc>>,
+    grace_secs: f64,
+) -> sqlx::Result<Vec<ActionRow>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND state = 'pending'
+             AND created_at < GREATEST($2::timestamptz, now() - make_interval(secs => $3))
+             AND kind = ANY($4)
+           ORDER BY id"#,
+        guild.get() as i64,
+        process_start,
+        grace_secs,
+        &known_kinds()
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
+/// Move a running (`active` or `ending`) row to `Ended` (final, stamped) or
+/// `Ending` (waits for the member's next voice join), with the reason. The
+/// reason `expired` is the generic one and never overwrites a stored reason
+/// (a cleanse set aside or scheduled stays "cleansed" after the retry); any
+/// specific reason (`left`, `overridden`, `cleansed`, ...) wins. False when
+/// the row was not running, or `state` is neither of those: nothing changed.
+pub async fn end_action(
+    pool: &PgPool,
+    action_id: i64,
+    state: ActionState,
+    end_reason: &str,
+) -> sqlx::Result<bool> {
+    if !matches!(state, ActionState::Ended | ActionState::Ending) {
+        return Ok(false);
+    }
+    let done = sqlx::query!(
+        "UPDATE economy_actions
+         SET state = $2,
+             end_reason = CASE WHEN $3 = 'expired' THEN COALESCE(end_reason, $3) ELSE $3 END,
+             ended_at = CASE WHEN $4 THEN now() ELSE ended_at END
+         WHERE id = $1 AND state IN ('active', 'ending')",
+        action_id,
+        state.as_str(),
+        end_reason,
+        state.is_final()
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// The row's state now, `None` when there is no such row.
+pub async fn action_state(pool: &PgPool, action_id: i64) -> sqlx::Result<Option<ActionState>> {
+    let row = sqlx::query!("SELECT state FROM economy_actions WHERE id = $1", action_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.and_then(|r| ActionState::parse(&r.state)))
 }
 
 /// Gift credits. Both wallets are locked in ascending user-id order so two
