@@ -236,6 +236,7 @@ pub async fn mod_cancel(
     }
     effects::end_running_pranks(data, discord, g, target, "mod_cancelled", now)
         .await
+        .map(|ended| ended.all)
         .map_err(|err| {
             tracing::warn!("economy: cancelling the pranks on {target} in {g} failed: {err}");
             GrantError::Db

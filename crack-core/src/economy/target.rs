@@ -58,7 +58,8 @@ pub enum TargetOutcome {
 
 /// Check a target, refusing for the first reason that applies, in order:
 /// bot, self, out of reach (the owner; then can't tell when a role position
-/// is unknown; then the hierarchy), voice needs, already server-muted or -deafened
+/// is unknown; then the hierarchy), voice needs (a drag also refuses a
+/// target already in the buyer's channel), already server-muted or -deafened
 /// (a moderator's mute is never taken over, so never undone), opted out, then
 /// a mirror (which returns [`TargetOutcome::Mirrored`] before immunity is
 /// read), immunity, the same prank already running, and the never-widen
@@ -92,6 +93,10 @@ pub fn check_target(
             }
             if t.in_voice.is_none() {
                 return Err(Refusal::TargetNotInVoice);
+            }
+            // Nothing to move: a charge for nothing.
+            if t.in_voice == buyer_in_voice {
+                return Err(Refusal::AlreadyThere);
             }
         },
         ActionKind::Mute | ActionKind::Deafen | ActionKind::Jail if t.in_voice.is_none() => {
@@ -390,7 +395,7 @@ mod tests {
     #[test]
     fn check_target_order() {
         let kind = ActionKind::Drag;
-        let buyer = Some(VC);
+        let buyer = Some(OTHER_VC);
         let mut f = all_wrong();
         assert_eq!(check_target(kind, &f, buyer), Err(Refusal::TargetIsBot));
         f.is_bot = false;
@@ -405,6 +410,9 @@ mod tests {
             check_target(kind, &f, buyer),
             Err(Refusal::TargetNotInVoice)
         );
+        // Already where the buyer is: nothing to drag.
+        f.in_voice = buyer;
+        assert_eq!(check_target(kind, &f, buyer), Err(Refusal::AlreadyThere));
         f.in_voice = Some(VC);
         assert_eq!(check_target(kind, &f, buyer), Err(Refusal::TargetOptedOut));
         f.opted_out = false;
@@ -581,7 +589,7 @@ mod tests {
         let mut f = clean();
         f.can_join_destination = None;
         assert_eq!(
-            check_target(ActionKind::Drag, &f, Some(VC)),
+            check_target(ActionKind::Drag, &f, Some(OTHER_VC)),
             Err(Refusal::CannotJoinDestination)
         );
         for k in [ActionKind::Jail, ActionKind::Mute, ActionKind::Rename] {

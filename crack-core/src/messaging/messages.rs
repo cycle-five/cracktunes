@@ -825,14 +825,14 @@ pub const MODLOG_GRANTED_IMMUNITY_TO: &str = "granted immunity to";
 pub const MODLOG_LIFTED_IMMUNITY_OF: &str = "lifted the immunity of";
 pub const MODLOG_ADJUSTED_CREDITS_OF: &str = "adjusted the credits of";
 pub const MODLOG_TITLE_SHOP_ACTION: &str = "🛍️ Shop action";
-pub const MODLOG_TITLE_SHOP_CANCELLED: &str = "🧼 Shop pranks cleansed";
+pub const MODLOG_TITLE_SHOP_CANCELLED: &str = "🧼 Shop pranks ended";
 pub const MODLOG_SHOP_USED: &str = "used";
 pub const MODLOG_SHOP_ON: &str = "on";
 pub const MODLOG_SHOP_BOUNCED_PREFIX: &str = "(bounced by";
 pub const MODLOG_SHOP_BOUNCED_SUFFIX: &str = "'s mirror)";
 pub const MODLOG_SHOP_SIGNED: &str = "signed";
 pub const MODLOG_SHOP_ANONYMOUS: &str = "anonymous";
-pub const MODLOG_SHOP_CLEANSED: &str = "cleansed the pranks on";
+pub const MODLOG_SHOP_CLEANSED: &str = "ended the pranks on";
 pub const MODLOG_UNTIL: &str = "until";
 pub const MODLOG_UNTIL_LIFTED: &str = "until lifted";
 /// U+2212 MINUS SIGN, for a negative amount (the repo has no other convention).
@@ -971,6 +971,7 @@ pub const ECONOMY_CANNOT_JOIN_DESTINATION: &str =
     "They couldn't join your channel themselves, so CrackTunes won't drag them there.";
 pub const ECONOMY_MIRROR_ALREADY_UP: &str = "Your mirror is already up.";
 pub const ECONOMY_ALREADY_MUTED: &str = "They're already server-muted.";
+pub const ECONOMY_ALREADY_THERE: &str = "They're already in your channel.";
 pub const ECONOMY_ALREADY_DEAFENED: &str = "They're already server-deafened.";
 pub const ECONOMY_CARD_POSSESSIVE: &str = "'s";
 pub const ECONOMY_CARD_SOMEONE: &str = "Someone";

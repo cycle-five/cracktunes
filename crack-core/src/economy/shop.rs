@@ -10,16 +10,16 @@ use super::target::{check_target, TargetFacts, TargetOutcome};
 use super::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::messages::{
     ECONOMY_ALREADY_DEAFENED, ECONOMY_ALREADY_IMMUNE, ECONOMY_ALREADY_MUTED,
-    ECONOMY_ALREADY_REVEALED, ECONOMY_ALREADY_RUNNING_PREFIX, ECONOMY_BUYER_NOT_IN_VOICE,
-    ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION, ECONOMY_CANT_AFFORD_MIDDLE,
-    ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_CANT_TELL, ECONOMY_MIRROR_ALREADY_UP,
-    ECONOMY_NOTHING_TO_CLEANSE, ECONOMY_NOTHING_TO_REVEAL, ECONOMY_NOT_FOR_SALE,
-    ECONOMY_NO_DATABASE, ECONOMY_NO_JAIL_CHANNEL, ECONOMY_OFF, ECONOMY_OUT_OF_REACH,
-    ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PICK_AGO, ECONOMY_REVEAL_PICK_DAY,
-    ECONOMY_REVEAL_PICK_HOUR, ECONOMY_REVEAL_PICK_JUST_NOW, ECONOMY_REVEAL_PICK_MINUTE,
-    ECONOMY_TARGET_IMMUNE_INDEFINITELY, ECONOMY_TARGET_IMMUNE_UNTIL, ECONOMY_TARGET_IS_BOT,
-    ECONOMY_TARGET_IS_SELF, ECONOMY_TARGET_NOT_IN_VOICE, ECONOMY_TARGET_OPTED_OUT,
-    ECONOMY_UNAVAILABLE_PREFIX, ECONOMY_UNAVAILABLE_SUFFIX,
+    ECONOMY_ALREADY_REVEALED, ECONOMY_ALREADY_RUNNING_PREFIX, ECONOMY_ALREADY_THERE,
+    ECONOMY_BUYER_NOT_IN_VOICE, ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION,
+    ECONOMY_CANT_AFFORD_MIDDLE, ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_CANT_TELL,
+    ECONOMY_MIRROR_ALREADY_UP, ECONOMY_NOTHING_TO_CLEANSE, ECONOMY_NOTHING_TO_REVEAL,
+    ECONOMY_NOT_FOR_SALE, ECONOMY_NO_DATABASE, ECONOMY_NO_JAIL_CHANNEL, ECONOMY_OFF,
+    ECONOMY_OUT_OF_REACH, ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PICK_AGO,
+    ECONOMY_REVEAL_PICK_DAY, ECONOMY_REVEAL_PICK_HOUR, ECONOMY_REVEAL_PICK_JUST_NOW,
+    ECONOMY_REVEAL_PICK_MINUTE, ECONOMY_TARGET_IMMUNE_INDEFINITELY, ECONOMY_TARGET_IMMUNE_UNTIL,
+    ECONOMY_TARGET_IS_BOT, ECONOMY_TARGET_IS_SELF, ECONOMY_TARGET_NOT_IN_VOICE,
+    ECONOMY_TARGET_OPTED_OUT, ECONOMY_UNAVAILABLE_PREFIX, ECONOMY_UNAVAILABLE_SUFFIX,
 };
 use crate::Data;
 use chrono::{DateTime, Utc};
@@ -78,6 +78,8 @@ pub enum Refusal {
     AlreadyMuted,
     /// The same for a deafen.
     AlreadyDeafened,
+    /// A drag whose target is already in the buyer's channel.
+    AlreadyThere,
     /// A role position nobody could read (the cache can't place one of the
     /// member's roles, or the bot's): not the hierarchy, so not out of reach.
     CantTell,
@@ -155,6 +157,7 @@ pub fn refusal_text(r: &Refusal, currency: &str) -> String {
         Refusal::AlreadyMuted => ECONOMY_ALREADY_MUTED.to_string(),
         Refusal::AlreadyDeafened => ECONOMY_ALREADY_DEAFENED.to_string(),
         Refusal::CantTell => ECONOMY_CANT_TELL.to_string(),
+        Refusal::AlreadyThere => ECONOMY_ALREADY_THERE.to_string(),
     }
 }
 
@@ -651,12 +654,13 @@ pub struct Cleansed {
     pub balance: i64,
 }
 
-/// Buy a cleanse: refuse before charging when nothing is running, check,
-/// charge, end every running prank on the buyer (`cleansed`), then mark the
-/// purchase `done`. A prank whose undo fails is scheduled for the sweeper to
-/// retry (nothing is refunded for it). A standing mirror is kept. If the
-/// charge went through but this call ended nothing (a race with the sweeper,
-/// or a database error), the charge is refunded.
+/// Buy a cleanse: refuse before charging when nothing is running (an
+/// `ending` row is already on its way out and doesn't count), check, charge,
+/// end every running prank on the buyer (`cleansed`), then mark the purchase
+/// `done`. A prank whose undo fails is scheduled for the sweeper to retry
+/// (nothing is refunded for it). A standing mirror is kept. If the charge
+/// went through but this call ended no `active` row (a race with the
+/// sweeper, or a database error), the charge is refunded.
 pub async fn cleanse(
     data: &Data,
     discord: &dyn EconomyDiscord,
@@ -671,7 +675,7 @@ pub async fn cleanse(
     let running = db::active_of_kind(pool, g, user, ActionKind::PRANKS)
         .await
         .map_err(|e| db_failed(&format!("reading pranks on {user} in {g}"), &e))?;
-    if running.is_empty() {
+    if !running.iter().any(|r| r.state == ActionState::Active) {
         return Err(BuyError::Refused(Refusal::NothingToCleanse));
     }
     let settings = data.economy.settings(g);
@@ -724,7 +728,7 @@ async fn charge_and_cleanse(
     )
     .await?;
     let ended = match end_running_pranks(data, discord, g, user, "cleansed", now).await {
-        Ok(n) => n,
+        Ok(n) => n.were_active,
         Err(err) => {
             tracing::warn!("economy: ending the pranks on {user} in {g} failed: {err}");
             0
@@ -973,6 +977,7 @@ mod tests {
             Refusal::AlreadyMuted,
             Refusal::AlreadyDeafened,
             Refusal::CantTell,
+            Refusal::AlreadyThere,
         ];
         let texts: std::collections::HashSet<_> =
             all.iter().map(|r| refusal_text(r, "credits")).collect();
@@ -1461,6 +1466,15 @@ mod tests {
                     ..clean()
                 },
                 Refusal::AlreadyRunning { until: t0() },
+            ),
+            (
+                "already there",
+                ActionKind::Drag,
+                TargetFacts {
+                    in_voice: Some(MY_VC),
+                    ..clean()
+                },
+                Refusal::AlreadyThere,
             ),
             (
                 "cannot join",
@@ -2257,7 +2271,7 @@ mod tests {
                 1
             );
             // The next sweep retries the undo and ends it as cleansed.
-            crate::economy::effects::sweep(&data, &fake, t0()).await;
+            crate::economy::effects::sweep(&data, &fake, t0(), &|_| true).await;
             assert_eq!(
                 state_and_reason(&pool, mute.action_id).await,
                 ("ended".to_string(), Some("cleansed".to_string()))
@@ -2268,6 +2282,46 @@ mod tests {
                 .filter(|c| matches!(c, Call::Mute(_, false, _)))
                 .count();
             assert_eq!(unmutes, 2, "one failed, one retried");
+        }
+    );
+
+    db_test!(
+        cleanse_with_only_ending_rows_is_refused_before_charging,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 500).await;
+            fund(&pool, VICTIM, 200).await;
+            let fake = FakeEconomyDiscord::default();
+            // A mute already set aside for their next join (they're offline).
+            buy_it(&data, &fake, clean(), req(ActionKind::Mute))
+                .await
+                .unwrap();
+            sqlx::query("UPDATE economy_actions SET state = 'ending' WHERE kind = 'mute'")
+                .execute(&pool)
+                .await
+                .unwrap();
+            let before = fake.calls().len();
+            assert_eq!(
+                cleanse(&data, &fake, G, VICTIM, t0()).await,
+                Err(BuyError::Refused(Refusal::NothingToCleanse))
+            );
+            assert_eq!(db::balance(&pool, G, VICTIM).await.unwrap(), 200);
+            assert_eq!(
+                count(
+                    &pool,
+                    "SELECT count(*) FROM economy_actions WHERE kind = 'cleanse'"
+                )
+                .await,
+                0
+            );
+            assert_eq!(fake.calls().len(), before);
+            // Charged anyway (a race), and the member still offline: the
+            // ending row stays ending, nothing active ended, so it's refunded.
+            fake.fail_next(CallKind::Mute, EconDiscordError::NotConnected);
+            assert_eq!(
+                charge_and_cleanse(&data, &fake, G, VICTIM, 80, t0()).await,
+                Err(BuyError::Refused(Refusal::NothingToCleanse))
+            );
+            assert_eq!(db::balance(&pool, G, VICTIM).await.unwrap(), 200);
         }
     );
 

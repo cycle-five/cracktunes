@@ -1,10 +1,10 @@
 //! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|cleanse|reveal`.
-use super::admin::log;
+use super::admin::{log, log_to};
 use super::credits::{gate, live, say};
 use crate::economy::buttons::{card_buttons, carries_buttons};
 use crate::economy::cards::{card_channel, card_text};
 use crate::economy::discord::LiveEconomyDiscord;
-use crate::economy::preflight;
+use crate::economy::preflight::{self, report_for, ActionPreflight};
 use crate::economy::settings::{
     validate_nick, validate_note, ActionKind, EconomySettings, NickError, NoteError,
 };
@@ -15,28 +15,41 @@ use crate::economy::shop::{
 use crate::economy::target::{gather_facts, voice_of, Subject};
 use crate::messaging::courier;
 use crate::messaging::messages::{
-    ECONOMY_CANT_TELL, ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL, ECONOMY_NICK_EMPTY,
-    ECONOMY_NICK_LINK, ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG, ECONOMY_NOTE_EMPTY,
-    ECONOMY_NOTE_LINK, ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG, ECONOMY_REVEAL_PREFIX,
-    ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER,
-    ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX, ECONOMY_SHOP_CLEANSED_SUFFIX,
-    ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE, ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP,
-    ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE, ECONOMY_YOU_HAVE,
+    DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_CANT_TELL, ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL,
+    ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK, ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG,
+    ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK, ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG,
+    ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED,
+    ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX,
+    ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE,
+    ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
+    ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
-use crate::modlog::batch::ModLogSink;
 use crate::modlog::event::ModLogEvent;
-use crate::modlog::live::ChannelSink;
 use crate::{Context, Data, Error};
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
 use serenity::all::{ChannelId, GenericChannelId, GuildId, Member, UserId};
 use std::borrow::Cow;
-use std::sync::Arc;
 
-/// The shop's listing: every item that is on, with its price, and the docs link.
-pub fn menu_text(settings: &EconomySettings) -> String {
+/// Why the permission report says a prank can't be sold now, in words;
+/// `None` when it is ready. A report that couldn't be checked fails closed,
+/// as the purchase does.
+fn unmet(report: &[ActionPreflight], kind: ActionKind) -> Option<String> {
+    let entry = report.iter().find(|a| a.kind == kind.key())?;
+    match &entry.needs {
+        Some(gaps) if gaps.is_empty() => None,
+        Some(gaps) => Some(gaps.join("; ")),
+        None => Some(DASH_ECONOMY_PREFLIGHT_UNKNOWN.to_string()),
+    }
+}
+
+/// The shop's listing: every item that is on, with its price, and the docs
+/// link. An item that isn't sold says so, and a prank the permission report
+/// (`report`, [`crate::economy::preflight::economy_preflight`]) says can't
+/// be done right now also says why (spec 7).
+pub fn menu_text(settings: &EconomySettings, report: &[ActionPreflight]) -> String {
     let cfg = &settings.config;
     let mut lines = vec![format!("**{ECONOMY_SHOP_TITLE}**")];
     for kind in ActionKind::ALL {
@@ -44,11 +57,12 @@ pub fn menu_text(settings: &EconomySettings) -> String {
         if !price.on {
             continue;
         }
+        let why = unmet(report, *kind);
         let sold = match kind {
             ActionKind::Immunity => cfg.immunity_shop,
             // Jail needs a channel to send members to.
-            ActionKind::Jail => cfg.jail_channel_id.is_some(),
-            _ => true,
+            ActionKind::Jail => cfg.jail_channel_id.is_some() && why.is_none(),
+            _ => why.is_none(),
         };
         if sold {
             lines.push(format!(
@@ -58,6 +72,8 @@ pub fn menu_text(settings: &EconomySettings) -> String {
                 cfg.currency_emoji,
                 cfg.currency_name
             ));
+        } else if let Some(why) = why {
+            lines.push(format!("{}: {ECONOMY_SHOP_NOT_SOLD} ({why})", kind.label()));
         } else {
             lines.push(format!("{}: {ECONOMY_SHOP_NOT_SOLD}", kind.label()));
         }
@@ -242,16 +258,6 @@ pub(crate) struct PrankEnv<'a> {
     pub answer: &'a dyn Answer,
 }
 
-/// Post a mod log event; nothing happens while the log is off.
-#[cfg(not(tarpaulin_include))]
-async fn log_event(env: &PrankEnv<'_>, event: ModLogEvent) {
-    let sink = ChannelSink {
-        data: env.data.clone(),
-        transport: Arc::new(DiscordTransport::of(env.ctx)),
-    };
-    sink.post(env.guild, event).await;
-}
-
 /// Buy a prank (or a mirror, with no target; `target` is the member as
 /// Discord resolved them). Validate, gather facts, preflight, buy; then reply
 /// privately with the balance, post the card, and log the purchase. A mirror
@@ -402,7 +408,7 @@ pub(crate) async fn run_prank(
         signed,
         bought.until,
     ) {
-        log_event(env, event).await;
+        log_to(env.data, env.ctx, env.guild, event).await;
     }
     replied
 }
@@ -582,7 +588,9 @@ pub async fn menu(ctx: Context<'_>) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
     };
-    say(ctx, menu_text(&ctx.data().economy.settings(guild)), false).await
+    let settings = ctx.data().economy.settings(guild);
+    let (report, _) = report_for(&ctx.serenity_context().cache, guild, &settings.config);
+    say(ctx, menu_text(&settings, &report), false).await
 }
 
 /// Buy immunity from pranks.
@@ -733,20 +741,38 @@ mod tests {
 
     const DOCS: &str = "[How the economy works](<https://github.com/cycle-five/cracktunes/blob/master/docs/economy.md>)";
 
+    /// Everything CrackTunes needs, server-wide and in channel 9.
+    fn able() -> preflight::BotPerms {
+        preflight::BotPerms {
+            guild: serenity::all::Permissions::MANAGE_NICKNAMES
+                | serenity::all::Permissions::VIEW_AUDIT_LOG
+                | serenity::all::Permissions::MOVE_MEMBERS
+                | serenity::all::Permissions::MUTE_MEMBERS
+                | serenity::all::Permissions::DEAFEN_MEMBERS,
+            in_channel: [(ChannelId::new(9), preflight::NEED_CHANNEL)].into(),
+        }
+    }
+
+    fn menu(s: &EconomySettings, perms: Option<&preflight::BotPerms>) -> String {
+        let (report, _) = preflight::economy_preflight(&s.config, perms, |c| format!("<#{c}>"));
+        menu_text(s, &report)
+    }
+
     #[test]
     fn menu_lists_on_items_with_prices() {
         let mut s = EconomySettings::off(GuildId::new(1));
         assert_eq!(
-            menu_text(&s),
+            menu(&s, Some(&able())),
             format!(
                 "**Shop**\nImmunity: 200 🪙 credits\nProtects you from pranks.\n\
                  Rename: 120 🪙 credits\nLock nickname: 60 🪙 credits\nClown: 30 🪙 credits\n\
                  Drag: 60 🪙 credits\nMute: 90 🪙 credits\nDeafen: 90 🪙 credits\n\
-                 Jail: not sold here\nMirror: 150 🪙 credits\nCleanse: 80 🪙 credits\n\
-                 Reveal: 100 🪙 credits\n{DOCS}"
+                 Jail: not sold here (Choose a jail channel first.)\nMirror: 150 🪙 credits\n\
+                 Cleanse: 80 🪙 credits\nReveal: 100 🪙 credits\n{DOCS}"
             )
         );
         s.config.jail_channel_id = Some(serenity::all::ChannelId::new(9));
+        let menu_text = |s: &EconomySettings| menu(s, Some(&able()));
         assert!(menu_text(&s).contains("Jail: 150 🪙 credits"));
         let mut p = ActionKind::Immunity.default_price();
         p.on = false;
@@ -776,10 +802,43 @@ mod tests {
     }
 
     #[test]
+    fn menu_marks_what_the_bot_cannot_do_and_says_why() {
+        let mut s = EconomySettings::off(GuildId::new(1));
+        s.config.jail_channel_id = Some(ChannelId::new(9));
+        // No View Audit Log: lock is marked, with the dashboard's words.
+        let mut p = able();
+        p.guild -= serenity::all::Permissions::VIEW_AUDIT_LOG;
+        let text = menu(&s, Some(&p));
+        assert!(
+            text.contains(
+                "Lock nickname: not sold here (Give CrackTunes View Audit Log in Server Settings → Roles)"
+            ),
+            "{text}"
+        );
+        assert!(text.contains("Rename: 120 🪙 credits"), "{text}");
+        // The jail channel lacks Connect: jail is marked, naming it.
+        let mut p = able();
+        p.in_channel
+            .insert(ChannelId::new(9), serenity::all::Permissions::VIEW_CHANNEL);
+        assert!(
+            menu(&s, Some(&p)).contains("Jail: not sold here (Give CrackTunes Connect in <#9>)")
+        );
+        // The cache can't say: every prank is marked (the purchase would be
+        // refused too); defences and immunity are still for sale.
+        let text = menu(&s, None);
+        assert!(
+            text.contains("Mute: not sold here (Couldn't check permissions right now.)"),
+            "{text}"
+        );
+        assert!(text.contains("Mirror: 150 🪙 credits"), "{text}");
+        assert!(text.contains("Immunity: 200 🪙 credits"), "{text}");
+    }
+
+    #[test]
     fn menu_says_immunity_not_sold_when_the_switch_is_off() {
         let mut s = EconomySettings::off(GuildId::new(1));
         s.config.immunity_shop = false;
-        let text = menu_text(&s);
+        let text = menu(&s, Some(&able()));
         assert!(
             text.starts_with(
                 "**Shop**\nImmunity: not sold here\nProtects you from pranks.\nRename: 120"

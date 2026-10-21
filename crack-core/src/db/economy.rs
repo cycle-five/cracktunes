@@ -813,6 +813,29 @@ pub async fn overdue_for_guild(
     Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
 }
 
+/// One server's `active` rows of these kinds, whatever their end.
+pub async fn active_for_guild(
+    pool: &PgPool,
+    guild: GuildId,
+    kinds: &[ActionKind],
+) -> sqlx::Result<Vec<ActionRow>> {
+    let keys: Vec<String> = kinds.iter().map(|k| k.key().to_string()).collect();
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND state = 'active' AND kind = ANY($2)
+           ORDER BY id"#,
+        guild.get() as i64,
+        &keys
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
 /// The `ending` rows (undone on the member's next voice join) aimed at one
 /// member.
 pub async fn ending_for(

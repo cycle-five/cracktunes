@@ -20,7 +20,11 @@ use tokio::time::MissedTickBehavior;
 /// How often the sweeper looks for rows whose time is up.
 pub const SWEEP_EVERY: Duration = Duration::from_secs(15);
 /// How many due rows one sweep takes.
-const SWEEP_BATCH: i64 = 100;
+const SWEEP_BATCH: i64 = 500;
+/// After a failed undo, the first retry waits this long; each further
+/// failure doubles it, up to [`UNDO_BACKOFF_MAX`].
+const UNDO_BACKOFF_BASE: ChronoDuration = ChronoDuration::seconds(15);
+const UNDO_BACKOFF_MAX: ChronoDuration = ChronoDuration::minutes(5);
 /// A row whose undo keeps failing is given up on this long after it was due.
 const UNDO_GIVE_UP: ChronoDuration = ChronoDuration::hours(1);
 /// A `pending` row of this process younger than this may be a purchase
@@ -40,7 +44,7 @@ pub enum UndoPlan {
 
 /// The undo for a row: only what the bot changed, put back to what the
 /// payload captured.
-pub fn undo_plan(row: &ActionRow, _now: DateTime<Utc>) -> UndoPlan {
+pub fn undo_plan(row: &ActionRow) -> UndoPlan {
     match &row.payload {
         ActionPayload::Rename { restore, .. } | ActionPayload::Clown { restore, .. } => {
             UndoPlan::SetNick(restore.clone())
@@ -82,15 +86,18 @@ pub enum Finished {
     /// An early end whose undo failed: its end was brought forward to now, so
     /// the sweeper retries it every tick, and gives up an hour later.
     Scheduled,
-    /// Nothing changed: the row was no longer running, or the sweeper's own
-    /// retry failed and waits for the next tick.
+    /// Nothing changed: the row was no longer running, or a read or write
+    /// failed.
     Skipped,
+    /// The undo failed in Discord and the row is left as it was, to be tried
+    /// again (the sweeper backs off; an `ending` row waits for a join).
+    Retry,
 }
 
 impl Finished {
     /// Whether this call ended the row or took charge of ending it.
     pub fn took_effect(self) -> bool {
-        self != Finished::Skipped
+        !matches!(self, Finished::Skipped | Finished::Retry)
     }
 }
 
@@ -129,7 +136,7 @@ pub async fn finish(
             return Finished::Skipped;
         },
     };
-    let plan = undo_plan(row, now);
+    let plan = undo_plan(row);
     let outcome = match (&plan, row.target) {
         (UndoPlan::Nothing, _) => Ok(()),
         (_, Some(target)) => apply(discord, guild, target, row.kind, &plan).await,
@@ -176,7 +183,7 @@ pub async fn finish(
                     row.id,
                     row.kind
                 );
-                return Finished::Skipped;
+                return Finished::Retry;
             }
         },
     };
@@ -191,12 +198,22 @@ pub async fn finish(
     }
 }
 
+/// What [`end_running_pranks`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct EndedPranks {
+    /// Rows this call ended, set aside for the member's next join, or
+    /// scheduled.
+    pub all: usize,
+    /// Of those, the ones that were `active`: an `ending` row was already on
+    /// its way out, so a cleanse doesn't count it as something it ended.
+    pub were_active: usize,
+}
+
 /// End every running (`active` or `ending`) prank aimed at `target`, each
 /// undone as if it had expired, with `reason` as the end reason. A standing
 /// mirror is kept. Locks go first so the restoring rename is not fought by an
 /// active lock. A row that cannot be undone right now is warned about by
-/// [`finish`] and scheduled for the sweeper. Returns how many rows this call
-/// ended, set aside for the member's next join, or scheduled.
+/// [`finish`] and scheduled for the sweeper.
 pub async fn end_running_pranks(
     data: &Data,
     discord: &dyn EconomyDiscord,
@@ -204,26 +221,48 @@ pub async fn end_running_pranks(
     target: UserId,
     reason: &str,
     now: DateTime<Utc>,
-) -> Result<usize, sqlx::Error> {
+) -> Result<EndedPranks, sqlx::Error> {
     let Some(pool) = data.database_pool.as_ref() else {
-        return Ok(0);
+        return Ok(EndedPranks::default());
     };
     let mut rows = economy::active_of_kind(pool, guild, target, ActionKind::PRANKS).await?;
     rows.sort_by_key(|r| (r.kind != ActionKind::Lock, r.id));
-    let mut took = 0;
+    let mut ended = EndedPranks::default();
     for row in &rows {
         if finish(data, discord, guild, row, reason, now)
             .await
             .took_effect()
         {
-            took += 1;
+            ended.all += 1;
+            if row.state == ActionState::Active {
+                ended.were_active += 1;
+            }
         }
     }
-    Ok(took)
+    Ok(ended)
+}
+
+/// How long the sweeper waits before retrying an undo that has failed
+/// `failures` times (1 or more): 15 s, 30 s, 1 min, 2 min, 4 min, then 5 min.
+pub fn undo_backoff(failures: u32) -> ChronoDuration {
+    let doublings = failures.saturating_sub(1).min(16);
+    (UNDO_BACKOFF_BASE * (1 << doublings)).min(UNDO_BACKOFF_MAX)
 }
 
 /// Finish every row whose time is up, in every server, the economy on or off.
-pub async fn sweep(data: &Data, discord: &dyn EconomyDiscord, now: DateTime<Utc>) {
+///
+/// Rows in a server the cache doesn't hold (`held` says no: not arrived yet,
+/// or the bot left) are skipped without a Discord call; reconcile finishes
+/// them when the server arrives. A row whose undo failed waits out its
+/// backoff ([`undo_backoff`]) before the next try, so a few broken rows
+/// neither hold up the rest nor spend Discord's invalid-request budget. The
+/// hour's give-up is unchanged.
+pub async fn sweep(
+    data: &Data,
+    discord: &dyn EconomyDiscord,
+    now: DateTime<Utc>,
+    held: &(dyn Fn(GuildId) -> bool + Sync),
+) {
     let Some(pool) = data.database_pool.as_ref() else {
         return;
     };
@@ -234,8 +273,20 @@ pub async fn sweep(data: &Data, discord: &dyn EconomyDiscord, now: DateTime<Utc>
             return;
         },
     };
+    // Every due row was seen: a backoff for a row not among them is for one
+    // that has ended.
+    if due.len() < SWEEP_BATCH as usize {
+        let ids: std::collections::HashSet<i64> = due.iter().map(|(_, r)| r.id).collect();
+        data.economy.keep_undo_backoff(&ids);
+    }
     for (guild, row) in due {
-        finish(data, discord, guild, &row, "expired", now).await;
+        if !held(guild) || !data.economy.undo_due(row.id, now) {
+            continue;
+        }
+        match finish(data, discord, guild, &row, "expired", now).await {
+            Finished::Retry => data.economy.undo_failed(row.id, now),
+            _ => data.economy.undo_settled(row.id),
+        }
     }
 }
 
@@ -343,7 +394,6 @@ async fn resolve_pending(
     view: &dyn MemberView,
     guild: GuildId,
     row: &ActionRow,
-    now: DateTime<Utc>,
 ) {
     let Some(pool) = data.database_pool.as_ref() else {
         return;
@@ -372,7 +422,7 @@ async fn resolve_pending(
     }
     if verdict.is_none() {
         if let Some(target) = row.target {
-            let plan = undo_plan(row, now);
+            let plan = undo_plan(row);
             if let Err(err) = apply(discord, guild, target, row.kind, &plan).await {
                 tracing::warn!(
                     "economy: putting back unresolved action {} in {guild} failed: {err:?}",
@@ -383,9 +433,54 @@ async fn resolve_pending(
     }
 }
 
+/// Whether a running rename or clown's member, as the cache shows them now,
+/// wears a name other than the one the prank set: someone changed it while
+/// the bot couldn't see who. `false` when the cache doesn't hold them.
+fn renamed_while_away(view: &dyn MemberView, guild: GuildId, row: &ActionRow) -> bool {
+    let set = match &row.payload {
+        ActionPayload::Rename { name, .. } => name,
+        ActionPayload::Clown { applied, .. } => applied,
+        _ => return false,
+    };
+    let Some(target) = row.target else {
+        return false;
+    };
+    view.nick(guild, target)
+        .is_some_and(|nick| nick.as_deref() != Some(set.as_str()))
+}
+
+/// End the running renames and clowns whose name was changed while the bot
+/// was away, `overridden` and with no restore: the change stands, whoever
+/// made it (a moderator's must never be undone, and the audit entry that
+/// would say whose is gone). A lock riding on such a prank ends with it, as a
+/// live override ends both.
+async fn let_away_renames_stand(
+    data: &Data,
+    view: &dyn MemberView,
+    guild: GuildId,
+) -> Result<(), sqlx::Error> {
+    let Some(pool) = data.database_pool.as_ref() else {
+        return Ok(());
+    };
+    let rows =
+        economy::active_for_guild(pool, guild, &[ActionKind::Rename, ActionKind::Clown]).await?;
+    for row in rows.iter().filter(|r| renamed_while_away(view, guild, r)) {
+        economy::end_action(pool, row.id, ActionState::Ended, "overridden").await?;
+        if let Some(target) = row.target {
+            for lock in economy::active_of_kind(pool, guild, target, &[ActionKind::Lock]).await? {
+                if lock.state == ActionState::Active {
+                    economy::end_action(pool, lock.id, ActionState::Ended, "overridden").await?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// A server arrived (a start, a reconnect, a rejoin): resolve purchases the
-/// last run left `pending`, finish rows that came due while the bot was
-/// down, and finish `ending` rows of members who are in voice now.
+/// last run left `pending`, let a nickname changed while the bot was away
+/// stand, finish rows that came due while the bot was down, and finish
+/// `ending` rows of members who are in voice now.
 pub async fn reconcile(
     data: &Data,
     discord: &dyn EconomyDiscord,
@@ -405,10 +500,14 @@ pub async fn reconcile(
     match economy::pending_for_guild(pool, guild, started, PENDING_GRACE_SECS).await {
         Ok(rows) => {
             for row in rows {
-                resolve_pending(data, discord, view, guild, &row, now).await;
+                resolve_pending(data, discord, view, guild, &row).await;
             }
         },
         Err(err) => tracing::warn!("economy: reading pending actions of {guild} failed: {err}"),
+    }
+    // Before the overdue ones: an expiry must not restore over such a name.
+    if let Err(err) = let_away_renames_stand(data, view, guild).await {
+        tracing::warn!("economy: checking the running names in {guild} failed: {err}");
     }
     match economy::overdue_for_guild(pool, guild, now).await {
         Ok(rows) => {
@@ -469,7 +568,7 @@ where
 }
 
 /// Spawns the 15 s sweeper, the first time only and only with a database.
-pub fn start_sweeper(data: Data, http: Arc<Http>) {
+pub fn start_sweeper(data: Data, http: Arc<Http>, cache: Arc<Cache>) {
     if !data.economy.start_sweeper_once() {
         return;
     }
@@ -482,7 +581,8 @@ pub fn start_sweeper(data: Data, http: Arc<Http>) {
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
             tick.tick().await;
-            sweep(&data, &discord, Utc::now()).await;
+            let held = |g: GuildId| cache.guild(g).is_some();
+            sweep(&data, &discord, Utc::now(), &held).await;
         }
     });
 }
@@ -531,7 +631,7 @@ mod tests {
     #[test]
     fn undo_plan_per_kind() {
         use ActionKind::*;
-        let plan = |k, p| undo_plan(&row(k, p), t0());
+        let plan = |k, p| undo_plan(&row(k, p));
         assert_eq!(
             plan(
                 Rename,
@@ -582,6 +682,17 @@ mod tests {
         ] {
             assert_eq!(plan(k, p), UndoPlan::Nothing, "{k:?}");
         }
+    }
+
+    #[test]
+    fn undo_backoff_doubles_from_15s_and_stops_at_5min() {
+        let secs = |n: u32| undo_backoff(n).num_seconds();
+        assert_eq!(
+            (1..=8).map(secs).collect::<Vec<_>>(),
+            vec![15, 30, 60, 120, 240, 300, 300, 300]
+        );
+        // Far past any count a real row reaches, still capped (no overflow).
+        assert_eq!(secs(u32::MAX), 300);
     }
 
     #[tokio::test]
@@ -736,7 +847,7 @@ mod tests {
         let fake = FakeEconomyDiscord::default();
         let due = rename_row(&pool, "active", t0() - mins(1)).await;
         let later = rename_row(&pool, "active", t0() + mins(5)).await;
-        sweep(&data, &fake, t0()).await;
+        sweep(&data, &fake, t0(), &|_| true).await;
         assert_eq!(
             fake.calls(),
             vec![Call::Nick(U, Some("Al".into()), ActionKind::Rename)]
@@ -762,7 +873,7 @@ mod tests {
             t0() - mins(30),
         )
         .await;
-        sweep(&data, &fake, t0()).await;
+        sweep(&data, &fake, t0(), &|_| true).await;
         assert_eq!(fake.calls(), vec![Call::Mute(U, false, ActionKind::Mute)]);
         assert_eq!(state_of(&pool, id).await.0, "ended");
         // ...and with it on, the same.
@@ -770,7 +881,7 @@ mod tests {
         on.enabled = true;
         data.economy.set_settings(on);
         let id2 = rename_row(&pool, "active", t0() - mins(1)).await;
-        sweep(&data, &fake, t0()).await;
+        sweep(&data, &fake, t0(), &|_| true).await;
         assert_eq!(state_of(&pool, id2).await.0, "ended");
     });
 
@@ -790,10 +901,10 @@ mod tests {
             )
             .await;
             fake.fail_next(CallKind::Mute, EconDiscordError::NotConnected);
-            sweep(&data, &fake, t0()).await;
+            sweep(&data, &fake, t0(), &|_| true).await;
             assert_eq!(state_of(&pool, id).await.0, "ending");
             // The sweep does not retry an ending row.
-            sweep(&data, &fake, t0() + mins(1)).await;
+            sweep(&data, &fake, t0() + mins(1), &|_| true).await;
             assert_eq!(fake.calls().len(), 1);
             // Someone else joining voice does nothing.
             on_voice_join(&data, &fake, G, UserId::new(11), t0() + mins(2)).await;
@@ -818,7 +929,7 @@ mod tests {
         let fake = FakeEconomyDiscord::default();
         let id = rename_row(&pool, "active", t0() - mins(1)).await;
         fake.fail_next(CallKind::Nick, EconDiscordError::UnknownMember);
-        sweep(&data, &fake, t0()).await;
+        sweep(&data, &fake, t0(), &|_| true).await;
         assert_eq!(
             state_of(&pool, id).await,
             ("ended".into(), Some("left".into()))
@@ -833,11 +944,11 @@ mod tests {
             let id = rename_row(&pool, "active", t0()).await;
             for at in [1, 30, 60] {
                 fake.fail_next(CallKind::Nick, EconDiscordError::MissingPermissions);
-                sweep(&data, &fake, t0() + mins(at)).await;
+                sweep(&data, &fake, t0() + mins(at), &|_| true).await;
                 assert_eq!(state_of(&pool, id).await.0, "active", "at +{at}m");
             }
             fake.fail_next(CallKind::Nick, EconDiscordError::MissingPermissions);
-            sweep(&data, &fake, t0() + mins(61)).await;
+            sweep(&data, &fake, t0() + mins(61), &|_| true).await;
             assert_eq!(
                 state_of(&pool, id).await,
                 ("ended".into(), Some("undo_failed".into()))
@@ -846,13 +957,60 @@ mod tests {
         }
     );
 
+    db_test!(
+        a_failing_undo_backs_off_and_others_are_not_held_up,
+        |pool| {
+            let data = data_with(&pool);
+            let fake = FakeEconomyDiscord::default();
+            let broken = rename_row(&pool, "active", t0()).await;
+            let s = ChronoDuration::seconds;
+            let nicks = || {
+                fake.calls()
+                    .into_iter()
+                    .filter(|c| matches!(c, Call::Nick(..)))
+                    .count()
+            };
+            // Fails at t0: the next try waits 15 s, then 30 s.
+            fake.fail_next(CallKind::Nick, EconDiscordError::MissingPermissions);
+            sweep(&data, &fake, t0(), &|_| true).await;
+            assert_eq!(nicks(), 1);
+            sweep(&data, &fake, t0() + s(10), &|_| true).await;
+            assert_eq!(nicks(), 1, "inside its 15 s");
+            fake.fail_next(CallKind::Nick, EconDiscordError::MissingPermissions);
+            sweep(&data, &fake, t0() + s(15), &|_| true).await;
+            assert_eq!(nicks(), 2, "tried again at 15 s, and failed again");
+            sweep(&data, &fake, t0() + s(40), &|_| true).await;
+            assert_eq!(nicks(), 2, "now it waits 30 s");
+            // Another row coming due meanwhile is not held up.
+            let other = rename_row(&pool, "active", t0() + s(40)).await;
+            sweep(&data, &fake, t0() + s(41), &|_| true).await;
+            assert_eq!(state_of(&pool, other).await.0, "ended");
+            assert_eq!(state_of(&pool, broken).await.0, "active");
+            // Its wait over, it is tried and, this time, ends.
+            sweep(&data, &fake, t0() + s(45), &|_| true).await;
+            assert_eq!(state_of(&pool, broken).await.0, "ended");
+        }
+    );
+
+    db_test!(rows_in_a_server_the_cache_lacks_are_skipped, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        let id = rename_row(&pool, "active", t0() - mins(1)).await;
+        sweep(&data, &fake, t0(), &|g| g != G).await;
+        assert_eq!(fake.calls(), vec![], "no Discord call for it");
+        assert_eq!(state_of(&pool, id).await.0, "active");
+        // Once the server is there it ends as usual.
+        sweep(&data, &fake, t0(), &|_| true).await;
+        assert_eq!(state_of(&pool, id).await.0, "ended");
+    });
+
     db_test!(a_failure_that_clears_ends_the_row_normally, |pool| {
         let data = data_with(&pool);
         let fake = FakeEconomyDiscord::default();
         let id = rename_row(&pool, "active", t0()).await;
         fake.fail_next(CallKind::Nick, EconDiscordError::MissingPermissions);
-        sweep(&data, &fake, t0() + mins(1)).await;
-        sweep(&data, &fake, t0() + mins(2)).await;
+        sweep(&data, &fake, t0() + mins(1), &|_| true).await;
+        sweep(&data, &fake, t0() + mins(2), &|_| true).await;
         assert_eq!(
             state_of(&pool, id).await,
             ("ended".into(), Some("expired".into()))
@@ -949,6 +1107,85 @@ mod tests {
         );
         assert_eq!(state_of(&pool, overdue).await.0, "ended");
         assert_eq!(state_of(&pool, running).await.0, "active");
+    });
+
+    db_test!(reconcile_lets_a_name_changed_while_away_stand, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        let (changed, kept, uncached) = (U, UserId::new(11), UserId::new(12));
+        let mut ids = Vec::new();
+        for user in [changed, kept, uncached] {
+            ids.push(
+                seed(
+                    &pool,
+                    ActionKind::Rename,
+                    Some(user),
+                    &pending_rename(),
+                    "active",
+                    // Overdue too: the expiry must not restore over it.
+                    Some(t0() - mins(1)),
+                    t0() - mins(600),
+                )
+                .await,
+            );
+        }
+        let lock = seed(
+            &pool,
+            ActionKind::Lock,
+            Some(changed),
+            &ActionPayload::Lock {
+                locked: Some("Al".into()),
+            },
+            "active",
+            Some(t0() + mins(30)),
+            t0() - mins(600),
+        )
+        .await;
+        let clown = seed(
+            &pool,
+            ActionKind::Clown,
+            Some(UserId::new(13)),
+            &ActionPayload::Clown {
+                applied: "Al 🤡".into(),
+                restore: Some("Al".into()),
+            },
+            "active",
+            Some(t0() + mins(30)),
+            t0() - mins(600),
+        )
+        .await;
+        let mut view = FakeView::default();
+        view.nicks.insert(changed, Some("Mine".into()));
+        view.nicks.insert(kept, Some("Goblin".into()));
+        view.nicks.insert(UserId::new(13), None);
+        reconcile(&data, &fake, &view, G, t0()).await;
+        // Changed while away: overridden, nothing restored, lock too.
+        for id in [ids[0], lock] {
+            assert_eq!(
+                state_of(&pool, id).await,
+                ("ended".into(), Some("overridden".into()))
+            );
+        }
+        // A cleared nickname is a change too.
+        assert_eq!(
+            state_of(&pool, clown).await,
+            ("ended".into(), Some("overridden".into()))
+        );
+        // Still wearing the prank's name (or not cached): the expiry
+        // restores as usual.
+        for id in [ids[1], ids[2]] {
+            assert_eq!(
+                state_of(&pool, id).await,
+                ("ended".into(), Some("expired".into()))
+            );
+        }
+        assert_eq!(
+            fake.calls(),
+            vec![
+                Call::Nick(kept, Some("Al".into()), ActionKind::Rename),
+                Call::Nick(uncached, Some("Al".into()), ActionKind::Rename),
+            ]
+        );
     });
 
     db_test!(reconcile_finishes_ending_rows_of_members_in_voice, |pool| {
@@ -1102,7 +1339,7 @@ mod tests {
             assert_eq!(balance(&pool).await, 100, "one refund");
             assert!(fake.calls().is_empty(), "a known miss undoes nothing");
             // The landed row still ends on time.
-            sweep(&data, &fake, t0() + mins(31)).await;
+            sweep(&data, &fake, t0() + mins(31), &|_| true).await;
             assert_eq!(state_of(&pool, landed).await.0, "ended");
         }
     );
@@ -1324,7 +1561,7 @@ mod tests {
         assert!(fake.calls().is_empty());
         // The expiry then undoes it, or waits for the member's next join.
         fake.fail_next(CallKind::Mute, EconDiscordError::NotConnected);
-        sweep(&data, &fake, t0() + mins(6)).await;
+        sweep(&data, &fake, t0() + mins(6), &|_| true).await;
         assert_eq!(state_of(&pool, mute).await.0, "ending");
         assert_eq!(state_of(&pool, deaf).await.0, "ended");
     });
@@ -1348,7 +1585,7 @@ mod tests {
             state: ActionState::Pending,
             ..row(ActionKind::Rename, pending_rename())
         };
-        resolve_pending(&data, &fake, &FakeView::default(), G, &stale, t0()).await;
+        resolve_pending(&data, &fake, &FakeView::default(), G, &stale).await;
         assert!(
             fake.calls().is_empty(),
             "no undo after a refund that did nothing"

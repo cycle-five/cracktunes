@@ -114,7 +114,8 @@ pub enum ModLogEvent {
         /// Whose mirror bounced the prank onto the buyer.
         mirrored_from: Option<UserId>,
     },
-    /// A cleanse ended the pranks running on `target`.
+    /// The pranks running on `target` were ended early: by `target`'s own
+    /// cleanse (`by == target`) or a moderator's `/economy cancel`.
     ShopCancelled {
         by: UserId,
         target: UserId,
@@ -594,6 +595,23 @@ mod tests {
                 j["timestamp"].as_str().unwrap()[..19],
                 *"2023-11-14T22:13:20",
                 "{e:?}"
+            );
+        }
+    }
+
+    /// One event for a member's cleanse and a moderator's cancel, so its
+    /// words fit both.
+    #[test]
+    fn ended_pranks_read_the_same_for_a_cleanse_and_a_cancel() {
+        for by in [A, T] {
+            let j = json(&render(
+                &ModLogEvent::ShopCancelled { by, target: T },
+                &cx(),
+            ));
+            assert_eq!(j["title"], "🧼 Shop pranks ended");
+            assert_eq!(
+                j["description"],
+                format!("<@{by}> ended the pranks on <@{T}>").as_str()
             );
         }
     }

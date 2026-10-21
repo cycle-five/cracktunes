@@ -366,7 +366,11 @@ impl SerenityHandler {
             crate::economy::earn::start(self.data.clone(), cache.clone());
         }
         // And the sweeper that ends timed pranks on time.
-        crate::economy::effects::start_sweeper(self.data.clone(), ctx.http.clone());
+        crate::economy::effects::start_sweeper(
+            self.data.clone(),
+            ctx.http.clone(),
+            ctx.cache.clone(),
+        );
 
         // Process-level background work, moved off `CacheReady`.
         //

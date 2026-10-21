@@ -91,7 +91,7 @@ All of these are slash commands, and work only in a server where the economy is 
 | `/credits history` | Your last 15 movements of credits: gifts, purchases, refunds, bets and moderator adjustments. Earnings are not rows: they appear as the "Earned so far" totals (voice and messages) on the first line. Only you see it. |
 | `/credits optout` | Opts you out of the economy (see [Immunity](#immunity)). It tells you when you can switch back. |
 | `/credits optin` | Opts you back in. |
-| `/shop menu` | Lists what is for sale and the prices, with a link to this page. |
+| `/shop menu` | Lists what is for sale and the prices, with a link to this page. A prank CrackTunes can't do right now (a missing permission, no jail channel) is marked as not sold here, with why. |
 | `/shop immunity` | Buys immunity. A public card says who is immune until when, and you privately see what you have left. Refused if you already hold a moderator grant that lasts until lifted. |
 | `/shop rename\|lock\|clown\|drag\|mute\|deafen\|jail <member>` | Buys a [prank](#the-prank-shop) against another member. `rename` also takes the new nickname. Each takes an optional `note` and `signed`. |
 | `/shop mirror`, `/shop cleanse`, `/shop reveal` | The [defences and the unmasking](#mirror-cleanse-and-reveal). |
@@ -183,12 +183,12 @@ and turn any item off there. All of these need the economy to be on.
 
 | Prank | Price | What it does | How long |
 |---|---|---|---|
-| `rename` | 120 | Sets the target's nickname to what the buyer typed (1 to 32 characters; emoji count as 2; no mentions or links). | The server's hours for renames (24 by default), then the old nickname comes back |
+| `rename` | 120 | Sets the target's nickname to what the buyer typed (1 to 32 characters; emoji count as 2 or more; no mentions or links). | The server's hours for renames (24 by default), then the old nickname comes back |
 | `lock` | 60 | Locks the target's nickname as it is. If they change it, it is changed back. | Until the running rename or clown ends; if none is running, the server's hours for renames |
 | `clown` | 30 | Adds a clown to the end of the target's current name. | The server's hours for renames |
-| `drag` | 60 | Moves the target, who must be in voice, into the buyer's voice channel. The buyer must be in voice too. | Instant; nothing to undo |
-| `mute` | 90 | Server-mutes the target in voice. | The server's minutes for short effects (5 by default) |
-| `deafen` | 90 | Server-deafens the target in voice. | The server's minutes for short effects |
+| `drag` | 60 | Moves the target, who must be in voice, into the buyer's voice channel. The buyer must be in voice too, and the target not already there. | Instant; nothing to undo |
+| `mute` | 90 | Server-mutes the target in voice. Refused if they are already server-muted (by a moderator, say): the shop never takes over someone else's mute, so its end can never lift it. | The server's minutes for short effects (5 by default) |
+| `deafen` | 90 | Server-deafens the target in voice. Refused if they are already server-deafened, likewise. | The server's minutes for short effects |
 | `jail` | 150 | Moves the target, who must be in voice, into the server's jail channel, and moves them back if they move to another channel. | The server's minutes for short effects; then they are free to go |
 
 - **Rename and clown share one slot.** Only one name prank runs on a member at a
@@ -197,7 +197,9 @@ and turn any item off there. All of these need the economy to be on.
 - **Who can be pranked.** Not bots, not yourself, not the server owner, and
   not anyone whose highest role is at or above CrackTunes' own highest role
   (Discord doesn't let the bot change them). Not members who have opted out of
-  the economy, and not immune members.
+  the economy, and not immune members. If CrackTunes can't place someone's
+  roles right now (rare, just after a restart), it says so and charges
+  nothing; try again in a moment.
 - **Drag never widens anyone's access.** It is refused unless the target is
   allowed to see and join the buyer's channel by their own roles.
 - **Jail is the exception to that.** The admin picked the jail channel, and
@@ -241,12 +243,15 @@ the command was run if none is set.
   buyer is charged either way, which is the mirror's sting. You can't hold two.
   If the bounced prank can't land on the buyer (they are immune, out of the bot's
   reach, or Discord refuses it), it is **blocked** and they are still charged.
+  A mirror holder who is also immune still bounces the prank: the mirror is
+  checked first.
   A bounced drag is always blocked, since it would move the buyer into their
   own channel. A blocked prank changes nobody, so it isn't posted to the mod log. The card says
   what happened: a bounce names whose mirror sent it back.
 - **`/shop cleanse`** (80) ends every prank running on you now, each undone as
-  if it had expired. A standing mirror is kept. If nothing is running on you it
-  says so and doesn't charge.
+  if it had expired. A standing mirror is kept. If nothing is running on you
+  (a mute already waiting for you to rejoin voice doesn't count) it says so and
+  doesn't charge.
 - **`/shop reveal`** (100) names the buyer of a prank aimed at you that was
   bought unsigned, publicly, in the channel where you ran it. By default it is
   the most recent one; the optional `action` lets you pick from your last ten.
@@ -272,7 +277,9 @@ the command was run if none is set.
 - **Restarts.** Prank records are kept in the database. After a restart or a
   reconnect, CrackTunes finishes anything that ran out while it was away, and a
   purchase interrupted by a restart is settled when the bot reconnects (a prank
-  that didn't land is refunded).
+  that didn't land is refunded). A nickname changed while CrackTunes was away
+  stands: who changed it can't be known then, so the rename or clown (and a
+  lock on it) ends there and nothing is restored over it.
 - **A member who leaves the server** ends their prank; nothing is restored.
 - **Moderators win.** If anyone other than the target or the bot changes a
   prank's nickname, or changes a server mute or deafen on a member while the shop's
@@ -285,7 +292,10 @@ the command was run if none is set.
   end whatever is running on the member, undone as if it had expired.
 
 If undoing something fails (for example the bot has lost a permission), the bot
-logs it and retries; the prank stays on the record until it is undone.
+logs it and retries, waiting longer after each failure (15 seconds at first, at
+most 5 minutes). After an hour it gives up: the prank ends as `undo_failed` and
+the bot logs it as an error, for a moderator to put right by hand. A mute or
+deafen waiting for the member to rejoin voice keeps waiting.
 
 ### The mod log
 

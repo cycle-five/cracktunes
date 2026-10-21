@@ -61,8 +61,12 @@
   names the buyer. Defences and a way out: a mirror bounces the next prank back
   at whoever bought it, cleanse ends what is running on you, reveal unmasks an
   unsigned buyer, and the target's card has a "Rename them back" button.
-  Immunity blocks all of it, moderators win over a prank, pranks end on their
-  own (and survive a restart), and `/economy cancel` ends them early. Prices,
+  Immunity blocks every prank aimed at its holder (a mirror they hold still
+  fires first), moderators win over a prank and a moderator's server mute or
+  deafen is never taken over, pranks end on their own (and survive a restart),
+  and `/economy cancel` ends them early, even with the economy turned off.
+  `/economy status` shows what CrackTunes needs for each prank and the last ten
+  shop actions with their buyers. Prices,
   how long things last, the jail channel and the announcement channel are on the
   dashboard; each prank is sold only while CrackTunes has the permissions it
   needs. See `docs/economy.md`.

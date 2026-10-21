@@ -24,7 +24,7 @@ use crate::messaging::transport::DiscordTransport;
 use crate::modlog::batch::ModLogSink;
 use crate::modlog::event::ModLogEvent;
 use crate::modlog::live::ChannelSink;
-use crate::{Context, Error};
+use crate::{Context, Data, Error};
 use chrono::{Duration, Utc};
 use serenity::all::{GuildId, Permissions, User};
 use std::sync::Arc;
@@ -185,9 +185,20 @@ pub fn adjust_amount_ok(amount: i64) -> bool {
 /// Post a mod log event; nothing happens while the log is off.
 #[cfg(not(tarpaulin_include))]
 pub(super) async fn log(ctx: Context<'_>, guild: GuildId, event: ModLogEvent) {
+    log_to(&ctx.data(), ctx.serenity_context(), guild, event).await;
+}
+
+/// [`log`] without a command context (a button or modal press).
+#[cfg(not(tarpaulin_include))]
+pub(super) async fn log_to(
+    data: &Data,
+    ctx: &serenity::all::Context,
+    guild: GuildId,
+    event: ModLogEvent,
+) {
     let sink = ChannelSink {
-        data: (*ctx.data()).clone(),
-        transport: Arc::new(DiscordTransport::of(ctx.serenity_context())),
+        data: data.clone(),
+        transport: Arc::new(DiscordTransport::of(ctx)),
     };
     sink.post(guild, event).await;
 }

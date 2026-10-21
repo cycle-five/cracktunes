@@ -31,6 +31,9 @@ pub struct EconomyRegistry {
     /// The earning tick has been spawned.
     started: Arc<AtomicBool>,
     sweeper_started: Arc<AtomicBool>,
+    /// Undos the sweeper is backing off from, by action id: how many times
+    /// each has failed and when it may be tried next.
+    undo_backoff: DashMap<i64, (u32, DateTime<Utc>)>,
     /// When this process started, on the database's clock: a `pending` row
     /// older than this was left by a previous process.
     process_start: Arc<OnceLock<DateTime<Utc>>>,
@@ -167,6 +170,30 @@ impl EconomyRegistry {
     /// True the first time only: the caller then spawns the earning tick.
     pub fn start_once(&self) -> bool {
         !self.started.swap(true, Ordering::SeqCst)
+    }
+
+    /// Whether the sweeper may try action `id`'s undo at `now`: never failed,
+    /// or its backoff has run out.
+    pub fn undo_due(&self, id: i64, now: DateTime<Utc>) -> bool {
+        self.undo_backoff.get(&id).is_none_or(|e| e.1 <= now)
+    }
+
+    /// Action `id`'s undo failed at `now`: wait [`super::effects::undo_backoff`]
+    /// before the next try.
+    pub fn undo_failed(&self, id: i64, now: DateTime<Utc>) {
+        let mut e = self.undo_backoff.entry(id).or_insert((0, now));
+        e.0 += 1;
+        e.1 = now + super::effects::undo_backoff(e.0);
+    }
+
+    /// Action `id` is settled (ended, or no longer due): forget its backoff.
+    pub fn undo_settled(&self, id: i64) {
+        self.undo_backoff.remove(&id);
+    }
+
+    /// Forget the backoff of every action not in `due`.
+    pub fn keep_undo_backoff(&self, due: &HashSet<i64>) {
+        self.undo_backoff.retain(|id, _| due.contains(id));
     }
 
     /// Record when this process started (the database's `now()`). The first

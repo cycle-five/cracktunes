@@ -531,7 +531,7 @@ mod tests {
             ("ended".into(), Some("escaped".into()))
         );
         // The sweeper has nothing left to restore over their new name.
-        sweep(&data, &fake, t0()).await;
+        sweep(&data, &fake, t0(), &|_| true).await;
         assert_eq!(fake.calls(), vec![]);
     });
 
@@ -548,7 +548,7 @@ mod tests {
             );
         }
         // Both were due; the sweeper restores nothing for them.
-        sweep(&data, &fake, t0()).await;
+        sweep(&data, &fake, t0(), &|_| true).await;
         assert_eq!(fake.calls(), vec![]);
     });
 
@@ -576,7 +576,7 @@ mod tests {
             state_of(&pool, deaf).await,
             ("ended".into(), Some("overridden".into()))
         );
-        sweep(&data, &fake, t0()).await;
+        sweep(&data, &fake, t0(), &|_| true).await;
         assert_eq!(fake.calls(), vec![], "nothing is put back over a mod");
     });
 
