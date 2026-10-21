@@ -323,6 +323,30 @@ pub struct ActionRow {
     pub revealed_at: Option<DateTime<Utc>>,
 }
 
+/// One action by id, if it belongs to `guild`. A button on a card reads the
+/// action it was drawn for; an id from another server is no action here.
+pub async fn action_by_id(
+    pool: &PgPool,
+    guild: GuildId,
+    action_id: i64,
+) -> sqlx::Result<Option<ActionRow>> {
+    let keys = known_kinds();
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE id = $1 AND guild_id = $2 AND kind = ANY($3)"#,
+        action_id,
+        guild.get() as i64,
+        &keys
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(raw.and_then(RawAction::into_row).map(|(_, r)| r))
+}
+
 /// Bring an `active` row's end forward to `now` and record why, so the
 /// sweeper retries its undo every tick (an early end whose undo failed). The
 /// end never moves later. False when the row is not `active`.

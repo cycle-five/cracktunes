@@ -181,6 +181,26 @@ impl EventHandler for SerenityHandler {
             {
                 crate::rooms::interact::handle_submit(&self.data, ctx, mi).await;
             },
+            // Prank card buttons (`econ:`), and the modal Rename them back
+            // opens (`econm:`). Neither prefix starts with the other.
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Component(mci),
+            } if mci
+                .data
+                .custom_id
+                .starts_with(crate::economy::buttons::BUTTON_PREFIX) =>
+            {
+                crate::economy::buttons::handle_press(&self.data, ctx, mci).await;
+            },
+            FullEvent::InteractionCreate {
+                interaction: Interaction::Modal(mi),
+            } if mi
+                .data
+                .custom_id
+                .starts_with(crate::economy::buttons::MODAL_PREFIX) =>
+            {
+                crate::economy::buttons::handle_submit(&self.data, ctx, mi).await;
+            },
             _ => {},
         }
 

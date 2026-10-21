@@ -1,35 +1,39 @@
 //! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|cleanse|reveal`.
 use super::admin::log;
 use super::credits::{gate, live, say};
+use crate::economy::buttons::{card_buttons, carries_buttons};
 use crate::economy::cards::{card_channel, card_text};
+use crate::economy::discord::LiveEconomyDiscord;
 use crate::economy::preflight;
 use crate::economy::settings::{
     validate_nick, validate_note, ActionKind, EconomySettings, NickError, NoteError,
 };
 use crate::economy::shop::{
-    ago_words, buy, buy_immunity, cleanse, preflight_refusal, refusal_text, reveal, reveal_choices,
-    BuyError, BuyOutcome, BuyRequest,
+    ago_words, buy, buy_error_text, buy_immunity, cleanse, preflight_refusal, refusal_text, reveal,
+    reveal_choices, BuyError, BuyOutcome, BuyRequest,
 };
 use crate::economy::target::{gather_facts, voice_of, Subject};
 use crate::messaging::courier;
 use crate::messaging::messages::{
     ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL, ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK,
     ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG, ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK,
-    ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG, ECONOMY_NO_DATABASE, ECONOMY_PURCHASE_FAILED,
-    ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED,
-    ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX,
-    ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE,
-    ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
-    ECONOMY_YOU_HAVE,
+    ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG, ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED,
+    ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED,
+    ECONOMY_SHOP_CLEANSED_PREFIX, ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL,
+    ECONOMY_SHOP_DONE, ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_NOT_SOLD,
+    ECONOMY_SHOP_TITLE, ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
+use crate::modlog::batch::ModLogSink;
 use crate::modlog::event::ModLogEvent;
+use crate::modlog::live::ChannelSink;
 use crate::{Context, Data, Error};
 use chrono::{DateTime, Utc};
 use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
-use serenity::all::{ChannelId, GenericChannelId, User, UserId};
+use serenity::all::{ChannelId, GenericChannelId, GuildId, User, UserId};
 use std::borrow::Cow;
+use std::sync::Arc;
 
 /// The shop's listing: every item that is on, with its price, and the docs link.
 pub fn menu_text(settings: &EconomySettings) -> String {
@@ -197,18 +201,213 @@ pub fn involved_channels(
 /// Reply to a purchase error privately.
 #[cfg(not(tarpaulin_include))]
 async fn say_buy_error(ctx: Context<'_>, err: BuyError, currency: &str) -> Result<(), Error> {
-    match err {
-        BuyError::Refused(r) => say(ctx, refusal_text(&r, currency), true).await,
-        BuyError::NoDatabase => say(ctx, ECONOMY_NO_DATABASE, true).await,
-        BuyError::Db | BuyError::Discord(_) | BuyError::Invalid => {
-            say(ctx, ECONOMY_PURCHASE_FAILED, true).await
-        },
+    say(ctx, buy_error_text(&err, currency), true).await
+}
+
+/// Where a purchase's words go: a command's reply, or a button's follow-ups.
+#[async_trait::async_trait]
+pub(crate) trait Answer: Send + Sync {
+    /// Said to the buyer alone.
+    async fn private(&self, text: String) -> Result<(), Error>;
+    /// Said in the channel; mentions in it ping nobody.
+    async fn public(&self, out: Rendered) -> Result<(), Error>;
+}
+
+/// A slash command's answers.
+#[cfg(not(tarpaulin_include))]
+struct CommandAnswer<'a>(Context<'a>);
+
+#[cfg(not(tarpaulin_include))]
+#[async_trait::async_trait]
+impl Answer for CommandAnswer<'_> {
+    async fn private(&self, text: String) -> Result<(), Error> {
+        say(self.0, text, true).await
+    }
+    async fn public(&self, out: Rendered) -> Result<(), Error> {
+        courier::reply_rendered(self.0, out, false).await?;
+        Ok(())
     }
 }
 
-/// Buy a prank (or a mirror, with no target). Gate, validate, gather facts,
-/// preflight, buy; then reply privately with the balance, post the card, and
-/// log the purchase. A mirror posts nothing public and logs nothing.
+/// Who is buying, where, and how to answer them.
+#[cfg(not(tarpaulin_include))]
+pub(crate) struct PrankEnv<'a> {
+    pub data: &'a Data,
+    pub ctx: &'a serenity::all::Context,
+    pub guild: GuildId,
+    pub buyer: UserId,
+    pub buyer_is_bot: bool,
+    /// The channel the command or button was used in.
+    pub invoked_in: ChannelId,
+    pub answer: &'a dyn Answer,
+}
+
+/// Post a mod log event; nothing happens while the log is off.
+#[cfg(not(tarpaulin_include))]
+async fn log_event(env: &PrankEnv<'_>, event: ModLogEvent) {
+    let sink = ChannelSink {
+        data: env.data.clone(),
+        transport: Arc::new(DiscordTransport::of(env.ctx)),
+    };
+    sink.post(env.guild, event).await;
+}
+
+/// Buy a prank (or a mirror, with no target; `target` is the member and
+/// whether it is a bot). Validate, gather facts, preflight, buy; then reply
+/// privately with the balance, post the card, and log the purchase. A mirror
+/// posts nothing public and logs nothing. The slash commands and the Rename
+/// them back button both come through here.
+#[cfg(not(tarpaulin_include))]
+pub(crate) async fn run_prank(
+    env: &PrankEnv<'_>,
+    kind: ActionKind,
+    target: Option<(UserId, bool)>,
+    nick: Option<String>,
+    note: Option<String>,
+    signed: bool,
+) -> Result<(), Error> {
+    let PrankEnv {
+        data,
+        ctx,
+        guild,
+        buyer,
+        answer,
+        ..
+    } = *env;
+    if env.buyer_is_bot {
+        return answer.private(ECONOMY_SHOP_BOT_BUYER.to_string()).await;
+    }
+    let note = match note.as_deref().map(validate_note).transpose() {
+        Ok(n) => n,
+        Err(e) => return answer.private(note_error_text(e).to_string()).await,
+    };
+    let nick = match nick.as_deref().map(validate_nick).transpose() {
+        Ok(n) => n,
+        Err(e) => return answer.private(nick_error_text(e).to_string()).await,
+    };
+    let cfg = data.economy.settings(guild).config;
+    let now = Utc::now();
+    let cache = &ctx.cache;
+    let buyer_voice = voice_of(cache, guild, buyer);
+    let gather = |member: UserId, is_bot: bool| {
+        let who = Subject {
+            member,
+            is_bot,
+            is_self: member == buyer,
+        };
+        gather_facts(data, cache, guild, who, kind, buyer_voice, now)
+    };
+    let buyer_facts = match gather(buyer, false).await {
+        Ok(f) => f,
+        Err(e) => return answer.private(buy_error_text(&e, &cfg.currency_name)).await,
+    };
+    // A mirror protects the buyer: their own facts stand in for a target's.
+    let facts = match target {
+        Some((t, is_bot)) => match gather(t, is_bot).await {
+            Ok(f) => f,
+            Err(e) => return answer.private(buy_error_text(&e, &cfg.currency_name)).await,
+        },
+        None => buyer_facts.clone(),
+    };
+    // Refuse before charging when the bot lacks what the action needs. An
+    // action that is off is left to `buy`, which says so.
+    if cfg.prices.get(kind).on {
+        let channels = involved_channels(kind, facts.in_voice, buyer_voice, cfg.jail_channel_id);
+        let perms = preflight::bot_perms(cache, guild, &channels);
+        if let Err(r) = preflight_refusal(kind, perms.as_ref(), &channels) {
+            return answer.private(refusal_text(&r, &cfg.currency_name)).await;
+        }
+    }
+    let req = BuyRequest {
+        guild,
+        buyer,
+        kind,
+        target: target.map(|(t, _)| t),
+        nick: nick.clone(),
+        note: note.clone(),
+        signed,
+        now,
+    };
+    let discord = LiveEconomyDiscord {
+        http: ctx.http.clone(),
+    };
+    let bought = match buy(
+        data,
+        &discord,
+        facts.clone(),
+        buyer_facts.clone(),
+        buyer_voice,
+        req,
+    )
+    .await
+    {
+        Ok(b) => b,
+        Err(e) => return answer.private(buy_error_text(&e, &cfg.currency_name)).await,
+    };
+    // Reply first: a slow card or log channel must not time the interaction out.
+    let replied = answer
+        .private(bought_reply_text(
+            kind,
+            bought.outcome,
+            bought.balance,
+            &cfg.currency_name,
+            &cfg.currency_emoji,
+        ))
+        .await;
+    let Some((target, _)) = target else {
+        return replied;
+    };
+    let channel = card_channel(
+        kind,
+        bought.outcome,
+        facts.in_voice,
+        buyer_voice,
+        cfg.jail_channel_id,
+        env.invoked_in,
+        cfg.announce_channel_id,
+    );
+    let card = card_text(
+        kind,
+        target,
+        nick.as_deref(),
+        bought.until,
+        note.as_deref(),
+        signed.then_some(buyer),
+        bought.outcome,
+    );
+    let mut rendered = Rendered::text(card);
+    if carries_buttons(kind, bought.outcome) {
+        rendered = rendered.with_components(card_buttons(bought.action_id));
+    }
+    let transport = DiscordTransport::of(ctx);
+    if let Err(err) =
+        courier::post_message(&transport, GenericChannelId::new(channel.get()), &rendered).await
+    {
+        // The destination may be a channel the bot cannot post in: a public
+        // follow-up in the invoking channel needs no channel permissions.
+        tracing::warn!(
+            "economy: posting the {kind:?} card in {channel} failed, answering in the invoking channel: {err:?}"
+        );
+        if let Err(err) = answer.public(rendered).await {
+            tracing::warn!("economy: the {kind:?} card follow-up failed: {err:?}");
+        }
+    }
+    if let Some(event) = shop_event(
+        kind,
+        bought.outcome,
+        buyer,
+        target,
+        note,
+        signed,
+        bought.until,
+    ) {
+        log_event(env, event).await;
+    }
+    replied
+}
+
+/// Buy a prank from a slash command: the gate and the bot check, then the
+/// shared purchase.
 #[cfg(not(tarpaulin_include))]
 async fn prank(
     ctx: Context<'_>,
@@ -222,138 +421,25 @@ async fn prank(
         return Ok(());
     };
     let buyer = ctx.author();
-    if buyer.bot() {
-        return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
-    }
-    let note = match note.as_deref().map(validate_note).transpose() {
-        Ok(n) => n,
-        Err(e) => return say(ctx, note_error_text(e), true).await,
-    };
-    let nick = match nick.as_deref().map(validate_nick).transpose() {
-        Ok(n) => n,
-        Err(e) => return say(ctx, nick_error_text(e), true).await,
-    };
     let data = ctx.data();
-    let cfg = data.economy.settings(guild).config;
-    let now = Utc::now();
-    let cache = &ctx.serenity_context().cache;
-    let buyer_voice = voice_of(cache, guild, buyer.id);
-    let gather = |user: &User, is_self: bool| {
-        let who = Subject {
-            member: user.id,
-            is_bot: user.bot(),
-            is_self,
-        };
-        gather_facts(&data, cache, guild, who, kind, buyer_voice, now)
-    };
-    let buyer_facts = match gather(buyer, true).await {
-        Ok(f) => f,
-        Err(e) => return say_buy_error(ctx, e, &cfg.currency_name).await,
-    };
-    // A mirror protects the buyer: their own facts stand in for a target's.
-    let facts = match &target {
-        Some(t) => match gather(t, t.id == buyer.id).await {
-            Ok(f) => f,
-            Err(e) => return say_buy_error(ctx, e, &cfg.currency_name).await,
-        },
-        None => buyer_facts.clone(),
-    };
-    // Refuse before charging when the bot lacks what the action needs. An
-    // action that is off is left to `buy`, which says so.
-    if cfg.prices.get(kind).on {
-        let channels = involved_channels(kind, facts.in_voice, buyer_voice, cfg.jail_channel_id);
-        let perms = preflight::bot_perms(cache, guild, &channels);
-        if let Err(r) = preflight_refusal(kind, perms.as_ref(), &channels) {
-            return say(ctx, refusal_text(&r, &cfg.currency_name), true).await;
-        }
-    }
-    let signed = signed.unwrap_or(false);
-    let req = BuyRequest {
+    let env = PrankEnv {
+        data: &data,
+        ctx: ctx.serenity_context(),
         guild,
         buyer: buyer.id,
-        kind,
-        target: target.as_ref().map(|t| t.id),
-        nick: nick.clone(),
-        note: note.clone(),
-        signed,
-        now,
+        buyer_is_bot: buyer.bot(),
+        invoked_in: ChannelId::new(ctx.channel_id().get()),
+        answer: &CommandAnswer(ctx),
     };
-    let bought = match buy(
-        &data,
-        &live(ctx),
-        facts.clone(),
-        buyer_facts.clone(),
-        buyer_voice,
-        req,
-    )
-    .await
-    {
-        Ok(b) => b,
-        Err(e) => return say_buy_error(ctx, e, &cfg.currency_name).await,
-    };
-    // Reply first: a slow card or log channel must not time the interaction out.
-    let replied = say(
-        ctx,
-        bought_reply_text(
-            kind,
-            bought.outcome,
-            bought.balance,
-            &cfg.currency_name,
-            &cfg.currency_emoji,
-        ),
-        true,
-    )
-    .await;
-    let Some(target) = target else {
-        return replied;
-    };
-    let channel = card_channel(
+    run_prank(
+        &env,
         kind,
-        bought.outcome,
-        facts.in_voice,
-        buyer_voice,
-        cfg.jail_channel_id,
-        ChannelId::new(ctx.channel_id().get()),
-        cfg.announce_channel_id,
-    );
-    let card = card_text(
-        kind,
-        target.id,
-        nick.as_deref(),
-        bought.until,
-        note.as_deref(),
-        signed.then_some(buyer.id),
-        bought.outcome,
-    );
-    let transport = DiscordTransport::of(ctx.serenity_context());
-    if let Err(err) = courier::post_message(
-        &transport,
-        GenericChannelId::new(channel.get()),
-        &Rendered::text(card.clone()),
-    )
-    .await
-    {
-        // The destination may be a channel the bot cannot post in: a public
-        // follow-up in the invoking channel needs no channel permissions.
-        tracing::warn!(
-            "economy: posting the {kind:?} card in {channel} failed, answering in the invoking channel: {err:?}"
-        );
-        if let Err(err) = say(ctx, card, false).await {
-            tracing::warn!("economy: the {kind:?} card follow-up failed: {err:?}");
-        }
-    }
-    if let Some(event) = shop_event(
-        kind,
-        bought.outcome,
-        buyer.id,
-        target.id,
+        target.map(|t| (t.id, t.bot())),
+        nick,
         note,
-        signed,
-        bought.until,
-    ) {
-        log(ctx, guild, event).await;
-    }
-    replied
+        signed.unwrap_or(false),
+    )
+    .await
 }
 
 /// Change someone's nickname for a while.

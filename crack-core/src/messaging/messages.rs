@@ -1100,3 +1100,12 @@ pub const DASH_ECONOMY_UNKNOWN_ACTION: &str = "That is not something this server
 pub const DASH_ECONOMY_SETTINGS_NOT_LOADED: &str =
     "Economy settings couldn't be read from the database yet — try again in a minute.";
 pub const DASH_ECONOMY_SAVE_FAILED: &str = "Couldn't save the economy settings — try again.";
+pub const ECONOMY_BUTTON_RENAME_BACK: &str = "Rename them back";
+pub const ECONOMY_BUTTON_REVEAL: &str = "Reveal";
+pub const ECONOMY_BACK_REVEAL_FIRST: &str = "Reveal who did it first.";
+pub const ECONOMY_BUTTON_NOT_YOURS: &str = "Only the person it was done to can use these buttons.";
+pub const ECONOMY_BUTTON_STALE: &str = "That card is out of date.";
+pub const ECONOMY_BACK_MODAL_TITLE: &str = "Rename them back";
+pub const ECONOMY_BACK_LABEL: &str = "New nickname";
+pub const ECONOMY_BACK_DESC: &str = "1 to 32 characters. This is bought like /shop rename.";
+pub const ECONOMY_BACK_PLACEHOLDER: &str = "Up to 32 characters";
