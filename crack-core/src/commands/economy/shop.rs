@@ -872,6 +872,11 @@ mod tests {
             nick_error_text(NickError::Mention),
             "The nickname can't mention anyone."
         );
+        // Counted in UTF-16 units, as Discord counts: some emoji take 4.
+        assert_eq!(
+            nick_error_text(NickError::TooLong),
+            "That name is too long: 32 characters at most (an emoji counts as 2 or more)."
+        );
     }
 
     #[test]

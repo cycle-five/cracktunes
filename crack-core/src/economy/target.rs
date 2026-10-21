@@ -104,11 +104,14 @@ pub fn check_target(
         },
         _ => {},
     }
-    // Whoever muted them owns it: the shop's undo would lift their mute.
-    if kind == ActionKind::Mute && t.server_mute {
+    // Whoever muted them owns it: the shop's undo would lift their mute. A
+    // running shop mute of the same kind is the shop's own, and is refused
+    // below as already running, with its end.
+    let ours = t.running_same_kind.is_some();
+    if kind == ActionKind::Mute && t.server_mute && !ours {
         return Err(Refusal::AlreadyMuted);
     }
-    if kind == ActionKind::Deafen && t.server_deaf {
+    if kind == ActionKind::Deafen && t.server_deaf && !ours {
         return Err(Refusal::AlreadyDeafened);
     }
     if t.opted_out {
@@ -453,6 +456,14 @@ mod tests {
                 "{kind:?}"
             );
             f.in_voice = Some(VC);
+            // A running shop prank of the same kind is ours, not a
+            // moderator's: on to the later checks (it ends at AlreadyRunning).
+            assert_eq!(
+                check_target(kind, &f, None),
+                Err(Refusal::TargetOptedOut),
+                "{kind:?}"
+            );
+            f.running_same_kind = None;
             assert_eq!(check_target(kind, &f, None), Err(want), "{kind:?}");
             f.server_mute = false;
             f.server_deaf = false;
@@ -461,6 +472,35 @@ mod tests {
                 Err(Refusal::TargetOptedOut),
                 "{kind:?}"
             );
+        }
+    }
+
+    #[test]
+    fn a_running_shop_mute_keeps_its_own_refusal() {
+        for kind in [ActionKind::Mute, ActionKind::Deafen] {
+            // Muted (or deafened) by the shop's own running prank.
+            let shop = TargetFacts {
+                server_mute: true,
+                server_deaf: true,
+                running_same_kind: Some(t0()),
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &shop, None),
+                Err(Refusal::AlreadyRunning { until: t0() }),
+                "{kind:?}"
+            );
+            // By a moderator, with no shop row: theirs.
+            let modded = TargetFacts {
+                running_same_kind: None,
+                ..shop
+            };
+            let want = if kind == ActionKind::Mute {
+                Refusal::AlreadyMuted
+            } else {
+                Refusal::AlreadyDeafened
+            };
+            assert_eq!(check_target(kind, &modded, None), Err(want), "{kind:?}");
         }
     }
 

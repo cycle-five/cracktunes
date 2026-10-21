@@ -5,6 +5,7 @@ use crate::economy::preflight::{report_for, ActionPreflight};
 use crate::economy::settings::EconomySettings;
 use crate::economy::wallet::{ActionState, MoveError};
 use crate::economy::{mod_cancel, mod_grant, mod_lift, GrantError};
+use crate::messaging::format::CONTENT_MAX;
 use crate::messaging::messages::{
     DASH_ECONOMY_ANNOUNCE_STATUS, DASH_ECONOMY_PREFLIGHT, DASH_ECONOMY_PREFLIGHT_READY,
     DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_ADMIN_ADJUST_BELOW_ZERO_PREFIX,
@@ -17,8 +18,9 @@ use crate::messaging::messages::{
     ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD,
     ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS, ECONOMY_STATUS_OFF,
     ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE, ECONOMY_STATUS_PER_VOICE_MINUTE,
-    ECONOMY_STATUS_RECENT, ECONOMY_STATUS_RECENT_NONE, ECONOMY_STATUS_SECONDS, ECONOMY_STATUS_SHOP,
-    ECONOMY_STATUS_TITLE, ECONOMY_STATUS_UNTIL, ECONOMY_STATUS_WALLETS,
+    ECONOMY_STATUS_RECENT, ECONOMY_STATUS_RECENT_MORE_PREFIX, ECONOMY_STATUS_RECENT_MORE_SUFFIX,
+    ECONOMY_STATUS_RECENT_NONE, ECONOMY_STATUS_SECONDS, ECONOMY_STATUS_SHOP, ECONOMY_STATUS_TITLE,
+    ECONOMY_STATUS_UNTIL, ECONOMY_STATUS_WALLETS,
 };
 use crate::messaging::transport::DiscordTransport;
 use crate::modlog::batch::ModLogSink;
@@ -124,23 +126,67 @@ pub fn recent_line(a: &RecentAction) -> String {
     line
 }
 
+/// A message's length as Discord limits it. Counted in UTF-16 units, which
+/// is never fewer than the characters Discord counts, so a text within
+/// [`CONTENT_MAX`] of these is within Discord's limit either way.
+fn discord_len(s: &str) -> usize {
+    s.encode_utf16().count()
+}
+
+/// `s` cut to at most `max` [`discord_len`] units, ending in "…" when cut.
+fn fit(s: &str, max: usize) -> String {
+    if discord_len(s) <= max {
+        return s.to_owned();
+    }
+    let mut out = String::new();
+    let mut used = 0;
+    for c in s.chars() {
+        if used + c.len_utf16() > max.saturating_sub(1) {
+            break;
+        }
+        used += c.len_utf16();
+        out.push(c);
+    }
+    out.push('…');
+    out
+}
+
 /// `/economy status` in full: the settings, the permission report, and the
-/// last actions newest first (`None` when they couldn't be read).
+/// last actions newest first (`None` when they couldn't be read). Discord
+/// refuses a message over [`CONTENT_MAX`], so when the whole would be longer
+/// the oldest actions are left out, with a line saying how many.
 pub fn status_report_text(
     base: &str,
     report: &[ActionPreflight],
     announce: Option<&[String]>,
     recent: Option<&[RecentAction]>,
 ) -> String {
-    let mut lines = vec![base.to_string(), format!("**{DASH_ECONOMY_PREFLIGHT}**")];
-    lines.extend(preflight_lines(report, announce));
-    lines.push(format!("**{ECONOMY_STATUS_RECENT}**"));
-    match recent {
-        None => lines.push(ECONOMY_READ_FAILED.to_string()),
-        Some([]) => lines.push(ECONOMY_STATUS_RECENT_NONE.to_string()),
-        Some(rows) => lines.extend(rows.iter().map(recent_line)),
+    let mut head = vec![base.to_string(), format!("**{DASH_ECONOMY_PREFLIGHT}**")];
+    head.extend(preflight_lines(report, announce));
+    head.push(format!("**{ECONOMY_STATUS_RECENT}**"));
+    let rows: Vec<String> = match recent {
+        None => vec![ECONOMY_READ_FAILED.to_string()],
+        Some([]) => vec![ECONOMY_STATUS_RECENT_NONE.to_string()],
+        Some(rows) => rows.iter().map(recent_line).collect(),
+    };
+    let actions = recent.map_or(0, <[RecentAction]>::len);
+    // Newest first, so keeping a prefix drops from the oldest end.
+    for keep in (0..=rows.len()).rev() {
+        let mut lines = head.clone();
+        lines.extend(rows[..keep].iter().cloned());
+        let left_out = rows.len() - keep;
+        if left_out > 0 && actions > 0 {
+            lines.push(format!(
+                "{ECONOMY_STATUS_RECENT_MORE_PREFIX} {left_out} {ECONOMY_STATUS_RECENT_MORE_SUFFIX}"
+            ));
+        }
+        let text = lines.join("\n");
+        if discord_len(&text) <= CONTENT_MAX {
+            return text;
+        }
     }
-    lines.join("\n")
+    // Even the head alone is too long (it never is in practice): cut it.
+    fit(&head.join("\n"), CONTENT_MAX)
 }
 
 /// Moderator commands need Moderate Members (an administrator holds every
@@ -539,6 +585,60 @@ mod tests {
         );
         assert!(status_report_text("BASE", &[], None, None)
             .ends_with("**Recent shop actions**\nCouldn't read that right now. Try again."));
+    }
+
+    #[test]
+    fn status_fits_in_one_message_dropping_the_oldest_actions() {
+        use crate::economy::settings::ActionKind;
+        let at = chrono::TimeZone::timestamp_opt(&Utc, 1_800_000_000, 0).unwrap();
+        // A long base, every preflight line long, and ten long, wide actions
+        // (these emoji take two UTF-16 units each).
+        let base = "B".repeat(400);
+        let gap = format!(
+            "Give CrackTunes {} in Server Settings → Roles",
+            "🔒".repeat(40)
+        );
+        let report: Vec<ActionPreflight> = ActionKind::PRANKS
+            .iter()
+            .map(|k| ActionPreflight {
+                kind: k.key().to_owned(),
+                label: k.label().to_owned(),
+                needs: Some(vec![gap.clone()]),
+            })
+            .collect();
+        let announce = vec![gap.clone()];
+        let rows: Vec<RecentAction> = (0..10)
+            .map(|n| {
+                let mut r = recent(
+                    ActionKind::Rename,
+                    ActionState::Ended,
+                    false,
+                    Some(at),
+                    Some(&format!("reason-{n}-{}", "🧼".repeat(60))),
+                );
+                r.row.id = 100 - n;
+                r
+            })
+            .collect();
+        let text = status_report_text(&base, &report, Some(&announce), Some(&rows));
+        // Measured independently, in UTF-16 units: the most Discord can count.
+        let units = |s: &str| s.encode_utf16().count();
+        assert!(units(&text) <= 2000, "{}", units(&text));
+        // The newest is kept; the oldest went, and the reply says how many.
+        assert!(text.contains("reason-0-"), "the newest action is shown");
+        assert!(!text.contains("reason-9-"), "the oldest is left out");
+        let shown = (0..10)
+            .filter(|n| text.contains(&format!("reason-{n}-")))
+            .count();
+        assert!(
+            text.ends_with(&format!("…and {} older not shown.", 10 - shown)),
+            "{text}"
+        );
+        assert!(shown >= 1 && shown < 10, "{shown}");
+        // A head longer than any message is cut, never sent too long.
+        let huge = status_report_text(&"B".repeat(3000), &report, None, None);
+        assert!(units(&huge) <= 2000);
+        assert!(huge.ends_with('…'));
     }
 
     #[test]

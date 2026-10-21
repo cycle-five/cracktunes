@@ -10,6 +10,7 @@ use super::settings::ActionKind;
 use super::wallet::{ActionPayload, ActionState};
 use crate::db::economy::{self, ActionRow};
 use crate::Data;
+use chrono::{DateTime, Utc};
 use serenity::all::{AuditLogEntry, Cache, ChannelId, GuildId, Http, UserId};
 use serenity::model::guild::audit_log::{Action, Change, MemberAction};
 use std::sync::Arc;
@@ -253,8 +254,9 @@ pub fn jail_decision(
 
 /// A member's voice channel changed (`to` is None for a disconnect).
 ///
-/// A member with a running Jail row who lands in a channel other than the
-/// row's jail channel is moved back, at most once per [`JAIL_MOVE_EVERY`];
+/// A member with a running Jail row (`active`, and its time not up at `at`:
+/// the sweeper may not have ended it yet) who lands in a channel other than
+/// the row's jail channel is moved back, at most once per [`JAIL_MOVE_EVERY`];
 /// inside that limit, the answer is when to look again (the caller schedules
 /// it with [`spawn_jail_recheck`]). A disconnect is allowed. If the move fails
 /// the row is left as it is.
@@ -265,13 +267,17 @@ pub async fn on_voice_move(
     user: UserId,
     to: Option<ChannelId>,
     now: Instant,
+    at: DateTime<Utc>,
 ) -> Option<Instant> {
     let to = to?;
     let rows = running(data, guild, user, &[ActionKind::Jail], false).await;
-    let jail = rows.iter().find_map(|r| match r.payload {
-        ActionPayload::Jail { jail } => Some(jail),
-        _ => None,
-    })?;
+    let jail = rows
+        .iter()
+        .filter(|r| r.expires_at.is_none_or(|end| end > at))
+        .find_map(|r| match r.payload {
+            ActionPayload::Jail { jail } => Some(jail),
+            _ => None,
+        })?;
     if to == jail {
         return None;
     }
@@ -303,10 +309,11 @@ pub async fn jail_recheck(
     guild: GuildId,
     user: UserId,
     now: Instant,
+    at: DateTime<Utc>,
 ) -> Option<Instant> {
     data.economy.clear_jail_recheck(guild, user);
     let channel = view.voice(guild, user).and_then(|v| v.channel);
-    on_voice_move(data, discord, guild, user, channel, now).await
+    on_voice_move(data, discord, guild, user, channel, now, at).await
 }
 
 /// Run the one re-check for a jailed member who moved out inside the rate
@@ -324,7 +331,16 @@ pub fn spawn_jail_recheck(
         let mut at = at;
         loop {
             tokio::time::sleep_until(at).await;
-            match jail_recheck(&data, &discord, cache.as_ref(), guild, user, Instant::now()).await {
+            let checked = jail_recheck(
+                &data,
+                &discord,
+                cache.as_ref(),
+                guild,
+                user,
+                Instant::now(),
+                Utc::now(),
+            );
+            match checked.await {
                 Some(next) => at = next,
                 None => break,
             }
@@ -365,6 +381,23 @@ mod tests {
     }
 
     async fn seed(pool: &PgPool, kind: ActionKind, payload: &ActionPayload, state: &str) -> i64 {
+        seed_until(
+            pool,
+            kind,
+            payload,
+            state,
+            t0() - ChronoDuration::minutes(1),
+        )
+        .await
+    }
+
+    async fn seed_until(
+        pool: &PgPool,
+        kind: ActionKind,
+        payload: &ActionPayload,
+        state: &str,
+        expires_at: DateTime<Utc>,
+    ) -> i64 {
         sqlx::query_scalar(
             "INSERT INTO economy_actions
                  (guild_id, kind, buyer_id, target_id, price, payload, state, expires_at, created_at)
@@ -375,7 +408,7 @@ mod tests {
         .bind(U.get() as i64)
         .bind(Json(payload))
         .bind(state)
-        .bind(t0() - ChronoDuration::minutes(1))
+        .bind(expires_at)
         .bind(t0() - ChronoDuration::minutes(600))
         .fetch_one(pool)
         .await
@@ -607,12 +640,14 @@ mod tests {
         assert_eq!(state_of(&pool, rename).await.0, "ended");
     });
 
+    /// A jail running until half an hour after `t0()`.
     async fn jailed(pool: &PgPool) -> i64 {
-        seed(
+        seed_until(
             pool,
             ActionKind::Jail,
             &ActionPayload::Jail { jail: JAIL },
             "active",
+            t0() + ChronoDuration::minutes(30),
         )
         .await
     }
@@ -624,7 +659,7 @@ mod tests {
         let t = Instant::now();
         let back = || vec![Call::Move(U, JAIL, ActionKind::Jail)];
         assert_eq!(
-            on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t).await,
+            on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t, t0()).await,
             None
         );
         assert_eq!(fake.calls(), back());
@@ -636,6 +671,7 @@ mod tests {
             U,
             Some(ELSEWHERE),
             t + Duration::from_secs(9),
+            t0(),
         )
         .await;
         assert_eq!(fake.calls(), back(), "inside 10 s");
@@ -650,6 +686,7 @@ mod tests {
             U,
             Some(ELSEWHERE),
             t + Duration::from_secs(10),
+            t0(),
         )
         .await;
         assert_eq!(fake.calls().len(), 2, "10 s later");
@@ -659,7 +696,7 @@ mod tests {
             .await
             .unwrap();
         let other = UserId::new(11);
-        on_voice_move(&data, &fake, G, other, Some(ELSEWHERE), t).await;
+        on_voice_move(&data, &fake, G, other, Some(ELSEWHERE), t, t0()).await;
         assert_eq!(fake.calls().len(), 3);
     });
 
@@ -696,19 +733,19 @@ mod tests {
         let id = jailed(&pool).await;
         let t = Instant::now();
         let s = Duration::from_secs;
-        on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t).await;
-        let at = on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t + s(1))
+        on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t, t0()).await;
+        let at = on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t + s(1), t0())
             .await
             .expect("a re-check is scheduled");
         assert_eq!(fake.calls().len(), 1, "moved back once so far");
         // A third quick move schedules nothing more.
         assert_eq!(
-            on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t + s(2)).await,
+            on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t + s(2), t0()).await,
             None
         );
         // At the re-check they are still out: moved back.
         let out = JailView(Some(ELSEWHERE));
-        assert_eq!(jail_recheck(&data, &fake, &out, G, U, at).await, None);
+        assert_eq!(jail_recheck(&data, &fake, &out, G, U, at, t0()).await, None);
         assert_eq!(
             fake.calls(),
             vec![
@@ -720,7 +757,7 @@ mod tests {
         // the sentence over, does nothing.
         for (view, later) in [(JailView(Some(JAIL)), 30), (JailView(None), 50)] {
             assert_eq!(
-                jail_recheck(&data, &fake, &view, G, U, t + s(later)).await,
+                jail_recheck(&data, &fake, &view, G, U, t + s(later), t0()).await,
                 None
             );
         }
@@ -730,7 +767,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            jail_recheck(&data, &fake, &out, G, U, t + s(70)).await,
+            jail_recheck(&data, &fake, &out, G, U, t + s(70), t0()).await,
             None
         );
         assert_eq!(fake.calls().len(), 2);
@@ -751,11 +788,41 @@ mod tests {
         }
     }
 
+    db_test!(a_jail_whose_time_is_up_moves_nobody, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        // Still `active` (the sweeper hasn't reached it), but its time is up.
+        seed_until(
+            &pool,
+            ActionKind::Jail,
+            &ActionPayload::Jail { jail: JAIL },
+            "active",
+            t0() - ChronoDuration::seconds(1),
+        )
+        .await;
+        let t = Instant::now();
+        assert_eq!(
+            on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t, t0()).await,
+            None
+        );
+        // Nor does a scheduled re-check that runs after the end.
+        let out = JailView(Some(ELSEWHERE));
+        assert_eq!(
+            jail_recheck(&data, &fake, &out, G, U, t + Duration::from_secs(10), t0()).await,
+            None
+        );
+        assert_eq!(fake.calls(), vec![], "free to go");
+        // A second earlier it was still running, and they'd be moved back.
+        let before = t0() - ChronoDuration::seconds(2);
+        on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t, before).await;
+        assert_eq!(fake.calls(), vec![Call::Move(U, JAIL, ActionKind::Jail)]);
+    });
+
     db_test!(jail_lets_a_disconnect_be, |pool| {
         let data = data_with(&pool);
         let fake = FakeEconomyDiscord::default();
         jailed(&pool).await;
-        on_voice_move(&data, &fake, G, U, None, Instant::now()).await;
+        on_voice_move(&data, &fake, G, U, None, Instant::now(), t0()).await;
         assert_eq!(fake.calls(), vec![]);
     });
 
@@ -766,15 +833,15 @@ mod tests {
             let fake = FakeEconomyDiscord::default();
             let id = jailed(&pool).await;
             let t = Instant::now();
-            on_voice_move(&data, &fake, G, U, Some(JAIL), t).await;
-            on_voice_move(&data, &fake, G, UserId::new(99), Some(ELSEWHERE), t).await;
+            on_voice_move(&data, &fake, G, U, Some(JAIL), t, t0()).await;
+            on_voice_move(&data, &fake, G, UserId::new(99), Some(ELSEWHERE), t, t0()).await;
             assert_eq!(fake.calls(), vec![], "the jail itself; not the prisoner");
             sqlx::query("UPDATE economy_actions SET state = 'ended' WHERE id = $1")
                 .bind(id)
                 .execute(&pool)
                 .await
                 .unwrap();
-            on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t).await;
+            on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t, t0()).await;
             assert_eq!(fake.calls(), vec![], "the sentence is over");
         }
     );
@@ -784,7 +851,7 @@ mod tests {
         let fake = FakeEconomyDiscord::default();
         let id = jailed(&pool).await;
         fake.fail_next(CallKind::Move, EconDiscordError::MissingPermissions);
-        on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), Instant::now()).await;
+        on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), Instant::now(), t0()).await;
         assert_eq!(fake.calls().len(), 1);
         assert_eq!(state_of(&pool, id).await.0, "active");
     });

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, guild_id, kind, buyer_id, target_id,\n                  payload AS \"payload: Json<ActionPayload>\",\n                  state, expires_at, note, signed, revealed_at\n           FROM economy_actions\n           WHERE guild_id = $1 AND state = 'active' AND kind = ANY($2)\n           ORDER BY id",
+  "query": "SELECT id, guild_id, kind, buyer_id, target_id,\n                  payload AS \"payload: Json<ActionPayload>\",\n                  state, expires_at, note, signed, revealed_at, end_reason, created_at\n           FROM economy_actions\n           WHERE guild_id = $1 AND state = 'active' AND kind = ANY($2)\n           ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -57,6 +57,16 @@
         "ordinal": 10,
         "name": "revealed_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 11,
+        "name": "end_reason",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "created_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
@@ -76,8 +86,10 @@
       true,
       true,
       false,
-      true
+      true,
+      true,
+      false
     ]
   },
-  "hash": "1a82444ad34b40ca2024cb6979b4059bd052c3cfb649ba265295d173e83c8791"
+  "hash": "23cb75cb7aa6a3835949086cf82a64acddc83371436fb58d893471a91b062cfd"
 }

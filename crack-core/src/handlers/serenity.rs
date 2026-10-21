@@ -99,6 +99,7 @@ impl EventHandler for SerenityHandler {
                             new.user_id,
                             new.channel_id,
                             tokio::time::Instant::now(),
+                            chrono::Utc::now(),
                         );
                         match tokio::time::timeout(std::time::Duration::from_secs(5), moved).await {
                             // Out again inside the rate limit: one re-check

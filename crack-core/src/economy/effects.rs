@@ -29,7 +29,7 @@ const UNDO_BACKOFF_MAX: ChronoDuration = ChronoDuration::minutes(5);
 const UNDO_GIVE_UP: ChronoDuration = ChronoDuration::hours(1);
 /// A `pending` row of this process younger than this may be a purchase
 /// still in flight (on the database's clock).
-const PENDING_GRACE_SECS: f64 = 120.0;
+const PENDING_GRACE_SECS: i64 = 120;
 
 /// What putting a prank right takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -433,20 +433,38 @@ async fn resolve_pending(
     }
 }
 
+/// The name a rename or clown row put on its member.
+fn prank_set_name(row: &ActionRow) -> Option<&str> {
+    match &row.payload {
+        ActionPayload::Rename { name, .. } => Some(name),
+        ActionPayload::Clown { applied, .. } => Some(applied),
+        _ => None,
+    }
+}
+
 /// Whether a running rename or clown's member, as the cache shows them now,
 /// wears a name other than the one the prank set: someone changed it while
 /// the bot couldn't see who. `false` when the cache doesn't hold them.
 fn renamed_while_away(view: &dyn MemberView, guild: GuildId, row: &ActionRow) -> bool {
-    let set = match &row.payload {
-        ActionPayload::Rename { name, .. } => name,
-        ActionPayload::Clown { applied, .. } => applied,
-        _ => return false,
-    };
-    let Some(target) = row.target else {
+    let (Some(set), Some(target)) = (prank_set_name(row), row.target) else {
         return false;
     };
     view.nick(guild, target)
-        .is_some_and(|nick| nick.as_deref() != Some(set.as_str()))
+        .is_some_and(|nick| nick.as_deref() != Some(set))
+}
+
+/// Whether reconcile may judge a name prank bought at `created_at` against
+/// the cache, as I4 judges a pending row: one a previous process left
+/// (bought before `process_start`), or one older than the grace on the
+/// database's clock. A younger one may be a rename this process has just
+/// made, which a GuildCreate in the middle of a run can predate.
+fn past_the_grace(
+    created_at: DateTime<Utc>,
+    process_start: Option<DateTime<Utc>>,
+    db_now: DateTime<Utc>,
+) -> bool {
+    let grace = db_now - ChronoDuration::seconds(PENDING_GRACE_SECS);
+    created_at < process_start.map_or(grace, |start| start.max(grace))
 }
 
 /// End the running renames and clowns whose name was changed while the bot
@@ -454,17 +472,44 @@ fn renamed_while_away(view: &dyn MemberView, guild: GuildId, row: &ActionRow) ->
 /// made it (a moderator's must never be undone, and the audit entry that
 /// would say whose is gone). A lock riding on such a prank ends with it, as a
 /// live override ends both.
+///
+/// Only rows past the grace ([`past_the_grace`]) are judged, and a mismatch
+/// in the cache is confirmed with one fresh read from Discord first: the
+/// cache can lag a nickname the bot itself just set (a purchase, or a lock's
+/// revert). If that read fails the row is left alone; the sweeper ends it on
+/// time anyway.
 async fn let_away_renames_stand(
     data: &Data,
+    discord: &dyn EconomyDiscord,
     view: &dyn MemberView,
     guild: GuildId,
 ) -> Result<(), sqlx::Error> {
     let Some(pool) = data.database_pool.as_ref() else {
         return Ok(());
     };
+    let db_now = economy::db_now(pool).await?;
+    let started = data.economy.process_start();
     let rows =
         economy::active_for_guild(pool, guild, &[ActionKind::Rename, ActionKind::Clown]).await?;
-    for row in rows.iter().filter(|r| renamed_while_away(view, guild, r)) {
+    let judged = rows.iter().filter(|(row, created_at)| {
+        past_the_grace(*created_at, started, db_now) && renamed_while_away(view, guild, row)
+    });
+    for (row, _) in judged {
+        let (Some(set), Some(target)) = (prank_set_name(row), row.target) else {
+            continue;
+        };
+        match discord.member_nick(guild, target).await {
+            Ok(nick) if nick.as_deref() != Some(set) => {},
+            // The cache was behind: the prank's name is on them.
+            Ok(_) => continue,
+            Err(err) => {
+                tracing::warn!(
+                    "economy: confirming {target}'s nickname in {guild} failed, leaving action {}: {err:?}",
+                    row.id
+                );
+                continue;
+            },
+        }
         economy::end_action(pool, row.id, ActionState::Ended, "overridden").await?;
         if let Some(target) = row.target {
             for lock in economy::active_of_kind(pool, guild, target, &[ActionKind::Lock]).await? {
@@ -497,7 +542,8 @@ pub async fn reconcile(
     // activate must not be refunded from under itself by a mid-run
     // GuildCreate.
     let started = data.economy.process_start();
-    match economy::pending_for_guild(pool, guild, started, PENDING_GRACE_SECS).await {
+    let grace = PENDING_GRACE_SECS as f64;
+    match economy::pending_for_guild(pool, guild, started, grace).await {
         Ok(rows) => {
             for row in rows {
                 resolve_pending(data, discord, view, guild, &row).await;
@@ -506,7 +552,7 @@ pub async fn reconcile(
         Err(err) => tracing::warn!("economy: reading pending actions of {guild} failed: {err}"),
     }
     // Before the overdue ones: an expiry must not restore over such a name.
-    if let Err(err) = let_away_renames_stand(data, view, guild).await {
+    if let Err(err) = let_away_renames_stand(data, discord, view, guild).await {
         tracing::warn!("economy: checking the running names in {guild} failed: {err}");
     }
     match economy::overdue_for_guild(pool, guild, now).await {
@@ -1113,8 +1159,12 @@ mod tests {
         let data = data_with(&pool);
         let fake = FakeEconomyDiscord::default();
         let (changed, kept, uncached) = (U, UserId::new(11), UserId::new(12));
+        // The cache shows a change for these two, but Discord says the
+        // prank's name is on one (the cache was behind) and can't be
+        // read for the other.
+        let (behind, unreadable) = (UserId::new(14), UserId::new(15));
         let mut ids = Vec::new();
-        for user in [changed, kept, uncached] {
+        for user in [changed, kept, uncached, behind, unreadable] {
             ids.push(
                 seed(
                     &pool,
@@ -1158,6 +1208,12 @@ mod tests {
         view.nicks.insert(changed, Some("Mine".into()));
         view.nicks.insert(kept, Some("Goblin".into()));
         view.nicks.insert(UserId::new(13), None);
+        view.nicks.insert(behind, Some("Mine".into()));
+        view.nicks.insert(unreadable, Some("Mine".into()));
+        // What a fresh read from Discord says.
+        fake.set_member_nick(changed, Some("Mine"));
+        fake.set_member_nick(UserId::new(13), None);
+        fake.set_member_nick(behind, Some("Goblin"));
         reconcile(&data, &fake, &view, G, t0()).await;
         // Changed while away: overridden, nothing restored, lock too.
         for id in [ids[0], lock] {
@@ -1171,9 +1227,10 @@ mod tests {
             state_of(&pool, clown).await,
             ("ended".into(), Some("overridden".into()))
         );
-        // Still wearing the prank's name (or not cached): the expiry
-        // restores as usual.
-        for id in [ids[1], ids[2]] {
+        // Still wearing the prank's name, not cached, the cache behind
+        // Discord, or Discord unreadable: not judged changed, so the
+        // expiry restores as usual.
+        for id in [ids[1], ids[2], ids[3], ids[4]] {
             assert_eq!(
                 state_of(&pool, id).await,
                 ("ended".into(), Some("expired".into()))
@@ -1184,7 +1241,69 @@ mod tests {
             vec![
                 Call::Nick(kept, Some("Al".into()), ActionKind::Rename),
                 Call::Nick(uncached, Some("Al".into()), ActionKind::Rename),
+                Call::Nick(behind, Some("Al".into()), ActionKind::Rename),
+                Call::Nick(unreadable, Some("Al".into()), ActionKind::Rename),
             ]
+        );
+    });
+
+    #[test]
+    fn a_name_prank_inside_the_grace_is_not_judged() {
+        let now = t0();
+        let s = ChronoDuration::seconds;
+        // This process started long ago: the grace alone decides.
+        let long_ago = Some(now - s(3600));
+        assert!(!past_the_grace(now - s(10), long_ago, now), "10 s old");
+        assert!(
+            !past_the_grace(now - s(120), long_ago, now),
+            "exactly the grace"
+        );
+        assert!(past_the_grace(now - s(121), long_ago, now));
+        // No recorded start: the same.
+        assert!(!past_the_grace(now - s(10), None, now));
+        assert!(past_the_grace(now - s(600), None, now));
+        // Bought before this process started: a previous process's, judged
+        // whatever its age.
+        assert!(past_the_grace(now - s(10), Some(now - s(5)), now));
+        assert!(!past_the_grace(now - s(5), Some(now - s(10)), now));
+    }
+
+    db_test!(reconcile_leaves_a_fresh_name_prank_to_its_buyer, |pool| {
+        let db_now = crate::db::economy::db_now(&pool).await.unwrap();
+        let s = ChronoDuration::seconds;
+        // Started an hour ago; one rename bought 10 s ago, one 10 min ago.
+        let data = data_started(&pool, db_now - s(3600));
+        let fake = FakeEconomyDiscord::default();
+        let (fresh_user, old_user) = (U, UserId::new(11));
+        let mut view = FakeView::default();
+        let mut ids = Vec::new();
+        for (user, age) in [(fresh_user, 10), (old_user, 600)] {
+            ids.push(
+                seed(
+                    &pool,
+                    ActionKind::Rename,
+                    Some(user),
+                    &pending_rename(),
+                    "active",
+                    Some(db_now + ChronoDuration::hours(24)),
+                    db_now - s(age),
+                )
+                .await,
+            );
+            // A mid-run GuildCreate's snapshot, and Discord, both show
+            // another name.
+            view.nicks.insert(user, Some("Mine".into()));
+            fake.set_member_nick(user, Some("Mine"));
+        }
+        reconcile(&data, &fake, &view, G, Utc::now()).await;
+        assert_eq!(
+            state_of(&pool, ids[0]).await.0,
+            "active",
+            "inside the grace"
+        );
+        assert_eq!(
+            state_of(&pool, ids[1]).await,
+            ("ended".into(), Some("overridden".into()))
         );
     });
 

@@ -1,5 +1,6 @@
 //! The only door the shop uses to change a member: nickname, mute, deafen and
-//! move. Tests record exactly what would be sent. Messages go elsewhere.
+//! move; and the one fresh read of a member's nickname reconcile makes. Tests
+//! record exactly what would be sent. Messages go elsewhere.
 use super::settings::ActionKind;
 use serenity::all::{ChannelId, EditMember, GuildId, Http, UserId};
 use serenity::async_trait;
@@ -70,6 +71,9 @@ pub trait EconomyDiscord: Send + Sync {
         to: ChannelId,
         kind: ActionKind,
     ) -> Result<(), EconDiscordError>;
+    /// The member's nickname as Discord has it now, never the cache's copy
+    /// (`None`: no nickname).
+    async fn member_nick(&self, g: GuildId, u: UserId) -> Result<Option<String>, EconDiscordError>;
 }
 
 /// The real Discord behind [`EconomyDiscord`]. Untested here; the TuneTitan
@@ -136,6 +140,12 @@ impl EconomyDiscord for LiveEconomyDiscord {
         self.edit(g, u, EditMember::new().voice_channel(to), kind)
             .await
     }
+
+    async fn member_nick(&self, g: GuildId, u: UserId) -> Result<Option<String>, EconDiscordError> {
+        // `Http` holds no cache, so this asks Discord.
+        let member = g.member(&*self.http, u).await?;
+        Ok(member.nick.as_ref().map(ToString::to_string))
+    }
 }
 
 /// A recording stand-in for [`EconomyDiscord`]: tests assert on what would
@@ -177,6 +187,8 @@ pub mod fake {
     struct Inner {
         calls: Vec<Call>,
         failures: HashMap<CallKind, VecDeque<EconDiscordError>>,
+        /// What `member_nick` answers per member; unset fails.
+        nicks: HashMap<UserId, Option<String>>,
     }
 
     #[derive(Default)]
@@ -198,6 +210,16 @@ pub mod fake {
                 .entry(kind)
                 .or_default()
                 .push_back(e);
+        }
+
+        /// What Discord says `u`'s nickname is, for `member_nick`. A member
+        /// never set can't be fetched.
+        pub fn set_member_nick(&self, u: UserId, nick: Option<&str>) {
+            self.inner
+                .lock()
+                .unwrap()
+                .nicks
+                .insert(u, nick.map(str::to_owned));
         }
 
         fn record(&self, call: Call) -> Result<(), EconDiscordError> {
@@ -248,6 +270,19 @@ pub mod fake {
             kind: ActionKind,
         ) -> Result<(), EconDiscordError> {
             self.record(Call::Move(u, to, kind))
+        }
+        async fn member_nick(
+            &self,
+            _g: GuildId,
+            u: UserId,
+        ) -> Result<Option<String>, EconDiscordError> {
+            self.inner
+                .lock()
+                .unwrap()
+                .nicks
+                .get(&u)
+                .cloned()
+                .ok_or_else(|| EconDiscordError::Other("no such member".into()))
         }
     }
 }

@@ -531,31 +531,33 @@ pub async fn recent_actions(
     )
     .fetch_all(pool)
     .await?;
-    Ok(raw
-        .into_iter()
-        .filter_map(|r| {
-            let (end_reason, bought_at) = (r.end_reason, r.created_at);
-            RawAction {
-                id: r.id,
-                guild_id: r.guild_id,
-                kind: r.kind,
-                buyer_id: r.buyer_id,
-                target_id: r.target_id,
-                payload: r.payload,
-                state: r.state,
-                expires_at: r.expires_at,
-                note: r.note,
-                signed: r.signed,
-                revealed_at: r.revealed_at,
-            }
-            .into_row()
-            .map(|(_, row)| RecentAction {
-                row,
-                end_reason,
-                bought_at,
-            })
+    Ok(raw.into_iter().filter_map(RawRecent::into_recent).collect())
+}
+
+impl RawRecent {
+    /// As [`RawAction::into_row`], keeping why it ended and when it was bought.
+    fn into_recent(self) -> Option<RecentAction> {
+        let (end_reason, bought_at) = (self.end_reason, self.created_at);
+        RawAction {
+            id: self.id,
+            guild_id: self.guild_id,
+            kind: self.kind,
+            buyer_id: self.buyer_id,
+            target_id: self.target_id,
+            payload: self.payload,
+            state: self.state,
+            expires_at: self.expires_at,
+            note: self.note,
+            signed: self.signed,
+            revealed_at: self.revealed_at,
+        }
+        .into_row()
+        .map(|(_, row)| RecentAction {
+            row,
+            end_reason,
+            bought_at,
         })
-        .collect())
+    }
 }
 
 /// Stamp a prank as unmasked by `by`. False when it already was (nothing
@@ -813,18 +815,19 @@ pub async fn overdue_for_guild(
     Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
 }
 
-/// One server's `active` rows of these kinds, whatever their end.
+/// One server's `active` rows of these kinds, whatever their end, each with
+/// when it was bought (the database's clock).
 pub async fn active_for_guild(
     pool: &PgPool,
     guild: GuildId,
     kinds: &[ActionKind],
-) -> sqlx::Result<Vec<ActionRow>> {
+) -> sqlx::Result<Vec<(ActionRow, DateTime<Utc>)>> {
     let keys: Vec<String> = kinds.iter().map(|k| k.key().to_string()).collect();
     let raw = sqlx::query_as!(
-        RawAction,
+        RawRecent,
         r#"SELECT id, guild_id, kind, buyer_id, target_id,
                   payload AS "payload: Json<ActionPayload>",
-                  state, expires_at, note, signed, revealed_at
+                  state, expires_at, note, signed, revealed_at, end_reason, created_at
            FROM economy_actions
            WHERE guild_id = $1 AND state = 'active' AND kind = ANY($2)
            ORDER BY id"#,
@@ -833,7 +836,13 @@ pub async fn active_for_guild(
     )
     .fetch_all(pool)
     .await?;
-    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+    Ok(raw
+        .into_iter()
+        .filter_map(|r| {
+            let created_at = r.created_at;
+            r.into_recent().map(|a| (a.row, created_at))
+        })
+        .collect())
 }
 
 /// The `ending` rows (undone on the member's next voice join) aimed at one

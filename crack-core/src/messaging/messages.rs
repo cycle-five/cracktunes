@@ -949,7 +949,7 @@ pub const ECONOMY_NOTE_MENTION: &str = "The note can't mention anyone.";
 pub const ECONOMY_NOTE_LINK: &str = "The note can't contain a link.";
 pub const ECONOMY_NICK_EMPTY: &str = "The nickname can't be empty.";
 pub const ECONOMY_NICK_TOO_LONG: &str =
-    "That name is too long: 32 characters at most (an emoji counts as 2).";
+    "That name is too long: 32 characters at most (an emoji counts as 2 or more).";
 pub const ECONOMY_NICK_MENTION: &str = "The nickname can't mention anyone.";
 pub const ECONOMY_NICK_LINK: &str = "The nickname can't contain a link.";
 pub const ECONOMY_CLOWN_SUFFIX: &str = " 🤡";
@@ -1046,6 +1046,8 @@ pub const ECONOMY_STATUS_GAMBLING: &str = "Gambling";
 pub const ECONOMY_STATUS_MAX_BET: &str = "max bet";
 pub const ECONOMY_STATUS_RECENT: &str = "Recent shop actions";
 pub const ECONOMY_STATUS_RECENT_NONE: &str = "Nothing bought yet.";
+pub const ECONOMY_STATUS_RECENT_MORE_PREFIX: &str = "…and";
+pub const ECONOMY_STATUS_RECENT_MORE_SUFFIX: &str = "older not shown.";
 pub const ECONOMY_STATUS_UNTIL: &str = "until";
 pub const ECONOMY_ADMIN_BOT_TARGET: &str = "Bots don't take part in the economy.";
 pub const ECONOMY_ADMIN_HOURS_RANGE: &str = "Hours must be between 1 and 8760 (a year).";

@@ -1584,6 +1584,57 @@ mod tests {
         assert_eq!(fake.calls(), vec![], "nothing is done to anyone");
     }
 
+    db_test!(
+        a_running_shop_mute_says_until_when_and_charges_nothing,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 500).await;
+            let fake = FakeEconomyDiscord::default();
+            for (kind, flagged, theirs) in [
+                (
+                    ActionKind::Mute,
+                    TargetFacts {
+                        server_mute: true,
+                        ..clean()
+                    },
+                    Refusal::AlreadyMuted,
+                ),
+                (
+                    ActionKind::Deafen,
+                    TargetFacts {
+                        server_deaf: true,
+                        ..clean()
+                    },
+                    Refusal::AlreadyDeafened,
+                ),
+            ] {
+                let first = buy_it(&data, &fake, clean(), req(kind)).await.unwrap();
+                let until = first.until.unwrap();
+                let held = db::balance(&pool, G, U).await.unwrap();
+                let all_rows = "SELECT count(*) FROM economy_actions";
+                let before = count(&pool, all_rows).await;
+                // The shop's own mute: already running, until its end.
+                let shop_muted = TargetFacts {
+                    running_same_kind: Some(until),
+                    ..flagged.clone()
+                };
+                assert_eq!(
+                    buy_it(&data, &fake, shop_muted, req(kind)).await,
+                    Err(BuyError::Refused(Refusal::AlreadyRunning { until })),
+                    "{kind:?}"
+                );
+                // A moderator's, with no shop row: theirs.
+                assert_eq!(
+                    buy_it(&data, &fake, flagged, req(kind)).await,
+                    Err(BuyError::Refused(theirs)),
+                    "{kind:?}"
+                );
+                assert_eq!(db::balance(&pool, G, U).await.unwrap(), held, "{kind:?}");
+                assert_eq!(count(&pool, all_rows).await, before, "{kind:?}");
+            }
+            assert_eq!(fake.calls().len(), 2, "only the two first purchases");
+        }
+    );
+
     db_test!(a_moderators_mute_cannot_be_bought_off, |pool: PgPool| {
         a_moderators_flag_cannot_be_bought_off(pool, ActionKind::Mute)
     });
