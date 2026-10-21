@@ -279,14 +279,17 @@ pub fn still_on(
 
 /// After a join-play-leave and its grace: leave only if nobody started
 /// music meanwhile (the queue is empty), the bot is still where it joined,
-/// and no other theme is playing.
+/// no other theme is playing, and no `/gp` game runs (its submission window
+/// plays nothing for minutes, and leaving would end it, as `IdleHandler`
+/// knows).
 pub fn leave_after_theme(
     queue_empty: bool,
     here: Option<ChannelId>,
     joined: ChannelId,
     theme_playing: bool,
+    game_running: bool,
 ) -> bool {
-    queue_empty && here == Some(joined) && !theme_playing
+    queue_empty && here == Some(joined) && !theme_playing && !game_running
 }
 
 /// What a theme's track tells the task playing it.
@@ -780,7 +783,13 @@ async fn leave_if_idle(data: &Data, guild: GuildId, call: &Arc<Mutex<Call>>, joi
             call.current_channel().map(|c| ChannelId::new(c.get())),
         )
     };
-    if !leave_after_theme(empty, here, joined, turn.is_none()) {
+    if !leave_after_theme(
+        empty,
+        here,
+        joined,
+        turn.is_none(),
+        data.gp_is_active(guild),
+    ) {
         return;
     }
     if let Err(err) = crate::music::disconnect::disconnect(
@@ -1196,16 +1205,28 @@ mod tests {
 
     #[test]
     fn leave_after_theme_only_when_idle_and_where_it_joined() {
-        assert!(leave_after_theme(true, Some(VC), VC, false));
+        assert!(leave_after_theme(true, Some(VC), VC, false, false));
         assert!(
-            !leave_after_theme(false, Some(VC), VC, false),
+            !leave_after_theme(false, Some(VC), VC, false, false),
             "music started"
         );
-        assert!(!leave_after_theme(true, Some(OTHER_VC), VC, false), "moved");
-        assert!(!leave_after_theme(true, None, VC, false), "already gone");
         assert!(
-            !leave_after_theme(true, Some(VC), VC, true),
+            !leave_after_theme(true, Some(OTHER_VC), VC, false, false),
+            "moved"
+        );
+        assert!(
+            !leave_after_theme(true, None, VC, false, false),
+            "already gone"
+        );
+        assert!(
+            !leave_after_theme(true, Some(VC), VC, true, false),
             "another theme is playing"
+        );
+        // A /gp game started on the theme's call: its submission window
+        // queues nothing, and leaving would end the game.
+        assert!(
+            !leave_after_theme(true, Some(VC), VC, false, true),
+            "a game runs"
         );
     }
 
