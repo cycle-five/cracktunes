@@ -66,14 +66,23 @@ impl EventHandler for SerenityHandler {
                         let discord = crate::economy::discord::LiveEconomyDiscord {
                             http: ctx.http.clone(),
                         };
-                        crate::economy::effects::on_voice_join(
+                        let join = crate::economy::effects::on_voice_join(
                             &self.data,
                             &discord,
                             guild,
                             new.user_id,
                             chrono::Utc::now(),
-                        )
-                        .await;
+                        );
+                        // Bounded: rooms' handling waits behind this.
+                        if tokio::time::timeout(std::time::Duration::from_secs(5), join)
+                            .await
+                            .is_err()
+                        {
+                            tracing::warn!(
+                                "economy: undoing pranks for {} on joining voice timed out",
+                                new.user_id
+                            );
+                        }
                     }
                 }
                 // Then voice rooms: the handler below returns early for
@@ -540,18 +549,22 @@ impl SerenityHandler {
         // Pranks the last run left behind: pending purchases resolved, rows
         // that came due while the bot was down finished. After the settings
         // load, though it needs none: the sweeper runs with the economy off.
-        if let Some(cache) = ctx.cache() {
-            let discord = crate::economy::discord::LiveEconomyDiscord {
-                http: ctx.http.clone(),
-            };
-            crate::economy::effects::reconcile(
-                &self.data,
-                &discord,
-                cache.as_ref(),
-                guild.id,
-                chrono::Utc::now(),
-            )
-            .await;
+        if let Some(cache) = ctx.cache().cloned() {
+            let data = self.data.clone();
+            let http = ctx.http.clone();
+            let gid = guild.id;
+            // Off the handler: Discord calls here must not delay the work below.
+            tokio::spawn(async move {
+                let discord = crate::economy::discord::LiveEconomyDiscord { http };
+                crate::economy::effects::reconcile(
+                    &data,
+                    &discord,
+                    cache.as_ref(),
+                    gid,
+                    chrono::Utc::now(),
+                )
+                .await;
+            });
         }
 
         // The mod log's settings, likewise (off without a database); a server

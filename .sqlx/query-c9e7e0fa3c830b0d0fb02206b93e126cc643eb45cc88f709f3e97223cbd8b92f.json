@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, kind, buyer_id, target_id, payload AS \"payload: Json<ActionPayload>\",\n                  state, expires_at, note, signed, revealed_at\n           FROM economy_actions\n           WHERE guild_id = $1 AND target_id = $2 AND kind = ANY($3)\n             AND state IN ('active', 'ending')\n           ORDER BY id",
+  "query": "SELECT id, guild_id, kind, buyer_id, target_id,\n                  payload AS \"payload: Json<ActionPayload>\",\n                  state, expires_at, note, signed, revealed_at\n           FROM economy_actions\n           WHERE guild_id = $1 AND state = 'ending' AND kind = ANY($2)\n           ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -10,46 +10,51 @@
       },
       {
         "ordinal": 1,
+        "name": "guild_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
         "name": "kind",
         "type_info": "Text"
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "buyer_id",
         "type_info": "Int8"
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "target_id",
         "type_info": "Int8"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "payload: Json<ActionPayload>",
         "type_info": "Jsonb"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "state",
         "type_info": "Text"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "expires_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "note",
         "type_info": "Text"
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "signed",
         "type_info": "Bool"
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "revealed_at",
         "type_info": "Timestamptz"
       }
@@ -57,11 +62,11 @@
     "parameters": {
       "Left": [
         "Int8",
-        "Int8",
         "TextArray"
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       false,
@@ -74,5 +79,5 @@
       true
     ]
   },
-  "hash": "19ca99a39390256234dd0861afbc74b53ee19f71f4fa35577ff8eb591dcf3473"
+  "hash": "c9e7e0fa3c830b0d0fb02206b93e126cc643eb45cc88f709f3e97223cbd8b92f"
 }

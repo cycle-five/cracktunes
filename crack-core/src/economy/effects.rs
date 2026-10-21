@@ -95,14 +95,15 @@ pub async fn finish(
     let Some(pool) = data.database_pool.as_ref() else {
         return;
     };
-    match economy::action_state(pool, row.id).await {
-        Ok(Some(ActionState::Active | ActionState::Ending)) => {},
+    // Fresh, not the caller's copy: the row may have been ended since.
+    let live = match economy::action_state(pool, row.id).await {
+        Ok(Some(live @ (ActionState::Active | ActionState::Ending))) => live,
         Ok(_) => return,
         Err(err) => {
             tracing::warn!("economy: reading action {} failed: {err}", row.id);
             return;
         },
-    }
+    };
     let plan = undo_plan(row, now);
     let outcome = match (&plan, row.target) {
         (UndoPlan::Nothing, _) => Ok(()),
@@ -117,9 +118,12 @@ pub async fn finish(
         Err(EconDiscordError::NotConnected) => (ActionState::Ending, reason),
         Err(EconDiscordError::UnknownMember) => (ActionState::Ended, "left"),
         Err(err) => {
-            if row
-                .expires_at
-                .is_some_and(|due| now.signed_duration_since(due) > UNDO_GIVE_UP)
+            // Only a row that is running gives up: an `ending` one waits for
+            // the member and is retried at every join and reconcile.
+            if live == ActionState::Active
+                && row
+                    .expires_at
+                    .is_some_and(|due| now.signed_duration_since(due) > UNDO_GIVE_UP)
             {
                 tracing::error!(
                     "economy: giving up undoing action {} ({:?}) in {guild}: {err:?}",
@@ -269,7 +273,11 @@ async fn resolve_pending(
         return;
     };
     let verdict = landed(view, guild, row);
-    if verdict == Some(true) {
+    // A server mute or deafen outlives a disconnect, so a member who is not in
+    // voice now may well be muted. Refunding would leave nothing owning it;
+    // keep the row and let the expiry (or their next join) undo it.
+    let owned = verdict.is_none() && matches!(row.kind, ActionKind::Mute | ActionKind::Deafen);
+    if verdict == Some(true) || owned {
         if let Err(err) = economy::activate_action(pool, row.id, row.kind, row.expires_at).await {
             tracing::warn!("economy: activating action {} failed: {err}", row.id);
         }
@@ -278,7 +286,9 @@ async fn resolve_pending(
     // Known gap: a row left pending because `finish_blocked` failed (a
     // blocked mirror bounce) looks not-landed here and is refunded.
     match economy::refund_action(pool, row.id).await {
-        Ok(_) => {},
+        Ok(Some(_)) => {},
+        // Someone else already resolved the row: its effect is theirs.
+        Ok(None) => return,
         Err(err) => {
             tracing::warn!("economy: refunding action {} failed: {err}", row.id);
             return;
@@ -364,7 +374,15 @@ where
             Ok(()) => log(&format!(
                 "economy: task {name} ended; it should run forever"
             )),
-            Err(err) if err.is_panic() => log(&format!("economy: task {name} panicked")),
+            Err(err) if err.is_panic() => {
+                let payload = err.into_panic();
+                let why = payload
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+                    .or_else(|| payload.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "no message".to_string());
+                log(&format!("economy: task {name} panicked: {why}"));
+            },
             Err(_) => log(&format!("economy: task {name} was cancelled")),
         }
     });
@@ -511,7 +529,7 @@ mod tests {
         got.sort();
         assert_eq!(got.len(), 2, "{got:?}");
         assert!(
-            got[0].contains("boom") && got[0].contains("panicked"),
+            got[0].contains("boom") && got[0].contains("panicked: on purpose"),
             "{got:?}"
         );
         assert!(
@@ -1128,25 +1146,229 @@ mod tests {
                 t0() - mins(10),
             )
             .await;
-            let mute = seed(
-                &pool,
-                ActionKind::Mute,
-                Some(U),
-                &ActionPayload::Mute,
-                "pending",
-                Some(t0() + mins(5)),
-                t0() - mins(10),
-            )
-            .await;
-            fake.fail_next(CallKind::Mute, EconDiscordError::NotConnected);
             reconcile(&data, &fake, &FakeView::default(), G, t0()).await;
             assert_eq!(state_of(&pool, id).await.0, "failed");
-            assert_eq!(state_of(&pool, mute).await.0, "failed");
-            assert_eq!(balance(&pool).await, 200);
-            let calls = fake.calls();
-            assert!(calls.contains(&Call::Nick(U, Some("Al".into()), ActionKind::Rename)));
-            assert!(calls.contains(&Call::Mute(U, false, ActionKind::Mute)));
-            assert_eq!(calls.len(), 2);
+            assert_eq!(balance(&pool).await, 100);
+            assert_eq!(
+                fake.calls(),
+                vec![Call::Nick(U, Some("Al".into()), ActionKind::Rename)]
+            );
         }
     );
+
+    db_test!(an_unjudgeable_pending_mute_stays_owned, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        let mute = seed(
+            &pool,
+            ActionKind::Mute,
+            Some(U),
+            &ActionPayload::Mute,
+            "pending",
+            Some(t0() + mins(5)),
+            t0() - mins(10),
+        )
+        .await;
+        let deaf = seed(
+            &pool,
+            ActionKind::Deafen,
+            Some(UserId::new(11)),
+            &ActionPayload::Deafen,
+            "pending",
+            Some(t0() + mins(5)),
+            t0() - mins(10),
+        )
+        .await;
+        // Neither member is in voice (so the cache cannot say).
+        reconcile(&data, &fake, &FakeView::default(), G, t0()).await;
+        assert_eq!(state_of(&pool, mute).await.0, "active");
+        assert_eq!(state_of(&pool, deaf).await.0, "active");
+        assert_eq!(balance(&pool).await, 0, "nothing refunded");
+        assert!(fake.calls().is_empty());
+        // The expiry then undoes it, or waits for the member's next join.
+        fake.fail_next(CallKind::Mute, EconDiscordError::NotConnected);
+        sweep(&data, &fake, t0() + mins(6)).await;
+        assert_eq!(state_of(&pool, mute).await.0, "ending");
+        assert_eq!(state_of(&pool, deaf).await.0, "ended");
+    });
+
+    db_test!(a_refund_that_did_nothing_undoes_nothing, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        // Another actor already activated the row; our copy is stale.
+        let id = seed(
+            &pool,
+            ActionKind::Rename,
+            Some(U),
+            &pending_rename(),
+            "active",
+            Some(t0() + mins(30)),
+            t0() - mins(10),
+        )
+        .await;
+        let stale = ActionRow {
+            id,
+            state: ActionState::Pending,
+            ..row(ActionKind::Rename, pending_rename())
+        };
+        resolve_pending(&data, &fake, &FakeView::default(), G, &stale, t0()).await;
+        assert!(
+            fake.calls().is_empty(),
+            "no undo after a refund that did nothing"
+        );
+        assert_eq!(state_of(&pool, id).await.0, "active");
+        assert_eq!(balance(&pool).await, 0);
+    });
+
+    db_test!(a_pending_cleanse_or_reveal_is_refunded, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        let cleanse = seed(
+            &pool,
+            ActionKind::Cleanse,
+            Some(U),
+            &ActionPayload::Cleanse,
+            "pending",
+            None,
+            t0() - mins(10),
+        )
+        .await;
+        let reveal = seed(
+            &pool,
+            ActionKind::Reveal,
+            Some(U),
+            &ActionPayload::Reveal { action_id: 7 },
+            "pending",
+            None,
+            t0() - mins(10),
+        )
+        .await;
+        let mut view = FakeView::default();
+        view.voice.insert(U, facts(5, true, true));
+        reconcile(&data, &fake, &view, G, t0()).await;
+        assert_eq!(state_of(&pool, cleanse).await.0, "failed");
+        assert_eq!(state_of(&pool, reveal).await.0, "failed");
+        assert_eq!(balance(&pool).await, 200);
+        assert!(fake.calls().is_empty());
+    });
+
+    db_test!(an_ending_row_whose_undo_fails_stays_ending, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        // Due two hours ago, set aside as ending.
+        let id = seed(
+            &pool,
+            ActionKind::Mute,
+            Some(U),
+            &ActionPayload::Mute,
+            "ending",
+            Some(t0() - mins(120)),
+            t0() - mins(200),
+        )
+        .await;
+        for err in [
+            EconDiscordError::MissingPermissions,
+            EconDiscordError::Other("boom".into()),
+        ] {
+            fake.fail_next(CallKind::Mute, err);
+            on_voice_join(&data, &fake, G, U, t0()).await;
+            assert_eq!(state_of(&pool, id).await.0, "ending");
+        }
+        on_voice_join(&data, &fake, G, U, t0()).await;
+        assert_eq!(state_of(&pool, id).await.0, "ended");
+        assert_eq!(fake.calls().len(), 3);
+    });
+
+    db_test!(
+        an_offline_cleanse_keeps_its_reason_after_the_rejoin,
+        |pool| {
+            let data = data_with(&pool);
+            let fake = FakeEconomyDiscord::default();
+            let other = UserId::new(11);
+            let mut ids = Vec::new();
+            for user in [U, other] {
+                let id = seed(
+                    &pool,
+                    ActionKind::Mute,
+                    Some(user),
+                    &ActionPayload::Mute,
+                    "active",
+                    Some(t0() + mins(30)),
+                    t0() - mins(10),
+                )
+                .await;
+                fake.fail_next(CallKind::Mute, EconDiscordError::NotConnected);
+                let r = ActionRow {
+                    id,
+                    target: Some(user),
+                    ..row(ActionKind::Mute, ActionPayload::Mute)
+                };
+                finish(&data, &fake, G, &r, "cleansed", t0()).await;
+                assert_eq!(
+                    state_of(&pool, id).await,
+                    ("ending".into(), Some("cleansed".into()))
+                );
+                ids.push(id);
+            }
+            // A failed retry while still ending keeps the reason too.
+            fake.fail_next(CallKind::Mute, EconDiscordError::NotConnected);
+            on_voice_join(&data, &fake, G, U, t0() + mins(1)).await;
+            assert_eq!(state_of(&pool, ids[0]).await.1.as_deref(), Some("cleansed"));
+            on_voice_join(&data, &fake, G, U, t0() + mins(2)).await;
+            assert_eq!(
+                state_of(&pool, ids[0]).await,
+                ("ended".into(), Some("cleansed".into()))
+            );
+            // A member who left the server is "left", whatever it was set aside for.
+            fake.fail_next(CallKind::Mute, EconDiscordError::UnknownMember);
+            on_voice_join(&data, &fake, G, other, t0() + mins(3)).await;
+            assert_eq!(
+                state_of(&pool, ids[1]).await,
+                ("ended".into(), Some("left".into()))
+            );
+        }
+    );
+
+    db_test!(an_unknown_kind_does_not_stop_the_known_rows, |pool| {
+        // Rows from a newer build (an image-only rollback leaves them).
+        for state in ["active", "ending", "pending"] {
+            sqlx::query(
+                "INSERT INTO economy_actions
+                     (guild_id, kind, buyer_id, target_id, price, payload, state, expires_at, created_at)
+                 VALUES (1, 'teleport', 20, 10, 100, '{\"kind\":\"teleport\",\"x\":1}'::jsonb, $1, $2, $3)",
+            )
+            .bind(state)
+            .bind(t0() - mins(1))
+            .bind(t0() - mins(30))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let due = rename_row(&pool, "active", t0() - mins(1)).await;
+        let ending = rename_row(&pool, "ending", t0() - mins(1)).await;
+        let pending = rename_row(&pool, "pending", t0() - mins(1)).await;
+        let ids = |rows: Vec<ActionRow>| rows.into_iter().map(|r| r.id).collect::<Vec<_>>();
+        use crate::db::economy as db;
+        let got = db::due_actions(&pool, t0(), 10).await.unwrap();
+        assert_eq!(
+            got.into_iter().map(|(_, r)| r.id).collect::<Vec<_>>(),
+            vec![due]
+        );
+        assert_eq!(
+            ids(db::overdue_for_guild(&pool, G, t0()).await.unwrap()),
+            vec![due]
+        );
+        assert_eq!(
+            ids(db::ending_for(&pool, G, U).await.unwrap()),
+            vec![ending]
+        );
+        assert_eq!(
+            ids(db::ending_for_guild(&pool, G).await.unwrap()),
+            vec![ending]
+        );
+        assert_eq!(
+            ids(db::pending_for_guild(&pool, G, t0()).await.unwrap()),
+            vec![pending]
+        );
+    });
 }

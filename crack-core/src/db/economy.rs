@@ -324,7 +324,7 @@ pub struct ActionRow {
 }
 
 /// The running (`active` or `ending`) actions of these kinds aimed at
-/// `target`, oldest first. A row this build cannot read is skipped.
+/// `target`, oldest first.
 pub async fn active_of_kind(
     pool: &PgPool,
     guild: GuildId,
@@ -332,8 +332,10 @@ pub async fn active_of_kind(
     kinds: &[ActionKind],
 ) -> sqlx::Result<Vec<ActionRow>> {
     let keys: Vec<String> = kinds.iter().map(|k| k.key().to_string()).collect();
-    let rows = sqlx::query!(
-        r#"SELECT id, kind, buyer_id, target_id, payload AS "payload: Json<ActionPayload>",
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
                   state, expires_at, note, signed, revealed_at
            FROM economy_actions
            WHERE guild_id = $1 AND target_id = $2 AND kind = ANY($3)
@@ -345,23 +347,7 @@ pub async fn active_of_kind(
     )
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .into_iter()
-        .filter_map(|r| {
-            Some(ActionRow {
-                id: r.id,
-                kind: ActionKind::from_key(&r.kind)?,
-                buyer: uid(r.buyer_id)?,
-                target: r.target_id.and_then(uid),
-                payload: r.payload.0,
-                state: ActionState::parse(&r.state)?,
-                expires_at: r.expires_at,
-                note: r.note,
-                signed: r.signed,
-                revealed_at: r.revealed_at,
-            })
-        })
-        .collect())
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
 }
 
 /// Move a `pending` action to what it becomes once the effect has landed:
@@ -486,7 +472,10 @@ struct RawAction {
 }
 
 impl RawAction {
-    /// A row this build cannot read (unknown kind, bad id) is skipped.
+    /// A row with a bad id or an unreadable state is skipped. An unknown
+    /// kind never gets here: the queries select only [`known_kinds`], because
+    /// a payload this build cannot decode would fail the whole fetch (an
+    /// image-only rollback below a version that added kinds).
     fn into_row(self) -> Option<(GuildId, ActionRow)> {
         let guild = u64::try_from(self.guild_id)
             .ok()
@@ -510,6 +499,14 @@ impl RawAction {
     }
 }
 
+/// Every kind this build knows, as stored.
+fn known_kinds() -> Vec<String> {
+    ActionKind::ALL
+        .iter()
+        .map(|k| k.key().to_string())
+        .collect()
+}
+
 fn rows_of(raw: Vec<RawAction>) -> Vec<(GuildId, ActionRow)> {
     raw.into_iter().filter_map(RawAction::into_row).collect()
 }
@@ -528,10 +525,12 @@ pub async fn due_actions(
                   state, expires_at, note, signed, revealed_at
            FROM economy_actions
            WHERE state = 'active' AND expires_at IS NOT NULL AND expires_at <= $1
+             AND kind = ANY($3)
            ORDER BY expires_at, id
            LIMIT $2"#,
         now,
-        limit
+        limit,
+        &known_kinds()
     )
     .fetch_all(pool)
     .await?;
@@ -552,9 +551,11 @@ pub async fn overdue_for_guild(
            FROM economy_actions
            WHERE guild_id = $1 AND state = 'active'
              AND expires_at IS NOT NULL AND expires_at <= $2
+             AND kind = ANY($3)
            ORDER BY expires_at, id"#,
         guild.get() as i64,
-        now
+        now,
+        &known_kinds()
     )
     .fetch_all(pool)
     .await?;
@@ -575,9 +576,11 @@ pub async fn ending_for(
                   state, expires_at, note, signed, revealed_at
            FROM economy_actions
            WHERE guild_id = $1 AND target_id = $2 AND state = 'ending'
+             AND kind = ANY($3)
            ORDER BY id"#,
         guild.get() as i64,
-        user.get() as i64
+        user.get() as i64,
+        &known_kinds()
     )
     .fetch_all(pool)
     .await?;
@@ -592,9 +595,10 @@ pub async fn ending_for_guild(pool: &PgPool, guild: GuildId) -> sqlx::Result<Vec
                   payload AS "payload: Json<ActionPayload>",
                   state, expires_at, note, signed, revealed_at
            FROM economy_actions
-           WHERE guild_id = $1 AND state = 'ending'
+           WHERE guild_id = $1 AND state = 'ending' AND kind = ANY($2)
            ORDER BY id"#,
-        guild.get() as i64
+        guild.get() as i64,
+        &known_kinds()
     )
     .fetch_all(pool)
     .await?;
@@ -615,9 +619,11 @@ pub async fn pending_for_guild(
                   state, expires_at, note, signed, revealed_at
            FROM economy_actions
            WHERE guild_id = $1 AND state = 'pending' AND created_at < $2
+             AND kind = ANY($3)
            ORDER BY id"#,
         guild.get() as i64,
-        cutoff
+        cutoff,
+        &known_kinds()
     )
     .fetch_all(pool)
     .await?;
@@ -625,7 +631,10 @@ pub async fn pending_for_guild(
 }
 
 /// Move a running (`active` or `ending`) row to `Ended` (final, stamped) or
-/// `Ending` (waits for the member's next voice join), with the reason. False
+/// `Ending` (waits for the member's next voice join), with the reason. An
+/// `ending` row that ends keeps the reason it was set aside with (a cleanse
+/// stays "cleansed" after the rejoin), except that a member who left the
+/// server is "left". False
 /// when the row was not running, or `state` is neither of those: nothing
 /// changed.
 pub async fn end_action(
@@ -639,7 +648,9 @@ pub async fn end_action(
     }
     let done = sqlx::query!(
         "UPDATE economy_actions
-         SET state = $2, end_reason = $3,
+         SET state = $2,
+             end_reason = CASE WHEN state = 'ending' AND $2 IN ('ended', 'ending') AND $3 <> 'left'
+                               THEN COALESCE(end_reason, $3) ELSE $3 END,
              ended_at = CASE WHEN $4 THEN now() ELSE ended_at END
          WHERE id = $1 AND state IN ('active', 'ending')",
         action_id,

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_actions\n         SET state = $2,\n             end_reason = CASE WHEN state = 'ending' AND $2 IN ('ended', 'ending') AND $3 <> 'left'\n                               THEN COALESCE(end_reason, $3) ELSE $3 END,\n             ended_at = CASE WHEN $4 THEN now() ELSE ended_at END\n         WHERE id = $1 AND state IN ('active', 'ending')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "291f016170c78807732bf34063f5f8f5d58e14b354bef7ac24d0f416b858d9c0"
+}
