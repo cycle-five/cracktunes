@@ -768,7 +768,10 @@ mod tests {
                  Rename: 120 🪙 credits\nLock nickname: 60 🪙 credits\nClown: 30 🪙 credits\n\
                  Drag: 60 🪙 credits\nMute: 90 🪙 credits\nDeafen: 90 🪙 credits\n\
                  Jail: not sold here (Choose a jail channel first.)\nMirror: 150 🪙 credits\n\
-                 Cleanse: 80 🪙 credits\nReveal: 100 🪙 credits\n{DOCS}"
+                 Cleanse: 80 🪙 credits\nReveal: 100 🪙 credits\n\
+                 Walk-on theme: 100 🪙 credits\nDedication: 40 🪙 credits\n\
+                 Queue jump: 40 🪙 credits\nBounty: 50 🪙 credits\n\
+                 Crowdfund: 10 🪙 credits\n{DOCS}"
             )
         );
         s.config.jail_channel_id = Some(serenity::all::ChannelId::new(9));

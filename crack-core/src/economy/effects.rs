@@ -57,7 +57,11 @@ pub fn undo_plan(row: &ActionRow) -> UndoPlan {
         | ActionPayload::Mirror
         | ActionPayload::Immunity { .. }
         | ActionPayload::Cleanse
-        | ActionPayload::Reveal { .. } => UndoPlan::Nothing,
+        | ActionPayload::Reveal { .. }
+        | ActionPayload::Theme { .. }
+        | ActionPayload::Dedicate { .. }
+        | ActionPayload::Jump { .. }
+        | ActionPayload::Bounty => UndoPlan::Nothing,
     }
 }
 
@@ -353,7 +357,13 @@ fn landed(view: &dyn MemberView, guild: GuildId, row: &ActionRow) -> Option<bool
     match &row.payload {
         // The purchase is the grant, written after the charge: a row still
         // pending after a restart never got it. These aim at no one.
-        ActionPayload::Immunity { .. } | ActionPayload::Cleanse | ActionPayload::Reveal { .. } => {
+        ActionPayload::Immunity { .. }
+        | ActionPayload::Cleanse
+        | ActionPayload::Reveal { .. }
+        | ActionPayload::Theme { .. }
+        | ActionPayload::Dedicate { .. }
+        | ActionPayload::Jump { .. }
+        | ActionPayload::Bounty => {
             return Some(false);
         },
         // Neither changes anything on Discord at purchase.
@@ -380,6 +390,10 @@ fn landed(view: &dyn MemberView, guild: GuildId, row: &ActionRow) -> Option<bool
         ActionPayload::Immunity { .. }
         | ActionPayload::Cleanse
         | ActionPayload::Reveal { .. }
+        | ActionPayload::Theme { .. }
+        | ActionPayload::Dedicate { .. }
+        | ActionPayload::Jump { .. }
+        | ActionPayload::Bounty
         | ActionPayload::Lock { .. }
         | ActionPayload::Mirror => None,
     }

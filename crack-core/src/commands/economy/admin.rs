@@ -109,7 +109,7 @@ pub fn recent_line(a: &RecentAction) -> String {
     }
     line.push_str(&format!(" · {}", r.state.as_str()));
     match r.state {
-        ActionState::Pending | ActionState::Active | ActionState::Ending => {
+        ActionState::Pending | ActionState::Funding | ActionState::Active | ActionState::Ending => {
             if let Some(until) = r.expires_at {
                 line.push_str(&format!(
                     " · {ECONOMY_STATUS_UNTIL} <t:{}:R>",

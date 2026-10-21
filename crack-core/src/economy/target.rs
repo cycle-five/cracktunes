@@ -57,12 +57,13 @@ pub enum TargetOutcome {
 }
 
 /// Check a target, refusing for the first reason that applies, in order:
-/// bot, self, out of reach (the owner; then can't tell when a role position
+/// bot, self (pranks and the aimed kinds: theme, dedication, bounty), out of
+/// reach (pranks only: the owner; then can't tell when a role position
 /// is unknown; then the hierarchy), voice needs (a drag also refuses a
 /// target already in the buyer's channel), already server-muted or -deafened
 /// (a moderator's mute is never taken over, so never undone), opted out, then
-/// a mirror (which returns [`TargetOutcome::Mirrored`] before immunity is
-/// read), immunity, the same prank already running, and the never-widen
+/// a mirror (pranks only; it returns [`TargetOutcome::Mirrored`] before
+/// immunity is read), immunity, the same prank already running, and the never-widen
 /// destination check (drag only: jail is exempt, spec ruling Q4).
 pub fn check_target(
     kind: ActionKind,
@@ -72,10 +73,10 @@ pub fn check_target(
     if t.is_bot {
         return Err(Refusal::TargetIsBot);
     }
+    if t.is_self && (kind.is_prank() || kind.is_aimed()) {
+        return Err(Refusal::TargetIsSelf);
+    }
     if kind.is_prank() {
-        if t.is_self {
-            return Err(Refusal::TargetIsSelf);
-        }
         if t.is_owner {
             return Err(Refusal::OutOfReach);
         }
@@ -117,7 +118,9 @@ pub fn check_target(
     if t.opted_out {
         return Err(Refusal::TargetOptedOut);
     }
-    if t.has_mirror {
+    // A mirror answers pranks only: a theme, dedication or bounty neither
+    // bounces nor uses it up.
+    if kind.is_prank() && t.has_mirror {
         return Ok(TargetOutcome::Mirrored);
     }
     if let Some(p) = t.protection {
@@ -470,6 +473,94 @@ mod tests {
             assert_eq!(
                 check_target(kind, &f, None),
                 Err(Refusal::TargetOptedOut),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn check_target_aimed_kinds() {
+        for kind in [ActionKind::Theme, ActionKind::Dedicate, ActionKind::Bounty] {
+            // Yourself is refused, as for a prank.
+            let me = TargetFacts {
+                is_self: true,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &me, None),
+                Err(Refusal::TargetIsSelf),
+                "{kind:?}"
+            );
+            // No mirror: it lands, and the fact is not read.
+            let mirrored = TargetFacts {
+                has_mirror: true,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &mirrored, None),
+                Ok(TargetOutcome::Lands),
+                "{kind:?}"
+            );
+            // No reach check: above the bot, the owner, unknown positions.
+            let above = TargetFacts {
+                top_role_position: Some(9),
+                bot_top_role_position: Some(5),
+                is_owner: true,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &above, None),
+                Ok(TargetOutcome::Lands),
+                "{kind:?}"
+            );
+            let unknown = TargetFacts {
+                top_role_position: None,
+                bot_top_role_position: None,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &unknown, None),
+                Ok(TargetOutcome::Lands),
+                "{kind:?}"
+            );
+            // No voice needs.
+            let away = TargetFacts {
+                in_voice: None,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &away, None),
+                Ok(TargetOutcome::Lands),
+                "{kind:?}"
+            );
+            // Immune and opted out are refused, even behind a mirror.
+            let immune = TargetFacts {
+                protection: Some(Protection::Indefinitely),
+                has_mirror: true,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &immune, None),
+                Err(Refusal::TargetImmune(Protection::Indefinitely)),
+                "{kind:?}"
+            );
+            let out = TargetFacts {
+                opted_out: true,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &out, None),
+                Err(Refusal::TargetOptedOut),
+                "{kind:?}"
+            );
+            // A second one of the same kind waits its turn.
+            let busy = TargetFacts {
+                running_same_kind: Some(t0()),
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &busy, None),
+                Err(Refusal::AlreadyRunning { until: t0() }),
                 "{kind:?}"
             );
         }

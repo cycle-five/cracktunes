@@ -542,7 +542,7 @@ mod tests {
             .map(|k| (k.key(), k.default_price().price, true))
             .collect();
         assert_eq!(got, want);
-        assert_eq!(got.len(), 11);
+        assert_eq!(got.len(), 16);
         assert_eq!(got[0], ("immunity", 200, true));
         assert_eq!(got[1], ("rename", 120, true));
         assert_eq!(v.prices[1].label, "Rename");

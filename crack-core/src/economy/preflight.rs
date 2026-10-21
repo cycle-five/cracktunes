@@ -40,9 +40,15 @@ pub fn needs(kind: ActionKind) -> Permissions {
         ActionKind::Drag | ActionKind::Jail => Permissions::MOVE_MEMBERS,
         ActionKind::Mute => Permissions::MUTE_MEMBERS,
         ActionKind::Deafen => Permissions::DEAFEN_MEMBERS,
-        ActionKind::Immunity | ActionKind::Mirror | ActionKind::Cleanse | ActionKind::Reveal => {
-            Permissions::empty()
-        },
+        ActionKind::Immunity
+        | ActionKind::Mirror
+        | ActionKind::Cleanse
+        | ActionKind::Reveal
+        | ActionKind::Theme
+        | ActionKind::Dedicate
+        | ActionKind::Jump
+        | ActionKind::Bounty
+        | ActionKind::Crowdfund => Permissions::empty(),
     }
 }
 

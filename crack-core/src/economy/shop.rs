@@ -342,9 +342,15 @@ fn payload_for(
             jail: cfg.jail_channel_id.ok_or(BuyError::Invalid)?,
         },
         ActionKind::Mirror => ActionPayload::Mirror,
-        ActionKind::Immunity | ActionKind::Cleanse | ActionKind::Reveal => {
-            return Err(BuyError::Invalid)
-        },
+        // Not sold through `buy`.
+        ActionKind::Immunity
+        | ActionKind::Cleanse
+        | ActionKind::Reveal
+        | ActionKind::Theme
+        | ActionKind::Dedicate
+        | ActionKind::Jump
+        | ActionKind::Bounty
+        | ActionKind::Crowdfund => return Err(BuyError::Invalid),
     })
 }
 
@@ -367,7 +373,11 @@ async fn act(
         | ActionPayload::Mirror
         | ActionPayload::Immunity { .. }
         | ActionPayload::Cleanse
-        | ActionPayload::Reveal { .. } => Ok(()),
+        | ActionPayload::Reveal { .. }
+        | ActionPayload::Theme { .. }
+        | ActionPayload::Dedicate { .. }
+        | ActionPayload::Jump { .. }
+        | ActionPayload::Bounty => Ok(()),
     }
 }
 
