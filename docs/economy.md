@@ -71,6 +71,23 @@ by paying, restrict `/playnext` for members in Server Settings → Integrations
 Turning the economy off keeps every balance. Turning it back on picks up where
 it left off.
 
+### Rolling back a release
+
+The database changes are additive, so an older CrackTunes runs on them. Rolling
+back below v0.34.0 needs one check first. A crowdfund that has **filled**
+(state `pending`, with pledges not yet refunded) is the one thing v0.33.0
+mishandles: it would refund the whole price to the starter and leave every
+other pledge stranded. This must return nothing before you roll back:
+
+```sql
+SELECT a.id FROM economy_actions a WHERE a.state = 'pending' AND EXISTS (SELECT 1 FROM economy_pledges p WHERE p.action_id = a.id AND p.refunded_at IS NULL)
+```
+
+The rest only freezes on v0.33.0: an open (`funding`) crowdfund, a waiting
+walk-on theme and a standing bounty neither play, fill, expire nor refund until
+you roll forward again, which settles them (whatever ran out meanwhile is
+refunded then).
+
 ## How members earn credits
 
 **In voice**, a member is paid every minute, as long as all of these hold:
@@ -107,9 +124,9 @@ All of these are slash commands, and work only in a server where the economy is 
 | `/shop immunity` | Buys immunity. A public card says who is immune until when, and you privately see what you have left. Refused if you already hold a moderator grant that lasts until lifted. |
 | `/shop rename\|lock\|clown\|drag\|mute\|deafen\|jail <member>` | Buys a [prank](#the-prank-shop) against another member. `rename` also takes the new nickname. Each takes an optional `note` and `signed`. |
 | `/shop mirror`, `/shop cleanse`, `/shop reveal` | The [defences and the unmasking](#mirror-cleanse-and-reveal). |
-| `/shop theme <member> <link> [start] [note] [signed]`, `/shop dedicate <member> <song> [note] [signed]`, `/shop jump <song> [note] [signed]` | The [music items](#music). |
+| `/shop theme <member> <link> [start] [note] [signed]`, `/shop dedicate <member> <song> [note]`, `/shop jump <song> [note]` | The [music items](#music). |
 | `/bounty place <member> <amount> [note] [signed]`, `/bounty list` | [Bounties](#bounties). |
-| `/crowdfund start`, `/crowdfund pledge`, `/crowdfund list` | [Crowdfunds](#crowdfunds). |
+| `/crowdfund start <action> <member> <pledge> [name] [note] [signed]`, `/crowdfund pledge`, `/crowdfund list` | [Crowdfunds](#crowdfunds). |
 | `/coinflip <bet> <heads\|tails>` | Bets on a coin toss, if the server allows it. |
 
 A balance is never negative. You can't gift to yourself or to a bot, and you
@@ -141,9 +158,9 @@ If you have [the mod log](rooms-and-mod-log.md#mod-log) turned on, `grant`,
 `lift`, `cancel` and `adjust` are posted to it, with who did it and to whom (and
 why, for `grant` and `adjust`). So is every prank that changes a member, which
 always names the buyer, signed or not (see [The prank shop](#the-prank-shop)),
-and so is every walk-on theme, dedication and bounty, and every crowdfunded
-prank that runs, which names all its contributors (see [Music](#music) and
-[Group play](#group-play)).
+and so is every walk-on theme, dedication and bounty, every crowdfund that
+starts, which names its starter, and every crowdfunded prank that runs, which
+names all its contributors (see [Music](#music) and [Group play](#group-play)).
 
 ## Immunity
 
@@ -272,10 +289,14 @@ the command was run if none is set.
 - **`/shop cleanse`** (80) ends every prank running on you now, each undone as
   if it had expired. A standing mirror is kept. If nothing is running on you
   (a mute already waiting for you to rejoin voice doesn't count) it says so and
-  doesn't charge.
-- **`/shop reveal`** (100) names the buyer of a prank, walk-on theme, dedication
-  or bounty aimed at you that was bought unsigned, and the starter of a
-  crowdfunded prank, publicly, in the channel where you ran it. By default it is
+  doesn't charge. A walk-on theme waiting for you is ended along with running
+  pranks (its buyer is refunded, and the reply's count includes it), but a
+  waiting theme alone isn't something to cleanse: with no prank running, cleanse
+  says there is nothing and charges nothing.
+- **`/shop reveal`** (100) names the buyer of a prank, a walk-on theme that
+  has played, or a bounty aimed at you that was bought unsigned, and the
+  starter of a crowdfunded prank, publicly, in the channel where you ran it. A
+  dedication always names its buyer, so there is nothing to reveal. By default it is
   the most recent one; the optional `action` lets you pick from your last ten.
   It covers only pranks aimed at you, including ones a mirror blocked, and its
   line says which kind it unmasked. A prank can't be revealed twice, and if
@@ -315,8 +336,9 @@ the command was run if none is set.
 - **Cleanse, opting out, a moderator's immunity grant** and **`/economy cancel`**
   end whatever is running on the member, undone as if it had expired. They also
   end a [walk-on theme](#music) still waiting for the member, refunded to its
-  buyer. Running bounties and open crowdfunds are not ended; they refund when
-  their time runs out.
+  buyer; a cleanse does so only together with running pranks (see
+  [cleanse](#mirror-cleanse-and-reveal)). Running bounties and open crowdfunds
+  are not ended; they refund when their time runs out.
 
 If undoing something fails (for example the bot has lost a permission), the bot
 logs it and retries, waiting longer after each failure (15 seconds at first, at
@@ -342,8 +364,8 @@ plays, and checks them there.
 | Item | Command | Price |
 |---|---|---|
 | Walk-on theme | `/shop theme <member> <link> [start] [note] [signed]` | 100 |
-| Dedication | `/shop dedicate <member> <song> [note] [signed]` | 40 |
-| Queue jump | `/shop jump <song> [note] [signed]` | 40 |
+| Dedication | `/shop dedicate <member> <song> [note]` | 40 |
+| Queue jump | `/shop jump <song> [note]` | 40 |
 
 ### Walk-on theme
 
@@ -357,8 +379,9 @@ most `12:00:00`).
 - **Where it plays.** If CrackTunes is already in that channel, the theme is
   mixed over the music. If CrackTunes is idle in the server, it joins, plays,
   and leaves about 30 seconds later, unless someone started music or a `/gp`
-  game in the meantime. If CrackTunes is busy in another channel, or a `/gp`
-  game is running, the theme waits for a later join.
+  game in the meantime. If CrackTunes is busy in another channel, a `/gp` game
+  is running, or another theme is playing in the server, the theme waits for a
+  later join.
 - **Volume.** It plays at the server's music volume.
 - **The target must still be in the channel** when it plays. Through a
   voice-rooms hub, the theme plays in the room the member is moved into, not in
@@ -378,16 +401,23 @@ most `12:00:00`).
   out to @target", with the note.
 - **`/shop jump`** queues a song to play next, like `/playnext`, and posts "⏭️
   Someone paid to play this next".
-- **The music rules apply:** the music channel and the music role. Both are
-  blocked while a `/gp` game is running.
+- **Signed by nature.** The card always ends with the buyer ("— @buyer"): the
+  `/play` reply and now playing's "Requested by" name them anyway, so there is
+  no `signed` to leave off, and reveal has nothing to unmask.
+- **One song.** A paid play takes one song, not a playlist: a playlist link (a
+  YouTube link with a list, a Spotify playlist or album, a SoundCloud set) is
+  refused with "Paid plays take one song, not a playlist." before anything is
+  charged. Search text is always one song.
+- **The music rules apply:** the music channel. Both are blocked while a `/gp`
+  game is running.
 - **Charging.** If nothing is queued, nothing is charged, and a blank song is
   refused. If the song was queued but Discord failed afterwards, the charge
   stands. A dedication or jump interrupted by a restart is refunded.
 - **Making jumping a perk:** see [For admins](#for-admins).
 
 None of these is stopped or bounced by a mirror: a mirror only answers pranks.
-The mod log names the buyer of every dedication and theme, signed or not. A jump
-is aimed at nobody and posts nothing there.
+The mod log names the buyer of every dedication, and of every theme, signed or
+not. A jump is aimed at nobody and posts nothing there.
 
 ## Group play
 
@@ -415,11 +445,18 @@ Members can pool credits for a prank against someone.
 - **`/crowdfund start`** starts a fund for rename, clown, lock, mute, deafen or
   jail against a member (drag can't be crowdfunded: it depends on where the
   buyer is when it runs). There is one open fund per member and prank.
+- **Starting one costs your own pledge.** `pledge` is required: at least the
+  minimum pledge, and anything over your share (below) is capped to it. A
+  pledge that is missing or too small is refused, and nothing is opened or
+  charged.
 - **`/crowdfund pledge`** adds credits. **`/crowdfund list`** shows the open
   funds.
 - **The goal is that prank's price.** The dashboard's crowdfund price is the
-  **minimum pledge** (10 by default), except for a last top-up that finishes the
-  fund.
+  **minimum pledge** (10 by default), except for a pledge that finishes the
+  fund, or that uses up what is left of your own share.
+- **Too cheap to fund.** A prank priced below 2 can't be crowdfunded ("That
+  prank costs too little to crowdfund."): one member's half would be all of
+  it.
 - **At least two people.** Nobody can pledge more than half of a fund's goal
   (rounded up), so it takes at least two members to fill one.
 - **When it fills,** the prank runs like a bought one, with the member checked
@@ -431,15 +468,21 @@ Members can pool credits for a prank against someone.
 - **Cards.** A public card goes out when a fund starts ("🎉 … started a
   crowdfund to mute @target: 30/90"), naming the starter only if signed. Another
   goes out when the prank lands, naming only the contributors who signed ("a
-  crowd" otherwise). **The mod log names every contributor.**
+  crowd" otherwise). If a filled fund can't land, its public card says only that
+  "it couldn't land on them right now"; the reason (which could be the
+  target's immunity or opt-out) goes privately to the member whose pledge
+  filled it.
+- **The mod log** names the starter when a fund starts, signed or not, and every
+  contributor when it lands.
 - **Restarts.** A crowdfund interrupted between filling and running is refunded
   to its pledgers.
 
 ### Reveal and the rest
 
-[Reveal](#mirror-cleanse-and-reveal) covers themes that played, dedications,
-bounties and crowdfunded pranks (it reveals the starter). A fund that is still
-filling can't be revealed yet.
+[Reveal](#mirror-cleanse-and-reveal) covers themes once they have played (a
+waiting theme stays a surprise), bounties and crowdfunded pranks (it reveals
+the starter). A fund that is still filling can't be revealed yet. Dedications
+and jumps always name their buyer, so there is nothing to reveal.
 
 ## The coinflip
 

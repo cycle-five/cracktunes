@@ -75,23 +75,31 @@
   (from a start you choose) when a member next joins voice within a week, mixed
   over the music or, if CrackTunes is idle, by joining briefly; `/shop dedicate`
   queues a song "for" someone and `/shop jump` queues one to play next, both
-  under the music channel and role rules and never during a `/gp` game.
+  under the music channel rule and never during a `/gp` game. A paid play takes
+  one song (a playlist link is refused before the charge), and its card always
+  names the buyer, as `/play`'s reply and now playing already do.
   `/bounty place` puts a stake on a member's head for 7 days, and whoever next
   lands a prank on them collects every bounty on them but their own;
   `/crowdfund start | pledge | list` lets members pool credits for a prank
   (rename, clown, lock, mute, deafen or jail) against someone, which runs when
   the goal, the prank's price, is met within 24 hours, and no one may pledge
-  more than half of it. Everything that never happens is refunded: a theme
-  that doesn't play, a bounty nobody collects, a fund that doesn't fill or can't
-  land, a dedication or jump that queued nothing. Reveal covers themes,
-  dedications, bounties and crowdfunded pranks, and the mod log names every
-  buyer and contributor. `/shop menu` groups Music and Group play, and the
-  dashboard explains the bounty, crowdfund and jump prices. To make jumping the
-  queue a paid perk, restrict `/playnext` for members in Server Settings →
-  Integrations. **Rolling back below v0.34.0:** first make sure no crowdfund is
-  open or mid-fill (`funding` or `pending`), because older versions neither
-  expire nor correctly refund them; the migration is additive and otherwise
-  safe to leave. See `docs/economy.md`.
+  more than half of it. Starting a fund costs the starter's own pledge (at
+  least the minimum pledge), and a prank priced below 2 can't be crowdfunded.
+  Charging for nothing is undone: a theme that doesn't play, a bounty nobody
+  collects, and a fund that doesn't fill or can't land are refunded; a
+  dedication or jump that queues nothing is never charged, and one interrupted
+  by a restart is refunded. Reveal covers themes once they have played, bounties
+  and crowdfunded pranks, and the mod log names every buyer, every fund's
+  starter and every contributor. `/shop menu` groups Music and Group play, and
+  the dashboard explains the bounty, crowdfund and jump prices. To make jumping
+  the queue a paid perk, restrict `/playnext` for members in Server Settings →
+  Integrations. **Rolling back below v0.34.0:** the migration is additive. Only
+  a crowdfund that has filled (`pending`, with pledges not yet refunded) is
+  unsafe on v0.33.0, which would refund the starter the whole price and strand
+  the other pledges, so this must return nothing first:
+  `SELECT a.id FROM economy_actions a WHERE a.state = 'pending' AND EXISTS (SELECT 1 FROM economy_pledges p WHERE p.action_id = a.id AND p.refunded_at IS NULL)`.
+  An open (`funding`) fund, a waiting theme and a standing bounty just freeze on
+  v0.33.0, and are settled after rolling forward. See `docs/economy.md`.
 - **`/downvote` is registered.** It skips the current track and records a
   dislike against that track's newest play in this server, and one dislike is
   enough to hide the play from `/playlog`. When the track has no logged play to
