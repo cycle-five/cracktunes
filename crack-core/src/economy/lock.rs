@@ -4,13 +4,15 @@
 //! Everything here acts on rows that are already running, so none of it
 //! checks whether the server still has the economy on (spec 14).
 
-use super::discord::EconomyDiscord;
+use super::discord::{EconomyDiscord, LiveEconomyDiscord};
+use super::effects::MemberView;
 use super::settings::ActionKind;
 use super::wallet::{ActionPayload, ActionState};
 use crate::db::economy::{self, ActionRow};
 use crate::Data;
-use serenity::all::{AuditLogEntry, ChannelId, GuildId, UserId};
+use serenity::all::{AuditLogEntry, Cache, ChannelId, GuildId, Http, UserId};
 use serenity::model::guild::audit_log::{Action, Change, MemberAction};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -217,11 +219,45 @@ fn prank_name(rows: &[ActionRow]) -> Option<String> {
         })
 }
 
+/// What to do about a jailed member who is out of their jail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JailMove {
+    /// Move them back now.
+    MoveNow,
+    /// Inside the rate limit: look again at this time.
+    ScheduleAt(Instant),
+    /// Inside the rate limit, and a re-check is already scheduled.
+    Nothing,
+}
+
+/// The jail's rate limit: a move back at most once per `cooldown`; a move
+/// out inside it schedules one re-check at its end (unless one is already
+/// scheduled), so moving out twice quickly doesn't escape the jail.
+pub fn jail_decision(
+    now: Instant,
+    last_move: Option<Instant>,
+    scheduled: bool,
+    cooldown: Duration,
+) -> JailMove {
+    match last_move {
+        Some(last) if now.saturating_duration_since(last) < cooldown => {
+            if scheduled {
+                JailMove::Nothing
+            } else {
+                JailMove::ScheduleAt(last + cooldown)
+            }
+        },
+        _ => JailMove::MoveNow,
+    }
+}
+
 /// A member's voice channel changed (`to` is None for a disconnect).
 ///
 /// A member with a running Jail row who lands in a channel other than the
-/// row's jail channel is moved back, at most once per [`JAIL_MOVE_EVERY`]. A
-/// disconnect is allowed. If the move fails the row is left as it is.
+/// row's jail channel is moved back, at most once per [`JAIL_MOVE_EVERY`];
+/// inside that limit, the answer is when to look again (the caller schedules
+/// it with [`spawn_jail_recheck`]). A disconnect is allowed. If the move fails
+/// the row is left as it is.
 pub async fn on_voice_move(
     data: &Data,
     discord: &dyn EconomyDiscord,
@@ -229,32 +265,71 @@ pub async fn on_voice_move(
     user: UserId,
     to: Option<ChannelId>,
     now: Instant,
-) {
-    let Some(to) = to else {
-        return;
-    };
+) -> Option<Instant> {
+    let to = to?;
     let rows = running(data, guild, user, &[ActionKind::Jail], false).await;
-    let Some(jail) = rows.iter().find_map(|r| match r.payload {
+    let jail = rows.iter().find_map(|r| match r.payload {
         ActionPayload::Jail { jail } => Some(jail),
         _ => None,
-    }) else {
-        return;
-    };
+    })?;
     if to == jail {
-        return;
+        return None;
     }
-    if !data
-        .economy
-        .jail_move_allowed(guild, user, now, JAIL_MOVE_EVERY)
-    {
-        return;
+    match data.economy.jail_step(guild, user, now, JAIL_MOVE_EVERY) {
+        JailMove::MoveNow => {
+            if let Err(err) = discord
+                .move_member(guild, user, jail, ActionKind::Jail)
+                .await
+            {
+                tracing::warn!(
+                    "economy: moving jailed {user} back to {jail} in {guild} failed: {err:?}"
+                );
+            }
+            None
+        },
+        JailMove::ScheduleAt(at) => Some(at),
+        JailMove::Nothing => None,
     }
-    if let Err(err) = discord
-        .move_member(guild, user, jail, ActionKind::Jail)
-        .await
-    {
-        tracing::warn!("economy: moving jailed {user} back to {jail} in {guild} failed: {err:?}");
-    }
+}
+
+/// The scheduled re-check: clears the member's mark, then reads where the
+/// cache has them now and handles it like a move ([`on_voice_move`]: still
+/// jailed, out of the jail, through the rate limit). Returns when to look
+/// again, if the limit says so.
+pub async fn jail_recheck(
+    data: &Data,
+    discord: &dyn EconomyDiscord,
+    view: &dyn MemberView,
+    guild: GuildId,
+    user: UserId,
+    now: Instant,
+) -> Option<Instant> {
+    data.economy.clear_jail_recheck(guild, user);
+    let channel = view.voice(guild, user).and_then(|v| v.channel);
+    on_voice_move(data, discord, guild, user, channel, now).await
+}
+
+/// Run the one re-check for a jailed member who moved out inside the rate
+/// limit: sleep until `at`, then [`jail_recheck`] (again, if it asks).
+pub fn spawn_jail_recheck(
+    data: Data,
+    http: Arc<Http>,
+    cache: Arc<Cache>,
+    guild: GuildId,
+    user: UserId,
+    at: Instant,
+) {
+    tokio::spawn(async move {
+        let discord = LiveEconomyDiscord { http };
+        let mut at = at;
+        loop {
+            tokio::time::sleep_until(at).await;
+            match jail_recheck(&data, &discord, cache.as_ref(), guild, user, Instant::now()).await {
+                Some(next) => at = next,
+                None => break,
+            }
+        }
+    });
 }
 
 #[cfg(test)]
@@ -548,9 +623,13 @@ mod tests {
         jailed(&pool).await;
         let t = Instant::now();
         let back = || vec![Call::Move(U, JAIL, ActionKind::Jail)];
-        on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t).await;
+        assert_eq!(
+            on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t).await,
+            None
+        );
         assert_eq!(fake.calls(), back());
-        on_voice_move(
+        // Inside 10 s: not moved now, but a re-check is asked for at the end.
+        let recheck = on_voice_move(
             &data,
             &fake,
             G,
@@ -560,6 +639,10 @@ mod tests {
         )
         .await;
         assert_eq!(fake.calls(), back(), "inside 10 s");
+        assert_eq!(recheck, Some(t + JAIL_MOVE_EVERY));
+        // The re-check runs (it clears its mark first), so this move is
+        // the one it stands for.
+        data.economy.clear_jail_recheck(G, U);
         on_voice_move(
             &data,
             &fake,
@@ -579,6 +662,94 @@ mod tests {
         on_voice_move(&data, &fake, G, other, Some(ELSEWHERE), t).await;
         assert_eq!(fake.calls().len(), 3);
     });
+
+    #[test]
+    fn jail_decision_table() {
+        let t = Instant::now();
+        let cd = JAIL_MOVE_EVERY;
+        let s = Duration::from_secs;
+        // Never moved, or the limit has passed: move now.
+        assert_eq!(jail_decision(t, None, false, cd), JailMove::MoveNow);
+        assert_eq!(
+            jail_decision(t + s(10), Some(t), false, cd),
+            JailMove::MoveNow
+        );
+        assert_eq!(
+            jail_decision(t + s(10), Some(t), true, cd),
+            JailMove::MoveNow
+        );
+        // Moved twice within 10 s: a re-check at the limit's end.
+        assert_eq!(
+            jail_decision(t + s(1), Some(t), false, cd),
+            JailMove::ScheduleAt(t + cd)
+        );
+        // ...and only one.
+        assert_eq!(
+            jail_decision(t + s(2), Some(t), true, cd),
+            JailMove::Nothing
+        );
+    }
+
+    db_test!(moving_out_twice_quickly_does_not_escape_jail, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        let id = jailed(&pool).await;
+        let t = Instant::now();
+        let s = Duration::from_secs;
+        on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t).await;
+        let at = on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t + s(1))
+            .await
+            .expect("a re-check is scheduled");
+        assert_eq!(fake.calls().len(), 1, "moved back once so far");
+        // A third quick move schedules nothing more.
+        assert_eq!(
+            on_voice_move(&data, &fake, G, U, Some(ELSEWHERE), t + s(2)).await,
+            None
+        );
+        // At the re-check they are still out: moved back.
+        let out = JailView(Some(ELSEWHERE));
+        assert_eq!(jail_recheck(&data, &fake, &out, G, U, at).await, None);
+        assert_eq!(
+            fake.calls(),
+            vec![
+                Call::Move(U, JAIL, ActionKind::Jail),
+                Call::Move(U, JAIL, ActionKind::Jail)
+            ]
+        );
+        // A re-check that finds them in the jail, or gone from voice, or
+        // the sentence over, does nothing.
+        for (view, later) in [(JailView(Some(JAIL)), 30), (JailView(None), 50)] {
+            assert_eq!(
+                jail_recheck(&data, &fake, &view, G, U, t + s(later)).await,
+                None
+            );
+        }
+        sqlx::query("UPDATE economy_actions SET state = 'ended' WHERE id = $1")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert_eq!(
+            jail_recheck(&data, &fake, &out, G, U, t + s(70)).await,
+            None
+        );
+        assert_eq!(fake.calls().len(), 2);
+    });
+
+    /// Where the cache has the jailed member.
+    struct JailView(Option<ChannelId>);
+    impl MemberView for JailView {
+        fn nick(&self, _g: GuildId, _u: UserId) -> Option<Option<String>> {
+            None
+        }
+        fn voice(&self, _g: GuildId, _u: UserId) -> Option<crate::economy::effects::VoiceFacts> {
+            Some(crate::economy::effects::VoiceFacts {
+                channel: self.0,
+                mute: false,
+                deaf: false,
+            })
+        }
+    }
 
     db_test!(jail_lets_a_disconnect_be, |pool| {
         let data = data_with(&pool);

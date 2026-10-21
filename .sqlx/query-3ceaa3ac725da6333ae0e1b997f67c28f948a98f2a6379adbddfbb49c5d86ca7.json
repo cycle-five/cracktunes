@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, guild_id, kind, buyer_id, target_id,\n                  payload AS \"payload: Json<ActionPayload>\",\n                  state, expires_at, note, signed, revealed_at\n           FROM economy_actions\n           WHERE guild_id = $1 AND state = 'pending' AND created_at < $2\n             AND kind = ANY($3)\n           ORDER BY id",
+  "query": "SELECT id, guild_id, kind, buyer_id, target_id,\n                  payload AS \"payload: Json<ActionPayload>\",\n                  state, expires_at, note, signed, revealed_at\n           FROM economy_actions\n           WHERE guild_id = $1 AND state = 'pending'\n             AND created_at < GREATEST($2::timestamptz, now() - make_interval(secs => $3))\n             AND kind = ANY($4)\n           ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -63,6 +63,7 @@
       "Left": [
         "Int8",
         "Timestamptz",
+        "Float8",
         "TextArray"
       ]
     },
@@ -80,5 +81,5 @@
       true
     ]
   },
-  "hash": "a3016b7dd800b2538b5c597d803abf91cfe2a2122c364f3def3a9d1bd40e4625"
+  "hash": "3ceaa3ac725da6333ae0e1b997f67c28f948a98f2a6379adbddfbb49c5d86ca7"
 }

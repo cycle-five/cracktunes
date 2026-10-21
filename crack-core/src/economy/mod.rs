@@ -64,6 +64,20 @@ pub async fn load_settings(data: &Data, g: GuildId) -> bool {
     true
 }
 
+/// Record when this process started, on the database's clock, so reconcile
+/// can tell a purchase a crash left behind from one still in flight. Called
+/// once at startup, before the gateway connects. Without a database, or if
+/// the read fails, reconcile falls back to its grace alone.
+pub async fn record_process_start(data: &Data) {
+    let Some(pool) = data.database_pool.as_ref() else {
+        return;
+    };
+    match crate::db::economy::db_now(pool).await {
+        Ok(now) => data.economy.set_process_start(now),
+        Err(err) => tracing::warn!("economy: reading the database clock at startup failed: {err}"),
+    }
+}
+
 /// The one way a server's economy settings change. Validates, writes the
 /// database (when there is one), then the registry, so memory never runs
 /// ahead of what a restart would load.

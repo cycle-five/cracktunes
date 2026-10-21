@@ -1,10 +1,18 @@
 //! Which permissions CrackTunes lacks for each shop action.
 //!
-//! [`needs`] and [`missing`] are pure; [`bot_perms`] is the thin cache reader
-//! that feeds them. Empty means the action can be sold.
+//! [`needs`], [`missing`] and [`economy_preflight`] are pure; [`bot_perms`] is
+//! the thin cache reader that feeds them. Empty means the action can be sold.
+//! The dashboard, `/economy status` and `/shop menu` all show
+//! [`economy_preflight`]'s report.
 
-use super::settings::ActionKind;
+use super::settings::{ActionKind, EconomyConfig};
+use crate::messaging::messages::{
+    DASH_ECONOMY_FINDING_GIVE, DASH_ECONOMY_FINDING_IN, DASH_ECONOMY_FINDING_SERVER,
+    DASH_ECONOMY_PREFLIGHT_NO_JAIL,
+};
 use crate::music::perms::roles_resolvable;
+use crate::rooms::card::perm_names;
+use serde::Serialize;
 use serenity::all::{Cache, ChannelId, GuildId, Permissions};
 use std::collections::HashMap;
 
@@ -93,6 +101,93 @@ pub fn bot_perms(cache: &Cache, guild: GuildId, channels: &[ChannelId]) -> Optio
     })
 }
 
+/// What one prank still needs, in words.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ActionPreflight {
+    pub kind: String,
+    pub label: String,
+    /// `None`: could not be checked. Empty: ready.
+    pub needs: Option<Vec<String>>,
+}
+
+/// The per-prank permission report in words, and the announcement channel's
+/// card gaps. `perms` is `None` when the cache cannot answer, which reads
+/// as "can't tell", never as ready. Drag's channels depend on the purchase,
+/// so only its server-wide needs are reported.
+pub fn economy_preflight(
+    c: &EconomyConfig,
+    perms: Option<&BotPerms>,
+    name_of: impl Fn(ChannelId) -> String,
+) -> (Vec<ActionPreflight>, Option<Vec<String>>) {
+    let line = |at: Option<ChannelId>, p: Permissions| match at {
+        None => format!(
+            "{DASH_ECONOMY_FINDING_GIVE} {} {DASH_ECONOMY_FINDING_SERVER}",
+            perm_names(p, false)
+        ),
+        Some(ch) => format!(
+            "{DASH_ECONOMY_FINDING_GIVE} {} {DASH_ECONOMY_FINDING_IN} {}",
+            perm_names(p, false),
+            name_of(ch)
+        ),
+    };
+    let actions = ActionKind::PRANKS
+        .iter()
+        .map(|&k| {
+            let channels: Vec<ChannelId> = if k == ActionKind::Jail {
+                c.jail_channel_id.into_iter().collect()
+            } else {
+                Vec::new()
+            };
+            let mut needs = perms.map(|p| {
+                missing(k, p, &channels)
+                    .into_iter()
+                    .map(|(at, gap)| line(at, gap))
+                    .collect::<Vec<_>>()
+            });
+            if k == ActionKind::Jail && c.jail_channel_id.is_none() {
+                needs
+                    .get_or_insert_with(Vec::new)
+                    .push(DASH_ECONOMY_PREFLIGHT_NO_JAIL.to_owned());
+            }
+            ActionPreflight {
+                kind: k.key().to_owned(),
+                label: k.label().to_owned(),
+                needs,
+            }
+        })
+        .collect();
+    let announce = c.announce_channel_id.zip(perms).map(|(ch, p)| {
+        let have = p
+            .in_channel
+            .get(&ch)
+            .copied()
+            .unwrap_or_else(Permissions::empty);
+        let gap = NEED_CARD - have;
+        if gap.is_empty() {
+            Vec::new()
+        } else {
+            vec![line(Some(ch), gap)]
+        }
+    });
+    (actions, announce)
+}
+
+/// [`economy_preflight`] for a server, from the cache, naming channels as
+/// Discord mentions (for messages; the dashboard names them itself).
+pub fn report_for(
+    cache: &Cache,
+    guild: GuildId,
+    c: &EconomyConfig,
+) -> (Vec<ActionPreflight>, Option<Vec<String>>) {
+    let channels: Vec<ChannelId> = c
+        .jail_channel_id
+        .into_iter()
+        .chain(c.announce_channel_id)
+        .collect();
+    let perms = bot_perms(cache, guild, &channels);
+    economy_preflight(c, perms.as_ref(), |ch| format!("<#{ch}>"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +249,98 @@ mod tests {
             missing(ActionKind::Cleanse, &BotPerms::default(), &[A]),
             vec![]
         );
+    }
+
+    fn all_perms() -> BotPerms {
+        BotPerms {
+            guild: Permissions::MANAGE_NICKNAMES
+                | Permissions::VIEW_AUDIT_LOG
+                | Permissions::MOVE_MEMBERS
+                | Permissions::MUTE_MEMBERS
+                | Permissions::DEAFEN_MEMBERS,
+            in_channel: [(ChannelId::new(111), NEED_CHANNEL)].into_iter().collect(),
+        }
+    }
+
+    fn needs_of(p: &[ActionPreflight], key: &str) -> Option<Vec<String>> {
+        p.iter().find(|a| a.kind == key).unwrap().needs.clone()
+    }
+
+    #[test]
+    fn preflight_says_ready_or_what_is_missing_per_prank() {
+        let mut c = EconomyConfig::default();
+        c.jail_channel_id = Some(ChannelId::new(111));
+        let (all, _) = economy_preflight(&c, Some(&all_perms()), |ch| format!("#{ch}"));
+        let kinds: Vec<_> = all.iter().map(|a| a.kind.as_str()).collect();
+        assert_eq!(
+            kinds,
+            ["rename", "lock", "clown", "drag", "mute", "deafen", "jail"]
+        );
+        assert!(all.iter().all(|a| a.needs == Some(vec![])), "{all:?}");
+
+        // No View Audit Log: only lock is short.
+        let mut p = all_perms();
+        p.guild -= Permissions::VIEW_AUDIT_LOG;
+        let (got, _) = economy_preflight(&c, Some(&p), |ch| format!("#{ch}"));
+        assert_eq!(
+            needs_of(&got, "lock"),
+            Some(vec![
+                "Give CrackTunes View Audit Log in Server Settings → Roles".to_owned()
+            ])
+        );
+        assert_eq!(needs_of(&got, "rename"), Some(vec![]));
+
+        // The jail channel misses Connect: named by channel.
+        let mut p = all_perms();
+        p.in_channel
+            .insert(ChannelId::new(111), Permissions::VIEW_CHANNEL);
+        let (got, _) = economy_preflight(&c, Some(&p), |ch| format!("#{ch}"));
+        assert_eq!(
+            needs_of(&got, "jail"),
+            Some(vec!["Give CrackTunes Connect in #111".to_owned()])
+        );
+        // Drag's channels are unknown, so it shows guild needs only.
+        assert_eq!(needs_of(&got, "drag"), Some(vec![]));
+    }
+
+    #[test]
+    fn preflight_without_a_jail_channel_or_a_cache() {
+        let c = EconomyConfig::default();
+        let (got, ann) = economy_preflight(&c, Some(&all_perms()), |ch| format!("#{ch}"));
+        assert_eq!(
+            needs_of(&got, "jail"),
+            Some(vec!["Choose a jail channel first.".to_owned()])
+        );
+        assert_eq!(ann, None);
+        // No cache: can't tell (None), never ready; jail still says why.
+        let (got, _) = economy_preflight(&c, None, |ch| format!("#{ch}"));
+        assert_eq!(needs_of(&got, "rename"), None);
+        assert_eq!(needs_of(&got, "lock"), None);
+        assert_eq!(
+            needs_of(&got, "jail"),
+            Some(vec!["Choose a jail channel first.".to_owned()])
+        );
+    }
+
+    #[test]
+    fn preflight_checks_the_announce_channel_for_cards() {
+        let mut c = EconomyConfig::default();
+        c.announce_channel_id = Some(ChannelId::new(222));
+        let mut p = all_perms();
+        p.in_channel.insert(
+            ChannelId::new(222),
+            Permissions::VIEW_CHANNEL | Permissions::SEND_MESSAGES,
+        );
+        let (_, ann) = economy_preflight(&c, Some(&p), |ch| format!("#{ch}"));
+        assert_eq!(
+            ann,
+            Some(vec!["Give CrackTunes Embed Links in #222".to_owned()])
+        );
+        p.in_channel.insert(ChannelId::new(222), NEED_CARD);
+        let (_, ann) = economy_preflight(&c, Some(&p), |ch| format!("#{ch}"));
+        assert_eq!(ann, Some(vec![]));
+        let (_, ann) = economy_preflight(&c, None, |ch| format!("#{ch}"));
+        assert_eq!(ann, None);
     }
 
     #[test]

@@ -421,6 +421,10 @@ async fn prank(
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
     };
+    // A purchase reads the database several times and calls Discord before
+    // its first reply: deferred, the private reply edits this response and
+    // the public card falls back to a follow-up.
+    ctx.defer_ephemeral().await?;
     // The interaction's own member: roles and nickname, cached or not.
     let Some(buyer) = ctx.author_member().await else {
         return say(ctx, ECONOMY_CANT_TELL, true).await;
@@ -614,6 +618,8 @@ pub async fn cleanse_command(ctx: Context<'_>) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
     };
+    // Ends each prank with a Discord call before replying.
+    ctx.defer_ephemeral().await?;
     let buyer = ctx.author();
     if buyer.bot() {
         return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
@@ -686,6 +692,8 @@ pub async fn reveal_command(
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
     };
+    // The private reply edits this; the public unmasking is a follow-up.
+    ctx.defer_ephemeral().await?;
     let presser = ctx.author();
     if presser.bot() {
         return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;

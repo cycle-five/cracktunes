@@ -2,12 +2,14 @@
 //! servers' stored settings have been read, and who is opted out.
 
 use super::earn::cooldown_allows;
+use super::lock::{jail_decision, JailMove};
 use super::settings::EconomySettings;
+use chrono::{DateTime, Utc};
 use dashmap::{mapref::entry::Entry, DashMap, DashSet};
 use serenity::all::{GuildId, UserId};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -21,10 +23,17 @@ pub struct EconomyRegistry {
     /// When each member's last message was counted (the cooldown's clock).
     last_counted: DashMap<(GuildId, UserId), Instant>,
     /// When each jailed member was last moved back (the jail's rate limit).
+    /// Entries older than the limit are pruned on each move.
     last_jail_move: DashMap<(GuildId, UserId), Instant>,
+    /// The one re-check scheduled per jailed member who moved inside the
+    /// rate limit, and when it runs.
+    jail_rechecks: DashMap<(GuildId, UserId), Instant>,
     /// The earning tick has been spawned.
     started: Arc<AtomicBool>,
     sweeper_started: Arc<AtomicBool>,
+    /// When this process started, on the database's clock: a `pending` row
+    /// older than this was left by a previous process.
+    process_start: Arc<OnceLock<DateTime<Utc>>>,
 }
 
 impl EconomyRegistry {
@@ -107,27 +116,44 @@ impl EconomyRegistry {
         true
     }
 
-    /// Whether a jailed member may be moved back at `now`: not within
-    /// `cooldown` of the last time. Records `now` when it answers yes.
-    pub fn jail_move_allowed(
-        &self,
-        g: GuildId,
-        u: UserId,
-        now: Instant,
-        cooldown: Duration,
-    ) -> bool {
-        match self.last_jail_move.entry((g, u)) {
-            Entry::Occupied(mut e) => {
-                if !cooldown_allows(Some(*e.get()), now, cooldown) {
-                    return false;
-                }
-                e.insert(now);
+    /// What to do about a jailed member out of their jail at `now`
+    /// ([`jail_decision`]), recording it: a move back is stamped (and moves
+    /// older than `cooldown` are pruned), a re-check is marked so only one is
+    /// ever scheduled per member.
+    pub fn jail_step(&self, g: GuildId, u: UserId, now: Instant, cooldown: Duration) -> JailMove {
+        let key = (g, u);
+        let last = self.last_jail_move.get(&key).map(|t| *t);
+        let scheduled = self.jail_rechecks.get(&key).is_some_and(|at| *at > now);
+        match jail_decision(now, last, scheduled, cooldown) {
+            JailMove::MoveNow => {
+                self.last_jail_move
+                    .retain(|_, t| now.saturating_duration_since(*t) < cooldown);
+                self.jail_rechecks.retain(|_, at| *at > now);
+                self.last_jail_move.insert(key, now);
+                JailMove::MoveNow
             },
-            Entry::Vacant(e) => {
-                e.insert(now);
+            JailMove::ScheduleAt(at) => match self.jail_rechecks.entry(key) {
+                // Another event scheduled it first.
+                Entry::Occupied(ref e) if *e.get() > now => JailMove::Nothing,
+                entry => {
+                    entry.insert(at);
+                    JailMove::ScheduleAt(at)
+                },
             },
+            JailMove::Nothing => JailMove::Nothing,
         }
-        true
+    }
+
+    /// A scheduled jail re-check ran: the next move inside the limit may
+    /// schedule another.
+    pub fn clear_jail_recheck(&self, g: GuildId, u: UserId) {
+        self.jail_rechecks.remove(&(g, u));
+    }
+
+    /// How many members' last jail moves are held (for the pruning test).
+    #[cfg(test)]
+    pub(crate) fn jail_moves_held(&self) -> usize {
+        self.last_jail_move.len()
     }
 
     /// Takes (and clears) the server's counted messages.
@@ -141,6 +167,17 @@ impl EconomyRegistry {
     /// True the first time only: the caller then spawns the earning tick.
     pub fn start_once(&self) -> bool {
         !self.started.swap(true, Ordering::SeqCst)
+    }
+
+    /// Record when this process started (the database's `now()`). The first
+    /// record stands.
+    pub fn set_process_start(&self, at: DateTime<Utc>) {
+        let _ = self.process_start.set(at);
+    }
+
+    /// When this process started, if it was recorded.
+    pub fn process_start(&self) -> Option<DateTime<Utc>> {
+        self.process_start.get().copied()
     }
 
     /// True the first time only: the caller then spawns the sweeper.
@@ -207,6 +244,47 @@ mod tests {
         assert_eq!(taken, HashMap::from([(a, 2), (b, 1)]));
         assert!(reg.take_pending_messages(G).is_empty(), "drained");
         assert_eq!(reg.take_pending_messages(GuildId::new(9)).len(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn moving_twice_within_10s_schedules_one_recheck() {
+        let reg = EconomyRegistry::default();
+        let (a, b) = (UserId::new(2), UserId::new(3));
+        let cd = Duration::from_secs(10);
+        let t = Instant::now();
+        assert_eq!(reg.jail_step(G, a, t, cd), JailMove::MoveNow);
+        // Out again a second later: one re-check, at the limit's end.
+        let s = Duration::from_secs;
+        assert_eq!(
+            reg.jail_step(G, a, t + s(1), cd),
+            JailMove::ScheduleAt(t + cd)
+        );
+        // A third move inside the limit adds nothing: one is enough.
+        assert_eq!(reg.jail_step(G, a, t + s(2), cd), JailMove::Nothing);
+        // Another member's clock is their own.
+        assert_eq!(reg.jail_step(G, b, t + s(2), cd), JailMove::MoveNow);
+        // The re-check ran: the next early move may schedule again.
+        reg.clear_jail_recheck(G, a);
+        assert_eq!(
+            reg.jail_step(G, a, t + s(3), cd),
+            JailMove::ScheduleAt(t + cd)
+        );
+        // At the limit's end it moves.
+        assert_eq!(reg.jail_step(G, a, t + cd, cd), JailMove::MoveNow);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn old_jail_moves_are_pruned_when_one_is_stamped() {
+        let reg = EconomyRegistry::default();
+        let cd = Duration::from_secs(10);
+        let t = Instant::now();
+        for n in 1..=3 {
+            reg.jail_step(G, UserId::new(n), t, cd);
+        }
+        assert_eq!(reg.jail_moves_held(), 3);
+        // Twenty seconds on, one new move: the three old ones go.
+        reg.jail_step(G, UserId::new(9), t + Duration::from_secs(20), cd);
+        assert_eq!(reg.jail_moves_held(), 1);
     }
 
     #[test]

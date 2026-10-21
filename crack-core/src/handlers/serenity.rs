@@ -100,11 +100,24 @@ impl EventHandler for SerenityHandler {
                             new.channel_id,
                             tokio::time::Instant::now(),
                         );
-                        if tokio::time::timeout(std::time::Duration::from_secs(5), moved)
-                            .await
-                            .is_err()
-                        {
-                            tracing::warn!("economy: moving jailed {} back timed out", new.user_id);
+                        match tokio::time::timeout(std::time::Duration::from_secs(5), moved).await {
+                            // Out again inside the rate limit: one re-check
+                            // at its end, so moving twice doesn't escape.
+                            Ok(Some(at)) => crate::economy::lock::spawn_jail_recheck(
+                                self.data.clone(),
+                                ctx.http.clone(),
+                                ctx.cache.clone(),
+                                guild,
+                                new.user_id,
+                                at,
+                            ),
+                            Ok(None) => {},
+                            Err(_) => {
+                                tracing::warn!(
+                                    "economy: moving jailed {} back timed out",
+                                    new.user_id
+                                );
+                            },
                         }
                     }
                 }

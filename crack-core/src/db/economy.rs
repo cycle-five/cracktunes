@@ -482,6 +482,82 @@ pub async fn reveal_candidates(
         .collect())
 }
 
+/// An action for `/economy status`: the row, why it ended, and when it was
+/// bought.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecentAction {
+    pub row: ActionRow,
+    pub end_reason: Option<String>,
+    pub bought_at: DateTime<Utc>,
+}
+
+/// [`RawAction`] plus why it ended and when it was bought.
+struct RawRecent {
+    id: i64,
+    guild_id: i64,
+    kind: String,
+    buyer_id: i64,
+    target_id: Option<i64>,
+    payload: Json<ActionPayload>,
+    state: String,
+    expires_at: Option<DateTime<Utc>>,
+    note: Option<String>,
+    signed: bool,
+    revealed_at: Option<DateTime<Utc>>,
+    end_reason: Option<String>,
+    created_at: DateTime<Utc>,
+}
+
+/// A server's last `limit` actions of every kind this build knows, newest
+/// first, whatever their state: the record moderators read when the mod
+/// log is off (spec 5.4).
+pub async fn recent_actions(
+    pool: &PgPool,
+    guild: GuildId,
+    limit: i64,
+) -> sqlx::Result<Vec<RecentAction>> {
+    let raw = sqlx::query_as!(
+        RawRecent,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at, end_reason, created_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND kind = ANY($2)
+           ORDER BY id DESC
+           LIMIT $3"#,
+        guild.get() as i64,
+        &known_kinds(),
+        limit
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|r| {
+            let (end_reason, bought_at) = (r.end_reason, r.created_at);
+            RawAction {
+                id: r.id,
+                guild_id: r.guild_id,
+                kind: r.kind,
+                buyer_id: r.buyer_id,
+                target_id: r.target_id,
+                payload: r.payload,
+                state: r.state,
+                expires_at: r.expires_at,
+                note: r.note,
+                signed: r.signed,
+                revealed_at: r.revealed_at,
+            }
+            .into_row()
+            .map(|(_, row)| RecentAction {
+                row,
+                end_reason,
+                bought_at,
+            })
+        })
+        .collect())
+}
+
 /// Stamp a prank as unmasked by `by`. False when it already was (nothing
 /// changed), so a racing second reveal is told so and refunded.
 pub async fn mark_revealed(
@@ -780,12 +856,24 @@ pub async fn ending_for_guild(pool: &PgPool, guild: GuildId) -> sqlx::Result<Vec
     Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
 }
 
-/// One server's `pending` rows charged before `cutoff`: a purchase between
-/// its charge and its activate is younger than that and is left alone.
+/// The database's clock now.
+pub async fn db_now(pool: &PgPool) -> sqlx::Result<DateTime<Utc>> {
+    sqlx::query_scalar!(r#"SELECT now() AS "now!""#)
+        .fetch_one(pool)
+        .await
+}
+
+/// One server's `pending` rows that nothing is still working on: every row
+/// charged before `process_start` (a previous process left it, whatever its
+/// age), and any row older than `grace_secs` on the database's clock. A
+/// purchase of this process between its charge and its activate is younger
+/// than both and is left alone. Without a recorded start only the grace
+/// counts.
 pub async fn pending_for_guild(
     pool: &PgPool,
     guild: GuildId,
-    cutoff: DateTime<Utc>,
+    process_start: Option<DateTime<Utc>>,
+    grace_secs: f64,
 ) -> sqlx::Result<Vec<ActionRow>> {
     let raw = sqlx::query_as!(
         RawAction,
@@ -793,11 +881,13 @@ pub async fn pending_for_guild(
                   payload AS "payload: Json<ActionPayload>",
                   state, expires_at, note, signed, revealed_at
            FROM economy_actions
-           WHERE guild_id = $1 AND state = 'pending' AND created_at < $2
-             AND kind = ANY($3)
+           WHERE guild_id = $1 AND state = 'pending'
+             AND created_at < GREATEST($2::timestamptz, now() - make_interval(secs => $3))
+             AND kind = ANY($4)
            ORDER BY id"#,
         guild.get() as i64,
-        cutoff,
+        process_start,
+        grace_secs,
         &known_kinds()
     )
     .fetch_all(pool)

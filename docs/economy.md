@@ -107,12 +107,14 @@ or be gifted.
 ## Commands for moderators
 
 `/economy` is visible only to **Moderate Members** by default (Discord's
-Integrations settings can change who sees it). Every `/economy` command also
-refuses, privately, while the economy is off.
+Integrations settings can change who sees it). Every `/economy` command except
+`cancel` and `status` also refuses, privately, while the economy is off. Those
+two need only the database, so moderators can still see and end pranks that
+are running when the economy is turned off.
 
 | Command | Who may run it | What it does |
 |---|---|---|
-| `/economy status` | **Moderate Members** | Shows the currency, how many wallets the server has (zero balances and opted-out members count) and how many credits are held in total, the earning rates, the three immunity switches and the gambling settings. Only you see it. |
+| `/economy status` | **Moderate Members** | Shows the currency, how many wallets the server has (zero balances and opted-out members count) and how many credits are held in total, the earning rates, the three immunity switches and the gambling settings. Then what CrackTunes needs for each prank, in the dashboard's words, and the last 10 shop actions, newest first: what, who bought it (signed or not), on whom, its state, and when it ends or why it ended. Only you see it. |
 | `/economy grant <member> [hours] [reason]` | **Moderate Members** | Makes a member immune for 1 to 8760 hours, or until lifted if you leave the hours out. Refused if the server has turned off moderator grants. |
 | `/economy lift <member>` | **Moderate Members** | Removes a moderator grant. Always allowed, even if grants are switched off. It doesn't touch immunity the member bought. |
 | `/economy cancel <member>` | **Moderate Members** | Ends every prank running on a member now, each undone as if it had expired. It says how many it ended, or that nothing was running. |
@@ -202,7 +204,8 @@ and turn any item off there. All of these need the economy to be on.
   that choice is the server's consent to members being moved there, even if
   they can't normally see it. The dashboard says so under the picker. A jailed
   member who moves to any other channel is moved back (at most once every 10
-  seconds), so a moderator who wants a jail over sooner uses `/economy cancel`
+  seconds; one who moves out again inside those 10 seconds is moved back when
+  they are up), so a moderator who wants a jail over sooner uses `/economy cancel`
   or an immunity grant. Disconnecting is allowed. Jail isn't sold until a jail
   channel is set.
 
@@ -267,9 +270,9 @@ the command was run if none is set.
   refuses). Their mute or deafen is lifted the next time they join a voice
   channel.
 - **Restarts.** Prank records are kept in the database. After a restart or a
-  reconnect, CrackTunes finishes anything that ran out while it was away, and
-  settles any purchase that was interrupted halfway (a prank that didn't land is
-  refunded).
+  reconnect, CrackTunes finishes anything that ran out while it was away, and a
+  purchase interrupted by a restart is settled when the bot reconnects (a prank
+  that didn't land is refunded).
 - **A member who leaves the server** ends their prank; nothing is restored.
 - **Moderators win.** If anyone other than the target or the bot changes a
   prank's nickname, or changes a server mute or deafen on a member while the shop's
@@ -290,7 +293,8 @@ With [the mod log](rooms-and-mod-log.md#mod-log) on, every prank that changes
 a member is posted with the buyer named, signed or not, and a bounce names the
 original attacker. The shop's own nickname, mute and move changes are
 recorded as the shop's, not as CrackTunes acting alone. With the mod log
-off, nothing is posted, and the prank records stay in the database.
+off, nothing is posted, and the prank records stay in the database:
+`/economy status` lists the last 10, with their buyers.
 
 ## The coinflip
 

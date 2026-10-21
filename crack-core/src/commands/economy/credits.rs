@@ -223,24 +223,53 @@ pub(super) fn live(ctx: Context<'_>) -> LiveEconomyDiscord {
     }
 }
 
+/// What an economy command needs before it does anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GateNeed {
+    /// The economy on, and a database: every member command, and the
+    /// moderator commands that create something (grant, lift, adjust).
+    EconomyOn,
+    /// A database only: `/economy cancel` and `/economy status`, so
+    /// moderators can still end pranks after the economy is turned off
+    /// (pranks already running keep running until they end, spec 14).
+    DatabaseOnly,
+}
+
+/// The words a command refuses with before it starts, or `None` to go on.
+pub fn gate_refusal(need: GateNeed, enabled: bool, has_database: bool) -> Option<&'static str> {
+    if need == GateNeed::EconomyOn && !enabled {
+        return Some(ECONOMY_OFF);
+    }
+    if !has_database {
+        return Some(ECONOMY_NO_DATABASE);
+    }
+    None
+}
+
 /// The checks every economy command starts with: a server, the economy on,
 /// a database. Replies privately and gives `None` when the economy is off or
 /// there is no database. With no server (impossible: every command is
 /// `guild_only`) it returns `None` silently.
 #[cfg(not(tarpaulin_include))]
 pub(super) async fn gate(ctx: Context<'_>) -> Result<Option<(GuildId, PgPool)>, Error> {
+    gate_for(ctx, GateNeed::EconomyOn).await
+}
+
+/// [`gate`] for what `need` asks.
+#[cfg(not(tarpaulin_include))]
+pub(super) async fn gate_for(
+    ctx: Context<'_>,
+    need: GateNeed,
+) -> Result<Option<(GuildId, PgPool)>, Error> {
     let Some(guild) = ctx.guild_id() else {
         return Ok(None);
     };
-    if !ctx.data().economy.is_enabled(guild) {
-        say(ctx, ECONOMY_OFF, true).await?;
+    let pool = ctx.data().database_pool.clone();
+    if let Some(text) = gate_refusal(need, ctx.data().economy.is_enabled(guild), pool.is_some()) {
+        say(ctx, text, true).await?;
         return Ok(None);
     }
-    let Some(pool) = ctx.data().database_pool.clone() else {
-        say(ctx, ECONOMY_NO_DATABASE, true).await?;
-        return Ok(None);
-    };
-    Ok(Some((guild, pool)))
+    Ok(pool.map(|pool| (guild, pool)))
 }
 
 /// Check your credits, the ranking, gifts, and opting out.
@@ -400,6 +429,8 @@ async fn switch(ctx: Context<'_>, out: bool) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
     };
+    // Opting out ends the pranks on you, one Discord call each.
+    ctx.defer_ephemeral().await?;
     let now = Utc::now();
     let result = economy::opt_out(&ctx.data(), &live(ctx), guild, ctx.author().id, out, now).await;
     let days = ctx
@@ -433,6 +464,32 @@ mod tests {
 
     fn u(n: u64) -> UserId {
         UserId::new(n)
+    }
+
+    #[test]
+    fn moderators_keep_cancel_and_status_with_the_economy_off() {
+        use GateNeed::*;
+        // Off, with a database: only the database-only commands go on.
+        assert_eq!(gate_refusal(DatabaseOnly, false, true), None);
+        assert_eq!(gate_refusal(EconomyOn, false, true), Some(ECONOMY_OFF));
+        // On: both go on.
+        assert_eq!(gate_refusal(DatabaseOnly, true, true), None);
+        assert_eq!(gate_refusal(EconomyOn, true, true), None);
+        // No database refuses either, saying why.
+        assert_eq!(
+            gate_refusal(DatabaseOnly, false, false),
+            Some(ECONOMY_NO_DATABASE)
+        );
+        assert_eq!(
+            gate_refusal(DatabaseOnly, true, false),
+            Some(ECONOMY_NO_DATABASE)
+        );
+        assert_eq!(
+            gate_refusal(EconomyOn, true, false),
+            Some(ECONOMY_NO_DATABASE)
+        );
+        // Off wins for the rest, as before.
+        assert_eq!(gate_refusal(EconomyOn, false, false), Some(ECONOMY_OFF));
     }
 
     #[test]

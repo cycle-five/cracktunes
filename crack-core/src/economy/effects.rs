@@ -23,8 +23,9 @@ pub const SWEEP_EVERY: Duration = Duration::from_secs(15);
 const SWEEP_BATCH: i64 = 100;
 /// A row whose undo keeps failing is given up on this long after it was due.
 const UNDO_GIVE_UP: ChronoDuration = ChronoDuration::hours(1);
-/// A `pending` row younger than this may be a purchase still in flight.
-const PENDING_GRACE: ChronoDuration = ChronoDuration::minutes(2);
+/// A `pending` row of this process younger than this may be a purchase
+/// still in flight (on the database's clock).
+const PENDING_GRACE_SECS: f64 = 120.0;
 
 /// What putting a prank right takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -395,9 +396,13 @@ pub async fn reconcile(
     let Some(pool) = data.database_pool.as_ref() else {
         return;
     };
-    // Only rows older than the grace: a purchase between its charge and its
-    // activate must not be refunded from under itself by a mid-run GuildCreate.
-    match economy::pending_for_guild(pool, guild, now - PENDING_GRACE).await {
+    // Every row a previous process left, whatever its age (a crash or a
+    // redeploy between charge and activate); of this process's own, only
+    // those older than the grace: a purchase between its charge and its
+    // activate must not be refunded from under itself by a mid-run
+    // GuildCreate.
+    let started = data.economy.process_start();
+    match economy::pending_for_guild(pool, guild, started, PENDING_GRACE_SECS).await {
         Ok(rows) => {
             for row in rows {
                 resolve_pending(data, discord, view, guild, &row, now).await;
@@ -646,11 +651,19 @@ mod tests {
         }
     }
 
+    /// A process that started at `t0()`: every row seeded before it was left
+    /// by a previous process.
     fn data_with(pool: &PgPool) -> Data {
-        Data(Arc::new(DataInner {
+        data_started(pool, t0())
+    }
+
+    fn data_started(pool: &PgPool, at: DateTime<Utc>) -> Data {
+        let data = Data(Arc::new(DataInner {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }))
+        }));
+        data.economy.set_process_start(at);
+        data
     }
 
     async fn seed(
@@ -981,7 +994,8 @@ mod tests {
     });
 
     db_test!(reconcile_leaves_a_fresh_pending_row_alone, |pool| {
-        let data = data_with(&pool);
+        // This process started before the row: a purchase in flight.
+        let data = data_started(&pool, t0() - mins(60));
         let fake = FakeEconomyDiscord::default();
         let fresh = seed(
             &pool,
@@ -997,6 +1011,54 @@ mod tests {
         assert_eq!(state_of(&pool, fresh).await.0, "pending");
         assert_eq!(balance(&pool).await, 0);
     });
+
+    db_test!(
+        reconcile_resolves_a_fresh_row_left_by_a_previous_process,
+        |pool| {
+            // On the database's clock, as production reads it: a row 10 s old.
+            let db_now = crate::db::economy::db_now(&pool).await.unwrap();
+            let secs = ChronoDuration::seconds;
+            let id = seed(
+                &pool,
+                ActionKind::Immunity,
+                None,
+                &ActionPayload::Immunity { hours: 24 },
+                "pending",
+                None,
+                db_now - secs(10),
+            )
+            .await;
+            let fake = FakeEconomyDiscord::default();
+            // This process started before the row: it may be in flight.
+            let running = data_started(&pool, db_now - secs(20));
+            reconcile(&running, &fake, &FakeView::default(), G, Utc::now()).await;
+            assert_eq!(state_of(&pool, id).await.0, "pending", "left alone");
+            assert_eq!(balance(&pool).await, 0);
+            // A process that started after the row: a crash left it. Resolved
+            // at the first GuildCreate, though it is far inside the grace.
+            let restarted = data_started(&pool, db_now - secs(5));
+            reconcile(&restarted, &fake, &FakeView::default(), G, Utc::now()).await;
+            assert_eq!(state_of(&pool, id).await.0, "failed", "refunded");
+            assert_eq!(balance(&pool).await, 100);
+            // Without a recorded start only the grace counts.
+            let fresh = seed(
+                &pool,
+                ActionKind::Immunity,
+                None,
+                &ActionPayload::Immunity { hours: 24 },
+                "pending",
+                None,
+                db_now - secs(10),
+            )
+            .await;
+            let unknown = Data(Arc::new(DataInner {
+                database_pool: Some(pool.clone()),
+                ..Default::default()
+            }));
+            reconcile(&unknown, &fake, &FakeView::default(), G, Utc::now()).await;
+            assert_eq!(state_of(&pool, fresh).await.0, "pending");
+        }
+    );
 
     fn pending_rename() -> ActionPayload {
         ActionPayload::Rename {
@@ -1442,9 +1504,24 @@ mod tests {
             vec![ending]
         );
         assert_eq!(
-            ids(db::pending_for_guild(&pool, G, t0()).await.unwrap()),
+            ids(db::pending_for_guild(&pool, G, Some(t0()), 120.0)
+                .await
+                .unwrap()),
             vec![pending]
         );
+        // /economy status's record: newest first, at most the limit, and
+        // only kinds this build knows.
+        let p = &pool;
+        let recent = |limit| async move {
+            db::recent_actions(p, G, limit)
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|a| a.row.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(recent(10).await, vec![pending, ending, due]);
+        assert_eq!(recent(2).await, vec![pending, ending]);
     });
 
     db_test!(an_override_beats_a_stored_reason, |pool| {
