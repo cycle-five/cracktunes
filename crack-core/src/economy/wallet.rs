@@ -14,6 +14,10 @@ pub enum LedgerKind {
     CoinflipStake,
     CoinflipWin,
     Adjust,
+    BountyPlaced,
+    BountyWon,
+    Pledge,
+    PledgeRefund,
 }
 
 impl LedgerKind {
@@ -26,6 +30,10 @@ impl LedgerKind {
             LedgerKind::CoinflipStake => "coinflip_stake",
             LedgerKind::CoinflipWin => "coinflip_win",
             LedgerKind::Adjust => "adjust",
+            LedgerKind::BountyPlaced => "bounty_placed",
+            LedgerKind::BountyWon => "bounty_won",
+            LedgerKind::Pledge => "pledge",
+            LedgerKind::PledgeRefund => "pledge_refund",
         }
     }
 }
@@ -34,6 +42,8 @@ impl LedgerKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionState {
     Pending,
+    /// A crowdfund still filling.
+    Funding,
     Active,
     Ending,
     Done,
@@ -45,6 +55,7 @@ impl ActionState {
     pub fn as_str(self) -> &'static str {
         match self {
             ActionState::Pending => "pending",
+            ActionState::Funding => "funding",
             ActionState::Active => "active",
             ActionState::Ending => "ending",
             ActionState::Done => "done",
@@ -56,6 +67,7 @@ impl ActionState {
     pub fn parse(s: &str) -> Option<Self> {
         [
             ActionState::Pending,
+            ActionState::Funding,
             ActionState::Active,
             ActionState::Ending,
             ActionState::Done,
@@ -109,6 +121,19 @@ pub enum ActionPayload {
     Reveal {
         action_id: i64,
     },
+    /// A walk-on clip for the target's next join. The link is never shown.
+    Theme {
+        /// Reaches yt-dlp only through `crack_types::ytdl_for_url`; never shown.
+        url: String,
+        start_secs: u32,
+    },
+    Dedicate {
+        song: String,
+    },
+    Jump {
+        song: String,
+    },
+    Bounty,
 }
 
 /// Why credits did not move.
@@ -150,6 +175,7 @@ mod payload_tests {
     fn action_state_text_round_trips() {
         for st in [
             ActionState::Pending,
+            ActionState::Funding,
             ActionState::Active,
             ActionState::Ending,
             ActionState::Done,
@@ -158,6 +184,7 @@ mod payload_tests {
         ] {
             assert_eq!(ActionState::parse(st.as_str()), Some(st));
         }
+        assert_eq!(ActionState::parse("funding"), Some(ActionState::Funding));
         assert_eq!(ActionState::parse("nope"), None);
     }
 
@@ -215,6 +242,22 @@ mod payload_tests {
                 ActionPayload::Reveal { action_id: 42 },
                 r#"{"kind":"reveal","action_id":42}"#,
             ),
+            (
+                ActionPayload::Theme {
+                    url: "https://x".into(),
+                    start_secs: 83,
+                },
+                r#"{"kind":"theme","url":"https://x","start_secs":83}"#,
+            ),
+            (
+                ActionPayload::Dedicate { song: "s".into() },
+                r#"{"kind":"dedicate","song":"s"}"#,
+            ),
+            (
+                ActionPayload::Jump { song: "j".into() },
+                r#"{"kind":"jump","song":"j"}"#,
+            ),
+            (ActionPayload::Bounty, r#"{"kind":"bounty"}"#),
         ];
         for (payload, wire) in cases {
             assert_eq!(serde_json::to_string(&payload).unwrap(), wire);

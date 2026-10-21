@@ -245,6 +245,32 @@ pub struct Charged {
 
 /// Debit the buyer and record the purchase as `pending`, in one transaction.
 pub async fn charge_for_action(pool: &PgPool, a: &NewAction<'_>) -> Result<Charged, MoveError> {
+    charge_as(pool, a, ActionState::Pending, LedgerKind::Purchase).await
+}
+
+/// Debit the buyer and record the purchase directly as `active`, in one
+/// transaction, ending at `a.expires_at`. A theme uses it with
+/// [`LedgerKind::Purchase`], a bounty with [`LedgerKind::BountyPlaced`]: both
+/// are charged and standing in one step, so neither is ever `pending`.
+pub async fn charge_active(
+    pool: &PgPool,
+    a: &NewAction<'_>,
+    ledger: LedgerKind,
+) -> Result<Charged, MoveError> {
+    // Escrow must expire, or nothing would ever refund it.
+    if a.expires_at.is_none() {
+        return Err(MoveError::Invalid);
+    }
+    charge_as(pool, a, ActionState::Active, ledger).await
+}
+
+/// The one debit-and-insert transaction behind the two charges above.
+async fn charge_as(
+    pool: &PgPool,
+    a: &NewAction<'_>,
+    state: ActionState,
+    ledger: LedgerKind,
+) -> Result<Charged, MoveError> {
     if a.price <= 0 {
         return Err(MoveError::Invalid);
     }
@@ -269,20 +295,12 @@ pub async fn charge_for_action(pool: &PgPool, a: &NewAction<'_>) -> Result<Charg
         a.note,
         a.signed,
         Json(a.payload) as Json<&ActionPayload>,
-        ActionState::Pending.as_str(),
+        state.as_str(),
         a.expires_at,
     )
     .fetch_one(&mut *tx)
     .await?;
-    write_ledger(
-        &mut tx,
-        a.guild,
-        a.buyer,
-        -a.price,
-        LedgerKind::Purchase,
-        Some(row.id),
-    )
-    .await?;
+    write_ledger(&mut tx, a.guild, a.buyer, -a.price, ledger, Some(row.id)).await?;
     tx.commit().await?;
     Ok(Charged {
         action_id: row.id,
@@ -291,9 +309,14 @@ pub async fn charge_for_action(pool: &PgPool, a: &NewAction<'_>) -> Result<Charg
 }
 
 /// Move an action to a new state, stamping `ended_at` when it is final. A
-/// row in a final state never moves again.
-pub async fn finish_action(pool: &PgPool, action_id: i64, state: ActionState) -> sqlx::Result<()> {
-    sqlx::query!(
+/// row in a final state never moves again. True when the row moved: false
+/// for one already final (a theme refunded as it played).
+pub async fn finish_action(
+    pool: &PgPool,
+    action_id: i64,
+    state: ActionState,
+) -> sqlx::Result<bool> {
+    let moved = sqlx::query!(
         "UPDATE economy_actions
          SET state = $2, ended_at = CASE WHEN $3 THEN now() ELSE ended_at END
          WHERE id = $1 AND state NOT IN ('done', 'ended', 'failed')",
@@ -303,7 +326,7 @@ pub async fn finish_action(pool: &PgPool, action_id: i64, state: ActionState) ->
     )
     .execute(pool)
     .await?;
-    Ok(())
+    Ok(moved.rows_affected() > 0)
 }
 
 /// A bought action as stored.
@@ -419,11 +442,16 @@ struct RawCandidate {
     created_at: DateTime<Utc>,
 }
 
-/// The pranks (spec 4.1) other people bought against `target` that could be
-/// unmasked: unsigned, not refunded (a blocked prank was still aimed at the
-/// mirror's owner), newest first. A
-/// bounced prank (its buyer is its own target) and a mirror (its target is
-/// its owner) never qualify. `only` narrows to one action id, and
+/// The revealable kinds (spec 4.1 and P4: the pranks, themes and bounties)
+/// other people bought against `target` that could be unmasked, as far as
+/// the target could see them: unsigned, never a `funding` row, a theme only
+/// once it played (`done`: one still waiting is a surprise, and one that
+/// ended without playing was never heard) and never a fund that did not fill
+/// (`unfunded`). A bounty that was
+/// refunded or expired stays revealable, since its card was public. Not
+/// refunded (a blocked prank was still aimed at the mirror's owner), newest
+/// first. A bounced prank (its buyer is its own target) and a mirror (its
+/// target is its owner) never qualify. `only` narrows to one action id, and
 /// `unrevealed_only` drops the ones already unmasked.
 pub async fn reveal_candidates(
     pool: &PgPool,
@@ -433,7 +461,7 @@ pub async fn reveal_candidates(
     unrevealed_only: bool,
     limit: i64,
 ) -> sqlx::Result<Vec<RevealCandidate>> {
-    let keys: Vec<String> = ActionKind::PRANKS
+    let keys: Vec<String> = ActionKind::REVEALABLE
         .iter()
         .map(|k| k.key().to_string())
         .collect();
@@ -446,6 +474,8 @@ pub async fn reveal_candidates(
            WHERE guild_id = $1 AND target_id = $2 AND buyer_id <> $2
              AND kind = ANY($3) AND signed = false
              AND state IN ('active', 'ending', 'ended', 'done')
+             AND NOT (kind = 'theme' AND state <> 'done')
+             AND end_reason IS DISTINCT FROM 'unfunded'
              AND ($4::bigint IS NULL OR id = $4)
              AND (NOT $5 OR revealed_at IS NULL)
            ORDER BY id DESC
@@ -668,6 +698,13 @@ pub async fn consume_mirror(pool: &PgPool, guild: GuildId, owner: UserId) -> sql
 
 /// Give a still-`pending` purchase's price back. `None` (and nothing
 /// changed) when it is not pending, so a second call does nothing.
+///
+/// A pending row with pledges is a filled crowdfund: its pledgers are
+/// refunded exactly as [`refund_fund`] does, and the starter's `price` is
+/// never credited (the starter paid only their own pledge). The returned
+/// balance is then the starter's, unchanged unless they pledged too.
+///
+/// Lock order: the action row, then the pledgers' wallets in user-id order.
 pub async fn refund_action(pool: &PgPool, action_id: i64) -> sqlx::Result<Option<i64>> {
     let mut tx = pool.begin().await?;
     let Some(row) = sqlx::query!(
@@ -677,6 +714,134 @@ pub async fn refund_action(pool: &PgPool, action_id: i64) -> sqlx::Result<Option
         action_id,
         ActionState::Failed.as_str(),
         ActionState::Pending.as_str()
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    else {
+        return Ok(None);
+    };
+    let (Some(guild), Some(buyer)) = (
+        u64::try_from(row.guild_id).ok().filter(|g| *g != 0),
+        uid(row.buyer_id),
+    ) else {
+        return Err(sqlx::Error::Decode("action has an invalid id".into()));
+    };
+    let guild = GuildId::new(guild);
+    // A row that has any pledge, refunded or not, is a crowdfund: its price
+    // is never credited to the starter.
+    let is_fund = sqlx::query!(
+        r#"SELECT EXISTS(SELECT 1 FROM economy_pledges WHERE action_id = $1) AS "yes!""#,
+        action_id
+    )
+    .fetch_one(&mut *tx)
+    .await?
+    .yes;
+    if is_fund {
+        refund_pledges(&mut tx, guild, action_id).await?;
+        let held = sqlx::query!(
+            "SELECT balance FROM economy_wallets WHERE guild_id = $1 AND user_id = $2",
+            guild.get() as i64,
+            buyer.get() as i64
+        )
+        .fetch_optional(&mut *tx)
+        .await?
+        .map_or(0, |w| w.balance);
+        tx.commit().await?;
+        return Ok(Some(held));
+    }
+    let wallet = lock_wallet(&mut tx, guild, buyer).await?;
+    let back = wallet
+        .balance
+        .checked_add(row.price)
+        .ok_or_else(|| sqlx::Error::Decode("refund overflows the balance".into()))?;
+    set_balance(&mut tx, &wallet, back).await?;
+    write_ledger(
+        &mut tx,
+        guild,
+        buyer,
+        row.price,
+        LedgerKind::Refund,
+        Some(action_id),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Some(back))
+}
+
+/// Credit every unrefunded pledge on `fund` back, one `PledgeRefund` ledger
+/// row per pledge (a member who pledged twice gets two), and stamp
+/// `refunded_at`. The caller holds the fund row's lock. Wallets are locked in
+/// user-id order. True when there was at least one pledge to refund.
+async fn refund_pledges(
+    tx: &mut sqlx::PgConnection,
+    guild: GuildId,
+    fund: i64,
+) -> sqlx::Result<bool> {
+    let pledges = sqlx::query!(
+        "SELECT id, user_id, amount FROM economy_pledges
+         WHERE action_id = $1 AND refunded_at IS NULL
+         ORDER BY user_id, id
+         FOR UPDATE",
+        fund
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut wallet: Option<Locked> = None;
+    for p in &pledges {
+        let user = uid(p.user_id)
+            .ok_or_else(|| sqlx::Error::Decode("pledge has an invalid user".into()))?;
+        let mut w = match wallet.take() {
+            Some(w) if w.user == user => w,
+            _ => lock_wallet(tx, guild, user).await?,
+        };
+        let back = w
+            .balance
+            .checked_add(p.amount)
+            .ok_or_else(|| sqlx::Error::Decode("refund overflows the balance".into()))?;
+        set_balance(tx, &w, back).await?;
+        w.balance = back;
+        write_ledger(
+            tx,
+            guild,
+            user,
+            p.amount,
+            LedgerKind::PledgeRefund,
+            Some(fund),
+        )
+        .await?;
+        sqlx::query!(
+            "UPDATE economy_pledges SET refunded_at = now() WHERE id = $1",
+            p.id
+        )
+        .execute(&mut *tx)
+        .await?;
+        wallet = Some(w);
+    }
+    Ok(!pledges.is_empty())
+}
+
+/// End an `active` row that never paid out (a theme that never played, a
+/// bounty nobody collected): `ended` with `reason`, and the buyer's `price`
+/// back as a [`LedgerKind::Refund`]. Returns the buyer's new balance, `None`
+/// (nothing changed) when the row was not `active`, so a second call does
+/// nothing. Only an escrow kind (a theme, a bounty) is refunded this way.
+///
+/// Lock order: the action row, then the buyer's wallet.
+pub async fn refund_active(
+    pool: &PgPool,
+    action_id: i64,
+    reason: &str,
+) -> sqlx::Result<Option<i64>> {
+    let mut tx = pool.begin().await?;
+    let Some(row) = sqlx::query!(
+        "UPDATE economy_actions SET state = $2, ended_at = now(), end_reason = $4
+         WHERE id = $1 AND state = $3 AND kind = ANY($5)
+         RETURNING guild_id, buyer_id, price",
+        action_id,
+        ActionState::Ended.as_str(),
+        ActionState::Active.as_str(),
+        reason,
+        &escrow_kinds()
     )
     .fetch_optional(&mut *tx)
     .await?
@@ -707,6 +872,674 @@ pub async fn refund_action(pool: &PgPool, action_id: i64) -> sqlx::Result<Option
     .await?;
     tx.commit().await?;
     Ok(Some(back))
+}
+
+/// Pay `claimer` every standing bounty on `target` that somebody else
+/// placed, in one transaction: each row ends `ended` with `claimed`, and its
+/// price is credited with one [`LedgerKind::BountyWon`] row carrying that
+/// bounty's id. Bounties `claimer` placed stand, and an expired bounty
+/// (not yet swept) is skipped: it is refunded, not paid out. Returns the
+/// total, 0 when there was none.
+///
+/// Lock order: the bounty rows in id order (`FOR UPDATE`), then the
+/// claimer's wallet. Two racing claims never both pay a bounty: the second
+/// waits on the row lock and finds it no longer `active`.
+pub async fn claim_bounties(
+    pool: &PgPool,
+    guild: GuildId,
+    target: UserId,
+    claimer: UserId,
+) -> sqlx::Result<i64> {
+    let mut tx = pool.begin().await?;
+    let bounties = sqlx::query!(
+        "SELECT id, price FROM economy_actions
+         WHERE guild_id = $1 AND target_id = $2 AND kind = $4
+           AND state = 'active' AND buyer_id <> $3
+           AND expires_at IS NOT NULL AND expires_at > now()
+         ORDER BY id
+         FOR UPDATE",
+        guild.get() as i64,
+        target.get() as i64,
+        claimer.get() as i64,
+        ActionKind::Bounty.key()
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+    if bounties.is_empty() {
+        return Ok(0);
+    }
+    let mut wallet = lock_wallet(&mut tx, guild, claimer).await?;
+    let mut total = 0_i64;
+    for b in &bounties {
+        let back = wallet
+            .balance
+            .checked_add(b.price)
+            .ok_or_else(|| sqlx::Error::Decode("bounty overflows the balance".into()))?;
+        set_balance(&mut tx, &wallet, back).await?;
+        wallet.balance = back;
+        total += b.price;
+        sqlx::query!(
+            "UPDATE economy_actions SET state = $2, ended_at = now(), end_reason = 'claimed'
+             WHERE id = $1",
+            b.id,
+            ActionState::Ended.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+        write_ledger(
+            &mut tx,
+            guild,
+            claimer,
+            b.price,
+            LedgerKind::BountyWon,
+            Some(b.id),
+        )
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(total)
+}
+
+/// Why a fund operation did not happen.
+#[derive(Debug)]
+pub enum FundError {
+    /// A fund for this target and kind is already open.
+    AlreadyOpen,
+    /// The fund is not `funding`, or its time is up.
+    Closed,
+    /// The member has already put in their share of this fund: at most
+    /// `max` (half the price, rounded up) each, so a fund takes two people.
+    OverShare {
+        max: i64,
+    },
+    Money(MoveError),
+    Db(sqlx::Error),
+}
+
+impl From<sqlx::Error> for FundError {
+    fn from(e: sqlx::Error) -> Self {
+        FundError::Db(e)
+    }
+}
+
+impl From<MoveError> for FundError {
+    fn from(e: MoveError) -> Self {
+        FundError::Money(e)
+    }
+}
+
+impl std::fmt::Display for FundError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FundError::AlreadyOpen => write!(f, "a fund is already open"),
+            FundError::Closed => write!(f, "the fund is closed"),
+            FundError::OverShare { max } => write!(f, "a member may pledge at most {max}"),
+            FundError::Money(e) => write!(f, "{e}"),
+            FundError::Db(e) => write!(f, "database error: {e}"),
+        }
+    }
+}
+
+/// A fund that was opened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpenedFund {
+    pub action_id: i64,
+    /// What the first pledge took (0 when there was none).
+    pub pledged: i64,
+    /// The starter's balance after that pledge, `None` without one.
+    pub balance: Option<i64>,
+}
+
+/// What a pledge did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pledged {
+    /// What was taken: the ask, capped at what the fund still needed.
+    pub taken: i64,
+    /// The pledges on the fund now.
+    pub total: i64,
+    pub price: i64,
+    /// This pledge completed the fund, which is now `pending` (its
+    /// `created_at` restarted at the fill, so reconcile's grace guard counts
+    /// from the moment the row became runnable).
+    pub filled: bool,
+    /// The pledger's balance after.
+    pub balance: i64,
+}
+
+/// The most one member may put into a fund of `price`: half, rounded up.
+pub fn fund_share(price: i64) -> i64 {
+    price / 2 + price % 2
+}
+
+/// One member's pledge, in pledge order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PledgeRow {
+    pub user: UserId,
+    pub amount: i64,
+    pub signed: bool,
+}
+
+/// Open a crowdfund: the row goes in as `funding` with `a.expires_at` (the
+/// caller computes now + 24 h) and `a.price` as the prank's price, then the
+/// optional first pledge `(amount, signed)` from `a.buyer` is taken as
+/// [`pledge`] takes one, in the same transaction. A second open fund for the
+/// same target and kind is [`FundError::AlreadyOpen`], by the partial unique
+/// index `economy_actions_one_fund`.
+///
+/// Lock order: the new action row, then the starter's wallet.
+pub async fn open_fund(
+    pool: &PgPool,
+    a: &NewAction<'_>,
+    first: Option<(i64, bool)>,
+) -> Result<OpenedFund, FundError> {
+    if a.price <= 0 || a.expires_at.is_none() {
+        return Err(MoveError::Invalid.into());
+    }
+    let mut tx = pool.begin().await?;
+    let inserted = sqlx::query!(
+        "INSERT INTO economy_actions
+             (guild_id, kind, buyer_id, target_id, price, note, signed, payload, state, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id",
+        a.guild.get() as i64,
+        a.kind.key(),
+        a.buyer.get() as i64,
+        a.target.map(|t| t.get() as i64),
+        a.price,
+        a.note,
+        a.signed,
+        Json(a.payload) as Json<&ActionPayload>,
+        ActionState::Funding.as_str(),
+        a.expires_at,
+    )
+    .fetch_one(&mut *tx)
+    .await;
+    let row = match inserted {
+        Ok(r) => r,
+        Err(sqlx::Error::Database(e)) if e.constraint() == Some("economy_actions_one_fund") => {
+            return Err(FundError::AlreadyOpen);
+        },
+        Err(e) => return Err(e.into()),
+    };
+    let opened = match first {
+        None => OpenedFund {
+            action_id: row.id,
+            pledged: 0,
+            balance: None,
+        },
+        Some((amount, signed)) => {
+            let p = take_pledge(&mut tx, row.id, a.guild, a.buyer, amount, signed, a.price).await?;
+            OpenedFund {
+                action_id: row.id,
+                pledged: p.taken,
+                balance: Some(p.balance),
+            }
+        },
+    };
+    tx.commit().await?;
+    Ok(opened)
+}
+
+/// Pledge `amount` to a fund, in one transaction:
+/// 1. lock the fund row `FOR UPDATE`; [`FundError::Closed`] unless it belongs
+///    to `guild`, is `funding`, and is unexpired on the database clock;
+/// 2. take `min(amount, price - pledged)`;
+/// 3. debit the pledger (`Pledge`) and insert the pledge;
+/// 4. if the pledges now equal the price, set the row `pending`.
+///
+/// Lock order: the fund row, then the pledger's wallet. Racing pledges
+/// serialise on the fund row, so exactly one of them fills it and the
+/// others find it closed.
+pub async fn pledge(
+    pool: &PgPool,
+    fund: i64,
+    guild: GuildId,
+    user: UserId,
+    amount: i64,
+    signed: bool,
+) -> Result<Pledged, FundError> {
+    if amount <= 0 {
+        return Err(MoveError::Invalid.into());
+    }
+    let mut tx = pool.begin().await?;
+    let Some(row) = sqlx::query!(
+        r#"SELECT price, (expires_at IS NULL OR expires_at > now()) AS "live!"
+           FROM economy_actions
+           WHERE id = $1 AND guild_id = $2 AND state = 'funding'
+           FOR UPDATE"#,
+        fund,
+        guild.get() as i64
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    else {
+        return Err(FundError::Closed);
+    };
+    if !row.live {
+        return Err(FundError::Closed);
+    }
+    let done = take_pledge(&mut tx, fund, guild, user, amount, signed, row.price).await?;
+    tx.commit().await?;
+    Ok(done)
+}
+
+/// The pledge itself, with the fund row already locked by the caller.
+async fn take_pledge(
+    tx: &mut sqlx::PgConnection,
+    fund: i64,
+    guild: GuildId,
+    user: UserId,
+    amount: i64,
+    signed: bool,
+    price: i64,
+) -> Result<Pledged, FundError> {
+    if amount <= 0 {
+        return Err(MoveError::Invalid.into());
+    }
+    let pledged = sqlx::query!(
+        r#"SELECT COALESCE(SUM(amount), 0)::bigint AS "total!"
+           FROM economy_pledges WHERE action_id = $1 AND refunded_at IS NULL"#,
+        fund
+    )
+    .fetch_one(&mut *tx)
+    .await?
+    .total;
+    let left = price - pledged;
+    if left <= 0 {
+        return Err(FundError::Closed);
+    }
+    // One member may not fill a fund alone: at most half the price (rounded
+    // up) each, across all their pledges to it.
+    let max = fund_share(price);
+    let mine = sqlx::query!(
+        r#"SELECT COALESCE(SUM(amount), 0)::bigint AS "total!"
+           FROM economy_pledges WHERE action_id = $1 AND user_id = $2"#,
+        fund,
+        user.get() as i64
+    )
+    .fetch_one(&mut *tx)
+    .await?
+    .total;
+    let share_left = max - mine;
+    if share_left <= 0 {
+        return Err(FundError::OverShare { max });
+    }
+    let taken = amount.min(left).min(share_left);
+    let wallet = lock_wallet(tx, guild, user).await?;
+    if wallet.balance < taken {
+        return Err(MoveError::Insufficient {
+            balance: wallet.balance,
+        }
+        .into());
+    }
+    let left = wallet.balance - taken;
+    set_balance(tx, &wallet, left).await?;
+    sqlx::query!(
+        "INSERT INTO economy_pledges (action_id, guild_id, user_id, amount, signed)
+         VALUES ($1, $2, $3, $4, $5)",
+        fund,
+        guild.get() as i64,
+        user.get() as i64,
+        taken,
+        signed
+    )
+    .execute(&mut *tx)
+    .await?;
+    write_ledger(tx, guild, user, -taken, LedgerKind::Pledge, Some(fund)).await?;
+    let total = pledged + taken;
+    let filled = total == price;
+    if filled {
+        sqlx::query!(
+            "UPDATE economy_actions SET state = $2, created_at = now(), expires_at = NULL
+             WHERE id = $1",
+            fund,
+            ActionState::Pending.as_str()
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+    Ok(Pledged {
+        taken,
+        total,
+        price,
+        filled,
+        balance: left,
+    })
+}
+
+/// The fund's pledges, oldest first.
+pub async fn fund_pledges(pool: &PgPool, fund: i64) -> sqlx::Result<Vec<PledgeRow>> {
+    let rows = sqlx::query!(
+        "SELECT user_id, amount, signed FROM economy_pledges
+         WHERE action_id = $1 ORDER BY id",
+        fund
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| {
+            Some(PledgeRow {
+                user: uid(r.user_id)?,
+                amount: r.amount,
+                signed: r.signed,
+            })
+        })
+        .collect())
+}
+
+/// Give a fund's pledges back and end it: `ended` from `funding`, `failed`
+/// from `pending`, with `reason`. Every unrefunded pledge is credited with a
+/// `PledgeRefund` and stamped. False (nothing changed) when the row is
+/// neither, or is `pending` with no pledges (a plain purchase: use
+/// [`refund_action`]).
+///
+/// Lock order: the fund row, then the pledgers' wallets in user-id order.
+pub async fn refund_fund(pool: &PgPool, id: i64, reason: &str) -> sqlx::Result<bool> {
+    let mut tx = pool.begin().await?;
+    let Some(row) = sqlx::query!(
+        "SELECT guild_id, state FROM economy_actions
+         WHERE id = $1 AND state IN ('funding', 'pending')
+         FOR UPDATE",
+        id
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    else {
+        return Ok(false);
+    };
+    let guild = u64::try_from(row.guild_id)
+        .ok()
+        .filter(|g| *g != 0)
+        .map(GuildId::new)
+        .ok_or_else(|| sqlx::Error::Decode("action has an invalid id".into()))?;
+    let next = if row.state == ActionState::Funding.as_str() {
+        ActionState::Ended
+    } else {
+        ActionState::Failed
+    };
+    let refunded = refund_pledges(&mut tx, guild, id).await?;
+    if !refunded && next == ActionState::Failed {
+        return Ok(false);
+    }
+    sqlx::query!(
+        "UPDATE economy_actions SET state = $2, ended_at = now(), end_reason = $3
+         WHERE id = $1",
+        id,
+        next.as_str(),
+        reason
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
+/// The sweeper's end for a fund whose 24 hours are up: refund every pledge
+/// and end the row `ended` with reason `unfunded`, only while it is still
+/// `funding` and past `expires_at`, checked under the row lock. A fund that
+/// filled between the sweeper's read and this call is left alone (false).
+///
+/// Lock order: the fund row, then the pledgers' wallets in user-id order.
+pub async fn expire_fund(pool: &PgPool, id: i64) -> sqlx::Result<bool> {
+    let mut tx = pool.begin().await?;
+    let Some(row) = sqlx::query!(
+        "SELECT guild_id FROM economy_actions
+         WHERE id = $1 AND state = 'funding'
+           AND expires_at IS NOT NULL AND expires_at <= now()
+         FOR UPDATE",
+        id
+    )
+    .fetch_optional(&mut *tx)
+    .await?
+    else {
+        return Ok(false);
+    };
+    let guild = u64::try_from(row.guild_id)
+        .ok()
+        .filter(|g| *g != 0)
+        .map(GuildId::new)
+        .ok_or_else(|| sqlx::Error::Decode("action has an invalid id".into()))?;
+    refund_pledges(&mut tx, guild, id).await?;
+    sqlx::query!(
+        "UPDATE economy_actions
+         SET state = $2, ended_at = now(), end_reason = 'unfunded'
+         WHERE id = $1",
+        id,
+        ActionState::Ended.as_str()
+    )
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(true)
+}
+
+/// Prepare a filled (`pending`) fund to run: write the payload (with what to
+/// restore) and the end of its effect in one statement. A fill leaves
+/// `expires_at` empty, which reconcile reads as "never prepared, never acted".
+/// False when the row is not `pending`.
+pub async fn prepare_fund(
+    pool: &PgPool,
+    id: i64,
+    payload: &ActionPayload,
+    expires_at: Option<DateTime<Utc>>,
+) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE economy_actions SET payload = $2, expires_at = $3
+         WHERE id = $1 AND state = 'pending'",
+        id,
+        Json(payload) as Json<&ActionPayload>,
+        expires_at
+    )
+    .execute(pool)
+    .await?;
+    Ok(done.rows_affected() > 0)
+}
+
+/// Across all guilds, `funding` rows whose 24 hours are up, oldest first.
+pub async fn due_funds(
+    pool: &PgPool,
+    now: DateTime<Utc>,
+    limit: i64,
+) -> sqlx::Result<Vec<(GuildId, ActionRow)>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE state = 'funding' AND expires_at IS NOT NULL AND expires_at <= $1
+             AND kind = ANY($3)
+           ORDER BY expires_at, id
+           LIMIT $2"#,
+        now,
+        limit,
+        &known_kinds()
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw))
+}
+
+/// [`RawAction`] plus the pledged total.
+struct RawFund {
+    id: i64,
+    guild_id: i64,
+    kind: String,
+    buyer_id: i64,
+    target_id: Option<i64>,
+    payload: Json<ActionPayload>,
+    state: String,
+    expires_at: Option<DateTime<Utc>>,
+    note: Option<String>,
+    signed: bool,
+    revealed_at: Option<DateTime<Utc>>,
+    pledged: i64,
+    price: i64,
+}
+
+/// One server's `funding` rows, each with what has been pledged and the
+/// row's own price, newest first.
+pub async fn open_funds(pool: &PgPool, guild: GuildId) -> sqlx::Result<Vec<(ActionRow, i64, i64)>> {
+    let raw = sqlx::query_as!(
+        RawFund,
+        r#"SELECT a.id, a.guild_id, a.kind, a.buyer_id, a.target_id,
+                  a.payload AS "payload: Json<ActionPayload>",
+                  a.state, a.expires_at, a.note, a.signed, a.revealed_at, a.price,
+                  COALESCE((SELECT SUM(p.amount) FROM economy_pledges p
+                            WHERE p.action_id = a.id AND p.refunded_at IS NULL), 0)::bigint
+                      AS "pledged!"
+           FROM economy_actions a
+           WHERE a.guild_id = $1 AND a.state = 'funding' AND a.kind = ANY($2)
+           ORDER BY a.id DESC"#,
+        guild.get() as i64,
+        &known_kinds()
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|f| {
+            let (pledged, price) = (f.pledged, f.price);
+            RawAction {
+                id: f.id,
+                guild_id: f.guild_id,
+                kind: f.kind,
+                buyer_id: f.buyer_id,
+                target_id: f.target_id,
+                payload: f.payload,
+                state: f.state,
+                expires_at: f.expires_at,
+                note: f.note,
+                signed: f.signed,
+                revealed_at: f.revealed_at,
+            }
+            .into_row()
+            .map(|(_, row)| (row, pledged, price))
+        })
+        .collect())
+}
+
+/// One open fund as a pledger sees it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FundView {
+    pub row: ActionRow,
+    /// The row's own price (never the config's, which may have moved).
+    pub price: i64,
+    /// What has been pledged to it, refunded pledges excluded.
+    pub pledged: i64,
+    /// What this member has put in.
+    pub mine: i64,
+}
+
+/// The `funding` row `fund` of `guild`, with what `user` has put in. `None`
+/// when it is not there, belongs to another server, or is no longer
+/// `funding`.
+pub async fn fund_view(
+    pool: &PgPool,
+    guild: GuildId,
+    fund: i64,
+    user: UserId,
+) -> sqlx::Result<Option<FundView>> {
+    let raw = sqlx::query!(
+        r#"SELECT a.id, a.guild_id, a.kind, a.buyer_id, a.target_id,
+                  a.payload AS "payload: Json<ActionPayload>",
+                  a.state, a.expires_at, a.note, a.signed, a.revealed_at, a.price,
+                  COALESCE((SELECT SUM(p.amount) FROM economy_pledges p
+                            WHERE p.action_id = a.id AND p.refunded_at IS NULL), 0)::bigint
+                      AS "pledged!",
+                  COALESCE((SELECT SUM(p.amount) FROM economy_pledges p
+                            WHERE p.action_id = a.id AND p.user_id = $3), 0)::bigint
+                      AS "mine!"
+           FROM economy_actions a
+           WHERE a.id = $1 AND a.guild_id = $2 AND a.state = 'funding' AND a.kind = ANY($4)"#,
+        fund,
+        guild.get() as i64,
+        user.get() as i64,
+        &known_kinds()
+    )
+    .fetch_optional(pool)
+    .await?;
+    Ok(raw.and_then(|f| {
+        let (price, pledged, mine) = (f.price, f.pledged, f.mine);
+        RawAction {
+            id: f.id,
+            guild_id: f.guild_id,
+            kind: f.kind,
+            buyer_id: f.buyer_id,
+            target_id: f.target_id,
+            payload: f.payload,
+            state: f.state,
+            expires_at: f.expires_at,
+            note: f.note,
+            signed: f.signed,
+            revealed_at: f.revealed_at,
+        }
+        .into_row()
+        .map(|(_, row)| FundView {
+            row,
+            price,
+            pledged,
+            mine,
+        })
+    }))
+}
+
+/// One server's standing bounties, oldest first.
+pub async fn active_bounties(pool: &PgPool, guild: GuildId) -> sqlx::Result<Vec<ActionRow>> {
+    let raw = sqlx::query_as!(
+        RawAction,
+        r#"SELECT id, guild_id, kind, buyer_id, target_id,
+                  payload AS "payload: Json<ActionPayload>",
+                  state, expires_at, note, signed, revealed_at
+           FROM economy_actions
+           WHERE guild_id = $1 AND kind = $2 AND state = 'active'
+           ORDER BY id"#,
+        guild.get() as i64,
+        ActionKind::Bounty.key()
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows_of(raw).into_iter().map(|(_, r)| r).collect())
+}
+
+/// One standing bounty as `/bounty list` shows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BountyStake {
+    pub target: UserId,
+    pub placer: UserId,
+    pub amount: i64,
+    pub signed: bool,
+    pub expires_at: DateTime<Utc>,
+}
+
+/// One server's live bounties (`active` and not yet expired), oldest first,
+/// with what was staked. A row with an id this build can't read is skipped.
+pub async fn live_bounty_stakes(pool: &PgPool, guild: GuildId) -> sqlx::Result<Vec<BountyStake>> {
+    let rows = sqlx::query!(
+        r#"SELECT buyer_id, target_id AS "target_id!", price, signed,
+                  expires_at AS "expires_at!"
+           FROM economy_actions
+           WHERE guild_id = $1 AND kind = $2 AND state = 'active'
+             AND target_id IS NOT NULL AND expires_at > now()
+           ORDER BY id"#,
+        guild.get() as i64,
+        ActionKind::Bounty.key()
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|r| {
+            Some(BountyStake {
+                target: uid(r.target_id)?,
+                placer: uid(r.buyer_id)?,
+                amount: r.price,
+                signed: r.signed,
+                expires_at: r.expires_at,
+            })
+        })
+        .collect())
 }
 
 /// An `economy_actions` row as the sweep queries read it.
@@ -750,6 +1583,15 @@ impl RawAction {
             },
         ))
     }
+}
+
+/// The kinds whose end refunds the buyer ([`ActionKind::is_escrow`]).
+fn escrow_kinds() -> Vec<String> {
+    ActionKind::ALL
+        .iter()
+        .filter(|k| k.is_escrow())
+        .map(|k| k.key().to_string())
+        .collect()
 }
 
 /// Every kind this build knows, as stored.
@@ -2060,6 +2902,1080 @@ mod tests {
                     .fetch_one(&pool)
                     .await?;
             assert_eq!(state, "failed");
+            Ok(())
+        }
+    );
+
+    const C: UserId = UserId::new(12);
+    const T: UserId = UserId::new(20);
+
+    fn aimed<'a>(
+        kind: ActionKind,
+        buyer: UserId,
+        target: UserId,
+        price: i64,
+        payload: &'a ActionPayload,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> NewAction<'a> {
+        NewAction {
+            guild: G,
+            kind,
+            buyer,
+            target: Some(target),
+            price,
+            note: None,
+            signed: false,
+            payload,
+            expires_at,
+        }
+    }
+
+    /// Every wallet equals what it was given plus its ledger rows, and the
+    /// ledger rows sum to nothing but what the test moved.
+    async fn agree(pool: &PgPool, given: &[(UserId, i64)]) {
+        for (user, start) in given {
+            let delta: i64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(delta), 0)::bigint FROM economy_ledger WHERE user_id = $1",
+            )
+            .bind(user.get() as i64)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+            assert_eq!(
+                balance(pool, G, *user).await.unwrap(),
+                start + delta,
+                "wallet of {user} disagrees with its ledger"
+            );
+        }
+    }
+
+    async fn state_of(pool: &PgPool, id: i64) -> String {
+        sqlx::query_scalar("SELECT state FROM economy_actions WHERE id = $1")
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    async fn reason_of(pool: &PgPool, id: i64) -> Option<String> {
+        sqlx::query_scalar("SELECT end_reason FROM economy_actions WHERE id = $1")
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    fn theme() -> ActionPayload {
+        ActionPayload::Theme {
+            url: "https://example.com/a".into(),
+            start_secs: 0,
+        }
+    }
+
+    db_test!(
+        charge_active_debits_and_starts_active,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            let payload = theme();
+            let end = now() + Duration::days(7);
+            let a = aimed(ActionKind::Theme, A, T, 60, &payload, Some(end));
+            let c = charge_active(&pool, &a, LedgerKind::Purchase)
+                .await
+                .unwrap();
+            assert_eq!(c.balance, 40);
+            assert_eq!(balance(&pool, G, A).await?, 40);
+            assert_eq!(state_of(&pool, c.action_id).await, "active");
+            let row = action_by_id(&pool, G, c.action_id).await?.unwrap();
+            assert_eq!(row.expires_at, Some(end));
+            assert_eq!(row.target, Some(T));
+            assert_eq!(ledger_count(&pool, "purchase").await, 1);
+            // A bounty books its own ledger kind.
+            let b = aimed(
+                ActionKind::Bounty,
+                A,
+                T,
+                40,
+                &ActionPayload::Bounty,
+                Some(end),
+            );
+            charge_active(&pool, &b, LedgerKind::BountyPlaced)
+                .await
+                .unwrap();
+            assert_eq!(ledger_count(&pool, "bounty_placed").await, 1);
+            // Too poor: nothing written.
+            let e = charge_active(&pool, &a, LedgerKind::Purchase)
+                .await
+                .unwrap_err();
+            assert!(matches!(e, MoveError::Insufficient { balance: 0 }), "{e:?}");
+            let e = charge_active(
+                &pool,
+                &aimed(ActionKind::Theme, A, T, 0, &payload, None),
+                LedgerKind::Purchase,
+            )
+            .await
+            .unwrap_err();
+            assert!(matches!(e, MoveError::Invalid), "{e:?}");
+            agree(&pool, &[(A, 100)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(refund_active_refunds_once, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        let payload = theme();
+        let a = aimed(ActionKind::Theme, A, T, 60, &payload, Some(now()));
+        let c = charge_active(&pool, &a, LedgerKind::Purchase)
+            .await
+            .unwrap();
+        assert_eq!(
+            refund_active(&pool, c.action_id, "unplayed").await?,
+            Some(100)
+        );
+        assert_eq!(refund_active(&pool, c.action_id, "unplayed").await?, None);
+        assert_eq!(balance(&pool, G, A).await?, 100);
+        assert_eq!(state_of(&pool, c.action_id).await, "ended");
+        assert_eq!(
+            reason_of(&pool, c.action_id).await.as_deref(),
+            Some("unplayed")
+        );
+        assert!(ended(&pool).await?);
+        assert_eq!(ledger_count(&pool, "refund").await, 1);
+        // A pending row is not active: refund_active leaves it.
+        let p = charge_for_action(
+            &pool,
+            &immunity_action(A, 10, &ActionPayload::Immunity { hours: 1 }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(refund_active(&pool, p.action_id, "x").await?, None);
+        assert_eq!(state_of(&pool, p.action_id).await, "pending");
+        agree(&pool, &[(A, 100)]).await;
+        Ok(())
+    });
+
+    db_test!(
+        finish_action_says_whether_it_moved_the_row,
+        |pool: PgPool| async {
+            fund(&pool, A, 200).await;
+            let payload = theme();
+            // The real clock: nothing here may read as past its end.
+            let a = aimed(
+                ActionKind::Theme,
+                A,
+                T,
+                60,
+                &payload,
+                Some(Utc::now() + Duration::days(7)),
+            );
+            let played = charge_active(&pool, &a, LedgerKind::Purchase)
+                .await
+                .unwrap()
+                .action_id;
+            let refunded = charge_active(&pool, &a, LedgerKind::Purchase)
+                .await
+                .unwrap()
+                .action_id;
+            assert!(finish_action(&pool, played, ActionState::Done).await?);
+            assert_eq!(state_of(&pool, played).await, "done");
+            assert!(
+                !finish_action(&pool, played, ActionState::Done).await?,
+                "final: it never moves again"
+            );
+            // Refunded as it played: the play finds nothing to mark.
+            assert_eq!(refund_active(&pool, refunded, "cleansed").await?, Some(140));
+            assert!(!finish_action(&pool, refunded, ActionState::Done).await?);
+            assert_eq!(state_of(&pool, refunded).await, "ended");
+            // A played theme is spent: its end refunds nothing.
+            assert_eq!(refund_active(&pool, played, "expired").await?, None);
+            assert_eq!(balance(&pool, G, A).await?, 140);
+            agree(&pool, &[(A, 200)]).await;
+            Ok(())
+        }
+    );
+
+    async fn place_bounty(pool: &PgPool, buyer: UserId, price: i64) -> i64 {
+        let a = aimed(
+            ActionKind::Bounty,
+            buyer,
+            T,
+            price,
+            &ActionPayload::Bounty,
+            Some(Utc::now() + Duration::days(7)),
+        );
+        charge_active(pool, &a, LedgerKind::BountyPlaced)
+            .await
+            .unwrap()
+            .action_id
+    }
+
+    db_test!(claim_skips_the_placers_own_bounty, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        fund(&pool, B, 100).await;
+        let mine = place_bounty(&pool, A, 30).await;
+        let theirs = place_bounty(&pool, B, 50).await;
+        let total = claim_bounties(&pool, G, T, A).await?;
+        assert_eq!(total, 50);
+        assert_eq!(state_of(&pool, mine).await, "active");
+        assert_eq!(state_of(&pool, theirs).await, "ended");
+        assert_eq!(reason_of(&pool, theirs).await.as_deref(), Some("claimed"));
+        assert_eq!(balance(&pool, G, A).await?, 70 + 50);
+        // One BountyWon row, naming the bounty that paid.
+        let won: Vec<(i64, Option<i64>)> =
+            sqlx::query_as("SELECT delta, action_id FROM economy_ledger WHERE kind = 'bounty_won'")
+                .fetch_all(&pool)
+                .await?;
+        assert_eq!(won, vec![(50, Some(theirs))]);
+        // Another member's bounties on someone else are untouched.
+        assert_eq!(claim_bounties(&pool, G, B, C).await?, 0);
+        assert_eq!(active_bounties(&pool, G).await?.len(), 1);
+        agree(&pool, &[(A, 100), (B, 100)]).await;
+        Ok(())
+    });
+
+    db_test!(
+        claim_pays_every_bounty_one_ledger_row_each,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            fund(&pool, B, 100).await;
+            let one = place_bounty(&pool, A, 30).await;
+            let two = place_bounty(&pool, B, 50).await;
+            assert_eq!(claim_bounties(&pool, G, T, C).await?, 80);
+            assert_eq!(balance(&pool, G, C).await?, 80);
+            let ids: Vec<Option<i64>> = sqlx::query_scalar(
+                "SELECT action_id FROM economy_ledger WHERE kind = 'bounty_won' ORDER BY id",
+            )
+            .fetch_all(&pool)
+            .await?;
+            assert_eq!(ids, vec![Some(one), Some(two)]);
+            agree(&pool, &[(A, 100), (B, 100), (C, 0)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(a_bounty_is_claimed_once, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        place_bounty(&pool, A, 50).await;
+        assert_eq!(claim_bounties(&pool, G, T, B).await?, 50);
+        assert_eq!(claim_bounties(&pool, G, T, C).await?, 0);
+        assert_eq!(balance(&pool, G, B).await?, 50);
+        assert_eq!(balance(&pool, G, C).await?, 0);
+        assert_eq!(ledger_count(&pool, "bounty_won").await, 1);
+        agree(&pool, &[(A, 100), (B, 0), (C, 0)]).await;
+        Ok(())
+    });
+
+    fn fund_action<'a>(price: i64, payload: &'a ActionPayload) -> NewAction<'a> {
+        aimed(
+            ActionKind::Rename,
+            A,
+            T,
+            price,
+            payload,
+            // The database judges "live" by its own clock, so this follows
+            // the real one: a fixed date goes stale and the fund reads closed.
+            Some(Utc::now() + Duration::hours(24)),
+        )
+    }
+
+    fn rename() -> ActionPayload {
+        ActionPayload::Rename {
+            name: "x".into(),
+            restore: None,
+        }
+    }
+
+    db_test!(pledges_cap_at_the_price, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        fund(&pool, B, 100).await;
+        let payload = rename();
+        // 20 each at most: the opening 30 is capped to A's share.
+        let f = open_fund(&pool, &fund_action(40, &payload), Some((30, true)))
+            .await
+            .unwrap();
+        assert_eq!((f.pledged, f.balance), (20, Some(80)));
+        let p = pledge(&pool, f.action_id, G, B, 25, false).await.unwrap();
+        assert_eq!(
+            p,
+            Pledged {
+                taken: 20,
+                total: 40,
+                price: 40,
+                filled: true,
+                balance: 80
+            }
+        );
+        assert_eq!(state_of(&pool, f.action_id).await, "pending");
+        let rows = fund_pledges(&pool, f.action_id).await?;
+        assert_eq!(
+            rows,
+            vec![
+                PledgeRow {
+                    user: A,
+                    amount: 20,
+                    signed: true
+                },
+                PledgeRow {
+                    user: B,
+                    amount: 20,
+                    signed: false
+                },
+            ]
+        );
+        // A filled fund takes no more.
+        let e = pledge(&pool, f.action_id, G, C, 5, false)
+            .await
+            .unwrap_err();
+        assert!(matches!(e, FundError::Closed), "{e:?}");
+        // The ledger names the fund.
+        let ids: Vec<Option<i64>> =
+            sqlx::query_scalar("SELECT action_id FROM economy_ledger WHERE kind = 'pledge'")
+                .fetch_all(&pool)
+                .await?;
+        assert_eq!(ids, vec![Some(f.action_id); 2]);
+        agree(&pool, &[(A, 100), (B, 100)]).await;
+        Ok(())
+    });
+
+    db_test!(a_short_pledge_leaves_the_fund_open, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        let payload = rename();
+        let f = open_fund(&pool, &fund_action(40, &payload), None)
+            .await
+            .unwrap();
+        assert_eq!((f.pledged, f.balance), (0, None));
+        let p = pledge(&pool, f.action_id, G, A, 15, false).await.unwrap();
+        assert_eq!((p.taken, p.total, p.filled), (15, 15, false));
+        assert_eq!(state_of(&pool, f.action_id).await, "funding");
+        // Too poor to pledge: refused, nothing written.
+        let e = pledge(&pool, f.action_id, G, B, 15, false)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(e, FundError::Money(MoveError::Insufficient { balance: 0 })),
+            "{e:?}"
+        );
+        for amount in [0, -5] {
+            let e = pledge(&pool, f.action_id, G, A, amount, false)
+                .await
+                .unwrap_err();
+            assert!(matches!(e, FundError::Money(MoveError::Invalid)), "{e:?}");
+        }
+        // Another server's id is no fund here.
+        let e = pledge(&pool, f.action_id, GuildId::new(2), A, 5, false)
+            .await
+            .unwrap_err();
+        assert!(matches!(e, FundError::Closed), "{e:?}");
+        assert_eq!(fund_pledges(&pool, f.action_id).await?.len(), 1);
+        agree(&pool, &[(A, 100), (B, 0)]).await;
+        Ok(())
+    });
+
+    db_test!(a_starter_cannot_fill_it_alone, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        let payload = rename();
+        let f = open_fund(&pool, &fund_action(40, &payload), Some((500, false)))
+            .await
+            .unwrap();
+        // Capped at half the price: it takes a second member.
+        assert_eq!(f.pledged, 20);
+        assert_eq!(state_of(&pool, f.action_id).await, "funding");
+        agree(&pool, &[(A, 100)]).await;
+        Ok(())
+    });
+
+    db_test!(an_expired_fund_takes_no_pledge, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        let payload = rename();
+        let mut a = fund_action(40, &payload);
+        a.expires_at = Some(Utc::now() - Duration::minutes(1));
+        let f = open_fund(&pool, &a, None).await.unwrap();
+        let e = pledge(&pool, f.action_id, G, A, 5, false)
+            .await
+            .unwrap_err();
+        assert!(matches!(e, FundError::Closed), "{e:?}");
+        assert_eq!(balance(&pool, G, A).await?, 100);
+        nothing_written(&pool).await;
+        Ok(())
+    });
+
+    db_test!(racing_pledges_fill_a_fund_once, |pool: PgPool| async {
+        // Open the connections first so the two pledges really overlap.
+        let (c1, c2) = (pool.acquire().await?, pool.acquire().await?);
+        drop((c1, c2));
+        for round in 0..8_u64 {
+            let target = UserId::new(100 + round);
+            fund(&pool, A, 100).await;
+            fund(&pool, B, 100).await;
+            fund(&pool, C, 100).await;
+            let payload = rename();
+            let mut a = fund_action(40, &payload);
+            a.target = Some(target);
+            let f = open_fund(&pool, &a, Some((20, false))).await.unwrap();
+            // 20 are missing; each of these alone would fill the fund.
+            let (x, y) = tokio::join!(
+                pledge(&pool, f.action_id, G, B, 25, false),
+                pledge(&pool, f.action_id, G, C, 40, false)
+            );
+            let (won, lost) = match (x, y) {
+                (Ok(w), Err(l)) | (Err(l), Ok(w)) => (w, l),
+                (x, y) => panic!("round {round}: exactly one must win: {x:?} / {y:?}"),
+            };
+            assert!(won.filled, "round {round}");
+            assert_eq!((won.taken, won.total, won.price), (20, 40, 40));
+            assert!(matches!(lost, FundError::Closed), "{lost:?}");
+            let total: i64 = fund_pledges(&pool, f.action_id)
+                .await?
+                .iter()
+                .map(|p| p.amount)
+                .sum();
+            assert_eq!(total, 40, "round {round}");
+            assert_eq!(state_of(&pool, f.action_id).await, "pending");
+            // Only the winner paid.
+            assert_eq!(
+                balance(&pool, G, B).await? + balance(&pool, G, C).await?,
+                180
+            );
+            agree(&pool, &[(A, 100), (B, 100), (C, 100)]).await;
+            sqlx::query("DELETE FROM economy_wallets WHERE user_id <> 0")
+                .execute(&pool)
+                .await?;
+            sqlx::query("DELETE FROM economy_ledger")
+                .execute(&pool)
+                .await?;
+        }
+        Ok(())
+    });
+
+    db_test!(one_open_fund_per_target_and_kind, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        let payload = rename();
+        let first = open_fund(&pool, &fund_action(40, &payload), Some((10, false)))
+            .await
+            .unwrap();
+        // The same kind on the same target: refused, and nothing is taken.
+        let e = open_fund(&pool, &fund_action(40, &payload), Some((10, false)))
+            .await
+            .unwrap_err();
+        assert!(matches!(e, FundError::AlreadyOpen), "{e:?}");
+        assert_eq!(balance(&pool, G, A).await?, 90);
+        let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM economy_actions")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(rows, 1);
+        // Another kind opens; so does another target.
+        let mut other = fund_action(40, &payload);
+        other.kind = ActionKind::Clown;
+        open_fund(&pool, &other, None).await.unwrap();
+        let mut elsewhere = fund_action(40, &payload);
+        elsewhere.target = Some(B);
+        open_fund(&pool, &elsewhere, None).await.unwrap();
+        // Once the first fund ends, the slot is free again.
+        assert!(refund_fund(&pool, first.action_id, "expired").await?);
+        open_fund(&pool, &fund_action(40, &payload), None)
+            .await
+            .unwrap();
+        agree(&pool, &[(A, 100)]).await;
+        Ok(())
+    });
+
+    db_test!(refund_fund_pays_back_every_pledger, |pool: PgPool| async {
+        for from_pending in [false, true] {
+            sqlx::query("DELETE FROM economy_wallets")
+                .execute(&pool)
+                .await?;
+            sqlx::query("DELETE FROM economy_ledger")
+                .execute(&pool)
+                .await?;
+            sqlx::query("DELETE FROM economy_pledges")
+                .execute(&pool)
+                .await?;
+            sqlx::query("DELETE FROM economy_actions")
+                .execute(&pool)
+                .await?;
+            let given = [(A, 100), (B, 100), (C, 100)];
+            for (u, n) in given {
+                fund(&pool, u, n).await;
+            }
+            let payload = rename();
+            let f = open_fund(&pool, &fund_action(60, &payload), Some((10, false)))
+                .await
+                .unwrap();
+            pledge(&pool, f.action_id, G, B, 20, true).await.unwrap();
+            // B pledges twice: two refund rows.
+            pledge(&pool, f.action_id, G, B, 5, true).await.unwrap();
+            if from_pending {
+                pledge(&pool, f.action_id, G, C, 99, false).await.unwrap();
+                assert_eq!(state_of(&pool, f.action_id).await, "pending");
+            }
+            assert!(refund_fund(&pool, f.action_id, "expired").await?);
+            assert_eq!(
+                state_of(&pool, f.action_id).await,
+                if from_pending { "failed" } else { "ended" }
+            );
+            assert_eq!(
+                reason_of(&pool, f.action_id).await.as_deref(),
+                Some("expired")
+            );
+            for (u, n) in given {
+                assert_eq!(balance(&pool, G, u).await?, n, "pending={from_pending}");
+            }
+            let refunds = ledger_count(&pool, "pledge_refund").await;
+            assert_eq!(refunds, if from_pending { 4 } else { 3 });
+            let stamped: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM economy_pledges WHERE refunded_at IS NOT NULL",
+            )
+            .fetch_one(&pool)
+            .await?;
+            assert_eq!(stamped, refunds);
+            // Once only.
+            assert!(!refund_fund(&pool, f.action_id, "again").await?);
+            for (u, n) in given {
+                assert_eq!(balance(&pool, G, u).await?, n);
+            }
+            agree(&pool, &given).await;
+        }
+        Ok(())
+    });
+
+    db_test!(
+        a_pending_funded_row_refunds_pledgers_not_the_starter,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            fund(&pool, B, 100).await;
+            let payload = rename();
+            let f = open_fund(&pool, &fund_action(40, &payload), Some((10, false)))
+                .await
+                .unwrap();
+            pledge(&pool, f.action_id, G, B, 30, false).await.unwrap();
+            // B's share is 20; A tops up their own to fill it.
+            pledge(&pool, f.action_id, G, A, 10, false).await.unwrap();
+            assert_eq!(state_of(&pool, f.action_id).await, "pending");
+            // A (the starter) holds 80, B 80; the row's price is 40.
+            let back = refund_action(&pool, f.action_id).await?;
+            assert_eq!(
+                back,
+                Some(100),
+                "the starter's balance, with only their own pledges back"
+            );
+            assert_eq!(balance(&pool, G, A).await?, 100);
+            assert_eq!(balance(&pool, G, B).await?, 100);
+            assert_eq!(ledger_count(&pool, "refund").await, 0, "no price refund");
+            assert_eq!(ledger_count(&pool, "pledge_refund").await, 3);
+            assert_eq!(state_of(&pool, f.action_id).await, "failed");
+            assert_eq!(refund_action(&pool, f.action_id).await?, None);
+            agree(&pool, &[(A, 100), (B, 100)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(
+        refund_fund_leaves_a_plain_pending_row_alone,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            let p = charge_for_action(
+                &pool,
+                &immunity_action(A, 10, &ActionPayload::Immunity { hours: 1 }),
+            )
+            .await
+            .unwrap();
+            assert!(!refund_fund(&pool, p.action_id, "x").await?);
+            assert_eq!(state_of(&pool, p.action_id).await, "pending");
+            assert_eq!(balance(&pool, G, A).await?, 90);
+            Ok(())
+        }
+    );
+
+    db_test!(
+        due_funds_finds_expired_funding_rows_only,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            fund(&pool, B, 100).await;
+            let payload = rename();
+            let at = now();
+            let mut old = fund_action(40, &payload);
+            old.expires_at = Some(at - Duration::hours(1));
+            let due = open_fund(&pool, &old, None).await.unwrap();
+            let mut fresh = fund_action(40, &payload);
+            fresh.target = Some(B);
+            fresh.expires_at = Some(at + Duration::hours(1));
+            open_fund(&pool, &fresh, None).await.unwrap();
+            // An expired row in another state is not a fund.
+            let theme = theme();
+            let a = aimed(
+                ActionKind::Theme,
+                A,
+                C,
+                10,
+                &theme,
+                Some(at - Duration::hours(1)),
+            );
+            charge_active(&pool, &a, LedgerKind::Purchase)
+                .await
+                .unwrap();
+            let mut filled = fund_action(10, &payload);
+            filled.target = Some(C);
+            filled.expires_at = Some(Utc::now() + Duration::hours(1));
+            let pend = open_fund(&pool, &filled, Some((5, false))).await.unwrap();
+            pledge(&pool, pend.action_id, G, B, 5, false).await.unwrap();
+            // Whatever it holds, a filled fund is not due.
+            sqlx::query("UPDATE economy_actions SET expires_at = $2 WHERE id = $1")
+                .bind(pend.action_id)
+                .bind(at - Duration::hours(1))
+                .execute(&pool)
+                .await?;
+            assert_eq!(state_of(&pool, pend.action_id).await, "pending");
+            let got = due_funds(&pool, at, 10).await?;
+            assert_eq!(got.len(), 1);
+            assert_eq!((got[0].0, got[0].1.id), (G, due.action_id));
+            assert_eq!(got[0].1.state, ActionState::Funding);
+            assert!(due_funds(&pool, at - Duration::days(1), 10)
+                .await?
+                .is_empty());
+            // An unknown kind is skipped, not an error.
+            sqlx::query("UPDATE economy_actions SET kind = 'from_the_future', payload = '{\"kind\":\"zzz\"}' WHERE id = $1")
+            .bind(due.action_id)
+            .execute(&pool)
+            .await?;
+            assert!(due_funds(&pool, at, 10).await?.is_empty());
+            agree(&pool, &[(A, 100)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(
+        open_funds_lists_newest_first_with_totals,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            fund(&pool, B, 100).await;
+            let payload = rename();
+            let first = open_fund(&pool, &fund_action(40, &payload), Some((10, false)))
+                .await
+                .unwrap();
+            pledge(&pool, first.action_id, G, B, 5, false)
+                .await
+                .unwrap();
+            let mut other = fund_action(40, &payload);
+            other.target = Some(B);
+            let second = open_fund(&pool, &other, None).await.unwrap();
+            let got = open_funds(&pool, G).await?;
+            let shape: Vec<(i64, i64, i64)> = got.iter().map(|(r, n, p)| (r.id, *n, *p)).collect();
+            assert_eq!(
+                shape,
+                vec![(second.action_id, 0, 40), (first.action_id, 15, 40)]
+            );
+            assert!(open_funds(&pool, GuildId::new(2)).await?.is_empty());
+            agree(&pool, &[(A, 100), (B, 100)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(a_member_cannot_fill_a_fund_alone, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        fund(&pool, B, 100).await;
+        let payload = rename();
+        // Price 40: 20 each at most. The opening ask of 30 is capped to 20.
+        let f = open_fund(&pool, &fund_action(40, &payload), Some((30, true)))
+            .await
+            .unwrap();
+        assert_eq!((f.pledged, f.balance), (20, Some(80)));
+        assert!(matches!(
+            pledge(&pool, f.action_id, G, A, 5, false).await,
+            Err(FundError::OverShare { max: 20 })
+        ));
+        assert_eq!(balance(&pool, G, A).await?, 80);
+        // The share is across all of a member's pledges: B puts in 8, then
+        // 12 more is all that is left of theirs, though the fund needs 12.
+        let p = pledge(&pool, f.action_id, G, B, 8, false).await.unwrap();
+        assert_eq!((p.taken, p.total, p.filled), (8, 28, false));
+        let p = pledge(&pool, f.action_id, G, B, 50, false).await.unwrap();
+        assert_eq!((p.taken, p.total, p.filled), (12, 40, true));
+        assert!(matches!(
+            pledge(&pool, f.action_id, G, B, 1, false).await,
+            Err(FundError::Closed)
+        ));
+        // A fill leaves the row unprepared: pending, with no end.
+        let row = action_by_id(&pool, G, f.action_id).await?.unwrap();
+        assert_eq!(row.state, ActionState::Pending);
+        assert_eq!(row.expires_at, None);
+        agree(&pool, &[(A, 100), (B, 100)]).await;
+        Ok(())
+    });
+
+    db_test!(
+        prepare_fund_writes_payload_and_end_together,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            fund(&pool, B, 100).await;
+            let payload = rename();
+            let f = open_fund(&pool, &fund_action(40, &payload), Some((20, false)))
+                .await
+                .unwrap();
+            let ready = ActionPayload::Rename {
+                name: "y".into(),
+                restore: Some("z".into()),
+            };
+            let end = Utc::now() + Duration::hours(2);
+            assert!(
+                !prepare_fund(&pool, f.action_id, &ready, Some(end)).await?,
+                "a fund that is still filling is not prepared"
+            );
+            pledge(&pool, f.action_id, G, B, 20, false).await.unwrap();
+            assert!(prepare_fund(&pool, f.action_id, &ready, Some(end)).await?);
+            let row = action_by_id(&pool, G, f.action_id).await?.unwrap();
+            assert_eq!(row.payload, ready);
+            assert_eq!(
+                row.expires_at.map(|t| t.timestamp_micros()),
+                Some(end.timestamp_micros())
+            );
+            activate_action(&pool, f.action_id, ActionKind::Rename, Some(end)).await?;
+            assert!(!prepare_fund(&pool, f.action_id, &payload, None).await?);
+            agree(&pool, &[(A, 100), (B, 100)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(fund_view_reads_one_open_fund, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        fund(&pool, B, 100).await;
+        let payload = rename();
+        let f = open_fund(&pool, &fund_action(40, &payload), Some((15, false)))
+            .await
+            .unwrap();
+        pledge(&pool, f.action_id, G, B, 10, false).await.unwrap();
+        let v = fund_view(&pool, G, f.action_id, B).await?.unwrap();
+        assert_eq!((v.price, v.pledged, v.mine), (40, 25, 10));
+        assert_eq!(v.row.id, f.action_id);
+        assert_eq!(fund_view(&pool, G, f.action_id, A).await?.unwrap().mine, 15);
+        // Not in another server, not a missing id.
+        assert!(fund_view(&pool, GuildId::new(2), f.action_id, B)
+            .await?
+            .is_none());
+        assert!(fund_view(&pool, G, f.action_id + 1, B).await?.is_none());
+        // Not once it is no longer funding: B's share caps this at 10, and
+        // A's last 5 fills it.
+        let p = pledge(&pool, f.action_id, G, B, 15, false).await.unwrap();
+        assert_eq!((p.taken, p.filled), (10, false));
+        let p = pledge(&pool, f.action_id, G, A, 5, false).await.unwrap();
+        assert!(p.filled);
+        assert!(fund_view(&pool, G, f.action_id, B).await?.is_none());
+        Ok(())
+    });
+
+    db_test!(
+        active_bounties_lists_only_standing_bounties,
+        |pool: PgPool| async {
+            fund(&pool, A, 200).await;
+            let one = place_bounty(&pool, A, 30).await;
+            let two = place_bounty(&pool, A, 40).await;
+            let t = theme();
+            charge_active(
+                &pool,
+                &aimed(
+                    ActionKind::Theme,
+                    A,
+                    T,
+                    10,
+                    &t,
+                    Some(Utc::now() + Duration::days(7)),
+                ),
+                LedgerKind::Purchase,
+            )
+            .await
+            .unwrap();
+            refund_active(&pool, one, "expired").await?;
+            let got: Vec<i64> = active_bounties(&pool, G)
+                .await?
+                .iter()
+                .map(|r| r.id)
+                .collect();
+            assert_eq!(got, vec![two]);
+            agree(&pool, &[(A, 200)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(
+        reveal_covers_played_themes_and_bounties,
+        |pool: PgPool| async {
+            fund(&pool, A, 500).await;
+            let end = Some(Utc::now() + Duration::days(1));
+            let t = theme();
+            let theme_id = charge_active(
+                &pool,
+                &aimed(ActionKind::Theme, A, T, 10, &t, end),
+                LedgerKind::Purchase,
+            )
+            .await
+            .unwrap()
+            .action_id;
+            let bounty_id = place_bounty(&pool, A, 20).await;
+            // A dedication is signed by nature (the play names its buyer),
+            // so it is not revealable, even as an unsigned row.
+            let d = ActionPayload::Dedicate { song: "s".into() };
+            let ded = charge_for_action(&pool, &aimed(ActionKind::Dedicate, A, T, 30, &d, None))
+                .await
+                .unwrap();
+            activate_action(&pool, ded.action_id, ActionKind::Dedicate, None).await?;
+            // A jump is aimed at nobody; a funding row cannot be revealed yet.
+            let payload = rename();
+            let f = open_fund(&pool, &fund_action(40, &payload), Some((10, false)))
+                .await
+                .unwrap();
+            assert_eq!(state_of(&pool, f.action_id).await, "funding");
+            let ids = |got: Vec<RevealCandidate>| {
+                let mut ids: Vec<i64> = got.iter().map(|c| c.row.id).collect();
+                ids.sort_unstable();
+                ids
+            };
+            // The theme is still waiting: a surprise, not yet something the
+            // target heard, so it isn't listed.
+            let got = reveal_candidates(&pool, G, T, None, false, 10).await?;
+            assert_eq!(ids(got), vec![bounty_id]);
+            // Once it played, it is.
+            assert!(finish_action(&pool, theme_id, ActionState::Done).await?);
+            let got = reveal_candidates(&pool, G, T, None, false, 10).await?;
+            assert_eq!(ids(got), vec![theme_id, bounty_id]);
+            agree(&pool, &[(A, 500)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(
+        a_filled_funds_created_at_is_the_fill_time,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            fund(&pool, B, 100).await;
+            let payload = rename();
+            let f = open_fund(&pool, &fund_action(40, &payload), Some((20, false)))
+                .await
+                .unwrap();
+            sqlx::query(
+                "UPDATE economy_actions SET created_at = now() - interval '1 hour' WHERE id = $1",
+            )
+            .bind(f.action_id)
+            .execute(&pool)
+            .await?;
+            let p = pledge(&pool, f.action_id, G, B, 30, false).await.unwrap();
+            assert!(p.filled);
+            let fresh: bool = sqlx::query_scalar(
+            "SELECT created_at > now() - interval '30 seconds' FROM economy_actions WHERE id = $1",
+        )
+        .bind(f.action_id)
+        .fetch_one(&pool)
+        .await?;
+            assert!(fresh, "created_at must restart when the fund fills");
+            // A fund that has not filled keeps the time it opened.
+            Ok(())
+        }
+    );
+
+    db_test!(
+        expire_fund_leaves_a_filled_fund_alone,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            fund(&pool, B, 100).await;
+            let payload = rename();
+            // Due and unfilled: refunded and ended `unfunded`.
+            let mut due = fund_action(40, &payload);
+            due.expires_at = Some(Utc::now() + Duration::seconds(1));
+            let f = open_fund(&pool, &due, Some((10, false))).await.unwrap();
+            pledge(&pool, f.action_id, G, B, 5, false).await.unwrap();
+            // Not due yet: left alone.
+            assert!(!expire_fund(&pool, f.action_id).await?);
+            assert_eq!(state_of(&pool, f.action_id).await, "funding");
+            sqlx::query(
+                "UPDATE economy_actions SET expires_at = now() - interval '1 minute' WHERE id = $1",
+            )
+            .bind(f.action_id)
+            .execute(&pool)
+            .await?;
+            assert!(expire_fund(&pool, f.action_id).await?);
+            assert_eq!(state_of(&pool, f.action_id).await, "ended");
+            assert_eq!(
+                reason_of(&pool, f.action_id).await.as_deref(),
+                Some("unfunded")
+            );
+            assert_eq!(ledger_count(&pool, "pledge_refund").await, 2);
+            assert!(!expire_fund(&pool, f.action_id).await?);
+            // Filled between the sweeper's read and the refund: left alone.
+            let mut other = fund_action(40, &payload);
+            other.target = Some(B);
+            other.expires_at = Some(Utc::now() + Duration::hours(1));
+            let g = open_fund(&pool, &other, Some((20, false))).await.unwrap();
+            pledge(&pool, g.action_id, G, B, 20, false).await.unwrap();
+            assert_eq!(state_of(&pool, g.action_id).await, "pending");
+            sqlx::query(
+                "UPDATE economy_actions SET expires_at = now() - interval '1 minute' WHERE id = $1",
+            )
+            .bind(g.action_id)
+            .execute(&pool)
+            .await?;
+            assert!(!expire_fund(&pool, g.action_id).await?);
+            assert_eq!(state_of(&pool, g.action_id).await, "pending");
+            assert_eq!(balance(&pool, G, A).await?, 80);
+            agree(&pool, &[(A, 100), (B, 100)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(
+        refund_active_refuses_a_non_escrow_row,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            let payload = rename();
+            let c = charge_for_action(&pool, &aimed(ActionKind::Rename, A, T, 40, &payload, None))
+                .await
+                .unwrap();
+            activate_action(&pool, c.action_id, ActionKind::Rename, Some(now())).await?;
+            assert_eq!(state_of(&pool, c.action_id).await, "active");
+            assert_eq!(refund_active(&pool, c.action_id, "x").await?, None);
+            assert_eq!(state_of(&pool, c.action_id).await, "active");
+            assert_eq!(balance(&pool, G, A).await?, 60);
+            assert_eq!(ledger_count(&pool, "refund").await, 0);
+            agree(&pool, &[(A, 100)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(
+        a_fund_with_every_pledge_refunded_never_refunds_the_price,
+        |pool: PgPool| async {
+            fund(&pool, A, 100).await;
+            fund(&pool, B, 100).await;
+            let payload = rename();
+            let f = open_fund(&pool, &fund_action(40, &payload), Some((20, false)))
+                .await
+                .unwrap();
+            pledge(&pool, f.action_id, G, B, 20, false).await.unwrap();
+            assert_eq!(state_of(&pool, f.action_id).await, "pending");
+            // The pledges are already back with their owners (as after an
+            // interrupted refund): the row is still a fund, not a purchase.
+            sqlx::query("UPDATE economy_pledges SET refunded_at = now()")
+                .execute(&pool)
+                .await?;
+            sqlx::query("UPDATE economy_wallets SET balance = balance + 20")
+                .execute(&pool)
+                .await?;
+            sqlx::query("INSERT INTO economy_ledger (guild_id, user_id, delta, kind, action_id) VALUES (1, 10, 20, 'pledge_refund', $1), (1, 11, 20, 'pledge_refund', $1)")
+            .bind(f.action_id)
+            .execute(&pool)
+            .await?;
+            assert_eq!(refund_action(&pool, f.action_id).await?, Some(100));
+            assert_eq!(ledger_count(&pool, "refund").await, 0);
+            assert_eq!(balance(&pool, G, A).await?, 100);
+            assert_eq!(state_of(&pool, f.action_id).await, "failed");
+            agree(&pool, &[(A, 100), (B, 100)]).await;
+            Ok(())
+        }
+    );
+
+    db_test!(escrow_without_an_end_is_refused, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        let t = theme();
+        let e = charge_active(
+            &pool,
+            &aimed(ActionKind::Theme, A, T, 10, &t, None),
+            LedgerKind::Purchase,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(e, MoveError::Invalid), "{e:?}");
+        let payload = rename();
+        let mut open = fund_action(40, &payload);
+        open.expires_at = None;
+        let e = open_fund(&pool, &open, Some((10, false)))
+            .await
+            .unwrap_err();
+        assert!(matches!(e, FundError::Money(MoveError::Invalid)), "{e:?}");
+        let free = fund_action(0, &payload);
+        let e = open_fund(&pool, &free, None).await.unwrap_err();
+        assert!(matches!(e, FundError::Money(MoveError::Invalid)), "{e:?}");
+        assert_eq!(balance(&pool, G, A).await?, 100);
+        nothing_written(&pool).await;
+        let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM economy_actions")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(rows, 0);
+        Ok(())
+    });
+
+    db_test!(an_expired_bounty_is_not_collected, |pool: PgPool| async {
+        fund(&pool, A, 100).await;
+        fund(&pool, B, 100).await;
+        let lapsed = charge_active(
+            &pool,
+            &aimed(
+                ActionKind::Bounty,
+                A,
+                T,
+                30,
+                &ActionPayload::Bounty,
+                Some(Utc::now() - Duration::minutes(1)),
+            ),
+            LedgerKind::BountyPlaced,
+        )
+        .await
+        .unwrap()
+        .action_id;
+        let live = place_bounty(&pool, B, 20).await;
+        assert_eq!(claim_bounties(&pool, G, T, C).await?, 20);
+        assert_eq!(
+            state_of(&pool, lapsed).await,
+            "active",
+            "left for the sweeper"
+        );
+        assert_eq!(state_of(&pool, live).await, "ended");
+        assert_eq!(balance(&pool, G, C).await?, 20);
+        // The sweeper then refunds it to its placer.
+        assert_eq!(refund_active(&pool, lapsed, "expired").await?, Some(100));
+        agree(&pool, &[(A, 100), (B, 100), (C, 0)]).await;
+        Ok(())
+    });
+
+    db_test!(
+        reveal_skips_unplayed_themes_and_unfunded_funds,
+        |pool: PgPool| async {
+            fund(&pool, A, 500).await;
+            let end = Some(Utc::now() + Duration::days(1));
+            let t = theme();
+            let played = charge_active(
+                &pool,
+                &aimed(ActionKind::Theme, A, T, 10, &t, end),
+                LedgerKind::Purchase,
+            )
+            .await
+            .unwrap()
+            .action_id;
+            finish_action(&pool, played, ActionState::Done).await?;
+            let unplayed = charge_active(
+                &pool,
+                &aimed(ActionKind::Theme, A, T, 10, &t, end),
+                LedgerKind::Purchase,
+            )
+            .await
+            .unwrap()
+            .action_id;
+            refund_active(&pool, unplayed, "unplayed").await?;
+            // A refunded bounty's card was public: it stays revealable.
+            let bounty = place_bounty(&pool, A, 20).await;
+            refund_active(&pool, bounty, "expired").await?;
+            // A fund that never filled was never seen as a prank.
+            let payload = rename();
+            let mut a = fund_action(40, &payload);
+            a.expires_at = Some(Utc::now() + Duration::seconds(1));
+            let f = open_fund(&pool, &a, Some((10, false))).await.unwrap();
+            sqlx::query(
+                "UPDATE economy_actions SET expires_at = now() - interval '1 minute' WHERE id = $1",
+            )
+            .bind(f.action_id)
+            .execute(&pool)
+            .await?;
+            assert!(expire_fund(&pool, f.action_id).await?);
+            let got = reveal_candidates(&pool, G, T, None, false, 10).await?;
+            let mut ids: Vec<i64> = got.iter().map(|c| c.row.id).collect();
+            ids.sort_unstable();
+            assert_eq!(ids, vec![played, bounty]);
+            agree(&pool, &[(A, 500)]).await;
             Ok(())
         }
     );

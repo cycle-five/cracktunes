@@ -40,9 +40,15 @@ pub fn needs(kind: ActionKind) -> Permissions {
         ActionKind::Drag | ActionKind::Jail => Permissions::MOVE_MEMBERS,
         ActionKind::Mute => Permissions::MUTE_MEMBERS,
         ActionKind::Deafen => Permissions::DEAFEN_MEMBERS,
-        ActionKind::Immunity | ActionKind::Mirror | ActionKind::Cleanse | ActionKind::Reveal => {
-            Permissions::empty()
-        },
+        ActionKind::Immunity
+        | ActionKind::Mirror
+        | ActionKind::Cleanse
+        | ActionKind::Reveal
+        | ActionKind::Theme
+        | ActionKind::Dedicate
+        | ActionKind::Jump
+        | ActionKind::Bounty
+        | ActionKind::Crowdfund => Permissions::empty(),
     }
 }
 
@@ -213,7 +219,9 @@ mod tests {
         assert_eq!(needs(Jail), Permissions::MOVE_MEMBERS);
         assert_eq!(needs(Mute), Permissions::MUTE_MEMBERS);
         assert_eq!(needs(Deafen), Permissions::DEAFEN_MEMBERS);
-        for k in [Immunity, Mirror, Cleanse, Reveal] {
+        for k in [
+            Immunity, Mirror, Cleanse, Reveal, Theme, Dedicate, Jump, Bounty, Crowdfund,
+        ] {
             assert_eq!(needs(k), Permissions::empty(), "{k:?}");
         }
     }

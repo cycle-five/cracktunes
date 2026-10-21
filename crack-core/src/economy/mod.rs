@@ -1,8 +1,10 @@
 //! Per-server credits: earned in voice and by chatting, spent in the shop.
 //! Off by default; see `economy::settings`.
 
+pub mod bounty;
 pub mod buttons;
 pub mod cards;
+pub mod crowdfund;
 pub mod discord;
 pub mod earn;
 pub mod effects;
@@ -14,6 +16,7 @@ pub mod registry;
 pub mod settings;
 pub mod shop;
 pub mod target;
+pub mod theme;
 pub mod wallet;
 
 use crate::Data;

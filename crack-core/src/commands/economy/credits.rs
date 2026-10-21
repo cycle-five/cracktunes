@@ -13,13 +13,14 @@ use crate::messaging::messages::{
     ECONOMY_GIFT_NON_POSITIVE, ECONOMY_GIFT_SELF, ECONOMY_GIFT_SENT, ECONOMY_GIFT_TO,
     ECONOMY_GIFT_TO_BOT, ECONOMY_GIFT_TO_OPTED_OUT, ECONOMY_HISTORY_EARNED,
     ECONOMY_HISTORY_FROM_MESSAGES, ECONOMY_HISTORY_IN_VOICE, ECONOMY_HISTORY_NO_ROWS,
-    ECONOMY_HISTORY_TITLE, ECONOMY_LEDGER_ADJUSTMENT, ECONOMY_LEDGER_COINFLIP_BET,
-    ECONOMY_LEDGER_COINFLIP_WIN, ECONOMY_LEDGER_GIFT_RECEIVED, ECONOMY_LEDGER_GIFT_SENT,
-    ECONOMY_LEDGER_PURCHASE, ECONOMY_LEDGER_REFUND, ECONOMY_NO_DATABASE, ECONOMY_OFF,
-    ECONOMY_OPTED_IN_DONE, ECONOMY_OPTED_OUT_DONE, ECONOMY_OPTOUT_ALREADY_IN,
-    ECONOMY_OPTOUT_ALREADY_OUT, ECONOMY_OPTOUT_COOLDOWN_PREFIX, ECONOMY_OPTOUT_DISABLED,
-    ECONOMY_OPTOUT_FAILED, ECONOMY_OPTOUT_SWITCH_BACK_PREFIX, ECONOMY_READ_FAILED,
-    ECONOMY_TOP_EMPTY, ECONOMY_TOP_TITLE,
+    ECONOMY_HISTORY_TITLE, ECONOMY_LEDGER_ADJUSTMENT, ECONOMY_LEDGER_BOUNTY_PLACED,
+    ECONOMY_LEDGER_BOUNTY_WON, ECONOMY_LEDGER_COINFLIP_BET, ECONOMY_LEDGER_COINFLIP_WIN,
+    ECONOMY_LEDGER_GIFT_RECEIVED, ECONOMY_LEDGER_GIFT_SENT, ECONOMY_LEDGER_PLEDGE,
+    ECONOMY_LEDGER_PLEDGE_REFUND, ECONOMY_LEDGER_PURCHASE, ECONOMY_LEDGER_REFUND,
+    ECONOMY_NO_DATABASE, ECONOMY_OFF, ECONOMY_OPTED_IN_DONE, ECONOMY_OPTED_OUT_DONE,
+    ECONOMY_OPTOUT_ALREADY_IN, ECONOMY_OPTOUT_ALREADY_OUT, ECONOMY_OPTOUT_COOLDOWN_PREFIX,
+    ECONOMY_OPTOUT_DISABLED, ECONOMY_OPTOUT_FAILED, ECONOMY_OPTOUT_SWITCH_BACK_PREFIX,
+    ECONOMY_READ_FAILED, ECONOMY_TOP_EMPTY, ECONOMY_TOP_TITLE,
 };
 use crate::messaging::render::Rendered;
 use crate::{Context, Error};
@@ -118,6 +119,10 @@ pub fn ledger_label(kind: &str) -> &str {
         "coinflip_stake" => ECONOMY_LEDGER_COINFLIP_BET,
         "coinflip_win" => ECONOMY_LEDGER_COINFLIP_WIN,
         "adjust" => ECONOMY_LEDGER_ADJUSTMENT,
+        "bounty_placed" => ECONOMY_LEDGER_BOUNTY_PLACED,
+        "bounty_won" => ECONOMY_LEDGER_BOUNTY_WON,
+        "pledge" => ECONOMY_LEDGER_PLEDGE,
+        "pledge_refund" => ECONOMY_LEDGER_PLEDGE_REFUND,
         other => other,
     }
 }
@@ -598,6 +603,10 @@ mod tests {
             ("coinflip_stake", "coinflip bet"),
             ("coinflip_win", "coinflip win"),
             ("adjust", "adjustment"),
+            ("bounty_placed", "bounty placed"),
+            ("bounty_won", "bounty won"),
+            ("pledge", "pledge"),
+            ("pledge_refund", "pledge refund"),
         ] {
             assert_eq!(ledger_label(kind), label, "{kind}");
         }
@@ -615,6 +624,10 @@ mod tests {
             ECONOMY_LEDGER_COINFLIP_BET,
             ECONOMY_LEDGER_COINFLIP_WIN,
             ECONOMY_LEDGER_ADJUSTMENT,
+            ECONOMY_LEDGER_BOUNTY_PLACED,
+            ECONOMY_LEDGER_BOUNTY_WON,
+            ECONOMY_LEDGER_PLEDGE,
+            ECONOMY_LEDGER_PLEDGE_REFUND,
         ];
         let labels: HashSet<&str> = [
             Purchase,
@@ -624,6 +637,10 @@ mod tests {
             CoinflipStake,
             CoinflipWin,
             Adjust,
+            BountyPlaced,
+            BountyWon,
+            Pledge,
+            PledgeRefund,
         ]
         .into_iter()
         .map(|k| ledger_label(k.as_str()))

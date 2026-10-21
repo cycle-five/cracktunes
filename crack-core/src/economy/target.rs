@@ -57,25 +57,45 @@ pub enum TargetOutcome {
 }
 
 /// Check a target, refusing for the first reason that applies, in order:
-/// bot, self, out of reach (the owner; then can't tell when a role position
+/// bot, self (pranks and the aimed kinds: theme, dedication, bounty), out of
+/// reach (pranks only: the owner; then can't tell when a role position
 /// is unknown; then the hierarchy), voice needs (a drag also refuses a
 /// target already in the buyer's channel), already server-muted or -deafened
 /// (a moderator's mute is never taken over, so never undone), opted out, then
-/// a mirror (which returns [`TargetOutcome::Mirrored`] before immunity is
-/// read), immunity, the same prank already running, and the never-widen
+/// a mirror (pranks only; it returns [`TargetOutcome::Mirrored`] before
+/// immunity is read), immunity, the same prank already running, and the never-widen
 /// destination check (drag only: jail is exempt, spec ruling Q4).
 pub fn check_target(
     kind: ActionKind,
     t: &TargetFacts,
     buyer_in_voice: Option<ChannelId>,
 ) -> Result<TargetOutcome, Refusal> {
+    check_target_with(kind, t, buyer_in_voice, VoiceStep::Apply)
+}
+
+/// Whether [`check_target_with`] makes the voice checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VoiceStep {
+    Apply,
+    /// A crowdfund's start: voice is looked at again when it fills.
+    Skip,
+}
+
+/// [`check_target`] with the voice step optional, so a caller never has to
+/// fake a voice state to get past it.
+pub fn check_target_with(
+    kind: ActionKind,
+    t: &TargetFacts,
+    buyer_in_voice: Option<ChannelId>,
+    voice: VoiceStep,
+) -> Result<TargetOutcome, Refusal> {
     if t.is_bot {
         return Err(Refusal::TargetIsBot);
     }
+    if t.is_self && (kind.is_prank() || kind.is_aimed()) {
+        return Err(Refusal::TargetIsSelf);
+    }
     if kind.is_prank() {
-        if t.is_self {
-            return Err(Refusal::TargetIsSelf);
-        }
         if t.is_owner {
             return Err(Refusal::OutOfReach);
         }
@@ -87,6 +107,7 @@ pub fn check_target(
         }
     }
     match kind {
+        _ if voice == VoiceStep::Skip => {},
         ActionKind::Drag => {
             if buyer_in_voice.is_none() {
                 return Err(Refusal::BuyerNotInVoice);
@@ -117,7 +138,9 @@ pub fn check_target(
     if t.opted_out {
         return Err(Refusal::TargetOptedOut);
     }
-    if t.has_mirror {
+    // A mirror answers pranks only: a theme, dedication or bounty neither
+    // bounces nor uses it up.
+    if kind.is_prank() && t.has_mirror {
         return Ok(TargetOutcome::Mirrored);
     }
     if let Some(p) = t.protection {
@@ -470,6 +493,136 @@ mod tests {
             assert_eq!(
                 check_target(kind, &f, None),
                 Err(Refusal::TargetOptedOut),
+                "{kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn dedicate_refusals() {
+        let k = ActionKind::Dedicate;
+        let refused = |f: TargetFacts| check_target(k, &f, None);
+        assert_eq!(
+            refused(TargetFacts {
+                is_self: true,
+                ..clean()
+            }),
+            Err(Refusal::TargetIsSelf)
+        );
+        assert_eq!(
+            refused(TargetFacts {
+                is_bot: true,
+                ..clean()
+            }),
+            Err(Refusal::TargetIsBot)
+        );
+        assert_eq!(
+            refused(TargetFacts {
+                protection: Some(Protection::Indefinitely),
+                ..clean()
+            }),
+            Err(Refusal::TargetImmune(Protection::Indefinitely))
+        );
+        assert_eq!(
+            refused(TargetFacts {
+                opted_out: true,
+                ..clean()
+            }),
+            Err(Refusal::TargetOptedOut)
+        );
+        // A mirror holder is dedicated to like anyone: it lands, no bounce.
+        assert_eq!(
+            refused(TargetFacts {
+                has_mirror: true,
+                ..clean()
+            }),
+            Ok(TargetOutcome::Lands)
+        );
+    }
+
+    #[test]
+    fn check_target_aimed_kinds() {
+        for kind in [ActionKind::Theme, ActionKind::Dedicate, ActionKind::Bounty] {
+            // Yourself is refused, as for a prank.
+            let me = TargetFacts {
+                is_self: true,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &me, None),
+                Err(Refusal::TargetIsSelf),
+                "{kind:?}"
+            );
+            // No mirror: it lands, and the fact is not read.
+            let mirrored = TargetFacts {
+                has_mirror: true,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &mirrored, None),
+                Ok(TargetOutcome::Lands),
+                "{kind:?}"
+            );
+            // No reach check: above the bot, the owner, unknown positions.
+            let above = TargetFacts {
+                top_role_position: Some(9),
+                bot_top_role_position: Some(5),
+                is_owner: true,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &above, None),
+                Ok(TargetOutcome::Lands),
+                "{kind:?}"
+            );
+            let unknown = TargetFacts {
+                top_role_position: None,
+                bot_top_role_position: None,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &unknown, None),
+                Ok(TargetOutcome::Lands),
+                "{kind:?}"
+            );
+            // No voice needs.
+            let away = TargetFacts {
+                in_voice: None,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &away, None),
+                Ok(TargetOutcome::Lands),
+                "{kind:?}"
+            );
+            // Immune and opted out are refused, even behind a mirror.
+            let immune = TargetFacts {
+                protection: Some(Protection::Indefinitely),
+                has_mirror: true,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &immune, None),
+                Err(Refusal::TargetImmune(Protection::Indefinitely)),
+                "{kind:?}"
+            );
+            let out = TargetFacts {
+                opted_out: true,
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &out, None),
+                Err(Refusal::TargetOptedOut),
+                "{kind:?}"
+            );
+            // A second one of the same kind waits its turn.
+            let busy = TargetFacts {
+                running_same_kind: Some(t0()),
+                ..clean()
+            };
+            assert_eq!(
+                check_target(kind, &busy, None),
+                Err(Refusal::AlreadyRunning { until: t0() }),
                 "{kind:?}"
             );
         }
@@ -966,6 +1119,69 @@ mod tests {
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
         )]
+        async fn a_second_theme_is_refused_with_the_first_ones_end(pool: PgPool) {
+            let data = data(&pool).await;
+            let theme = || ActionPayload::Theme {
+                url: "https://youtu.be/dQw4w9WgXcQ".into(),
+                start_secs: 0,
+            };
+            // Nothing waiting yet: a theme lands.
+            let f = facts(&data, ActionKind::Theme, M).await;
+            assert_eq!(f.running_same_kind, None);
+            assert_eq!(
+                check_target(ActionKind::Theme, &f, None),
+                Ok(TargetOutcome::Lands)
+            );
+            // A theme is escrow: bought straight into `active`, as the shop does.
+            crate::db::economy::credit_earnings(
+                &pool,
+                G,
+                &[crate::db::economy::EarnRow {
+                    user: BUYER,
+                    voice: 100,
+                    messages: 0,
+                }],
+            )
+            .await
+            .unwrap();
+            crate::db::economy::charge_active(
+                &pool,
+                &crate::db::economy::NewAction {
+                    guild: G,
+                    kind: ActionKind::Theme,
+                    buyer: BUYER,
+                    target: Some(M),
+                    price: 10,
+                    note: None,
+                    signed: false,
+                    payload: &theme(),
+                    expires_at: Some(t0() + chrono::Duration::hours(1)),
+                },
+                crate::economy::wallet::LedgerKind::Purchase,
+            )
+            .await
+            .unwrap();
+            let end = Some(t0() + chrono::Duration::hours(1));
+            let f = facts(&data, ActionKind::Theme, M).await;
+            assert_eq!(f.running_same_kind, end);
+            assert_eq!(
+                check_target(ActionKind::Theme, &f, None),
+                Err(Refusal::AlreadyRunning {
+                    until: t0() + chrono::Duration::hours(1)
+                })
+            );
+            // Another kind of purchase on the same member is not blocked by it.
+            assert_eq!(
+                facts(&data, ActionKind::Bounty, M).await.running_same_kind,
+                None
+            );
+        }
+
+        #[sqlx::test(migrator = "MIGRATOR")]
+        #[cfg_attr(
+            not(feature = "db-tests"),
+            ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+        )]
         async fn name_pranks_share_a_slot_and_a_lock_has_its_own(pool: PgPool) {
             let data = data(&pool).await;
             let rename = ActionPayload::Rename {
@@ -1035,6 +1251,39 @@ mod tests {
             );
             data.economy.set_one_opted_out(G, M, true);
             assert!(facts(&data, ActionKind::Mute, M).await.opted_out);
+        }
+    }
+
+    #[test]
+    fn the_voice_step_can_be_skipped_and_nothing_else() {
+        let away = TargetFacts {
+            in_voice: None,
+            ..clean()
+        };
+        for kind in [ActionKind::Mute, ActionKind::Deafen, ActionKind::Jail] {
+            assert_eq!(
+                check_target_with(kind, &away, None, VoiceStep::Apply),
+                Err(Refusal::TargetNotInVoice),
+                "{kind:?}"
+            );
+            assert_eq!(
+                check_target(kind, &away, None),
+                Err(Refusal::TargetNotInVoice)
+            );
+            assert_eq!(
+                check_target_with(kind, &away, None, VoiceStep::Skip),
+                Ok(TargetOutcome::Lands),
+                "{kind:?}"
+            );
+            // Every other check still runs.
+            let immune = TargetFacts {
+                protection: Some(Protection::Indefinitely),
+                ..away.clone()
+            };
+            assert_eq!(
+                check_target_with(kind, &immune, None, VoiceStep::Skip),
+                Err(Refusal::TargetImmune(Protection::Indefinitely))
+            );
         }
     }
 }

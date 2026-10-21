@@ -102,7 +102,7 @@ pub enum ModLogEvent {
         amount: i64,
         reason: String,
     },
-    /// A shop purchase that changed a member. The buyer is always named
+    /// A shop purchase aimed at a member. The buyer is always named
     /// here, signed or not (owner ruling): moderators see who did it.
     ShopAction {
         action: ActionKind,
@@ -119,6 +119,24 @@ pub enum ModLogEvent {
     ShopCancelled {
         by: UserId,
         target: UserId,
+    },
+    /// A crowdfund was opened (with the starter's own first pledge). The
+    /// starter is always named here, signed or not, as a shop purchase's
+    /// buyer is; `signed` says whether the public card named them too.
+    CrowdfundStarted {
+        action: ActionKind,
+        starter: UserId,
+        target: UserId,
+        note: Option<String>,
+        signed: bool,
+    },
+    /// A filled crowdfund landed. Every contributor is named, signed or not:
+    /// the starter first, then each pledger once in pledge order.
+    CrowdfundExecuted {
+        action: ActionKind,
+        target: UserId,
+        contributors: Vec<UserId>,
+        until: Option<DateTime<Utc>>,
     },
 }
 
@@ -139,6 +157,8 @@ impl std::fmt::Display for ModLogEvent {
             Self::CreditsAdjusted { .. } => "credits_adjusted",
             Self::ShopAction { .. } => "shop_action",
             Self::ShopCancelled { .. } => "shop_cancelled",
+            Self::CrowdfundStarted { .. } => "crowdfund_started",
+            Self::CrowdfundExecuted { .. } => "crowdfund_executed",
         };
         write!(f, "ModLog({kind})")
     }
@@ -436,6 +456,43 @@ fn parts(e: &ModLogEvent) -> Parts {
             MODLOG_TITLE_SHOP_CANCELLED,
             format!("{} {MODLOG_SHOP_CLEANSED} {}", user(*by), user(*target)),
         ),
+        ModLogEvent::CrowdfundStarted {
+            action,
+            starter,
+            target,
+            note,
+            signed,
+        } => Parts {
+            reason: note.clone(),
+            ..plain(
+                MODLOG_TITLE_CROWDFUND_STARTED,
+                format!(
+                    "{} {MODLOG_CROWDFUND_STARTED} {} {MODLOG_SHOP_ON} {} ({})",
+                    user(*starter),
+                    action.label(),
+                    user(*target),
+                    toggle(*signed, MODLOG_SHOP_SIGNED, MODLOG_SHOP_ANONYMOUS)
+                ),
+            )
+        },
+        ModLogEvent::CrowdfundExecuted {
+            action,
+            target,
+            contributors,
+            until,
+        } => {
+            // The action and the target first, so a long list of
+            // contributors can only ever clip its own tail.
+            let mut d = format!("{} {MODLOG_SHOP_ON} {}", action.label(), user(*target));
+            if let Some(t) = until {
+                d.push_str(&format!(" {MODLOG_UNTIL} <t:{}:f>", t.timestamp()));
+            }
+            d.push_str(&format!(
+                " ({MODLOG_CROWDFUNDED_BY} {})",
+                users(contributors)
+            ));
+            plain(MODLOG_TITLE_CROWDFUND, d)
+        },
     }
 }
 
@@ -576,6 +633,19 @@ mod tests {
                 mirrored_from: None,
             },
             ModLogEvent::ShopCancelled { by: A, target: T },
+            ModLogEvent::CrowdfundStarted {
+                action: ActionKind::Mute,
+                starter: A,
+                target: T,
+                note: None,
+                signed: false,
+            },
+            ModLogEvent::CrowdfundExecuted {
+                action: ActionKind::Mute,
+                target: T,
+                contributors: vec![A, T],
+                until: None,
+            },
         ]
     }
 
@@ -698,6 +768,61 @@ mod tests {
             j["description"],
             "<@22> used Rename on <@11> (bounced by <@11>'s mirror) (signed)"
         );
+    }
+
+    #[test]
+    fn crowdfund_started_names_the_starter() {
+        let e = ModLogEvent::CrowdfundStarted {
+            action: ActionKind::Rename,
+            starter: A,
+            target: T,
+            note: Some("gg".into()),
+            signed: true,
+        };
+        let j = json(&render(&e, &cx()));
+        assert_eq!(j["title"], "🎉 Crowdfund started");
+        assert_eq!(
+            j["description"],
+            "<@22> started a crowdfund for Rename on <@11> (signed)"
+        );
+        assert_eq!(j["fields"][0]["value"], "gg");
+        assert_eq!(render(&e, &cx()).mentions, Mentions::None);
+        assert_eq!(e.to_string(), "ModLog(crowdfund_started)");
+        // Unsigned, with no note: no reason field, and the starter is still
+        // named, marked as anonymous on the public card.
+        let bare = ModLogEvent::CrowdfundStarted {
+            action: ActionKind::Mute,
+            starter: A,
+            target: T,
+            note: None,
+            signed: false,
+        };
+        let j = json(&render(&bare, &cx()));
+        assert_eq!(
+            j["description"],
+            "<@22> started a crowdfund for Mute on <@11> (anonymous)"
+        );
+        assert!(j["fields"].as_array().is_none_or(Vec::is_empty), "{j}");
+    }
+
+    #[test]
+    fn crowdfund_executed_renders_every_contributor() {
+        let until = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
+        let c = UserId::new(33);
+        let e = ModLogEvent::CrowdfundExecuted {
+            action: ActionKind::Rename,
+            target: T,
+            contributors: vec![A, c, UserId::new(44)],
+            until: Some(until),
+        };
+        let j = json(&render(&e, &cx()));
+        assert_eq!(j["title"], "🎉 Crowdfund executed");
+        assert_eq!(
+            j["description"],
+            "Rename on <@11> until <t:1800000000:f> (crowdfunded by <@22>, <@33>, <@44>)"
+        );
+        assert_eq!(render(&e, &cx()).mentions, Mentions::None);
+        assert_eq!(e.to_string(), "ModLog(crowdfund_executed)");
     }
 
     #[test]
@@ -926,10 +1051,12 @@ mod tests {
 
     #[test]
     fn economy_events_log_their_kind() {
-        let shown: Vec<String> = all().iter().rev().take(5).map(|e| e.to_string()).collect();
+        let shown: Vec<String> = all().iter().rev().take(7).map(|e| e.to_string()).collect();
         assert_eq!(
             shown,
             [
+                "ModLog(crowdfund_executed)",
+                "ModLog(crowdfund_started)",
                 "ModLog(shop_cancelled)",
                 "ModLog(shop_action)",
                 "ModLog(credits_adjusted)",

@@ -86,6 +86,24 @@ fn get_track_states_union(track_states: TrackStates) -> TrackStatesUnion {
     union
 }
 
+/// The tracks a track end is about, less any walk-on theme. A theme is
+/// mixed over the queue, not part of it, so its end is not the queue moving
+/// on. Each theme track seen is forgotten (a track ends once) and left out.
+/// `None` when every track was a theme: the handler then does nothing.
+pub(crate) fn without_themes<T: Copy>(
+    economy: &crate::economy::registry::EconomyRegistry,
+    tracks: &[T],
+    uuid: impl Fn(&T) -> uuid::Uuid,
+) -> Option<Vec<T>> {
+    let queue: Vec<T> = tracks
+        .iter()
+        .filter(|t| !economy.take_theme_track(uuid(t)))
+        .copied()
+        .collect();
+    let only_themes = queue.is_empty() && !tracks.is_empty();
+    (!only_themes).then_some(queue)
+}
+
 /// What the status message shows after a track ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrackEndStatus {
@@ -116,6 +134,20 @@ pub fn track_end_status(gp_active: bool, next_exists: bool, autoplay: bool) -> T
 #[async_trait]
 impl EventHandler for TrackEndHandler {
     async fn act(&self, event_ctx: &EventContext<'_>) -> Option<Event> {
+        // 🔑 First: a walk-on theme ending is not the queue moving on. Played
+        // beside the queue, it ends here like any track, and would otherwise
+        // forget the skip votes, autopause the music it was mixed over,
+        // report a failure, start autoplay and redraw the status. Only the
+        // queue's tracks go on from here.
+        let tracks = match event_ctx {
+            EventContext::Track(tracks) => {
+                match without_themes(&self.data.economy, tracks, |(_, handle)| handle.uuid()) {
+                    Some(queue_tracks) => queue_tracks,
+                    None => return None,
+                }
+            },
+            _ => Vec::new(),
+        };
         // 🪤 These five were ERROR (#512) -- leftover printf debugging, not
         // failures. The rest of this function already uses `trace!` for its
         // progress and `warn!` for real problems, which is what made them
@@ -203,46 +235,42 @@ impl EventHandler for TrackEndHandler {
 
         // A track that could not play says so, rather than leaving the
         // channel to wonder why the music stopped.
-        if let EventContext::Track(tracks) = event_ctx {
-            let failed = track_failed::failures(tracks).await;
-            if !failed.is_empty() {
-                if let Some(channel) = self.notice_channel(music_channel).await {
-                    let transport = DiscordTransport {
-                        http: self.http.clone(),
-                        cache: self.cache.clone(),
-                    };
-                    track_failed::notify(
-                        &self.data,
-                        &transport,
-                        self.guild_id,
-                        channel,
-                        failed,
-                        std::time::Instant::now(),
-                    )
-                    .await;
-                }
+        let failed = track_failed::failures(&tracks).await;
+        if !failed.is_empty() {
+            if let Some(channel) = self.notice_channel(music_channel).await {
+                let transport = DiscordTransport {
+                    http: self.http.clone(),
+                    cache: self.cache.clone(),
+                };
+                track_failed::notify(
+                    &self.data,
+                    &transport,
+                    self.guild_id,
+                    channel,
+                    failed,
+                    std::time::Instant::now(),
+                )
+                .await;
             }
         }
 
         let mut autoplay = autoplay;
 
         if autoplay {
-            if let EventContext::Track(x) = event_ctx {
-                // `debug!` rather than `trace!`: this one is genuinely useful when
-                // debugging playback, being the whole track-state slice. It is
-                // still not an error.
-                tracing::debug!("TrackEvent: {:?}", x);
-                if get_track_states_union(x).errored {
-                    self.data.set_autoplay(self.guild_id, false).await;
-                    tracing::warn!("autoplay disabled for {}: track errored", self.guild_id);
-                    // Speaks up only when a music channel is configured.
-                    if let Some(c) = music_channel {
-                        self.send_plain(c, AUTOPLAY_STOPPED).await;
-                    }
-                    // Carry on without it: the status still says what plays
-                    // next, or that playback finished.
-                    autoplay = false;
+            // `debug!` rather than `trace!`: this one is genuinely useful when
+            // debugging playback, being the whole track-state slice. It is
+            // still not an error.
+            tracing::debug!("TrackEvent: {:?}", tracks);
+            if get_track_states_union(&tracks).errored {
+                self.data.set_autoplay(self.guild_id, false).await;
+                tracing::warn!("autoplay disabled for {}: track errored", self.guild_id);
+                // Speaks up only when a music channel is configured.
+                if let Some(c) = music_channel {
+                    self.send_plain(c, AUTOPLAY_STOPPED).await;
                 }
+                // Carry on without it: the status still says what plays
+                // next, or that playback finished.
+                autoplay = false;
             }
         }
 
@@ -262,10 +290,7 @@ impl EventHandler for TrackEndHandler {
 
         // The track that just ended seeds the next recommendation. No database:
         // neither YouTube's Mix nor Deezer needs one, so autoplay works without one.
-        let ended: Option<TrackHandle> = match event_ctx {
-            EventContext::Track(tracks) => tracks.first().map(|(_, handle)| (*handle).clone()),
-            _ => None,
-        };
+        let ended: Option<TrackHandle> = tracks.first().map(|(_, handle)| (*handle).clone());
 
         // Where "autoplay off" is announced. The status message resolves its
         // own channel.
@@ -608,6 +633,101 @@ mod tests {
 
         let meta = get_track_handle_metadata(&track).await.expect("metadata");
         assert_eq!(meta.title.as_deref(), Some("Want You Bad"));
+    }
+
+    /// A walk-on theme's end never reaches the queue's handling: alone, the
+    /// handler does nothing; beside queue tracks, only they go on. Each
+    /// theme is forgotten as it is seen.
+    #[test]
+    fn track_end_ignores_theme_tracks() {
+        use crate::economy::registry::EconomyRegistry;
+        use uuid::Uuid;
+        let reg = EconomyRegistry::default();
+        let (theme, other_theme, q1, q2) = (
+            Uuid::from_u128(1),
+            Uuid::from_u128(2),
+            Uuid::from_u128(3),
+            Uuid::from_u128(4),
+        );
+        reg.add_theme_track(theme);
+        reg.add_theme_track(other_theme);
+        let id = |u: &Uuid| *u;
+
+        assert_eq!(without_themes(&reg, &[q1], id), Some(vec![q1]));
+        assert_eq!(without_themes(&reg, &[] as &[Uuid], id), Some(vec![]));
+        assert_eq!(without_themes(&reg, &[theme], id), None, "a theme alone");
+        assert!(!reg.is_theme_track(theme), "forgotten once seen");
+        assert_eq!(
+            without_themes(&reg, &[q1, other_theme, q2], id),
+            Some(vec![q1, q2]),
+            "mixed: the queue's tracks only"
+        );
+        assert!(!reg.is_theme_track(other_theme));
+    }
+
+    /// The guard is `act`'s first line: a theme ending alone leaves what the
+    /// queue owns alone. The skip votes are what `act` touches first, so they
+    /// show it; a queue track's end still forgets them.
+    #[tokio::test]
+    async fn a_theme_ending_leaves_the_queue_alone() {
+        use serenity::all::UserId;
+        use songbird::tracks::TrackState;
+        let data = Data(Arc::new(crate::DataInner::default()));
+        let guild_id = GuildId::new(1);
+        let call = Arc::new(Mutex::new(
+            crate::music::ops::test_support::standalone_call(guild_id, UserId::new(2)),
+        ));
+        let theme_id = uuid::Uuid::from_u128(7);
+        data.economy.add_theme_track(theme_id);
+        let play = |id: uuid::Uuid| {
+            let call = call.clone();
+            async move {
+                let source = songbird::input::File::new("/nonexistent/clip.opus");
+                let mut h = call.lock().await;
+                crate::music::queue::play_beside_queue(
+                    &mut h,
+                    crate::music::queue::new_track(source.into(), None, None),
+                    id,
+                    1.0,
+                )
+            }
+        };
+        let theme = play(theme_id).await;
+        let other = play(uuid::Uuid::from_u128(8)).await;
+        let vote = |data: Data| async move {
+            data.guild_cache_map
+                .lock()
+                .await
+                .entry(guild_id)
+                .or_default()
+                .current_skip_votes
+                .insert(UserId::new(5));
+        };
+        let votes = |data: Data| async move {
+            data.guild_cache_map
+                .lock()
+                .await
+                .get(&guild_id)
+                .map_or(0, |c| c.current_skip_votes.len())
+        };
+        vote(data.clone()).await;
+        let handler = TrackEndHandler {
+            guild_id,
+            data: Arc::new(data.clone()),
+            cache: Arc::new(Cache::default()),
+            http: Arc::new(Http::new(crack_types::get_valid_token())),
+            call: call.clone(),
+        };
+        let state = TrackState::default();
+
+        let ended = handler.act(&EventContext::Track(&[(&state, &theme)])).await;
+        assert!(ended.is_none());
+        assert_eq!(votes(data.clone()).await, 1, "the theme's end kept them");
+        assert!(!data.economy.is_theme_track(theme_id), "forgotten");
+
+        // The observation works: any other track's end forgets them.
+        handler.act(&EventContext::Track(&[(&state, &other)])).await;
+        assert_eq!(votes(data.clone()).await, 0);
     }
 
     /// Every track end decides what the status shows. Until v0.13.0 anything

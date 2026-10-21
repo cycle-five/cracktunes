@@ -1,8 +1,14 @@
-//! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|cleanse|reveal`.
+//! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|theme|cleanse|reveal`.
 use super::admin::{log, log_to};
 use super::credits::{gate, live, say};
+use crate::commands::music::doplay::{play_core, play_settlement, Settlement};
+use crate::commands::permissions::cmd_check_music;
+use crate::db::economy as db;
+use crate::economy::bounty;
 use crate::economy::buttons::{card_buttons, carries_buttons};
-use crate::economy::cards::{card_channel, card_text};
+use crate::economy::cards::{
+    card_channel, card_destination, card_text, dedication_card_text, jump_card_text,
+};
 use crate::economy::discord::LiveEconomyDiscord;
 use crate::economy::preflight::{self, report_for, ActionPreflight};
 use crate::economy::settings::{
@@ -12,17 +18,24 @@ use crate::economy::shop::{
     ago_words, buy, buy_error_text, buy_immunity, cleanse, preflight_refusal, refusal_text, reveal,
     reveal_choices, BuyError, BuyOutcome, BuyRequest,
 };
+use crate::economy::shop::{cant_afford, check_purchase, PurchaseFacts};
+use crate::economy::target::check_target;
 use crate::economy::target::{gather_facts, voice_of, Subject};
+use crate::economy::theme::{buy_theme, parse_start, StartError, ThemeRequest};
+use crate::economy::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::courier;
 use crate::messaging::messages::{
     DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_CANT_TELL, ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL,
     ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK, ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG,
     ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK, ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG,
-    ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED,
-    ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED, ECONOMY_SHOP_CLEANSED_PREFIX,
-    ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL, ECONOMY_SHOP_DONE,
-    ECONOMY_SHOP_IMMUNITY_NOTE, ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
-    ECONOMY_YOU_HAVE,
+    ECONOMY_PLAY_NAME_A_SONG, ECONOMY_PLAY_NOT_CHARGED, ECONOMY_PLAY_ONE_SONG,
+    ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS,
+    ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED,
+    ECONOMY_SHOP_CLEANSED_PREFIX, ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL,
+    ECONOMY_SHOP_DONE, ECONOMY_SHOP_FROM, ECONOMY_SHOP_GROUP_PLAY, ECONOMY_SHOP_IMMUNITY_NOTE,
+    ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_MUSIC, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
+    ECONOMY_THEME_BOUGHT_PREFIX, ECONOMY_THEME_BOUGHT_SUFFIX, ECONOMY_THEME_START_MALFORMED,
+    ECONOMY_THEME_START_TOO_LATE, ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
@@ -48,25 +61,50 @@ fn unmet(report: &[ActionPreflight], kind: ActionKind) -> Option<String> {
 /// The shop's listing: every item that is on, with its price, and the docs
 /// link. An item that isn't sold says so, and a prank the permission report
 /// (`report`, [`crate::economy::preflight::economy_preflight`]) says can't
-/// be done right now also says why (spec 7).
+/// be done right now also says why (spec 7). Crowdfund is listed only while
+/// some prank a crowd can fund is on and sold: otherwise nothing could be
+/// started with it.
 pub fn menu_text(settings: &EconomySettings, report: &[ActionPreflight]) -> String {
     let cfg = &settings.config;
-    let mut lines = vec![format!("**{ECONOMY_SHOP_TITLE}**")];
-    for kind in ActionKind::ALL {
-        let price = cfg.prices.get(*kind);
-        if !price.on {
-            continue;
-        }
-        let why = unmet(report, *kind);
+    let is_sold = |kind: ActionKind| {
+        let why = unmet(report, kind);
         let sold = match kind {
             ActionKind::Immunity => cfg.immunity_shop,
             // Jail needs a channel to send members to.
             ActionKind::Jail => cfg.jail_channel_id.is_some() && why.is_none(),
             _ => why.is_none(),
         };
+        (sold, why)
+    };
+    let fundable = ActionKind::FUNDABLE
+        .iter()
+        .any(|k| cfg.prices.get(*k).on && is_sold(*k).0);
+    let mut lines = vec![format!("**{ECONOMY_SHOP_TITLE}**")];
+    let mut last_heading: Option<&str> = None;
+    for kind in ActionKind::ALL {
+        let price = cfg.prices.get(*kind);
+        if !price.on || (*kind == ActionKind::Crowdfund && !fundable) {
+            continue;
+        }
+        // Music and group play each get a heading above their first item.
+        let heading = match kind {
+            ActionKind::Theme | ActionKind::Dedicate | ActionKind::Jump => Some(ECONOMY_SHOP_MUSIC),
+            ActionKind::Bounty | ActionKind::Crowdfund => Some(ECONOMY_SHOP_GROUP_PLAY),
+            _ => None,
+        };
+        if heading.is_some() && heading != last_heading {
+            lines.push(format!("**{}**", heading.unwrap_or_default()));
+        }
+        last_heading = heading;
+        let (sold, why) = is_sold(*kind);
         if sold {
+            // A bounty's or a crowdfund's price is only a minimum.
+            let from = match kind {
+                ActionKind::Bounty | ActionKind::Crowdfund => format!("{ECONOMY_SHOP_FROM} "),
+                _ => String::new(),
+            };
             lines.push(format!(
-                "{}: {} {} {}",
+                "{}: {from}{} {} {}",
                 kind.label(),
                 price.price,
                 cfg.currency_emoji,
@@ -351,16 +389,36 @@ pub(crate) async fn run_prank(
         Ok(b) => b,
         Err(e) => return answer.private(buy_error_text(&e, &cfg.currency_name)).await,
     };
+    // A prank that landed collects the bounties on its target. The prank is
+    // done whatever this says, so a failed claim is logged and nothing more.
+    let claimed = match (target, data.database_pool.as_ref()) {
+        (Some(t), Some(pool)) => {
+            let t = t.user.id;
+            match bounty::collect(pool, guild, t, buyer, kind, bought.outcome).await {
+                Ok(total) => total,
+                Err(err) => {
+                    tracing::warn!(
+                        "economy: claiming the bounties on {t} in {guild} failed: {err}"
+                    );
+                    0
+                },
+            }
+        },
+        _ => 0,
+    };
+    let mut reply = bought_reply_text(
+        kind,
+        bought.outcome,
+        bought.balance,
+        &cfg.currency_name,
+        &cfg.currency_emoji,
+    );
+    if claimed > 0 {
+        reply.push('\n');
+        reply.push_str(&bounty::collected_reply_line(claimed, &cfg.currency_name));
+    }
     // Reply first: a slow card or log channel must not time the interaction out.
-    let replied = answer
-        .private(bought_reply_text(
-            kind,
-            bought.outcome,
-            bought.balance,
-            &cfg.currency_name,
-            &cfg.currency_emoji,
-        ))
-        .await;
+    let replied = answer.private(reply).await;
     let Some(target) = target.map(|t| t.user.id) else {
         return replied;
     };
@@ -373,7 +431,7 @@ pub(crate) async fn run_prank(
         env.invoked_in,
         cfg.announce_channel_id,
     );
-    let card = card_text(
+    let mut card = card_text(
         kind,
         target,
         nick.as_deref(),
@@ -382,6 +440,10 @@ pub(crate) async fn run_prank(
         signed.then_some(buyer),
         bought.outcome,
     );
+    if claimed > 0 {
+        card.push('\n');
+        card.push_str(&bounty::collected_card_line(target));
+    }
     let mut rendered = Rendered::text(card);
     if carries_buttons(kind, bought.outcome) {
         rendered = rendered.with_components(card_buttons(bought.action_id));
@@ -555,6 +617,408 @@ pub async fn mirror(ctx: Context<'_>) -> Result<(), Error> {
     prank(ctx, ActionKind::Mirror, None, None, None, None).await
 }
 
+/// The words for a refused start time.
+pub fn start_error_text(e: StartError) -> &'static str {
+    match e {
+        StartError::Malformed => ECONOMY_THEME_START_MALFORMED,
+        StartError::TooLate => ECONOMY_THEME_START_TOO_LATE,
+    }
+}
+
+/// The private reply to a bought theme: when it plays, then what is left.
+pub fn theme_reply_text(balance: i64, currency: &str, emoji: &str) -> String {
+    format!(
+        "{ECONOMY_THEME_BOUGHT_PREFIX} {currency} {ECONOMY_THEME_BOUGHT_SUFFIX}\n{}",
+        balance_followup_text(balance, currency, emoji)
+    )
+}
+
+/// Have a song play for someone the next time they join voice.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(slash_command, guild_only)]
+pub async fn theme(
+    ctx: Context<'_>,
+    #[description = "Who"] member: Member,
+    #[description = "A link to the song or video"] link: String,
+    #[description = "Where it starts: 83, 1:23 or 1:02:03"] start: Option<String>,
+    #[description = "A note shown on the card"] note: Option<String>,
+    #[description = "Put your name on the card"] signed: Option<bool>,
+) -> Result<(), Error> {
+    let Some((guild, _pool)) = gate(ctx).await? else {
+        return Ok(());
+    };
+    // Reads the database and Discord before the first reply, as a prank does.
+    ctx.defer_ephemeral().await?;
+    let Some(buyer) = ctx.author_member().await else {
+        return say(ctx, ECONOMY_CANT_TELL, true).await;
+    };
+    let data = ctx.data();
+    let cfg = data.economy.settings(guild).config;
+    if buyer.user.bot() {
+        return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
+    }
+    // Both are answered before anything is read or charged.
+    let start = match start.as_deref().map(parse_start).transpose() {
+        Ok(s) => s.unwrap_or_default(),
+        Err(e) => return say(ctx, start_error_text(e), true).await,
+    };
+    let note = match note.as_deref().map(validate_note).transpose() {
+        Ok(n) => n,
+        Err(e) => return say(ctx, note_error_text(e), true).await,
+    };
+    let signed = signed.unwrap_or(false);
+    let now = Utc::now();
+    let (buyer_id, target) = (buyer.user.id, member.user.id);
+    let facts = match gather_facts(
+        &data,
+        &ctx.serenity_context().cache,
+        guild,
+        Subject {
+            member: &member,
+            is_self: target == buyer_id,
+        },
+        ActionKind::Theme,
+        None,
+        now,
+    )
+    .await
+    {
+        Ok(f) => f,
+        Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
+    };
+    let bought = match buy_theme(
+        &data,
+        facts,
+        ThemeRequest {
+            guild,
+            buyer: buyer_id,
+            target,
+            url: link,
+            start,
+            note: note.clone(),
+            signed,
+            now,
+        },
+    )
+    .await
+    {
+        Ok(b) => b,
+        Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
+    };
+    // No card: the theme announces itself when it plays. Reply first, then log.
+    let replied = say(
+        ctx,
+        theme_reply_text(bought.balance, &cfg.currency_name, &cfg.currency_emoji),
+        true,
+    )
+    .await;
+    log_to(
+        &data,
+        ctx.serenity_context(),
+        guild,
+        ModLogEvent::ShopAction {
+            action: ActionKind::Theme,
+            buyer: buyer_id,
+            target,
+            note,
+            signed,
+            until: bought.until,
+            mirrored_from: None,
+        },
+    )
+    .await;
+    replied
+}
+
+/// The private balance line after a kept paid play.
+pub fn paid_play_balance_text(balance: i64, currency: &str, emoji: &str) -> String {
+    balance_followup_text(balance, currency, emoji)
+}
+
+/// A blank song is refused before any charge.
+pub fn song_is_blank(song: &str) -> bool {
+    song.trim().is_empty()
+}
+
+/// Whether `song` is a link to more than one song, which a paid play refuses
+/// before the charge (one price, one song): every form `/play` expands into a
+/// list. A YouTube link with a `list` or `playlist` key (as
+/// `crack_types::canonical_youtube_playlist_url` reads it) or a `/playlist`
+/// path; a Spotify playlist or album, as a link or as a `spotify:album:` /
+/// `spotify:playlist:` URI (which `/play` resolves through sleevenote); a
+/// SoundCloud set. Search text is never a link, whatever it says.
+pub fn is_playlist_link(song: &str) -> bool {
+    let song = song.trim();
+    // The desktop client's URI form: `spotify:<kind>:<id>`.
+    if let Some(rest) = song.to_ascii_lowercase().strip_prefix("spotify:") {
+        return matches!(rest.split(':').next(), Some("album" | "playlist"));
+    }
+    let Ok(url) = url::Url::parse(song) else {
+        return false;
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host.to_ascii_lowercase();
+    let on = |domain: &str| host == domain || host.ends_with(&format!(".{domain}"));
+    let path = url.path().to_ascii_lowercase();
+    if on("youtube.com") || on("youtu.be") || on("youtube-nocookie.com") {
+        url.query_pairs()
+            .any(|(k, _)| k == "list" || k == "playlist")
+            || path.starts_with("/playlist")
+    } else if on("spotify.com") {
+        path.contains("/playlist/") || path.contains("/album/")
+    } else if on("soundcloud.com") {
+        path.contains("/sets/")
+    } else {
+        false
+    }
+}
+
+/// Which of the two paid plays is running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PaidPlay {
+    Dedicate,
+    Jump,
+}
+
+/// Charge, run `/play`'s own path, then keep the charge or refund it.
+///
+/// 🔑 No defer before the play (ruling P6): `/play` chooses its reply's
+/// visibility, so every check up to the charge reads only the cache and the
+/// database.
+#[cfg(not(tarpaulin_include))]
+async fn paid_play(
+    ctx: Context<'_>,
+    which: PaidPlay,
+    member: Option<Member>,
+    song: String,
+    note: Option<String>,
+) -> Result<(), Error> {
+    let Some((guild, pool)) = gate(ctx).await? else {
+        return Ok(());
+    };
+    let Some(buyer) = ctx.author_member().await else {
+        return say(ctx, ECONOMY_CANT_TELL, true).await;
+    };
+    let data = ctx.data();
+    let cfg = data.economy.settings(guild).config;
+    if buyer.user.bot() {
+        return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
+    }
+    let note = match note.as_deref().map(validate_note).transpose() {
+        Ok(n) => n,
+        Err(e) => return say(ctx, note_error_text(e), true).await,
+    };
+    // Never reaches `play_core`'s empty-query branch, which can resume a
+    // paused bot.
+    if song_is_blank(&song) {
+        return say(ctx, ECONOMY_PLAY_NAME_A_SONG, true).await;
+    }
+    // One price, one song: a playlist would queue up to `playlist_limit`.
+    if is_playlist_link(&song) {
+        return say(ctx, ECONOMY_PLAY_ONE_SONG, true).await;
+    }
+    // Signed by nature: the `/play` reply and now playing's "Requested by"
+    // name the buyer, so the card does too, and reveal never sells it.
+    let signed = true;
+    let buyer_id = buyer.user.id;
+    let kind = match which {
+        PaidPlay::Dedicate => ActionKind::Dedicate,
+        PaidPlay::Jump => ActionKind::Jump,
+    };
+    let target = member.as_ref().map(|m| m.user.id);
+    if let Some(member) = member.as_ref() {
+        let facts = match gather_facts(
+            &data,
+            &ctx.serenity_context().cache,
+            guild,
+            Subject {
+                member,
+                is_self: member.user.id == buyer_id,
+            },
+            kind,
+            None,
+            Utc::now(),
+        )
+        .await
+        {
+            Ok(f) => f,
+            Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
+        };
+        if let Err(r) = check_target(kind, &facts, None) {
+            return say(ctx, refusal_text(&r, &cfg.currency_name), true).await;
+        }
+    }
+    let price = cfg.prices.get(kind);
+    let balance = match db::balance(&pool, guild, buyer_id).await {
+        Ok(b) => b,
+        Err(err) => {
+            tracing::warn!("economy: reading balance of {buyer_id} in {guild} failed: {err}");
+            return say(ctx, ECONOMY_PURCHASE_FAILED, true).await;
+        },
+    };
+    if let Err(r) = check_purchase(&PurchaseFacts {
+        enabled: data.economy.is_enabled(guild),
+        price,
+        source_on: true,
+        buyer_opted_out: data.economy.is_opted_out(guild, buyer_id),
+        already_immune_indefinitely: false,
+        balance,
+    }) {
+        return say(ctx, refusal_text(&r, &cfg.currency_name), true).await;
+    }
+    let price = i64::from(price.price);
+    let payload = match which {
+        PaidPlay::Dedicate => ActionPayload::Dedicate { song: song.clone() },
+        PaidPlay::Jump => ActionPayload::Jump { song: song.clone() },
+    };
+    let charged = match db::charge_for_action(
+        &pool,
+        &db::NewAction {
+            guild,
+            kind,
+            buyer: buyer_id,
+            target,
+            price,
+            note: note.as_deref(),
+            signed,
+            payload: &payload,
+            expires_at: None,
+        },
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(MoveError::Insufficient { balance }) => {
+            let r = cant_afford(price, balance);
+            return say(ctx, refusal_text(&r, &cfg.currency_name), true).await;
+        },
+        Err(err) => {
+            tracing::warn!("economy: charging {buyer_id} in {guild} for a play failed: {err:?}");
+            return say(ctx, ECONOMY_PURCHASE_FAILED, true).await;
+        },
+    };
+    let mode = match which {
+        PaidPlay::Dedicate => None,
+        PaidPlay::Jump => Some("next".to_string()),
+    };
+    let played = play_core(ctx, mode, None, Some(song)).await;
+    let verdict = play_settlement(&played);
+    // An error after the song was queued still keeps the charge; it is
+    // returned last so poise renders it exactly as `/play` would.
+    let late_error = played.err().map(|failed| failed.err);
+    match verdict {
+        Settlement::Refund => {
+            if let Err(err) = db::refund_action(&pool, charged.action_id).await {
+                // The row stays pending: reconcile refunds it (ruling P5).
+                tracing::error!(
+                    "economy: refunding action {} for {buyer_id} in {guild} failed: {err}",
+                    charged.action_id
+                );
+            }
+            return match late_error {
+                // Poise's handler renders it exactly as `/play` would.
+                Some(e) => Err(e),
+                None => say(ctx, ECONOMY_PLAY_NOT_CHARGED, true).await,
+            };
+        },
+        Settlement::Keep => {},
+    }
+    // Retried once: a row left pending would be refunded by reconcile, though
+    // the play was kept.
+    let mut done = db::finish_action(&pool, charged.action_id, ActionState::Done).await;
+    if done.is_err() {
+        done = db::finish_action(&pool, charged.action_id, ActionState::Done).await;
+    }
+    match done {
+        Ok(true) => {},
+        // Something else (reconcile, during a long resolve) already settled
+        // the row: the play was kept, and may have been refunded too.
+        Ok(false) => tracing::error!(
+            "economy: action {} was already settled when its play was kept; it may have been refunded as well",
+            charged.action_id
+        ),
+        Err(err) => tracing::error!(
+            "economy: marking action {} done failed twice; reconcile will refund a kept play: {err}",
+            charged.action_id
+        ),
+    }
+    let replied = say(
+        ctx,
+        paid_play_balance_text(charged.balance, &cfg.currency_name, &cfg.currency_emoji),
+        true,
+    )
+    .await;
+    let text = match target {
+        Some(t) => dedication_card_text(t, note.as_deref(), buyer_id),
+        None => jump_card_text(note.as_deref(), buyer_id),
+    };
+    let channel = card_destination(
+        kind,
+        None,
+        ChannelId::new(ctx.channel_id().get()),
+        cfg.announce_channel_id,
+    );
+    let rendered = Rendered::text(text);
+    let transport = DiscordTransport::of(ctx.serenity_context());
+    if let Err(err) =
+        courier::post_message(&transport, GenericChannelId::new(channel.get()), &rendered).await
+    {
+        tracing::warn!("economy: posting the play card in {channel} failed: {err:?}");
+        if let Err(err) = courier::reply_rendered(ctx, rendered, false).await {
+            tracing::warn!("economy: the play card follow-up failed: {err:?}");
+        }
+    }
+    if let Some(target) = target {
+        log_to(
+            &data,
+            ctx.serenity_context(),
+            guild,
+            ModLogEvent::ShopAction {
+                action: ActionKind::Dedicate,
+                buyer: buyer_id,
+                target,
+                note,
+                signed,
+                until: None,
+                mirrored_from: None,
+            },
+        )
+        .await;
+    }
+    match late_error {
+        Some(e) => Err(e),
+        None => replied,
+    }
+}
+
+/// Queue a song like /play, and say it goes out to someone.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(slash_command, guild_only, check = "cmd_check_music")]
+pub async fn dedicate(
+    ctx: Context<'_>,
+    #[description = "Who it goes out to"] member: Member,
+    #[description = "Song link or search query"] song: String,
+    #[description = "A note shown on the card"] note: Option<String>,
+) -> Result<(), Error> {
+    paid_play(ctx, PaidPlay::Dedicate, Some(member), song, note).await
+}
+
+/// Queue a song to play next, like /playnext.
+#[cfg(not(tarpaulin_include))]
+#[poise::command(slash_command, guild_only, check = "cmd_check_music")]
+pub async fn jump(
+    ctx: Context<'_>,
+    #[description = "Song link or search query"] song: String,
+    #[description = "A note shown on the card"] note: Option<String>,
+) -> Result<(), Error> {
+    paid_play(ctx, PaidPlay::Jump, None, song, note).await
+}
+
 /// What the shop sells and for how much.
 #[cfg(not(tarpaulin_include))]
 #[poise::command(
@@ -572,6 +1036,9 @@ pub async fn mirror(ctx: Context<'_>) -> Result<(), Error> {
         "deafen",
         "jail",
         "mirror",
+        "theme",
+        "dedicate",
+        "jump",
         "cleanse_command",
         "reveal_command"
     ),
@@ -759,6 +1226,71 @@ mod tests {
     }
 
     #[test]
+    fn a_blank_song_is_refused_before_any_charge() {
+        assert!(song_is_blank(""));
+        assert!(song_is_blank("  \t\n "));
+        assert!(!song_is_blank(" a "));
+        assert_eq!(ECONOMY_PLAY_NAME_A_SONG, "Name a song or paste a link.");
+    }
+
+    #[test]
+    fn a_paid_play_refuses_a_playlist_link() {
+        let table = [
+            // YouTube: a list, or a playlist page.
+            ("https://www.youtube.com/watch?v=abc&list=PL123", true),
+            ("https://youtube.com/playlist?list=PL123", true),
+            ("https://music.youtube.com/playlist?list=OLAK5", true),
+            ("https://m.youtube.com/watch?list=PL1&v=abc", true),
+            ("https://youtu.be/abc?list=PL123", true),
+            ("  https://www.youtube.com/watch?v=abc&list=PL123  ", true),
+            ("HTTPS://WWW.YOUTUBE.COM/PLAYLIST?list=PL1", true),
+            ("https://www.youtube.com/watch?v=abc", false),
+            ("https://youtu.be/abc?t=42", false),
+            ("https://www.youtube.com/watch?v=abc&index=2", false),
+            // `/play` reads `playlist=` as a list too.
+            ("https://www.youtube.com/watch?v=x&playlist=PL123", true),
+            ("https://youtu.be/abc?playlist=PL123", true),
+            // Spotify: a playlist or an album.
+            ("https://open.spotify.com/playlist/37i9dQZF1DX", true),
+            (
+                "https://open.spotify.com/album/4aawyAB9vmqN3uQ7FjRGTy",
+                true,
+            ),
+            ("https://open.spotify.com/intl-de/album/4aawyAB9", true),
+            (
+                "https://open.spotify.com/track/11dFghVXANMlKmJXsNCbNl",
+                false,
+            ),
+            // The desktop client's URIs, which `/play` resolves too.
+            ("spotify:album:4aawyAB9", true),
+            ("spotify:playlist:37i9dQZF1DX", true),
+            ("  Spotify:Playlist:37i9dQZF1DX ", true),
+            ("spotify:track:11dFghVXANMlKmJXsNCbNl", false),
+            ("spotify:", false),
+            // SoundCloud: a set.
+            ("https://soundcloud.com/artist/sets/the-album", true),
+            ("https://soundcloud.com/artist/a-song", false),
+            // Another site's "list" or "playlist" means nothing here.
+            ("https://example.com/playlist?list=1", false),
+            ("https://notyoutube.com/watch?list=1", false),
+            ("https://bandcamp.com/album/x", false),
+            // Search text is not a link, whatever it says.
+            ("my playlist", false),
+            ("youtube.com/playlist?list=PL1", false),
+            ("lofi list=PL123 album/sets", false),
+            ("my spotify:album:4aawyAB9", false),
+            ("", false),
+        ];
+        for (song, want) in table {
+            assert_eq!(is_playlist_link(song), want, "{song:?}");
+        }
+        assert_eq!(
+            ECONOMY_PLAY_ONE_SONG,
+            "Paid plays take one song, not a playlist."
+        );
+    }
+
+    #[test]
     fn menu_lists_on_items_with_prices() {
         let mut s = EconomySettings::off(GuildId::new(1));
         assert_eq!(
@@ -768,7 +1300,10 @@ mod tests {
                  Rename: 120 🪙 credits\nLock nickname: 60 🪙 credits\nClown: 30 🪙 credits\n\
                  Drag: 60 🪙 credits\nMute: 90 🪙 credits\nDeafen: 90 🪙 credits\n\
                  Jail: not sold here (Choose a jail channel first.)\nMirror: 150 🪙 credits\n\
-                 Cleanse: 80 🪙 credits\nReveal: 100 🪙 credits\n{DOCS}"
+                 Cleanse: 80 🪙 credits\nReveal: 100 🪙 credits\n\
+                 **Music**\nWalk-on theme: 100 🪙 credits\nDedication: 40 🪙 credits\n\
+                 Queue jump: 40 🪙 credits\n**Group play**\nBounty: from 50 🪙 credits\n\
+                 Crowdfund: from 10 🪙 credits\n{DOCS}"
             )
         );
         s.config.jail_channel_id = Some(serenity::all::ChannelId::new(9));
@@ -786,6 +1321,70 @@ mod tests {
         s.config.prices.set(ActionKind::Clown, p);
         assert!(!menu_text(&s).contains("Clown"));
         assert!(!menu_text(&s).contains("next update"));
+    }
+
+    #[test]
+    fn menu_lists_music_and_group_play() {
+        let mut s = EconomySettings::off(GuildId::new(1));
+        let text = menu(&s, Some(&able()));
+        let at = |needle: &str| {
+            text.find(needle)
+                .unwrap_or_else(|| panic!("{needle}: {text}"))
+        };
+        assert!(at("Reveal:") < at("**Music**"));
+        assert!(at("**Music**") < at("Walk-on theme: 100"));
+        assert!(at("Queue jump: 40") < at("**Group play**"));
+        assert!(at("**Group play**") < at("Bounty: from 50"));
+        assert!(text.contains("Bounty: from 50 🪙 credits"), "{text}");
+        assert!(text.contains("Crowdfund: from 10 🪙 credits"), "{text}");
+        assert_eq!(text.matches("**Music**").count(), 1);
+        // A heading is shown only while something under it is on.
+        for k in [ActionKind::Theme, ActionKind::Dedicate, ActionKind::Jump] {
+            let mut p = k.default_price();
+            p.on = false;
+            s.config.prices.set(k, p);
+        }
+        let text = menu(&s, Some(&able()));
+        assert!(!text.contains("**Music**"), "{text}");
+        assert!(text.contains("**Group play**"), "{text}");
+    }
+
+    #[test]
+    fn menu_hides_crowdfund_while_nothing_fundable_is_sold() {
+        let mut s = EconomySettings::off(GuildId::new(1));
+        // Every fundable prank off but jail, which has no channel, so isn't
+        // sold. Drag is on and sold, but a crowd can't fund it.
+        for k in ActionKind::FUNDABLE {
+            if *k != ActionKind::Jail {
+                let mut p = k.default_price();
+                p.on = false;
+                s.config.prices.set(*k, p);
+            }
+        }
+        let text = menu(&s, Some(&able()));
+        assert!(!text.contains("Crowdfund"), "{text}");
+        assert!(text.contains("Drag: 60"), "{text}");
+        assert!(text.contains("Jail: not sold here"), "{text}");
+        assert!(text.contains("**Group play**\nBounty: from 50"), "{text}");
+        // One fundable prank sold brings it back.
+        s.config.jail_channel_id = Some(ChannelId::new(9));
+        let text = menu(&s, Some(&able()));
+        assert!(text.contains("Crowdfund: from 10 🪙 credits"), "{text}");
+        // On, but CrackTunes can't do any of them: hidden.
+        let mut s = EconomySettings::off(GuildId::new(1));
+        let drag_only = preflight::BotPerms {
+            guild: serenity::all::Permissions::MOVE_MEMBERS,
+            in_channel: [(ChannelId::new(9), preflight::NEED_CHANNEL)].into(),
+        };
+        let text = menu(&s, Some(&drag_only));
+        assert!(text.contains("Drag: 60"), "{text}");
+        assert!(!text.contains("Crowdfund"), "{text}");
+        // With the bounty off too, the group heading goes.
+        let mut p = ActionKind::Bounty.default_price();
+        p.on = false;
+        s.config.prices.set(ActionKind::Bounty, p);
+        let text = menu(&s, Some(&drag_only));
+        assert!(!text.contains("**Group play**"), "{text}");
     }
 
     #[test]
@@ -877,6 +1476,27 @@ mod tests {
             nick_error_text(NickError::TooLong),
             "That name is too long: 32 characters at most (an emoji counts as 2 or more)."
         );
+    }
+
+    #[test]
+    fn theme_texts_say_when_it_plays_and_what_is_left() {
+        assert_eq!(
+            start_error_text(StartError::Malformed),
+            "Start time looks like 83, 1:23 or 1:02:03."
+        );
+        assert_eq!(
+            start_error_text(StartError::TooLate),
+            "Start time can be at most 12:00:00."
+        );
+        let text = theme_reply_text(150, "credits", "🪙");
+        assert_eq!(
+            text,
+            format!(
+                "Their theme plays the next time they join voice, within 7 days. If it never does, you get your credits back.\n{}",
+                balance_followup_text(150, "credits", "🪙")
+            )
+        );
+        assert!(text.contains("You have 150"), "{text}");
     }
 
     #[test]

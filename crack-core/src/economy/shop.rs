@@ -11,11 +11,14 @@ use super::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::messages::{
     ECONOMY_ALREADY_DEAFENED, ECONOMY_ALREADY_IMMUNE, ECONOMY_ALREADY_MUTED,
     ECONOMY_ALREADY_REVEALED, ECONOMY_ALREADY_RUNNING_PREFIX, ECONOMY_ALREADY_THERE,
-    ECONOMY_BUYER_NOT_IN_VOICE, ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION,
-    ECONOMY_CANT_AFFORD_MIDDLE, ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_CANT_TELL,
-    ECONOMY_MIRROR_ALREADY_UP, ECONOMY_NOTHING_TO_CLEANSE, ECONOMY_NOTHING_TO_REVEAL,
-    ECONOMY_NOT_FOR_SALE, ECONOMY_NO_DATABASE, ECONOMY_NO_JAIL_CHANNEL, ECONOMY_OFF,
-    ECONOMY_OUT_OF_REACH, ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PICK_AGO,
+    ECONOMY_BAD_LINK, ECONOMY_BOUNTY_TOO_SMALL_PREFIX, ECONOMY_BUYER_NOT_IN_VOICE,
+    ECONOMY_BUYER_OPTED_OUT, ECONOMY_CANNOT_JOIN_DESTINATION, ECONOMY_CANT_AFFORD_MIDDLE,
+    ECONOMY_CANT_AFFORD_PREFIX, ECONOMY_CANT_TELL, ECONOMY_FUND_ALREADY_OPEN, ECONOMY_FUND_CLOSED,
+    ECONOMY_FUND_TOO_CHEAP, ECONOMY_MIRROR_ALREADY_UP, ECONOMY_NOTHING_TO_CLEANSE,
+    ECONOMY_NOTHING_TO_REVEAL, ECONOMY_NOT_FOR_SALE, ECONOMY_NO_DATABASE, ECONOMY_NO_JAIL_CHANNEL,
+    ECONOMY_OFF, ECONOMY_OUT_OF_REACH, ECONOMY_PLEDGE_ON_SELF, ECONOMY_PLEDGE_OVER_SHARE_PREFIX,
+    ECONOMY_PLEDGE_OVER_SHARE_SUFFIX, ECONOMY_PLEDGE_TOO_SMALL_PREFIX,
+    ECONOMY_PLEDGE_TOO_SMALL_SUFFIX, ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PICK_AGO,
     ECONOMY_REVEAL_PICK_DAY, ECONOMY_REVEAL_PICK_HOUR, ECONOMY_REVEAL_PICK_JUST_NOW,
     ECONOMY_REVEAL_PICK_MINUTE, ECONOMY_TARGET_IMMUNE_INDEFINITELY, ECONOMY_TARGET_IMMUNE_UNTIL,
     ECONOMY_TARGET_IS_BOT, ECONOMY_TARGET_IS_SELF, ECONOMY_TARGET_NOT_IN_VOICE,
@@ -80,9 +83,34 @@ pub enum Refusal {
     AlreadyDeafened,
     /// A drag whose target is already in the buyer's channel.
     AlreadyThere,
+    /// A bounty below the minimum stake (or not above zero).
+    BountyTooSmall {
+        min: i64,
+    },
+    /// A crowdfund for this target and prank is already open.
+    FundAlreadyOpen,
+    /// The crowdfund is closed, full, expired, or not in this server.
+    FundClosed,
+    /// A crowdfund for a prank priced below 2: one member's share (half,
+    /// rounded up) would fill it alone.
+    FundTooCheap,
+    /// A pledge to a crowdfund aimed at the pledger.
+    PledgeOnSelf,
+    /// A pledge below the minimum that is not what the fund still needs.
+    PledgeTooSmall {
+        min: i64,
+    },
+    /// A pledge from a member who has put in their share of the fund (half
+    /// its price, rounded up): a fund takes at least two people.
+    PledgeOverShare {
+        max: i64,
+    },
     /// A role position nobody could read (the cache can't place one of the
     /// member's roles, or the bot's): not the hierarchy, so not out of reach.
     CantTell,
+    /// A theme whose link yt-dlp would not be handed: not http(s), or over
+    /// the length cap.
+    BadLink,
 }
 
 /// Check a purchase, refusing for the first reason that applies, in order:
@@ -158,6 +186,24 @@ pub fn refusal_text(r: &Refusal, currency: &str) -> String {
         Refusal::AlreadyDeafened => ECONOMY_ALREADY_DEAFENED.to_string(),
         Refusal::CantTell => ECONOMY_CANT_TELL.to_string(),
         Refusal::AlreadyThere => ECONOMY_ALREADY_THERE.to_string(),
+        Refusal::BountyTooSmall { min } => {
+            format!("{ECONOMY_BOUNTY_TOO_SMALL_PREFIX} {min} {currency}.")
+        },
+        Refusal::BadLink => ECONOMY_BAD_LINK.to_string(),
+        Refusal::FundAlreadyOpen => ECONOMY_FUND_ALREADY_OPEN.to_string(),
+        Refusal::FundClosed => ECONOMY_FUND_CLOSED.to_string(),
+        Refusal::FundTooCheap => ECONOMY_FUND_TOO_CHEAP.to_string(),
+        Refusal::PledgeOnSelf => ECONOMY_PLEDGE_ON_SELF.to_string(),
+        Refusal::PledgeOverShare { max } => {
+            format!(
+                "{ECONOMY_PLEDGE_OVER_SHARE_PREFIX} {max} {currency} {ECONOMY_PLEDGE_OVER_SHARE_SUFFIX}"
+            )
+        },
+        Refusal::PledgeTooSmall { min } => {
+            format!(
+                "{ECONOMY_PLEDGE_TOO_SMALL_PREFIX} {min} {currency}, {ECONOMY_PLEDGE_TOO_SMALL_SUFFIX}"
+            )
+        },
     }
 }
 
@@ -313,7 +359,7 @@ pub struct BuyRequest {
     pub now: DateTime<Utc>,
 }
 
-fn payload_for(
+pub(crate) fn payload_for(
     kind: ActionKind,
     on: &TargetFacts,
     buyer_voice: Option<ChannelId>,
@@ -342,14 +388,20 @@ fn payload_for(
             jail: cfg.jail_channel_id.ok_or(BuyError::Invalid)?,
         },
         ActionKind::Mirror => ActionPayload::Mirror,
-        ActionKind::Immunity | ActionKind::Cleanse | ActionKind::Reveal => {
-            return Err(BuyError::Invalid)
-        },
+        // Not sold through `buy`.
+        ActionKind::Immunity
+        | ActionKind::Cleanse
+        | ActionKind::Reveal
+        | ActionKind::Theme
+        | ActionKind::Dedicate
+        | ActionKind::Jump
+        | ActionKind::Bounty
+        | ActionKind::Crowdfund => return Err(BuyError::Invalid),
     })
 }
 
 /// Do the Discord half of a prank. Lock and mirror change nobody.
-async fn act(
+pub(crate) async fn act(
     discord: &dyn EconomyDiscord,
     g: GuildId,
     on: UserId,
@@ -367,11 +419,75 @@ async fn act(
         | ActionPayload::Mirror
         | ActionPayload::Immunity { .. }
         | ActionPayload::Cleanse
-        | ActionPayload::Reveal { .. } => Ok(()),
+        | ActionPayload::Reveal { .. }
+        | ActionPayload::Theme { .. }
+        | ActionPayload::Dedicate { .. }
+        | ActionPayload::Jump { .. }
+        | ActionPayload::Bounty => Ok(()),
     }
 }
 
-fn db_failed(what: &str, err: &sqlx::Error) -> BuyError {
+/// The name pranks running on `victim`, read only for the kinds that care
+/// (rename, clown and lock): they set what a new one restores, and when a
+/// lock ends.
+pub(crate) async fn running_name_pranks(
+    pool: &sqlx::PgPool,
+    g: GuildId,
+    victim: UserId,
+    kind: ActionKind,
+) -> Result<Vec<crate::db::economy::ActionRow>, BuyError> {
+    if !matches!(
+        kind,
+        ActionKind::Rename | ActionKind::Clown | ActionKind::Lock
+    ) {
+        return Ok(Vec::new());
+    }
+    crate::db::economy::active_of_kind(pool, g, victim, &[ActionKind::Rename, ActionKind::Clown])
+        .await
+        .map_err(|e| db_failed(&format!("reading name pranks on {victim} in {g}"), &e))
+}
+
+/// The name a new name prank restores: the running one's own capture, else
+/// the member's nickname now (`None` = no nickname).
+pub(crate) fn captured_restore(
+    running: &[crate::db::economy::ActionRow],
+    current_nick: &Option<String>,
+) -> Option<String> {
+    let running_restore = running.iter().find_map(|r| match &r.payload {
+        ActionPayload::Rename { restore, .. } | ActionPayload::Clown { restore, .. } => {
+            Some(restore.clone())
+        },
+        _ => None,
+    });
+    running_restore.unwrap_or_else(|| current_nick.clone())
+}
+
+/// When a prank of `kind` bought at `now` ends. A lock follows the running
+/// name prank's end (only an `active` one, not one winding down), else
+/// `rename_hours`.
+pub(crate) fn prank_expiry(
+    kind: ActionKind,
+    running: &[crate::db::economy::ActionRow],
+    now: DateTime<Utc>,
+    cfg: &EconomyConfig,
+) -> Option<DateTime<Utc>> {
+    match kind {
+        ActionKind::Rename | ActionKind::Clown => {
+            Some(now + chrono::Duration::hours(i64::from(cfg.rename_hours)))
+        },
+        ActionKind::Lock => running
+            .iter()
+            .filter(|r| r.state == ActionState::Active)
+            .find_map(|r| r.expires_at)
+            .or_else(|| Some(now + chrono::Duration::hours(i64::from(cfg.rename_hours)))),
+        ActionKind::Mute | ActionKind::Deafen | ActionKind::Jail => {
+            Some(now + chrono::Duration::minutes(i64::from(cfg.short_effect_minutes)))
+        },
+        _ => None,
+    }
+}
+
+pub(crate) fn db_failed(what: &str, err: &sqlx::Error) -> BuyError {
     tracing::warn!("economy: {what} failed: {err}");
     BuyError::Db
 }
@@ -469,23 +585,8 @@ pub async fn buy(
     };
 
     // A name prank running on the one it lands on: its end, and what to restore.
-    let running = if matches!(
-        kind,
-        ActionKind::Rename | ActionKind::Clown | ActionKind::Lock
-    ) {
-        db::active_of_kind(pool, g, victim, &[ActionKind::Rename, ActionKind::Clown])
-            .await
-            .map_err(|e| db_failed(&format!("reading name pranks on {victim} in {g}"), &e))?
-    } else {
-        Vec::new()
-    };
-    let running_restore = running.iter().find_map(|r| match &r.payload {
-        ActionPayload::Rename { restore, .. } | ActionPayload::Clown { restore, .. } => {
-            Some(restore.clone())
-        },
-        _ => None,
-    });
-    let restore = running_restore.unwrap_or_else(|| on.current_nick.clone());
+    let running = running_name_pranks(pool, g, victim, kind).await?;
+    let restore = captured_restore(&running, &on.current_nick);
     let payload = payload_for(
         kind,
         on,
@@ -495,21 +596,7 @@ pub async fn buy(
         restore,
         on.current_nick.clone(),
     )?;
-    let expires = match kind {
-        ActionKind::Rename | ActionKind::Clown => {
-            Some(req.now + chrono::Duration::hours(i64::from(cfg.rename_hours)))
-        },
-        // Only a running (`active`) name prank sets the end, not one winding down.
-        ActionKind::Lock => running
-            .iter()
-            .filter(|r| r.state == ActionState::Active)
-            .find_map(|r| r.expires_at)
-            .or_else(|| Some(req.now + chrono::Duration::hours(i64::from(cfg.rename_hours)))),
-        ActionKind::Mute | ActionKind::Deafen | ActionKind::Jail => {
-            Some(req.now + chrono::Duration::minutes(i64::from(cfg.short_effect_minutes)))
-        },
-        _ => None,
-    };
+    let expires = prank_expiry(kind, &running, req.now, cfg);
 
     let amount = i64::from(price.price);
     let charged = charge(
@@ -977,7 +1064,15 @@ mod tests {
             Refusal::AlreadyMuted,
             Refusal::AlreadyDeafened,
             Refusal::CantTell,
+            Refusal::BadLink,
             Refusal::AlreadyThere,
+            Refusal::BountyTooSmall { min: 50 },
+            Refusal::FundAlreadyOpen,
+            Refusal::FundClosed,
+            Refusal::FundTooCheap,
+            Refusal::PledgeOnSelf,
+            Refusal::PledgeTooSmall { min: 10 },
+            Refusal::PledgeOverShare { max: 45 },
         ];
         let texts: std::collections::HashSet<_> =
             all.iter().map(|r| refusal_text(r, "credits")).collect();

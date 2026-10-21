@@ -1,0 +1,47 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT buyer_id, target_id AS \"target_id!\", price, signed,\n                  expires_at AS \"expires_at!\"\n           FROM economy_actions\n           WHERE guild_id = $1 AND kind = $2 AND state = 'active'\n             AND target_id IS NOT NULL AND expires_at > now()\n           ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "buyer_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "target_id!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "price",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "signed",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "expires_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "52757030377997e948a011cef37ee24f30ee167656db3bc78b2404c7fa93ba8c"
+}

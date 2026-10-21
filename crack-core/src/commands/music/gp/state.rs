@@ -146,6 +146,9 @@ pub const GP_BLOCKED_COMMANDS: &[&str] = &[
     "resume",
     "summon",
     "summonchannel",
+    // The paid plays run `/play`'s path, so a game refuses them too.
+    "shop dedicate",
+    "shop jump",
     // Mutates nothing, but names the song a round is hiding (the floating
     // status spec, rule 7). Matched on `qualified_name`, so `np` is covered.
     "nowplaying",

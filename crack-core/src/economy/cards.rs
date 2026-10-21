@@ -4,11 +4,21 @@ use super::settings::ActionKind;
 use super::shop::BuyOutcome;
 use crate::messaging::format::escape;
 use crate::messaging::messages::{
+    ECONOMY_BOUNTY_SIGN_ANON, ECONOMY_BOUNTY_SIGN_DASH, ECONOMY_DEDICATE_CARD_PREFIX,
+    ECONOMY_JUMP_CARD_PREFIX, ECONOMY_JUMP_CARD_SUFFIX, ECONOMY_THEME_CARD_PREFIX,
+    ECONOMY_THEME_CARD_SUFFIX,
+};
+use crate::messaging::messages::{
     ECONOMY_CARD_BACK_AT_THEM, ECONOMY_CARD_BLOCKED_TAIL, ECONOMY_CARD_CLOWNED,
     ECONOMY_CARD_DEAFENED, ECONOMY_CARD_DRAGGED, ECONOMY_CARD_DRAGGED_TAIL, ECONOMY_CARD_JAILED,
     ECONOMY_CARD_LOCKED, ECONOMY_CARD_MIRROR, ECONOMY_CARD_MIRROR_BOUNCED, ECONOMY_CARD_MUTED,
     ECONOMY_CARD_POSSESSIVE, ECONOMY_CARD_RENAMED, ECONOMY_CARD_SOMEONE, ECONOMY_CARD_TO,
-    ECONOMY_CARD_UNTIL,
+    ECONOMY_CARD_UNTIL, ECONOMY_FUND_CARD_AND, ECONOMY_FUND_CARD_CROWD, ECONOMY_FUND_CARD_OTHER,
+    ECONOMY_FUND_CARD_OTHERS, ECONOMY_FUND_CARD_PREFIX, ECONOMY_FUND_CARD_TO,
+    ECONOMY_FUND_CARD_UNTIL, ECONOMY_FUND_FAILED_CARD_MIDDLE, ECONOMY_FUND_FAILED_CARD_PREFIX,
+    ECONOMY_FUND_FAILED_CARD_SUFFIX, ECONOMY_FUND_FAILED_CARD_WHY, ECONOMY_FUND_START_CARD_STARTED,
+    ECONOMY_FUND_START_CARD_TAIL, ECONOMY_FUND_TO_CLOWN, ECONOMY_FUND_TO_DEAFEN,
+    ECONOMY_FUND_TO_JAIL, ECONOMY_FUND_TO_LOCK, ECONOMY_FUND_TO_MUTE, ECONOMY_FUND_TO_RENAME,
 };
 use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, UserId};
@@ -88,6 +98,181 @@ fn landed(
     }
 }
 
+/// The credit line of a crowdfund card: the signed contributors, "a crowd"
+/// when nobody signed. Two are named; more than two read "@a, @b and N
+/// others".
+fn fund_signoff(signers: &[UserId]) -> String {
+    match signers {
+        [] => ECONOMY_FUND_CARD_CROWD.to_string(),
+        [a] => mention(*a),
+        [a, b] => format!("{} {ECONOMY_FUND_CARD_AND} {}", mention(*a), mention(*b)),
+        [a, b, rest @ ..] => {
+            let n = rest.len();
+            let word = if n == 1 {
+                ECONOMY_FUND_CARD_OTHER
+            } else {
+                ECONOMY_FUND_CARD_OTHERS
+            };
+            format!(
+                "{}, {} {ECONOMY_FUND_CARD_AND} {n} {word}",
+                mention(*a),
+                mention(*b)
+            )
+        },
+    }
+}
+
+/// What a crowdfunded prank does to `target`, in words.
+fn fund_deed(kind: ActionKind, target: UserId, nick: Option<&str>) -> Option<String> {
+    let t = mention(target);
+    Some(match kind {
+        ActionKind::Rename => format!(
+            "{ECONOMY_CARD_RENAMED} {t} {ECONOMY_FUND_CARD_TO} **{}**",
+            escape(nick.unwrap_or_default())
+        ),
+        ActionKind::Lock => format!("{ECONOMY_CARD_LOCKED} {t}"),
+        ActionKind::Clown => format!("{ECONOMY_CARD_CLOWNED} {t}"),
+        ActionKind::Mute => format!("{ECONOMY_CARD_MUTED} {t}"),
+        ActionKind::Deafen => format!("{ECONOMY_CARD_DEAFENED} {t}"),
+        ActionKind::Jail => format!("{ECONOMY_CARD_JAILED} {t}"),
+        // Not fundable: `/crowdfund` never opens one.
+        _ => return None,
+    })
+}
+
+/// The card for a crowdfund that landed: what was done to `target`, the note,
+/// then the signed contributors (never an unsigned one).
+pub fn fund_card_text(
+    kind: ActionKind,
+    target: UserId,
+    nick: Option<&str>,
+    until: Option<DateTime<Utc>>,
+    note: Option<&str>,
+    signers: &[UserId],
+) -> String {
+    let Some(did) = fund_deed(kind, target, nick) else {
+        return String::new();
+    };
+    let mut text = format!("{ECONOMY_FUND_CARD_PREFIX} {did}");
+    if let Some(until) = until {
+        text.push_str(&format!(
+            " {ECONOMY_FUND_CARD_UNTIL} <t:{}:f>",
+            until.timestamp()
+        ));
+    }
+    if let Some(note) = note.filter(|n| !n.trim().is_empty()) {
+        text.push_str("\n> ");
+        text.push_str(&escape(note));
+    }
+    text.push_str(&format!("\n\u{2014} {}", fund_signoff(signers)));
+    text
+}
+
+/// What a crowdfunded prank would do to `target`, as an infinitive ("to
+/// mute @t"), for the card announcing a new fund.
+fn fund_intent(kind: ActionKind, target: UserId, nick: Option<&str>) -> Option<String> {
+    let t = mention(target);
+    Some(match kind {
+        ActionKind::Rename => format!(
+            "{ECONOMY_FUND_TO_RENAME} {t} {ECONOMY_FUND_CARD_TO} **{}**",
+            escape(nick.unwrap_or_default())
+        ),
+        ActionKind::Clown => format!("{ECONOMY_FUND_TO_CLOWN} {t}"),
+        ActionKind::Lock => format!("{ECONOMY_FUND_TO_LOCK} {t}"),
+        ActionKind::Mute => format!("{ECONOMY_FUND_TO_MUTE} {t}"),
+        ActionKind::Deafen => format!("{ECONOMY_FUND_TO_DEAFEN} {t}"),
+        ActionKind::Jail => format!("{ECONOMY_FUND_TO_JAIL} {t}"),
+        _ => return None,
+    })
+}
+
+/// The card for a crowdfund that has just opened, so others can chip in. The
+/// starter is named only when the fund is signed.
+pub fn fund_started_card_text(
+    kind: ActionKind,
+    target: UserId,
+    nick: Option<&str>,
+    pledged: i64,
+    price: i64,
+    currency: &str,
+    starter: Option<UserId>,
+) -> String {
+    let Some(deed) = fund_intent(kind, target, nick) else {
+        return String::new();
+    };
+    let who = starter.map_or_else(|| ECONOMY_CARD_SOMEONE.to_string(), mention);
+    format!(
+        "\u{1F389} {who} {ECONOMY_FUND_START_CARD_STARTED} {deed}: {pledged}/{price} {currency}. {ECONOMY_FUND_START_CARD_TAIL}"
+    )
+}
+
+/// The public card for a filled crowdfund that could not land. Its reason is
+/// always the generic one: the real refusal (the target's immunity or
+/// opt-out, say) is theirs, and goes only in the private reply.
+pub fn fund_failed_card_text(target: UserId) -> String {
+    format!(
+        "{ECONOMY_FUND_FAILED_CARD_PREFIX} {} {ECONOMY_FUND_FAILED_CARD_MIDDLE}: {ECONOMY_FUND_FAILED_CARD_WHY}. {ECONOMY_FUND_FAILED_CARD_SUFFIX}",
+        mention(target)
+    )
+}
+
+/// The card a walk-on theme posts as it plays: whose theme, the note, then
+/// the buyer when they signed ("someone" when not). The link is never on it.
+pub fn theme_card_text(target: UserId, note: Option<&str>, buyer: Option<UserId>) -> String {
+    let mut text = format!(
+        "{ECONOMY_THEME_CARD_PREFIX} {}{ECONOMY_THEME_CARD_SUFFIX}",
+        mention(target)
+    );
+    if let Some(note) = note.filter(|n| !n.trim().is_empty()) {
+        text.push_str("\n> ");
+        text.push_str(&escape(note));
+    }
+    let by = buyer.map_or_else(|| ECONOMY_BOUNTY_SIGN_ANON.to_string(), mention);
+    text.push_str(&format!("\n{ECONOMY_BOUNTY_SIGN_DASH} {by}"));
+    text
+}
+
+/// The quoted note line a card carries, if there is a note.
+fn with_note(mut text: String, note: Option<&str>) -> String {
+    if let Some(note) = note.filter(|n| !n.trim().is_empty()) {
+        text.push_str("\n> ");
+        text.push_str(&escape(note));
+    }
+    text
+}
+
+/// The note and signature lines every aimed card ends with.
+fn note_and_sign(text: String, note: Option<&str>, buyer: Option<UserId>) -> String {
+    let mut text = with_note(text, note);
+    let by = buyer.map_or_else(|| ECONOMY_BOUNTY_SIGN_ANON.to_string(), mention);
+    text.push_str(&format!("\n{ECONOMY_BOUNTY_SIGN_DASH} {by}"));
+    text
+}
+
+/// The card for a dedicated song: who it goes out to, the note, and the
+/// buyer, always: a paid play is signed by nature (its `/play` reply and
+/// now-playing's "Requested by" name them anyway). Never the song: the play
+/// reply shows that.
+pub fn dedication_card_text(target: UserId, note: Option<&str>, buyer: UserId) -> String {
+    note_and_sign(
+        format!("{ECONOMY_DEDICATE_CARD_PREFIX} {}", mention(target)),
+        note,
+        Some(buyer),
+    )
+}
+
+/// The card for a paid jump, which names its buyer up front (signed by
+/// nature, as a dedication), then the note.
+pub fn jump_card_text(note: Option<&str>, buyer: UserId) -> String {
+    with_note(
+        format!(
+            "{ECONOMY_JUMP_CARD_PREFIX} {} {ECONOMY_JUMP_CARD_SUFFIX}",
+            mention(buyer)
+        ),
+        note,
+    )
+}
+
 /// The channel a card goes to. Drag, jail, mute and deafen happen in voice,
 /// so they post in the target's voice channel's chat while they are still in
 /// one; everything else (and those, once the target has left voice) goes to
@@ -138,6 +323,52 @@ mod tests {
 
     fn until() -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).unwrap()
+    }
+
+    #[test]
+    fn dedication_card_text_names_the_target_and_the_buyer_never_the_song() {
+        assert_eq!(
+            dedication_card_text(T, Some("for *you*"), B),
+            "🎵 This one goes out to <@20>\n> for \\*you\\*\n— <@10>"
+        );
+        assert_eq!(
+            dedication_card_text(T, None, B),
+            "🎵 This one goes out to <@20>\n— <@10>"
+        );
+        assert_eq!(
+            dedication_card_text(T, Some("  "), B),
+            "🎵 This one goes out to <@20>\n— <@10>"
+        );
+    }
+
+    #[test]
+    fn jump_card_text_names_the_buyer_up_front() {
+        assert_eq!(
+            jump_card_text(Some("*hurry*"), B),
+            "⏭️ <@10> paid to play this next\n> \\*hurry\\*"
+        );
+        assert_eq!(jump_card_text(None, B), "⏭️ <@10> paid to play this next");
+        assert_eq!(
+            jump_card_text(Some("  "), B),
+            "⏭️ <@10> paid to play this next"
+        );
+    }
+
+    #[test]
+    fn theme_card_names_the_target_the_note_and_the_signer() {
+        assert_eq!(
+            theme_card_text(T, Some("for *you*"), Some(B)),
+            "🎺 <@20>'s walk-on theme\n> for \\*you\\*\n— <@10>"
+        );
+        assert_eq!(
+            theme_card_text(T, None, None),
+            "🎺 <@20>'s walk-on theme\n— someone"
+        );
+        assert_eq!(
+            theme_card_text(T, Some("  "), None),
+            "🎺 <@20>'s walk-on theme\n— someone",
+            "a blank note is no note"
+        );
     }
 
     #[test]
@@ -311,6 +542,124 @@ mod tests {
         assert_eq!(
             card_channel(ActionKind::Mute, Landed, None, my_vc, jail, here, announce).get(),
             5
+        );
+    }
+
+    #[test]
+    fn fund_card_names_only_signers() {
+        let d = until();
+        let ts = d.timestamp();
+        let a = UserId::new(10);
+        let b = UserId::new(11);
+        let c = UserId::new(12);
+        let e = UserId::new(13);
+        // Nobody signed: a crowd, and no one is named.
+        let crowd = fund_card_text(
+            ActionKind::Rename,
+            T,
+            Some("Bean"),
+            Some(d),
+            Some("gg"),
+            &[],
+        );
+        assert_eq!(
+            crowd,
+            format!(
+                "🎉 A crowdfund renamed <@20> to **Bean** until <t:{ts}:f>\n> gg\n\u{2014} a crowd"
+            )
+        );
+        let one = fund_card_text(ActionKind::Mute, T, None, Some(d), None, &[a]);
+        assert_eq!(
+            one,
+            format!("🎉 A crowdfund muted <@20> until <t:{ts}:f>\n\u{2014} <@10>")
+        );
+        let two = fund_card_text(ActionKind::Jail, T, None, Some(d), None, &[a, b]);
+        assert!(two.ends_with("\u{2014} <@10> and <@11>"), "{two}");
+        let three = fund_card_text(ActionKind::Lock, T, None, Some(d), None, &[a, b, c]);
+        assert!(
+            three.ends_with("\u{2014} <@10>, <@11> and 1 other"),
+            "{three}"
+        );
+        let four = fund_card_text(ActionKind::Clown, T, None, Some(d), None, &[a, b, c, e]);
+        assert!(
+            four.ends_with("\u{2014} <@10>, <@11> and 2 others"),
+            "{four}"
+        );
+        assert!(!four.contains("<@12>") && !four.contains("<@13>"));
+        // Every fundable kind has words; drag has none.
+        for k in ActionKind::FUNDABLE {
+            assert!(
+                fund_card_text(*k, T, Some("x"), Some(d), None, &[]).starts_with("🎉 A crowdfund "),
+                "{k:?}"
+            );
+        }
+        assert_eq!(
+            fund_card_text(ActionKind::Drag, T, None, None, None, &[]),
+            ""
+        );
+        // A note's markdown is escaped.
+        assert!(
+            fund_card_text(ActionKind::Mute, T, None, None, Some("**x**"), &[])
+                .contains("\\*\\*x\\*\\*")
+        );
+        // The public card never says why: that could publish an immunity or
+        // an opt-out.
+        assert_eq!(
+            fund_failed_card_text(T),
+            "The crowdfund against <@20> ended: it couldn't land on them right now. Everyone was refunded."
+        );
+    }
+
+    #[test]
+    fn fund_started_card_names_the_starter_only_when_signed() {
+        let signed = fund_started_card_text(
+            ActionKind::Mute,
+            T,
+            None,
+            30,
+            90,
+            "credits",
+            Some(UserId::new(10)),
+        );
+        assert_eq!(
+            signed,
+            "🎉 <@10> started a crowdfund to mute <@20>: 30/90 credits. Chip in with /crowdfund pledge."
+        );
+        let anon =
+            fund_started_card_text(ActionKind::Rename, T, Some("Bean"), 0, 120, "credits", None);
+        assert_eq!(
+            anon,
+            "🎉 Someone started a crowdfund to rename <@20> to **Bean**: 0/120 credits. Chip in with /crowdfund pledge."
+        );
+        assert!(!anon.contains("<@10>"));
+        // The words for every fundable kind.
+        let words: Vec<String> = ActionKind::FUNDABLE
+            .iter()
+            .map(|k| fund_started_card_text(*k, T, Some("x"), 0, 1, "c", None))
+            .map(|c| {
+                c.split("crowdfund to ")
+                    .nth(1)
+                    .unwrap()
+                    .split(": ")
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            words,
+            [
+                "rename <@20> to **x**",
+                "make a clown of <@20>",
+                "lock the nickname of <@20>",
+                "mute <@20>",
+                "deafen <@20>",
+                "jail <@20>"
+            ]
+        );
+        assert_eq!(
+            fund_started_card_text(ActionKind::Drag, T, None, 0, 1, "c", None),
+            ""
         );
     }
 }

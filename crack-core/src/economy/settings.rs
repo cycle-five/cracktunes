@@ -4,9 +4,11 @@
 //! release survives a load and save.
 
 use crate::messaging::messages::{
-    ECONOMY_CLOWN_SUFFIX, ECONOMY_LABEL_CLEANSE, ECONOMY_LABEL_CLOWN, ECONOMY_LABEL_DEAFEN,
-    ECONOMY_LABEL_DRAG, ECONOMY_LABEL_IMMUNITY, ECONOMY_LABEL_JAIL, ECONOMY_LABEL_LOCK,
-    ECONOMY_LABEL_MIRROR, ECONOMY_LABEL_MUTE, ECONOMY_LABEL_RENAME, ECONOMY_LABEL_REVEAL,
+    ECONOMY_CLOWN_SUFFIX, ECONOMY_HINT_BOUNTY, ECONOMY_HINT_CROWDFUND, ECONOMY_HINT_JUMP,
+    ECONOMY_LABEL_BOUNTY, ECONOMY_LABEL_CLEANSE, ECONOMY_LABEL_CLOWN, ECONOMY_LABEL_CROWDFUND,
+    ECONOMY_LABEL_DEAFEN, ECONOMY_LABEL_DEDICATE, ECONOMY_LABEL_DRAG, ECONOMY_LABEL_IMMUNITY,
+    ECONOMY_LABEL_JAIL, ECONOMY_LABEL_JUMP, ECONOMY_LABEL_LOCK, ECONOMY_LABEL_MIRROR,
+    ECONOMY_LABEL_MUTE, ECONOMY_LABEL_RENAME, ECONOMY_LABEL_REVEAL, ECONOMY_LABEL_THEME,
 };
 use serde::{Deserialize, Serialize};
 use serenity::all::{ChannelId, GuildId};
@@ -26,6 +28,12 @@ pub enum ActionKind {
     Mirror,
     Cleanse,
     Reveal,
+    Theme,
+    Dedicate,
+    Jump,
+    Bounty,
+    /// Never a row's kind: only a switch and the minimum pledge.
+    Crowdfund,
 }
 
 impl ActionKind {
@@ -41,6 +49,11 @@ impl ActionKind {
         ActionKind::Mirror,
         ActionKind::Cleanse,
         ActionKind::Reveal,
+        ActionKind::Theme,
+        ActionKind::Dedicate,
+        ActionKind::Jump,
+        ActionKind::Bounty,
+        ActionKind::Crowdfund,
     ];
 
     /// The stable key used in the prices map and the database.
@@ -57,6 +70,11 @@ impl ActionKind {
             ActionKind::Mirror => "mirror",
             ActionKind::Cleanse => "cleanse",
             ActionKind::Reveal => "reveal",
+            ActionKind::Theme => "theme",
+            ActionKind::Dedicate => "dedicate",
+            ActionKind::Jump => "jump",
+            ActionKind::Bounty => "bounty",
+            ActionKind::Crowdfund => "crowdfund",
         }
     }
 
@@ -77,6 +95,13 @@ impl ActionKind {
             ActionKind::Mirror => 150,
             ActionKind::Cleanse => 80,
             ActionKind::Reveal => 100,
+            ActionKind::Theme => 100,
+            ActionKind::Dedicate => 40,
+            ActionKind::Jump => 40,
+            // The minimum stake.
+            ActionKind::Bounty => 50,
+            // The minimum pledge.
+            ActionKind::Crowdfund => 10,
         };
         ActionPrice { price, on: true }
     }
@@ -94,6 +119,22 @@ impl ActionKind {
             ActionKind::Mirror => ECONOMY_LABEL_MIRROR,
             ActionKind::Cleanse => ECONOMY_LABEL_CLEANSE,
             ActionKind::Reveal => ECONOMY_LABEL_REVEAL,
+            ActionKind::Theme => ECONOMY_LABEL_THEME,
+            ActionKind::Dedicate => ECONOMY_LABEL_DEDICATE,
+            ActionKind::Jump => ECONOMY_LABEL_JUMP,
+            ActionKind::Bounty => ECONOMY_LABEL_BOUNTY,
+            ActionKind::Crowdfund => ECONOMY_LABEL_CROWDFUND,
+        }
+    }
+
+    /// What the dashboard says under a kind's price row, for the kinds whose
+    /// price needs explaining (spec 4.4).
+    pub fn price_hint(self) -> Option<&'static str> {
+        match self {
+            ActionKind::Bounty => Some(ECONOMY_HINT_BOUNTY),
+            ActionKind::Crowdfund => Some(ECONOMY_HINT_CROWDFUND),
+            ActionKind::Jump => Some(ECONOMY_HINT_JUMP),
+            _ => None,
         }
     }
 
@@ -107,6 +148,58 @@ impl ActionKind {
         ActionKind::Deafen,
         ActionKind::Jail,
     ];
+
+    /// What cleanse, cancel, opt-out and a grant end on a member: the pranks
+    /// and a waiting theme.
+    pub const RUNNING_ON_TARGET: &'static [ActionKind] = &[
+        ActionKind::Rename,
+        ActionKind::Lock,
+        ActionKind::Clown,
+        ActionKind::Drag,
+        ActionKind::Mute,
+        ActionKind::Deafen,
+        ActionKind::Jail,
+        ActionKind::Theme,
+    ];
+
+    /// What `/shop reveal` can name: the pranks, themes and bounties. Not a
+    /// dedication: a paid play is signed by nature (its `/play` reply and
+    /// now-playing's "Requested by" already name the buyer).
+    pub const REVEALABLE: &'static [ActionKind] = &[
+        ActionKind::Rename,
+        ActionKind::Lock,
+        ActionKind::Clown,
+        ActionKind::Drag,
+        ActionKind::Mute,
+        ActionKind::Deafen,
+        ActionKind::Jail,
+        ActionKind::Theme,
+        ActionKind::Bounty,
+    ];
+
+    /// The pranks a crowd can fund. Drag is out: its destination is the
+    /// buyer's channel at the moment it runs.
+    pub const FUNDABLE: &'static [ActionKind] = &[
+        ActionKind::Rename,
+        ActionKind::Clown,
+        ActionKind::Lock,
+        ActionKind::Mute,
+        ActionKind::Deafen,
+        ActionKind::Jail,
+    ];
+
+    /// Aimed at a member without being a prank.
+    pub fn is_aimed(self) -> bool {
+        matches!(
+            self,
+            ActionKind::Theme | ActionKind::Dedicate | ActionKind::Bounty
+        )
+    }
+
+    /// Their row's end refunds the buyer.
+    pub fn is_escrow(self) -> bool {
+        matches!(self, ActionKind::Theme | ActionKind::Bounty)
+    }
 
     /// Whether this is one of [`Self::PRANKS`].
     pub fn is_prank(self) -> bool {
@@ -593,6 +686,24 @@ mod tests {
     }
 
     #[test]
+    fn price_hints_for_bounty_crowdfund_and_jump() {
+        assert_eq!(ActionKind::Bounty.price_hint(), Some("Minimum stake."));
+        assert_eq!(
+            ActionKind::Crowdfund.price_hint(),
+            Some("Minimum pledge. A fund's goal is its prank's price.")
+        );
+        assert_eq!(
+            ActionKind::Jump.price_hint(),
+            Some("To make jumping the queue a paid perk, restrict /playnext for members in Server Settings → Integrations.")
+        );
+        for k in ActionKind::ALL {
+            if ![ActionKind::Bounty, ActionKind::Crowdfund, ActionKind::Jump].contains(k) {
+                assert_eq!(k.price_hint(), None, "{k:?}");
+            }
+        }
+    }
+
+    #[test]
     fn prank_defaults_match_the_spec() {
         let want = [
             ("immunity", 200),
@@ -607,7 +718,13 @@ mod tests {
             ("cleanse", 80),
             ("reveal", 100),
         ];
-        assert_eq!(ActionKind::ALL.len(), want.len());
+        // PR 3 appends its kinds after these; their own test pins them.
+        use ActionKind::*;
+        let first_eleven = [
+            Immunity, Rename, Lock, Clown, Drag, Mute, Deafen, Jail, Mirror, Cleanse, Reveal,
+        ];
+        assert_eq!(&ActionKind::ALL[..want.len()], &first_eleven[..]);
+        assert_eq!(ActionKind::ALL.len(), want.len() + 5);
         for (k, (key, price)) in ActionKind::ALL.iter().zip(want) {
             assert_eq!(k.key(), key);
             assert_eq!(ActionKind::from_key(key), Some(*k));
@@ -675,6 +792,76 @@ mod tests {
         assert_eq!(c.announce_channel_id, None);
         assert!(c.extra.is_empty());
         assert_eq!(c.prices.get(ActionKind::Rename).price, 120);
+    }
+
+    #[test]
+    fn group_defaults_match_the_spec() {
+        let all: Vec<_> = ActionKind::ALL.iter().map(|k| k.key()).collect();
+        assert_eq!(
+            &all[11..],
+            ["theme", "dedicate", "jump", "bounty", "crowdfund"]
+        );
+        assert_eq!(all.len(), 16);
+        for (k, key, price) in [
+            (ActionKind::Theme, "theme", 100),
+            (ActionKind::Dedicate, "dedicate", 40),
+            (ActionKind::Jump, "jump", 40),
+            (ActionKind::Bounty, "bounty", 50),
+            (ActionKind::Crowdfund, "crowdfund", 10),
+        ] {
+            assert_eq!(k.key(), key);
+            assert_eq!(ActionKind::from_key(key), Some(k));
+            assert_eq!(k.default_price(), ActionPrice { price, on: true });
+            assert!(!k.label().is_empty());
+        }
+    }
+
+    #[test]
+    fn kind_groups() {
+        use ActionKind::*;
+        assert_eq!(
+            ActionKind::RUNNING_ON_TARGET,
+            [Rename, Lock, Clown, Drag, Mute, Deafen, Jail, Theme]
+        );
+        assert_eq!(
+            ActionKind::REVEALABLE,
+            [Rename, Lock, Clown, Drag, Mute, Deafen, Jail, Theme, Bounty]
+        );
+        assert_eq!(
+            ActionKind::FUNDABLE,
+            [Rename, Clown, Lock, Mute, Deafen, Jail]
+        );
+        for &k in ActionKind::ALL {
+            assert_eq!(
+                k.is_aimed(),
+                [Theme, Dedicate, Bounty].contains(&k),
+                "{k:?}"
+            );
+            assert_eq!(k.is_escrow(), [Theme, Bounty].contains(&k), "{k:?}");
+            // Aimed kinds are not pranks.
+            assert!(!(k.is_aimed() && k.is_prank()), "{k:?}");
+        }
+    }
+
+    #[test]
+    fn a_pr2_config_loads_with_pr3_defaults() {
+        let c: EconomyConfig = serde_json::from_str(
+            r#"{"prices":{"rename":{"price":9,"on":true},"reveal":{"price":7,"on":false}},
+            "rename_hours":12}"#,
+        )
+        .unwrap();
+        assert_eq!(c.rename_hours, 12);
+        assert_eq!(c.prices.get(ActionKind::Reveal).price, 7);
+        for (k, price) in [
+            (ActionKind::Theme, 100),
+            (ActionKind::Dedicate, 40),
+            (ActionKind::Jump, 40),
+            (ActionKind::Bounty, 50),
+            (ActionKind::Crowdfund, 10),
+        ] {
+            assert_eq!(c.prices.get(k), ActionPrice { price, on: true }, "{k:?}");
+        }
+        assert!(c.extra.is_empty());
     }
 
     #[test]

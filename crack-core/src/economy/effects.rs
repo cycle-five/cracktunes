@@ -57,7 +57,11 @@ pub fn undo_plan(row: &ActionRow) -> UndoPlan {
         | ActionPayload::Mirror
         | ActionPayload::Immunity { .. }
         | ActionPayload::Cleanse
-        | ActionPayload::Reveal { .. } => UndoPlan::Nothing,
+        | ActionPayload::Reveal { .. }
+        | ActionPayload::Theme { .. }
+        | ActionPayload::Dedicate { .. }
+        | ActionPayload::Jump { .. }
+        | ActionPayload::Bounty => UndoPlan::Nothing,
     }
 }
 
@@ -136,6 +140,19 @@ pub async fn finish(
             return Finished::Skipped;
         },
     };
+    // Escrow (a theme, a bounty) changed nothing in Discord, so there is
+    // nothing to undo: its end is the buyer's refund. This never reads
+    // `undo_plan` and never calls Discord.
+    if row.kind.is_escrow() {
+        return match economy::refund_active(pool, row.id, reason).await {
+            Ok(Some(_)) => Finished::Ended,
+            Ok(None) => Finished::Skipped,
+            Err(err) => {
+                tracing::warn!("economy: refunding action {} failed: {err}", row.id);
+                Finished::Skipped
+            },
+        };
+    }
     let plan = undo_plan(row);
     let outcome = match (&plan, row.target) {
         (UndoPlan::Nothing, _) => Ok(()),
@@ -225,7 +242,8 @@ pub async fn end_running_pranks(
     let Some(pool) = data.database_pool.as_ref() else {
         return Ok(EndedPranks::default());
     };
-    let mut rows = economy::active_of_kind(pool, guild, target, ActionKind::PRANKS).await?;
+    let mut rows =
+        economy::active_of_kind(pool, guild, target, ActionKind::RUNNING_ON_TARGET).await?;
     rows.sort_by_key(|r| (r.kind != ActionKind::Lock, r.id));
     let mut ended = EndedPranks::default();
     for row in &rows {
@@ -270,7 +288,8 @@ pub async fn sweep(
         Ok(due) => due,
         Err(err) => {
             tracing::warn!("economy: reading due actions failed: {err}");
-            return;
+            // Funds below are still due, whatever happened here.
+            return sweep_funds(pool, now).await;
         },
     };
     // Every due row was seen: a backoff for a row not among them is for one
@@ -280,13 +299,31 @@ pub async fn sweep(
         data.economy.keep_undo_backoff(&ids);
     }
     for (guild, row) in due {
-        if !held(guild) || !data.economy.undo_due(row.id, now) {
+        // Escrow makes no Discord call, so the cache has no say in it.
+        if (!row.kind.is_escrow() && !held(guild)) || !data.economy.undo_due(row.id, now) {
             continue;
         }
         match finish(data, discord, guild, &row, "expired", now).await {
             Finished::Retry => data.economy.undo_failed(row.id, now),
             _ => data.economy.undo_settled(row.id),
         }
+    }
+    sweep_funds(pool, now).await;
+}
+
+/// Funds that did not fill: refund every pledge. No Discord call, so no
+/// cached-guild check and no backoff. `expire_fund` re-checks the clock under
+/// the row lock, so a fund filled a moment ago is left alone.
+async fn sweep_funds(pool: &sqlx::PgPool, now: DateTime<Utc>) {
+    match economy::due_funds(pool, now, SWEEP_BATCH).await {
+        Ok(funds) => {
+            for (guild, row) in funds {
+                if let Err(err) = economy::expire_fund(pool, row.id).await {
+                    tracing::warn!("economy: expiring fund {} in {guild} failed: {err}", row.id);
+                }
+            }
+        },
+        Err(err) => tracing::warn!("economy: reading due funds failed: {err}"),
     }
 }
 
@@ -353,7 +390,13 @@ fn landed(view: &dyn MemberView, guild: GuildId, row: &ActionRow) -> Option<bool
     match &row.payload {
         // The purchase is the grant, written after the charge: a row still
         // pending after a restart never got it. These aim at no one.
-        ActionPayload::Immunity { .. } | ActionPayload::Cleanse | ActionPayload::Reveal { .. } => {
+        ActionPayload::Immunity { .. }
+        | ActionPayload::Cleanse
+        | ActionPayload::Reveal { .. }
+        | ActionPayload::Theme { .. }
+        | ActionPayload::Dedicate { .. }
+        | ActionPayload::Jump { .. }
+        | ActionPayload::Bounty => {
             return Some(false);
         },
         // Neither changes anything on Discord at purchase.
@@ -380,6 +423,10 @@ fn landed(view: &dyn MemberView, guild: GuildId, row: &ActionRow) -> Option<bool
         ActionPayload::Immunity { .. }
         | ActionPayload::Cleanse
         | ActionPayload::Reveal { .. }
+        | ActionPayload::Theme { .. }
+        | ActionPayload::Dedicate { .. }
+        | ActionPayload::Jump { .. }
+        | ActionPayload::Bounty
         | ActionPayload::Lock { .. }
         | ActionPayload::Mirror => None,
     }
@@ -398,6 +445,22 @@ async fn resolve_pending(
     let Some(pool) = data.database_pool.as_ref() else {
         return;
     };
+    // A pending timed prank with no end never touched the member. `buy()`
+    // charges one that lands or bounces with its end already set; the two
+    // that have none are a filled crowdfund, which waits that way until its
+    // executor writes the payload and the end together (it never acts before
+    // that write), and a mirror-blocked charge (it never lands at all; its
+    // crash-left row is refunded here too, ruling T5h). Refund it
+    // (pledge-aware), with no undo.
+    if row.kind.is_timed() && row.expires_at.is_none() {
+        if let Err(err) = economy::refund_action(pool, row.id).await {
+            tracing::warn!(
+                "economy: refunding unprepared action {} failed: {err}",
+                row.id
+            );
+        }
+        return;
+    }
     let verdict = landed(view, guild, row);
     // A server mute or deafen outlives a disconnect, so a member who is not in
     // voice now may well be muted. Refunding would leave nothing owning it;
@@ -409,8 +472,9 @@ async fn resolve_pending(
         }
         return;
     }
-    // Known gap: a row left pending because `finish_blocked` failed (a
-    // blocked mirror bounce) looks not-landed here and is refunded.
+    // Known gap, for a kind with no end (a timed one was handled above): a
+    // row left pending because `finish_blocked` failed (a blocked mirror
+    // bounce) looks not-landed here and is refunded.
     match economy::refund_action(pool, row.id).await {
         Ok(Some(_)) => {},
         // Someone else already resolved the row: its effect is theirs.
@@ -585,10 +649,20 @@ pub fn spawn_supervised<F>(name: &'static str, fut: F)
 where
     F: Future<Output = ()> + Send + 'static,
 {
-    spawn_supervised_with(name, fut, |line| tracing::error!("{line}"));
+    spawn_supervised_with(name, fut, true, |line| tracing::error!("{line}"));
 }
 
-fn spawn_supervised_with<F, L>(name: &'static str, fut: F, log: L)
+/// Run a one-off `fut` as a task and log at error if it panics. It is meant
+/// to end, so ending is not logged.
+pub fn spawn_one_shot<F>(name: &'static str, fut: F)
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    spawn_supervised_with(name, fut, false, |line| tracing::error!("{line}"));
+}
+
+/// `forever`: whether ending is worth a line (a loop that should never end).
+fn spawn_supervised_with<F, L>(name: &'static str, fut: F, forever: bool, log: L)
 where
     F: Future<Output = ()> + Send + 'static,
     L: Fn(&str) + Send + 'static,
@@ -596,6 +670,7 @@ where
     let task = tokio::spawn(fut);
     tokio::spawn(async move {
         match task.await {
+            Ok(()) if !forever => {},
             Ok(()) => log(&format!(
                 "economy: task {name} ended; it should run forever"
             )),
@@ -745,7 +820,7 @@ mod tests {
     async fn a_supervised_task_that_ends_is_logged() {
         let lines = Arc::new(Mutex::new(Vec::<String>::new()));
         let sink = lines.clone();
-        spawn_supervised_with("loop", async {}, move |l| {
+        spawn_supervised_with("loop", async {}, true, move |l| {
             sink.lock().unwrap().push(l.to_string())
         });
         let sink = lines.clone();
@@ -754,6 +829,7 @@ mod tests {
             async {
                 panic!("on purpose");
             },
+            true,
             move |l| sink.lock().unwrap().push(l.to_string()),
         );
         for _ in 0..100 {
@@ -779,11 +855,42 @@ mod tests {
     async fn a_supervised_task_that_keeps_running_is_not_logged() {
         let lines = Arc::new(Mutex::new(Vec::<String>::new()));
         let sink = lines.clone();
-        spawn_supervised_with("loop", std::future::pending(), move |l| {
+        spawn_supervised_with("loop", std::future::pending(), true, move |l| {
             sink.lock().unwrap().push(l.to_string())
         });
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert!(lines.lock().unwrap().is_empty());
+    }
+
+    /// A one-shot task (a theme played on a join) ends quietly, but its
+    /// panic is still loud.
+    #[tokio::test]
+    async fn a_one_shot_task_is_logged_only_when_it_panics() {
+        let lines = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sink = lines.clone();
+        spawn_supervised_with("theme", async {}, false, move |l| {
+            sink.lock().unwrap().push(l.to_string())
+        });
+        let sink = lines.clone();
+        spawn_supervised_with(
+            "theme",
+            async {
+                panic!("on purpose");
+            },
+            false,
+            move |l| sink.lock().unwrap().push(l.to_string()),
+        );
+        for _ in 0..100 {
+            if !lines.lock().unwrap().is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        // Long enough for the quiet one to have ended too.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let got = lines.lock().unwrap().clone();
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert!(got[0].contains("theme panicked: on purpose"), "{got:?}");
     }
 
     // A cache stand-in.
@@ -821,6 +928,15 @@ mod tests {
         }));
         data.economy.set_process_start(at);
         data
+    }
+
+    /// A process that started after every row written so far, on the
+    /// database's clock: a restart. For rows the database stamped itself
+    /// (`created_at` = its `now()`), which a fixed `t0()` can't be placed
+    /// against once the calendar passes it.
+    async fn restarted(pool: &PgPool) -> Data {
+        let db_now = crate::db::economy::db_now(pool).await.unwrap();
+        data_started(pool, db_now + mins(1))
     }
 
     async fn seed(
@@ -1350,8 +1466,11 @@ mod tests {
     });
 
     db_test!(reconcile_leaves_a_fresh_pending_row_alone, |pool| {
-        // This process started before the row: a purchase in flight.
-        let data = data_started(&pool, t0() - mins(60));
+        // On the database's clock, which judges the grace: this process
+        // started an hour ago, before the row, which is 30 s old (inside the
+        // grace): a purchase in flight.
+        let db_now = crate::db::economy::db_now(&pool).await.unwrap();
+        let data = data_started(&pool, db_now - mins(60));
         let fake = FakeEconomyDiscord::default();
         let fresh = seed(
             &pool,
@@ -1360,10 +1479,10 @@ mod tests {
             &ActionPayload::Immunity { hours: 24 },
             "pending",
             None,
-            t0() - ChronoDuration::seconds(30),
+            db_now - ChronoDuration::seconds(30),
         )
         .await;
-        reconcile(&data, &fake, &FakeView::default(), G, t0()).await;
+        reconcile(&data, &fake, &FakeView::default(), G, Utc::now()).await;
         assert_eq!(state_of(&pool, fresh).await.0, "pending");
         assert_eq!(balance(&pool).await, 0);
     });
@@ -1919,5 +2038,441 @@ mod tests {
             state_of(&pool, ids[1]).await,
             ("ended".into(), Some("cleansed".into()))
         );
+    });
+
+    // ---- Part 3: themes, bounties, funds and the unplayed ----
+
+    const FRIEND: UserId = UserId::new(21);
+
+    async fn fund_wallet(pool: &PgPool, user: UserId, amount: i64) {
+        crate::db::economy::credit_earnings(
+            pool,
+            G,
+            &[crate::db::economy::EarnRow {
+                user,
+                voice: amount,
+                messages: 0,
+            }],
+        )
+        .await
+        .unwrap();
+    }
+
+    fn theme_payload() -> ActionPayload {
+        ActionPayload::Theme {
+            url: "https://example.com/clip".into(),
+            start_secs: 0,
+        }
+    }
+
+    /// Charge an escrow row to `BUYER` the way the shop does.
+    async fn escrow(
+        pool: &PgPool,
+        kind: ActionKind,
+        price: i64,
+        payload: &ActionPayload,
+        expires: DateTime<Utc>,
+    ) -> i64 {
+        let ledger = if kind == ActionKind::Bounty {
+            crate::economy::wallet::LedgerKind::BountyPlaced
+        } else {
+            crate::economy::wallet::LedgerKind::Purchase
+        };
+        crate::db::economy::charge_active(
+            pool,
+            &crate::db::economy::NewAction {
+                guild: G,
+                kind,
+                buyer: BUYER,
+                target: Some(U),
+                price,
+                note: None,
+                signed: false,
+                payload,
+                expires_at: Some(expires),
+            },
+            ledger,
+        )
+        .await
+        .unwrap()
+        .action_id
+    }
+
+    /// Every wallet equals what it was given plus its ledger rows.
+    async fn agree(pool: &PgPool, given: &[(UserId, i64)]) {
+        for (user, start) in given {
+            let delta: i64 = sqlx::query_scalar(
+                "SELECT COALESCE(SUM(delta), 0)::bigint FROM economy_ledger WHERE user_id = $1",
+            )
+            .bind(user.get() as i64)
+            .fetch_one(pool)
+            .await
+            .unwrap();
+            assert_eq!(
+                crate::db::economy::balance(pool, G, *user).await.unwrap(),
+                start + delta,
+                "wallet of {user} disagrees with its ledger"
+            );
+        }
+    }
+
+    #[test]
+    fn dedications_and_jumps_never_count_as_landed() {
+        let view = FakeView::default();
+        let song = || "a song".to_string();
+        for payload in [
+            ActionPayload::Dedicate { song: song() },
+            ActionPayload::Jump { song: song() },
+        ] {
+            let kind = match payload {
+                ActionPayload::Dedicate { .. } => ActionKind::Dedicate,
+                _ => ActionKind::Jump,
+            };
+            assert_eq!(landed(&view, G, &row(kind, payload)), Some(false));
+        }
+    }
+
+    db_test!(an_expired_theme_refunds_its_buyer, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        let due = escrow(
+            &pool,
+            ActionKind::Theme,
+            60,
+            &theme_payload(),
+            t0() - mins(1),
+        )
+        .await;
+        let later = escrow(
+            &pool,
+            ActionKind::Theme,
+            10,
+            &theme_payload(),
+            t0() + mins(5),
+        )
+        .await;
+        assert_eq!(balance(&pool).await, 30);
+        sweep(&data, &fake, t0(), &|_| true).await;
+        assert!(fake.calls().is_empty(), "{:?}", fake.calls());
+        assert_eq!(balance(&pool).await, 90);
+        assert_eq!(
+            state_of(&pool, due).await,
+            ("ended".into(), Some("expired".into()))
+        );
+        assert_eq!(state_of(&pool, later).await.0, "active", "not due yet");
+        // A second sweep refunds nothing twice.
+        sweep(&data, &fake, t0(), &|_| true).await;
+        assert_eq!(balance(&pool).await, 90);
+        agree(&pool, &[(BUYER, 100)]).await;
+    });
+
+    db_test!(an_expired_bounty_refunds_its_placer, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        let id = escrow(
+            &pool,
+            ActionKind::Bounty,
+            70,
+            &ActionPayload::Bounty,
+            t0() - mins(1),
+        )
+        .await;
+        assert_eq!(balance(&pool).await, 30);
+        // The cache not holding the guild changes nothing: no Discord call.
+        sweep(&data, &fake, t0(), &|_| false).await;
+        assert!(fake.calls().is_empty());
+        assert_eq!(balance(&pool).await, 100);
+        assert_eq!(
+            state_of(&pool, id).await,
+            ("ended".into(), Some("expired".into()))
+        );
+        agree(&pool, &[(BUYER, 100)]).await;
+    });
+
+    db_test!(finish_skips_an_escrow_row_that_already_ended, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        let id = escrow(
+            &pool,
+            ActionKind::Theme,
+            60,
+            &theme_payload(),
+            t0() + mins(5),
+        )
+        .await;
+        let live = economy::due_actions(&pool, t0() + mins(10), 10)
+            .await
+            .unwrap();
+        let row = live.into_iter().find(|(_, r)| r.id == id).unwrap().1;
+        assert_eq!(
+            finish(&data, &fake, G, &row, "cleansed", t0()).await,
+            Finished::Ended
+        );
+        // The caller's copy is stale; the database says it is over.
+        assert_eq!(
+            finish(&data, &fake, G, &row, "expired", t0()).await,
+            Finished::Skipped
+        );
+        assert_eq!(balance(&pool).await, 100);
+        assert_eq!(
+            state_of(&pool, id).await,
+            ("ended".into(), Some("cleansed".into()))
+        );
+        assert!(fake.calls().is_empty());
+        agree(&pool, &[(BUYER, 100)]).await;
+    });
+
+    db_test!(cleanse_ends_a_waiting_theme_and_refunds_it, |pool| {
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        let theme = escrow(
+            &pool,
+            ActionKind::Theme,
+            60,
+            &theme_payload(),
+            t0() + mins(60),
+        )
+        .await;
+        // A bounty on the same member is not touched.
+        let bounty = escrow(
+            &pool,
+            ActionKind::Bounty,
+            20,
+            &ActionPayload::Bounty,
+            t0() + mins(60),
+        )
+        .await;
+        let rename = rename_row(&pool, "active", t0() + mins(60)).await;
+        let ended = end_running_pranks(&data, &fake, G, U, "cleansed", t0())
+            .await
+            .unwrap();
+        assert_eq!(
+            ended,
+            EndedPranks {
+                all: 2,
+                were_active: 2
+            }
+        );
+        // Only the rename touched Discord.
+        assert_eq!(
+            fake.calls(),
+            vec![Call::Nick(U, Some("Al".into()), ActionKind::Rename)]
+        );
+        assert_eq!(
+            state_of(&pool, theme).await,
+            ("ended".into(), Some("cleansed".into()))
+        );
+        assert_eq!(state_of(&pool, bounty).await.0, "active");
+        assert_eq!(state_of(&pool, rename).await.0, "ended");
+        assert_eq!(
+            balance(&pool).await,
+            80,
+            "the theme's 60 is back, the bounty's 20 is not"
+        );
+        agree(&pool, &[(BUYER, 100)]).await;
+    });
+
+    db_test!(an_unfilled_fund_is_refunded_after_24h, |pool| {
+        use crate::db::economy as db;
+        let data = data_with(&pool);
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        fund_wallet(&pool, FRIEND, 100).await;
+        let payload = pending_rename();
+        let new = |price: i64, kind: ActionKind| db::NewAction {
+            guild: G,
+            kind,
+            buyer: BUYER,
+            target: Some(U),
+            price,
+            note: None,
+            signed: false,
+            payload: &payload,
+            expires_at: Some(Utc::now() + ChronoDuration::hours(24)),
+        };
+        let lapsed = db::open_fund(&pool, &new(90, ActionKind::Rename), Some((40, false)))
+            .await
+            .unwrap()
+            .action_id;
+        db::pledge(&pool, lapsed, G, FRIEND, 30, true)
+            .await
+            .unwrap();
+        // Another fund, on another prank, still has time.
+        let open = db::open_fund(&pool, &new(90, ActionKind::Clown), Some((10, false)))
+            .await
+            .unwrap()
+            .action_id;
+        sqlx::query(
+            "UPDATE economy_actions SET expires_at = now() - interval '1 minute' WHERE id = $1",
+        )
+        .bind(lapsed)
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert_eq!(balance(&pool).await, 50);
+        sweep(&data, &fake, Utc::now(), &|_| false).await;
+        assert!(fake.calls().is_empty(), "{:?}", fake.calls());
+        assert_eq!(
+            state_of(&pool, lapsed).await,
+            ("ended".into(), Some("unfunded".into()))
+        );
+        assert_eq!(state_of(&pool, open).await.0, "funding");
+        assert_eq!(balance(&pool).await, 90, "the 40 is back, the 10 is not");
+        assert_eq!(
+            crate::db::economy::balance(&pool, G, FRIEND).await.unwrap(),
+            100
+        );
+        agree(&pool, &[(BUYER, 100), (FRIEND, 100)]).await;
+        // A second sweep refunds nothing twice.
+        sweep(&data, &fake, Utc::now(), &|_| false).await;
+        assert_eq!(balance(&pool).await, 90);
+        // A sweep whose clock runs ahead of the database's still leaves a fund
+        // that has time (or was filled a moment ago): `expire_fund` judges.
+        // Ahead of the real clock, not a fixed date that the calendar passes.
+        sweep(&data, &fake, Utc::now() + ChronoDuration::days(2), &|_| {
+            false
+        })
+        .await;
+        assert_eq!(state_of(&pool, open).await.0, "funding");
+        assert_eq!(balance(&pool).await, 90);
+    });
+
+    db_test!(reconcile_refunds_a_pending_dedication, |pool| {
+        use crate::db::economy as db;
+        let fake = FakeEconomyDiscord::default();
+        fund_wallet(&pool, BUYER, 100).await;
+        let mut ids = Vec::new();
+        for (kind, payload) in [
+            (
+                ActionKind::Dedicate,
+                ActionPayload::Dedicate { song: "x".into() },
+            ),
+            (ActionKind::Jump, ActionPayload::Jump { song: "y".into() }),
+        ] {
+            ids.push(
+                db::charge_for_action(
+                    &pool,
+                    &db::NewAction {
+                        guild: G,
+                        kind,
+                        buyer: BUYER,
+                        target: None,
+                        price: 40,
+                        note: None,
+                        signed: false,
+                        payload: &payload,
+                        expires_at: None,
+                    },
+                )
+                .await
+                .unwrap()
+                .action_id,
+            );
+        }
+        assert_eq!(balance(&pool).await, 20);
+        // A process that started after both charges: a restart lost the plays.
+        let data = restarted(&pool).await;
+        reconcile(&data, &fake, &FakeView::default(), G, Utc::now()).await;
+        assert!(fake.calls().is_empty());
+        assert_eq!(balance(&pool).await, 100);
+        for id in ids {
+            assert_eq!(state_of(&pool, id).await.0, "failed");
+        }
+        agree(&pool, &[(BUYER, 100)]).await;
+    });
+
+    /// A mute fund, filled by two members and left `pending`: what a fill
+    /// leaves behind (no end yet), for a crash to find.
+    async fn filled_mute_fund(pool: &PgPool) -> i64 {
+        use crate::db::economy as db;
+        let other = UserId::new(11);
+        fund_wallet(pool, BUYER, 100).await;
+        fund_wallet(pool, other, 100).await;
+        let f = db::open_fund(
+            pool,
+            &db::NewAction {
+                guild: G,
+                kind: ActionKind::Mute,
+                buyer: BUYER,
+                target: Some(U),
+                price: 90,
+                note: None,
+                signed: true,
+                payload: &ActionPayload::Mute,
+                expires_at: Some(Utc::now() + ChronoDuration::hours(24)),
+            },
+            Some((45, true)),
+        )
+        .await
+        .unwrap();
+        let p = db::pledge(pool, f.action_id, G, other, 45, false)
+            .await
+            .unwrap();
+        assert!(p.filled);
+        f.action_id
+    }
+
+    db_test!(
+        reconcile_refunds_an_unprepared_filled_fund_without_acting,
+        |pool| {
+            let fake = FakeEconomyDiscord::default();
+            let id = filled_mute_fund(&pool).await;
+            // A restart after the fill (which stamped the row's time).
+            let data = restarted(&pool).await;
+            // Even with the target showing as muted: nothing was prepared, so
+            // nothing of ours is on them to own or undo.
+            let mut view = FakeView::default();
+            view.voice.insert(U, facts(5, true, false));
+            reconcile(&data, &fake, &view, G, Utc::now()).await;
+            assert_eq!(state_of(&pool, id).await.0, "failed");
+            assert!(fake.calls().is_empty());
+            assert_eq!(balance(&pool).await, 100, "the starter's pledge came back");
+            assert_eq!(
+                crate::db::economy::balance(&pool, G, UserId::new(11))
+                    .await
+                    .unwrap(),
+                100
+            );
+            let refunds: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM economy_ledger WHERE kind = 'pledge_refund'",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(refunds, 2);
+        }
+    );
+
+    db_test!(reconcile_activates_a_prepared_landed_mute_fund, |pool| {
+        let fake = FakeEconomyDiscord::default();
+        let id = filled_mute_fund(&pool).await;
+        // What the executor writes before it acts.
+        let end = Utc::now() + mins(5);
+        assert!(
+            crate::db::economy::prepare_fund(&pool, id, &ActionPayload::Mute, Some(end))
+                .await
+                .unwrap()
+        );
+        // A restart between that write and the activate.
+        let data = restarted(&pool).await;
+        let mut view = FakeView::default();
+        view.voice.insert(U, facts(5, true, false));
+        reconcile(&data, &fake, &view, G, Utc::now()).await;
+        assert_eq!(state_of(&pool, id).await.0, "active");
+        assert!(fake.calls().is_empty());
+        let row = crate::db::economy::action_by_id(&pool, G, id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            row.expires_at.map(|t| t.timestamp_micros()),
+            Some(end.timestamp_micros())
+        );
+        // Nobody was refunded.
+        assert_eq!(balance(&pool).await, 55);
     });
 }

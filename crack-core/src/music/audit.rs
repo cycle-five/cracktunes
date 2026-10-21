@@ -47,6 +47,8 @@ pub enum BotReason {
     JoinCleanup,
     /// A restart's queue, rebuilt.
     Resume,
+    /// A walk-on theme: the bot joined to play one, and leaves after it.
+    Theme,
 }
 
 impl BotReason {
@@ -59,6 +61,7 @@ impl BotReason {
             BotReason::Kicked => "disconnected",
             BotReason::JoinCleanup => "join cleanup",
             BotReason::Resume => "resume",
+            BotReason::Theme => "theme",
         }
     }
 }
@@ -301,6 +304,15 @@ mod test {
             let json = serde_json::to_string(&source).unwrap();
             assert_eq!(json.trim_matches('"'), source.as_str());
         }
+    }
+
+    #[test]
+    fn a_theme_leave_is_the_bot_acting_for_a_theme() {
+        let a = Actor::bot(BotReason::Theme);
+        assert_eq!(
+            (a.source(), a.user(), a.command()),
+            (Source::Bot, None, "theme")
+        );
     }
 
     #[test]

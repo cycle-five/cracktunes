@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE economy_actions SET state = $2, ended_at = now(), end_reason = $3\n         WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "03699b694a1ffbdf13bdf0eda14a67440bea8843fc9b17936a20d5f6573a45dd"
+}
