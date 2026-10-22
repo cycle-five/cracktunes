@@ -134,6 +134,15 @@ reqwest = { version = "0.12.9", default-features = false, features = [
   "macos-system-configuration",
 ] }
 
+# Backtraces keep their file and line numbers; debugger variables are gone, and
+# nobody debugs this bot with gdb. A rebuild after an edit measured 18 s, then
+# 12-13 s. Dependencies carry no debug info at all.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 incremental = true
 # Set this to 1 or 2 to get more useful backtraces in debugger.
