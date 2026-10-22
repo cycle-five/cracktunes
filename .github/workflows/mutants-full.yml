@@ -25,19 +25,22 @@ name: Mutants (full run)
 # and `collect` refuses to combine anything unless every shard succeeded. An
 # undercounted missed list would poison the baseline built from it.
 #
-# 🪤 `--sharding round-robin`, because the default (`slice`) can hand a shard
-# nothing but crack-types mutants. cargo-mutants' unmutated baseline builds
-# `--package <crates with mutants in this shard>` with the bare feature names
-# from mutants.toml, and `db-tests` belongs to crack-core: such a shard would
-# fail its baseline. Round-robin puts crack-core mutants in every shard.
+# `--sharding round-robin` deals the mutants out one at a time, so each shard
+# gets a similar mix of crates and so a similar duration. The default
+# (`slice`) cuts the list into contiguous runs: a shard of quick crack-types
+# mutants would finish long before one of crack-core's database-heavy ones.
+# Even shards keep the shard count, and the run's length, predictable.
 #
 # 🪤 No `--baseline skip`. The baseline run guards against a broken
 # environment: with a dead Postgres every mutant would look caught, and the
-# empty missed list would later wipe the recorded baseline.
+# empty missed list would later wipe the recorded baseline. The checks after
+# the run (see the shard job) guard against one that breaks part-way.
 #
-# Timing: on a 20-core dev machine a caught mutant costs about 40 s and a
-# missed one about 60 s after a cold build. GitHub's runners have 4 vCPUs, so
-# expect several times that. 🪤 They also have only about 14 GB of free disk,
+# Timing, on a 20-core dev machine: after a cold baseline (crack-core: about
+# 170 s of build and 20 s of tests), a missed crack-core mutant took 15 s to
+# build and 24 s to test, and a caught one stops at its first failing test. A
+# crack-types mutant took about 2 s. GitHub's runners have 4 vCPUs, so expect
+# several times that. 🪤 They also have only about 14 GB of free disk,
 # and a full build with debug info plus the rust-cache is sizeable.
 #
 # The `push` trigger below is TEMPORARY, for the smoke test of this workflow:
@@ -60,6 +63,15 @@ on:
 # Least privilege: these jobs only check out, build and upload artifacts.
 permissions:
   contents: read
+
+# 🔑 One full run at a time. The account's concurrent-job slots are shared with
+# every other workflow, and a second run would double the fan-out that
+# `max_parallel` keeps low. A new dispatch waits for the current run instead of
+# cancelling it, since a cancelled run uploads nothing. (GitHub keeps one run
+# waiting: a third dispatch replaces the second.)
+concurrency:
+  group: mutants-full
+  cancel-in-progress: false
 
 jobs:
   plan:
@@ -155,28 +167,58 @@ jobs:
           SHARD: ${{ matrix.shard }}
           SHARDS: ${{ needs.plan.outputs.shards }}
         # Features and profile come from .cargo/mutants.toml; do not repeat them.
+        #
+        # 🔑 A broken environment makes the missed list silently too short,
+        # and cargo-mutants still exits 0 or 2. If Postgres dies, every later
+        # mutant's db tests fail, so it counts as caught; if the disk fills,
+        # every later mutant fails to build, so it counts as unviable. Both
+        # checks run BEFORE the exit code is mapped, so a 0, 2 or 3 from a
+        # broken environment still fails the shard. `df` brackets the run so
+        # the log shows the disk headroom either way.
+        # 🪤 Do not also grep the logs for SIGKILL or signal 9: nextest kills a
+        # timed-out test with SIGKILL, so a legitimately caught or timed-out
+        # mutant would fail the shard.
         run: |
+          df -h .
           code=0
           cargo mutants --in-place --sharding round-robin \
             --shard "$SHARD/$SHARDS" --output out || code=$?
           echo "cargo-mutants exited with $code"
+          df -h .
+          if ! pg_isready --dbname="$DATABASE_URL"; then
+            echo "::error::Postgres is down after the run: db-test mutants would have counted as caught"
+            exit 1
+          fi
+          if grep -rl 'No space left on device' out/mutants.out/log; then
+            echo "::error::the disk filled during the run: mutants would have counted as unviable"
+            exit 1
+          fi
           # 0 = all caught, 2 = some missed, 3 = some timed out: results.
           case "$code" in
             0|2|3) exit 0 ;;
             *) exit "$code" ;;
           esac
 
+      # Each file gets the shard's number in its name, so `collect` can merge
+      # every shard's artifact into one directory: see the 🪤 there. A missing
+      # file fails the step, and so the shard.
+      - name: Stage shard results
+        env:
+          SHARD: ${{ matrix.shard }}
+        shell: bash
+        run: |
+          mkdir results
+          for kind in missed caught unviable timeout; do
+            cp "out/mutants.out/$kind.txt" "results/$kind-$SHARD.txt"
+          done
+          cp out/mutants.out/outcomes.json "results/outcomes-$SHARD.json"
+
       - name: Upload shard results
         if: success()
         uses: actions/upload-artifact@v7
         with:
           name: mutants-shard-${{ matrix.shard }}
-          path: |
-            out/mutants.out/missed.txt
-            out/mutants.out/caught.txt
-            out/mutants.out/unviable.txt
-            out/mutants.out/timeout.txt
-            out/mutants.out/outcomes.json
+          path: results/
           if-no-files-found: error
 
       # Named so the `mutants-shard-*` download pattern does not match it.
@@ -207,11 +249,19 @@ jobs:
             exit 1
           fi
 
+      # 🪤 download-artifact@v8 with a `pattern` gives each matching artifact
+      # its own subdirectory (shards/mutants-shard-<n>/) only when SEVERAL
+      # match. A single match is extracted straight into shards/, so the
+      # layout depended on the shard count: the first smoke run (one shard)
+      # found no subdirectory and reported "0 of 1 shards". `merge-multiple`
+      # puts every artifact's files straight into shards/ whatever the count,
+      # and the shard-numbered file names keep them apart.
       - name: Download every shard's results
         uses: actions/download-artifact@v8
         with:
           pattern: mutants-shard-*
           path: shards
+          merge-multiple: true
 
       - name: Check that every shard reported
         env:
@@ -219,7 +269,10 @@ jobs:
           EVENT: ${{ github.event_name }}
         shell: bash
         run: |
-          got=$(find shards -mindepth 1 -maxdepth 1 -type d | wc -l)
+          # One outcomes file per shard that finished and uploaded.
+          shopt -s nullglob
+          reported=(shards/outcomes-*.json)
+          got=${#reported[@]}
           # The smoke test runs one shard of 400, so it expects one artifact.
           if [ "$EVENT" = "push" ]; then EXPECTED=1; fi
           if [ "$got" -lt "$EXPECTED" ]; then
@@ -230,11 +283,11 @@ jobs:
       - name: Combine and summarise
         shell: bash
         run: |
-          cat shards/*/missed.txt | sort > missed-all.txt
+          cat shards/missed-*.txt | sort > missed-all.txt
           {
             echo "## cargo-mutants full run"
             for kind in caught missed unviable timeout; do
-              echo "- $kind: $(cat shards/*/$kind.txt | wc -l)"
+              echo "- $kind: $(cat shards/$kind-*.txt | wc -l)"
             done
           } >> "$GITHUB_STEP_SUMMARY"
 
