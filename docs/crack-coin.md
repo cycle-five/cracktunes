@@ -40,10 +40,18 @@ creating them). After that a member's address must already hold one.
 
 ## Settings
 
-Read only by a coin build. If one is missing, or devnet can't be reached, the
-bot starts with CrackCoin off and logs `crack-coin: off (reason)`. It retries in
-the background, and music never depends on it. When ready it logs
-`crack-coin: ready (mint ..., authority ..., N devnet SOL)`.
+Read only by a coin build. Music never depends on CrackCoin. At boot:
+
+- A configuration error (a missing or unparsable variable, a mainnet RPC URL, a
+  mint that doesn't match) turns CrackCoin off with `crack-coin: off (reason)`.
+  There is no retry: fix the setting and restart. A coin build with no database
+  is off too: `crack-coin: off (there is no database)`.
+- Devnet being unreachable is not off. CrackCoin stays "starting" and logs a
+  warning, `crack-coin: devnet unreachable (attempt N, retrying in Ns): ...`,
+  on each attempt. The retry waits 5 s, doubling, capped at 300 s, until devnet
+  answers.
+- When ready it logs
+  `crack-coin: ready (mint ..., authority ..., N devnet SOL)`.
 
 | Variable | Contents | Secret |
 |---|---|---|
@@ -51,11 +59,11 @@ the background, and music never depends on it. When ready it logs
 | `CRACK_COIN_MINT` | The mint address (base58) | no |
 | `CRACK_COIN_RPC_URL` | Optional. Defaults to `https://api.devnet.solana.com` | no |
 
-Load the key from its file without ever printing it, for example in a compose
-`.env`:
+Compose env files don't run commands, so write the line into the file with a
+shell command that never prints the key:
 
 ```
-CRACK_COIN_KEYPAIR="$(< path/to/key.json)"
+printf 'CRACK_COIN_KEYPAIR=%s\n' "$(tr -d '\n ' < path/to/devnet-authority.json)" >> .env
 ```
 
 Never `echo` it, `cat` the key file, or run `set -x` or `bash -n` over a file
@@ -98,8 +106,10 @@ is shown only to its owner (shortened), and nothing is posted publicly.
 
 ## Rolling back
 
-The migration is additive, so rolling back is image-only. But a lean image, or
-a version below v0.35.0, has no resolver for a withdrawal that is still pending,
+The migration is additive, so rolling back is image-only for the bot. The
+migrate image is the exception: it STAYS at v0.35.0. The v0.34.0 migrate image
+stops with `VersionMissing` when it meets a migration it doesn't know. Rolling
+back the bot image is fine. A lean image, or a version below v0.35.0, has no resolver for a withdrawal that is still pending,
 and its credits would stay held until a coin build returns. They are not lost.
 Before rolling back this must return 0:
 
@@ -108,3 +118,18 @@ SELECT count(*) FROM coin_withdrawals WHERE state = 'pending';
 ```
 
 Coins already minted stay minted.
+
+## Devnet reset
+
+Devnet is occasionally wiped. The mint then no longer exists, so a coin build
+refuses to start on it (`crack-coin: off (the mint does not match: ...)`).
+
+1. Create a new mint with the CLI: `crack-coin create-mint <keypair>`, then
+   `crack-coin set-metadata <keypair> <mint> [uri]`.
+2. Set the new `CRACK_COIN_MINT` and restart the bot.
+3. Once the coin is ready on the new mint, the sweeper settles every pending
+   withdrawal, whatever its mint. A signed row whose transaction is not found
+   on the chain, and which was signed against a different genesis hash, is
+   refunded as "devnet was reset". A pending row that was never sent is
+   refunded as "never sent". Credits stay held until then; a row missing its
+   expiry height or genesis hash just waits.

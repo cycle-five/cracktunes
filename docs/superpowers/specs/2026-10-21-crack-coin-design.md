@@ -636,7 +636,10 @@ database compares with `now()`.
 
 ## 11. Rollback
 
-- The migration is additive, so rollback is image-only.
+- The migration is additive, so rolling back the bot image is image-only. The
+  migrate image STAYS at v0.35.0: the v0.34.0 sqlx migrate image stops with
+  `VersionMissing` when it meets a migration it doesn't know (amended: final
+  review).
 - **Before rolling TuneTitan back to a lean image or below v0.35.0:**
   `SELECT count(*) FROM coin_withdrawals WHERE state = 'pending'` must return 0.
   A lean build has no resolver, so a pending row's credits would stay held

@@ -109,12 +109,16 @@
   member has one withdrawal in flight at a time, and every `/wallet` reply is
   private: an address is shown only to its owner and nothing announces a
   withdrawal. A withdrawal either mints or is refunded, never both and never
-  neither, and the credits come back if the chain can't be reached for good. If
-  it is wrong, a member could lose credits or get coins twice, which is why a
-  refund only happens when the withdrawal provably expired. Without its
+  neither. Credits are refunded for one of four reasons: it was never sent, it
+  failed on chain, it expired (the chain proves the transaction can never
+  land), or devnet was reset. An unreachable chain only delays the outcome: the
+  credits stay held until the chain proves one. If this were wrong, a member
+  could lose credits or get coins twice, which is why a refund needs proof. Without its
   settings the image starts with CrackCoin off and says why; music never
-  depends on devnet. **Rolling back below v0.35.0:** the migration is additive,
-  but a lean build can't settle a withdrawal, so this must return 0 first:
+  depends on devnet. **Rolling back below v0.35.0:** the bot image may go back,
+  but the migrate image STAYS at v0.35.0 (the v0.34.0 migrate image stops with
+  `VersionMissing` on a migration it doesn't know). A lean build can't settle
+  a withdrawal, so this must return 0 first:
   `SELECT count(*) FROM coin_withdrawals WHERE state = 'pending'`. Coins
   already minted stay minted. See `docs/crack-coin.md`.
 - **`/downvote` is registered.** It skips the current track and records a
