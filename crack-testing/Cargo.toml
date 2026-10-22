@@ -14,6 +14,10 @@ homepage = "https://cracktun.es/"
 repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
+[features]
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = []
+
 [dependencies]
 anyhow = "1.0"
 crack-types = { path = "../crack-types" }

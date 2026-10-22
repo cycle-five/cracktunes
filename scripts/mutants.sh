@@ -30,6 +30,11 @@ python3 scripts/sweep_target.py --scratch-root "$scratch" >&2
 export TMPDIR="$scratch"
 export CARGO_TARGET_DIR=target
 export NEXTEST_PROFILE=mutants
+# sqlx's query macros check every query against a live database whenever
+# DATABASE_URL is set (in the environment or a .env), and the result then
+# depends on that database's schema. Offline, they use the committed `.sqlx/`
+# metadata, as CI does.
+export SQLX_OFFLINE=true
 # Tells the database test runner (crack-core/src/test_db.rs) to drop a failing
 # test's database. Mutant runs fail tests on purpose, and each scratch copy has
 # its own database names, so kept databases would pile up.

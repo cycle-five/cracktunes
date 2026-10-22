@@ -10,6 +10,10 @@ homepage = "https://cracktun.es/"
 repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
+[features]
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = []
+
 [dependencies]
 crack-core = { path = "../crack-core" }
 # The website login flow. Memory storage: nothing about web users is persisted

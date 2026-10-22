@@ -44,6 +44,9 @@ web = ["dep:crack-web"]
 # CI turns this on. See docs/testing.md.
 db-tests = []
 
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = ["db-tests", "crack-coin"]
+
 [dependencies]
 crack-core = { path = "../crack-core/" }
 crack-types = { path = "../crack-types/" }

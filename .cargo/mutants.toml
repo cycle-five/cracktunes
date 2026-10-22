@@ -12,32 +12,45 @@ test_tool = "nextest"
 # default. Without them the code those tests cover would show every mutant as
 # missed, for the wrong reason.
 #
-# 🪤 The names carry no `package/` prefix on purpose. cargo turns a bare name on
-# in every selected package that has it, while `cracktunes/db-tests` is an
-# error whenever cracktunes is not selected. The unmutated BASELINE selects
-# only the crates that have mutants (`--package crack-core`), even with
-# test_workspace below, so prefixed names failed it for any run that did not
-# touch all three owners of db-tests (cracktunes, crack-core, crack-voting).
-# 🪤 A bare name still fails when NO selected crate has it: a run whose mutants
-# all sit in crack-types, crack-web, crack-sleevenote, crack-musicreco or
-# crack-testing stops at once with "does not contain this feature". Pass
-# `--baseline skip` for that run (CI's plain test jobs check the tree).
-features = ["db-tests", "crack-coin"]
+# 🔑 One umbrella feature, `mutation-testing`, that every crate defines: in
+# crack-core and cracktunes it turns on `db-tests` and `crack-coin`, in
+# crack-voting `db-tests`, and elsewhere nothing. cargo-mutants passes
+# `--features` to EVERY cargo call, including the per-crate ones (each mutant
+# builds and tests only its own crate, below). cargo rejects a feature that no
+# selected crate has, so `db-tests` on its own would make every mutant in
+# crack-types, crack-web, crack-sleevenote, crack-musicreco or crack-testing
+# unviable. A name every crate owns is valid whichever crates a call selects.
+# 🪤 A new workspace member needs `mutation-testing` too, even an empty one.
+features = ["mutation-testing"]
 
-# Each mutant is built with `--workspace` and checked against every crate's
-# tests, which is right for a workspace where crack-core is used by the others.
-test_workspace = true
+# test_workspace is left at its default: each mutant is tested with its own
+# crate's tests (`--package <crate>`), and the unmutated baseline with the
+# tests of every crate that has mutants. Baseline and mutants so test the same
+# crates, the baseline a superset. 🪤 `test_workspace = true` tested each
+# mutant with `--workspace` but the baseline only per crate, so a failing or
+# flaky test elsewhere passed the baseline and then made every mutant look
+# caught. The cost of the default: a crack-core mutant that only a cracktunes
+# or crack-voting test would catch shows as missed. That errs the safe way.
 
 # The cargo profile that mutants build with: see [profile.mutants] in the root
 # Cargo.toml.
 profile = "mutants"
+
+# Scratch copies leave out what .gitignore lists: `.env` (secrets), `data/`,
+# `.superpowers/` and the like. A mutant run then sees only the tree the tests
+# see in CI, and secrets are not copied into $HOME/.cache/cargo-mutants.
+# 🪤 .gitignore also matches a few TRACKED files (`cracktunes.toml`, `data/*`),
+# and those are left out too. No build or test reads them today; a test that
+# starts to would fail the unmutated baseline, not hide among the mutants.
+# (Irrelevant to CI's full run, which mutates the checkout in place.)
+gitignore = true
 
 # Exclusions are for code that is never worth testing, each with its reason.
 # 🪤 Legacy misses do NOT go here. They go to the baseline, so that the debt
 # stays visible and shrinks on purpose.
 exclude_globs = [
     # Test-only tooling: a proc-macro that never ships in the bot. Mutating
-    # it says nothing about the bot, and with test_workspace each of its
-    # mutants would cost a full workspace test run.
+    # it says nothing about the bot. (It is also the one crate without the
+    # `mutation-testing` feature, so its mutants could not build.)
     "crack-test-macros/**",
 ]

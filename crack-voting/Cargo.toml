@@ -36,6 +36,9 @@ eula = false
 # CI turns this on. See docs/testing.md.
 db-tests = []
 
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = ["db-tests"]
+
 [dependencies]
 lazy_static = "1.5"
 dbl-rs = "0.4"

@@ -45,6 +45,9 @@ ignore-presence-log = []
 # CI turns this on. See docs/testing.md.
 db-tests = []
 
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = ["db-tests", "crack-coin"]
+
 [dependencies]
 cfg-if = "1"
 dashmap = "6"
