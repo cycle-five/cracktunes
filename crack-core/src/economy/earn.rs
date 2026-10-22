@@ -8,7 +8,7 @@
 use super::registry::EconomyRegistry;
 use crate::db::economy::{credit_earnings, EarnRow};
 use crate::Data;
-use serenity::all::{Cache, ChannelId, GuildId, Message, UserId};
+use serenity::all::{Cache, ChannelId, GuildId, Message, UserId, VoiceState};
 use serenity::async_trait;
 use sqlx::PgPool;
 use std::collections::{HashMap, HashSet};
@@ -25,6 +25,8 @@ pub struct VoiceMember {
     pub channel: ChannelId,
     pub bot: bool,
     pub self_deaf: bool,
+    /// The camera is on. A screen share alone is not a camera.
+    pub camera: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,10 +36,15 @@ pub struct VoiceSnapshot {
 }
 
 /// Who earns voice credits this minute, sorted. A member earns when not a
-/// bot, not self-deafened, not opted out, not in the AFK channel, and at
-/// least one OTHER non-bot member shares the channel. That company counts
-/// whether or not they are deafened or opted out.
-pub fn voice_earners(s: &VoiceSnapshot, opted_out: &HashSet<UserId>) -> Vec<UserId> {
+/// bot, not self-deafened, not opted out, not in the AFK channel, on camera
+/// when `camera_required`, and at least one OTHER non-bot member shares the
+/// channel. That company counts whether or not they are deafened, opted out
+/// or on camera.
+pub fn voice_earners(
+    s: &VoiceSnapshot,
+    opted_out: &HashSet<UserId>,
+    camera_required: bool,
+) -> Vec<UserId> {
     let mut humans_in: HashMap<ChannelId, usize> = HashMap::new();
     for m in s.members.iter().filter(|m| !m.bot) {
         *humans_in.entry(m.channel).or_insert(0) += 1;
@@ -48,6 +55,7 @@ pub fn voice_earners(s: &VoiceSnapshot, opted_out: &HashSet<UserId>) -> Vec<User
         .filter(|m| {
             !m.bot
                 && !m.self_deaf
+                && (m.camera || !camera_required)
                 && !opted_out.contains(&m.user)
                 && s.afk != Some(m.channel)
                 && humans_in.get(&m.channel).copied().unwrap_or(0) >= 2
@@ -148,7 +156,7 @@ pub async fn tick_with(
         let cfg = reg.settings(guild).config;
         let voice = snaps
             .remove(&guild)
-            .map(|s| voice_earners(&s, &reg.opted_out(guild)))
+            .map(|s| voice_earners(&s, &reg.opted_out(guild), cfg.voice_requires_camera))
             .unwrap_or_default();
         let rows = earn_rows(
             &voice,
@@ -165,6 +173,18 @@ pub async fn tick_with(
     }
 }
 
+/// One member's voice state as the earning rules see it; `None` when they
+/// are in no channel.
+pub fn voice_member(vs: &VoiceState, bot: bool) -> Option<VoiceMember> {
+    Some(VoiceMember {
+        user: vs.user_id,
+        channel: vs.channel_id?,
+        bot,
+        self_deaf: vs.self_deaf(),
+        camera: vs.self_video(),
+    })
+}
+
 /// The voice picture of one server from the cache.
 pub fn snapshot(cache: &Cache, guild: GuildId) -> Option<VoiceSnapshot> {
     let g = cache.guild(guild)?;
@@ -172,20 +192,13 @@ pub fn snapshot(cache: &Cache, guild: GuildId) -> Option<VoiceSnapshot> {
         .voice_states
         .iter()
         .filter_map(|vs| {
-            let uid = &vs.user_id;
-            let channel = vs.channel_id?;
             let bot = vs
                 .member
                 .as_ref()
                 .map(|m| m.user.bot())
-                .or_else(|| g.members.get(uid).map(|m| m.user.bot()))
+                .or_else(|| g.members.get(&vs.user_id).map(|m| m.user.bot()))
                 .unwrap_or(false);
-            Some(VoiceMember {
-                user: *uid,
-                channel,
-                bot,
-                self_deaf: vs.self_deaf(),
-            })
+            voice_member(vs, bot)
         })
         .collect();
     Some(VoiceSnapshot {
@@ -238,6 +251,14 @@ mod tests {
             channel: c(ch),
             bot: false,
             self_deaf: false,
+            camera: false,
+        }
+    }
+
+    fn cam(user: u64, ch: u64) -> VoiceMember {
+        VoiceMember {
+            camera: true,
+            ..m(user, ch)
         }
     }
 
@@ -275,8 +296,64 @@ mod tests {
         };
         let out = HashSet::from([u(8)]);
         assert_eq!(
-            voice_earners(&s, &out),
+            voice_earners(&s, &out, false),
             vec![u(2), u(3), u(4), u(9), u(14), u(15)]
+        );
+    }
+
+    #[test]
+    fn with_the_camera_required_only_cameras_earn() {
+        let s = VoiceSnapshot {
+            afk: None,
+            members: vec![
+                cam(1, 10),
+                m(2, 10), // company without a camera still counts
+                m(3, 20),
+                m(4, 20),   // a pair, both cameras off
+                cam(5, 30), // alone on camera
+                VoiceMember {
+                    self_deaf: true,
+                    ..cam(6, 40)
+                },
+                m(7, 40), // on camera but deafened, with company
+            ],
+        };
+        let none = HashSet::new();
+        assert_eq!(voice_earners(&s, &none, true), vec![u(1)]);
+        assert_eq!(
+            voice_earners(&s, &none, false),
+            vec![u(1), u(2), u(3), u(4), u(7)]
+        );
+    }
+
+    /// A voice state as Discord sends it.
+    fn state(self_video: bool, self_stream: bool) -> serenity::all::VoiceState {
+        serde_json::from_str(&format!(
+            r#"{{"channel_id":"10","user_id":"1","session_id":"s","deaf":false,"mute":false,
+                "self_deaf":false,"self_mute":false,"self_stream":{self_stream},
+                "self_video":{self_video},"suppress":false,"request_to_speak_timestamp":null}}"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_camera_is_video_and_a_screen_share_is_not() {
+        let camera = |vs| voice_member(&vs, false).unwrap().camera;
+        assert!(camera(state(true, false)));
+        assert!(
+            !camera(state(false, true)),
+            "a screen share is not a camera"
+        );
+        assert!(!camera(state(false, false)));
+        assert_eq!(
+            voice_member(&state(true, true), true),
+            Some(VoiceMember {
+                user: u(1),
+                channel: c(10),
+                bot: true,
+                self_deaf: false,
+                camera: true,
+            })
         );
     }
 
@@ -430,6 +507,31 @@ mod tests {
             calls[0].1,
             vec![EarnRow {
                 user: u(2),
+                voice: 1,
+                messages: 0
+            }]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn tick_pays_only_cameras_when_the_server_requires_one() {
+        let data = Data::default();
+        let mut s = EconomySettings::off(G);
+        s.enabled = true;
+        s.config.voice_requires_camera = true;
+        data.economy.set_settings(s);
+        data.economy.mark_loaded(G);
+        let snap = VoiceSnapshot {
+            afk: None,
+            members: vec![cam(1, 10), m(2, 10)],
+        };
+        let w = Fake::default();
+        tick_with(&data, vec![(G, snap)], &w).await;
+        let calls = w.0.lock().unwrap();
+        assert_eq!(
+            calls[0].1,
+            vec![EarnRow {
+                user: u(1),
                 voice: 1,
                 messages: 0
             }]

@@ -192,6 +192,7 @@
       el("e-name").value = view.currency_name;
       el("e-emoji").value = view.currency_emoji;
       el("e-voice").value = view.voice_credits_per_minute;
+      el("e-camera").checked = view.voice_requires_camera;
       el("e-message").value = view.message_credits;
       el("e-cooldown").value = view.message_cooldown_seconds;
       for (const p of view.prices) {
@@ -273,6 +274,7 @@
         currency_name: el("e-name").value,
         currency_emoji: el("e-emoji").value,
         voice_credits_per_minute: num("e-voice"),
+        voice_requires_camera: el("e-camera").checked,
         message_credits: num("e-message"),
         message_cooldown_seconds: num("e-cooldown"),
         prices,

@@ -2887,6 +2887,7 @@ mod test {
                     jail_channel: Some("111".into()),
                     announce_channel: None,
                     coin_withdrawals: None,
+                    voice_requires_camera: None,
                 }
             )]
         );
@@ -2974,6 +2975,7 @@ mod test {
                 currency_name: "<b>gems</b>".into(),
                 currency_emoji: "X".into(),
                 voice_credits_per_minute: 3,
+                voice_requires_camera: false,
                 message_credits: 4,
                 message_cooldown_seconds: 90,
                 prices: vec![PriceView {

@@ -41,6 +41,7 @@ command replies privately "The economy is off in this server." and does nothing.
 | Currency name | What the credits are called | credits | 1 to 24 characters, no control characters |
 | Currency emoji | Shown next to amounts | 🪙 | 1 to 64 characters, no spaces |
 | Credits per minute in voice | Paid each minute a member qualifies | 1 | 0 to 100 |
+| Voice earning requires camera | Whether a member must have their camera on to earn in voice | off | |
 | Credits per message | Paid for each counted message | 1 | 0 to 100 |
 | Seconds between paid messages | At most one counted message per member in this time | 60 | 10 to 3600 |
 | Shop prices | The price of each item, and whether it is for sale. A bounty's price is its **minimum stake**, a crowdfund's its **minimum pledge** | see [the catalogue](#the-catalogue), [Music](#music) and [Group play](#group-play), all for sale | 1 to 1,000,000 |
@@ -96,10 +97,14 @@ refunded then).
   count as company);
 - they are **not self-deafened**;
 - they are **not in the server's AFK channel**;
-- they haven't opted out of the economy.
+- they haven't opted out of the economy;
+- when the server has turned on **Voice earning requires camera**, their
+  **camera is on**. A screen share alone doesn't count.
 
-Someone who is opted out, or deafened, still counts as company for the others.
-Sitting alone, or alone with a bot, earns nothing.
+Someone who is opted out, deafened, or off camera still counts as company for
+the others. Sitting alone, or alone with a bot, earns nothing. When the camera
+rule is on, `/credits history` says so under the member's totals, and
+`/economy status` shows "per voice minute with camera on".
 
 **By chatting**, a member earns for one counted message per cooldown (60
 seconds unless you change it). Messages sent inside the cooldown aren't counted.

@@ -138,6 +138,7 @@ pub struct EconomySettingsView {
     pub currency_name: String,
     pub currency_emoji: String,
     pub voice_credits_per_minute: u32,
+    pub voice_requires_camera: bool,
     pub message_credits: u32,
     pub message_cooldown_seconds: u32,
     pub prices: Vec<PriceView>,
@@ -196,6 +197,7 @@ impl EconomySettingsView {
             currency_name: c.currency_name.clone(),
             currency_emoji: c.currency_emoji.clone(),
             voice_credits_per_minute: c.voice_credits_per_minute,
+            voice_requires_camera: c.voice_requires_camera,
             message_credits: c.message_credits,
             message_cooldown_seconds: c.message_cooldown_seconds,
             prices: ActionKind::ALL
@@ -265,6 +267,9 @@ pub struct EconomySettingsForm {
     /// value.
     #[serde(default)]
     pub coin_withdrawals: Option<bool>,
+    /// `None` (a page from before this switch) keeps the stored value.
+    #[serde(default)]
+    pub voice_requires_camera: Option<bool>,
 }
 
 /// Why an economy save changed nothing.
@@ -359,6 +364,9 @@ pub fn apply_form(
     if let Some(on) = form.coin_withdrawals {
         c.coin_withdrawals = on;
     }
+    if let Some(on) = form.voice_requires_camera {
+        c.voice_requires_camera = on;
+    }
     Ok(s)
 }
 
@@ -393,12 +401,36 @@ mod tests {
             jail_channel: Some("111".into()),
             announce_channel: Some("222".into()),
             coin_withdrawals: None,
+            voice_requires_camera: None,
         }
     }
 
     /// Every id is a channel of the right kind.
     fn any_channel(_: ChannelKind, raw: &str) -> Option<ChannelId> {
         raw.parse().ok().map(ChannelId::new)
+    }
+
+    #[test]
+    fn a_form_without_voice_requires_camera_keeps_the_stored_value() {
+        let mut stored = EconomySettings::off(GuildId::new(5));
+        stored.config.voice_requires_camera = true;
+        let out = apply_form(stored, form(), any_channel).unwrap();
+        assert!(out.config.voice_requires_camera);
+    }
+
+    #[test]
+    fn a_form_sets_voice_requires_camera_both_ways() {
+        let mut stored = EconomySettings::off(GuildId::new(5));
+        stored.config.voice_requires_camera = true;
+        let mut f = form();
+        f.voice_requires_camera = Some(false);
+        let out = apply_form(stored, f, any_channel).unwrap();
+        assert!(!out.config.voice_requires_camera);
+        let mut f = form();
+        f.voice_requires_camera = Some(true);
+        let on = apply_form(EconomySettings::off(GuildId::new(5)), f, any_channel).unwrap();
+        assert!(on.config.voice_requires_camera);
+        assert!(EconomySettingsView::from_settings(&on, false).voice_requires_camera);
     }
 
     #[test]

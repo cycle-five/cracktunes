@@ -922,6 +922,8 @@ pub const ECONOMY_HISTORY_TITLE: &str = "Your recent activity";
 pub const ECONOMY_HISTORY_EARNED: &str = "Earned so far:";
 pub const ECONOMY_HISTORY_IN_VOICE: &str = "in voice";
 pub const ECONOMY_HISTORY_FROM_MESSAGES: &str = "from messages";
+pub const ECONOMY_HISTORY_CAMERA: &str =
+    "In this server, voice credits are paid only while your camera is on.";
 pub const ECONOMY_HISTORY_NO_ROWS: &str = "No purchases, gifts or bets yet.";
 pub const ECONOMY_LEDGER_PURCHASE: &str = "purchase";
 pub const ECONOMY_LEDGER_REFUND: &str = "refund";
@@ -1139,6 +1141,7 @@ pub const ECONOMY_STATUS_WALLETS: &str = "Wallets";
 pub const ECONOMY_STATUS_HELD: &str = "Held in total";
 pub const ECONOMY_STATUS_EARNING: &str = "Earning";
 pub const ECONOMY_STATUS_PER_VOICE_MINUTE: &str = "per voice minute";
+pub const ECONOMY_STATUS_CAMERA: &str = "with camera on";
 pub const ECONOMY_STATUS_PER_MESSAGE: &str = "per message, at most once every";
 pub const ECONOMY_STATUS_SECONDS: &str = "s";
 pub const ECONOMY_STATUS_IMMUNITY: &str = "Immunity: opt-out";
@@ -1174,6 +1177,8 @@ pub const ECONOMY_ADMIN_NEEDS_MODERATE: &str =
 
 // ---- Economy: the dashboard section ----
 pub const DASH_ECONOMY_TITLE: &str = "Economy";
+pub const DASH_ECONOMY_CAMERA: &str = "Voice earning requires camera";
+pub const DASH_ECONOMY_CAMERA_NOTE: &str = "Members earn voice credits only while their camera is on. A screen share doesn't count, and the company they need doesn't have to be on camera.";
 pub const DASH_ECONOMY_COIN: &str = "CrackCoin withdrawals";
 pub const DASH_ECONOMY_COIN_NOTE: &str =
     "Members can turn their credits into CrackCoin, a worthless devnet token, 1:1.";

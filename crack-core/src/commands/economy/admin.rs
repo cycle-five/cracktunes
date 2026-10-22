@@ -15,9 +15,9 @@ use crate::messaging::messages::{
     ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE, ECONOMY_ADMIN_LIFT_FAILED,
     ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE, ECONOMY_CANCEL_DONE_PREFIX,
     ECONOMY_CANCEL_DONE_SUFFIX, ECONOMY_CANCEL_NONE, ECONOMY_NO_DATABASE, ECONOMY_READ_FAILED,
-    ECONOMY_STATUS_COIN, ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING,
-    ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS,
-    ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
+    ECONOMY_STATUS_CAMERA, ECONOMY_STATUS_COIN, ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING,
+    ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET,
+    ECONOMY_STATUS_MODS, ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
     ECONOMY_STATUS_PER_VOICE_MINUTE, ECONOMY_STATUS_RECENT, ECONOMY_STATUS_RECENT_MORE_PREFIX,
     ECONOMY_STATUS_RECENT_MORE_SUFFIX, ECONOMY_STATUS_RECENT_NONE, ECONOMY_STATUS_SECONDS,
     ECONOMY_STATUS_SHOP, ECONOMY_STATUS_TAP, ECONOMY_STATUS_TITLE, ECONOMY_STATUS_UNTIL,
@@ -85,11 +85,16 @@ pub fn economy_status_text(
          {ECONOMY_STATUS_CURRENCY}: {emoji} {name}\n\
          {ECONOMY_STATUS_WALLETS}: {wallets}\n\
          {ECONOMY_STATUS_HELD}: {credits} {emoji} {name}\n\
-         {ECONOMY_STATUS_EARNING}: {} {ECONOMY_STATUS_PER_VOICE_MINUTE}, {} {ECONOMY_STATUS_PER_MESSAGE} {}{ECONOMY_STATUS_SECONDS}\n\
+         {ECONOMY_STATUS_EARNING}: {} {ECONOMY_STATUS_PER_VOICE_MINUTE}{}, {} {ECONOMY_STATUS_PER_MESSAGE} {}{ECONOMY_STATUS_SECONDS}\n\
          {ECONOMY_STATUS_IMMUNITY} {}, {ECONOMY_STATUS_SHOP} {}, {ECONOMY_STATUS_MODS} {}\n\
          {ECONOMY_STATUS_GAMBLING}: {}, {ECONOMY_STATUS_MAX_BET} {}",
         on_off(s.enabled),
         c.voice_credits_per_minute,
+        if c.voice_requires_camera {
+            format!(" {ECONOMY_STATUS_CAMERA}")
+        } else {
+            String::new()
+        },
         c.message_credits,
         c.message_cooldown_seconds,
         on_off(c.immunity_optout),
@@ -590,6 +595,15 @@ mod tests {
         assert!(t.starts_with("**Economy status**: on\nCurrency: 💎 gems\n"));
         assert!(t.contains("shop off"));
         assert!(t.ends_with("Gambling: on, max bet 500"));
+    }
+
+    #[test]
+    fn status_says_when_voice_earning_needs_a_camera() {
+        let mut s = EconomySettings::off(GuildId::new(1));
+        assert!(!economy_status_text(&s, 0, 0, None).contains(ECONOMY_STATUS_CAMERA));
+        s.config.voice_requires_camera = true;
+        assert!(economy_status_text(&s, 0, 0, None)
+            .contains("Earning: 1 per voice minute with camera on, 1 per message"));
     }
 
     #[test]
