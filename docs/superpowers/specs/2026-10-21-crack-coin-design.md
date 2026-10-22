@@ -458,9 +458,14 @@ One pure function decides, and the in-command poll and the sweeper both call it:
 - **A send error does not refund on the spot.** Even a preflight rejection waits
   for expiry, about 90 s. It is slower on a rare path, but it is the one rule
   that is safe without reasoning about which RPC errors mean "not forwarded".
-- The no-signature orphan rule is safe because of 6.1 step 5. A row that has
-  no signature was never sent, and once the sweeper ends it, the in-flight task
-  can no longer record or send.
+- The no-signature orphan rule is safe because of 6.1 step 5, **and** because
+  the refund itself re-checks that the row is still unsigned (6.3).
+  - A row that has no signature was never sent. Once the sweeper ends it, the
+    in-flight task can no longer record or send.
+  - The other direction needs the guard. A sweeper that read the row as
+    unsigned could otherwise refund it just after the task recorded and sent
+    it, and both the mint and the refund would happen. That hole was found in
+    review.
 
 ### 6.3 Ending a row
 
@@ -470,6 +475,12 @@ One pure function decides, and the in-command poll and the sweeper both call it:
   **only if** the guarded `UPDATE` moved it, then locks the wallet, credits
   `amount` back, and writes a `coin_refund` ledger row. If two resolvers race,
   only one moves the row and credits.
+  - **A "never sent" refund adds `AND signature IS NULL` to that guard.** If
+    the row was recorded since the resolver read it, the refund moves nothing,
+    and the row is settled later from the chain.
+  - The chain-proven refunds (failed, reset, expired) arise only for signed
+    rows, and a signature never changes once set, so their plain `pending`
+    guard is enough.
 - A refund needs no Discord, so it works in a server the bot has left.
 
 ### 6.4 The sweeper
