@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT signature, last_valid_block_height, genesis_hash, sponsored\n             FROM coin_withdrawals WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "signature",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "last_valid_block_height",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "genesis_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "sponsored",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "b62c9a900496b28767ea6cc128ef9eb9c31f1346171550fdcc55d817ff770af4"
+}

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO coin_links (user_id, address) VALUES ($1, $2)\n         ON CONFLICT (user_id) DO UPDATE SET address = EXCLUDED.address, linked_at = now()",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "a72b6e5c46a17c18bfb1872684aa5008fffb37b50af7eee9babaf2e18a7d113b"
+}

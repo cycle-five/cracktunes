@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT count(*) AS \"n!\" FROM coin_withdrawals\n           WHERE user_id = $1 AND mint = $2 AND state = 'done' AND sponsored",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "n!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "542f0842f9164d1e7d0627a8aa228ded31d8a7d3082e8d307e200f2ec70418c2"
+}

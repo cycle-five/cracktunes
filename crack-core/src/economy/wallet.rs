@@ -18,6 +18,8 @@ pub enum LedgerKind {
     BountyWon,
     Pledge,
     PledgeRefund,
+    CoinWithdraw,
+    CoinRefund,
 }
 
 impl LedgerKind {
@@ -34,6 +36,8 @@ impl LedgerKind {
             LedgerKind::BountyWon => "bounty_won",
             LedgerKind::Pledge => "pledge",
             LedgerKind::PledgeRefund => "pledge_refund",
+            LedgerKind::CoinWithdraw => "coin_withdraw",
+            LedgerKind::CoinRefund => "coin_refund",
         }
     }
 }

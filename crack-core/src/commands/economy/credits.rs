@@ -15,12 +15,13 @@ use crate::messaging::messages::{
     ECONOMY_HISTORY_FROM_MESSAGES, ECONOMY_HISTORY_IN_VOICE, ECONOMY_HISTORY_NO_ROWS,
     ECONOMY_HISTORY_TITLE, ECONOMY_LEDGER_ADJUSTMENT, ECONOMY_LEDGER_BOUNTY_PLACED,
     ECONOMY_LEDGER_BOUNTY_WON, ECONOMY_LEDGER_COINFLIP_BET, ECONOMY_LEDGER_COINFLIP_WIN,
-    ECONOMY_LEDGER_GIFT_RECEIVED, ECONOMY_LEDGER_GIFT_SENT, ECONOMY_LEDGER_PLEDGE,
-    ECONOMY_LEDGER_PLEDGE_REFUND, ECONOMY_LEDGER_PURCHASE, ECONOMY_LEDGER_REFUND,
-    ECONOMY_NO_DATABASE, ECONOMY_OFF, ECONOMY_OPTED_IN_DONE, ECONOMY_OPTED_OUT_DONE,
-    ECONOMY_OPTOUT_ALREADY_IN, ECONOMY_OPTOUT_ALREADY_OUT, ECONOMY_OPTOUT_COOLDOWN_PREFIX,
-    ECONOMY_OPTOUT_DISABLED, ECONOMY_OPTOUT_FAILED, ECONOMY_OPTOUT_SWITCH_BACK_PREFIX,
-    ECONOMY_READ_FAILED, ECONOMY_TOP_EMPTY, ECONOMY_TOP_TITLE,
+    ECONOMY_LEDGER_COIN_REFUND, ECONOMY_LEDGER_COIN_WITHDRAW, ECONOMY_LEDGER_GIFT_RECEIVED,
+    ECONOMY_LEDGER_GIFT_SENT, ECONOMY_LEDGER_PLEDGE, ECONOMY_LEDGER_PLEDGE_REFUND,
+    ECONOMY_LEDGER_PURCHASE, ECONOMY_LEDGER_REFUND, ECONOMY_NO_DATABASE, ECONOMY_OFF,
+    ECONOMY_OPTED_IN_DONE, ECONOMY_OPTED_OUT_DONE, ECONOMY_OPTOUT_ALREADY_IN,
+    ECONOMY_OPTOUT_ALREADY_OUT, ECONOMY_OPTOUT_COOLDOWN_PREFIX, ECONOMY_OPTOUT_DISABLED,
+    ECONOMY_OPTOUT_FAILED, ECONOMY_OPTOUT_SWITCH_BACK_PREFIX, ECONOMY_READ_FAILED,
+    ECONOMY_TOP_EMPTY, ECONOMY_TOP_TITLE,
 };
 use crate::messaging::render::Rendered;
 use crate::{Context, Error};
@@ -123,6 +124,8 @@ pub fn ledger_label(kind: &str) -> &str {
         "bounty_won" => ECONOMY_LEDGER_BOUNTY_WON,
         "pledge" => ECONOMY_LEDGER_PLEDGE,
         "pledge_refund" => ECONOMY_LEDGER_PLEDGE_REFUND,
+        "coin_withdraw" => ECONOMY_LEDGER_COIN_WITHDRAW,
+        "coin_refund" => ECONOMY_LEDGER_COIN_REFUND,
         other => other,
     }
 }
@@ -607,6 +610,8 @@ mod tests {
             ("bounty_won", "bounty won"),
             ("pledge", "pledge"),
             ("pledge_refund", "pledge refund"),
+            ("coin_withdraw", "withdrawn as CrackCoin"),
+            ("coin_refund", "CrackCoin refund"),
         ] {
             assert_eq!(ledger_label(kind), label, "{kind}");
         }
@@ -628,6 +633,8 @@ mod tests {
             ECONOMY_LEDGER_BOUNTY_WON,
             ECONOMY_LEDGER_PLEDGE,
             ECONOMY_LEDGER_PLEDGE_REFUND,
+            ECONOMY_LEDGER_COIN_WITHDRAW,
+            ECONOMY_LEDGER_COIN_REFUND,
         ];
         let labels: HashSet<&str> = [
             Purchase,
@@ -641,6 +648,8 @@ mod tests {
             BountyWon,
             Pledge,
             PledgeRefund,
+            CoinWithdraw,
+            CoinRefund,
         ]
         .into_iter()
         .map(|k| ledger_label(k.as_str()))

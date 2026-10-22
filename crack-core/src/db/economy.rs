@@ -8,6 +8,8 @@ use serenity::all::{GuildId, UserId};
 use sqlx::{types::Json, PgPool};
 use std::collections::HashSet;
 
+pub mod coin;
+
 pub async fn load_settings(pool: &PgPool, guild: GuildId) -> sqlx::Result<Option<EconomySettings>> {
     let row = sqlx::query!(
         r#"SELECT enabled, config AS "config: Json<EconomyConfig>"

@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE coin_withdrawals\n         SET signature = $2, tx = $3, last_valid_block_height = $4,\n             genesis_hash = $5, sponsored = $6\n         WHERE id = $1 AND state = 'pending' AND signature IS NULL\n         RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Text",
+        "Bytea",
+        "Int8",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "ffb868ed99602803c6d7cb34eea3fcc75be5ed165cd892bb91f5e59869d65cda"
+}
