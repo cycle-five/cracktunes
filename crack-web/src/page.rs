@@ -12,26 +12,27 @@ use crack_core::{
     messaging::{
         message::REPO_LINK,
         messages::{
-            DASH_ECONOMY_ANNOUNCE_CHANNEL, DASH_ECONOMY_ANNOUNCE_STATUS, DASH_ECONOMY_COIN,
-            DASH_ECONOMY_COIN_NOTE, DASH_ECONOMY_CURRENCY_EMOJI, DASH_ECONOMY_CURRENCY_NAME,
-            DASH_ECONOMY_ENABLED, DASH_ECONOMY_GAMBLING, DASH_ECONOMY_GAMBLING_NOTE,
-            DASH_ECONOMY_GUIDE, DASH_ECONOMY_IMMUNITY_HOURS, DASH_ECONOMY_IMMUNITY_MODS,
-            DASH_ECONOMY_IMMUNITY_OPTOUT, DASH_ECONOMY_IMMUNITY_SHOP, DASH_ECONOMY_JAIL_CHANNEL,
-            DASH_ECONOMY_JAIL_NOTE, DASH_ECONOMY_MAX_BET, DASH_ECONOMY_MESSAGE_COOLDOWN,
-            DASH_ECONOMY_MESSAGE_RATE, DASH_ECONOMY_NO_CHANNEL_OPTION,
-            DASH_ECONOMY_OPTOUT_COOLDOWN, DASH_ECONOMY_PREFLIGHT, DASH_ECONOMY_PREFLIGHT_READY,
-            DASH_ECONOMY_PREFLIGHT_UNKNOWN, DASH_ECONOMY_PRICES, DASH_ECONOMY_PRICE_COST,
-            DASH_ECONOMY_PRICE_FOR_SALE, DASH_ECONOMY_RENAME_HOURS, DASH_ECONOMY_SHORT_EFFECT,
-            DASH_ECONOMY_TITLE, DASH_ECONOMY_VOICE_RATE, DASH_LANDING_DESCRIPTION,
-            DASH_LANDING_TITLE, DASH_MODLOG_CHANNEL, DASH_MODLOG_ENABLED, DASH_MODLOG_GUIDE,
-            DASH_MODLOG_NO_CHANNEL_OPTION, DASH_MODLOG_NO_CHANNEL_YET, DASH_MODLOG_TITLE,
-            DASH_SETTINGS_ENABLED, DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE, DASH_SETTINGS_HUB,
-            DASH_SETTINGS_LIMIT, DASH_SETTINGS_LINK, DASH_SETTINGS_NO_HUB_OPTION,
-            DASH_SETTINGS_PERMISSIONS, DASH_SETTINGS_PREVIEW, DASH_SETTINGS_SAVE,
-            DASH_SETTINGS_SAVED, DASH_SETTINGS_SAVING_FAILED, DASH_SETTINGS_TEMPLATE,
-            DASH_SETTINGS_TITLE, DASH_SIGN_IN, ECONOMY_DOCS_URL, JOIN_VOICE_FOR_CONTROLS,
-            MODLOG_STATUS_READY, MODLOG_STATUS_UNKNOWN, PATREON_URL, PREMIUM_CONTROLS,
-            PREMIUM_HISTORY, ROOM_STATUS_NO_HUB_YET, ROOM_STATUS_READY, ROOM_STATUS_UNKNOWN,
+            DASH_ECONOMY_ANNOUNCE_CHANNEL, DASH_ECONOMY_ANNOUNCE_STATUS, DASH_ECONOMY_CAMERA,
+            DASH_ECONOMY_CAMERA_NOTE, DASH_ECONOMY_COIN, DASH_ECONOMY_COIN_NOTE,
+            DASH_ECONOMY_CURRENCY_EMOJI, DASH_ECONOMY_CURRENCY_NAME, DASH_ECONOMY_ENABLED,
+            DASH_ECONOMY_GAMBLING, DASH_ECONOMY_GAMBLING_NOTE, DASH_ECONOMY_GUIDE,
+            DASH_ECONOMY_IMMUNITY_HOURS, DASH_ECONOMY_IMMUNITY_MODS, DASH_ECONOMY_IMMUNITY_OPTOUT,
+            DASH_ECONOMY_IMMUNITY_SHOP, DASH_ECONOMY_JAIL_CHANNEL, DASH_ECONOMY_JAIL_NOTE,
+            DASH_ECONOMY_MAX_BET, DASH_ECONOMY_MESSAGE_COOLDOWN, DASH_ECONOMY_MESSAGE_RATE,
+            DASH_ECONOMY_NO_CHANNEL_OPTION, DASH_ECONOMY_OPTOUT_COOLDOWN, DASH_ECONOMY_PREFLIGHT,
+            DASH_ECONOMY_PREFLIGHT_READY, DASH_ECONOMY_PREFLIGHT_UNKNOWN, DASH_ECONOMY_PRICES,
+            DASH_ECONOMY_PRICE_COST, DASH_ECONOMY_PRICE_FOR_SALE, DASH_ECONOMY_RENAME_HOURS,
+            DASH_ECONOMY_SHORT_EFFECT, DASH_ECONOMY_TITLE, DASH_ECONOMY_VOICE_RATE,
+            DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE, DASH_MODLOG_CHANNEL, DASH_MODLOG_ENABLED,
+            DASH_MODLOG_GUIDE, DASH_MODLOG_NO_CHANNEL_OPTION, DASH_MODLOG_NO_CHANNEL_YET,
+            DASH_MODLOG_TITLE, DASH_SETTINGS_ENABLED, DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE,
+            DASH_SETTINGS_HUB, DASH_SETTINGS_LIMIT, DASH_SETTINGS_LINK,
+            DASH_SETTINGS_NO_HUB_OPTION, DASH_SETTINGS_PERMISSIONS, DASH_SETTINGS_PREVIEW,
+            DASH_SETTINGS_SAVE, DASH_SETTINGS_SAVED, DASH_SETTINGS_SAVING_FAILED,
+            DASH_SETTINGS_TEMPLATE, DASH_SETTINGS_TITLE, DASH_SIGN_IN, ECONOMY_DOCS_URL,
+            JOIN_VOICE_FOR_CONTROLS, MODLOG_STATUS_READY, MODLOG_STATUS_UNKNOWN, PATREON_URL,
+            PREMIUM_CONTROLS, PREMIUM_HISTORY, ROOM_STATUS_NO_HUB_YET, ROOM_STATUS_READY,
+            ROOM_STATUS_UNKNOWN,
         },
     },
     rooms::settings::{render_room_name, GRACE_CHOICES, ROOM_NAME_MAX},
@@ -337,6 +338,8 @@ pub fn settings_page(
 <label>{name_text} <input type=\"text\" id=\"e-name\" maxlength=\"24\" value=\"{name}\"></label>\
 <label>{emoji_text} <input type=\"text\" id=\"e-emoji\" maxlength=\"64\" value=\"{emoji}\"></label>\
 <label>{voice_text} <input type=\"number\" id=\"e-voice\" min=\"0\" max=\"100\" value=\"{voice}\"></label>\
+<label class=\"check\"><input type=\"checkbox\" id=\"e-camera\"{camera}> {camera_text}</label>\
+<p id=\"e-camera-note\">{camera_note}</p>\
 <label>{message_text} <input type=\"number\" id=\"e-message\" min=\"0\" max=\"100\" value=\"{message}\"></label>\
 <label>{cooldown_text} <input type=\"number\" id=\"e-cooldown\" min=\"10\" max=\"3600\" value=\"{cooldown}\"></label>\
 <label>{rename_hours_text} <input type=\"number\" id=\"e-rename-hours\" min=\"1\" max=\"168\" value=\"{rename_hours}\"></label>\
@@ -369,6 +372,9 @@ data-announce=\"{announce_status}\">{preflight_rows}{announce_row}</ul>\
         emoji = esc(&economy.currency_emoji),
         voice_text = esc(DASH_ECONOMY_VOICE_RATE),
         voice = economy.voice_credits_per_minute,
+        camera = check(economy.voice_requires_camera),
+        camera_text = esc(DASH_ECONOMY_CAMERA),
+        camera_note = esc(DASH_ECONOMY_CAMERA_NOTE),
         message_text = esc(DASH_ECONOMY_MESSAGE_RATE),
         message = economy.message_credits,
         cooldown_text = esc(DASH_ECONOMY_MESSAGE_COOLDOWN),
@@ -682,6 +688,43 @@ mod test {
         // Rows with no hint stay as they were.
         assert!(html.contains("<td>Rename</td>"), "{html}");
         assert_eq!(html.matches("class=\"e-hint\"").count(), 3);
+    }
+
+    #[test]
+    fn the_camera_checkbox_renders_in_every_build() {
+        let rooms = RoomSettingsView {
+            enabled: false,
+            hub: None,
+            name_template: String::new(),
+            default_limit: 0,
+            empty_grace_secs: 0,
+            voice_channels: vec![],
+            findings: None,
+        };
+        let modlog = ModLogSettingsView {
+            enabled: false,
+            channel: None,
+            text_channels: vec![],
+            findings: None,
+            visibility: None,
+        };
+        let page = |on: bool| {
+            let mut s = EconomySettings::off(GuildId::new(5));
+            s.config.voice_requires_camera = on;
+            let economy = EconomySettingsView::from_settings(&s, false);
+            settings_page("G", GuildId::new(5), &rooms, &modlog, &economy)
+        };
+        let off = page(false);
+        assert!(
+            off.contains("<input type=\"checkbox\" id=\"e-camera\"> "),
+            "{off}"
+        );
+        assert!(off.contains(&*esc(DASH_ECONOMY_CAMERA_NOTE)), "{off}");
+        let on = page(true);
+        assert!(
+            on.contains("<input type=\"checkbox\" id=\"e-camera\" checked> "),
+            "{on}"
+        );
     }
 
     #[test]

@@ -258,6 +258,9 @@ pub struct EconomyConfig {
     pub currency_name: String,
     pub currency_emoji: String,
     pub voice_credits_per_minute: u32,
+    /// Whether a member earns voice credits only while their camera is on.
+    /// Off by default; a screen share is not a camera.
+    pub voice_requires_camera: bool,
     pub message_credits: u32,
     pub message_cooldown_seconds: u32,
     pub prices: Prices,
@@ -290,6 +293,7 @@ impl Default for EconomyConfig {
             currency_name: "credits".to_string(),
             currency_emoji: "🪙".to_string(),
             voice_credits_per_minute: 1,
+            voice_requires_camera: false,
             message_credits: 1,
             message_cooldown_seconds: 60,
             prices: Prices::default(),
@@ -483,6 +487,15 @@ pub fn clown_name(current: &str) -> String {
 mod tests {
     use super::*;
     use EconomySettingsError as E;
+
+    #[test]
+    fn a_stored_config_without_voice_requires_camera_reads_false() {
+        let c: EconomyConfig = serde_json::from_str(r#"{"max_bet": 50}"#).unwrap();
+        assert!(!c.voice_requires_camera);
+        let on: EconomyConfig = serde_json::from_str(r#"{"voice_requires_camera": true}"#).unwrap();
+        assert!(on.voice_requires_camera);
+        assert!(on.extra.is_empty());
+    }
 
     #[test]
     fn a_stored_config_without_coin_withdrawals_reads_false() {

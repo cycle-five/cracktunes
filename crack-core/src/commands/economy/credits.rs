@@ -11,7 +11,7 @@ use crate::messaging::courier;
 use crate::messaging::messages::{
     ECONOMY_BALANCE_HAS, ECONOMY_GIFT_FAILED, ECONOMY_GIFT_FROM_OPTED_OUT,
     ECONOMY_GIFT_NON_POSITIVE, ECONOMY_GIFT_SELF, ECONOMY_GIFT_SENT, ECONOMY_GIFT_TO,
-    ECONOMY_GIFT_TO_BOT, ECONOMY_GIFT_TO_OPTED_OUT, ECONOMY_HISTORY_EARNED,
+    ECONOMY_GIFT_TO_BOT, ECONOMY_GIFT_TO_OPTED_OUT, ECONOMY_HISTORY_CAMERA, ECONOMY_HISTORY_EARNED,
     ECONOMY_HISTORY_FROM_MESSAGES, ECONOMY_HISTORY_IN_VOICE, ECONOMY_HISTORY_NO_ROWS,
     ECONOMY_HISTORY_TITLE, ECONOMY_LEDGER_ADJUSTMENT, ECONOMY_LEDGER_BOUNTY_PLACED,
     ECONOMY_LEDGER_BOUNTY_WON, ECONOMY_LEDGER_COINFLIP_BET, ECONOMY_LEDGER_COINFLIP_WIN,
@@ -132,12 +132,14 @@ pub fn ledger_label(kind: &str) -> &str {
 
 /// The member's activity: what they earned so far, then their ledger, newest
 /// first, each change signed. Earnings are counters, so they are a line of
-/// totals and never rows.
+/// totals and never rows. When voice earning needs a camera here, a line
+/// after the totals says so.
 pub fn history_text(
     earned: &WalletSummary,
     rows: &[LedgerEntry],
     currency: &str,
     emoji: &str,
+    camera_required: bool,
 ) -> String {
     let mut lines = vec![
         format!("**{ECONOMY_HISTORY_TITLE}**"),
@@ -146,6 +148,9 @@ pub fn history_text(
             earned.earned_voice, earned.earned_messages
         ),
     ];
+    if camera_required {
+        lines.push(ECONOMY_HISTORY_CAMERA.to_string());
+    }
     if rows.is_empty() {
         lines.push(ECONOMY_HISTORY_NO_ROWS.to_string());
         return lines.join("\n");
@@ -426,7 +431,13 @@ pub async fn history(ctx: Context<'_>) -> Result<(), Error> {
     };
     say(
         ctx,
-        history_text(&earned, &rows, &cfg.currency_name, &cfg.currency_emoji),
+        history_text(
+            &earned,
+            &rows,
+            &cfg.currency_name,
+            &cfg.currency_emoji,
+            cfg.voice_requires_camera,
+        ),
         true,
     )
     .await
@@ -578,7 +589,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            history_text(&earned(30, 12), &rows, "credits", "🪙"),
+            history_text(&earned(30, 12), &rows, "credits", "🪙", false),
             "**Your recent activity**\n\
              Earned so far: 30 🪙 credits in voice, 12 🪙 credits from messages.\n\
              +100 🪙 credits · coinflip win · <t:1700000000:R>\n\
@@ -589,10 +600,25 @@ mod tests {
     #[test]
     fn history_with_no_rows_still_shows_earnings() {
         assert_eq!(
-            history_text(&earned(5, 0), &[], "credits", "🪙"),
+            history_text(&earned(5, 0), &[], "credits", "🪙", false),
             "**Your recent activity**\n\
              Earned so far: 5 🪙 credits in voice, 0 🪙 credits from messages.\n\
              No purchases, gifts or bets yet."
+        );
+    }
+
+    #[test]
+    fn history_says_when_voice_earning_needs_a_camera() {
+        let off = history_text(&earned(5, 0), &[], "credits", "🪙", false);
+        assert!(!off.contains(ECONOMY_HISTORY_CAMERA));
+        assert_eq!(
+            history_text(&earned(5, 0), &[], "credits", "🪙", true),
+            format!(
+                "**Your recent activity**\n\
+                 Earned so far: 5 🪙 credits in voice, 0 🪙 credits from messages.\n\
+                 {ECONOMY_HISTORY_CAMERA}\n\
+                 No purchases, gifts or bets yet."
+            )
         );
     }
 

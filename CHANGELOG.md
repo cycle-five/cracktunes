@@ -121,6 +121,16 @@
   a withdrawal, so this must return 0 first:
   `SELECT count(*) FROM coin_withdrawals WHERE state = 'pending'`. Coins
   already minted stay minted. See `docs/crack-coin.md`.
+- **v0.36.0, voice earning can require a camera.** For servers where "cam up"
+  is the culture, the dashboard's economy settings have a new switch, "Voice
+  earning requires camera", off by default. With it on, a member earns voice
+  credits for a minute only while their camera is on; a screen share alone
+  doesn't count, and the person keeping them company doesn't need a camera.
+  The other voice rules still apply, and message credits are unchanged.
+  `/economy status` shows "per voice minute with camera on", and `/credits
+  history` tells members the rule under their totals. A stored setting from
+  before this release reads as off. **Rolling back below v0.36.0** is
+  image-only: the switch is kept but ignored, so cams-off members earn again.
 - **`/downvote` is registered.** It skips the current track and records a
   dislike against that track's newest play in this server, and one dislike is
   enough to hide the play from `/playlog`. When the track has no logged play to
