@@ -166,7 +166,7 @@ mod test {
         .unwrap();
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -226,7 +226,7 @@ mod test {
         assert!(got[0].last > got[1].last && got[1].last > got[2].last);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -292,7 +292,7 @@ mod test {
         assert_eq!(one.len(), 1);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -309,7 +309,7 @@ mod test {
 
     /// The query runs under the statement timeout (Ruling 5): `SET LOCAL`
     /// reaches the same connection the query uses, and ends with the transaction.
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"

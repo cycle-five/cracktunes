@@ -2577,7 +2577,7 @@ mod tests {
 
         /// Reconcile's read (and its retry a minute after a failure) reads
         /// the server's room settings too when GuildCreate could not.
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2602,7 +2602,7 @@ mod tests {
         /// The rows do not wait on the settings: when the settings cannot be
         /// read, the rooms are still read (so empty ones are swept), and only
         /// the hub waits for the retry, which reads the settings.
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2632,7 +2632,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2656,7 +2656,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2681,7 +2681,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2707,7 +2707,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2722,7 +2722,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2740,7 +2740,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2757,7 +2757,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2773,7 +2773,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2798,7 +2798,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2812,7 +2812,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2850,7 +2850,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2874,7 +2874,7 @@ mod tests {
 
         /// Real time: the timer's delete must not be cut short by its own
         /// removal from the registry while the row is being dropped.
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2902,7 +2902,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -2917,7 +2917,7 @@ mod tests {
             Ok(())
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"

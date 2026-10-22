@@ -1150,7 +1150,7 @@ mod tests {
 
     macro_rules! db_test {
         ($name:ident, |$pool:ident: PgPool| $body:expr) => {
-            #[sqlx::test(migrator = "MIGRATOR")]
+            #[crack_test_macros::db_test(migrator = "MIGRATOR")]
             #[cfg_attr(
                 not(feature = "db-tests"),
                 ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"

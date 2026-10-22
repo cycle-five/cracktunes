@@ -463,7 +463,7 @@ mod tests {
         }
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -498,7 +498,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -529,7 +529,7 @@ mod tests {
         assert_eq!(refunds(&pool, s.id).await, 1);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -557,7 +557,7 @@ mod tests {
         assert_eq!(refunds(&pool, s.id).await, 1);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -582,7 +582,7 @@ mod tests {
         assert_eq!(refunds(&pool, s.id).await, 0);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -604,7 +604,7 @@ mod tests {
         assert_eq!(state(&pool, s.id).await, (WithdrawalState::Done, None));
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -632,7 +632,7 @@ mod tests {
         );
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -657,7 +657,7 @@ mod tests {
         assert_eq!(bal(&pool).await, 100);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -682,7 +682,7 @@ mod tests {
         assert_eq!(stored(&pool, s.id).await.2, None, "nothing was recorded");
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -717,7 +717,7 @@ mod tests {
         assert_eq!(bal(&pool).await, 100);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -743,7 +743,7 @@ mod tests {
         assert_eq!(stored(&pool, s.id).await.2, None, "nothing was recorded");
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -781,7 +781,7 @@ mod tests {
         assert!(fake.prepares().is_empty(), "the sweeper never signs");
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -800,7 +800,7 @@ mod tests {
         assert_eq!(stored(&pool, s.id).await.0, ADDR);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -832,7 +832,7 @@ mod tests {
         assert_eq!(refunds(&pool, s.id).await, 1);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -853,7 +853,7 @@ mod tests {
         assert_eq!(state(&pool, s.id).await, (WithdrawalState::Done, None));
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -883,7 +883,7 @@ mod tests {
         assert_eq!(refunds(&pool, s.id).await, 0);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -911,7 +911,7 @@ mod tests {
         assert_eq!(state(&pool, s.id).await, (WithdrawalState::Done, None));
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"

@@ -478,7 +478,7 @@ mod test {
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -499,7 +499,7 @@ mod test {
         assert_eq!(settings.prefix, "test");
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -527,7 +527,7 @@ mod test {
         assert_eq!(settings.prefix, "new_prefix");
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -573,7 +573,7 @@ mod test {
         assert_eq!(welcome_settings, welcome_settings_new);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -603,7 +603,7 @@ mod test {
         );
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -633,7 +633,7 @@ mod test {
         );
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -677,7 +677,7 @@ mod ephemeral_replies_db_tests {
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     /// The setting only matters if it survives a restart.
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -707,7 +707,7 @@ mod control_echoes_db_tests {
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     /// Off must survive a restart, and a new guild starts on.
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -737,7 +737,7 @@ mod now_playing_buttons_db_tests {
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     /// Off must survive a restart, and a new guild starts on.
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"

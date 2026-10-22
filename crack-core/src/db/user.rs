@@ -219,7 +219,7 @@ mod test {
         assert_eq!(test_database_url(Some("   ")), Some(TEST_DATABASE_URL));
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -230,7 +230,7 @@ mod test {
         assert_eq!(user.username, TEST);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -244,7 +244,7 @@ mod test {
         assert_eq!(user.username, TEST);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -257,7 +257,7 @@ mod test {
         assert_eq!(user.username, TEST);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -274,7 +274,7 @@ mod test {
         assert_eq!(first.unwrap().site, TEST);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -297,7 +297,7 @@ mod test {
         assert!(has_voted);
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"

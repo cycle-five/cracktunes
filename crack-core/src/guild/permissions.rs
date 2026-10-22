@@ -693,7 +693,7 @@ mod tests {
         assert!(hash_set2.contains(&2));
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -721,7 +721,7 @@ mod tests {
         // assert!(!settings_read.is_command_allowed("test2"));
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"

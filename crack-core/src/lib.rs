@@ -895,7 +895,7 @@ mod downvote_tests {
 
     /// 🪤 The original #207 bug: `downvote_track` took the newest *metadata*
     /// id of the guild and used it as a play_log id, ignoring the URL.
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
