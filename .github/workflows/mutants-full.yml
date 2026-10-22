@@ -20,6 +20,11 @@ name: Mutants (full run)
 # failures: a missed mutant is the very thing we are collecting. Only 1 (usage
 # error), 4 (the unmutated baseline failed) and the like fail the job.
 #
+# 🔑 An incomplete run produces no `mutants-missed`. A shard that fails (a dead
+# Postgres, a timeout) uploads only a debugging artifact, `mutants-failed-<n>`,
+# and `collect` refuses to combine anything unless every shard succeeded. An
+# undercounted missed list would poison the baseline built from it.
+#
 # 🪤 `--sharding round-robin`, because the default (`slice`) can hand a shard
 # nothing but crack-types mutants. cargo-mutants' unmutated baseline builds
 # `--package <crates with mutants in this shard>` with the bare feature names
@@ -69,6 +74,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           SHARDS: ${{ inputs.shards }}
+        shell: bash
         run: |
           if [ "$EVENT" = "push" ]; then
             # Smoke test: 400 shards, but only shard 0 runs (about 19 mutants).
@@ -76,6 +82,11 @@ jobs:
             matrix='[0]'
           else
             shards="$SHARDS"
+            # GitHub caps a matrix at 256 jobs.
+            if ! [[ "$shards" =~ ^[0-9]+$ ]] || [ "$shards" -lt 1 ] || [ "$shards" -gt 256 ]; then
+              echo "::error::shards must be an integer from 1 to 256, got '$shards'"
+              exit 1
+            fi
             matrix="[$(seq -s, 0 $((shards - 1)))]"
           fi
           echo "shards=$shards" >> "$GITHUB_OUTPUT"
@@ -156,7 +167,7 @@ jobs:
           esac
 
       - name: Upload shard results
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v7
         with:
           name: mutants-shard-${{ matrix.shard }}
@@ -168,6 +179,15 @@ jobs:
             out/mutants.out/outcomes.json
           if-no-files-found: error
 
+      # Named so the `mutants-shard-*` download pattern does not match it.
+      - name: Upload failed shard's output for debugging
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-failed-${{ matrix.shard }}
+          path: out/mutants.out
+          if-no-files-found: ignore
+
   collect:
     name: Collect
     needs: [plan, shard]
@@ -176,6 +196,16 @@ jobs:
     steps:
       - name: Repository Checkout
         uses: actions/checkout@v7
+
+      - name: Check that every shard succeeded
+        env:
+          SHARD_RESULT: ${{ needs.shard.result }}
+        shell: bash
+        run: |
+          if [ "$SHARD_RESULT" != "success" ]; then
+            echo "::error::incomplete run: shard jobs finished as '$SHARD_RESULT'"
+            exit 1
+          fi
 
       - name: Download every shard's results
         uses: actions/download-artifact@v8
@@ -187,6 +217,7 @@ jobs:
         env:
           EXPECTED: ${{ needs.plan.outputs.shards }}
           EVENT: ${{ github.event_name }}
+        shell: bash
         run: |
           got=$(find shards -mindepth 1 -maxdepth 1 -type d | wc -l)
           # The smoke test runs one shard of 400, so it expects one artifact.
@@ -197,6 +228,7 @@ jobs:
           fi
 
       - name: Combine and summarise
+        shell: bash
         run: |
           cat shards/*/missed.txt | sort > missed-all.txt
           {
@@ -213,6 +245,7 @@ jobs:
           path: missed-all.txt
 
       - name: Compare with the baseline
+        shell: bash
         run: |
           if [ -f .cargo/mutants-baseline.txt ]; then
             python3 scripts/mutants_baseline.py compare \

@@ -36,8 +36,8 @@ profile = "mutants"
 # 🪤 Legacy misses do NOT go here. They go to the baseline, so that the debt
 # stays visible and shrinks on purpose.
 exclude_globs = [
-    # Test tooling. Every crack-core database test exercises it, but
-    # cargo-mutants only runs the tests of the package it mutates, so each
-    # mutant here would look missed.
+    # Test-only tooling: a proc-macro that never ships in the bot. Mutating
+    # it says nothing about the bot, and with test_workspace each of its
+    # mutants would cost a full workspace test run.
     "crack-test-macros/**",
 ]
