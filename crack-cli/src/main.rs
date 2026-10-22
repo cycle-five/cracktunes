@@ -27,7 +27,6 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 
 use std::time::Duration;
 /// Main function, get everything kicked off.
-#[cfg(not(tarpaulin_include))]
 //#[tokio::main]
 fn main() -> Result<(), Error> {
     config::install_crypto_provider();
@@ -62,7 +61,6 @@ fn main() -> Result<(), Error> {
 }
 
 /// Main async function, needed so we can  initialize everything.
-#[cfg(not(tarpaulin_include))]
 async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
     use crack_core::http_utils;
 
@@ -119,7 +117,6 @@ async fn main_async(event_log_async: EventLogAsync) -> Result<(), Error> {
 
 // /// Prometheus handler
 // #[cfg(feature = "crack-metrics")]
-// #[cfg(not(tarpaulin_include))]
 // async fn metrics_handler() -> Result<impl warp::Reply, warp::Rejection> {
 //     let encoder = TextEncoder::new();
 //     let mut metric_families = prometheus::gather();

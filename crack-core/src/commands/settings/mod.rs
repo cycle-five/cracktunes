@@ -29,7 +29,6 @@ pub use toggle::*;
     ),
     ephemeral
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn settings(
     ctx: Context<'_>,
     #[flag]

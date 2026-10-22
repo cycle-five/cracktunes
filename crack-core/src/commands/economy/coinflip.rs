@@ -9,7 +9,6 @@ use crate::messaging::messages::ECONOMY_BET_FAILED;
 use crate::{Context, Error};
 
 /// Bet credits on a coin toss: win and you get the stake back plus the same again.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Economy", slash_command, guild_only)]
 pub async fn coinflip(
     ctx: Context<'_>,

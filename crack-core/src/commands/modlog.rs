@@ -23,7 +23,6 @@ pub fn commands() -> Vec<crate::Command> {
 }
 
 /// Set up, turn off, or check the mod log.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Mod log",
     slash_command,
@@ -77,7 +76,6 @@ pub(crate) fn status_text(
     lines.join("\n")
 }
 
-#[cfg(not(tarpaulin_include))]
 fn current_status(ctx: Context<'_>, guild: GuildId) -> String {
     let settings = ctx.data().modlog.settings(guild);
     let findings = preflight::for_guild(&ctx.serenity_context().cache, &ctx.data(), guild);
@@ -88,14 +86,12 @@ fn current_status(ctx: Context<'_>, guild: GuildId) -> String {
     )
 }
 
-#[cfg(not(tarpaulin_include))]
 async fn say(ctx: Context<'_>, text: impl Into<String>) -> Result<(), Error> {
     courier::reply_rendered(ctx, Rendered::text(text), true).await?;
     Ok(())
 }
 
 /// Save `settings`; on success seed the audit snapshots (M20) and show status.
-#[cfg(not(tarpaulin_include))]
 async fn save_and_say(
     ctx: Context<'_>,
     guild: GuildId,
@@ -115,7 +111,6 @@ async fn save_and_say(
 }
 
 /// Turn the mod log on, posting to a text channel.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn set(
     ctx: Context<'_>,
@@ -136,7 +131,6 @@ pub async fn set(
 }
 
 /// Turn the mod log off.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn off(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
@@ -151,7 +145,6 @@ pub async fn off(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Show the mod log settings and what CrackTunes still needs.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;

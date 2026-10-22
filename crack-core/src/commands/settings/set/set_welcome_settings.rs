@@ -15,7 +15,6 @@ use std::sync::Arc;
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "SEND_MESSAGES|MANAGE_ROLES"
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn password_verify(
     ctx: Context<'_>,
     #[description = "The channel to use for verification message"] channel: Channel,
@@ -54,7 +53,6 @@ pub async fn password_verify(
     required_permissions = "ADMINISTRATOR",
     required_bot_permissions = "SEND_MESSAGES|MANAGE_ROLES"
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn welcome_settings(
     ctx: Context<'_>,
     #[description = "The channel to send welcome messages"] channel: Channel,
@@ -84,7 +82,6 @@ pub async fn welcome_settings(
 }
 
 /// Set the welcome settings for a given guild.
-#[cfg(not(tarpaulin_include))]
 pub async fn set_welcome_settings(
     data: Arc<Data>,
     guild_id: GuildId,

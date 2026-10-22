@@ -54,7 +54,6 @@ impl<'a> SmokeTest<'a> {
 }
 
 /// Have the bot say something in a channel.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Testing",
     slash_command,

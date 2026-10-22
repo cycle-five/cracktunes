@@ -20,14 +20,12 @@ pub struct CheckResponse {
 }
 
 /// Vote link for cracktunes on top.gg
-#[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Base", slash_command, prefix_command)]
 pub async fn vote(ctx: Context<'_>) -> Result<(), Error> {
     vote_topgg_internal(ctx).await
 }
 
 /// Internal vote function without the #command macro
-#[cfg(not(tarpaulin_include))]
 pub async fn vote_topgg_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id: GuildId = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let user_id: UserId = ctx.author().id;
@@ -116,7 +114,7 @@ mod test {
         }
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"

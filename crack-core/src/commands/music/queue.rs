@@ -22,7 +22,6 @@ use tokio::sync::RwLock;
 const EMBED_TIMEOUT: u64 = 3600;
 
 /// Display the current queue.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",
@@ -46,7 +45,6 @@ pub async fn queue(
 use poise::serenity_prelude::CollectComponentInteractions;
 
 /// Internal queue function.
-#[cfg(not(tarpaulin_include))]
 pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let manager = ctx.data().songbird.clone();

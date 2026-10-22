@@ -12,7 +12,6 @@ use crate::{
 };
 
 /// Turn the buttons on the now-playing message off or on for this server.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,
@@ -35,7 +34,6 @@ pub async fn buttons(
 
 /// Flip and save the server's `now_playing_buttons`, say which way it went,
 /// then bring the status message in line.
-#[cfg(not(tarpaulin_include))]
 pub async fn buttons_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();

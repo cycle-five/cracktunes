@@ -1,0 +1,19 @@
+[package]
+name = "crack-test-macros"
+version.workspace = true
+edition = "2021"
+authors = ["Cycle Five <cycle.five@proton.me>"]
+# Test support for crack-core alone: the attribute it provides calls
+# `crate::test_db`, which exists only there.
+publish = false
+license = "MIT"
+description = "The #[db_test] attribute: crack-core's db tests on template databases."
+workspace = ".."
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }

@@ -347,7 +347,7 @@ mod tests {
                 .expect("count")
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -368,7 +368,7 @@ mod tests {
             assert!(entry.results.is_empty());
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -389,7 +389,7 @@ mod tests {
             );
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -406,7 +406,7 @@ mod tests {
                 .is_some());
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -423,7 +423,7 @@ mod tests {
         }
 
         /// Ruling 37: `fetched_at` is read, not only written.
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -445,7 +445,7 @@ mod tests {
                 .is_none());
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -467,7 +467,7 @@ mod tests {
                 .is_none());
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -486,7 +486,7 @@ mod tests {
         }
 
         /// Ruling 35: an undecodable blob is a MISS, not "found, nothing to play".
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -508,7 +508,7 @@ mod tests {
             );
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -531,7 +531,7 @@ mod tests {
         }
 
         /// 🪤 Ruling 36: the day's first INSERT bypasses `WHERE calls < $2`.
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -543,7 +543,7 @@ mod tests {
             assert_eq!(budget_rows(&pool).await, 0);
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -562,7 +562,7 @@ mod tests {
             assert_eq!(granted, 1);
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -635,7 +635,7 @@ mod tests {
             )
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -650,7 +650,7 @@ mod tests {
             assert_eq!(budget_rows(&pool).await, 1, "the hit spent no budget");
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -663,7 +663,7 @@ mod tests {
             assert_eq!(calls.load(Ordering::SeqCst), 1);
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -676,7 +676,7 @@ mod tests {
             assert_eq!(calls.load(Ordering::SeqCst), 1);
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -690,7 +690,7 @@ mod tests {
             assert_eq!(calls.load(Ordering::SeqCst), 1);
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -703,7 +703,7 @@ mod tests {
             assert_eq!(calls.load(Ordering::SeqCst), 2);
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -723,7 +723,7 @@ mod tests {
             assert_eq!(calls.load(Ordering::SeqCst), 1);
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -737,7 +737,7 @@ mod tests {
             assert_eq!(calls.load(Ordering::SeqCst), 2);
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -751,7 +751,7 @@ mod tests {
             assert_eq!(budget_rows(&pool).await, 0);
         }
 
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -768,7 +768,7 @@ mod tests {
         }
 
         /// Fail closed: with the budget table gone, a metered call is refused.
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -790,7 +790,7 @@ mod tests {
         }
 
         /// Fail open: with the cache table gone, the call still happens.
-        #[sqlx::test(migrator = "MIGRATOR")]
+        #[crack_test_macros::db_test(migrator = "MIGRATOR")]
         #[cfg_attr(
             not(feature = "db-tests"),
             ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"

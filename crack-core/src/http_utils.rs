@@ -139,7 +139,6 @@ impl<T: CacheHttp> CacheHttpExt for T {
     }
 
     /// Sends a message to a channel. Only `/osint` uses it.
-    #[cfg(not(tarpaulin_include))]
     #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     async fn send_channel_message(&self, params: SendMessageParams<'_>) -> CrackedResult<Message> {
         let channel = params.channel;
@@ -211,7 +210,6 @@ pub fn init_http_client() {
 }
 
 /// Get the bot's user ID.
-#[cfg(not(tarpaulin_include))]
 pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedError> {
     let tune_titan_id = UserId::new(1124707756750934159);
     let rusty_bot_id = UserId::new(1111844110597374042);
@@ -233,7 +231,6 @@ pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedErr
 }
 
 /// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
-#[cfg(not(tarpaulin_include))]
 pub async fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
     match user_id.to_user(cache_http).await {
         Ok(x) => x.name.to_string(),
@@ -264,7 +261,6 @@ pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
 }
 
 /// Gets the guild_name for a channel_id.
-#[cfg(not(tarpaulin_include))]
 pub async fn get_guild_name(
     cache_http: &impl CacheHttp,
     channel_id: GenericChannelId,
@@ -283,7 +279,6 @@ pub async fn get_guild_name(
 }
 
 // Get the guild name from the guild id and an http client.
-#[cfg(not(tarpaulin_include))]
 pub async fn guild_name_from_guild_id(
     cache_http: impl CacheHttp,
     guild_id: GuildId,

@@ -23,7 +23,6 @@ use crate::messaging::render::Rendered;
 use crate::{Context, Error};
 
 /// Turn credits into CrackCoin, a worthless devnet token.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Economy",
     slash_command,
@@ -44,7 +43,6 @@ fn ready_mint(ctx: Context<'_>) -> Option<String> {
 }
 
 /// Show your linked address and what you have withdrawn.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
     let Some((_guild, pool)) = gate_for(ctx, GateNeed::DatabaseOnly).await? else {
@@ -69,7 +67,6 @@ pub async fn show(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Link the devnet address CrackCoin is sent to.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn link(
     ctx: Context<'_>,
@@ -101,7 +98,6 @@ pub async fn link(
 }
 
 /// Forget your linked address.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn unlink(ctx: Context<'_>) -> Result<(), Error> {
     let Some((_guild, pool)) = gate_for(ctx, GateNeed::DatabaseOnly).await? else {
@@ -119,7 +115,6 @@ pub async fn unlink(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Spend credits to mint CrackCoin to your linked address.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn withdraw(
     ctx: Context<'_>,

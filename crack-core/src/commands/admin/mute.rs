@@ -128,7 +128,6 @@ pub async fn mute_internal(
     required_permissions = "ADMINISTRATOR",
     guild_only
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn unmute(
     ctx: Context<'_>,
     #[description = "User of unmute"] user: User,
@@ -138,7 +137,6 @@ pub async fn unmute(
 
 /// Unmute a user
 /// impl for other internal use.
-#[cfg(not(tarpaulin_include))]
 pub async fn unmute_impl(ctx: Context<'_>, user: User) -> Result<(), Error> {
     let id = user.id;
     let mention = user.mention();

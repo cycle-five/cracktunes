@@ -115,7 +115,6 @@ fn render(p: &MusicPermissions) -> String {
 }
 
 /// Report what the bot can and cannot do in this channel and your voice channel.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     slash_command,

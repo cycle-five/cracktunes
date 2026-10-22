@@ -5,7 +5,6 @@ use crate::CrackedMessage;
 use crate::{Context, Error};
 
 /// Get the current `premium` setting for the guild.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,

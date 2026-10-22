@@ -7,7 +7,6 @@ use crate::utils::send_reply;
 use crate::{Context, Error};
 
 /// Internal set premium function without #command macro.
-#[cfg(not(tarpaulin_include))]
 pub async fn set_premium_internal(ctx: Context<'_>, premium: bool) -> Result<(), CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
@@ -22,7 +21,6 @@ pub async fn set_premium_internal(ctx: Context<'_>, premium: bool) -> Result<(),
 
 /// Set the premium status of the guild.
 #[poise::command(category = "Settings", prefix_command, slash_command, owners_only)]
-#[cfg(not(tarpaulin_include))]
 pub async fn premium(
     ctx: Context<'_>,
     #[description = "True or false setting for premium."] premium: bool,

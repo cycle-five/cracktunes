@@ -6,7 +6,6 @@ use crate::Error;
 use poise::CreateReply;
 
 /// Set the idle timeout for the bot in vc.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,

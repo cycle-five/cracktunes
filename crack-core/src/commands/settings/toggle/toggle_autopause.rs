@@ -13,7 +13,6 @@ use std::sync::Arc;
     rename = "autopause",
     required_permissions = "ADMINISTRATOR"
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn toggle_autopause(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let guild_name = ctx.guild_name_from_guild_id(guild_id).await?;
@@ -35,7 +34,6 @@ pub async fn toggle_autopause(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Toggle the autopause for the bot.
-#[cfg(not(tarpaulin_include))]
 pub async fn toggle_autopause_internal(
     data: Arc<Data>,
     pool: PgPool,

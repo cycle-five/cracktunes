@@ -69,7 +69,6 @@ impl FundKind {
 }
 
 /// Pool credits with others for a prank against a member.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Economy",
     slash_command,
@@ -170,13 +169,11 @@ pub fn fund_list_text(funds: &[(ActionRow, i64, i64)], cfg: &EconomyConfig) -> S
 }
 
 /// What a fill came to, for the private reply.
-#[cfg(not(tarpaulin_include))]
 enum Fate {
     Landed,
     Failed(String),
 }
 
-#[cfg(not(tarpaulin_include))]
 impl Fate {
     fn as_reply(&self) -> Result<(), &str> {
         match self {
@@ -188,7 +185,6 @@ impl Fate {
 
 /// Refund a filled fund that cannot be run, logging a refund that fails
 /// (reconcile finds the row `pending` and refunds it).
-#[cfg(not(tarpaulin_include))]
 async fn refund_failed(pool: &sqlx::PgPool, fund_id: i64) {
     if let Err(e) = db::refund_fund(pool, fund_id, "failed").await {
         tracing::error!("economy: refunding fund {fund_id} failed: {e}");
@@ -202,7 +198,6 @@ async fn refund_failed(pool: &sqlx::PgPool, fund_id: i64) {
 /// public follow-up in the invoking channel. The public couldn't-land card
 /// never says why; the reason (which may be the target's immunity or
 /// opt-out) goes only in the private reply.
-#[cfg(not(tarpaulin_include))]
 async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
     let data = ctx.data();
     let sctx = ctx.serenity_context();
@@ -352,7 +347,6 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
 /// `Some(target's voice)` for a card of a fund that landed, `None` for the
 /// couldn't-land card (which goes to the announce channel or where the
 /// command ran). Falls back to a public follow-up.
-#[cfg(not(tarpaulin_include))]
 async fn post(
     ctx: Context<'_>,
     kind: ActionKind,
@@ -388,7 +382,6 @@ async fn post(
 }
 
 /// Start a crowdfund for a prank against a member.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn start(
     ctx: Context<'_>,
@@ -539,7 +532,6 @@ pub async fn start(
 }
 
 /// The member's balance now (a refund may have moved it), else `fallback`.
-#[cfg(not(tarpaulin_include))]
 async fn fresh_balance(data: &Data, guild: GuildId, user: UserId, fallback: i64) -> i64 {
     match data.database_pool.as_ref() {
         Some(pool) => db::balance(pool, guild, user).await.unwrap_or(fallback),
@@ -548,7 +540,6 @@ async fn fresh_balance(data: &Data, guild: GuildId, user: UserId, fallback: i64)
 }
 
 /// The open funds as picker choices: "Mute on bob: 30/90".
-#[cfg(not(tarpaulin_include))]
 async fn fund_autocomplete<'a>(
     ctx: poise::ApplicationContext<'_, Data, Error>,
     partial: &'a str,
@@ -587,7 +578,6 @@ async fn fund_autocomplete<'a>(
 }
 
 /// Pledge credits to an open crowdfund.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn pledge(
     ctx: Context<'_>,
@@ -652,7 +642,6 @@ pub async fn pledge(
 }
 
 /// See the crowdfunds that are open.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn list(ctx: Context<'_>) -> Result<(), Error> {
     let Some((guild, pool)) = gate(ctx).await? else {

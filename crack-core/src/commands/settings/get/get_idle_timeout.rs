@@ -4,7 +4,6 @@ use crate::messaging::message::CrackedMessage;
 use crate::poise_ext::PoiseContextExt;
 use crate::{Context, Error};
 
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,

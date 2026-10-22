@@ -5,7 +5,6 @@ use crate::utils::send_reply;
 use crate::{Context, Error};
 
 /// Queue a playlist on the bot.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

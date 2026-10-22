@@ -20,7 +20,6 @@ use crate::{CommandResult, Context, CrackedMessage, Error};
 use poise::serenity_prelude::Mentionable;
 
 /// Get information about the servers this bot is in.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Utility", slash_command, prefix_command, owners_only)]
 pub async fn servers(ctx: Context<'_>) -> Result<(), Error> {
     poise::builtins::servers(ctx).await?;

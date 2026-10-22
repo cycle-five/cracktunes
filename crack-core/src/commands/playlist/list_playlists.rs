@@ -7,7 +7,6 @@ use crate::{
 };
 
 /// List your saved playlists.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     prefix_command,

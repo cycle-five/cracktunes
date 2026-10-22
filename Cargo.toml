@@ -7,6 +7,7 @@ members = [
   "crack-voting",
   "crack-web",
   "crack-testing",
+  "crack-test-macros",
   "crack-types",
 ]
 resolver = "2"
@@ -133,6 +134,35 @@ reqwest = { version = "0.12.9", default-features = false, features = [
   "http2",
   "macos-system-configuration",
 ] }
+
+# Backtraces keep their file and line numbers; debugger variables are gone, and
+# nobody debugs this bot with gdb. A rebuild after an edit measured 18 s, then
+# 12-13 s. Dependencies carry no debug info at all.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+# 🔑 Every database test opens about three connections, and each login runs
+# SCRAM-SHA-256's PBKDF2 (thousands of HMAC-SHA-256 rounds). In an unoptimised
+# build that cost ~35 ms per connection. Optimising only the crates that do the
+# hashing cut the mean db test from ~0.72 s to ~0.62 s (about 14%) and the
+# crack-core suite from 22-24 s to 19.5-21.7 s wall (3 runs each, nextest).
+[profile.dev.package.sha2]
+opt-level = 3
+
+[profile.dev.package.hmac]
+opt-level = 3
+
+[profile.dev.package.sqlx-postgres]
+opt-level = 3
+
+# cargo-mutants builds with this profile: it inherits `test`, and carries no
+# debug info, since nobody debugs a mutant and every job builds from cold.
+[profile.mutants]
+inherits = "test"
+debug = false
 
 [profile.release]
 incremental = true

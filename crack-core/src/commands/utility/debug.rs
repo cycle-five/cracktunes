@@ -45,12 +45,10 @@ impl fmt::Display for BotStatus<'_> {
     guild_only,
     owners_only
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn debug(ctx: Context<'_>) -> Result<(), Error> {
     debug_internal(ctx).await
 }
 
-#[cfg(not(tarpaulin_include))]
 pub async fn debug_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let manager = ctx.data().songbird.clone();

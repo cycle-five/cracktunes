@@ -87,7 +87,6 @@ pub async fn build_log_embed_thumb<'a>(
 
 /// Send a log message as a embed with a thumbnail. An event-log send, not
 /// part of the layer: it moves when the event log is migrated.
-#[cfg(not(tarpaulin_include))]
 #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
 pub async fn send_log_embed_thumb(
     guild_name: &str,
@@ -117,7 +116,6 @@ pub fn requesting_user_to_string(user_id: UserId) -> String {
 }
 
 /// Creates a page of the queue's "Up next": the tracks after the one playing.
-#[cfg(not(tarpaulin_include))]
 async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
     let start_idx = EMBED_PAGE_SIZE * page;
     // `+ 1`: the first track is the one playing, shown above as "Now playing",
@@ -356,7 +354,6 @@ fn lyrics_author(artists: &str) -> FixedString<u8> {
 }
 
 /// Creates a paging embed for the lyrics of a song.
-#[cfg(not(tarpaulin_include))]
 pub async fn create_lyrics_embed(
     ctx: CrackContext<'_>,
     lyric_res: LyricResult,
@@ -447,7 +444,6 @@ pub async fn send_no_query_provided(ctx: &CrackContext<'_>) -> Result<(), Cracke
 }
 
 /// Sends the searching message after a play command is sent.
-#[cfg(not(tarpaulin_include))]
 pub async fn send_search_message<'ctx>(
     ctx: &'ctx CrackContext<'_>,
 ) -> CrackedResult<ReplyHandle<'ctx>> {
@@ -455,7 +451,6 @@ pub async fn send_search_message<'ctx>(
 }
 
 /// The "searching…" reply, ephemeral when `ephemeral` is set.
-#[cfg(not(tarpaulin_include))]
 pub async fn send_search_message_as<'ctx>(
     ctx: &'ctx CrackContext<'_>,
     ephemeral: bool,

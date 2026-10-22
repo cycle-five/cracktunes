@@ -5,8 +5,6 @@
 use vergen_gitcl::{Build, Emitter, Gitcl};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("cargo:rustc-check-cfg=cfg(tarpaulin_include)");
-
     // NOTE: See the specific builder documentation for configuration options.
     let build = Build::all_build();
     let git = Gitcl::all_git();

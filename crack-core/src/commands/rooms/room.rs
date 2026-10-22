@@ -104,7 +104,6 @@ async fn run(ctx: Context<'_>, action: Result<RoomAction, RoomRefusal>) -> Resul
 }
 
 /// Control your voice room.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Rooms",
     slash_command,
@@ -135,7 +134,6 @@ pub async fn room(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Disconnect someone and keep them out.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn kick(
     ctx: Context<'_>,
@@ -153,7 +151,6 @@ pub async fn kick(
 }
 
 /// Lift a kick so the person can rejoin.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn letin(
     ctx: Context<'_>,
@@ -163,7 +160,6 @@ pub async fn letin(
 }
 
 /// Stop someone from speaking here.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn mute(
     ctx: Context<'_>,
@@ -185,7 +181,6 @@ pub async fn mute(
 }
 
 /// Let a muted person speak again.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn unmute(
     ctx: Context<'_>,
@@ -195,35 +190,30 @@ pub async fn unmute(
 }
 
 /// Close the room to newcomers.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn lock(ctx: Context<'_>) -> Result<(), Error> {
     run(ctx, Ok(RoomAction::Lock)).await
 }
 
 /// Open the room to newcomers again.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn unlock(ctx: Context<'_>) -> Result<(), Error> {
     run(ctx, Ok(RoomAction::Unlock)).await
 }
 
 /// Stop people from typing in this room's chat.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn chatlock(ctx: Context<'_>) -> Result<(), Error> {
     run(ctx, Ok(RoomAction::ChatLock)).await
 }
 
 /// Let people type in this room's chat again.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn chatunlock(ctx: Context<'_>) -> Result<(), Error> {
     run(ctx, Ok(RoomAction::ChatUnlock)).await
 }
 
 /// Cap how many people fit (0 means no limit).
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn limit(
     ctx: Context<'_>,
@@ -236,7 +226,6 @@ pub async fn limit(
 }
 
 /// Change the room's name.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn rename(
     ctx: Context<'_>,
@@ -246,7 +235,6 @@ pub async fn rename(
 }
 
 /// Hand the room to someone else in it.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn transfer(
     ctx: Context<'_>,
@@ -256,7 +244,6 @@ pub async fn transfer(
 }
 
 /// Let people run these controls with you.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     guild_only,
@@ -268,7 +255,6 @@ pub async fn helper(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Make someone a helper.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, rename = "add")]
 pub async fn helper_add(
     ctx: Context<'_>,
@@ -278,7 +264,6 @@ pub async fn helper_add(
 }
 
 /// Take a helper off.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, rename = "remove")]
 pub async fn helper_remove(
     ctx: Context<'_>,
@@ -288,7 +273,6 @@ pub async fn helper_remove(
 }
 
 /// Let a person or a role into a locked room.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     guild_only,
@@ -300,7 +284,6 @@ pub async fn allow(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Let a person in.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, rename = "member")]
 pub async fn allow_member(
     ctx: Context<'_>,
@@ -310,7 +293,6 @@ pub async fn allow_member(
 }
 
 /// Let a role in.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, rename = "role")]
 pub async fn allow_role(
     ctx: Context<'_>,
@@ -320,7 +302,6 @@ pub async fn allow_role(
 }
 
 /// Keep a role out of the room.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn block(
     ctx: Context<'_>,
@@ -330,7 +311,6 @@ pub async fn block(
 }
 
 /// Stop keeping a role out.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn unblock(
     ctx: Context<'_>,
@@ -340,14 +320,12 @@ pub async fn unblock(
 }
 
 /// Take over a room whose owner has left.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn claim(ctx: Context<'_>) -> Result<(), Error> {
     run(ctx, Ok(RoomAction::Claim)).await
 }
 
 /// Post the room's panel again.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn panel(ctx: Context<'_>) -> Result<(), Error> {
     run(ctx, Ok(RoomAction::Panel)).await

@@ -44,6 +44,9 @@ web = ["dep:crack-web"]
 # CI turns this on. See docs/testing.md.
 db-tests = []
 
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = ["db-tests", "crack-coin"]
+
 [dependencies]
 crack-core = { path = "../crack-core/" }
 crack-types = { path = "../crack-types/" }
@@ -74,6 +77,3 @@ ctor = "1.0"
 [build-dependencies]
 # All features enabled
 vergen-gitcl = { version = "10.0", features = ["build"] }
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

@@ -15,7 +15,6 @@ use std::str::FromStr;
     slash_command,
     required_permissions = "ADMINISTRATOR"
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn check_admin(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("Authorized.").await?;
 
@@ -29,7 +28,6 @@ pub async fn check_admin(ctx: Context<'_>) -> Result<(), Error> {
     slash_command,
     required_permissions = "ADMINISTRATOR"
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn authorize(
     ctx: Context<'_>,
     #[description = "The user to add to authorized list"] user: User,

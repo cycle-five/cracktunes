@@ -1,35 +1,32 @@
 name: coverage
 
-# 🔴 DISABLED 2026-09-12: manual-only, was `on: [push]`.
+# Line coverage with cargo-llvm-cov, uploaded to codecov. Weekly and by hand.
 #
-# tarpaulin took 9-16 minutes on EVERY push -- tags included, so it ran twice
-# more during each release -- making it far and away the slowest job in the
-# repo. It gated nothing: master's branch protection lists no required status
-# checks, so a red coverage run never blocked anything, and nobody was reading
-# the codecov result.
+# 🔑 Why weekly, not on every push. This report is informational: nothing
+# gates on it. The gate that proves tests can fail is cargo-mutants, which
+# runs on the diff of each PR. An every-push coverage job is what made the
+# old tool (ptrace-based, 9-16 minutes per push, tags included) the slowest job in
+# the repo while gating nothing, so it was switched off in 2026-09 and has
+# now been replaced.
 #
-# Kept rather than deleted because the scaffolding below is the expensive part
-# and a replacement needs all of it verbatim: a real Postgres service, `sqlx
-# database create` + `migrate run`, `cargo sqlx prepare`, and the three
-# `db-tests` features. Only the measurement tool should change.
-#
-# 🔑 When replacing it, prefer `cargo-llvm-cov` over tarpaulin: it uses LLVM
-# source-based coverage instead of ptrace, runs on stable rather than nightly,
-# needs no separate instrumented rebuild of the world, and emits lcov for the
-# same codecov upload. Point it at the same env this job already sets up.
+# 🔑 Why cargo-llvm-cov. It uses LLVM source-based coverage instead of ptrace,
+# runs on stable rather than nightly, needs no separate instrumented rebuild
+# of the world, and emits lcov for codecov. It drives cargo-nextest, so the
+# tests run exactly as they do in build.yml.
 on:
   workflow_dispatch:
+  schedule:
+    # Mondays at 05:17 UTC; an off-the-hour minute avoids the scheduler's rush.
+    - cron: "17 5 * * 1"
 
 # Least privilege: these jobs only check out and build.
 permissions:
   contents: read
+
 jobs:
   test:
     name: coverage
     runs-on: ubuntu-latest
-    # container:
-    #   image: xd009642/tarpaulin:develop-nightly
-    #   options: --security-opt seccomp=unconfined
     steps:
       - name: Repository Checkout
         uses: actions/checkout@v7
@@ -41,14 +38,14 @@ jobs:
 
       - name: "Install Rust"
         run: |
-          rustup toolchain install nightly --profile minimal --no-self-update
-          rustup default nightly
-          rustup update
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup component add llvm-tools-preview
         shell: bash
 
       - name: "Install yt-dlp"
         run: |
-          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/download/latest/yt-dlp_linux
+          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
           chmod +x /usr/local/bin/yt-dlp
         shell: bash
 
@@ -56,14 +53,11 @@ jobs:
         with:
           shared-key: "coverage"
 
-      - name: "Install cargo-tarpaulin"
-        run: |
-          cargo install cargo-tarpaulin
-        shell: bash
+      - name: Install cargo-llvm-cov and cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.9.1,cargo-nextest@0.9.149
 
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres
-      
       - uses: ikalnytskyi/action-setup-postgres@v8
         with:
           username: postgres
@@ -77,35 +71,22 @@ jobs:
           postgres-version: "16"
         id: postgres
 
-      - name: Migrate database
-        env:
-          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
-          PG_USER: postgres
-          PG_PASSWORD: mysecretpassword
-          VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
-          WEBHOOK_SECRET: ${{secrets.WEBHOOK_SECRET}}
-        run: |
-          sqlx database create
-          sqlx migrate run --source migrations/
-          cargo sqlx prepare --workspace -- --tests --all
-      
       - name: Generate code coverage
         env:
-          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }} 
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
           WEBHOOK_SECRET: ${{secrets.WEBHOOK_SECRET}}
+          # The committed .sqlx/ answers every query! macro, so the build
+          # needs no live database for type checking.
+          SQLX_OFFLINE: "true"
         run: |
-          cargo tarpaulin --ignore-tests --verbose --all --timeout 120 --out xml \
-            --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests
+          cargo llvm-cov nextest --profile ci --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin --lcov --output-path lcov.info
 
-      # 🪤 Still v4, a Node 20 action, on purpose. v5 renamed its inputs, and this
-      # workflow only runs by hand, so a bump could only be checked with a full
-      # tarpaulin run -- for a tool the note at the top says to replace. Move it
-      # with that replacement.
       - name: Upload to codecov.io
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
-          token: ${{secrets.CODECOV_TOKEN}} # not required for public repos
+          files: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false

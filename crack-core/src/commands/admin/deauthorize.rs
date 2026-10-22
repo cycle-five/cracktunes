@@ -7,7 +7,6 @@ use poise::serenity_prelude::Mentionable;
 use std::str::FromStr;
 
 /// Deauthorize a user from using the bot.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Admin",
     slash_command,

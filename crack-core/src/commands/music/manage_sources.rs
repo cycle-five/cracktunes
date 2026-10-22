@@ -1,7 +1,6 @@
 use crate::{Context, Error};
 
 /// Manage the domains that are allowed or banned.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, guild_only)]
 pub async fn allow(_ctx: Context<'_>) -> Result<(), Error> {
     Ok(())

@@ -7,7 +7,6 @@ use crate::{
 };
 
 /// Remove track(s) from the queue.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

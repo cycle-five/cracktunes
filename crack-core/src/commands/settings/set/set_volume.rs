@@ -27,7 +27,6 @@ pub async fn set_volume(
 
 /// Sets default volume for the bot. If the bot is in user, this will *not*
 /// take effect immediately.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,

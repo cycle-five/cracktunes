@@ -13,7 +13,6 @@ use serenity::{Mentionable, User, UserId};
     required_permissions = "BAN_MEMBERS",
     ephemeral
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn unban(
     ctx: Context<'_>,
     #[description = "User to unban."] user: User,
@@ -31,7 +30,6 @@ pub async fn unban(
     required_permissions = "BAN_MEMBERS",
     ephemeral
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn unban_by_user_id(
     ctx: Context<'_>,
     #[description = "UserId to unban"] user_id: UserId,
@@ -40,7 +38,6 @@ pub async fn unban_by_user_id(
 }
 
 /// Unban a user from the guild, by user id.
-#[cfg(not(tarpaulin_include))]
 pub async fn unban_internal(ctx: Context<'_>, user_id: UserId) -> CommandResult {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // let guild = guild_id.to_partial_guild(&ctx).await?;

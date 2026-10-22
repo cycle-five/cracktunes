@@ -7,7 +7,6 @@ use crate::{
 };
 
 /// Toggle whether the bot pauses after each song in the queue.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     slash_command,
@@ -28,7 +27,6 @@ pub async fn autopause(
 }
 
 /// Toggle autopause internal.
-#[cfg(not(tarpaulin_include))]
 pub async fn autopause_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 

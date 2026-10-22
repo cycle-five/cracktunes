@@ -12,6 +12,10 @@ homepage = "https://cracktun.es/"
 repository = "https://github.com/cycle-five/cracktunes"
 workspace = "../"
 
+[features]
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = []
+
 [dependencies]
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }

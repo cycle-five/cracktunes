@@ -8,7 +8,6 @@ use crate::poise_ext::PoiseContextExt;
 use crate::{Context, Data, Error};
 
 /// Get the auto role for the server.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,

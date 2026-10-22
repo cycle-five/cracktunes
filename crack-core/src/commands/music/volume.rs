@@ -7,7 +7,6 @@ use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
 /// Get or set the volume of the bot.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",
@@ -29,7 +28,6 @@ pub async fn volume(
     volume_internal(ctx, level).await
 }
 
-#[cfg(not(tarpaulin_include))]
 /// Internal method to handle volume changes.
 pub async fn volume_internal(ctx: Context<'_>, level: Option<u32>) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;

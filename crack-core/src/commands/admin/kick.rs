@@ -11,7 +11,6 @@ use std::fs::read_to_string;
 use std::time::Duration;
 
 /// Kick command to kick a user from the server based on their ID
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Admin",
     slash_command,
@@ -54,7 +53,6 @@ fn read_lines(filename: &str) -> Vec<String> {
 }
 
 /// Changes all nicknames in the server to a random name from a file.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command, ephemeral, owners_only)]
 pub async fn changenicks(
     ctx: Context<'_>,
@@ -135,7 +133,6 @@ const STATIC_EMOJI: char = '🧪';
 const DISCORD_MAX_NAME_LENGTH: usize = 32;
 
 /// Internal function for rename_all.
-#[cfg(not(tarpaulin_include))]
 pub async fn rename_all_internal(ctx: Context<'_>, dry: bool, quiet: bool) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let mut names: Vec<String> = read_lines("names.txt")

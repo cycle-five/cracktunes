@@ -136,7 +136,6 @@ pub async fn builtin_help(
 }
 
 /// Show the help menu.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Utility", rename = "help", prefix_command, hide_in_help)]
 pub async fn sub_help(ctx: Context<'_>) -> Result<(), Error> {
     // This makes it possible to just make `help` a subcommand of any command

@@ -540,15 +540,6 @@ mod tests {
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
-    #[ctor::ctor(unsafe)]
-    fn set_env() {
-        use std::env;
-        if env::var("DATABASE_URL").is_err() {
-            // env::set_var("DATABASE_URL", "postgresql://localhost:5432/postgres");
-            println!("WARNING: DATABASE_URL not set for tests");
-        }
-    }
-
     // #[test]
     // fn test_is_command_allowed() {
     //     let mut settings = GenericPermissionSettings::default();
@@ -702,7 +693,7 @@ mod tests {
         assert!(hash_set2.contains(&2));
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
@@ -730,7 +721,7 @@ mod tests {
         // assert!(!settings_read.is_command_allowed("test2"));
     }
 
-    #[sqlx::test(migrator = "MIGRATOR")]
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"

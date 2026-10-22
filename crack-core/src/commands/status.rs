@@ -19,7 +19,6 @@ use serenity::{ChannelId, CreateEmbed, Mentionable, UserId};
 use std::time::{Duration, SystemTime};
 
 /// Show this server's plan, the bot, what's playing, and the settings in effect.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Utility", slash_command, guild_only, ephemeral)]
 pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(crate::CrackedError::NoGuildId)?;

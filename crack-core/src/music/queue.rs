@@ -556,7 +556,6 @@ fn progress_transport(ctx: &CrackContext<'_>) -> DiscordTransport {
 ///
 /// The first track is resolved and queued on its own so playback starts
 /// immediately; the remainder is resolved concurrently in batches behind it.
-#[cfg(not(tarpaulin_include))]
 pub async fn queue_keyword_list_back(
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
@@ -613,7 +612,6 @@ pub async fn queue_keyword_list_back(
 /// Used for playlists, where every entry's metadata came back with the
 /// playlist fetch itself and no per-track lookup is needed. The first track is
 /// enqueued on its own so playback starts immediately.
-#[cfg(not(tarpaulin_include))]
 pub async fn queue_resolved_list_back(
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
@@ -730,7 +728,6 @@ pub async fn queue_resolved_list_back(
 /// -- must be dropped before it, not held across it (`lease.rs`: "held for
 /// milliseconds ... do not hold one across a slow operation"). Callers drop
 /// their guard, then redraw with the returned snapshot.
-#[cfg(not(tarpaulin_include))]
 async fn enqueue_resolved_and_snapshot(
     guard: &QueueGuard,
     ctx: CrackContext<'_>,
@@ -755,7 +752,6 @@ async fn enqueue_resolved_and_snapshot(
 /// Resolves first, then acquires a [`QueueGuard`] and holds it only across
 /// the enqueue and its snapshot -- never across the resolve above (the slow
 /// leg) or the Discord round trip below. See [`enqueue_resolved_and_snapshot`].
-#[cfg(not(tarpaulin_include))]
 pub async fn queue_vec_query_type(
     ctx: CrackContext<'_>,
     call: Arc<Mutex<Call>>,
@@ -810,7 +806,6 @@ use crate::http_utils;
 /// that one guard, so the length cannot go stale between the check and the
 /// insert -- it used to be read before resolving and acted on afterward,
 /// against whatever the queue had become in between.
-#[cfg(not(tarpaulin_include))]
 #[expect(
     clippy::disallowed_methods,
     reason = "an audited primitive: records below; see clippy.toml"
@@ -1217,7 +1212,6 @@ pub async fn enqueue_input_back(
 /// Requires a [`QueueGuard`]: the caller must hold playback exclusion for this
 /// guild. That is what makes forgetting a `GP_BLOCKED_COMMANDS` entry a worse
 /// error message rather than a corrupted `/gp` round.
-#[cfg(not(tarpaulin_include))]
 #[expect(
     clippy::disallowed_methods,
     reason = "an audited primitive: records below; see clippy.toml"

@@ -4,7 +4,6 @@ use crate::messaging::courier;
 use crate::{messaging::message::CrackedMessage, Context, CrackedError, Error};
 
 /// Toggle music autoplay.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

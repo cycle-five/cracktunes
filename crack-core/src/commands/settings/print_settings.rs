@@ -34,7 +34,6 @@ pub async fn print_settings(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Get the messages from a channel wtih optional user filtering.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, owners_only, guild_only, ephemeral, hide_in_help)]
 pub async fn get_channel_messages(
     ctx: Context<'_>,

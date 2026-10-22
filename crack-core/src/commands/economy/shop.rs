@@ -253,7 +253,6 @@ pub fn involved_channels(
 }
 
 /// Reply to a purchase error privately.
-#[cfg(not(tarpaulin_include))]
 async fn say_buy_error(ctx: Context<'_>, err: BuyError, currency: &str) -> Result<(), Error> {
     say(ctx, buy_error_text(&err, currency), true).await
 }
@@ -268,10 +267,8 @@ pub(crate) trait Answer: Send + Sync {
 }
 
 /// A slash command's answers.
-#[cfg(not(tarpaulin_include))]
 struct CommandAnswer<'a>(Context<'a>);
 
-#[cfg(not(tarpaulin_include))]
 #[async_trait::async_trait]
 impl Answer for CommandAnswer<'_> {
     async fn private(&self, text: String) -> Result<(), Error> {
@@ -284,7 +281,6 @@ impl Answer for CommandAnswer<'_> {
 }
 
 /// Who is buying, where, and how to answer them.
-#[cfg(not(tarpaulin_include))]
 pub(crate) struct PrankEnv<'a> {
     pub data: &'a Data,
     pub ctx: &'a serenity::all::Context,
@@ -301,7 +297,6 @@ pub(crate) struct PrankEnv<'a> {
 /// privately with the balance, post the card, and log the purchase. A mirror
 /// posts nothing public and logs nothing. The slash commands and the Rename
 /// them back button both come through here.
-#[cfg(not(tarpaulin_include))]
 pub(crate) async fn run_prank(
     env: &PrankEnv<'_>,
     kind: ActionKind,
@@ -477,7 +472,6 @@ pub(crate) async fn run_prank(
 
 /// Buy a prank from a slash command: the gate and the bot check, then the
 /// shared purchase.
-#[cfg(not(tarpaulin_include))]
 async fn prank(
     ctx: Context<'_>,
     kind: ActionKind,
@@ -518,7 +512,6 @@ async fn prank(
 }
 
 /// Change someone's nickname for a while.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn rename(
     ctx: Context<'_>,
@@ -539,7 +532,6 @@ pub async fn rename(
 }
 
 /// Lock someone's nickname as it is.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn lock(
     ctx: Context<'_>,
@@ -551,7 +543,6 @@ pub async fn lock(
 }
 
 /// Add a clown to someone's name for a while.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn clown(
     ctx: Context<'_>,
@@ -563,7 +554,6 @@ pub async fn clown(
 }
 
 /// Move someone in voice to your channel.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn drag(
     ctx: Context<'_>,
@@ -575,7 +565,6 @@ pub async fn drag(
 }
 
 /// Server-mute someone in voice for a few minutes.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn mute(
     ctx: Context<'_>,
@@ -587,7 +576,6 @@ pub async fn mute(
 }
 
 /// Server-deafen someone in voice for a few minutes.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn deafen(
     ctx: Context<'_>,
@@ -599,7 +587,6 @@ pub async fn deafen(
 }
 
 /// Send someone in voice to the jail channel for a few minutes.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn jail(
     ctx: Context<'_>,
@@ -611,7 +598,6 @@ pub async fn jail(
 }
 
 /// Send the next prank aimed at you back at whoever bought it.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn mirror(ctx: Context<'_>) -> Result<(), Error> {
     prank(ctx, ActionKind::Mirror, None, None, None, None).await
@@ -634,7 +620,6 @@ pub fn theme_reply_text(balance: i64, currency: &str, emoji: &str) -> String {
 }
 
 /// Have a song play for someone the next time they join voice.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn theme(
     ctx: Context<'_>,
@@ -790,7 +775,6 @@ enum PaidPlay {
 /// 🔑 No defer before the play (ruling P6): `/play` chooses its reply's
 /// visibility, so every check up to the charge reads only the cache and the
 /// database.
-#[cfg(not(tarpaulin_include))]
 async fn paid_play(
     ctx: Context<'_>,
     which: PaidPlay,
@@ -997,7 +981,6 @@ async fn paid_play(
 }
 
 /// Queue a song like /play, and say it goes out to someone.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, check = "cmd_check_music")]
 pub async fn dedicate(
     ctx: Context<'_>,
@@ -1009,7 +992,6 @@ pub async fn dedicate(
 }
 
 /// Queue a song to play next, like /playnext.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, check = "cmd_check_music")]
 pub async fn jump(
     ctx: Context<'_>,
@@ -1020,7 +1002,6 @@ pub async fn jump(
 }
 
 /// What the shop sells and for how much.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Economy",
     slash_command,
@@ -1049,7 +1030,6 @@ pub async fn shop(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// List what is for sale and the prices.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn menu(ctx: Context<'_>) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
@@ -1061,7 +1041,6 @@ pub async fn menu(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Buy immunity from pranks.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn immunity(ctx: Context<'_>) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
@@ -1087,7 +1066,6 @@ pub async fn immunity(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// End every prank running on you now.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, rename = "cleanse")]
 pub async fn cleanse_command(ctx: Context<'_>) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
@@ -1129,7 +1107,6 @@ pub async fn cleanse_command(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// The presser's last ten pranks they could unmask, as picker choices.
-#[cfg(not(tarpaulin_include))]
 async fn reveal_autocomplete<'a>(
     ctx: poise::ApplicationContext<'_, Data, Error>,
     _partial: &'a str,
@@ -1156,7 +1133,6 @@ async fn reveal_autocomplete<'a>(
 }
 
 /// Unmask who bought an unsigned prank aimed at you.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, rename = "reveal")]
 pub async fn reveal_command(
     ctx: Context<'_>,

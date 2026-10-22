@@ -18,7 +18,6 @@ use crate::{Context, Error};
 use serenity::all::{GenericChannelId, GuildId};
 
 /// Set up, turn off, or check voice rooms.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Rooms",
     slash_command,
@@ -49,7 +48,6 @@ pub(crate) fn save_error_text(err: SettingsSaveError) -> &'static str {
 }
 
 /// The `Status` card for `guild`, as it is now.
-#[cfg(not(tarpaulin_include))]
 fn status_card(ctx: Context<'_>, guild: GuildId) -> RoomCard {
     let settings = ctx.data().rooms.settings(guild);
     let findings = settings
@@ -62,20 +60,17 @@ fn status_card(ctx: Context<'_>, guild: GuildId) -> RoomCard {
     }
 }
 
-#[cfg(not(tarpaulin_include))]
 async fn say(ctx: Context<'_>, card: RoomCard) -> Result<(), Error> {
     courier::reply_as(ctx, CrackedMessage::Room(Box::new(card)), true).await?;
     Ok(())
 }
 
-#[cfg(not(tarpaulin_include))]
 async fn say_text(ctx: Context<'_>, text: &'static str) -> Result<(), Error> {
     courier::reply_rendered(ctx, Rendered::text(text), true).await?;
     Ok(())
 }
 
 /// Turn voice rooms on, with a hub channel to join.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn setup(
     ctx: Context<'_>,
@@ -99,7 +94,6 @@ pub async fn setup(
 }
 
 /// Turn voice rooms off. Rooms that exist stay until they empty.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn off(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
@@ -117,7 +111,6 @@ pub async fn off(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Show the room settings and what CrackTunes still needs.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;

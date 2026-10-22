@@ -17,7 +17,6 @@ use crate::{
 use serenity::all::Message;
 
 /// Skip the current track, or a number of tracks.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",
@@ -49,7 +48,6 @@ pub async fn skip(
 
 /// Send the response to discord for skipping a track.
 // Why don't we need to defer here?
-#[cfg(not(tarpaulin_include))]
 pub async fn send_skip_reply(
     ctx: Context<'_>,
     send_msg: CrackedMessage,
@@ -63,7 +61,6 @@ pub async fn send_skip_reply(
 }
 
 /// Skip the current track and hide it from /playlog
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

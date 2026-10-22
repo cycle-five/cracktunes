@@ -48,7 +48,6 @@ pub async fn log_unimplemented_event<T: Serialize + std::fmt::Debug>(
 }
 
 /// Log Integration Update Event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_integration_update(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -82,7 +81,6 @@ pub async fn log_integration_update(
 }
 
 /// Log Integration Delete Event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_integration_delete(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -111,7 +109,6 @@ pub async fn log_integration_delete(
 }
 
 /// Log Integration Create Event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_integration_create(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -140,7 +137,6 @@ pub async fn log_integration_create(
 
 use crate::utils::interaction_to_guild_id;
 /// Log Interaction Create Event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_interaction_create(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -169,7 +165,6 @@ pub async fn log_interaction_create(
 }
 
 /// Log Invite Delete Event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_invite_delete(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -197,7 +192,6 @@ pub async fn log_invite_delete(
 }
 
 /// Log Invite Create Event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_invite_create(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -226,7 +220,6 @@ pub async fn log_invite_create(
 
 use extract_map::ExtractMap;
 /// Log Guild Stickers Update Event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_stickers_update(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -252,7 +245,6 @@ pub async fn log_guild_stickers_update(
 }
 
 /// Log a guild scheduled event create event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_delete(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -288,7 +280,6 @@ pub async fn log_guild_scheduled_event_delete(
 }
 
 /// Log a guild scheduled user add event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_user_add(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -320,7 +311,6 @@ pub async fn log_guild_scheduled_event_user_add(
 }
 
 /// Log a guild scheduled user remove event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_user_remove(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -352,7 +342,6 @@ pub async fn log_guild_scheduled_event_user_remove(
 }
 
 /// Log a guild scheduled event create event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_update(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -388,7 +377,6 @@ pub async fn log_guild_scheduled_event_update(
 }
 
 /// Logs a guild create event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_create(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -432,7 +420,6 @@ pub async fn log_guild_create(
 }
 
 /// Logs a guild delete event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_delete_event(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -484,7 +471,6 @@ pub async fn log_guild_delete_event(
 }
 
 /// Logs a guild role cteate event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_role_create(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -509,7 +495,6 @@ pub async fn log_guild_role_create(
 }
 
 /// Logs a guild role delete.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_role_delete(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -538,7 +523,6 @@ pub async fn log_guild_role_delete(
 }
 
 /// Log an automod rule update event
-#[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_update(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -570,7 +554,6 @@ pub async fn log_automod_rule_update(
 }
 
 /// Log a guild scheduled event create event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_guild_scheduled_event_create(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -606,7 +589,6 @@ pub async fn log_guild_scheduled_event_create(
 }
 
 /// Log a automod rule create event
-#[cfg(not(tarpaulin_include))]
 pub async fn log_automod_rule_create(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -637,7 +619,6 @@ pub async fn log_automod_rule_create(
 }
 
 /// Log a automod command exec
-#[cfg(not(tarpaulin_include))]
 pub async fn log_automod_command_execution(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -668,7 +649,6 @@ pub async fn log_automod_command_execution(
 }
 
 /// Log a command permissions update event
-#[cfg(not(tarpaulin_include))]
 pub async fn log_command_permissions_update(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -1256,7 +1236,6 @@ impl std::fmt::Display for ClientStatusPrinter {
 }
 
 /// Log a presence update event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_presence_update(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -1297,7 +1276,6 @@ pub async fn log_presence_update(
 }
 
 /// Log a voice state update event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_voice_channel_status_update(
     channel_id: GenericChannelId,
     guild_id: GuildId,
@@ -1328,7 +1306,6 @@ pub async fn log_voice_channel_status_update(
 }
 
 /// Log a voice state update event.
-#[cfg(not(tarpaulin_include))]
 pub async fn log_voice_state_update(
     channel_id: GenericChannelId,
     guild_id: GuildId,

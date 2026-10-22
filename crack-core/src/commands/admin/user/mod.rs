@@ -23,7 +23,6 @@ use crate::{Command, Context, Error};
     subcommands("ban", "unban", "deafen", "undeafen"),
     ephemeral
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn user(
     ctx: Context<'_>,
     // #[flag]

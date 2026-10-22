@@ -2406,7 +2406,6 @@ fn gp_blocks_dedicate_and_jump() {
 /// cannot silently rot), and none of the game's own subcommands may be
 /// caught by it. poise fills `qualified_name` only at framework start, so
 /// top-level `name`s are what we compare against here.
-#[cfg(not(tarpaulin_include))]
 #[test]
 fn blocklist_matches_registry() {
     let music: Vec<String> = crate::commands::music::music_commands()
@@ -2465,7 +2464,6 @@ fn blocklist_matches_registry() {
     }
 }
 
-#[cfg(not(tarpaulin_include))]
 #[test]
 fn command_registration() {
     let all = crate::commands::all_commands();

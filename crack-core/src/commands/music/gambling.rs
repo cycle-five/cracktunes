@@ -3,7 +3,6 @@ use crate::messaging::message::CrackedMessage;
 use crate::{Context, Error};
 
 /// Flip a coin.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Games", prefix_command, slash_command)]
 pub async fn coinflip(ctx: Context<'_>) -> Result<(), Error> {
     let res = rand::random::<bool>();
@@ -14,7 +13,6 @@ pub async fn coinflip(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Roll N dice, each with D sides.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Games", prefix_command, slash_command)]
 pub async fn rolldice(
     ctx: Context<'_>,
@@ -25,7 +23,6 @@ pub async fn rolldice(
 }
 
 // Role N D sided dice.
-#[cfg(not(tarpaulin_include))]
 pub async fn rolldice_internal(
     ctx: Context<'_>,
     number_of_dice: u32,

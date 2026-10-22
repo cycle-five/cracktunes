@@ -19,6 +19,10 @@ homepage = "https://cracktun.es/"
 repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
+[features]
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = []
+
 [dependencies]
 poise = { workspace = true }
 songbird = { workspace = true }
@@ -51,6 +55,3 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 version = "0.7.4"
 default-features = false
 features = ["live", "rustls-tls", "search", "blocking", "ffmpeg"]
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
