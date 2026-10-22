@@ -3,6 +3,8 @@
 // depth it reports; stable still solves it inside the default limit.
 #![recursion_limit = "256"]
 
+#[cfg(feature = "crack-coin")]
+pub mod coin;
 pub mod commands;
 pub mod config;
 pub mod connection;
@@ -920,3 +922,7 @@ mod downvote_tests {
         assert_eq!(unlogged.unwrap_err(), CrackedError::NoPlayLogged);
     }
 }
+
+/// Whether this binary was built with the CrackCoin devnet token. A plain `bool`
+/// so callers need no `cfg` of their own.
+pub const COIN_BUILD: bool = cfg!(feature = "crack-coin");

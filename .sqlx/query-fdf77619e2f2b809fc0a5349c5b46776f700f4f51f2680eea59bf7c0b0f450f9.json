@@ -1,0 +1,78 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, guild_id, user_id, address, amount, signature, tx,\n                  last_valid_block_height, genesis_hash,\n                  (COALESCE(created_at < $2::timestamptz, false)\n                   OR created_at < now() - make_interval(secs => $3::float8)) AS \"orphan!\"\n           FROM coin_withdrawals WHERE id = $1 AND state = 'pending'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "guild_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "address",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "amount",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "signature",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "tx",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 7,
+        "name": "last_valid_block_height",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "genesis_hash",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "orphan!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Timestamptz",
+        "Float8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "fdf77619e2f2b809fc0a5349c5b46776f700f4f51f2680eea59bf7c0b0f450f9"
+}

@@ -100,6 +100,27 @@
   `SELECT a.id FROM economy_actions a WHERE a.state = 'pending' AND EXISTS (SELECT 1 FROM economy_pledges p WHERE p.action_id = a.id AND p.refunded_at IS NULL)`.
   An open (`funding`) fund, a waiting theme and a standing bounty just freeze on
   v0.33.0, and are settled after rolling forward. See `docs/economy.md`.
+- **v0.35.0, CrackCoin: credits into a worthless devnet token.** In the new
+  `-coin` image (the plain image is unchanged), members link a Solana address
+  with `/wallet link` and turn credits into CrackCoin with `/wallet withdraw`,
+  1 credit for 1 coin, on Solana's devnet test network only. CrackCoin refuses
+  to run against mainnet. Admins turn it on per server with "CrackCoin
+  withdrawals" on the economy dashboard page (the economy must be on too). A
+  member has one withdrawal in flight at a time, and every `/wallet` reply is
+  private: an address is shown only to its owner and nothing announces a
+  withdrawal. A withdrawal either mints or is refunded, never both and never
+  neither. Credits are refunded for one of four reasons: it was never sent, it
+  failed on chain, it expired (the chain proves the transaction can never
+  land), or devnet was reset. An unreachable chain only delays the outcome: the
+  credits stay held until the chain proves one. If this were wrong, a member
+  could lose credits or get coins twice, which is why a refund needs proof.
+  Without its settings the image starts with CrackCoin off and says why; music never
+  depends on devnet. **Rolling back below v0.35.0:** the bot image may go back,
+  but the migrate image STAYS at v0.35.0 (the v0.34.0 migrate image stops with
+  `VersionMissing` on a migration it doesn't know). A lean build can't settle
+  a withdrawal, so this must return 0 first:
+  `SELECT count(*) FROM coin_withdrawals WHERE state = 'pending'`. Coins
+  already minted stay minted. See `docs/crack-coin.md`.
 - **`/downvote` is registered.** It skips the current track and records a
   dislike against that track's newest play in this server, and one dislike is
   enough to hide the play from `/playlog`. When the track has no logged play to

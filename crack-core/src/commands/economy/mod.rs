@@ -6,17 +6,23 @@ pub mod coinflip;
 pub mod credits;
 pub mod crowdfund;
 pub mod shop;
+#[cfg(feature = "crack-coin")]
+pub mod wallet;
 
 /// Every economy command.
 pub fn commands() -> Vec<crate::Command> {
-    vec![
+    #[cfg_attr(not(feature = "crack-coin"), expect(unused_mut))]
+    let mut v = vec![
         credits::credits(),
         coinflip::coinflip(),
         shop::shop(),
         admin::economy(),
         bounty::bounty(),
         crowdfund::crowdfund(),
-    ]
+    ];
+    #[cfg(feature = "crack-coin")]
+    v.push(wallet::wallet());
+    v
 }
 
 #[cfg(test)]
@@ -25,17 +31,19 @@ mod tests {
     fn economy_commands_are_guild_only_slash_commands() {
         let cmds = super::commands();
         let names: Vec<_> = cmds.iter().map(|c| c.name.as_ref()).collect();
-        assert_eq!(
-            names,
-            [
-                "credits",
-                "coinflip",
-                "shop",
-                "economy",
-                "bounty",
-                "crowdfund"
-            ]
-        );
+        let mut want = vec![
+            "credits",
+            "coinflip",
+            "shop",
+            "economy",
+            "bounty",
+            "crowdfund",
+        ];
+        // /wallet exists only in a coin build.
+        if crate::COIN_BUILD {
+            want.push("wallet");
+        }
+        assert_eq!(names, want);
         assert!(cmds
             .iter()
             .all(|c| c.guild_only && c.slash_action.is_some()));
@@ -173,5 +181,24 @@ mod tests {
         let params: Vec<_> = pledge.parameters.iter().map(|p| p.name.as_ref()).collect();
         assert_eq!(params, ["fund", "amount", "signed"]);
         assert!(pledge.parameters[0].autocomplete_callback.is_some());
+    }
+
+    #[cfg(feature = "crack-coin")]
+    #[test]
+    fn wallet_has_its_four_subcommands() {
+        let cmds = super::commands();
+        let wallet = cmds.iter().find(|c| c.name == "wallet").unwrap();
+        assert_eq!(subs(wallet), ["link", "show", "unlink", "withdraw"]);
+        assert!(wallet
+            .subcommands
+            .iter()
+            .all(|c| c.guild_only && c.slash_action.is_some()));
+        let withdraw = wallet
+            .subcommands
+            .iter()
+            .find(|c| c.name == "withdraw")
+            .unwrap();
+        assert_eq!(withdraw.parameters.len(), 1);
+        assert_eq!(withdraw.parameters[0].name, "amount");
     }
 }

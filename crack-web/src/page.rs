@@ -12,26 +12,26 @@ use crack_core::{
     messaging::{
         message::REPO_LINK,
         messages::{
-            DASH_ECONOMY_ANNOUNCE_CHANNEL, DASH_ECONOMY_ANNOUNCE_STATUS,
-            DASH_ECONOMY_CURRENCY_EMOJI, DASH_ECONOMY_CURRENCY_NAME, DASH_ECONOMY_ENABLED,
-            DASH_ECONOMY_GAMBLING, DASH_ECONOMY_GAMBLING_NOTE, DASH_ECONOMY_GUIDE,
-            DASH_ECONOMY_IMMUNITY_HOURS, DASH_ECONOMY_IMMUNITY_MODS, DASH_ECONOMY_IMMUNITY_OPTOUT,
-            DASH_ECONOMY_IMMUNITY_SHOP, DASH_ECONOMY_JAIL_CHANNEL, DASH_ECONOMY_JAIL_NOTE,
-            DASH_ECONOMY_MAX_BET, DASH_ECONOMY_MESSAGE_COOLDOWN, DASH_ECONOMY_MESSAGE_RATE,
-            DASH_ECONOMY_NO_CHANNEL_OPTION, DASH_ECONOMY_OPTOUT_COOLDOWN, DASH_ECONOMY_PREFLIGHT,
-            DASH_ECONOMY_PREFLIGHT_READY, DASH_ECONOMY_PREFLIGHT_UNKNOWN, DASH_ECONOMY_PRICES,
-            DASH_ECONOMY_PRICE_COST, DASH_ECONOMY_PRICE_FOR_SALE, DASH_ECONOMY_RENAME_HOURS,
-            DASH_ECONOMY_SHORT_EFFECT, DASH_ECONOMY_TITLE, DASH_ECONOMY_VOICE_RATE,
-            DASH_LANDING_DESCRIPTION, DASH_LANDING_TITLE, DASH_MODLOG_CHANNEL, DASH_MODLOG_ENABLED,
-            DASH_MODLOG_GUIDE, DASH_MODLOG_NO_CHANNEL_OPTION, DASH_MODLOG_NO_CHANNEL_YET,
-            DASH_MODLOG_TITLE, DASH_SETTINGS_ENABLED, DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE,
-            DASH_SETTINGS_HUB, DASH_SETTINGS_LIMIT, DASH_SETTINGS_LINK,
-            DASH_SETTINGS_NO_HUB_OPTION, DASH_SETTINGS_PERMISSIONS, DASH_SETTINGS_PREVIEW,
-            DASH_SETTINGS_SAVE, DASH_SETTINGS_SAVED, DASH_SETTINGS_SAVING_FAILED,
-            DASH_SETTINGS_TEMPLATE, DASH_SETTINGS_TITLE, DASH_SIGN_IN, ECONOMY_DOCS_URL,
-            JOIN_VOICE_FOR_CONTROLS, MODLOG_STATUS_READY, MODLOG_STATUS_UNKNOWN, PATREON_URL,
-            PREMIUM_CONTROLS, PREMIUM_HISTORY, ROOM_STATUS_NO_HUB_YET, ROOM_STATUS_READY,
-            ROOM_STATUS_UNKNOWN,
+            DASH_ECONOMY_ANNOUNCE_CHANNEL, DASH_ECONOMY_ANNOUNCE_STATUS, DASH_ECONOMY_COIN,
+            DASH_ECONOMY_COIN_NOTE, DASH_ECONOMY_CURRENCY_EMOJI, DASH_ECONOMY_CURRENCY_NAME,
+            DASH_ECONOMY_ENABLED, DASH_ECONOMY_GAMBLING, DASH_ECONOMY_GAMBLING_NOTE,
+            DASH_ECONOMY_GUIDE, DASH_ECONOMY_IMMUNITY_HOURS, DASH_ECONOMY_IMMUNITY_MODS,
+            DASH_ECONOMY_IMMUNITY_OPTOUT, DASH_ECONOMY_IMMUNITY_SHOP, DASH_ECONOMY_JAIL_CHANNEL,
+            DASH_ECONOMY_JAIL_NOTE, DASH_ECONOMY_MAX_BET, DASH_ECONOMY_MESSAGE_COOLDOWN,
+            DASH_ECONOMY_MESSAGE_RATE, DASH_ECONOMY_NO_CHANNEL_OPTION,
+            DASH_ECONOMY_OPTOUT_COOLDOWN, DASH_ECONOMY_PREFLIGHT, DASH_ECONOMY_PREFLIGHT_READY,
+            DASH_ECONOMY_PREFLIGHT_UNKNOWN, DASH_ECONOMY_PRICES, DASH_ECONOMY_PRICE_COST,
+            DASH_ECONOMY_PRICE_FOR_SALE, DASH_ECONOMY_RENAME_HOURS, DASH_ECONOMY_SHORT_EFFECT,
+            DASH_ECONOMY_TITLE, DASH_ECONOMY_VOICE_RATE, DASH_LANDING_DESCRIPTION,
+            DASH_LANDING_TITLE, DASH_MODLOG_CHANNEL, DASH_MODLOG_ENABLED, DASH_MODLOG_GUIDE,
+            DASH_MODLOG_NO_CHANNEL_OPTION, DASH_MODLOG_NO_CHANNEL_YET, DASH_MODLOG_TITLE,
+            DASH_SETTINGS_ENABLED, DASH_SETTINGS_GRACE, DASH_SETTINGS_GUIDE, DASH_SETTINGS_HUB,
+            DASH_SETTINGS_LIMIT, DASH_SETTINGS_LINK, DASH_SETTINGS_NO_HUB_OPTION,
+            DASH_SETTINGS_PERMISSIONS, DASH_SETTINGS_PREVIEW, DASH_SETTINGS_SAVE,
+            DASH_SETTINGS_SAVED, DASH_SETTINGS_SAVING_FAILED, DASH_SETTINGS_TEMPLATE,
+            DASH_SETTINGS_TITLE, DASH_SIGN_IN, ECONOMY_DOCS_URL, JOIN_VOICE_FOR_CONTROLS,
+            MODLOG_STATUS_READY, MODLOG_STATUS_UNKNOWN, PATREON_URL, PREMIUM_CONTROLS,
+            PREMIUM_HISTORY, ROOM_STATUS_NO_HUB_YET, ROOM_STATUS_READY, ROOM_STATUS_UNKNOWN,
         },
     },
     rooms::settings::{render_room_name, GRACE_CHOICES, ROOM_NAME_MAX},
@@ -317,6 +317,19 @@ pub fn settings_page(
             text = lines(found),
         ),
     };
+    // The switch exists only in a coin build; without it the script sends no
+    // `coin_withdrawals` and the stored value stays.
+    let coin_row = if economy.coin_build {
+        format!(
+            "<label class=\"check\"><input type=\"checkbox\" id=\"e-coin\"{on}> {text}</label>\
+<p id=\"e-coin-note\">{note}</p>",
+            on = check(economy.coin_withdrawals),
+            text = esc(DASH_ECONOMY_COIN),
+            note = esc(DASH_ECONOMY_COIN_NOTE),
+        )
+    } else {
+        String::new()
+    };
     let economy_html = format!(
         "<h2>{title}</h2>\
 <form id=\"economy-form\" autocomplete=\"off\">\
@@ -340,12 +353,14 @@ pub fn settings_page(
 <label class=\"check\"><input type=\"checkbox\" id=\"e-gambling\"{gambling}> {gambling_text}</label>\
 <p id=\"e-gambling-note\">{gambling_note}</p>\
 <label>{max_bet_text} <input type=\"number\" id=\"e-max-bet\" min=\"1\" max=\"1000000\" value=\"{max_bet}\"></label>\
+{coin_row}\
 <button type=\"submit\" id=\"e-save\">{save}</button>\
 <p id=\"e-note\" role=\"status\" hidden></p></form>\
 <h3>{preflight_text}</h3><ul id=\"e-preflight\" data-ready=\"{ready_text}\" data-unknown=\"{unknown_text}\" \
 data-announce=\"{announce_status}\">{preflight_rows}{announce_row}</ul>\
 <p class=\"links\"><a href=\"{guide}\">{guide_text}</a></p>",
         title = esc(DASH_ECONOMY_TITLE),
+        coin_row = coin_row,
         enabled = check(economy.enabled),
         enabled_text = esc(DASH_ECONOMY_ENABLED),
         name_text = esc(DASH_ECONOMY_CURRENCY_NAME),
@@ -648,7 +663,7 @@ mod test {
             visibility: None,
         };
         let mut economy =
-            EconomySettingsView::from_settings(&EconomySettings::off(GuildId::new(5)));
+            EconomySettingsView::from_settings(&EconomySettings::off(GuildId::new(5)), false);
         let bounty = economy
             .prices
             .iter_mut()
@@ -667,6 +682,46 @@ mod test {
         // Rows with no hint stay as they were.
         assert!(html.contains("<td>Rename</td>"), "{html}");
         assert_eq!(html.matches("class=\"e-hint\"").count(), 3);
+    }
+
+    #[test]
+    fn the_coin_checkbox_renders_only_in_a_coin_build() {
+        let rooms = RoomSettingsView {
+            enabled: false,
+            hub: None,
+            name_template: String::new(),
+            default_limit: 0,
+            empty_grace_secs: 0,
+            voice_channels: vec![],
+            findings: None,
+        };
+        let modlog = ModLogSettingsView {
+            enabled: false,
+            channel: None,
+            text_channels: vec![],
+            findings: None,
+            visibility: None,
+        };
+        let page = |coin_build: bool, on: bool| {
+            let mut s = EconomySettings::off(GuildId::new(5));
+            s.config.coin_withdrawals = on;
+            let economy = EconomySettingsView::from_settings(&s, coin_build);
+            settings_page("G", GuildId::new(5), &rooms, &modlog, &economy)
+        };
+        let lean = page(false, true);
+        assert!(!lean.contains("id=\"e-coin\""), "{lean}");
+        assert!(!lean.contains(DASH_ECONOMY_COIN_NOTE));
+        let coin = page(true, false);
+        assert!(
+            coin.contains("<input type=\"checkbox\" id=\"e-coin\"> "),
+            "{coin}"
+        );
+        assert!(coin.contains(DASH_ECONOMY_COIN_NOTE));
+        let checked = page(true, true);
+        assert!(
+            checked.contains("<input type=\"checkbox\" id=\"e-coin\" checked> "),
+            "{checked}"
+        );
     }
 
     #[test]

@@ -28,6 +28,8 @@ crack-tracing = ["tracing-subscriber"]
 # Forwards to crack-core, which owns the prometheus registry. This was an empty
 # list, so turning it on here did nothing at all.
 crack-metrics = ["crack-core/crack-metrics"]
+# The CrackCoin devnet token seam; off by default.
+crack-coin = ["crack-core/crack-coin"]
 # Structured JSON logs. Implies crack-tracing: `init_telemetry` is gated on it, so
 # crack-telemetry on its own would silently do nothing.
 crack-telemetry = ["crack-tracing", "tracing-bunyan-formatter"]

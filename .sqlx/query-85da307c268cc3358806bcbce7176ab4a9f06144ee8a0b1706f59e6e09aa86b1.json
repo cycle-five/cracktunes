@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE coin_withdrawals SET guild_id = 0 WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "85da307c268cc3358806bcbce7176ab4a9f06144ee8a0b1706f59e6e09aa86b1"
+}

@@ -376,6 +376,8 @@ impl SerenityHandler {
             ctx.http.clone(),
             ctx.cache.clone(),
         );
+        #[cfg(feature = "crack-coin")]
+        crate::coin::start(self.data.clone());
 
         // Process-level background work, moved off `CacheReady`.
         //
