@@ -9,7 +9,8 @@ cargo test --doc --workspace       # doctests: nextest does not run them
 ```
 
 That is the default, and it passes on a clean checkout with nothing running.
-Install the runner once with `cargo install cargo-nextest --locked`.
+Install the runner once with `cargo install cargo-nextest --version 0.9.149 --locked`,
+the version CI uses.
 
 ## Running tests
 
@@ -108,6 +109,12 @@ gives each test a copy (`CREATE DATABASE ... TEMPLATE`). The code is
   timeout never cleans up). With `CRACK_MUTANTS` set, which `scripts/mutants.sh`
   does, a failing test's database is dropped too, because mutant runs fail
   tests on purpose.
+- **🪤 One run per checkout at a time.** Two runs in one checkout
+  (`cargo llvm-cov nextest` beside `cargo nextest run`) share database names.
+  A leftover is never force-dropped, so where they collide the second run's
+  test waits 5 s and fails with "another run of … is using …" instead of
+  ending the first's live database. A psql session open on a kept failure
+  stops it the same way. Run the second in another worktree.
 
 Measured on `crack-core`'s db suite: copying a template costs about 25 ms,
 against about 950 ms to migrate a fresh database. The suite went from about
@@ -143,7 +150,8 @@ which uses LLVM source-based coverage and drives nextest, so the tests run as
 they do everywhere else. Locally, with a postgres running:
 
 ```bash
-cargo install cargo-llvm-cov cargo-nextest --locked
+cargo install cargo-llvm-cov --version 0.9.1 --locked
+cargo install cargo-nextest --version 0.9.149 --locked
 rustup component add llvm-tools-preview
 cargo llvm-cov nextest --profile ci --workspace \
   --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin \
@@ -167,8 +175,9 @@ is *missed*.
 🔑 There is no gate yet. The check on each PR's diff, the baseline and the
 waivers arrive in a follow-up PR; this section covers the tooling that exists.
 
-Install it with `cargo install cargo-mutants --locked`, and run it only through
-the wrapper:
+Install it with `cargo install cargo-mutants --version 27.1.0 --locked`, the
+version CI uses: the baseline's keys are 27.1.0's mutant descriptions, and
+another version may word them differently. Run it only through the wrapper:
 
 ```bash
 scripts/mutants.sh --list                                 # what would be mutated, no tests run
@@ -179,7 +188,9 @@ scripts/mutants.sh -j 1 --in-diff my.diff                 # only the lines in a 
 
 `-f` / `--file` takes a file or glob, `-D` / `--in-diff` a diff file, and
 `--list` shows the mutants without testing them. Any other cargo-mutants
-argument passes through.
+argument passes through. 🪤 The wrapper runs from the repository root, so a
+relative path (`--in-diff my.diff`, `-o out`) is read from there, not from
+the directory you called it in.
 
 - **It refuses `--in-place`.** cargo-mutants copies the tree to a scratch
   directory and mutates the copy; `--in-place` would mutate your working tree,
@@ -191,23 +202,22 @@ argument passes through.
 - **Use `-j 1`.** Each mutant's tests already use every core, and each job pays
   its own cold build. Measured on 13 mutants: `-j 1` 509 s, `-j 2` 536 s,
   `-j 4` 603 s.
-- **Cost:** the workspace has 7,734 mutants (6,598 in `crack-core`), so run a
-  file or module, not everything. After the baseline build (about 165 s of
-  build and 18 s of tests in a fresh copy, plus about 150 s on the first mutant
-  to build the rest of the workspace), a caught mutant takes about 40 s and a
-  missed one about 60 s.
-- **Configuration** is `.cargo/mutants.toml`: the nextest runner, the `db-tests`
-  and `crack-coin` features, and a lean `mutants` cargo profile. The wrapper
-  sets `NEXTEST_PROFILE=mutants` and `CRACK_MUTANTS=1`.
-
-🪤 The features are named bare, without a `package/` prefix, because
-cargo-mutants' unmutated baseline builds only the crates that have mutants. A
-run whose mutants all sit in crates that own neither feature (`crack-types`,
-`crack-web`, `crack-sleevenote`, `crack-musicreco`, `crack-testing`) fails that
-baseline at once with cargo's "does not contain this feature". For such a run,
-and only such a run, add `--baseline skip`. Otherwise leave the baseline on: it
-is what catches a broken environment. With a dead Postgres, every mutant would
-look caught.
+- **Cost:** the workspace has 7,732 mutants (6,598 in `crack-core`), so run a
+  file or module, not everything. A fresh copy first builds and tests the
+  unmutated crates: for `crack-core` about 170 s of build and 20 s of tests.
+  After that a missed `crack-core` mutant took 15 s to build and 24 s to test
+  (a caught one stops at its first failing test), and a `crack-types` mutant
+  about 2 s in all.
+- **Configuration** is `.cargo/mutants.toml`: the nextest runner, the
+  `mutation-testing` feature, a lean `mutants` cargo profile and
+  `gitignore = true` (so `.env` stays out of the copies). The wrapper sets
+  `NEXTEST_PROFILE=mutants`, `CRACK_MUTANTS=1` and `SQLX_OFFLINE=true`.
+- **Each mutant runs its own crate's tests,** with `mutation-testing`, which
+  every crate defines: `db-tests` and `crack-coin` where a crate has them,
+  nothing elsewhere (🪤 a new member needs it too). A `crack-core` mutant that
+  only a `cracktunes` or `crack-voting` test would catch shows as missed.
+  Leave the unmutated baseline on (no `--baseline skip`): with a dead
+  Postgres, every mutant would look caught.
 
 ### The full run
 
@@ -224,7 +234,9 @@ gh workflow run mutants-full.yml -f shards=60 -f max_parallel=8
 (default 8), kept low because the concurrent-job limit is shared with every
 other workflow. The shard count will be chosen from the first measured run.
 A run with any failed shard uploads no `mutants-missed`, so a partial list can
-never become a baseline.
+never become a baseline. A shard also fails when Postgres is down or the disk
+filled during its run, since either would quietly shorten its missed list.
+Only one full run goes at a time; a second dispatch waits.
 
 ### The baseline
 
@@ -241,7 +253,10 @@ scripts/mutants_baseline.py refresh --baseline .cargo/mutants-baseline.txt --mis
 
 `compare` exits 1 when the run missed something the baseline does not list.
 `refresh` rewrites the baseline from a missed list and refuses to add entries;
-`--init` creates the file the first time and refuses if it exists.
+`--init` creates the file the first time and refuses if it exists. 🪤 Give
+`refresh` the missed list of a COMPLETE full run (the `mutants-missed`
+artifact): a list from one file, one module, an `--in-diff` run or one shard
+drops every baseline entry outside it.
 
 ### What stays manual
 

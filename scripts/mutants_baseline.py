@@ -132,11 +132,26 @@ def cmd_refresh(args):
     return 0
 
 
+COMPARE_HELP = "Exit 1 if the missed list has a mutant the baseline does not list."
+# 🪤 refresh keeps only the baseline entries that are in --missed, so a partial
+# list silently deletes every entry outside it.
+REFRESH_HELP = (
+    "Rewrite the baseline from a missed list, refusing to add entries. "
+    "--missed must be the missed list of a COMPLETE full run (the mutants-missed "
+    "artifact): a list from one file, one module, an --in-diff run or one shard "
+    "drops every baseline entry outside it."
+)
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name, fn in (("compare", cmd_compare), ("refresh", cmd_refresh)):
-        s = sub.add_parser(name)
+    commands = (
+        ("compare", cmd_compare, COMPARE_HELP),
+        ("refresh", cmd_refresh, REFRESH_HELP),
+    )
+    for name, fn, about in commands:
+        s = sub.add_parser(name, help=about, description=about)
         s.add_argument("--baseline", required=True)
         s.add_argument("--missed", required=True)
         if name == "refresh":

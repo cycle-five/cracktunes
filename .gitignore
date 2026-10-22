@@ -28,6 +28,11 @@ dist-manifest.json
 # code coverage
 cobertura.xml
 **/*.profraw
+lcov.info
+
+# test tooling output: cargo-mutants' results and the Python scripts' bytecode
+mutants.out*
+__pycache__/
 
 # subagent-driven-development scratch: ledger, briefs, reports, review packages.
 # Working notes for executing a plan, not part of what ships. The plan and spec
