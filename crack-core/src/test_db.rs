@@ -13,7 +13,8 @@
 //! - **One database per test and checkout,** named by [`test_db_name`]. It is
 //!   dropped when the test passes and kept when it fails, for inspection, except
 //!   in a mutant run (`CRACK_MUTANTS` set), where a failure is the expected
-//!   result and nobody inspects it.
+//!   result and nobody inspects it. The next run replaces a kept one, but
+//!   never force-drops one that another run of the suite is using.
 //! - **Old templates are swept,** keeping the newest few. Worktrees on different
 //!   branches can need different templates at the same time.
 //! - **Week-old test databases are swept.** A kept failure is meant for
@@ -384,7 +385,7 @@ where
         .block_on(async move {
             let options = admin_options();
             let db_name = test_db_name(test_path);
-            create_test_db(&options, migrator, &db_name).await;
+            create_test_db(&options, migrator, &db_name, test_path).await;
 
             let pool = PgPoolOptions::new()
                 .max_connections(TEST_POOL_MAX_CONNECTIONS)
@@ -432,11 +433,14 @@ async fn drop_test_db(options: &PgConnectOptions, pool: PgPool, db_name: &str, t
 
 /// Replaces any database a failed run of this test left behind with a fresh
 /// copy of the template.
-async fn create_test_db(options: &PgConnectOptions, migrator: &'static Migrator, db_name: &str) {
+async fn create_test_db(
+    options: &PgConnectOptions,
+    migrator: &'static Migrator,
+    db_name: &str,
+    test_path: &str,
+) {
     let mut admin = connect(options).await;
-    drop_database(&mut admin, db_name)
-        .await
-        .unwrap_or_else(|e| panic!("could not drop the leftover {db_name}: {e}"));
+    drop_leftover(&mut admin, db_name, test_path).await;
 
     let template = template_for(&mut admin, migrator).await;
     if let Err(e) = copy_database(&mut admin, &template, db_name).await {
@@ -456,6 +460,31 @@ async fn create_test_db(options: &PgConnectOptions, migrator: &'static Migrator,
     // 🔑 Closed before the test starts, so a running test holds at most its
     // pool's connections.
     admin.close().await.ok();
+}
+
+/// Drops what an earlier run of this test left behind, if anything.
+///
+/// 🔑 Not forced. The name is the same for every run of this test in this
+/// checkout, so a database someone is connected to is most likely another
+/// run's, live (`cargo llvm-cov nextest` beside `cargo nextest run`, say), and
+/// a forced drop would fail that test for nothing. A psql session open on a
+/// kept failure stops this run the same way. Postgres waits 5 s for the other
+/// sessions to leave before it refuses.
+async fn drop_leftover(admin: &mut PgConnection, db_name: &str, test_path: &str) {
+    let dropped = admin
+        .execute(AssertSqlSafe(format!(
+            "DROP DATABASE IF EXISTS {}",
+            ident(db_name)
+        )))
+        .await;
+    match dropped {
+        Ok(_) => {},
+        Err(e) if has_code(&e, OBJECT_IN_USE) => panic!(
+            "another run of {test_path} in this checkout is using {db_name}; wait for it, \
+             or run in another worktree"
+        ),
+        Err(e) => panic!("could not drop the leftover {db_name}: {e}"),
+    }
 }
 
 async fn template_for(admin: &mut PgConnection, migrator: &'static Migrator) -> String {
@@ -958,20 +987,87 @@ mod tests {
         });
     }
 
+    /// Two runs of the suite in one checkout give a test the same database
+    /// name. The second must stop, not force-drop the first's live database.
+    #[test]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    fn a_leftover_someone_is_using_is_not_dropped() {
+        let path = concat!(
+            module_path!(),
+            "::a_leftover_someone_is_using_is_not_dropped"
+        );
+        let name = test_db_name(path);
+
+        // 🪤 The other run's session lives in a runtime of its own, idle while
+        // `run` blocks on its own: `run` cannot be called inside a `block_on`.
+        let other_run = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a Tokio runtime");
+        let mut session = other_run.block_on(async {
+            let mut admin = admin().await;
+            drop_database(&mut admin, &name).await.expect("drop it");
+            admin
+                .execute(AssertSqlSafe(format!(r#"CREATE DATABASE "{name}""#)))
+                .await
+                .expect("create the other run's database");
+            PgConnection::connect_with(&admin_options().database(&name))
+                .await
+                .expect("connect to the other run's database")
+        });
+
+        let stopped = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            run(&MIGRATOR, path, |_pool| async {});
+        }));
+
+        let survived = other_run.block_on(async {
+            let survived = session.execute("SELECT 1").await.is_ok();
+            session.close().await.ok();
+            survived
+        });
+        let left = block_on(async {
+            let mut admin = admin().await;
+            let left = database_count(&mut admin, &name).await;
+            drop_database(&mut admin, &name).await.expect("drop it");
+            left
+        });
+
+        let payload = stopped.expect_err("the run went ahead in a database someone is using");
+        let message = payload
+            .downcast_ref::<String>()
+            .expect("a formatted panic message");
+        assert_eq!(
+            message,
+            &format!(
+                "another run of {path} in this checkout is using {name}; wait for it, \
+                 or run in another worktree"
+            )
+        );
+        assert!(survived, "the other run's session was ended");
+        assert_eq!(left, 1, "the other run's {name} was dropped");
+    }
+
     #[test]
     #[cfg_attr(
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     fn two_runners_racing_build_one_template() {
+        // 🔑 Only the first migration. The race is in `ensure_template`, not
+        // in what the migrations hold, and a build runs under the one lock
+        // that every test start on the machine waits for: all of them would
+        // stall behind every migration, on every run of the suite.
         // A checksum no other run has used, so the template can't exist yet.
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("after 1970")
             .as_nanos()
             .to_le_bytes();
-        let mut migrations = MIGRATOR.migrations.to_vec();
-        migrations.last_mut().expect("a migration").checksum = unique.to_vec().into();
+        let mut migrations = MIGRATOR.migrations[..1].to_vec();
+        migrations[0].checksum = unique.to_vec().into();
         let migrator: &'static Migrator = Box::leak(Box::new(Migrator {
             migrations: migrations.into(),
             ..Migrator::DEFAULT
