@@ -12,8 +12,8 @@
 //!   complete, so no test ever copies a half-migrated template.
 //! - **One database per test and checkout,** named by [`test_db_name`]. It is
 //!   dropped when the test passes and kept when it fails, for inspection, except
-//!   under cargo-mutants, where a failure is the expected result and nobody
-//!   inspects it.
+//!   in a mutant run (`CRACK_MUTANTS` set), where a failure is the expected
+//!   result and nobody inspects it.
 //! - **Old templates are swept,** keeping the newest few. Worktrees on different
 //!   branches can need different templates at the same time.
 //! - **Week-old test databases are swept.** A kept failure is meant for
@@ -328,15 +328,15 @@ fn stale_templates(mut templates: Vec<(String, Option<String>)>, current: &str) 
 /// Runs one test in its own copy of the migrator's template.
 ///
 /// The database is dropped if the test passes, and kept if it fails or panics,
-/// for inspection. The next run of the same test replaces it. Under
-/// cargo-mutants it is dropped either way: see [`keep_on_failure`].
+/// for inspection. The next run of the same test replaces it. In a mutant run
+/// it is dropped either way: see [`MUTANTS_ENV`].
 pub(crate) fn run<F, Fut>(migrator: &'static Migrator, test_path: &str, test_fn: F) -> Fut::Output
 where
     F: FnOnce(PgPool) -> Fut,
     Fut: Future,
     Fut::Output: Outcome,
 {
-    let inside_mutants = std::env::var_os("INSIDE_MUTANTS").is_some();
+    let inside_mutants = std::env::var_os(MUTANTS_ENV).is_some();
     run_keeping(
         migrator,
         test_path,
@@ -345,11 +345,20 @@ where
     )
 }
 
-/// Whether a failing test's database is kept.
+/// Set, to any value, for a mutant run. `scripts/mutants.sh` and the full-run
+/// workflow export `CRACK_MUTANTS=1`, and cargo-mutants passes its environment
+/// through to the tests.
 ///
-/// 🔑 Not under cargo-mutants, which sets `INSIDE_MUTANTS` for its test runs.
-/// There a failure is what a caught mutant looks like, nobody inspects it, and
-/// thousands of mutants would each leave a database behind.
+/// 🔑 A mutant run fails tests on purpose: a failure is what a caught mutant
+/// looks like, and nobody inspects its database. Each scratch copy is a new
+/// checkout, so its database names never come round again to be replaced, and
+/// kept databases would pile up by the thousand.
+///
+/// 🪤 Our own variable, because cargo-mutants sets none we could read: 27.1.0
+/// adds only `INSTA_*` and, sometimes, `CARGO_ENCODED_RUSTFLAGS`.
+const MUTANTS_ENV: &str = "CRACK_MUTANTS";
+
+/// Whether a failing test's database is kept: yes, except in a mutant run.
 fn keep_on_failure(inside_mutants: bool) -> bool {
     !inside_mutants
 }
@@ -726,8 +735,9 @@ mod tests {
         let path = concat!(module_path!(), "::run_keeps_the_database_after_a_failure");
         let name = test_db_name(path);
 
-        // 🪤 Not `run`: under cargo-mutants it drops the database, and this test
-        // would then fail cargo-mutants' unmutated baseline run.
+        // 🪤 Not `run`: in a mutant run (`CRACK_MUTANTS=1`, exported by our
+        // mutants wrapper and the full-run workflow) it drops the database, and
+        // this test would then fail cargo-mutants' unmutated baseline run.
         let outcome = run_keeping(&MIGRATOR, path, keep_on_failure(false), |_pool| async {
             Err::<(), ()>(())
         });
@@ -755,6 +765,45 @@ mod tests {
             .and_then(|c| c.parse().ok())
             .unwrap_or_else(|| panic!("{name} has no creation time: {comment:?}"));
         assert!(unix_seconds().abs_diff(created) < 60 * 60, "{created}");
+    }
+
+    /// Checks the wiring between the environment and `run`, which the tests
+    /// above bypass through `run_keeping`. It reads the process's environment
+    /// and never changes it.
+    ///
+    /// 🔑 The variable is spelled out here, not taken from [`MUTANTS_ENV`], so
+    /// a misspelt constant fails. A misspelling is caught only where
+    /// `CRACK_MUTANTS` is set, which is cargo-mutants' unmutated baseline
+    /// run; a hard-coded decision in `run` is caught in one environment or the
+    /// other.
+    #[test]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    fn run_reads_crack_mutants_to_decide_about_a_failure() {
+        let path = concat!(
+            module_path!(),
+            "::run_reads_crack_mutants_to_decide_about_a_failure"
+        );
+        let name = test_db_name(path);
+        let expected = keep_on_failure(std::env::var_os("CRACK_MUTANTS").is_some());
+
+        let outcome = run(&MIGRATOR, path, |_pool| async { Err::<(), ()>(()) });
+        assert!(outcome.is_err());
+
+        let kept = block_on(async {
+            let mut admin = admin().await;
+            let kept = database_count(&mut admin, &name).await;
+            drop_database(&mut admin, &name).await.expect("drop it");
+            kept
+        });
+        assert_eq!(
+            kept == 1,
+            expected,
+            "CRACK_MUTANTS is {:?}",
+            std::env::var_os("CRACK_MUTANTS")
+        );
     }
 
     /// A test body that panics. A named fn, so its output is `()` by
