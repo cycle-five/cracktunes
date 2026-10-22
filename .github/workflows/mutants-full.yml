@@ -1,0 +1,222 @@
+name: Mutants (full run)
+
+# Runs every cargo-mutants mutant across many shards and uploads the combined
+# list of missed mutants as the `mutants-missed` artifact. PR B builds the first
+# baseline from that artifact. There is no gate here yet: `collect` only
+# compares against `.cargo/mutants-baseline.txt` once that file exists.
+#
+# 🔑 Dispatch only, for now. A full run's duration is unknown until one has
+# happened, and a schedule would burn runner minutes blind. The schedule
+# arrives in PR B, once a run has told us how long it takes.
+#
+# 🔑 `max_parallel` defaults to 8 because the account's concurrent-job limit is
+# shared with every other workflow. A wider fan-out would starve CI for PRs.
+#
+# 🔑 Runs `--in-place`. The runner is disposable, so mutating the checkout is
+# safe, and it skips copying the tree for every shard. (The local wrapper,
+# scripts/mutants.sh, refuses --in-place for the opposite reason.)
+#
+# 🔑 Exit codes 2 (some mutants missed) and 3 (some timed out) are results, not
+# failures: a missed mutant is the very thing we are collecting. Only 1 (usage
+# error), 4 (the unmutated baseline failed) and the like fail the job.
+#
+# 🪤 `--sharding round-robin`, because the default (`slice`) can hand a shard
+# nothing but crack-types mutants. cargo-mutants' unmutated baseline builds
+# `--package <crates with mutants in this shard>` with the bare feature names
+# from mutants.toml, and `db-tests` belongs to crack-core: such a shard would
+# fail its baseline. Round-robin puts crack-core mutants in every shard.
+#
+# 🪤 No `--baseline skip`. The baseline run guards against a broken
+# environment: with a dead Postgres every mutant would look caught, and the
+# empty missed list would later wipe the recorded baseline.
+#
+# Timing: on a 20-core dev machine a caught mutant costs about 40 s and a
+# missed one about 60 s after a cold build. GitHub's runners have 4 vCPUs, so
+# expect several times that. 🪤 They also have only about 14 GB of free disk,
+# and a full build with debug info plus the rust-cache is sizeable.
+#
+# The `push` trigger below is TEMPORARY, for the smoke test of this workflow:
+# it runs shard 0 of 400 (about 19 mutants). It is removed before merge.
+
+on:
+  workflow_dispatch:
+    inputs:
+      shards:
+        description: "Number of shards to split the mutants into"
+        type: number
+        default: 40
+      max_parallel:
+        description: "Shards allowed to run at once"
+        type: number
+        default: 8
+  push:
+    branches: [chore/test-tooling]
+
+# Least privilege: these jobs only check out, build and upload artifacts.
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - name: Plan the shards
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          SHARDS: ${{ inputs.shards }}
+        run: |
+          if [ "$EVENT" = "push" ]; then
+            # Smoke test: 400 shards, but only shard 0 runs (about 19 mutants).
+            shards=400
+            matrix='[0]'
+          else
+            shards="$SHARDS"
+            matrix="[$(seq -s, 0 $((shards - 1)))]"
+          fi
+          echo "shards=$shards" >> "$GITHUB_OUTPUT"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  shard:
+    name: Shard ${{ matrix.shard }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      max-parallel: ${{ fromJSON(inputs.max_parallel || 8) }}
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      SQLX_OFFLINE: "true"
+      # 🔑 Tells the test harness (crack-core/src/test_db.rs) it is running
+      # under mutation, so a failing test's database is dropped. cargo-mutants
+      # sets no variable of its own.
+      CRACK_MUTANTS: "1"
+      # cargo-mutants hands its own arguments to nextest, so the nextest
+      # profile goes in through the environment, not a flag.
+      NEXTEST_PROFILE: mutants
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v7
+
+      - name: "Install yt-dlp"
+        run: |
+          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
+          chmod +x /usr/local/bin/yt-dlp
+        shell: bash
+
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+        shell: bash
+
+      - uses: ikalnytskyi/action-setup-postgres@v8
+        with:
+          username: postgres
+          password: mysecretpassword
+          database: postgres
+          port: 5432
+          # 🪤 PIN THIS. v8 installs from PGDG and defaults to 18, but both
+          # stacks run postgres:16-alpine (see build.yml).
+          postgres-version: "16"
+        id: postgres
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: mutants
+
+      - name: Install cargo-nextest and cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149,cargo-mutants@27.1.0
+
+      - name: Run cargo-mutants
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ needs.plan.outputs.shards }}
+        # Features and profile come from .cargo/mutants.toml; do not repeat them.
+        run: |
+          code=0
+          cargo mutants --in-place --sharding round-robin \
+            --shard "$SHARD/$SHARDS" --output out || code=$?
+          echo "cargo-mutants exited with $code"
+          # 0 = all caught, 2 = some missed, 3 = some timed out: results.
+          case "$code" in
+            0|2|3) exit 0 ;;
+            *) exit "$code" ;;
+          esac
+
+      - name: Upload shard results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-shard-${{ matrix.shard }}
+          path: |
+            out/mutants.out/missed.txt
+            out/mutants.out/caught.txt
+            out/mutants.out/unviable.txt
+            out/mutants.out/timeout.txt
+            out/mutants.out/outcomes.json
+          if-no-files-found: error
+
+  collect:
+    name: Collect
+    needs: [plan, shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v7
+
+      - name: Download every shard's results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: mutants-shard-*
+          path: shards
+
+      - name: Check that every shard reported
+        env:
+          EXPECTED: ${{ needs.plan.outputs.shards }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          got=$(find shards -mindepth 1 -maxdepth 1 -type d | wc -l)
+          # The smoke test runs one shard of 400, so it expects one artifact.
+          if [ "$EVENT" = "push" ]; then EXPECTED=1; fi
+          if [ "$got" -lt "$EXPECTED" ]; then
+            echo "::error::incomplete run: $got of $EXPECTED shards"
+            exit 1
+          fi
+
+      - name: Combine and summarise
+        run: |
+          cat shards/*/missed.txt | sort > missed-all.txt
+          {
+            echo "## cargo-mutants full run"
+            for kind in caught missed unviable timeout; do
+              echo "- $kind: $(cat shards/*/$kind.txt | wc -l)"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the combined missed list
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-missed
+          path: missed-all.txt
+
+      - name: Compare with the baseline
+        run: |
+          if [ -f .cargo/mutants-baseline.txt ]; then
+            python3 scripts/mutants_baseline.py compare \
+              --baseline .cargo/mutants-baseline.txt --missed missed-all.txt
+          else
+            echo "no baseline yet: recording only" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
