@@ -228,13 +228,15 @@ as the `mutants-missed` artifact. It is dispatch-only and exists on master once
 this is merged:
 
 ```bash
-gh workflow run mutants-full.yml                          # 40 shards, 8 at a time
-gh workflow run mutants-full.yml -f shards=60 -f max_parallel=8
+gh workflow run mutants-full.yml                          # 70 shards, 8 at a time
+gh workflow run mutants-full.yml -f shards=100 -f max_parallel=8
 ```
 
-`shards` is 1-256 (default 40); `max_parallel` is how many run at once
+`shards` is 1-256 (default 70); `max_parallel` is how many run at once
 (default 8), kept low because the concurrent-job limit is shared with every
-other workflow. The shard count will be chosen from the first measured run.
+other workflow. On a GitHub runner a mutant takes about 2 minutes, so 70
+shards take about 4 hours each, and a whole run about 35 hours at 8 at a
+time.
 A run with any failed shard uploads no `mutants-missed`, so a partial list can
 never become a baseline. A shard also fails when Postgres is down or the disk
 filled during its run, since either would quietly shorten its missed list.

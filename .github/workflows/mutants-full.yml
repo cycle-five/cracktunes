@@ -36,12 +36,16 @@ name: Mutants (full run)
 # empty missed list would later wipe the recorded baseline. The checks after
 # the run (see the shard job) guard against one that breaks part-way.
 #
-# Timing, on a 20-core dev machine: after a cold baseline (crack-core: about
-# 170 s of build and 20 s of tests), a missed crack-core mutant took 15 s to
-# build and 24 s to test, and a caught one stops at its first failing test. A
-# crack-types mutant took about 2 s. GitHub's runners have 4 vCPUs, so expect
-# several times that. 🪤 They also have only about 14 GB of free disk,
-# and a full build with debug info plus the rust-cache is sizeable.
+# 🔑 Timing, measured on ubuntu-latest (2026-10-22, 20 mutants): the baseline
+# took about 3 minutes and a mutant about 2 on average (a missed crack-core
+# mutant: about 110 s to build and 52 s to test). The same 20 mutants ran
+# 25-30% faster on another runner, so runner speed varies. 7,732 mutants at
+# about 124 s each is roughly 266 runner-hours. The default of 70 shards gives
+# about 110 mutants and 4 hours per shard, inside the 340-minute job cap with
+# room for a slow runner. At 8 at a time a full run takes about 35 hours,
+# more than the 12 a scheduled run may take, so the schedule (PR B) will
+# rotate through slices instead of running everything at once.
+# Disk is not the limit: the runner had 84 GB free, and a shard used about 3.
 #
 # The `push` trigger below is TEMPORARY, for the smoke test of this workflow:
 # it runs shard 0 of 400 (about 19 mutants). It is removed before merge.
@@ -52,7 +56,7 @@ on:
       shards:
         description: "Number of shards to split the mutants into"
         type: number
-        default: 40
+        default: 70
       max_parallel:
         description: "Shards allowed to run at once"
         type: number
