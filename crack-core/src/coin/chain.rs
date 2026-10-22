@@ -28,7 +28,8 @@ impl From<crack_coin::TxStatus> for ChainStatus {
 }
 
 /// A chain call failed. The text comes from `crack_coin::Error`'s `Display`, which never
-/// contains caller input, so it holds no key material.
+/// contains signing-key material. It can carry third-party text (an HTTP client message that
+/// names the RPC URL, or a server's error message), so treat it as loggable, not as public.
 #[derive(Debug)]
 pub struct ChainError(pub String);
 

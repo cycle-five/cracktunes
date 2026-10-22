@@ -154,13 +154,33 @@ mod tests {
         assert!(!err.to_string().contains("0OIl"));
     }
 
+    /// Whether `shown` contains a run of the test seed (all sevens) in either the compact
+    /// (`7,7,7`) or the derived-Debug (`7, 7, 7`) formatting.
+    fn leaks_the_seed(shown: &str) -> bool {
+        shown.contains("7,7,7,7") || shown.contains("7, 7, 7, 7")
+    }
+
+    #[test]
+    fn the_leak_check_trips_on_either_formatting() {
+        let seed = [7u8; 32];
+        assert!(leaks_the_seed(&format!("{seed:?}")));
+        assert!(leaks_the_seed(&serde_json::to_string(&seed).unwrap()));
+        assert!(!leaks_the_seed("Keypair(abc)"));
+    }
+
     #[test]
     fn the_debug_of_a_config_shows_no_key() {
         let kp = keypair_json();
         let cfg = CoinConfig::from_values(Some(&kp), Some(&mint()), None).unwrap();
         let shown = format!("{cfg:?}");
-        assert!(!shown.contains("[7,7,7"));
-        assert!(shown.contains(&cfg.keypair.pubkey().to_string()));
+        assert!(!leaks_the_seed(&shown), "{shown}");
+        let expected = format!(
+            "CoinConfig {{ keypair: Keypair({}), mint: {}, url: {:?} }}",
+            cfg.keypair.pubkey(),
+            mint(),
+            crack_coin::DEFAULT_RPC_URL
+        );
+        assert_eq!(shown, expected);
     }
 
     #[test]
