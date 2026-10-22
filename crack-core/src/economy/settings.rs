@@ -274,6 +274,9 @@ pub struct EconomyConfig {
     pub short_effect_minutes: u32,
     pub jail_channel_id: Option<ChannelId>,
     pub announce_channel_id: Option<ChannelId>,
+    /// Whether members may turn credits into CrackCoin here. Off by default;
+    /// only a coin build ever reads it, but every build keeps it.
+    pub coin_withdrawals: bool,
     /// Opaque passthrough of top-level fields a later release owns. This
     /// build neither reads nor validates them; it only keeps them, so a
     /// rollback followed by a save does not reset what that release stored.
@@ -301,6 +304,7 @@ impl Default for EconomyConfig {
             short_effect_minutes: 5,
             jail_channel_id: None,
             announce_channel_id: None,
+            coin_withdrawals: false,
             extra: BTreeMap::new(),
         }
     }
@@ -477,6 +481,15 @@ pub fn clown_name(current: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_stored_config_without_coin_withdrawals_reads_false() {
+        let c: EconomyConfig = serde_json::from_str(r#"{"max_bet": 50}"#).unwrap();
+        assert!(!c.coin_withdrawals);
+        let on: EconomyConfig = serde_json::from_str(r#"{"coin_withdrawals": true}"#).unwrap();
+        assert!(on.coin_withdrawals);
+        assert!(on.extra.is_empty());
+    }
+
     use super::*;
     use EconomySettingsError as E;
 

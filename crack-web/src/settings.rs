@@ -162,6 +162,10 @@ pub struct EconomySettingsView {
     /// What the announcement channel lacks for cards; `None` when no
     /// channel is set or the cache cannot say.
     pub announce_findings: Option<Vec<String>>,
+    /// Whether this build can talk to the chain; the page shows the switch
+    /// only then.
+    pub coin_build: bool,
+    pub coin_withdrawals: bool,
 }
 
 /// The kind of channel a picker takes.
@@ -181,7 +185,7 @@ fn stored_option(c: Option<ChannelId>) -> Vec<ChannelOption> {
 }
 
 impl EconomySettingsView {
-    pub fn from_settings(s: &EconomySettings) -> Self {
+    pub fn from_settings(s: &EconomySettings, coin_build: bool) -> Self {
         let c = &s.config;
         // No cache here: the pickers hold the stored channel and the report
         // says it can't tell. The live backend fills both in.
@@ -222,6 +226,8 @@ impl EconomySettingsView {
             text_channels: stored_option(c.announce_channel_id),
             preflight,
             announce_findings,
+            coin_build,
+            coin_withdrawals: c.coin_withdrawals,
         }
     }
 }
@@ -255,6 +261,10 @@ pub struct EconomySettingsForm {
     pub short_effect_minutes: u32,
     pub jail_channel: Option<String>,
     pub announce_channel: Option<String>,
+    /// `None` (the page sent no switch, as in a lean build) keeps the stored
+    /// value.
+    #[serde(default)]
+    pub coin_withdrawals: Option<bool>,
 }
 
 /// Why an economy save changed nothing.
@@ -346,6 +356,9 @@ pub fn apply_form(
     c.short_effect_minutes = form.short_effect_minutes;
     c.jail_channel_id = jail;
     c.announce_channel_id = announce;
+    if let Some(on) = form.coin_withdrawals {
+        c.coin_withdrawals = on;
+    }
     Ok(s)
 }
 
@@ -379,12 +392,36 @@ mod tests {
             short_effect_minutes: 7,
             jail_channel: Some("111".into()),
             announce_channel: Some("222".into()),
+            coin_withdrawals: None,
         }
     }
 
     /// Every id is a channel of the right kind.
     fn any_channel(_: ChannelKind, raw: &str) -> Option<ChannelId> {
         raw.parse().ok().map(ChannelId::new)
+    }
+
+    #[test]
+    fn a_form_without_coin_withdrawals_keeps_the_stored_value() {
+        let mut stored = EconomySettings::off(GuildId::new(5));
+        stored.config.coin_withdrawals = true;
+        let out = apply_form(stored, form(), any_channel).unwrap();
+        assert!(out.config.coin_withdrawals);
+    }
+
+    #[test]
+    fn a_form_with_coin_withdrawals_false_turns_it_off() {
+        let mut stored = EconomySettings::off(GuildId::new(5));
+        stored.config.coin_withdrawals = true;
+        let mut f = form();
+        f.coin_withdrawals = Some(false);
+        let out = apply_form(stored, f, any_channel).unwrap();
+        assert!(!out.config.coin_withdrawals);
+        let mut f = form();
+        f.coin_withdrawals = Some(true);
+        let on = apply_form(EconomySettings::off(GuildId::new(5)), f, any_channel).unwrap();
+        assert!(on.config.coin_withdrawals);
+        assert!(EconomySettingsView::from_settings(&on, true).coin_withdrawals);
     }
 
     #[test]
@@ -534,7 +571,7 @@ mod tests {
 
     #[test]
     fn the_view_lists_prices_in_action_order() {
-        let v = EconomySettingsView::from_settings(&EconomySettings::off(GuildId::new(5)));
+        let v = EconomySettingsView::from_settings(&EconomySettings::off(GuildId::new(5)), false);
         let got: Vec<_> = v
             .prices
             .iter()
@@ -582,7 +619,7 @@ mod tests {
         })
         .collect();
         let out = apply_form(EconomySettings::off(GuildId::new(5)), f, any_channel).unwrap();
-        let v = EconomySettingsView::from_settings(&out);
+        let v = EconomySettingsView::from_settings(&out, false);
         let get = |k: &str| {
             let p = v.prices.iter().find(|p| p.kind == k).unwrap();
             (p.price, p.on)

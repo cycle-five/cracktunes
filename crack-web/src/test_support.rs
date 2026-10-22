@@ -144,6 +144,7 @@ impl FakeBackend {
             modlog_saves: Mutex::new(Vec::new()),
             economy_view: Mutex::new(EconomySettingsView::from_settings(
                 &crack_core::economy::settings::EconomySettings::off(GuildId::new(5)),
+                false,
             )),
             economy_save_result: Mutex::new(Ok(())),
             economy_saves: Mutex::new(Vec::new()),

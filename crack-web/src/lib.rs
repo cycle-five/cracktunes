@@ -508,7 +508,7 @@ impl Backend for LiveBackend {
     async fn economy_settings(&self, g: GuildId) -> EconomySettingsView {
         use crack_core::economy::preflight::bot_perms;
         let stored = self.deps.data.economy.settings(g);
-        let mut view = EconomySettingsView::from_settings(&stored);
+        let mut view = EconomySettingsView::from_settings(&stored, crack_core::COIN_BUILD);
         // Without the guild in the cache the view keeps its fallbacks: the
         // stored channels by id, and a report that can't tell.
         let Some(guild) = self.deps.cache.guild(g) else {

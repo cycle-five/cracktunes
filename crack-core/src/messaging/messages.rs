@@ -1151,6 +1151,8 @@ pub const ECONOMY_STATUS_RECENT_NONE: &str = "Nothing bought yet.";
 pub const ECONOMY_STATUS_RECENT_MORE_PREFIX: &str = "…and";
 pub const ECONOMY_STATUS_RECENT_MORE_SUFFIX: &str = "older not shown.";
 pub const ECONOMY_STATUS_UNTIL: &str = "until";
+pub const ECONOMY_STATUS_COIN: &str = "CrackCoin withdrawals";
+pub const ECONOMY_STATUS_TAP: &str = "tap";
 pub const ECONOMY_ADMIN_BOT_TARGET: &str = "Bots don't take part in the economy.";
 pub const ECONOMY_ADMIN_HOURS_RANGE: &str = "Hours must be between 1 and 8760 (a year).";
 pub const ECONOMY_ADMIN_GRANT_DISABLED: &str =
@@ -1172,6 +1174,9 @@ pub const ECONOMY_ADMIN_NEEDS_MODERATE: &str =
 
 // ---- Economy: the dashboard section ----
 pub const DASH_ECONOMY_TITLE: &str = "Economy";
+pub const DASH_ECONOMY_COIN: &str = "CrackCoin withdrawals";
+pub const DASH_ECONOMY_COIN_NOTE: &str =
+    "Members can turn their credits into CrackCoin, a worthless devnet token, 1:1.";
 pub const DASH_ECONOMY_ENABLED: &str = "Economy is on";
 pub const DASH_ECONOMY_CURRENCY_NAME: &str = "Currency name";
 pub const DASH_ECONOMY_CURRENCY_EMOJI: &str = "Currency emoji";

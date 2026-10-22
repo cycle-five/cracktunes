@@ -15,12 +15,13 @@ use crate::messaging::messages::{
     ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE, ECONOMY_ADMIN_LIFT_FAILED,
     ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE, ECONOMY_CANCEL_DONE_PREFIX,
     ECONOMY_CANCEL_DONE_SUFFIX, ECONOMY_CANCEL_NONE, ECONOMY_NO_DATABASE, ECONOMY_READ_FAILED,
-    ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD,
-    ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS, ECONOMY_STATUS_OFF,
-    ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE, ECONOMY_STATUS_PER_VOICE_MINUTE,
-    ECONOMY_STATUS_RECENT, ECONOMY_STATUS_RECENT_MORE_PREFIX, ECONOMY_STATUS_RECENT_MORE_SUFFIX,
-    ECONOMY_STATUS_RECENT_NONE, ECONOMY_STATUS_SECONDS, ECONOMY_STATUS_SHOP, ECONOMY_STATUS_TITLE,
-    ECONOMY_STATUS_UNTIL, ECONOMY_STATUS_WALLETS,
+    ECONOMY_STATUS_COIN, ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING,
+    ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS,
+    ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
+    ECONOMY_STATUS_PER_VOICE_MINUTE, ECONOMY_STATUS_RECENT, ECONOMY_STATUS_RECENT_MORE_PREFIX,
+    ECONOMY_STATUS_RECENT_MORE_SUFFIX, ECONOMY_STATUS_RECENT_NONE, ECONOMY_STATUS_SECONDS,
+    ECONOMY_STATUS_SHOP, ECONOMY_STATUS_TAP, ECONOMY_STATUS_TITLE, ECONOMY_STATUS_UNTIL,
+    ECONOMY_STATUS_WALLETS,
 };
 use crate::messaging::transport::DiscordTransport;
 use crate::modlog::batch::ModLogSink;
@@ -45,11 +46,41 @@ fn on_off(b: bool) -> &'static str {
     }
 }
 
+/// What `/economy status` says about CrackCoin. Only a coin build makes one;
+/// the wording lives here so every build tests it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CoinLine {
+    pub withdrawals: bool,
+    /// The tap's balance, when the chain is ready and the read worked.
+    pub tap_lamports: Option<u64>,
+}
+
+/// Lamports as SOL with two decimals (50_000_000 is "0.05").
+fn sol_text(lamports: u64) -> String {
+    format!("{:.2}", lamports as f64 / 1_000_000_000.0)
+}
+
+fn coin_line_text(l: &CoinLine) -> String {
+    let mut line = format!("{ECONOMY_STATUS_COIN}: {}", on_off(l.withdrawals));
+    if let Some(lamports) = l.tap_lamports {
+        line.push_str(&format!(
+            ", {ECONOMY_STATUS_TAP} {} SOL",
+            sol_text(lamports)
+        ));
+    }
+    line
+}
+
 /// The server's economy at a glance.
-pub fn economy_status_text(s: &EconomySettings, wallets: i64, credits: i64) -> String {
+pub fn economy_status_text(
+    s: &EconomySettings,
+    wallets: i64,
+    credits: i64,
+    coin: Option<&CoinLine>,
+) -> String {
     let c = &s.config;
     let (emoji, name) = (&c.currency_emoji, &c.currency_name);
-    format!(
+    let mut text = format!(
         "**{ECONOMY_STATUS_TITLE}**: {}\n\
          {ECONOMY_STATUS_CURRENCY}: {emoji} {name}\n\
          {ECONOMY_STATUS_WALLETS}: {wallets}\n\
@@ -66,7 +97,37 @@ pub fn economy_status_text(s: &EconomySettings, wallets: i64, credits: i64) -> S
         on_off(c.immunity_mods),
         on_off(c.gambling_enabled),
         c.max_bet,
-    )
+    );
+    if let Some(l) = coin {
+        text.push('\n');
+        text.push_str(&coin_line_text(l));
+    }
+    text
+}
+
+/// The CrackCoin line: a coin build only. The tap is read only from a ready
+/// chain, and a failed read leaves it out.
+#[cfg(feature = "crack-coin")]
+async fn coin_line(ctx: Context<'_>, s: &EconomySettings) -> Option<CoinLine> {
+    use crate::coin::registry::CoinState;
+    let tap_lamports = match ctx.data().economy.coin.state() {
+        CoinState::Ready(chain) => chain
+            .tap_lamports()
+            .await
+            .inspect_err(|err| tracing::warn!("economy: tap read failed: {err}"))
+            .ok(),
+        CoinState::Starting | CoinState::Off(_) => None,
+    };
+    Some(CoinLine {
+        withdrawals: s.config.coin_withdrawals,
+        tap_lamports,
+    })
+}
+
+/// A lean build has no coin to describe.
+#[cfg(not(feature = "crack-coin"))]
+async fn coin_line(_ctx: Context<'_>, _s: &EconomySettings) -> Option<CoinLine> {
+    None
 }
 
 /// How many past actions `/economy status` lists.
@@ -285,8 +346,9 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
         Ok((wallets, credits)) => {
             let s = ctx.data().economy.settings(guild);
             let (report, announce) = report_for(&ctx.serenity_context().cache, guild, &s.config);
+            let coin = coin_line(ctx, &s).await;
             let text = status_report_text(
-                &economy_status_text(&s, wallets, credits),
+                &economy_status_text(&s, wallets, credits, coin.as_ref()),
                 &report,
                 announce.as_deref(),
                 recent.as_deref(),
@@ -507,7 +569,7 @@ mod tests {
     fn economy_status_text_exact() {
         let mut s = EconomySettings::off(GuildId::new(1));
         assert_eq!(
-            economy_status_text(&s, 3, 1250),
+            economy_status_text(&s, 3, 1250, None),
             "**Economy status**: off\n\
              Currency: 🪙 credits\n\
              Wallets: 3\n\
@@ -521,10 +583,31 @@ mod tests {
         s.config.currency_emoji = "💎".into();
         s.config.immunity_shop = false;
         s.config.gambling_enabled = true;
-        let t = economy_status_text(&s, 0, 0);
+        let t = economy_status_text(&s, 0, 0, None);
         assert!(t.starts_with("**Economy status**: on\nCurrency: 💎 gems\n"));
         assert!(t.contains("shop off"));
         assert!(t.ends_with("Gambling: on, max bet 500"));
+    }
+
+    #[test]
+    fn status_shows_the_coin_line_only_when_given() {
+        let s = EconomySettings::off(GuildId::new(1));
+        assert!(!economy_status_text(&s, 0, 0, None).contains("CrackCoin"));
+        let on = CoinLine {
+            withdrawals: true,
+            tap_lamports: Some(50_000_000),
+        };
+        let t = economy_status_text(&s, 0, 0, Some(&on));
+        assert!(
+            t.ends_with("\nCrackCoin withdrawals: on, tap 0.05 SOL"),
+            "{t}"
+        );
+        let off = CoinLine {
+            withdrawals: false,
+            tap_lamports: None,
+        };
+        let t = economy_status_text(&s, 0, 0, Some(&off));
+        assert!(t.ends_with("\nCrackCoin withdrawals: off"), "{t}");
     }
 
     fn recent(

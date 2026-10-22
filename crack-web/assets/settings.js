@@ -209,6 +209,7 @@
       el("e-hours").value = view.bought_immunity_hours;
       el("e-gambling").checked = view.gambling_enabled;
       el("e-max-bet").value = view.max_bet;
+      if (el("e-coin")) el("e-coin").checked = view.coin_withdrawals;
       el("e-rename-hours").value = view.rename_hours;
       el("e-short").value = view.short_effect_minutes;
       fillChannels(el("e-jail"), view.voice_channels, view.jail_channel);
@@ -287,6 +288,9 @@
         jail_channel: el("e-jail").value || null,
         announce_channel: el("e-announce").value || null,
       };
+      // Only a coin build renders the switch; without it nothing is sent and
+      // the stored value stays.
+      if (el("e-coin")) body.coin_withdrawals = el("e-coin").checked;
       try {
         const r = await fetch(`/g/${guild}/settings/economy`, {
           method: "POST",

@@ -2886,6 +2886,7 @@ mod test {
                     short_effect_minutes: 7,
                     jail_channel: Some("111".into()),
                     announce_channel: None,
+                    coin_withdrawals: None,
                 }
             )]
         );
@@ -2997,6 +2998,8 @@ mod test {
                 text_channels: vec![],
                 preflight: vec![],
                 announce_findings: None,
+                coin_build: false,
+                coin_withdrawals: false,
             };
         }
         let r = get(fake, "/g/5/settings", Some(&session(9))).await;
