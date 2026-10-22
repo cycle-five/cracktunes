@@ -1093,6 +1093,7 @@ dependencies = [
  "crack-musicreco",
  "crack-osint",
  "crack-sleevenote",
+ "crack-test-macros",
  "crack-testing",
  "crack-types",
  "ctor",
@@ -1171,6 +1172,15 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "crack-test-macros"
+version = "0.36.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
