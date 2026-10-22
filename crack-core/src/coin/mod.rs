@@ -8,7 +8,7 @@ pub mod registry;
 pub mod resolve;
 pub mod sweep;
 
-use crate::economy::effects::spawn_supervised;
+use crate::economy::effects::spawn_one_shot;
 use crate::Data;
 use chain::{CoinChain, LiveChain, OpenError};
 use config::{CoinConfig, CoinOff};
@@ -65,7 +65,8 @@ pub fn start(data: Data) {
     let Some(pool) = data.database_pool.clone() else {
         return;
     };
-    spawn_supervised("coin-start", async move {
+    // It always ends (off or ready), so it is one-shot: ending is not an error.
+    spawn_one_shot("coin-start", async move {
         let mut attempt: u32 = 0;
         loop {
             // `CoinConfig` is not `Clone` (it holds the key), so each attempt reads it afresh.
@@ -99,7 +100,13 @@ pub fn start(data: Data) {
                 },
                 Next::Ready(chain) => {
                     let chain: Arc<dyn CoinChain> = Arc::new(*chain);
-                    let lamports = chain.tap_lamports().await.unwrap_or(0);
+                    let lamports = match chain.tap_lamports().await {
+                        Ok(lamports) => lamports,
+                        Err(e) => {
+                            tracing::warn!("crack-coin: could not read the tap balance: {e}");
+                            0
+                        },
+                    };
                     data.economy.coin.set(CoinState::Ready(chain.clone()));
                     tracing::info!("{}", ready_line(chain.mint(), &chain.authority(), lamports));
                     sweep::start_sweeper(pool, chain, data.economy.process_start());
