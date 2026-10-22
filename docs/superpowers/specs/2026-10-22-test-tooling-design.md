@@ -102,9 +102,13 @@ as a word.
 - **crack-voting and crack-cli have one database test each.**
 - **`crack-core/src/guild/permissions.rs` has a `#[ctor]` that prints**
   `WARNING: DATABASE_URL not set for tests` **to stdout,** and does nothing else: its `set_var`
-  is commented out. Two consequences:
+  is commented out.
   - The stdout line breaks `cargo nextest list` parsing.
-  - `docs/testing.md` wrongly says the ctor supplies a default `DATABASE_URL`.
+  - The real default comes from another ctor, in `crack-core/src/db/user.rs`, which sets
+    `postgresql://postgres:mysecretpassword@localhost:5432/postgres` when `DATABASE_URL` is
+    unset.
+  - Ctors run in no guaranteed order, so the warning can print even when that default is about
+    to be set.
 - **`crack-core/test_migrations` is a copy of `migrations/` plus `20990328005454_test_db.sql`,**
   and `20240705083637_crack_voting.sql` has drifted between the two. This is noted here and
   left for the follow-ups, outside this arc.
@@ -192,11 +196,11 @@ informational, and an every-push coverage job is what made tarpaulin a burden.
 - **CI's test steps switch to `cargo nextest run`,** with the same features, toolchains and
   `--release` rule.
 - **nextest doesn't run doctests,** so a separate `cargo test --doc` step keeps them running.
-- **Delete the no-op stdout `#[ctor]` in `guild/permissions.rs`.** The database-test runner
-  (next section) reports a missing `DATABASE_URL` itself. Remove the `ctor` dependency if
-  nothing else uses it.
-- **Fix `docs/testing.md`:** it should show the nextest commands, describe the template
-  databases, and drop the claim about a default URL.
+- **Delete the stdout `#[ctor]` in `guild/permissions.rs`.** The default in `db/user.rs` stays.
+  Other ctors (`vote.rs`, crack-cli's `playlist.rs`) set test-only environment variables and
+  are untouched.
+- **Fix `docs/testing.md`:** it should show the nextest commands and describe the template
+  databases.
 
 ### 3. Template test databases
 
@@ -276,6 +280,13 @@ Timeouts count as caught, but they are listed.
   that debt down belongs to the deliberate passes ("chip away on purpose").
 - The summary still lists those misses, and the reviewer weighs them, which is the "leave it
   better" norm.
+
+**Local runs never mutate the working tree in place.**
+- The agent's loop runs the check in the background while the next implementer edits the same
+  worktree.
+- `--in-place` would mutate files under that implementer, and the spike used `--in-place`.
+- Local runs always work on cargo-mutants' scratch copies.
+- CI runners are disposable, so CI may run in place.
 
 **Local runs: each job gets its own build directory, on disk.**
 - **Normal builds keep the shared target directory.** The owner's 2026-08-14 decision stands.
