@@ -54,7 +54,7 @@ separate `-coin` image.
   - `SPONSORED_ACCOUNTS = 3`, per member per mint, counting `done` rows that had `sponsored = true`;
   - `MIN_TAP_LAMPORTS = 10_000_000` (0.01 SOL);
   - `ORPHAN_AFTER = 120 s`;
-  - `POLL_EVERY = 2 s`, `POLL_FOR = 120 s`;
+  - `POLL_EVERY = 2 s`, `POLL_FOR = 180 s` (amended: R18);
   - `SWEEP_EVERY = 30 s`;
   - `RPC_TIMEOUT = 10 s`;
   - the startup retry backoff is `5 s · 2^n`, capped at `300 s`.
@@ -704,7 +704,7 @@ impl RefundReason { pub fn as_db_text(&self) -> String }   // "never sent", "fai
 pub fn decide(row: &RowFacts<'_>, obs: &Observation) -> Decision;
 pub async fn observe(chain: &dyn CoinChain, signature: &str) -> Observation;   // any ChainError → Unreachable
 // flow.rs
-pub struct Timing { pub poll_every: Duration, pub poll_for: Duration }   // Timing::LIVE = 2 s / 120 s
+pub struct Timing { pub poll_every: Duration, pub poll_for: Duration }   // Timing::LIVE = 2 s / 180 s (amended: R18)
 pub struct WithdrawRequest<'a> { pub guild: GuildId, pub user: UserId, pub address: &'a str, pub amount: i64, pub sponsored: bool }
 pub async fn begin(pool: &PgPool, chain: &dyn CoinChain, req: &WithdrawRequest<'_>) -> Result<Started, StartError>; // snapshots address + chain.mint()
 #[derive(Debug, PartialEq, Eq)] pub enum Outcome { Minted { signature: String }, Refunded { reason: RefundReason, balance: Option<i64> }, StillSettling }

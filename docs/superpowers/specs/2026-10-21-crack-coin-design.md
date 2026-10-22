@@ -456,7 +456,7 @@ One pure function decides, and the in-command poll and the sweeper both call it:
 - Checking expiry against the *finalized* height is conservative. Finalized
   lags, so a refund happens only once the blockhash is provably dead.
 - **A send error does not refund on the spot.** Even a preflight rejection waits
-  for expiry, about 90 s. It is slower on a rare path, but it is the one rule
+  for expiry, about 135-140 s, which is why the command polls for 180 s (amended: R18). It is slower on a rare path, but it is the one rule
   that is safe without reasoning about which RPC errors mean "not forwarded".
 - The no-signature orphan rule is safe because of 6.1 step 5, **and** because
   the refund itself re-checks that the row is still unsigned (6.3).

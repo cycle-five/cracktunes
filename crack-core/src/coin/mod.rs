@@ -64,6 +64,9 @@ pub fn start(data: Data) {
         return;
     }
     let Some(pool) = data.database_pool.clone() else {
+        let off = CoinOff::NoDatabase;
+        data.economy.coin.set(CoinState::Off(off.clone()));
+        tracing::warn!("{}", off_line(&off));
         return;
     };
     // It always ends (off or ready), so it is one-shot: ending is not an error.
@@ -148,6 +151,14 @@ mod tests {
         assert_eq!(
             off_line(&CoinOff::Mainnet),
             "crack-coin: off (the RPC endpoint is mainnet)"
+        );
+    }
+
+    #[test]
+    fn off_line_names_a_missing_database() {
+        assert_eq!(
+            off_line(&CoinOff::NoDatabase),
+            "crack-coin: off (there is no database)"
         );
     }
 

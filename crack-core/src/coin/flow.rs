@@ -17,7 +17,7 @@ use tokio::time::Instant;
 /// How often the command polls the chain.
 pub const POLL_EVERY: Duration = Duration::from_secs(2);
 /// How long the command polls before leaving the row to the sweeper.
-pub const POLL_FOR: Duration = Duration::from_secs(120);
+pub const POLL_FOR: Duration = Duration::from_secs(180);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Timing {

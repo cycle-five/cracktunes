@@ -30,6 +30,7 @@ pub enum CoinOff {
     BadMint,
     Mainnet,
     MintMismatch(&'static str),
+    NoDatabase,
 }
 
 impl fmt::Display for CoinOff {
@@ -40,6 +41,7 @@ impl fmt::Display for CoinOff {
             CoinOff::BadMint => f.write_str("the mint does not parse"),
             CoinOff::Mainnet => f.write_str("the RPC endpoint is mainnet"),
             CoinOff::MintMismatch(why) => write!(f, "the mint does not match: {why}"),
+            CoinOff::NoDatabase => f.write_str("there is no database"),
         }
     }
 }

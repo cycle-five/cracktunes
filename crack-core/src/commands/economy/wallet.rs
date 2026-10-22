@@ -157,6 +157,10 @@ pub async fn withdraw(
     let (CoinState::Ready(chain), Some(address)) = (state, address) else {
         return say(ctx, COIN_FAILED, true).await;
     };
+    // The link may predate the mint (or name it): re-check before any read or charge.
+    if let Err(refusal) = check_address(&address, Some(chain.mint())) {
+        return say(ctx, address_refusal_text(&refusal), true).await;
+    }
     // Every refusal comes before the debit, and a read that fails refuses too.
     let reads = tokio::try_join!(
         async { chain.tap_lamports().await.map_err(|e| e.to_string()) },
