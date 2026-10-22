@@ -198,10 +198,11 @@ the directory you called it in.
   disposable runner.)
 - **Scratch location:** `$HOME/.cache/cargo-mutants`, or `$CRACK_MUTANTS_SCRATCH`
   if set. Not `/tmp`, which is a small tmpfs in RAM. Each copy has its own
-  `target/` of about 5.4 GiB, so disk is the limit, not CPU.
+  `target/` (up to about 5.4 GiB), so disk is the limit, not CPU.
 - **Use `-j 1`.** Each mutant's tests already use every core, and each job pays
-  its own cold build. Measured on 13 mutants: `-j 1` 509 s, `-j 2` 536 s,
-  `-j 4` 603 s.
+  its own cold baseline build, which takes longer than a mutant does. (Measured
+  before mutants tested only their own crate: 13 mutants took 509 s at `-j 1`,
+  536 s at `-j 2` and 603 s at `-j 4`.)
 - **Cost:** the workspace has 7,732 mutants (6,598 in `crack-core`), so run a
   file or module, not everything. A fresh copy first builds and tests the
   unmutated crates: for `crack-core` about 170 s of build and 20 s of tests.
@@ -213,9 +214,10 @@ the directory you called it in.
   `gitignore = true` (so `.env` stays out of the copies). The wrapper sets
   `NEXTEST_PROFILE=mutants`, `CRACK_MUTANTS=1` and `SQLX_OFFLINE=true`.
 - **Each mutant runs its own crate's tests,** with `mutation-testing`, which
-  every crate defines: `db-tests` and `crack-coin` where a crate has them,
-  nothing elsewhere (🪤 a new member needs it too). A `crack-core` mutant that
-  only a `cracktunes` or `crack-voting` test would catch shows as missed.
+  every member except `crack-test-macros` defines: `db-tests` and `crack-coin`
+  where a crate has them, nothing elsewhere (🪤 a new member needs it too). A
+  `crack-core` mutant that only a `cracktunes` or `crack-web` test would catch
+  shows as missed.
   Leave the unmutated baseline on (no `--baseline skip`): with a dead
   Postgres, every mutant would look caught.
 

@@ -30,7 +30,8 @@ features = ["mutation-testing"]
 # mutant with `--workspace` but the baseline only per crate, so a failing or
 # flaky test elsewhere passed the baseline and then made every mutant look
 # caught. The cost of the default: a crack-core mutant that only a cracktunes
-# or crack-voting test would catch shows as missed. That errs the safe way.
+# or crack-web test would catch (the two crates that use crack-core) shows as
+# missed. That errs the safe way.
 
 # The cargo profile that mutants build with: see [profile.mutants] in the root
 # Cargo.toml.
