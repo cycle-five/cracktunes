@@ -286,13 +286,3 @@ jobs:
         with:
           name: mutants-missed
           path: missed-all.txt
-
-      - name: Compare with the baseline
-        shell: bash
-        run: |
-          if [ -f .cargo/mutants-baseline.txt ]; then
-            python3 scripts/mutants_baseline.py compare \
-              --baseline .cargo/mutants-baseline.txt --missed missed-all.txt
-          else
-            echo "no baseline yet: recording only" | tee -a "$GITHUB_STEP_SUMMARY"
-          fi
