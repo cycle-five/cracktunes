@@ -481,6 +481,9 @@ pub fn clown_name(current: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use EconomySettingsError as E;
+
     #[test]
     fn a_stored_config_without_coin_withdrawals_reads_false() {
         let c: EconomyConfig = serde_json::from_str(r#"{"max_bet": 50}"#).unwrap();
@@ -489,9 +492,6 @@ mod tests {
         assert!(on.coin_withdrawals);
         assert!(on.extra.is_empty());
     }
-
-    use super::*;
-    use EconomySettingsError as E;
 
     #[test]
     fn stays_active_is_timed_plus_mirror() {

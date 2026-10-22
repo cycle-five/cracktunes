@@ -335,6 +335,9 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     if !mod_gate(ctx).await? {
         return Ok(());
     }
+    // A coin build reads the tap over the network (up to the RPC timeout):
+    // past Discord's three seconds otherwise.
+    ctx.defer_ephemeral().await?;
     let (stats, recent) = tokio::join!(
         db::stats(&pool, guild),
         db::recent_actions(&pool, guild, STATUS_RECENT)
