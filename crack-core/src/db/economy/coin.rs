@@ -881,9 +881,7 @@ mod tests {
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
-    async fn one_undecodable_pending_row_does_not_hide_the_rest(
-        pool: PgPool,
-    ) -> sqlx::Result<()> {
+    async fn one_undecodable_pending_row_does_not_hide_the_rest(pool: PgPool) -> sqlx::Result<()> {
         let good = started(&pool).await;
         // A hand edit: guild 0 is not a valid server id.
         fund(&pool, G2, UserId::new(11), 50).await;

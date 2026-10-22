@@ -1273,7 +1273,8 @@ pub const COIN_REASON_NEVER_SENT: &str = "it was never sent";
 pub const COIN_REASON_FAILED_ON_CHAIN: &str = "the network rejected it: {why}";
 pub const COIN_REASON_DEVNET_RESET: &str = "devnet was reset";
 pub const COIN_REASON_EXPIRED: &str = "it expired before it landed";
-pub const COIN_REFUSE_STARTING: &str = "CrackCoin is still starting up. Try again in a few minutes.";
+pub const COIN_REFUSE_STARTING: &str =
+    "CrackCoin is still starting up. Try again in a few minutes.";
 pub const COIN_REFUSE_UNAVAILABLE: &str = "CrackCoin isn't available right now.";
 pub const COIN_REFUSE_SWITCH_OFF: &str = "CrackCoin withdrawals are turned off in this server.";
 pub const COIN_REFUSE_OPTED_OUT: &str =
