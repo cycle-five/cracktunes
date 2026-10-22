@@ -80,10 +80,29 @@ class CompareTests(Base):
 
     def test_comments_and_blanks_ignored(self):
         base = self.write("base.txt", ["# header", "", mb.key(A), "   ", "# more"])
-        self.assertEqual(sum(mb.load_keys(base).values()), 1)
+        self.assertEqual(sum(mb.load_baseline(base).values()), 1)
         missed = self.write("missed.txt", ["# note", "", A])
         code, _ = self.run_cli("compare", "--baseline", base, "--missed", missed)
         self.assertEqual(code, 0)
+
+
+class BadInputTests(Base):
+    def test_malformed_missed_line_exits_2(self):
+        base = self.write("base.txt", [mb.key(A)])
+        missed = self.write("missed.txt", [A, "garbage without position"])
+        for cmd in ("compare", "refresh"):
+            code, out = self.run_cli(cmd, "--baseline", base, "--missed", missed)
+            self.assertEqual(code, 2, cmd)
+            self.assertIn("garbage without position", out)
+            self.assertIn(missed, out)
+
+    def test_missing_missed_file_exits_2(self):
+        base = self.write("base.txt", [mb.key(A)])
+        gone = os.path.join(self.dir, "gone.txt")
+        for cmd in ("compare", "refresh"):
+            code, out = self.run_cli(cmd, "--baseline", base, "--missed", gone)
+            self.assertEqual(code, 2, cmd)
+            self.assertIn("gone.txt", out)
 
 
 class RefreshTests(Base):

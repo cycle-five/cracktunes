@@ -49,18 +49,18 @@ def _content_lines(path):
                 yield line
 
 
-def load_keys(path) -> collections.Counter:
-    """Count the keys in a baseline file (lines are already keys)."""
+def load_baseline(path) -> collections.Counter:
+    """Count a BASELINE file's lines, which are already keys (no key() applied)."""
     return collections.Counter(_content_lines(path))
 
 
 def load_missed(path) -> collections.Counter:
-    """Count keys of a missed list, whose lines are full `file:L:C: text`."""
+    """Key and count a MISSED list, whose lines are full `file:L:C: text` (raises ValueError otherwise)."""
     return collections.Counter(key(line) for line in _content_lines(path))
 
 
 def _load_baseline(path):
-    return load_keys(path) if os.path.exists(path) else collections.Counter()
+    return load_baseline(path) if os.path.exists(path) else collections.Counter()
 
 
 def _header(path):
@@ -143,7 +143,15 @@ def main(argv=None) -> int:
             s.add_argument("--init", action="store_true")
         s.set_defaults(fn=fn)
     args = p.parse_args(argv)
-    return args.fn(args)
+    # 🔑 Exit 1 means "new misses"; a broken input must not look like that.
+    try:
+        return args.fn(args)
+    except ValueError as e:
+        print(f"error: {args.missed}: {e}", file=sys.stderr)
+        return 2
+    except OSError as e:
+        print(f"error: cannot read {e.filename or 'input'}: {e.strerror or e}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

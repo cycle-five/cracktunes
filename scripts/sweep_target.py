@@ -71,9 +71,16 @@ def stale_incremental(target: Path, now: float,
     cutoff = now - max_age_days * 86400
     found = []
     for inc in _incremental_dirs(target):
-        for child in inc.iterdir():
-            if child.lstat().st_mtime < cutoff:
-                found.append(child)
+        try:
+            children = list(inc.iterdir())
+        except FileNotFoundError:
+            continue  # pruned by a concurrent cargo; already gone
+        for child in children:
+            try:
+                if child.lstat().st_mtime < cutoff:
+                    found.append(child)
+            except FileNotFoundError:
+                continue
     return sorted(found)
 
 
@@ -82,17 +89,26 @@ def stale_scratch(root: Path, now: float,
     if not root.is_dir():
         return []
     cutoff = now - max_age_hours * 3600
-    return sorted(
-        c for c in root.iterdir()
-        if c.name.startswith(SCRATCH_PREFIX) and c.lstat().st_mtime < cutoff
-    )
+    found = []
+    for c in root.iterdir():
+        try:
+            if c.name.startswith(SCRATCH_PREFIX) and c.lstat().st_mtime < cutoff:
+                found.append(c)
+        except FileNotFoundError:
+            continue
+    return sorted(found)
 
 
 def _remove(p: Path):
-    if p.is_symlink() or not p.is_dir():
-        p.unlink()
-    else:
-        shutil.rmtree(p)
+    """Remove a file, link (never its target) or tree; a path that is already
+    gone is fine, since a concurrent cargo may have pruned it."""
+    try:
+        if p.is_symlink() or not p.is_dir():
+            p.unlink()
+        else:
+            shutil.rmtree(p)
+    except FileNotFoundError:
+        pass
 
 
 def _size(target: Path):
