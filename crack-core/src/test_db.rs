@@ -10,19 +10,25 @@
 //!   first test that needs it builds it, under an advisory lock so parallel
 //!   processes don't race, and under a temporary name that is renamed once
 //!   complete, so no test ever copies a half-migrated template.
-//! - **One database per test,** named by [`test_db_name`]. It is dropped when
-//!   the test passes and kept when it fails, for inspection.
+//! - **One database per test and checkout,** named by [`test_db_name`]. It is
+//!   dropped when the test passes and kept when it fails, for inspection, except
+//!   under cargo-mutants, where a failure is the expected result and nobody
+//!   inspects it.
 //! - **Old templates are swept,** keeping the newest few. Worktrees on different
 //!   branches can need different templates at the same time.
+//! - **Week-old test databases are swept.** A kept failure is meant for
+//!   inspection soon after, and a test killed by a timeout never cleans up.
 //!
 //! 🪤 nextest runs every test in its own process, so nothing can be remembered
 //! in memory between tests. Whether the template exists is one query against
 //! `pg_database`, made by every test.
 
+use futures::FutureExt;
 use sqlx::migrate::Migrator;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{AssertSqlSafe, Connection, Executor, PgConnection, PgPool};
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Every template's name starts with this, so the sweep can find them all.
@@ -44,6 +50,10 @@ const TEMPLATE_LOCK_KEY: i64 = i64::from_be_bytes(*b"cracktpl");
 /// one's comment. Enough for a few worktrees on branches with different
 /// migrations; each template is a few MB.
 const TEMPLATES_KEPT: usize = 3;
+
+/// A test database whose creation comment is older than this is dropped by the
+/// next sweep, from any checkout.
+const STALE_TEST_DB_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// The test pool's cap, as `#[sqlx::test]` caps it.
 ///
@@ -112,13 +122,28 @@ pub(crate) fn template_name(migrator: &Migrator) -> String {
     format!("{TEMPLATE_PREFIX}{hash:016x}")
 }
 
-/// The database one test runs in: `crack_test_` and a hash of the test's path.
+/// The database one test runs in: `crack_test_` and a hash of this checkout's
+/// crack-core directory and the test's path.
 ///
-/// 🔑 The same test always gets the same name, so a re-run drops whatever a
-/// failed run left behind. The hash keeps the name inside Postgres's 63-byte
-/// identifier limit, however deep the module path.
+/// 🔑 The same test in the same checkout always gets the same name, so a re-run
+/// drops whatever a failed run left behind. Two checkouts never share one, so
+/// they can run the same test at the same moment against one server.
+/// cargo-mutants' parallel scratch copies are such checkouts; with the path
+/// alone, each one force-dropped the other's database, and the failure counted
+/// as a caught mutant.
 pub(crate) fn test_db_name(test_path: &str) -> String {
-    let hash = fnv1a(FNV_OFFSET_BASIS, test_path.as_bytes());
+    test_db_name_in(env!("CARGO_MANIFEST_DIR"), test_path)
+}
+
+/// [`test_db_name`] for the checkout whose crack-core is at `checkout`.
+///
+/// The hash keeps the name inside Postgres's 63-byte identifier limit, however
+/// deep the paths.
+fn test_db_name_in(checkout: &str, test_path: &str) -> String {
+    let hash = fnv1a(FNV_OFFSET_BASIS, checkout.as_bytes());
+    // A separator, so ("a/b", "c") and ("a", "b/c") can't hash alike.
+    let hash = fnv1a(hash, &[0]);
+    let hash = fnv1a(hash, test_path.as_bytes());
     format!("{TEST_DB_PREFIX}{hash:016x}")
 }
 
@@ -128,6 +153,9 @@ pub(crate) fn test_db_name(test_path: &str) -> String {
 /// 🔑 The lock covers the existence check as well as the build, so a test that
 /// finds the template never finds it half-built, and two processes that both
 /// find it missing build it once.
+///
+/// Every call also sweeps week-old test databases, under the same lock. That is
+/// one catalog query, and it doesn't wait for a template to be built.
 pub(crate) async fn ensure_template(
     admin: &mut PgConnection,
     migrator: &'static Migrator,
@@ -139,6 +167,7 @@ pub(crate) async fn ensure_template(
         .execute(&mut *admin)
         .await?;
     let built = build_if_missing(admin, migrator, &name).await;
+    sweep_test_dbs(admin).await;
     // 🪤 Unlock even when the build failed. The lock belongs to the session,
     // not to a transaction, so it outlives this call along with `admin`.
     let unlocked = sqlx::query("SELECT pg_advisory_unlock($1)")
@@ -181,26 +210,48 @@ async fn build_if_missing(
             ident(name)
         )))
         .await?;
-    admin
+    // From here on the template is usable, so nothing below fails the test.
+    stamp_creation(admin, name).await;
+    sweep_templates(admin, name).await;
+    Ok(())
+}
+
+/// Comments `name` with the current unix time, which the sweeps read as its age.
+/// Housekeeping: a failure is logged, never raised.
+async fn stamp_creation(admin: &mut PgConnection, name: &str) {
+    let stamped = admin
         .execute(AssertSqlSafe(format!(
             "COMMENT ON DATABASE {} IS '{}'",
             ident(name),
             unix_seconds()
         )))
-        .await?;
-
-    sweep_templates(admin, name).await
+        .await;
+    if let Err(e) = stamped {
+        eprintln!("could not stamp {name} with its creation time: {e}");
+    }
 }
 
-/// Drops the templates [`stale_templates`] picks out.
-async fn sweep_templates(admin: &mut PgConnection, current: &str) -> sqlx::Result<()> {
-    let templates: Vec<(String, Option<String>)> = sqlx::query_as(
+/// Lists the databases whose names start with `prefix`, with their comments.
+async fn databases_with_comments(
+    admin: &mut PgConnection,
+    prefix: &str,
+) -> sqlx::Result<Vec<(String, Option<String>)>> {
+    sqlx::query_as(
         "SELECT datname::text, shobj_description(oid, 'pg_database') \
          FROM pg_database WHERE starts_with(datname::text, $1)",
     )
-    .bind(TEMPLATE_PREFIX)
+    .bind(prefix)
     .fetch_all(&mut *admin)
-    .await?;
+    .await
+}
+
+/// Drops the templates [`stale_templates`] picks out. Housekeeping: failures are
+/// logged, never raised.
+async fn sweep_templates(admin: &mut PgConnection, current: &str) {
+    let templates = match databases_with_comments(admin, TEMPLATE_PREFIX).await {
+        Ok(templates) => templates,
+        Err(e) => return eprintln!("could not list templates to sweep: {e}"),
+    };
 
     for stale in stale_templates(templates, current) {
         // Not forced: someone may be looking at it by hand. It goes in a later
@@ -211,13 +262,52 @@ async fn sweep_templates(admin: &mut PgConnection, current: &str) -> sqlx::Resul
                 ident(&stale)
             )))
             .await;
-        if let Err(e) = dropped {
-            if !has_code(&e, OBJECT_IN_USE) {
-                return Err(e);
-            }
+        match dropped {
+            Err(e) if !has_code(&e, OBJECT_IN_USE) => {
+                eprintln!("could not sweep the template {stale}: {e}");
+            },
+            _ => {},
         }
     }
-    Ok(())
+}
+
+/// Drops the test databases [`stale_test_dbs`] picks out. Housekeeping:
+/// failures are logged, never raised.
+///
+/// 🔑 Forced, unlike the template sweep: this runs on every test, and a
+/// non-forced drop waits five seconds for a connected session before it gives
+/// up, with the lock held. Anyone still connected to a week-old test database
+/// has had their look.
+async fn sweep_test_dbs(admin: &mut PgConnection) {
+    let databases = match databases_with_comments(admin, TEST_DB_PREFIX).await {
+        Ok(databases) => databases,
+        Err(e) => return eprintln!("could not list test databases to sweep: {e}"),
+    };
+
+    for stale in stale_test_dbs(databases, unix_seconds()) {
+        if let Err(e) = drop_database(admin, &stale).await {
+            eprintln!("could not sweep the test database {stale}: {e}");
+        }
+    }
+}
+
+/// The test databases to drop: those whose creation comment is more than
+/// [`STALE_TEST_DB_SECS`] before `now`.
+///
+/// 🪤 A missing or unreadable comment counts as fresh, never as stale. [`run`]
+/// creates a database and comments it a moment later, outside the lock, and
+/// another process's sweep must not drop it in between.
+fn stale_test_dbs(databases: Vec<(String, Option<String>)>, now: u64) -> Vec<String> {
+    databases
+        .into_iter()
+        .filter(|(_, comment)| {
+            comment
+                .as_deref()
+                .and_then(|c| c.parse::<u64>().ok())
+                .is_some_and(|created| now.saturating_sub(created) > STALE_TEST_DB_SECS)
+        })
+        .map(|(name, _)| name)
+        .collect()
 }
 
 /// The templates to drop: all but the [`TEMPLATES_KEPT`] newest, by the unix
@@ -238,8 +328,40 @@ fn stale_templates(mut templates: Vec<(String, Option<String>)>, current: &str) 
 /// Runs one test in its own copy of the migrator's template.
 ///
 /// The database is dropped if the test passes, and kept if it fails or panics,
-/// for inspection. The next run of the same test replaces it.
+/// for inspection. The next run of the same test replaces it. Under
+/// cargo-mutants it is dropped either way: see [`keep_on_failure`].
 pub(crate) fn run<F, Fut>(migrator: &'static Migrator, test_path: &str, test_fn: F) -> Fut::Output
+where
+    F: FnOnce(PgPool) -> Fut,
+    Fut: Future,
+    Fut::Output: Outcome,
+{
+    let inside_mutants = std::env::var_os("INSIDE_MUTANTS").is_some();
+    run_keeping(
+        migrator,
+        test_path,
+        keep_on_failure(inside_mutants),
+        test_fn,
+    )
+}
+
+/// Whether a failing test's database is kept.
+///
+/// 🔑 Not under cargo-mutants, which sets `INSIDE_MUTANTS` for its test runs.
+/// There a failure is what a caught mutant looks like, nobody inspects it, and
+/// thousands of mutants would each leave a database behind.
+fn keep_on_failure(inside_mutants: bool) -> bool {
+    !inside_mutants
+}
+
+/// [`run`], with the keep-on-failure decision passed in rather than read from
+/// the environment.
+fn run_keeping<F, Fut>(
+    migrator: &'static Migrator,
+    test_path: &str,
+    keep_failures: bool,
+    test_fn: F,
+) -> Fut::Output
 where
     F: FnOnce(PgPool) -> Fut,
     Fut: Future,
@@ -262,23 +384,41 @@ where
                 .await
                 .unwrap_or_else(|e| unreachable_server(&options, &e));
 
-            let outcome = test_fn(pool.clone()).await;
+            // 🔑 A panic is caught only to decide about the database, then
+            // resumed: the test still fails with its own message.
+            let test_pool = pool.clone();
+            let result = AssertUnwindSafe(async move { test_fn(test_pool).await })
+                .catch_unwind()
+                .await;
 
-            if outcome.passed() {
-                if tokio::time::timeout(POOL_CLOSE_TIMEOUT, pool.close())
-                    .await
-                    .is_err()
-                {
-                    eprintln!("test {test_path} held onto its pool after it finished");
-                }
-                let mut admin = connect(&options).await;
-                if let Err(e) = drop_database(&mut admin, &db_name).await {
-                    eprintln!("could not drop {db_name} after {test_path} passed: {e}");
-                }
-                admin.close().await.ok();
+            let passed = matches!(&result, Ok(outcome) if outcome.passed());
+            if passed || !keep_failures {
+                drop_test_db(&options, pool, &db_name, test_path).await;
             }
-            outcome
+            match result {
+                Ok(outcome) => outcome,
+                Err(panic) => std::panic::resume_unwind(panic),
+            }
         })
+}
+
+/// Closes the test's pool and drops its database. Housekeeping: failures are
+/// logged, never raised, because the test's own result is already decided.
+async fn drop_test_db(options: &PgConnectOptions, pool: PgPool, db_name: &str, test_path: &str) {
+    if tokio::time::timeout(POOL_CLOSE_TIMEOUT, pool.close())
+        .await
+        .is_err()
+    {
+        eprintln!("test {test_path} held onto its pool after it finished");
+    }
+    let mut admin = match PgConnection::connect_with(options).await {
+        Ok(admin) => admin,
+        Err(e) => return eprintln!("could not reconnect to drop {db_name} after {test_path}: {e}"),
+    };
+    if let Err(e) = drop_database(&mut admin, db_name).await {
+        eprintln!("could not drop {db_name} after {test_path}: {e}");
+    }
+    admin.close().await.ok();
 }
 
 /// Replaces any database a failed run of this test left behind with a fresh
@@ -302,6 +442,7 @@ async fn create_test_db(options: &PgConnectOptions, migrator: &'static Migrator,
             .await
             .unwrap_or_else(|e| panic!("could not copy {template} to {db_name}: {e}"));
     }
+    stamp_creation(&mut admin, db_name).await;
 
     // 🔑 Closed before the test starts, so a running test holds at most its
     // pool's connections.
@@ -464,6 +605,46 @@ mod tests {
         assert_eq!(stale, ["old", "unreadable", "uncommented"]);
     }
 
+    #[test]
+    fn test_db_names_differ_between_checkouts() {
+        let path = "crack_core::db::tests::finds_the_user";
+        let here = test_db_name_in("/src/cracktunes/crack-core", path);
+
+        assert_ne!(here, test_db_name_in("/scratch/mutants-1/crack-core", path));
+        assert_eq!(here, test_db_name_in("/src/cracktunes/crack-core", path));
+        assert_eq!(
+            test_db_name(path),
+            test_db_name_in(env!("CARGO_MANIFEST_DIR"), path)
+        );
+    }
+
+    #[test]
+    fn failures_are_kept_only_outside_mutants() {
+        assert!(keep_on_failure(false));
+        assert!(!keep_on_failure(true));
+    }
+
+    #[test]
+    fn a_test_database_is_stale_a_week_after_its_comment() {
+        const DAY: u64 = 24 * 60 * 60;
+        let now = 1_000 * DAY;
+        let database = |name: &str, comment: Option<String>| (name.to_string(), comment);
+        let stale = stale_test_dbs(
+            vec![
+                database("eight_days", Some((now - 8 * DAY).to_string())),
+                database("one_day", Some((now - DAY).to_string())),
+                database("exactly_seven_days", Some((now - 7 * DAY).to_string())),
+                // Created a moment ago and not yet commented: never dropped.
+                database("uncommented", None),
+                database("unreadable", Some("last week".to_string())),
+                // A skewed clock.
+                database("from_the_future", Some((now + DAY).to_string())),
+            ],
+            now,
+        );
+        assert_eq!(stale, ["eight_days"]);
+    }
+
     // The tests below drive the runner itself, so they are plain `#[test]`s
     // that check the server directly.
 
@@ -545,8 +726,56 @@ mod tests {
         let path = concat!(module_path!(), "::run_keeps_the_database_after_a_failure");
         let name = test_db_name(path);
 
-        let outcome = run(&MIGRATOR, path, |_pool| async { Err::<(), ()>(()) });
+        // 🪤 Not `run`: under cargo-mutants it drops the database, and this test
+        // would then fail cargo-mutants' unmutated baseline run.
+        let outcome = run_keeping(&MIGRATOR, path, keep_on_failure(false), |_pool| async {
+            Err::<(), ()>(())
+        });
         assert!(outcome.is_err());
+
+        let (kept, comment) = block_on(async {
+            let mut admin = admin().await;
+            let kept = database_count(&mut admin, &name).await;
+            let comment: Option<String> = sqlx::query_scalar(
+                "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = $1",
+            )
+            .bind(&name)
+            .fetch_optional(&mut admin)
+            .await
+            .expect("pg_database")
+            .flatten();
+            drop_database(&mut admin, &name).await.expect("drop it");
+            (kept, comment)
+        });
+        assert_eq!(kept, 1, "{name} was dropped after a failing test");
+
+        // The stale sweep ages a kept database by this comment.
+        let created: u64 = comment
+            .as_deref()
+            .and_then(|c| c.parse().ok())
+            .unwrap_or_else(|| panic!("{name} has no creation time: {comment:?}"));
+        assert!(unix_seconds().abs_diff(created) < 60 * 60, "{created}");
+    }
+
+    /// A test body that panics. A named fn, so its output is `()` by
+    /// declaration rather than by the never type's fallback.
+    async fn panics(_pool: PgPool) {
+        panic!("a deliberate panic")
+    }
+
+    #[test]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    fn a_panicking_test_keeps_its_database() {
+        let path = concat!(module_path!(), "::a_panicking_test_keeps_its_database");
+        let name = test_db_name(path);
+
+        let panicked = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            run_keeping(&MIGRATOR, path, keep_on_failure(false), panics)
+        }));
+        assert!(panicked.is_err(), "the panic was swallowed");
 
         let kept = block_on(async {
             let mut admin = admin().await;
@@ -554,7 +783,94 @@ mod tests {
             drop_database(&mut admin, &name).await.expect("drop it");
             kept
         });
-        assert_eq!(kept, 1, "{name} was dropped after a failing test");
+        assert_eq!(kept, 1, "{name} was dropped after a panicking test");
+    }
+
+    #[test]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    fn inside_mutants_a_failing_test_drops_its_database() {
+        let path = concat!(
+            module_path!(),
+            "::inside_mutants_a_failing_test_drops_its_database"
+        );
+        let name = test_db_name(path);
+
+        let outcome = run_keeping(&MIGRATOR, path, keep_on_failure(true), |_pool| async {
+            Err::<(), ()>(())
+        });
+        assert!(outcome.is_err());
+
+        let left = block_on(async { database_count(&mut admin().await, &name).await });
+        assert_eq!(left, 0, "{name} outlived a failing test inside mutants");
+    }
+
+    #[test]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    fn inside_mutants_a_panicking_test_drops_its_database() {
+        let path = concat!(
+            module_path!(),
+            "::inside_mutants_a_panicking_test_drops_its_database"
+        );
+        let name = test_db_name(path);
+
+        let panicked = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            run_keeping(&MIGRATOR, path, keep_on_failure(true), panics)
+        }));
+        assert!(panicked.is_err(), "the panic was swallowed");
+
+        let left = block_on(async { database_count(&mut admin().await, &name).await });
+        assert_eq!(left, 0, "{name} outlived a panicking test inside mutants");
+    }
+
+    #[test]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    fn a_week_old_test_database_is_swept() {
+        const DAY: u64 = 24 * 60 * 60;
+        let old = test_db_name(concat!(
+            module_path!(),
+            "::a_week_old_test_database_is_swept::old"
+        ));
+        let fresh = test_db_name(concat!(
+            module_path!(),
+            "::a_week_old_test_database_is_swept::fresh"
+        ));
+
+        let (old_left, fresh_left) = block_on(async {
+            let mut admin = admin().await;
+            for (name, created) in [(&old, unix_seconds() - 8 * DAY), (&fresh, unix_seconds())] {
+                drop_database(&mut admin, name).await.expect("drop it");
+                admin
+                    .execute(AssertSqlSafe(format!(r#"CREATE DATABASE "{name}""#)))
+                    .await
+                    .expect("create it");
+                admin
+                    .execute(AssertSqlSafe(format!(
+                        r#"COMMENT ON DATABASE "{name}" IS '{created}'"#
+                    )))
+                    .await
+                    .expect("comment it");
+            }
+
+            ensure_template(&mut admin, &MIGRATOR)
+                .await
+                .expect("ensure_template");
+
+            let old_left = database_count(&mut admin, &old).await;
+            let fresh_left = database_count(&mut admin, &fresh).await;
+            drop_database(&mut admin, &fresh).await.expect("drop it");
+            (old_left, fresh_left)
+        });
+        assert_eq!(old_left, 0, "the week-old {old} survived the sweep");
+        assert_eq!(fresh_left, 1, "the fresh {fresh} was swept");
     }
 
     #[test]
