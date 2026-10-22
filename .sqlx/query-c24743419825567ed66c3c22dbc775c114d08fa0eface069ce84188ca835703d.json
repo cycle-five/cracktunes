@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE coin_withdrawals\n         SET state = 'refunded', reason = $2, ended_at = now()\n         WHERE id = $1 AND state = 'pending'\n         RETURNING guild_id, user_id, amount",
+  "query": "UPDATE coin_withdrawals\n         SET state = 'refunded', reason = $2, ended_at = now()\n         WHERE id = $1 AND state = 'pending' AND signature IS NOT NULL\n         RETURNING guild_id, user_id, amount",
   "describe": {
     "columns": [
       {
@@ -31,5 +31,5 @@
       false
     ]
   },
-  "hash": "576cce653a462ecdedb13ef230f418213b152b266da3e7e181af71c9c42b1303"
+  "hash": "c24743419825567ed66c3c22dbc775c114d08fa0eface069ce84188ca835703d"
 }

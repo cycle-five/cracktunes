@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE coin_withdrawals SET state = 'done', ended_at = now()\n         WHERE id = $1 AND state = 'pending' AND signature IS NOT NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7c2b1b317c3767a4ed6e7602423df80c33b579a958d12295ba44e99966d19a84"
+}

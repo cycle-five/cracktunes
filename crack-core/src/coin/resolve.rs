@@ -15,7 +15,8 @@ pub const EXPIRY_MARGIN: u64 = 150;
 /// What the database knows about a pending row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RowFacts<'a> {
-    /// The signature and the signed bytes were recorded, so they may have been sent.
+    /// A signature is present (since R13a), so the transaction may have been sent. This is not
+    /// about the tx bytes: a row with a signature counts as sent whether or not they are present.
     pub sent: bool,
     /// Created before this process started, or older than `ORPHAN_AFTER_SECS`.
     pub orphan: bool,

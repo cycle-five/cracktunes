@@ -112,8 +112,8 @@ impl From<MoveError> for StartError {
 ///
 /// Lock order: the withdrawal row (the insert, which also waits on any other
 /// resolver of this member's old pending row through the unique index), then
-/// the wallet. [`refund_withdrawal`] takes the same order; the reverse
-/// deadlocks.
+/// the wallet. [`refund_withdrawal`] and [`refund_unsent`] take the same
+/// order; the reverse deadlocks.
 pub async fn start_withdrawal(pool: &PgPool, w: &NewWithdrawal<'_>) -> Result<Started, StartError> {
     if w.amount <= 0 {
         return Err(StartError::Money(MoveError::Invalid));
@@ -229,11 +229,12 @@ pub async fn record_sent(
     }))
 }
 
-/// `pending` to `done`. True when this call moved the row.
+/// `pending` to `done`, only once a signature is recorded (a mint cannot be done without a
+/// send). True when this call moved the row.
 pub async fn finish_withdrawal(pool: &PgPool, id: i64) -> sqlx::Result<bool> {
     let moved = sqlx::query!(
         "UPDATE coin_withdrawals SET state = 'done', ended_at = now()
-         WHERE id = $1 AND state = 'pending'",
+         WHERE id = $1 AND state = 'pending' AND signature IS NOT NULL",
         id
     )
     .execute(pool)
@@ -241,7 +242,8 @@ pub async fn finish_withdrawal(pool: &PgPool, id: i64) -> sqlx::Result<bool> {
     Ok(moved.rows_affected() > 0)
 }
 
-/// `pending` to `refunded`, crediting the amount back, in one transaction. The
+/// `pending` to `refunded`, crediting the amount back, in one transaction, only for a row that
+/// has a signature (an unsigned row is [`refund_unsent`]'s). The
 /// credit happens only when the guarded `UPDATE` moved the row, so racing
 /// resolvers credit once. `Some(balance)` only when this call did it.
 ///
@@ -251,7 +253,7 @@ pub async fn refund_withdrawal(pool: &PgPool, id: i64, reason: &str) -> sqlx::Re
     let Some(row) = sqlx::query!(
         "UPDATE coin_withdrawals
          SET state = 'refunded', reason = $2, ended_at = now()
-         WHERE id = $1 AND state = 'pending'
+         WHERE id = $1 AND state = 'pending' AND signature IS NOT NULL
          RETURNING guild_id, user_id, amount",
         id,
         reason
@@ -406,7 +408,20 @@ pub async fn pending_withdrawals(
     )
     .fetch_all(pool)
     .await?;
-    rows.into_iter().map(pending_from).collect()
+    // One undecodable row (a hand edit) must not stall settlement for everyone: skip it.
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let id = row.id;
+            match pending_from(row) {
+                Ok(w) => Some(w),
+                Err(err) => {
+                    tracing::warn!("crack-coin: skipping undecodable withdrawal {id}: {err}");
+                    None
+                },
+            }
+        })
+        .collect())
 }
 
 /// One withdrawal if it is still `pending`.
@@ -598,6 +613,16 @@ mod tests {
         start_withdrawal(pool, &new_w(G, U, 30)).await.unwrap()
     }
 
+    /// `started`, then its transaction recorded (so it has a signature).
+    async fn signed(pool: &PgPool) -> Started {
+        let s = started(pool).await;
+        record_sent(pool, s.id, &rec("sig", &[1], false))
+            .await
+            .unwrap()
+            .expect("recorded");
+        s
+    }
+
     #[sqlx::test(migrator = "MIGRATOR")]
     #[cfg_attr(
         not(feature = "db-tests"),
@@ -748,7 +773,7 @@ mod tests {
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     async fn done_then_refund_moves_nothing(pool: PgPool) -> sqlx::Result<()> {
-        let s = started(&pool).await;
+        let s = signed(&pool).await;
         assert!(finish_withdrawal(&pool, s.id).await?);
         assert_eq!(refund_withdrawal(&pool, s.id, "late").await?, None);
         assert_eq!(balance(&pool, G, U).await?, 70);
@@ -772,7 +797,7 @@ mod tests {
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     async fn refund_restores_the_balance_once(pool: PgPool) -> sqlx::Result<()> {
-        let s = started(&pool).await;
+        let s = signed(&pool).await;
         assert_eq!(refund_withdrawal(&pool, s.id, "expired").await?, Some(100));
         assert_eq!(refund_withdrawal(&pool, s.id, "again").await?, None);
         assert_eq!(balance(&pool, G, U).await?, 100);
@@ -799,7 +824,7 @@ mod tests {
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     async fn racing_refunds_credit_once(pool: PgPool) -> sqlx::Result<()> {
-        let s = started(&pool).await;
+        let s = signed(&pool).await;
         let (a, b) = tokio::join!(
             refund_withdrawal(&pool, s.id, "a"),
             refund_withdrawal(&pool, s.id, "b")
@@ -817,7 +842,7 @@ mod tests {
     )]
     async fn record_on_a_refunded_row_returns_none(pool: PgPool) -> sqlx::Result<()> {
         let s = started(&pool).await;
-        refund_withdrawal(&pool, s.id, "orphan").await?;
+        refund_unsent(&pool, s.id).await?;
         assert!(record_sent(&pool, s.id, &rec("sig", &[1, 2], false))
             .await?
             .is_none());
@@ -828,6 +853,52 @@ mod tests {
         .fetch_one(&pool)
         .await?;
         assert_eq!((r.signature, r.tx), (None, None));
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn the_signed_guards_move_nothing_on_an_unsigned_row(pool: PgPool) -> sqlx::Result<()> {
+        let s = started(&pool).await;
+        assert_eq!(refund_withdrawal(&pool, s.id, "expired").await?, None);
+        assert!(!finish_withdrawal(&pool, s.id).await?);
+        assert_eq!(balance(&pool, G, U).await?, 70, "nothing credited");
+        assert_eq!(refunds_of(&pool, s.id).await?, 0);
+        assert_eq!(
+            withdrawal_state(&pool, s.id).await?,
+            Some((WithdrawalState::Pending, None))
+        );
+        // The partition: the unsigned refund still works.
+        assert_eq!(refund_unsent(&pool, s.id).await?, Some(100));
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn one_undecodable_pending_row_does_not_hide_the_rest(
+        pool: PgPool,
+    ) -> sqlx::Result<()> {
+        let good = started(&pool).await;
+        // A hand edit: guild 0 is not a valid server id.
+        fund(&pool, G2, UserId::new(11), 50).await;
+        let bad = start_withdrawal(&pool, &new_w(G2, UserId::new(11), 10))
+            .await
+            .unwrap();
+        sqlx::query!(
+            "UPDATE coin_withdrawals SET guild_id = 0 WHERE id = $1",
+            bad.id
+        )
+        .execute(&pool)
+        .await?;
+        let listed = pending_withdrawals(&pool, None).await?;
+        assert_eq!(listed.len(), 1, "{listed:?}");
+        assert_eq!(listed[0].id, good.id);
         Ok(())
     }
 
@@ -992,6 +1063,7 @@ mod tests {
             "the list agrees"
         );
         // Resolved rows are not pending.
+        record_sent(&pool, s.id, &rec("sigO", &[1], false)).await?;
         finish_withdrawal(&pool, s.id).await?;
         assert!(pending_withdrawals(&pool, None).await?.is_empty());
         assert!(pending_withdrawal(&pool, s.id, None).await?.is_none());
@@ -1087,6 +1159,7 @@ mod tests {
         record_sent(&pool, b.id, &rec("sigB", &[1], false)).await?;
         finish_withdrawal(&pool, b.id).await?;
         let c = start_withdrawal(&pool, &new_w(G, U, 5)).await.unwrap();
+        record_sent(&pool, c.id, &rec("sigC", &[1], false)).await?;
         refund_withdrawal(&pool, c.id, "devnet was reset").await?;
         let o = wallet_overview(&pool, U).await?;
         assert_eq!(o.total_withdrawn, 30, "only done rows");
@@ -1094,7 +1167,7 @@ mod tests {
         assert_eq!(last.amount, 5);
         assert_eq!(last.state, WithdrawalState::Refunded);
         assert_eq!(last.reason.as_deref(), Some("devnet was reset"));
-        assert_eq!(last.signature, None);
+        assert_eq!(last.signature.as_deref(), Some("sigC"));
         // A pending one is the last, with its signature once recorded.
         let d = start_withdrawal(&pool, &new_w(G, U, 7)).await.unwrap();
         record_sent(&pool, d.id, &rec("sigD", &[1], false)).await?;
