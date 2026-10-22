@@ -9,7 +9,6 @@ use crate::poise_ext::ContextExt;
 use crate::{Context, CrackedMessage, Error};
 
 /// Send the current tack to your DMs.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     slash_command,
@@ -29,7 +28,6 @@ pub async fn grab(
     grab_internal(ctx).await
 }
 
-#[cfg(not(tarpaulin_include))]
 /// Internal function for grab.
 async fn grab_internal(ctx: Context<'_>) -> Result<(), Error> {
     let chan_id = ctx.author().create_dm_channel(&ctx).await?.id.widen();

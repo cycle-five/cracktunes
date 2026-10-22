@@ -218,7 +218,6 @@ pub fn optout_result_text(
     }
 }
 
-#[cfg(not(tarpaulin_include))]
 pub(super) async fn say(
     ctx: Context<'_>,
     text: impl Into<String>,
@@ -229,7 +228,6 @@ pub(super) async fn say(
 }
 
 /// The real Discord the shop acts through, from the command's context.
-#[cfg(not(tarpaulin_include))]
 pub(super) fn live(ctx: Context<'_>) -> LiveEconomyDiscord {
     LiveEconomyDiscord {
         http: ctx.serenity_context().http.clone(),
@@ -263,13 +261,11 @@ pub fn gate_refusal(need: GateNeed, enabled: bool, has_database: bool) -> Option
 /// a database. Replies privately and gives `None` when the economy is off or
 /// there is no database. With no server (impossible: every command is
 /// `guild_only`) it returns `None` silently.
-#[cfg(not(tarpaulin_include))]
 pub(super) async fn gate(ctx: Context<'_>) -> Result<Option<(GuildId, PgPool)>, Error> {
     gate_for(ctx, GateNeed::EconomyOn).await
 }
 
 /// [`gate`] for what `need` asks.
-#[cfg(not(tarpaulin_include))]
 pub(super) async fn gate_for(
     ctx: Context<'_>,
     need: GateNeed,
@@ -286,7 +282,6 @@ pub(super) async fn gate_for(
 }
 
 /// Check your credits, the ranking, gifts, and opting out.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Economy",
     slash_command,
@@ -299,7 +294,6 @@ pub async fn credits(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Show a member's credits.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn balance(
     ctx: Context<'_>,
@@ -327,7 +321,6 @@ pub async fn balance(
 }
 
 /// Show the richest members.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn top(ctx: Context<'_>) -> Result<(), Error> {
     let Some((guild, pool)) = gate(ctx).await? else {
@@ -356,7 +349,6 @@ pub async fn top(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Give some of your credits to another member.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn gift(
     ctx: Context<'_>,
@@ -411,7 +403,6 @@ pub async fn gift(
 }
 
 /// Show your recent credit changes.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn history(ctx: Context<'_>) -> Result<(), Error> {
     let Some((guild, pool)) = gate(ctx).await? else {
@@ -443,7 +434,6 @@ pub async fn history(ctx: Context<'_>) -> Result<(), Error> {
     .await
 }
 
-#[cfg(not(tarpaulin_include))]
 async fn switch(ctx: Context<'_>, out: bool) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
@@ -463,14 +453,12 @@ async fn switch(ctx: Context<'_>, out: bool) -> Result<(), Error> {
 }
 
 /// Stop earning, buying, gambling and gifting here. Your credits are kept.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn optout(ctx: Context<'_>) -> Result<(), Error> {
     switch(ctx, true).await
 }
 
 /// Take part in the economy again.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn optin(ctx: Context<'_>) -> Result<(), Error> {
     switch(ctx, false).await

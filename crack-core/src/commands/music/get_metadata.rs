@@ -83,7 +83,6 @@ async fn fill_metadata_reply(
     Ok(())
 }
 
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     slash_command,

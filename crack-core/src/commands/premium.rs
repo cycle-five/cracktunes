@@ -27,7 +27,6 @@ use std::num::NonZeroU64;
 /// 🪤 No `owners_only` here: poise runs a parent's checks before a
 /// subcommand's, so it would lock `status` away from the mods it is for.
 /// `grant` and `revoke` each carry `owners_only` themselves.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Admin",
     slash_command,
@@ -43,7 +42,6 @@ pub async fn premium(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Whether this server has premium.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     guild_only,
@@ -73,7 +71,6 @@ pub fn status_text(plan: Plan) -> String {
 }
 
 /// Give a server premium.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, owners_only, ephemeral)]
 pub async fn grant(
     ctx: Context<'_>,
@@ -83,7 +80,6 @@ pub async fn grant(
 }
 
 /// Take premium away from a server.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, owners_only, ephemeral)]
 pub async fn revoke(
     ctx: Context<'_>,
@@ -99,7 +95,6 @@ pub fn parse_server_id(s: &str) -> Option<serenity::GuildId> {
     NonZeroU64::new(n).map(|n| serenity::GuildId::new(n.get()))
 }
 
-#[cfg(not(tarpaulin_include))]
 async fn set_premium_for(ctx: Context<'_>, server_id: &str, premium: bool) -> Result<(), Error> {
     let say = |text: String| ctx.send(CreateReply::default().content(text).ephemeral(true));
 

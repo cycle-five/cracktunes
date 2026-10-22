@@ -10,7 +10,6 @@ use poise::serenity_prelude as serenity;
 use serenity::Mentionable;
 
 /// Vote to skip the current track
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

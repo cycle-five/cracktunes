@@ -7,7 +7,6 @@ use crate::Context;
 use crate::Error;
 
 /// Create text channel.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Admin",
     slash_command,

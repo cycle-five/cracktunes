@@ -22,7 +22,6 @@ use chrono::Utc;
 use serenity::all::{ChannelId, GenericChannelId, Member};
 
 /// Put credits on a member's head, or see the bounties that stand.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Economy",
     slash_command,
@@ -40,7 +39,6 @@ pub fn placed_reply_text(balance: i64, currency: &str, emoji: &str) -> String {
 }
 
 /// Put credits on a member's head. Whoever next lands a prank on them collects.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn place(
     ctx: Context<'_>,
@@ -152,7 +150,6 @@ pub async fn place(
 }
 
 /// See who has a bounty on their head.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn list(ctx: Context<'_>) -> Result<(), Error> {
     let Some((guild, pool)) = gate(ctx).await? else {

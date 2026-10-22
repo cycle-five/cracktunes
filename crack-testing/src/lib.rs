@@ -689,7 +689,6 @@ async fn match_cli(cli: Cli) -> Result<(), Error> {
 }
 
 /// Run the CLI.
-#[cfg(not(tarpaulin_include))]
 pub async fn run() -> Result<(), Error> {
     let cli: Cli = Cli::parse();
     match_cli(cli).await?;

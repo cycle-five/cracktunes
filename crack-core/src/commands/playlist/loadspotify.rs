@@ -40,7 +40,6 @@ pub async fn get_spotify_playlist(url: &str) -> Result<Vec<NewAuxMetadata>, Crac
 }
 
 /// Load a Spotify playlist into the bot
-#[cfg(not(tarpaulin_include))]
 pub async fn loadspotify_(
     ctx: Context<'_>,
     name: String,
@@ -89,7 +88,6 @@ pub async fn loadspotify_(
 }
 
 /// Get a playlist
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

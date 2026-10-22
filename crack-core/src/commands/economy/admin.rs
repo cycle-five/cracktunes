@@ -268,13 +268,11 @@ pub fn hours_ok(h: u32) -> bool {
 
 /// The invoker's permissions from the interaction (the resolved set); none
 /// when unknown.
-#[cfg(not(tarpaulin_include))]
 async fn invoker_permissions(ctx: Context<'_>) -> Option<Permissions> {
     ctx.author_member().await.and_then(|m| m.permissions)
 }
 
 /// Refuses privately unless the invoker has Moderate Members.
-#[cfg(not(tarpaulin_include))]
 async fn mod_gate(ctx: Context<'_>) -> Result<bool, Error> {
     if invoker_permissions(ctx).await.is_some_and(mod_allowed) {
         return Ok(true);
@@ -295,13 +293,11 @@ pub fn adjust_amount_ok(amount: i64) -> bool {
 }
 
 /// Post a mod log event; nothing happens while the log is off.
-#[cfg(not(tarpaulin_include))]
 pub(super) async fn log(ctx: Context<'_>, guild: GuildId, event: ModLogEvent) {
     log_to(&ctx.data(), ctx.serenity_context(), guild, event).await;
 }
 
 /// [`log`] without a command context (a button or modal press).
-#[cfg(not(tarpaulin_include))]
 pub(super) async fn log_to(
     data: &Data,
     ctx: &serenity::all::Context,
@@ -316,7 +312,6 @@ pub(super) async fn log_to(
 }
 
 /// Mod tools for the economy.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Economy",
     slash_command,
@@ -330,7 +325,6 @@ pub async fn economy(_ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Show how the economy is set up here.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     // Needs only the database: moderators keep it with the economy off.
@@ -371,7 +365,6 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Make a member immune to pranks, for some hours or until lifted.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn grant(
     ctx: Context<'_>,
@@ -429,7 +422,6 @@ pub async fn grant(
 }
 
 /// Remove a member's moderator immunity.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
@@ -459,7 +451,6 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
 }
 
 /// End every prank running on a member, undone as if it had expired.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Result<(), Error> {
     // Needs only the database: the lever for pranks still running after the
@@ -498,7 +489,6 @@ pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Re
 }
 
 /// Add or remove credits (negative removes). Needs Manage Server.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, guild_only)]
 pub async fn adjust(
     ctx: Context<'_>,

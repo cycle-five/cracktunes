@@ -8,7 +8,6 @@ use crate::{
 };
 
 /// Delete role.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Admin",
     required_permissions = "ADMINISTRATOR",
@@ -25,7 +24,6 @@ pub async fn delete(
 }
 
 /// Delete role by id
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Admin",
     required_permissions = "ADMINISTRATOR",
@@ -44,7 +42,6 @@ pub async fn delete_by_id(
         .map(|_| ())
 }
 
-#[cfg(not(tarpaulin_include))]
 /// Delete role helper.
 pub async fn delete_role_by_id_helper(
     ctx: Context<'_>,

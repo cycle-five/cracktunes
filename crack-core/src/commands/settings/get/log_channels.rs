@@ -6,7 +6,6 @@ use crate::utils::send_reply;
 use crate::{Context, Error};
 
 /// Get the all log channel.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,
@@ -45,7 +44,6 @@ pub async fn all_log_channel(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Get the join/leave log channel.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,

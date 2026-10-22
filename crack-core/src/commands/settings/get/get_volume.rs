@@ -5,7 +5,6 @@ use crate::CrackedError;
 use crate::{Context, Error};
 
 /// Get the current `volume` and `old_volume` setting for the guild.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,

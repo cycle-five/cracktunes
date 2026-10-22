@@ -8,7 +8,6 @@ use crate::{
 };
 
 /// Tell the bot to leave the voice channel it is in.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     prefix_command,

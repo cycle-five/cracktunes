@@ -90,7 +90,6 @@ pub async fn get_guild_name(cache_http: impl CacheHttp, guild_id: GuildId) -> Op
 }
 
 /// Sends a reply response, possibly as an embed.
-#[cfg(not(tarpaulin_include))]
 pub async fn send_reply<'ctx>(
     ctx: &'ctx CrackContext<'_>,
     message: CrackedMessage,
@@ -100,7 +99,6 @@ pub async fn send_reply<'ctx>(
 }
 
 /// Sends a reply response, possibly as an embed.
-#[cfg(not(tarpaulin_include))]
 pub async fn send_reply_owned(
     ctx: CrackContext<'_>,
     message: CrackedMessage,
@@ -130,7 +128,6 @@ fn search_option(hit: &AuxMetadata) -> (String, String) {
     (label.chars().take(99).collect(), link)
 }
 
-#[cfg(not(tarpaulin_include))]
 /// Interactive youtube search and selection.
 pub async fn yt_search_select(
     ctx: SerenityContext,
@@ -243,7 +240,6 @@ async fn clear_menu_keeping(
 }
 
 /// Sends a reply response with an embed.
-#[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise<'ctx>(
     ctx: CrackContext<'ctx>,
     embed: CreateEmbed<'ctx>,
@@ -252,7 +248,6 @@ pub async fn send_embed_response_poise<'ctx>(
 }
 
 /// [`send_embed_response_poise`], ephemeral when `ephemeral` is set.
-#[cfg(not(tarpaulin_include))]
 pub async fn send_embed_response_poise_as<'ctx>(
     ctx: CrackContext<'ctx>,
     embed: CreateEmbed<'ctx>,
@@ -279,7 +274,6 @@ pub async fn send_embed_response_poise_as<'ctx>(
 ///
 /// Returns nothing: both callers discarded the `Message`, and producing one
 /// for a slash command costs an extra GET after the edit.
-#[cfg(not(tarpaulin_include))]
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
     embed: CreateEmbed<'_>,
@@ -713,7 +707,6 @@ pub fn compare_domains(domain: &str, subdomain: &str) -> bool {
     subdomain == domain || subdomain.ends_with(domain)
 }
 
-#[cfg(not(tarpaulin_include))]
 /// Takes a Result ReplyHandle and logs the error if it's an Err.
 pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
     if let Err(why) = result {

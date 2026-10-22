@@ -5,7 +5,6 @@ use crate::{
 };
 
 /// Toggle looping of the current track.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",
@@ -26,7 +25,6 @@ pub async fn repeat(
 }
 
 /// Internal repeat function.
-#[cfg(not(tarpaulin_include))]
 pub async fn repeat_internal(ctx: Context<'_>) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;
     let done = ops::repeat(&cx, None).await.map_err(CrackedError::from)?;

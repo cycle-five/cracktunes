@@ -7,7 +7,6 @@ use crate::Error;
 use crate::{commands::CrackedError, http_utils::CacheHttpExt};
 
 /// Add an additional prefix to the bot for the current guild.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,
@@ -32,7 +31,6 @@ pub async fn add_prefix(
 }
 
 /// Clear all additional prefixes from the bot for the current guild.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     prefix_command,
@@ -57,7 +55,6 @@ pub async fn clear_prefixes(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Get the current prefix settings.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     prefix_command,

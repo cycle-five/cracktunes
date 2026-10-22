@@ -6,7 +6,6 @@ use crate::utils::{create_paged_embed, PagedStyle};
 use crate::{poise_ext::ContextExt, Context, Error};
 
 /// Get recently played tracks form the guild.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",
@@ -25,7 +24,6 @@ fn escaped_log(entries: &[String]) -> Vec<String> {
 }
 
 /// Get recently played tracks for the guild.
-#[cfg(not(tarpaulin_include))]
 pub async fn playlog_internal(ctx: Context<'_>) -> Result<(), Error> {
     let last_played = ctx.get_last_played().await?;
     let last_played_str = escaped_log(&last_played).join("\n");
@@ -45,14 +43,12 @@ pub async fn playlog_internal(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Get recently played tracks for the calling user in the guild.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(slash_command, prefix_command, guild_only)]
 pub async fn myplaylog(ctx: Context<'_>) -> Result<(), Error> {
     myplaylog_(ctx).await
 }
 
 // use crate::commands::CrackedError;
-#[cfg(not(tarpaulin_include))]
 pub async fn myplaylog_(ctx: Context<'_>) -> Result<(), Error> {
     // let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let user_id = ctx.author().id;

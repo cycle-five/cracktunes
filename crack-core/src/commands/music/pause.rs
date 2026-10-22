@@ -5,7 +5,6 @@ use crate::{
 };
 
 /// Pause the current track.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

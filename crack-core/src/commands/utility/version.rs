@@ -6,7 +6,6 @@ use crate::{
 };
 
 /// Get the build version of this bot.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Utility", slash_command, prefix_command)]
 pub async fn version(ctx: Context<'_>) -> Result<(), Error> {
     version_internal(ctx).await

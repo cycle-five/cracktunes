@@ -19,7 +19,6 @@ use std::collections::BTreeMap;
 const UNDO_WINDOW_SECONDS: i64 = 15;
 
 /// Delete the bot's messages, or only its latest one if sent or edited in the last 15 seconds.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Utility",
     prefix_command,

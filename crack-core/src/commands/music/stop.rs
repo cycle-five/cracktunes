@@ -8,7 +8,6 @@ use crate::{
 };
 
 /// Stop the current track and clear the queue.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

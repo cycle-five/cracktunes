@@ -10,7 +10,6 @@ use extract_map::ExtractMap;
 
 /// Get list of VCs the bot is currently in.
 #[poise::command(prefix_command, owners_only, ephemeral)]
-#[cfg(not(tarpaulin_include))]
 pub async fn get_active_vcs(ctx: Context<'_>) -> Result<(), Error> {
     // Get all guilds the bot is in
     let mut active_vcs = Vec::new();
@@ -26,7 +25,6 @@ pub async fn get_active_vcs(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Get list of guilds the bot is in.
-#[cfg(not(tarpaulin_include))]
 pub async fn get_guilds(ctx: Context<'_>) -> Result<Vec<(GuildId, String, u64)>, Error> {
     let mut hidden_guilds = 0;
     let mut guilds = Vec::<(GuildId, String, u64)>::new();
@@ -44,7 +42,6 @@ pub async fn get_guilds(ctx: Context<'_>) -> Result<Vec<(GuildId, String, u64)>,
 }
 
 /// Get list of VCs the bot is currently in.
-#[cfg(not(tarpaulin_include))]
 pub fn get_active_vcs_impl(
     ctx: Context<'_>,
     guild_channels: ExtractMap<GenericChannelId, GuildChannel>,

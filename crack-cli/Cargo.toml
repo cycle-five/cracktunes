@@ -74,6 +74,3 @@ ctor = "1.0"
 [build-dependencies]
 # All features enabled
 vergen-gitcl = { version = "10.0", features = ["build"] }
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }

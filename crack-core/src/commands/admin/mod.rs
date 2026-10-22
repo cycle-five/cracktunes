@@ -80,7 +80,6 @@ pub use user::*;
     ),
     ephemeral
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn admin(ctx: Context<'_>) -> Result<(), Error> {
     //help::wrapper(ctx).await
     ctx.say("We're porting!")

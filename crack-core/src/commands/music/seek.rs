@@ -10,7 +10,6 @@ use crate::{
 use std::{borrow::Cow, time::Duration};
 
 /// Seek to timestamp, in format `mm:ss`.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     prefix_command,

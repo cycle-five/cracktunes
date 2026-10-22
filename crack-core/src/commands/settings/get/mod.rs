@@ -39,7 +39,6 @@ pub use log_channels::*;
     )
 )]
 /// Get settings
-#[cfg(not(tarpaulin_include))]
 pub async fn get(ctx: Context<'_>) -> Result<(), Error> {
     tracing::warn!("settings-get");
 

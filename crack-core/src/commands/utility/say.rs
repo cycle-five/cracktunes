@@ -6,7 +6,6 @@ use core::panic;
 use serenity::all::{Channel, GenericChannelId};
 
 /// Have the bot say something in a channel.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Utility",
     slash_command,
@@ -30,7 +29,6 @@ pub async fn saychan(
 }
 
 /// Have the bot say something in a channel, by id.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Utility",
     slash_command,

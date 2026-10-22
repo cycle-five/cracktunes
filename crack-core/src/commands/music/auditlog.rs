@@ -19,7 +19,6 @@ use crate::{Context, Error};
 use poise::serenity_prelude as serenity;
 
 /// Show who changed this server's queue, and how.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     slash_command,

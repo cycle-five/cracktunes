@@ -93,7 +93,6 @@ fn gp_playback(ctx: Context<'_>, call: Arc<Mutex<Call>>, guild_id: GuildId) -> G
 }
 
 /// "What's your song?" party game: a prompt, secret submissions, guess whose is whose.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Games",
     slash_command,
@@ -120,7 +119,6 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
 /// clicks are answered here, not by [`handle_gp_component`] -- there is no game
 /// yet for it to find. `None` when the host cancels or walks away, which the
 /// picker has already said.
-#[cfg(not(tarpaulin_include))]
 async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Error> {
     let host = ctx.author().id;
     let mut picked: Vec<GpCategory> = Vec::new();
@@ -193,7 +191,6 @@ async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Er
 }
 
 /// Answer a picker click by redrawing the picker.
-#[cfg(not(tarpaulin_include))]
 async fn gp_pick_update(
     press: &dyn Press,
     text: &str,
@@ -215,7 +212,6 @@ async fn gp_pick_update(
 }
 
 /// Start a game in your voice channel: pick a category, rounds, and the submission timer.
-#[cfg(not(tarpaulin_include))]
 #[allow(clippy::too_many_arguments)]
 #[poise::command(
     rename = "start",
@@ -374,7 +370,6 @@ pub async fn gp_start(
 }
 
 /// Secretly submit your song for the current prompt (link or search). Resubmitting replaces it.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "submit",
     category = "Games",
@@ -432,7 +427,6 @@ async fn gp_spotify_query(url: &str) -> CrackedResult<QueryType> {
     Ok(QueryType::Keywords(query))
 }
 
-#[cfg(not(tarpaulin_include))]
 pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResult<CrackedMessage> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
@@ -502,7 +496,6 @@ pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResul
 }
 
 /// Close submissions early and start playing this round (host only).
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "close",
     category = "Games",
@@ -537,7 +530,6 @@ pub async fn gp_close(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// End the current song early (host only).
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "skip",
     category = "Games",
@@ -656,7 +648,6 @@ async fn gp_answer_vote(ctx: Context<'_>, (mine, room): GpVoteAnswer) -> Result<
 }
 
 /// Vote to end the current song early -- a majority of the voice channel ends it.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "voteskip",
     category = "Games",
@@ -680,7 +671,6 @@ pub async fn gp_voteskip(ctx: Context<'_>) -> Result<(), Error> {
     gp_answer_vote(ctx, answer).await
 }
 
-#[cfg(not(tarpaulin_include))]
 async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
@@ -732,7 +722,6 @@ async fn gp_voteskip_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
 }
 
 /// Vote to hear the whole song instead of just the clip -- a majority lets it run.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "votefull",
     category = "Games",
@@ -754,7 +743,6 @@ pub async fn gp_votefull(ctx: Context<'_>) -> Result<(), Error> {
     gp_answer_vote(ctx, answer).await
 }
 
-#[cfg(not(tarpaulin_include))]
 async fn gp_votefull_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
@@ -780,7 +768,6 @@ async fn gp_votefull_internal(ctx: Context<'_>) -> CrackedResult<GpVoteAnswer> {
 }
 
 /// The prompt, who has submitted or guessed, likes, and the scores so far.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "status",
     category = "Games",
@@ -798,7 +785,6 @@ pub async fn gp_status(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Abort the game (host, or anyone who can manage the server).
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     rename = "end",
     category = "Games",

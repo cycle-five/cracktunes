@@ -10,7 +10,6 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 /// Randomly mute a user in the server.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Admin",
     slash_command,

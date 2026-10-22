@@ -21,7 +21,6 @@ use crate::{Context, Error};
     subcommands("create", "delete", "delete_by_id", "assign", "assign_ids"),
     ephemeral
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn role(
     ctx: Context<'_>,
     #[flag]

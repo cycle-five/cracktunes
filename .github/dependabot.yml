@@ -62,9 +62,3 @@ updates:
     groups:
       actions:
         patterns: ["*"]
-    ignore:
-      # Deliberately held at v4 in the manual-only coverage.yml; see the note on
-      # that step. Moves with tarpaulin's replacement.
-      - dependency-name: "codecov/codecov-action"
-        update-types:
-          - "version-update:semver-major"

@@ -54,7 +54,6 @@ pub async fn osint(ctx: Context<'_>) -> Result<(), Error> {
 ///
 /// Other scanning options include VirusTotal, Google Safe Browsing, Metadefender, etc.
 ///
-#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
     ctx.reply("Scanning...").await?;
@@ -92,7 +91,6 @@ pub async fn scan(ctx: Context<'_>, url: String) -> Result<(), Error> {
     Ok(())
 }
 
-#[cfg(not(tarpaulin_include))]
 #[poise::command(prefix_command, slash_command)]
 pub async fn virustotal_result(ctx: Context<'_>, id: String) -> Result<(), Error> {
     ctx.reply("Scanning...").await?;

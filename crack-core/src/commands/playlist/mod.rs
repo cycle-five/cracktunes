@@ -39,7 +39,6 @@ use crate::{
     aliases("pl"),
     check = "cmd_check_music"
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn playlist(ctx: Context<'_>) -> Result<(), Error> {
     send_reply(
         &ctx,

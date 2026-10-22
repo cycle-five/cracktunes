@@ -42,7 +42,6 @@ use tokio::sync::Mutex;
 use uuid::Uuid;
 
 /// Get the guild name.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     prefix_command,
@@ -67,7 +66,6 @@ pub async fn get_guild_name_info(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Play a song next
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,
@@ -86,7 +84,6 @@ pub async fn playnext(
 }
 
 /// Search interactively for a song
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,
@@ -148,7 +145,6 @@ pub async fn play(
 }
 
 /// Play a song with more options
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     slash_command,
@@ -173,7 +169,6 @@ pub async fn optplay(
 }
 
 /// Play a local file.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,
@@ -232,7 +227,6 @@ pub async fn playfile(
 // }
 
 /// Play a youtube playlist.
-#[cfg(not(tarpaulin_include))]
 #[tracing::instrument(skip(ctx))]
 #[poise::command(
     slash_command,
@@ -667,7 +661,6 @@ pub fn play_settlement(r: &Result<PlayOutcome, PlayError>) -> Settlement {
 }
 
 /// Does the actual playing of the song, all the other commands use this.
-#[cfg(not(tarpaulin_include))]
 pub async fn play_internal(
     ctx: Context<'_>,
     mode: Option<String>,
@@ -683,7 +676,6 @@ pub async fn play_internal(
 /// [`play_internal`]'s body, saying whether it queued anything: the paid
 /// shop plays settle their charge on it.
 //#[tracing::instrument(skip(ctx))]
-#[cfg(not(tarpaulin_include))]
 pub async fn play_core(
     ctx: Context<'_>,
     mode: Option<String>,
@@ -1087,7 +1079,6 @@ fn time_until_play(
 use crate::sources::rusty_ytdl::RequestOptionsBuilder;
 use rusty_ytdl::search::YouTube;
 /// Add tracks to the queue from aux_metadata.
-#[cfg(not(tarpaulin_include))]
 pub async fn queue_aux_metadata(
     ctx: Context<'_>,
     aux_metadata: &[NewAuxMetadata],

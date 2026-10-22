@@ -43,7 +43,6 @@ fn after_alert(posted: Option<(serenity::GenericChannelId, serenity::MessageId)>
 
 /// TODO: Add metrics
 /// Implement handler for the idle event.
-#[cfg(not(tarpaulin_include))]
 #[async_trait]
 impl EventHandler for IdleHandler {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {

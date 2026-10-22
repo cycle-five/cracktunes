@@ -8,7 +8,6 @@ use crate::{
 };
 
 /// Move a song in the queue to a different position.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",
@@ -25,7 +24,6 @@ pub async fn movesong(
 }
 
 /// Move a song in the queue to a different position, internal function.
-#[cfg(not(tarpaulin_include))]
 pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result<(), Error> {
     let cx = OpCx::from_ctx(&ctx)?;
     let done = ops::move_track(&cx, Target::Index(at), to)
@@ -37,7 +35,6 @@ pub async fn movesong_internal(ctx: Context<'_>, at: usize, to: usize) -> Result
 }
 
 /// Shuffle the current queue.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

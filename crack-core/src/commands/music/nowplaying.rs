@@ -17,7 +17,6 @@ use serenity::all::MessageLink;
 use songbird::input::AuxMetadata;
 
 /// Get the currently playing track.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

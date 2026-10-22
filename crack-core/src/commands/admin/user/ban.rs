@@ -15,7 +15,6 @@ use serenity::all::User;
 //    due to the fact that we're using poise to do prefix and slash commands at the
 //    same time. This makes creation of the response embeds relient on the type
 //    of command and thus the context.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Admin",
     slash_command,

@@ -10,7 +10,6 @@ use serenity::all::{Color, CreateEmbed};
 const PREVIEW_TRACKS: usize = 10;
 
 /// Look up a Spotify track, album or playlist.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Music", prefix_command, slash_command)]
 pub async fn spotify(
     ctx: Context<'_>,
@@ -30,7 +29,6 @@ pub async fn spotify(
 /// A resolve can take ten seconds or more on a cold cache, which is well past
 /// Discord's three-second interaction deadline -- so defer before doing any of
 /// it, or the command fails before the answer exists.
-#[cfg(not(tarpaulin_include))]
 pub async fn spotify_internal(ctx: Context<'_>, url: Option<String>) -> Result<(), Error> {
     let Some(url) = url.filter(|u| !u.trim().is_empty()) else {
         return reply(ctx, fail("Give me a Spotify track, album or playlist URL.")).await;

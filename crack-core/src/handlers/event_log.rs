@@ -136,7 +136,6 @@ pub async fn update_activity_map(data: Arc<Data>, presence: serenity::Presence) 
 /// Handles (routes and logs) an event.
 /// Currently doesn't handle all events.
 #[tracing::instrument(skip(ctx, data_global))]
-#[cfg(not(tarpaulin_include))]
 pub async fn handle_event(
     ctx: &serenity::all::Context,
     event_in: &FullEvent,

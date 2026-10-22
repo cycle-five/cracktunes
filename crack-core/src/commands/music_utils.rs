@@ -18,7 +18,6 @@ use std::{
 use tokio::sync::Mutex;
 
 /// Set the global handlers for the bot in a call.
-#[cfg(not(tarpaulin_include))]
 pub async fn set_global_handlers(
     ctx: Context<'_>,
     call: Arc<Mutex<Call>>,
@@ -86,7 +85,6 @@ pub async fn set_global_handlers_with(
 }
 
 /// Get the call handle for songbird.
-#[cfg(not(tarpaulin_include))]
 #[tracing::instrument(skip(ctx))]
 pub async fn get_call_or_join_author(ctx: Context<'_>) -> Result<Arc<Mutex<Call>>, CrackedError> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
@@ -357,7 +355,6 @@ async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
 /// The gate can no longer be skipped or reordered by accident -- [`JoinPermit`]
 /// is the only way to reach [`join_permitted`] -- so the defer is free to sit
 /// between them.
-#[cfg(not(tarpaulin_include))]
 #[tracing::instrument]
 pub async fn do_join(
     ctx: Context<'_>,

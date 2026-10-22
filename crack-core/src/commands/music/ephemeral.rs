@@ -7,7 +7,6 @@ use crate::{
 };
 
 /// Toggle whether /play, /skip and /nowplaying reply privately in this server.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,
@@ -30,7 +29,6 @@ pub async fn ephemeral(
 
 /// Toggle ephemeral replies internal: flip and save the guild setting, then
 /// say which way it went.
-#[cfg(not(tarpaulin_include))]
 pub async fn ephemeral_internal(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 

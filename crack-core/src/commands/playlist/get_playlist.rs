@@ -7,7 +7,6 @@ use crate::{
 use crack_types::NewAuxMetadata;
 
 /// Get a playlist
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",

@@ -73,7 +73,6 @@ pub async fn all_log_channel(
     Ok(())
 }
 
-#[cfg(not(tarpaulin_include))]
 #[tracing::instrument(skip(data))]
 /// Internal function to set a log channel for a specific guild.
 pub async fn set_all_log_channel_data(

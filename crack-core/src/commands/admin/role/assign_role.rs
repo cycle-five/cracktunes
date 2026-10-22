@@ -11,7 +11,6 @@ use serenity::all::{GuildId, Member, Role, RoleId, UserId};
     slash_command,
     ephemeral
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn assign(
     ctx: Context<'_>,
     #[description = "Role to assign"] role: Role,
@@ -40,7 +39,6 @@ pub async fn assign(
     hide_in_help = true,
     ephemeral
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn assign_ids(
     ctx: Context<'_>,
     #[description = "GuildId related to"] guild_id: GuildId,

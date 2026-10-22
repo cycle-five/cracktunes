@@ -8,7 +8,6 @@ use crate::{
 };
 
 /// Search for song lyrics.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     check = "cmd_check_music",
@@ -31,7 +30,6 @@ pub async fn lyrics(
     lyrics_internal(ctx, query).await
 }
 
-#[cfg(not(tarpaulin_include))]
 /// Internal function for searching for song lyrics.
 pub async fn lyrics_internal(ctx: Context<'_>, query: Option<String>) -> Result<(), Error> {
     let query = query_or_title(ctx, query).await?;
@@ -44,7 +42,6 @@ pub async fn lyrics_internal(ctx: Context<'_>, query: Option<String>) -> Result<
 }
 
 /// Get the current track name as either the query or the title of the current track.
-#[cfg(not(tarpaulin_include))]
 pub async fn query_or_title(ctx: Context<'_>, query: Option<String>) -> Result<String, Error> {
     match query {
         Some(query) => Ok(query),

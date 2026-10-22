@@ -8,7 +8,6 @@ use serenity::all::Mentionable;
 use serenity::builder::EditMember;
 
 /// Deafen a user.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,
@@ -28,7 +27,6 @@ pub async fn deafen(
 }
 
 /// Uneafen a user.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     slash_command,
     prefix_command,

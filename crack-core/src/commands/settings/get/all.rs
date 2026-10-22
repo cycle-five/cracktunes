@@ -6,7 +6,6 @@ use crate::utils::send_reply;
 use crate::{Context, Error};
 
 /// Get the current bot settings for this guild.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,

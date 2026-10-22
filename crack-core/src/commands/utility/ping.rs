@@ -8,14 +8,12 @@ use crate::poise_ext::PoiseContextExt;
 use crate::{Context, Error};
 
 /// Ping the bot
-#[cfg(not(tarpaulin_include))]
 #[poise::command(category = "Utility", slash_command, prefix_command)]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     ping_internal(ctx).await
 }
 
 /// Ping the bot internal function
-#[cfg(not(tarpaulin_include))]
 pub async fn ping_internal(ctx: Context<'_>) -> Result<(), Error> {
     let start = std::time::Instant::now();
     let msg = ctx.send_reply_embed(CrackedMessage::Pong).await?;

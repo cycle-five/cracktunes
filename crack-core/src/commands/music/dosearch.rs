@@ -11,7 +11,6 @@ use serenity::builder::CreateEmbed;
 use songbird::input::{AuxMetadata, YoutubeDl};
 
 /// Search for a song and play it.
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Music",
     prefix_command,
@@ -34,7 +33,6 @@ pub async fn do_yt_search(
 }
 
 /// Perform a youtube search and send a list of results to discord
-#[cfg(not(tarpaulin_include))]
 async fn do_yt_search_internal(
     ctx: Context<'_>,
     search_query: String,

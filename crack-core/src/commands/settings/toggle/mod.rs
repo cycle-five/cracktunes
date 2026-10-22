@@ -11,7 +11,6 @@ pub use toggle_autopause::*;
     ephemeral,
     owners_only
 )]
-#[cfg(not(tarpaulin_include))]
 pub async fn toggle(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("You found the settings-toggle command").await?;
 

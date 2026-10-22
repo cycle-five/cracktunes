@@ -134,7 +134,6 @@ impl GuildEntity {
     }
 
     /// Create or update the welcome settings for a guild.
-    #[cfg(not(tarpaulin_include))]
     pub async fn write_welcome_settings(
         pool: &PgPool,
         guild_id: i64,
@@ -158,7 +157,6 @@ impl GuildEntity {
     }
 
     /// Update the premium status for a guild.
-    #[cfg(not(tarpaulin_include))]
     pub async fn update_premium(
         pool: &PgPool,
         guild_id: i64,
@@ -181,7 +179,6 @@ impl GuildEntity {
     }
 
     /// Write the settings for a guild to the database.
-    #[cfg(not(tarpaulin_include))]
     pub async fn write_settings(
         pool: &PgPool,
         settings: &crate::guild::settings::GuildSettings,

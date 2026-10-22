@@ -42,7 +42,6 @@ pub use set_welcome_settings::*;
     required_permissions = "ADMINISTRATOR",
 )]
 /// Set settings
-#[cfg(not(tarpaulin_include))]
 pub async fn set(ctx: Context<'_>) -> Result<(), Error> {
     ctx.send_reply(
         CrackedMessage::CommandFound(String::from("settings-set")),

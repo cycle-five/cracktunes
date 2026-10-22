@@ -4,7 +4,6 @@ use crate::poise_ext::PoiseContextExt;
 use crate::utils::get_guild_name;
 use crate::{Context, Error};
 
-#[cfg(not(tarpaulin_include))]
 #[poise::command(
     category = "Settings",
     slash_command,
