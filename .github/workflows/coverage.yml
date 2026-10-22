@@ -5,7 +5,7 @@ name: coverage
 # 🔑 Why weekly, not on every push. This report is informational: nothing
 # gates on it. The gate that proves tests can fail is cargo-mutants, which
 # runs on the diff of each PR. An every-push coverage job is what made the
-# old tool (tarpaulin, 9-16 minutes per push, tags included) the slowest job in
+# old tool (ptrace-based, 9-16 minutes per push, tags included) the slowest job in
 # the repo while gating nothing, so it was switched off in 2026-09 and has
 # now been replaced.
 #
