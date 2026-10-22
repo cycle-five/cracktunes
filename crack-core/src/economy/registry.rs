@@ -46,6 +46,9 @@ pub struct EconomyRegistry {
     /// it. A theme's end is not the queue moving on: the global track-end
     /// handler leaves these alone.
     theme_tracks: Arc<DashSet<Uuid>>,
+    /// Where the CrackCoin token stands.
+    #[cfg(feature = "crack-coin")]
+    pub coin: crate::coin::registry::CoinRegistry,
 }
 
 /// A server's turn to play a walk-on theme. Dropping it ends the turn.
