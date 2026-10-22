@@ -497,6 +497,14 @@ again; if you don't, the bet is gone. The result is posted publicly.
 The bet must be at least 1, no more than the server's largest bet, and no more
 than you hold. Opted-out members can't play.
 
-## Coming next
+## CrackCoin
 
-- **A test-network coin you can see in a crypto wallet: worthless by design, later.**
+Optional, and only in a build made with the `crack-coin` feature (the `-coin`
+image). Members can turn credits into CrackCoin, a worthless token on Solana's
+devnet test network, 1 credit for 1 coin, and see it in a crypto wallet. It
+never touches real money or mainnet. Admins turn it on per server with
+"CrackCoin withdrawals" on the dashboard's economy page (the economy must be on
+too), and `/economy status` shows the switch. Members use `/wallet link`,
+`/wallet show`, `/wallet unlink` and `/wallet withdraw`; every reply is private.
+Setup, the environment variables, topping up and rolling back are in
+[`docs/crack-coin.md`](crack-coin.md).

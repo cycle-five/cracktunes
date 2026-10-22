@@ -65,12 +65,18 @@ COPY --from=planner /app/recipe.json recipe.json
 # exactly, or cargo treats these artifacts as a different build and recompiles
 # them. This is also where rust-toolchain.toml (carried in the recipe) installs
 # the current stable, so the toolchain is cached along with the dependencies.
-RUN cargo chef cook -p cracktunes --profile=dist --recipe-path recipe.json
+#
+# 🔑 CARGO_FEATURES is empty for the lean image. The `-coin` image passes
+# `crack-coin`. The cook and the build below MUST carry the identical flag: a
+# different feature set is a different build to cargo, and the cooked layer
+# would be silently discarded.
+ARG CARGO_FEATURES=""
+RUN cargo chef cook -p cracktunes --profile=dist ${CARGO_FEATURES:+--features $CARGO_FEATURES} --recipe-path recipe.json
 
 # Copy all the files
 COPY . .
 
-RUN cargo build -p cracktunes --profile=dist
+RUN cargo build -p cracktunes --profile=dist ${CARGO_FEATURES:+--features $CARGO_FEATURES}
 
 # STAGE2: create a slim image with the compiled binary
 FROM alpine:3.22 AS runner

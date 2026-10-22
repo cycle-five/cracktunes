@@ -114,6 +114,38 @@ jobs:
           # mode=max) would buy nothing and spend the repo's 10 GB cache quota.
           cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max,scope=runner' || '' }}
       -
+        # CrackCoin image: the same runner stage, built with the `crack-coin`
+        # feature, tagged `vX.Y.Z-coin` (flavor suffix) so it can never
+        # overwrite the plain image's tags. Only a beta deployment pulls it, and
+        # only for a release, so it builds on tags and on a manual dispatch
+        # (which lets a branch prove the build before any tag exists) and
+        # nowhere else. docker-pr.yml calls this file with the event
+        # `pull_request`, which both conditions refuse. The migrate image below
+        # is the same for both.
+        name: Extract Git Metadata (coin image)
+        id: meta-coin
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: |
+            suffix=-coin
+      -
+        name: Build & Push Coin Image
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runner
+          build-args: CARGO_FEATURES=crack-coin
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-coin.outputs.tags }}
+          labels: ${{ steps.meta-coin.outputs.labels }}
+          # Its own scope: the feature set differs, so sharing `runner` would
+          # make each image evict the other's layers.
+          cache-from: type=gha,scope=runner-coin
+          cache-to: ${{ github.event_name != 'pull_request' && 'type=gha,mode=max,scope=runner-coin' || '' }}
+      -
         name: Extract Git Metadata (migrate image)
         id: meta-migrate
         uses: docker/metadata-action@v6

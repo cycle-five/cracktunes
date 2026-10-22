@@ -13,6 +13,7 @@ exactly as it was.
 | ------------- | -------------------------------------------- | ---------- |
 | `crack-bf`    | `https://github.com/cycle-five/crack-bf`     | `v0.1.0`   |
 | `crack-osint` | `https://github.com/cycle-five/crack-osint`  | `v0.1.0`   |
+| `crack-coin`  | `https://github.com/cycle-five/crack-coin`   | `v0.1.0`   |
 
 More modules will be added to this table as they are extracted. Each row's
 pin is the `tag = "..."` value in that dependency's entry in
@@ -87,6 +88,11 @@ cargo check -p crack-core --features crack-bf \
 ```bash
 cargo check -p crack-core --features crack-osint \
   --config 'patch."https://github.com/cycle-five/crack-osint".crack-osint.path="../crack-osint"'
+```
+
+```bash
+cargo check -p crack-core --features crack-coin \
+  --config 'patch."https://github.com/cycle-five/crack-coin".crack-coin.path="../crack-coin"'
 ```
 
 This was confirmed with `cargo tree`, which shows the dependency resolved
