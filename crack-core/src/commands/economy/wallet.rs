@@ -4,8 +4,8 @@
 
 use super::credits::{gate_for, say, GateNeed};
 use crate::coin::checks::{
-    address_refusal_text, check_address, check_withdraw_chain, check_withdraw_local, outcome_text,
-    readiness, refusal_text, short_address, show_text, WithdrawRefusal,
+    address_refusal_text, check_address, check_withdraw_chain, check_withdraw_local, minting_text,
+    outcome_text, readiness, refusal_text, short_address, show_text, WithdrawRefusal,
 };
 use crate::coin::flow::{self, Timing, WithdrawRequest};
 use crate::coin::registry::CoinState;
@@ -16,8 +16,8 @@ use crate::economy::gamble::{bet_refusal_text, BetRefusal};
 use crate::economy::wallet::MoveError;
 use crate::messaging::courier;
 use crate::messaging::messages::{
-    COIN_ALREADY_PENDING, COIN_FAILED, COIN_LINKED, COIN_MINTING, COIN_NOT_LINKED, COIN_TO,
-    COIN_UNLINKED, ECONOMY_READ_FAILED,
+    COIN_ALREADY_PENDING, COIN_FAILED, COIN_LINKED, COIN_NOT_LINKED, COIN_UNLINKED,
+    ECONOMY_READ_FAILED,
 };
 use crate::messaging::render::Rendered;
 use crate::{Context, Error};
@@ -218,17 +218,37 @@ pub async fn withdraw(
             return say(ctx, COIN_FAILED, true).await;
         },
     };
-    let placeholder = format!(
-        "{COIN_MINTING} {amount} {COIN_TO} {}…",
-        short_address(&address)
-    );
-    let handle = courier::reply_rendered(ctx, Rendered::text(placeholder), true).await?;
+    // From here the member has been charged: every path reaches `complete` with the same `req`.
+    // A failed placeholder is logged, never propagated.
+    let handle =
+        match courier::reply_rendered(ctx, Rendered::text(minting_text(amount, &address)), true)
+            .await
+        {
+            Ok(handle) => Some(handle),
+            Err(err) => {
+                tracing::warn!(
+                    "crack-coin: withdrawal {}: placeholder not sent: {err:?}",
+                    started.id
+                );
+                None
+            },
+        };
     let outcome = flow::complete(&pool, chain.as_ref(), &started, &req, &Timing::LIVE).await;
-    courier::edit_rendered(
-        ctx,
-        &handle,
-        Rendered::text(outcome_text(&outcome, amount, &address)),
-    )
-    .await?;
+    let text = outcome_text(&outcome, amount, &address, &cfg.currency_name);
+    // A failed reply must not reach `on_error`, which answers publicly.
+    let sent = match &handle {
+        Some(handle) => courier::edit_rendered(ctx, handle, Rendered::text(text.clone()))
+            .await
+            .is_ok(),
+        None => false,
+    };
+    if !sent {
+        if let Err(err) = say(ctx, text, true).await {
+            tracing::warn!(
+                "crack-coin: withdrawal {}: result not sent: {err:?}",
+                started.id
+            );
+        }
+    }
     Ok(())
 }

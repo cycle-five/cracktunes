@@ -6,13 +6,13 @@ use crate::coin::flow::Outcome;
 use crate::db::economy::coin::{WalletOverview, WithdrawalState};
 use crate::messaging::messages::{
     COIN_ADDRESS_IS_THE_MINT, COIN_ADDRESS_NOT_BASE58, COIN_ADDRESS_OFF_CURVE,
-    COIN_ADDRESS_WRONG_LENGTH, COIN_DEVNET_HINT, COIN_LINK_YOURS, COIN_MINTED,
+    COIN_ADDRESS_WRONG_LENGTH, COIN_DEVNET_HINT, COIN_LINK_YOURS, COIN_MINTED, COIN_MINTING,
     COIN_REASON_DEVNET_RESET, COIN_REASON_EXPIRED, COIN_REASON_FAILED_ON_CHAIN,
     COIN_REASON_NEVER_SENT, COIN_REFUNDED, COIN_REFUNDED_BALANCE, COIN_REFUSE_BAD_AMOUNT,
     COIN_REFUSE_NOT_LINKED, COIN_REFUSE_OPTED_OUT, COIN_REFUSE_SPONSOR_CAP, COIN_REFUSE_STARTING,
     COIN_REFUSE_SWITCH_OFF, COIN_REFUSE_TAP_DRY, COIN_REFUSE_UNAVAILABLE, COIN_SHOW_LAST,
-    COIN_SHOW_LINKED, COIN_SHOW_MINT, COIN_SHOW_NO_LINK, COIN_SHOW_TOTAL, COIN_STATE_DONE,
-    COIN_STATE_PENDING, COIN_STATE_REFUNDED, COIN_STILL_SETTLING,
+    COIN_SHOW_LINKED, COIN_SHOW_MINT, COIN_SHOW_NO_LINK, COIN_SHOW_REASON, COIN_SHOW_TOTAL,
+    COIN_STATE_DONE, COIN_STATE_PENDING, COIN_STATE_REFUNDED, COIN_STILL_SETTLING,
 };
 use crack_coin::Pubkey;
 use std::str::FromStr;
@@ -140,8 +140,8 @@ pub fn explorer_address(a: &str) -> String {
     format!("https://explorer.solana.com/address/{a}?cluster=devnet")
 }
 
-pub fn refusal_text(r: &WithdrawRefusal) -> &'static str {
-    match r {
+pub fn refusal_text(r: &WithdrawRefusal) -> String {
+    let text = match r {
         WithdrawRefusal::Starting => COIN_REFUSE_STARTING,
         WithdrawRefusal::Unavailable => COIN_REFUSE_UNAVAILABLE,
         WithdrawRefusal::SwitchOff => COIN_REFUSE_SWITCH_OFF,
@@ -150,7 +150,8 @@ pub fn refusal_text(r: &WithdrawRefusal) -> &'static str {
         WithdrawRefusal::BadAmount => COIN_REFUSE_BAD_AMOUNT,
         WithdrawRefusal::TapDry => COIN_REFUSE_TAP_DRY,
         WithdrawRefusal::SponsorCapReached => COIN_REFUSE_SPONSOR_CAP,
-    }
+    };
+    text.replace("{limit}", &SPONSORED_ACCOUNTS.to_string())
 }
 
 pub fn address_refusal_text(r: &AddressRefusal) -> &'static str {
@@ -165,7 +166,7 @@ pub fn address_refusal_text(r: &AddressRefusal) -> &'static str {
 fn refund_reason_text(r: &RefundReason) -> String {
     match r {
         RefundReason::NeverSent => COIN_REASON_NEVER_SENT.to_owned(),
-        RefundReason::FailedOnChain(why) => format!("{COIN_REASON_FAILED_ON_CHAIN} {why}"),
+        RefundReason::FailedOnChain(why) => COIN_REASON_FAILED_ON_CHAIN.replace("{why}", why),
         RefundReason::DevnetReset => COIN_REASON_DEVNET_RESET.to_owned(),
         RefundReason::Expired => COIN_REASON_EXPIRED.to_owned(),
         RefundReason::Other(text) => text.clone(),
@@ -173,23 +174,39 @@ fn refund_reason_text(r: &RefundReason) -> String {
 }
 
 /// The edit that replaces the "Minting…" placeholder. The address is only ever shortened.
-pub fn outcome_text(o: &Outcome, amount: i64, address: &str) -> String {
+pub fn outcome_text(o: &Outcome, amount: i64, address: &str, currency: &str) -> String {
     match o {
         Outcome::Minted { signature } => format!(
-            "{amount} {COIN_MINTED} {}.\n{}\n{COIN_DEVNET_HINT}",
-            short_address(address),
+            "{}\n{}\n{COIN_DEVNET_HINT}",
+            COIN_MINTED
+                .replace("{amount}", &amount.to_string())
+                .replace("{address}", &short_address(address)),
             explorer_tx(signature)
         ),
         Outcome::Refunded { reason, balance } => {
-            let mut text = format!("{COIN_REFUNDED} {}", refund_reason_text(reason));
-            text.push_str(&format!("\n{amount} credits are back."));
+            let mut text = COIN_REFUNDED
+                .replace("{reason}", &refund_reason_text(reason))
+                .replace("{amount}", &amount.to_string())
+                .replace("{currency}", currency);
             if let Some(balance) = balance {
-                text.push_str(&format!(" {COIN_REFUNDED_BALANCE} {balance}."));
+                text.push(' ');
+                text.push_str(
+                    &COIN_REFUNDED_BALANCE
+                        .replace("{balance}", &balance.to_string())
+                        .replace("{currency}", currency),
+                );
             }
             text
         },
         Outcome::StillSettling => COIN_STILL_SETTLING.to_owned(),
     }
+}
+
+/// The "Minting…" placeholder.
+pub fn minting_text(amount: i64, address: &str) -> String {
+    COIN_MINTING
+        .replace("{amount}", &amount.to_string())
+        .replace("{address}", &short_address(address))
 }
 
 fn state_label(s: WithdrawalState) -> &'static str {
@@ -204,7 +221,12 @@ fn state_label(s: WithdrawalState) -> &'static str {
 pub fn show_text(address: Option<&str>, mint: Option<&str>, overview: &WalletOverview) -> String {
     let mut lines = Vec::new();
     match address {
-        Some(a) => lines.push(format!("{COIN_SHOW_LINKED} `{}`", short_address(a))),
+        // The visible text stays shortened; the full address is only in the link target.
+        Some(a) => lines.push(format!(
+            "{COIN_SHOW_LINKED} [{}](<{}>)",
+            short_address(a),
+            explorer_address(a)
+        )),
         None => lines.push(format!("{COIN_SHOW_NO_LINK} {COIN_LINK_YOURS}")),
     }
     if let Some(mint) = mint {
@@ -222,6 +244,12 @@ pub fn show_text(address: Option<&str>, mint: Option<&str>, overview: &WalletOve
             line.push_str(&explorer_tx(sig));
         }
         lines.push(line);
+        if last.state == WithdrawalState::Refunded {
+            if let Some(reason) = &last.reason {
+                let why = refund_reason_text(&RefundReason::from_db_text(reason));
+                lines.push(format!("{COIN_SHOW_REASON} {why}"));
+            }
+        }
     }
     lines.join("\n")
 }
@@ -256,6 +284,13 @@ mod tests {
             check_address(&short, None),
             Err(AddressRefusal::WrongLength)
         );
+        // A pasted 64-byte secret key is too long, and is never echoed back.
+        let secret = crack_coin::Signature([7u8; 64]).to_string();
+        assert_eq!(
+            check_address(&secret, None),
+            Err(AddressRefusal::WrongLength)
+        );
+        assert!(!address_refusal_text(&AddressRefusal::WrongLength).contains(&secret));
         let m: Pubkey = mint().parse().unwrap();
         let o: Pubkey = owner().parse().unwrap();
         let ata = associated_token_address(&o, &m).to_string();
@@ -322,6 +357,9 @@ mod tests {
         use crate::coin::registry::CoinState;
         assert_eq!(readiness(&CoinState::Starting), Readiness::Starting);
         assert_eq!(readiness(&CoinState::Off(CoinOff::Mainnet)), Readiness::Off);
+        let chain: std::sync::Arc<dyn crate::coin::chain::CoinChain> =
+            std::sync::Arc::new(crate::coin::fake::FakeChain::new());
+        assert_eq!(readiness(&CoinState::Ready(chain)), Readiness::Ready);
     }
 
     #[test]
@@ -357,7 +395,7 @@ mod tests {
         let o = Outcome::Minted {
             signature: "SIG123".into(),
         };
-        let text = outcome_text(&o, 500, &owner());
+        let text = outcome_text(&o, 500, &owner(), "credits");
         assert!(text.contains("https://explorer.solana.com/tx/SIG123?cluster=devnet"));
         assert!(text.contains("500"));
         assert!(text.contains(&short_address(&owner())));
@@ -397,16 +435,16 @@ mod tests {
             },
         ];
         for o in &outcomes {
-            let text = outcome_text(o, 12, &a);
+            let text = outcome_text(o, 12, &a, "credits");
             assert!(!text.contains(&a), "{o:?}: {text}");
             assert!(!text.is_empty());
         }
-        let refunded = outcome_text(&outcomes[2], 12, &a);
+        let refunded = outcome_text(&outcomes[2], 12, &a, "credits");
         assert!(
             refunded.contains("12") && refunded.contains('7'),
             "{refunded}"
         );
-        let other = outcome_text(&outcomes[6], 12, &a);
+        let other = outcome_text(&outcomes[6], 12, &a, "credits");
         assert!(other.contains("hand edit"), "{other}");
     }
 
@@ -420,8 +458,13 @@ mod tests {
         assert!(text.contains("/wallet link"), "{text}");
         let a = owner();
         let with = show_text(Some(&a), Some("MINT"), &overview);
-        assert!(with.contains(&short_address(&a)));
-        assert!(!with.contains(&a));
+        let link = format!("[{}](<{}>)", short_address(&a), explorer_address(&a));
+        assert!(with.contains(&link), "{with}");
+        // Outside the link target, the full address never appears.
+        assert!(
+            !with.replace(&explorer_address(&a), "").contains(&a),
+            "{with}"
+        );
         assert!(with.contains("MINT"));
     }
 
@@ -443,6 +486,45 @@ mod tests {
             text.contains("cluster=devnet") && text.contains("SIGX"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn show_text_says_why_the_last_withdrawal_was_refunded() {
+        let refunded = |reason: &str| WalletOverview {
+            total_withdrawn: 0,
+            last: Some(LastWithdrawal {
+                amount: 9,
+                state: WithdrawalState::Refunded,
+                signature: None,
+                reason: Some(reason.to_owned()),
+                created_at: chrono::Utc::now(),
+            }),
+        };
+        let text = show_text(None, None, &refunded("expired"));
+        assert!(text.contains(COIN_REASON_EXPIRED), "{text}");
+        let text = show_text(None, None, &refunded("failed on chain: boom"));
+        assert!(text.contains("the network rejected it: boom"), "{text}");
+        let text = show_text(None, None, &refunded("hand edit"));
+        assert!(text.contains("hand edit"), "{text}");
+        // A done withdrawal shows no reason line.
+        let done = WalletOverview {
+            total_withdrawn: 9,
+            last: Some(LastWithdrawal {
+                amount: 9,
+                state: WithdrawalState::Done,
+                signature: None,
+                reason: Some("stale".into()),
+                created_at: chrono::Utc::now(),
+            }),
+        };
+        assert!(!show_text(None, None, &done).contains("stale"));
+    }
+
+    #[test]
+    fn the_sponsor_cap_text_names_the_constant() {
+        let text = refusal_text(&WithdrawRefusal::SponsorCapReached);
+        assert!(text.contains(&SPONSORED_ACCOUNTS.to_string()), "{text}");
+        assert!(!text.contains("{limit}"));
     }
 
     #[test]

@@ -1249,29 +1249,30 @@ pub const COIN_LINKED: &str = "Linked. CrackCoin lives on Solana's *devnet*, a p
 pub const COIN_UNLINKED: &str = "Unlinked. Link another address when you want to withdraw.";
 pub const COIN_NOT_LINKED: &str = "You have no address linked, so there is nothing to unlink.";
 pub const COIN_LINK_YOURS: &str = "Link a devnet address with `/wallet link`.";
-pub const COIN_MINTING: &str = "Minting";
-pub const COIN_TO: &str = "to";
-pub const COIN_MINTED: &str = "minted to";
-pub const COIN_REFUNDED: &str = "It didn't land, so your credits are back:";
-pub const COIN_REFUNDED_BALANCE: &str = "You now have";
+pub const COIN_MINTING: &str = "Minting {amount} to `{address}`…";
+pub const COIN_MINTED: &str = "{amount} minted to `{address}`.";
+pub const COIN_REFUNDED: &str = "It didn't land ({reason}), so your {amount} {currency} are back.";
+pub const COIN_REFUNDED_BALANCE: &str = "You now have {balance} {currency}.";
 pub const COIN_STILL_SETTLING: &str = "This is taking longer than usual. Your credits are held while it settles, and they come back by themselves if it doesn't land. Check `/wallet show` later.";
 pub const COIN_ALREADY_PENDING: &str =
     "You already have a withdrawal in flight. Wait for it to finish first.";
-pub const COIN_FAILED: &str = "That didn't work, and nothing was taken. Try again.";
+pub const COIN_FAILED: &str =
+    "That didn't work. If anything was taken, it comes back automatically. Try again.";
 pub const COIN_DEVNET_HINT: &str =
     "To see it, switch your wallet app to devnet. The token's address is on the explorer page.";
 pub const COIN_SHOW_NO_LINK: &str = "No address linked.";
 pub const COIN_SHOW_LINKED: &str = "Linked address:";
 pub const COIN_SHOW_MINT: &str = "Token:";
 pub const COIN_SHOW_TOTAL: &str = "Withdrawn so far:";
+pub const COIN_SHOW_REASON: &str = "Why it was refunded:";
 pub const COIN_SHOW_LAST: &str = "Last withdrawal:";
 pub const COIN_STATE_PENDING: &str = "in flight";
 pub const COIN_STATE_DONE: &str = "minted";
 pub const COIN_STATE_REFUNDED: &str = "refunded";
-pub const COIN_REASON_NEVER_SENT: &str = "it was never sent.";
-pub const COIN_REASON_FAILED_ON_CHAIN: &str = "the network rejected it:";
-pub const COIN_REASON_DEVNET_RESET: &str = "devnet was reset.";
-pub const COIN_REASON_EXPIRED: &str = "it expired before it landed.";
+pub const COIN_REASON_NEVER_SENT: &str = "it was never sent";
+pub const COIN_REASON_FAILED_ON_CHAIN: &str = "the network rejected it: {why}";
+pub const COIN_REASON_DEVNET_RESET: &str = "devnet was reset";
+pub const COIN_REASON_EXPIRED: &str = "it expired before it landed";
 pub const COIN_REFUSE_STARTING: &str = "CrackCoin is still starting up. Try again in a minute.";
 pub const COIN_REFUSE_UNAVAILABLE: &str = "CrackCoin isn't available right now.";
 pub const COIN_REFUSE_SWITCH_OFF: &str = "CrackCoin withdrawals are turned off in this server.";
@@ -1281,7 +1282,7 @@ pub const COIN_REFUSE_NOT_LINKED: &str = "Link a devnet address first with `/wal
 pub const COIN_REFUSE_BAD_AMOUNT: &str = "Withdraw at least 1.";
 pub const COIN_REFUSE_TAP_DRY: &str =
     "The tap is dry: the bot has too little devnet SOL to pay for the transfer. Try again later.";
-pub const COIN_REFUSE_SPONSOR_CAP: &str = "Your address has no CrackCoin account yet, and you've used your 3 free ones. Create the token account in your wallet app (or use an address that has one), then try again.";
+pub const COIN_REFUSE_SPONSOR_CAP: &str = "Your address has no CrackCoin account yet, and you've used your {limit} free ones. Create the token account in your wallet app (or use an address that has one), then try again.";
 pub const COIN_ADDRESS_NOT_BASE58: &str =
     "That isn't a valid address: it has characters a Solana address can't contain.";
 pub const COIN_ADDRESS_WRONG_LENGTH: &str = "That isn't a valid address: it is the wrong length.";

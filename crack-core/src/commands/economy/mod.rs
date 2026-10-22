@@ -11,7 +11,7 @@ pub mod wallet;
 
 /// Every economy command.
 pub fn commands() -> Vec<crate::Command> {
-    #[cfg_attr(not(feature = "crack-coin"), allow(unused_mut))]
+    #[cfg_attr(not(feature = "crack-coin"), expect(unused_mut))]
     let mut v = vec![
         credits::credits(),
         coinflip::coinflip(),
