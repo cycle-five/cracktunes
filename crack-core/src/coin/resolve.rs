@@ -47,7 +47,7 @@ pub enum RefundReason {
     Other(String),
 }
 
-const NEVER_SENT: &str = "never sent";
+const NEVER_SENT: &str = crate::db::economy::coin::NEVER_SENT_REASON;
 const FAILED_ON_CHAIN: &str = "failed on chain: ";
 const DEVNET_RESET: &str = "devnet was reset";
 const EXPIRED: &str = "expired";

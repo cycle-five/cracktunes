@@ -5,8 +5,9 @@
 use super::chain::{CoinChain, Signed};
 use super::resolve::{decide, observe, Decision, Observation, RefundReason, RowFacts};
 use crate::db::economy::coin::{
-    finish_withdrawal, record_sent, refund_withdrawal, start_withdrawal, withdrawal_state,
-    NewWithdrawal, PendingWithdrawal, Recorded, Recording, StartError, Started, WithdrawalState,
+    finish_withdrawal, record_sent, refund_unsent, refund_withdrawal, start_withdrawal,
+    withdrawal_state, NewWithdrawal, PendingWithdrawal, Recorded, Recording, StartError, Started,
+    WithdrawalState,
 };
 use serenity::all::{GuildId, UserId};
 use sqlx::PgPool;
@@ -94,7 +95,7 @@ pub async fn complete(
             tracing::warn!("crack-coin: withdrawal {id}: not prepared, refunding: {why}");
             // This process's own row, never recorded, so never sent: a refund is safe now.
             let refund = Decision::Refund(RefundReason::NeverSent);
-            return apply(pool, chain, id, None, refund)
+            return apply(pool, chain, id, None, None, refund)
                 .await
                 .unwrap_or(Outcome::StillSettling);
         },
@@ -136,11 +137,16 @@ pub async fn complete(
     while Instant::now() < deadline {
         tokio::time::sleep(timing.poll_every).await;
         let obs = observe(chain, recorded.signature()).await;
-        if let Some(outcome) = apply(pool, chain, id, Some(&recorded), decide(&row, &obs)).await {
+        let decision = decide(&row, &obs);
+        let signature = Some(recorded.signature());
+        if let Some(outcome) = apply(pool, chain, id, signature, Some(&recorded), decision).await {
             return outcome;
         }
     }
-    Outcome::StillSettling
+    // The window closed, but the sweeper may have ended the row meanwhile: report that if so.
+    ended_elsewhere(pool, id, Some(recorded.signature()))
+        .await
+        .unwrap_or(Outcome::StillSettling)
 }
 
 /// Sign a mint of `req.amount` to `req.address`. Fails, so that the row is refunded unsent, when
@@ -177,19 +183,21 @@ async fn send(chain: &dyn CoinChain, recorded: &Recorded) {
     }
 }
 
-/// Carry out a decision. `Some` once the row has ended, here or elsewhere; `None` while it waits,
-/// including after a database error (the next look retries).
+/// Carry out a decision. `signature` is the row's recorded signature, if any, and `recorded` its
+/// bytes as well, for a resend. `Some` once the row has ended, here or elsewhere; `None` while it
+/// waits, including after a database error (the next look retries).
 async fn apply(
     pool: &PgPool,
     chain: &dyn CoinChain,
     id: i64,
-    sent: Option<&Recorded>,
+    signature: Option<&str>,
+    recorded: Option<&Recorded>,
     decision: Decision,
 ) -> Option<Outcome> {
     match decision {
         Decision::Done => {
-            // `decide` says Done only for a sent row.
-            let signature = sent?.signature();
+            // `decide` says Done only for a signed row.
+            let signature = signature?;
             match finish_withdrawal(pool, id).await {
                 Ok(true) => Some(Outcome::Minted {
                     signature: signature.to_owned(),
@@ -201,20 +209,35 @@ async fn apply(
                 },
             }
         },
-        Decision::Refund(reason) => match refund_withdrawal(pool, id, &reason.as_db_text()).await {
-            Ok(Some(balance)) => Some(Outcome::Refunded {
-                reason,
-                balance: Some(balance),
-            }),
-            Ok(None) => ended_elsewhere(pool, id, sent.map(Recorded::signature)).await,
-            Err(e) => {
-                tracing::warn!("crack-coin: withdrawal {id}: refunding failed: {e}");
-                None
-            },
+        Decision::Refund(reason) => {
+            // A never-sent refund moves the row only while it still has no signature: one recorded
+            // since it was read may be on its way to the chain (Ruling R12).
+            let refunded = match &reason {
+                RefundReason::NeverSent => refund_unsent(pool, id).await,
+                _ => refund_withdrawal(pool, id, &reason.as_db_text()).await,
+            };
+            match refunded {
+                Ok(Some(balance)) => Some(Outcome::Refunded {
+                    reason,
+                    balance: Some(balance),
+                }),
+                // Ended elsewhere, or (never sent) recorded since: a pending row waits.
+                Ok(None) => ended_elsewhere(pool, id, signature).await,
+                Err(e) => {
+                    tracing::warn!("crack-coin: withdrawal {id}: refunding failed: {e}");
+                    None
+                },
+            }
         },
         Decision::Wait { resend } => {
-            if let (true, Some(recorded)) = (resend, sent) {
-                send(chain, recorded).await;
+            if resend {
+                match recorded {
+                    Some(recorded) => send(chain, recorded).await,
+                    None => tracing::warn!(
+                        "crack-coin: withdrawal {id}: signed but its transaction is not stored; \
+                         it cannot be resent"
+                    ),
+                }
             }
             None
         },
@@ -251,18 +274,48 @@ pub async fn resolve_one(
     chain: &dyn CoinChain,
     row: &PendingWithdrawal,
 ) -> Option<Outcome> {
+    match resolve_row(pool, chain, row).await {
+        Step::Ended(outcome) => Some(outcome),
+        Step::Waiting { .. } => None,
+    }
+}
+
+/// What one look at a pending row did.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Step {
+    Ended(Outcome),
+    /// Still pending. `unreachable`: the row is signed and the chain could not be read.
+    Waiting {
+        unreachable: bool,
+    },
+}
+
+/// [`resolve_one`], also saying whether the chain was unreachable, for the sweeper's summary.
+pub(super) async fn resolve_row(
+    pool: &PgPool,
+    chain: &dyn CoinChain,
+    row: &PendingWithdrawal,
+) -> Step {
+    // A signature means the transaction was recorded, so it may have been sent, even when its
+    // bytes are missing (then it simply cannot be resent).
+    let signature = row.signature.as_deref();
     let facts = RowFacts {
-        sent: row.sent.is_some(),
+        sent: signature.is_some(),
         orphan: row.orphan,
         last_valid_block_height: row.last_valid_block_height,
         genesis_hash: row.genesis_hash.as_deref(),
     };
-    let obs = match &row.sent {
-        Some(recorded) => observe(chain, recorded.signature()).await,
+    let obs = match signature {
+        Some(signature) => observe(chain, signature).await,
         // Never sent: the decision does not look at the chain, so the chain is not asked.
         None => Observation::Unreachable,
     };
-    apply(pool, chain, row.id, row.sent.as_ref(), decide(&facts, &obs)).await
+    let unreachable = signature.is_some() && obs == Observation::Unreachable;
+    let decision = decide(&facts, &obs);
+    match apply(pool, chain, row.id, signature, row.sent.as_ref(), decision).await {
+        Some(outcome) => Step::Ended(outcome),
+        None => Step::Waiting { unreachable },
+    }
 }
 
 #[cfg(test)]
@@ -273,7 +326,7 @@ mod tests {
     use crate::coin::sweep::sweep_once;
     use crate::db::economy::coin::{
         finish_withdrawal, link_address, pending_withdrawal, record_sent, refund_withdrawal,
-        withdrawal_state, Recording, WithdrawalState,
+        withdrawal_state, PendingWithdrawal, Recording, WithdrawalState,
     };
     use crate::db::economy::{balance, credit_earnings, EarnRow};
     use chrono::{Duration as ChronoDuration, Utc};
@@ -375,6 +428,33 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(20), gate.reached.notified())
             .await
             .expect("the flow never reached the gated poll");
+    }
+
+    /// Record [`SIG`]/[`TX`] by hand, as `complete` would.
+    async fn record(pool: &PgPool, id: i64) {
+        record_sent(
+            pool,
+            id,
+            &Recording {
+                signature: SIG,
+                tx: TX,
+                last_valid_block_height: LAST_VALID as i64,
+                genesis_hash: GENESIS,
+                sponsored: false,
+            },
+        )
+        .await
+        .unwrap()
+        .expect("recorded");
+    }
+
+    /// The row as a sweeper reads it, with a process start in the future, so an unsent row is
+    /// an orphan.
+    async fn swept_view(pool: &PgPool, id: i64) -> PendingWithdrawal {
+        pending_withdrawal(pool, id, Some(Utc::now() + ChronoDuration::hours(1)))
+            .await
+            .unwrap()
+            .expect("pending")
     }
 
     fn minted() -> Outcome {
@@ -648,7 +728,7 @@ mod tests {
         let s = begun(&pool, &fake).await;
         // A process start in the future makes the unsent row an orphan.
         let later = Some(Utc::now() + ChronoDuration::hours(1));
-        assert_eq!(sweep_once(&pool, &fake, later).await, 1);
+        assert_eq!(sweep_once(&pool, &fake, later).await.ended, 1);
         assert_eq!(bal(&pool).await, 100);
         assert_eq!(
             complete(&pool, &fake, &s, &req(ADDR), &QUICK).await,
@@ -771,5 +851,94 @@ mod tests {
         assert_eq!(out, minted());
         assert_eq!(bal(&pool).await, 70);
         assert_eq!(state(&pool, s.id).await, (WithdrawalState::Done, None));
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn a_stale_unsent_snapshot_never_refunds_a_recorded_row(pool: PgPool) {
+        // Ruling R12: the sweeper reads the row while it is unsent and an orphan; the command
+        // then records (and sends). Refunding from the stale read would mint AND refund.
+        let fake = FakeChain::new();
+        let s = begun(&pool, &fake).await;
+        let stale = swept_view(&pool, s.id).await;
+        assert!(stale.orphan);
+        assert_eq!(stale.signature, None);
+        record(&pool, s.id).await;
+        assert_eq!(resolve_one(&pool, &fake, &stale).await, None);
+        assert_eq!(bal(&pool).await, 70);
+        assert_eq!(state(&pool, s.id).await, (WithdrawalState::Pending, None));
+        assert_eq!(refunds(&pool, s.id).await, 0);
+        assert!(
+            fake.calls().is_empty(),
+            "an unsent read asks the chain nothing"
+        );
+        // The next look reads it as sent, and the chain settles it.
+        fake.script_statuses(vec![Ok(ChainStatus::Landed)]);
+        let fresh = swept_view(&pool, s.id).await;
+        assert_eq!(resolve_one(&pool, &fake, &fresh).await, Some(minted()));
+        assert_eq!(bal(&pool).await, 70);
+        assert_eq!(refunds(&pool, s.id).await, 0);
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn a_signed_row_without_its_bytes_is_settled_from_the_chain(pool: PgPool) {
+        let fake = FakeChain::new();
+        let s = begun(&pool, &fake).await;
+        record(&pool, s.id).await;
+        // A hand edit: our code never stores a signature without its bytes.
+        sqlx::query("UPDATE coin_withdrawals SET tx = NULL WHERE id = $1")
+            .bind(s.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        fake.script_heights(vec![Ok(900)]);
+        fake.script_statuses(vec![Ok(ChainStatus::NotFound), Ok(ChainStatus::Landed)]);
+        let row = swept_view(&pool, s.id).await;
+        assert!(row.orphan && row.sent.is_none());
+        // Not found and not expired: a resend is due, but there are no bytes to send.
+        assert_eq!(resolve_one(&pool, &fake, &row).await, None);
+        assert!(fake.sends().is_empty());
+        assert_eq!(state(&pool, s.id).await, (WithdrawalState::Pending, None));
+        assert_eq!(resolve_one(&pool, &fake, &row).await, Some(minted()));
+        assert_eq!(bal(&pool).await, 70);
+        assert_eq!(state(&pool, s.id).await, (WithdrawalState::Done, None));
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn a_row_ended_elsewhere_during_an_outage_is_reported(pool: PgPool) {
+        // The command's RPC stays down for its whole window while the sweeper ends the row.
+        let fake = FakeChain::new();
+        fake.script_statuses(vec![Err("http error: 429 Too Many Requests")]);
+        let gate = fake.gate_status_call(1);
+        let s = begun(&pool, &fake).await;
+        let r = req(ADDR);
+        let (out, ()) = tokio::join!(complete(&pool, &fake, &s, &r, &SHORT), async {
+            reached(&gate).await;
+            assert_eq!(
+                refund_withdrawal(&pool, s.id, "expired").await.unwrap(),
+                Some(100)
+            );
+            gate.release.notify_one();
+        });
+        assert_eq!(
+            out,
+            Outcome::Refunded {
+                reason: RefundReason::Expired,
+                balance: None,
+            }
+        );
+        assert_eq!(bal(&pool).await, 100);
+        assert_eq!(refunds(&pool, s.id).await, 1);
     }
 }

@@ -3,7 +3,7 @@
 //! for a while. Nothing it does needs Discord.
 
 use super::chain::CoinChain;
-use super::flow::{resolve_one, Outcome};
+use super::flow::{resolve_row, Outcome, Step};
 use crate::db::economy::coin::pending_withdrawals;
 use crate::economy::effects::spawn_supervised;
 use chrono::{DateTime, Utc};
@@ -31,43 +31,65 @@ pub fn start_sweeper(
     });
 }
 
-/// One sweep: resolve every pending row. Returns how many it ended.
+/// What one sweep did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Sweep {
+    /// Rows it ended (minted or refunded).
+    pub ended: usize,
+    /// Signed rows it could not read the chain for.
+    pub unreachable: usize,
+}
+
+/// One sweep: resolve every pending row. Warns once, with a count, when the chain was unreachable
+/// for any of them.
 pub async fn sweep_once(
     pool: &PgPool,
     chain: &dyn CoinChain,
     process_start: Option<DateTime<Utc>>,
-) -> usize {
+) -> Sweep {
+    let mut sweep = Sweep::default();
     let rows = match pending_withdrawals(pool, process_start).await {
         Ok(rows) => rows,
         Err(e) => {
             tracing::warn!("crack-coin: sweeper: reading pending withdrawals failed: {e}");
-            return 0;
+            return sweep;
         },
     };
-    let mut ended = 0;
     for row in &rows {
-        match resolve_one(pool, chain, row).await {
-            Some(Outcome::Minted { signature }) => {
+        match resolve_row(pool, chain, row).await {
+            Step::Ended(Outcome::Minted { signature }) => {
                 tracing::info!(
                     "crack-coin: sweeper: withdrawal {} of {} minted ({signature})",
                     row.id,
                     row.amount
                 );
-                ended += 1;
+                sweep.ended += 1;
             },
-            Some(Outcome::Refunded { reason, .. }) => {
+            Step::Ended(Outcome::Refunded { reason, .. }) => {
                 tracing::info!(
                     "crack-coin: sweeper: withdrawal {} of {} refunded: {}",
                     row.id,
                     row.amount,
                     reason.as_db_text()
                 );
-                ended += 1;
+                sweep.ended += 1;
             },
-            Some(Outcome::StillSettling) | None => {},
+            Step::Ended(Outcome::StillSettling) => {},
+            Step::Waiting { unreachable } => {
+                if unreachable {
+                    sweep.unreachable += 1;
+                }
+            },
         }
     }
-    ended
+    if sweep.unreachable > 0 {
+        tracing::warn!(
+            "crack-coin: sweeper: the chain was unreachable for {} of {} pending withdrawals",
+            sweep.unreachable,
+            rows.len()
+        );
+    }
+    sweep
 }
 
 #[cfg(test)]
@@ -168,7 +190,14 @@ mod tests {
         fake.script_status_for("s5", vec![Err("http error: 429 Too Many Requests")]);
         // This process started before every row, so only age makes an orphan.
         let start = Some(Utc::now() - ChronoDuration::hours(1));
-        assert_eq!(sweep_once(&pool, &fake, start).await, 3);
+        assert_eq!(
+            sweep_once(&pool, &fake, start).await,
+            Sweep {
+                ended: 3,
+                unreachable: 1
+            },
+            "the 429 row is counted, once"
+        );
         assert_eq!(ended(&pool, landed).await, (WithdrawalState::Done, None));
         assert_eq!(
             ended(&pool, failed).await,
@@ -200,7 +229,13 @@ mod tests {
         assert_eq!(balances, [70, 100, 70, 70, 70, 100]);
         assert!(fake.prepares().is_empty(), "the sweeper never signs");
         // The next sweep finds only the three still waiting, and ends none of them.
-        assert_eq!(sweep_once(&pool, &fake, start).await, 0);
+        assert_eq!(
+            sweep_once(&pool, &fake, start).await,
+            Sweep {
+                ended: 0,
+                unreachable: 1
+            }
+        );
         assert_eq!(bal(&pool, 2).await, 100, "a refund is never repeated");
     }
 
@@ -216,10 +251,20 @@ mod tests {
         let fake = FakeChain::new();
         fake.script_heights(vec![Ok(1150), Ok(1151)]);
         fake.script_statuses(vec![Ok(ChainStatus::NotFound)]);
-        assert_eq!(sweep_once(&pool, &fake, None).await, 0);
+        let quiet = Sweep {
+            ended: 0,
+            unreachable: 0,
+        };
+        assert_eq!(sweep_once(&pool, &fake, None).await, quiet);
         assert_eq!(fake.sends(), vec![vec![1u8]]);
         assert_eq!(bal(&pool, 1).await, 70);
-        assert_eq!(sweep_once(&pool, &fake, None).await, 1);
+        assert_eq!(
+            sweep_once(&pool, &fake, None).await,
+            Sweep {
+                ended: 1,
+                unreachable: 0
+            }
+        );
         assert_eq!(
             ended(&pool, id).await,
             (WithdrawalState::Refunded, Some("expired".into()))
@@ -235,7 +280,7 @@ mod tests {
             .connect_lazy("postgresql://nobody:nothing@127.0.0.1:1/none")
             .unwrap();
         let fake = FakeChain::new();
-        assert_eq!(sweep_once(&pool, &fake, None).await, 0);
+        assert_eq!(sweep_once(&pool, &fake, None).await, Sweep::default());
         assert!(fake.calls().is_empty());
     }
 }
