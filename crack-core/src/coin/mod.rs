@@ -1,5 +1,6 @@
 //! The CrackCoin devnet token: the seam between the bot and the chain.
 pub mod chain;
+pub mod checks;
 pub mod config;
 #[cfg(test)]
 pub(crate) mod fake;
