@@ -16,6 +16,20 @@ use poise::serenity_prelude::{FullEvent, GenericChannelId, GuildId};
 use serde::{ser::SerializeStruct, Serialize};
 use serenity::User;
 
+/// Commands whose interactions the event log must never record.
+fn kept_out_of_event_log(command: &str) -> bool {
+    command == "wallet"
+}
+
+/// The top-level command name of a command or autocomplete interaction.
+fn interaction_command_name(interaction: &serenity::Interaction) -> Option<&str> {
+    match interaction {
+        serenity::Interaction::Command(int) => Some(int.data.name.as_str()),
+        serenity::Interaction::Autocomplete(int) => Some(int.data.name.as_str()),
+        _ => None,
+    }
+}
+
 /// serenity's `FullEvent` dropped `snake_case_name()`; the enum now derives
 /// `strum::IntoStaticStr`, which yields SCREAMING_SNAKE_CASE variant names.
 #[must_use]
@@ -839,6 +853,11 @@ pub async fn handle_event(
             )
         },
         FullEvent::InteractionCreate { interaction } => {
+            // /wallet carries an address: keep it out of the file and the channel
+            // (the privacy rule in docs/superpowers/specs/2026-10-21-crack-coin-design.md).
+            if interaction_command_name(interaction).is_some_and(kept_out_of_event_log) {
+                return Ok(());
+            }
             let log_data = interaction;
             let guild_id =
                 crate::utils::interaction_to_guild_id(interaction).unwrap_or(GuildId::new(1));
@@ -1127,5 +1146,18 @@ pub async fn handle_event(
             tracing::info!("{}", full_event_name(event_in).bright_green());
             Ok(())
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::kept_out_of_event_log;
+
+    #[test]
+    fn only_wallet_is_kept_out_of_the_event_log() {
+        assert!(kept_out_of_event_log("wallet"));
+        for other in ["play", "credits", "economy"] {
+            assert!(!kept_out_of_event_log(other), "{other}");
+        }
     }
 }
