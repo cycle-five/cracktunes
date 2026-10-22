@@ -128,7 +128,12 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # latest=false: metadata-action defaults to latest=auto, which on a
+          # version tag also emits a bare `latest`. This step runs after the
+          # plain image's, so without it the coin image would take the plain
+          # image's `latest`.
           flavor: |
+            latest=false
             suffix=-coin
       -
         name: Build & Push Coin Image
