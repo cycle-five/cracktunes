@@ -71,4 +71,10 @@ jobs:
       # the exact rot this extraction was done to stop.
       - name: Check the optional module seam
         if: success() || failure()
-        run: cargo check -p crack-core --features crack-bf,crack-osint --locked
+        run: cargo check -p crack-core --features crack-bf,crack-osint,crack-coin --locked
+
+      # The gated glue (`crate::coin`) compiles only with its feature, so the
+      # featureless clippy above never lints it.
+      - name: Clippy the crack-coin glue
+        if: success() || failure()
+        run: cargo clippy -p crack-core --features crack-coin --locked -- -D warnings

@@ -606,6 +606,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bs58"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1051,6 +1060,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "crack-coin"
+version = "0.1.0"
+source = "git+https://github.com/cycle-five/crack-coin?tag=v0.1.0#92bf2224a3d71d7b2aad9936f141b3c981faf1b2"
+dependencies = [
+ "base64 0.22.1",
+ "bs58",
+ "curve25519-dalek",
+ "ed25519-dalek",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "crack-core"
 version = "0.34.0"
 dependencies = [
@@ -1063,6 +1089,7 @@ dependencies = [
  "colored",
  "const-random",
  "crack-bf",
+ "crack-coin",
  "crack-musicreco",
  "crack-osint",
  "crack-sleevenote",
