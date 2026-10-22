@@ -446,10 +446,10 @@ One pure function decides, and the in-command poll and the sweeper both call it:
 |---|---|---|
 | no `signature` | — | **Refund** ("never sent") only if it is an orphan: created before this process started (the DB-clock process start the economy already records), or more than 2 minutes old. Otherwise **wait** |
 | has `signature` | status found, no error, confirmed or finalized | **Done** |
-| has `signature` | status found, with an error | **Refund** ("failed on chain"); the fee was paid but nothing was minted |
+| has `signature` | status found **at confirmed or finalized**, with an error | **Refund** ("failed on chain"); the fee was paid but nothing was minted. An error seen only at `processed` counts as *processed*. It may sit on a minority fork while a resend of the same bytes lands elsewhere |
 | has `signature` | status found, only processed | **Wait** |
 | has `signature` | not found, and the genesis hash now differs from the row's | **Refund** ("devnet was reset"; that chain is gone) |
-| has `signature` | not found, and the **finalized** block height > `last_valid_block_height` | **Refund** ("expired"); it can never land |
+| has `signature` | not found, and the **finalized** block height > `last_valid_block_height` + 150 | **Refund** ("expired"); it can never land. The height is read **before** the status, and the 150-block margin (about a minute) covers a load-balanced RPC pool answering the two calls from nodes at different heights |
 | has `signature` | not found, not expired | **Wait** (and resend the stored `tx`) |
 | any | an RPC error or timeout | **Wait** |
 

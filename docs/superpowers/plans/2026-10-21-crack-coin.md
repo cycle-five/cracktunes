@@ -721,8 +721,12 @@ pub fn start_sweeper(pool: PgPool, chain: Arc<dyn CoinChain>, process_start: Opt
   - `Processed`: `Wait { resend: false }`;
   - `NotFound`, then in order:
     1. `genesis != row.genesis_hash` → `Refund(DevnetReset)`;
-    2. `finalized_height > last_valid` → `Refund(Expired)`;
+    2. `finalized_height > last_valid + EXPIRY_MARGIN` (`EXPIRY_MARGIN = 150`) →
+       `Refund(Expired)`;
     3. otherwise `Wait { resend: true }`.
+  - `observe` reads `finalized_height` **before** `status` (Ruling R9).
+  - `ChainStatus::Failed` comes from the crate only for an error at confirmed or finalized
+    (Ruling R7). An error seen only at processed arrives as `Processed`.
   - A sent row missing `last_valid` or `genesis` gets `Wait { resend: false }`.
 - **`complete`:**
   1. `chain.prepare`. On an error, `refund_withdrawal(NeverSent)`: this process's own row was
@@ -747,7 +751,8 @@ pub fn start_sweeper(pool: PgPool, chain: Arc<dyn CoinChain>, process_start: Opt
     `never_sent_fresh_waits`, `landed_is_done`, `failed_refunds_with_the_error`,
     `processed_waits`, `not_found_after_reset_refunds`, `not_found_after_expiry_refunds`,
     `not_found_before_expiry_waits_and_resends`, `unreachable_waits`,
-    `expiry_is_strictly_greater` (equal heights wait).
+    `expiry_needs_the_margin`: `last_valid + 150` waits and `last_valid + 151` refunds.
+  - `observe_reads_the_height_before_the_status`: the fake records its call order.
   - **db-tests with `FakeChain`, `#[tokio::test(start_paused = true)]` style timing,** each
     asserting the outcome, the sends and the final balance:
     - `lands_on_the_first_poll`: `Minted`, 1 send, balance 70;
