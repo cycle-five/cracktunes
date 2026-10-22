@@ -106,21 +106,19 @@ impl From<MoveError> for StartError {
     }
 }
 
-/// Debit the member, insert the `pending` row and write the `coin_withdraw`
-/// ledger row, in one transaction. Nothing is written on any refusal.
+/// Insert the `pending` row, then debit the member and write the
+/// `coin_withdraw` ledger row, in one transaction. Nothing is written on any
+/// refusal.
+///
+/// Lock order: the withdrawal row (the insert, which also waits on any other
+/// resolver of this member's old pending row through the unique index), then
+/// the wallet. [`refund_withdrawal`] takes the same order; the reverse
+/// deadlocks.
 pub async fn start_withdrawal(pool: &PgPool, w: &NewWithdrawal<'_>) -> Result<Started, StartError> {
     if w.amount <= 0 {
         return Err(StartError::Money(MoveError::Invalid));
     }
     let mut tx = pool.begin().await?;
-    let wallet = lock_wallet(&mut tx, w.guild, w.user).await?;
-    if wallet.balance < w.amount {
-        return Err(StartError::Money(MoveError::Insufficient {
-            balance: wallet.balance,
-        }));
-    }
-    let left = wallet.balance - w.amount;
-    set_balance(&mut tx, &wallet, left).await?;
     let row = sqlx::query!(
         "INSERT INTO coin_withdrawals (guild_id, user_id, address, mint, amount)
          VALUES ($1, $2, $3, $4, $5)
@@ -142,6 +140,15 @@ pub async fn start_withdrawal(pool: &PgPool, w: &NewWithdrawal<'_>) -> Result<St
         },
         _ => StartError::Db(e),
     })?;
+    let wallet = lock_wallet(&mut tx, w.guild, w.user).await?;
+    if wallet.balance < w.amount {
+        // Dropping the transaction rolls the row back.
+        return Err(StartError::Money(MoveError::Insufficient {
+            balance: wallet.balance,
+        }));
+    }
+    let left = wallet.balance - w.amount;
+    set_balance(&mut tx, &wallet, left).await?;
     write_coin_ledger(
         &mut tx,
         w.guild,
@@ -237,6 +244,8 @@ pub async fn finish_withdrawal(pool: &PgPool, id: i64) -> sqlx::Result<bool> {
 /// `pending` to `refunded`, crediting the amount back, in one transaction. The
 /// credit happens only when the guarded `UPDATE` moved the row, so racing
 /// resolvers credit once. `Some(balance)` only when this call did it.
+///
+/// Lock order: the withdrawal row, then the wallet (as [`start_withdrawal`]).
 pub async fn refund_withdrawal(pool: &PgPool, id: i64, reason: &str) -> sqlx::Result<Option<i64>> {
     let mut tx = pool.begin().await?;
     let Some(row) = sqlx::query!(
@@ -661,6 +670,35 @@ mod tests {
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
+    async fn start_refuses_before_it_touches_the_wallet(pool: PgPool) -> sqlx::Result<()> {
+        // The withdrawal row comes first in the lock order. Hold the wallet
+        // locked on another connection: a second start must say
+        // AlreadyPending at once, not wait for the wallet. (With the wallet
+        // first it would wait here, and the timeout turns the hang into a
+        // failure.)
+        started(&pool).await;
+        let mut holder = pool.begin().await?;
+        sqlx::query!(
+            "SELECT balance FROM economy_wallets WHERE guild_id = 1 AND user_id = 10 FOR UPDATE"
+        )
+        .fetch_one(&mut *holder)
+        .await?;
+        let got = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            start_withdrawal(&pool, &new_w(G, U, 10)),
+        )
+        .await
+        .expect("start blocked on the wallet lock");
+        assert!(matches!(got, Err(StartError::AlreadyPending)), "{got:?}");
+        holder.rollback().await?;
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
     async fn done_then_refund_moves_nothing(pool: PgPool) -> sqlx::Result<()> {
         let s = started(&pool).await;
         assert!(finish_withdrawal(&pool, s.id).await?);
@@ -804,6 +842,8 @@ mod tests {
             .await?
             .expect("row");
         assert!(before.orphan, "created before this process started");
+        let listed = pending_withdrawals(&pool, Some(now + Duration::seconds(1))).await?;
+        assert!(listed[0].orphan, "the list agrees");
         // Age alone: push the row back past ORPHAN_AFTER_SECS.
         sqlx::query!(
             "UPDATE coin_withdrawals SET created_at = now() - make_interval(secs => $2::float8)
@@ -815,6 +855,10 @@ mod tests {
         .await?;
         let old = pending_withdrawal(&pool, s.id, None).await?.expect("row");
         assert!(old.orphan, "older than ORPHAN_AFTER_SECS");
+        assert!(
+            pending_withdrawals(&pool, None).await?[0].orphan,
+            "the list agrees"
+        );
         // Resolved rows are not pending.
         finish_withdrawal(&pool, s.id).await?;
         assert!(pending_withdrawals(&pool, None).await?.is_empty());
@@ -831,6 +875,7 @@ mod tests {
         pool: PgPool,
     ) -> sqlx::Result<()> {
         fund(&pool, G, U, 1000).await;
+        fund(&pool, G2, U, 1000).await;
         // done + sponsored: counts.
         let a = start_withdrawal(&pool, &new_w(G, U, 1)).await.unwrap();
         record_sent(&pool, a.id, &rec("s1", &[1], true)).await?;
@@ -861,7 +906,7 @@ mod tests {
         assert_eq!(sponsored_accounts(&pool, U, MINT).await?, 1);
         assert_eq!(sponsored_accounts(&pool, U, "OtherMint").await?, 1);
         // pending + sponsored: not yet.
-        let e = start_withdrawal(&pool, &new_w(G, U, 1)).await.unwrap();
+        let e = start_withdrawal(&pool, &new_w(G2, U, 1)).await.unwrap();
         record_sent(&pool, e.id, &rec("s5", &[1], true)).await?;
         assert_eq!(sponsored_accounts(&pool, U, MINT).await?, 1);
         // another member: no.
@@ -924,6 +969,11 @@ mod tests {
         let last = wallet_overview(&pool, U).await?.last.expect("last");
         assert_eq!((last.amount, last.state), (7, WithdrawalState::Pending));
         assert_eq!(last.signature.as_deref(), Some("sigD"));
+        assert_eq!(
+            wallet_overview(&pool, U).await?.total_withdrawn,
+            30,
+            "a pending row is not withdrawn yet"
+        );
         assert!(last.created_at <= Utc::now());
         Ok(())
     }
