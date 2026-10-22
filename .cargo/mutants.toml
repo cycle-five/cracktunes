@@ -1,0 +1,44 @@
+# cargo-mutants configuration (read by default from .cargo/mutants.toml).
+# 🔑 The file is read with `deny_unknown_fields`, so a misspelt key is an error
+# rather than a silently ignored setting.
+
+# nextest runs each mutant's tests in parallel processes and, with the
+# `mutants` profile in .config/nextest.toml, stops at the first failure.
+# That profile is chosen through NEXTEST_PROFILE (scripts/mutants.sh sets it),
+# because a flag could clash with `profile` below.
+test_tool = "nextest"
+
+# The database tests and CrackCoin are behind features that are off by
+# default. Without them the code those tests cover would show every mutant as
+# missed, for the wrong reason.
+features = [
+    "crack-core/db-tests",
+    "crack-core/crack-coin",
+    "cracktunes/db-tests",
+    "crack-voting/db-tests",
+]
+
+# 🪤 cargo-mutants builds with `--package <mutated crate>`, and cargo rejects a
+# feature of another package there ("package does not contain these features").
+# Testing the whole workspace builds with `--workspace` instead, which accepts
+# all four. It also means a mutant is checked against every crate's tests, which
+# is right for a workspace where crack-core is used by the others.
+# 🪤 The unmutated BASELINE still uses `--package` for just the crates that have
+# mutants, so a run touching only some of the four feature owners (say a diff
+# in crack-types alone) fails the baseline with that same message. Pass
+# `--baseline skip` for those runs; CI's plain test jobs are the real baseline.
+test_workspace = true
+
+# The cargo profile that mutants build with: see [profile.mutants] in the root
+# Cargo.toml.
+profile = "mutants"
+
+# Exclusions are for code that is never worth testing, each with its reason.
+# 🪤 Legacy misses do NOT go here. They go to the baseline, so that the debt
+# stays visible and shrinks on purpose.
+exclude_globs = [
+    # Test tooling. Every crack-core database test exercises it, but
+    # cargo-mutants only runs the tests of the package it mutates, so each
+    # mutant here would look missed.
+    "crack-test-macros/**",
+]

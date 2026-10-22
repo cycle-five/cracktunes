@@ -158,6 +158,12 @@ opt-level = 3
 [profile.dev.package.sqlx-postgres]
 opt-level = 3
 
+# cargo-mutants builds with this profile: it inherits `test`, and carries no
+# debug info, since nobody debugs a mutant and every job builds from cold.
+[profile.mutants]
+inherits = "test"
+debug = false
+
 [profile.release]
 incremental = true
 # Set this to 1 or 2 to get more useful backtraces in debugger.
