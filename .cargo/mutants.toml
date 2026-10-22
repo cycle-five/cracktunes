@@ -11,22 +11,21 @@ test_tool = "nextest"
 # The database tests and CrackCoin are behind features that are off by
 # default. Without them the code those tests cover would show every mutant as
 # missed, for the wrong reason.
-features = [
-    "crack-core/db-tests",
-    "crack-core/crack-coin",
-    "cracktunes/db-tests",
-    "crack-voting/db-tests",
-]
+#
+# 🪤 The names carry no `package/` prefix on purpose. cargo turns a bare name on
+# in every selected package that has it, while `cracktunes/db-tests` is an
+# error whenever cracktunes is not selected. The unmutated BASELINE selects
+# only the crates that have mutants (`--package crack-core`), even with
+# test_workspace below, so prefixed names failed it for any run that did not
+# touch all three owners of db-tests (cracktunes, crack-core, crack-voting).
+# 🪤 A bare name still fails when NO selected crate has it: a run whose mutants
+# all sit in crack-types, crack-web, crack-sleevenote, crack-musicreco or
+# crack-testing stops at once with "does not contain this feature". Pass
+# `--baseline skip` for that run (CI's plain test jobs check the tree).
+features = ["db-tests", "crack-coin"]
 
-# 🪤 cargo-mutants builds with `--package <mutated crate>`, and cargo rejects a
-# feature of another package there ("package does not contain these features").
-# Testing the whole workspace builds with `--workspace` instead, which accepts
-# all four. It also means a mutant is checked against every crate's tests, which
-# is right for a workspace where crack-core is used by the others.
-# 🪤 The unmutated BASELINE still uses `--package` for just the crates that have
-# mutants, so a run touching only some of the four feature owners (say a diff
-# in crack-types alone) fails the baseline with that same message. Pass
-# `--baseline skip` for those runs; CI's plain test jobs are the real baseline.
+# Each mutant is built with `--workspace` and checked against every crate's
+# tests, which is right for a workspace where crack-core is used by the others.
 test_workspace = true
 
 # The cargo profile that mutants build with: see [profile.mutants] in the root

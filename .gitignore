@@ -11,7 +11,6 @@ scratch
 # replit
 .cargo/git/
 .cargo/registry/
-.cargo/
 
 # configuration / secrets
 Secrets.toml
