@@ -729,8 +729,8 @@ pub fn start_sweeper(pool: PgPool, chain: Arc<dyn CoinChain>, process_start: Opt
     (Ruling R7). An error seen only at processed arrives as `Processed`.
   - A sent row missing `last_valid` or `genesis` gets `Wait { resend: false }`.
 - **`complete`:**
-  1. `chain.prepare`. On an error, `refund_withdrawal(NeverSent)`: this process's own row was
-     never sent.
+  1. `chain.prepare`. On an error, `refund_unsent` (amended: R12; the reason is `NeverSent`):
+     this process's own row was never sent.
   2. `record_sent`. `None` means the row was resolved elsewhere: return its state via
      `withdrawal_state`, **sending nothing**.
   3. `chain.send(&recorded)`. Log an error and continue.

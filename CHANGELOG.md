@@ -113,8 +113,8 @@
   failed on chain, it expired (the chain proves the transaction can never
   land), or devnet was reset. An unreachable chain only delays the outcome: the
   credits stay held until the chain proves one. If this were wrong, a member
-  could lose credits or get coins twice, which is why a refund needs proof. Without its
-  settings the image starts with CrackCoin off and says why; music never
+  could lose credits or get coins twice, which is why a refund needs proof.
+  Without its settings the image starts with CrackCoin off and says why; music never
   depends on devnet. **Rolling back below v0.35.0:** the bot image may go back,
   but the migrate image STAYS at v0.35.0 (the v0.34.0 migrate image stops with
   `VersionMissing` on a migration it doesn't know). A lean build can't settle

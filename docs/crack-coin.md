@@ -109,8 +109,9 @@ is shown only to its owner (shortened), and nothing is posted publicly.
 The migration is additive, so rolling back is image-only for the bot. The
 migrate image is the exception: it STAYS at v0.35.0. The v0.34.0 migrate image
 stops with `VersionMissing` when it meets a migration it doesn't know. Rolling
-back the bot image is fine. A lean image, or a version below v0.35.0, has no resolver for a withdrawal that is still pending,
-and its credits would stay held until a coin build returns. They are not lost.
+back the bot image is fine. A lean image, or a version below v0.35.0, has no
+resolver for a withdrawal that is still pending, and its credits would stay
+held until a coin build returns. They are not lost.
 Before rolling back this must return 0:
 
 ```sql
@@ -124,10 +125,13 @@ Coins already minted stay minted.
 Devnet is occasionally wiped. The mint then no longer exists, so a coin build
 refuses to start on it (`crack-coin: off (the mint does not match: ...)`).
 
-1. Create a new mint with the CLI: `crack-coin create-mint <keypair>`, then
+1. Refill the authority: a reset wipes its devnet SOL too, and the next two
+   commands pay rent and fees. `crack-coin airdrop <keypair> [sol]`, repeated
+   or through the web faucet if devnet rate-limits it.
+2. Create a new mint with the CLI: `crack-coin create-mint <keypair>`, then
    `crack-coin set-metadata <keypair> <mint> [uri]`.
-2. Set the new `CRACK_COIN_MINT` and restart the bot.
-3. Once the coin is ready on the new mint, the sweeper settles every pending
+3. Set the new `CRACK_COIN_MINT` and restart the bot.
+4. Once the coin is ready on the new mint, the sweeper settles every pending
    withdrawal, whatever its mint. A signed row whose transaction is not found
    on the chain, and which was signed against a different genesis hash, is
    refunded as "devnet was reset". A pending row that was never sent is
