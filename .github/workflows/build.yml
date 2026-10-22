@@ -68,6 +68,11 @@ jobs:
           sqlx migrate run --source migrations/
           cargo sqlx prepare --workspace -- --tests --all
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149
+
       - name: Run Unit Tests
         if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')
         env:
@@ -77,7 +82,10 @@ jobs:
           PG_PASSWORD: mysecretpassword
         # CI provisions postgres above, so the database-backed tests run here.
         # They are ignored by default so the suite is green without one.
-        run: cargo test --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
+        # nextest does not run doctests, so `cargo test --doc` keeps them running.
+        run: |
+          cargo nextest run --profile ci --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
+          cargo test --doc --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
 
       - name: Run Release Unit Tests
         if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
@@ -86,7 +94,10 @@ jobs:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
           PG_USER: postgres
           PG_PASSWORD: mysecretpassword
-        run: cargo test --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
+        # nextest does not run doctests, so `cargo test --doc` keeps them running.
+        run: |
+          cargo nextest run --profile ci --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
+          cargo test --doc --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
 
       # - name: Build Binary
       #   if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')

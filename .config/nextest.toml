@@ -1,0 +1,27 @@
+# cargo-nextest profiles. Select one with `--profile`, or with the environment
+# for tools that pass their own arguments: NEXTEST_PROFILE=mutants.
+#
+# 🔑 No profile retries a failed test. A retry turns a flaky test into a green
+# run, and the flake is then never fixed.
+
+# Local runs. A hung test must not stall the run: it is flagged slow after 30s
+# and killed after four periods (120s).
+[profile.default]
+slow-timeout = { period = "30s", terminate-after = 4 }
+retries = 0
+
+# CI. One run should report every failure, not only the first, so nothing is
+# fixed one push at a time; failures are repeated at the end so they are not
+# buried in the log.
+[profile.ci]
+fail-fast = false
+failure-output = "immediate-final"
+slow-timeout = { period = "30s", terminate-after = 4 }
+retries = 0
+
+# cargo-mutants. Most mutants are caught by an early test, so stopping at the
+# first failure is a large speed-up.
+[profile.mutants]
+fail-fast = true
+slow-timeout = { period = "30s", terminate-after = 4 }
+retries = 0
