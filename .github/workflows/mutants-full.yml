@@ -46,9 +46,6 @@ name: Mutants (full run)
 # more than the 12 a scheduled run may take, so the schedule (PR B) will
 # rotate through slices instead of running everything at once.
 # Disk is not the limit: the runner had 84 GB free, and a shard used about 3.
-#
-# The `push` trigger below is TEMPORARY, for the smoke test of this workflow:
-# it runs shard 0 of 400 (about 19 mutants). It is removed before merge.
 
 on:
   workflow_dispatch:
@@ -61,8 +58,6 @@ on:
         description: "Shards allowed to run at once"
         type: number
         default: 8
-  push:
-    branches: [chore/test-tooling]
 
 # Least privilege: these jobs only check out, build and upload artifacts.
 permissions:
@@ -88,23 +83,17 @@ jobs:
       - name: Plan the shards
         id: plan
         env:
-          EVENT: ${{ github.event_name }}
           SHARDS: ${{ inputs.shards }}
         shell: bash
         run: |
-          if [ "$EVENT" = "push" ]; then
-            # Smoke test: 400 shards, but only shard 0 runs (about 19 mutants).
-            shards=400
-            matrix='[0]'
-          else
-            shards="$SHARDS"
-            # GitHub caps a matrix at 256 jobs.
-            if ! [[ "$shards" =~ ^[0-9]+$ ]] || [ "$shards" -lt 1 ] || [ "$shards" -gt 256 ]; then
-              echo "::error::shards must be an integer from 1 to 256, got '$shards'"
-              exit 1
-            fi
-            matrix="[$(seq -s, 0 $((shards - 1)))]"
+          shards="$SHARDS"
+          # GitHub caps a matrix at 256 jobs. At most three digits keeps a huge
+          # number from overflowing bash's comparison.
+          if ! [[ "$shards" =~ ^[0-9]{1,3}$ ]] || [ "$shards" -lt 1 ] || [ "$shards" -gt 256 ]; then
+            echo "::error::shards must be an integer from 1 to 256, got '$shards'"
+            exit 1
           fi
+          matrix="[$(seq -s, 0 $((shards - 1)))]"
           echo "shards=$shards" >> "$GITHUB_OUTPUT"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
@@ -270,15 +259,12 @@ jobs:
       - name: Check that every shard reported
         env:
           EXPECTED: ${{ needs.plan.outputs.shards }}
-          EVENT: ${{ github.event_name }}
         shell: bash
         run: |
           # One outcomes file per shard that finished and uploaded.
           shopt -s nullglob
           reported=(shards/outcomes-*.json)
           got=${#reported[@]}
-          # The smoke test runs one shard of 400, so it expects one artifact.
-          if [ "$EVENT" = "push" ]; then EXPECTED=1; fi
           if [ "$got" -lt "$EXPECTED" ]; then
             echo "::error::incomplete run: $got of $EXPECTED shards"
             exit 1
