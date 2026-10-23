@@ -1078,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1136,7 +1136,7 @@ dependencies = [
 
 [[package]]
 name = "crack-musicreco"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "async-trait",
  "reqwest 0.12.28",
@@ -1163,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "crack-sleevenote"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -1176,7 +1176,7 @@ dependencies = [
 
 [[package]]
 name = "crack-test-macros"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1185,7 +1185,7 @@ dependencies = [
 
 [[package]]
 name = "crack-testing"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1208,7 +1208,7 @@ dependencies = [
 
 [[package]]
 name = "crack-types"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "humantime",
  "poise",
@@ -1228,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "crack-voting"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "chrono",
  "dbl-rs",
@@ -1243,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "crack-web"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "axum",
  "catacombs",
@@ -1266,7 +1266,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.36.0"
+version = "0.36.1"
 dependencies = [
  "config-file",
  "crack-core",
@@ -2784,7 +2784,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.9",
+ "webpki-roots 1.0.10",
 ]
 
 [[package]]
@@ -4693,7 +4693,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -4732,7 +4732,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -5013,7 +5013,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams 0.4.2",
  "web-sys",
- "webpki-roots 1.0.9",
+ "webpki-roots 1.0.10",
 ]
 
 [[package]]
@@ -5351,9 +5351,9 @@ checksum = "eec689c0bc40ff2458a5977b6619cb718087084a18e02a131c599b62d05e1a5f"
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.15"
+version = "0.103.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -6135,7 +6135,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
- "webpki-roots 1.0.9",
+ "webpki-roots 1.0.10",
 ]
 
 [[package]]
@@ -6870,7 +6870,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
  "windows-sys 0.61.2",
@@ -7045,9 +7045,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.54.0"
+version = "1.54.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0c168a474b95bfecfe908a65d4bdffc523144b649a74c09c286afb35d53e0bc"
+checksum = "b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3"
 dependencies = [
  "bytes",
  "libc",
@@ -7905,9 +7905,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-root-certs"
-version = "1.0.9"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b96554aa2acc8ccdb7e1c9a58a7a68dd5d13bccc69cd124cb09406db612a1c9b"
+checksum = "58ec80e73fd8baf57bf0d9615554c75348bda990d6d5bbeab964dd068319fecb"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -7918,14 +7918,14 @@ version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
 dependencies = [
- "webpki-roots 1.0.9",
+ "webpki-roots 1.0.10",
 ]
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.9"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dcd9d09a39985f5344844e66b0c530a33843579125f23e21e9f0f220850f22a"
+checksum = "1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9"
 dependencies = [
  "rustls-pki-types",
 ]
