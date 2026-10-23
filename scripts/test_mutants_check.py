@@ -772,6 +772,50 @@ class ReverseAndMapTests(unittest.TestCase):
 
 PICK = "fn pick(a: u32) -> u32 {\n    let x = if a > 1 { 10 } else { 20 };\n    let z = x + 1;\n    z\n}\n"
 
+# A change that git's diff algorithms align differently (Bram Cohen's
+# patience example, in Rust): myers and histogram disagree on it.
+FROB_OLD = """use std::io;
+
+// Frobs foo heartily
+fn frobnitz(foo: u32) {
+    for i in 0..10 {
+        println!("Your answer is: ");
+        println!("{}", foo);
+    }
+}
+
+fn fact(n: u32) -> u32 {
+    if n > 1 {
+        return fact(n - 1) * n;
+    }
+    1
+}
+
+fn main() {
+    frobnitz(fact(10));
+}
+"""
+FROB_NEW = """use std::io;
+
+fn fib(n: u32) -> u32 {
+    if n > 2 {
+        return fib(n - 1) + fib(n - 2);
+    }
+    1
+}
+
+// Frobs foo heartily
+fn frobnitz(foo: u32) {
+    for i in 0..10 {
+        println!("{}", foo);
+    }
+}
+
+fn main() {
+    frobnitz(fib(10));
+}
+"""
+
 
 class SelectionTests(unittest.TestCase):
     """corresponding_selection on real `git diff` output."""
@@ -824,6 +868,23 @@ class SelectionTests(unittest.TestCase):
         # Without --find-renames, new.rs would be a 20-line addition.
         self.assertEqual(h, {"new.rs": [7, 8]})
         self.assertEqual(b, {"old.rs": [7, 8]})
+
+    def test_alignment_is_found_whatever_the_config(self):
+        # histogram aligns this change differently from git's default (myers),
+        # so without a pinned algorithm a local run and CI would select
+        # different lines.
+        base = self.repo.commit({"f.rs": FROB_OLD}, "base")
+        head = self.repo.commit({"f.rs": FROB_NEW}, "head")
+        pinned = mc.rust_diff(self.tools, base, head)
+        for name, value in [("diff.algorithm", "histogram"),
+                            ("diff.algorithm", "patience"),
+                            ("diff.indentHeuristic", "false")]:
+            with self.subTest(f"{name}={value}"):
+                self.repo.git("config", name, value)
+                try:
+                    self.assertEqual(mc.rust_diff(self.tools, base, head), pinned)
+                finally:
+                    self.repo.git("config", "--unset", name)
 
     def test_parse_diff_rejects_missing_prefixes(self):
         with self.assertRaises(mc.CheckError):

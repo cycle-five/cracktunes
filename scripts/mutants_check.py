@@ -499,10 +499,14 @@ def rust_diff(tools: Tools, old: str, new: str) -> bytes:
     literal `b/`; diff.noprefix or diff.dstPrefix would match no file and the
     check would pass), `--find-renames` (diff.renames=false turns a rename into
     a whole-file addition), `--unified=3` (diff.context moves the lines a
-    deletion marks), `--no-textconv`, and unquoted UTF-8 paths.
+    deletion marks), `--diff-algorithm=myers` and `--indent-heuristic`
+    (diff.algorithm and diff.indentHeuristic change how the two sides align,
+    so a local run and CI would select different lines), `--no-textconv`, and
+    unquoted UTF-8 paths.
     """
     return tools.git_bytes("-c", "core.quotePath=false", "diff", "--no-ext-diff",
                            "--no-color", "--no-textconv", "--unified=3", "--find-renames",
+                           "--diff-algorithm=myers", "--indent-heuristic",
                            "--src-prefix=a/", "--dst-prefix=b/", old, new, "--", "*.rs")
 
 
