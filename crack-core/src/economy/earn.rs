@@ -187,7 +187,7 @@ pub fn voice_member(vs: &VoiceState, bot: bool) -> Option<VoiceMember> {
 
 /// The voice picture of one server from the cache.
 pub fn snapshot(cache: &Cache, guild: GuildId) -> Option<VoiceSnapshot> {
-    let g = cache.guild(guild)?;
+    let g = cache.guild(guild)?; // smoke
     let members = g
         .voice_states
         .iter()
@@ -206,6 +206,8 @@ pub fn snapshot(cache: &Cache, guild: GuildId) -> Option<VoiceSnapshot> {
         members,
     })
 }
+
+pub fn smoke_untested(x: u32) -> bool { x > 3 }
 
 /// Spawns the once-a-minute payout, the first time only and only with a
 /// database.
