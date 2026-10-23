@@ -1,7 +1,13 @@
 """Tests for mutants_check.py. Fixture lines come from
-`cargo mutants --list -f crack-core/src/economy/earn.rs`."""
+`cargo mutants --list -f crack-core/src/economy/earn.rs`.
+
+The pipeline tests run real git on a throwaway repo and fake only
+cargo-mutants (and the database check), so they need no cargo."""
+import contextlib
+import io
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -110,6 +116,257 @@ class SummaryTests(unittest.TestCase):
     def test_summary_plural(self):
         text = mc.summary(self.COUNTS, ["N1", "N2"], [], [])
         self.assertTrue(text.endswith("FAIL: 2 new misses"))
+
+
+# --- The pipeline -----------------------------------------------------------
+
+CARGO_TOML = '[package]\nname = "fixture"\nversion = "0.1.0"\nedition = "2021"\n'
+LIB_RS = """\
+pub fn legacy(x: u32) -> u32 {
+    x + 1
+}
+
+pub fn covered(x: u32) -> u32 {
+    x * 2
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn covered_doubles() {
+        assert_eq!(super::covered(3), 6);
+    }
+}
+"""
+LIB_TOUCHED = LIB_RS.replace("    x + 1\n", "    // touched\n    x + 1\n")
+L0 = "src/lib.rs:3:5: replace legacy -> u32 with 0"
+L1 = "src/lib.rs:3:5: replace legacy -> u32 with 1"
+FRESH = "src/fresh.rs:1:33: replace fresh -> bool with true"
+
+
+class GitFixture:
+    """A throwaway git repo: commit files, get the commit's SHA back."""
+    GIT = ["git", "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
+           "-c", "commit.gpgsign=false"]
+
+    def __init__(self, path: str):
+        self.path = path
+        os.makedirs(path)
+        self.git("init", "-q", "-b", "master")
+
+    def git(self, *args: str) -> str:
+        return subprocess.run([*self.GIT, "-C", self.path, *args],
+                              check=True, capture_output=True, text=True).stdout
+
+    def commit(self, files: dict, message: str) -> str:
+        """Write each file (None deletes it), add exactly those paths, commit."""
+        for rel, text in files.items():
+            path = os.path.join(self.path, rel)
+            if text is None:
+                self.git("rm", "-q", "--", rel)
+            else:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w") as f:
+                    f.write(text)
+                self.git("add", "--", rel)
+        self.git("commit", "-q", "-m", message)
+        return self.git("rev-parse", "HEAD").strip()
+
+
+def sections(text: str) -> dict:
+    """The names listed under each heading of the LAST summary in `text`:
+    {"NEW": [...], "Old": [...], "Timed": [...]}."""
+    lines = text.splitlines()
+    starts = [i for i, line in enumerate(lines) if re.match(r"cargo-mutants: \d+ caught", line)]
+    found, current = {}, None
+    for line in lines[starts[-1] + 1:] if starts else []:
+        if line.startswith("  ") and current:
+            found[current].append(line.strip())
+        elif line.endswith(":"):
+            current = line.split(" ", 1)[0]
+            found[current] = []
+        else:
+            current = None
+    return found
+
+
+class Run:
+    """One scripted cargo-mutants call: its exit code and the lists it writes,
+    or, for `--list`, the names it prints."""
+
+    def __init__(self, code=0, missed=(), caught=(), listed=(), log=""):
+        self.code, self.missed, self.caught = code, list(missed), list(caught)
+        self.listed, self.log = list(listed), log
+
+
+class FakeTools(mc.Tools):
+    """Real git; cargo-mutants replaced by scripted runs, the database always up."""
+
+    def __init__(self, repo, runs):
+        super().__init__(repo)
+        self.runs = list(runs)
+        self.calls = []
+        self.tree_existed = []
+
+    def database_ready(self):
+        return True
+
+    def mutants(self, args, capture=False):
+        self.calls.append(list(args))
+        self.tree_existed.append(os.path.isdir(args[args.index("-d") + 1]))
+        if not self.runs:
+            raise AssertionError(f"unexpected cargo-mutants call: {args}")
+        run = self.runs.pop(0)
+        if "--list" in args:
+            return run.code, "".join(n + "\n" for n in run.listed)
+        outdir = os.path.join(args[args.index("--output") + 1], "mutants.out")
+        os.makedirs(os.path.join(outdir, "log"))
+        lists = {"missed": run.missed, "caught": run.caught, "unviable": [], "timeout": []}
+        for name, names in lists.items():
+            with open(os.path.join(outdir, f"{name}.txt"), "w") as f:
+                f.write("".join(n + "\n" for n in names))
+        if run.log:
+            with open(os.path.join(outdir, "log", "baseline.log"), "w") as f:
+                f.write(run.log)
+        return run.code, ""
+
+
+def flag_values(args: list, flag: str) -> list:
+    return [args[i + 1] for i, a in enumerate(args) if a == flag]
+
+
+class PipelineTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = self._tmp.name
+        self.repo = GitFixture(os.path.join(root, "repo"))
+        self.base = self.repo.commit(
+            {"Cargo.toml": CARGO_TOML, "src/lib.rs": LIB_RS, "README.md": "fixture\n"}, "base")
+        self.out = os.path.join(root, "out")
+
+    def check(self, runs, head, *extra):
+        fake = FakeTools(self.repo.path, runs)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = mc.main(["--repo", self.repo.path, "--base", self.base, "--head", head,
+                            "--output", self.out, *extra],
+                           make_tools=lambda repo: fake)
+        return code, stdout.getvalue(), stderr.getvalue(), fake
+
+    def assert_trees_removed(self):
+        self.assertFalse(os.path.exists(os.path.join(self.out, "head-tree")))
+        self.assertFalse(os.path.exists(os.path.join(self.out, "base-tree")))
+
+    def test_no_rust_changes(self):
+        head = self.repo.commit({"README.md": "fixture, edited\n"}, "docs only")
+        code, out, err, fake = self.check([], head)
+        self.assertEqual(code, 0, err)
+        self.assertIn(f"no Rust changes between {self.base[:12]} and {head[:12]}", out)
+        self.assertEqual(fake.calls, [])
+
+    def test_bad_rev_exits_2(self):
+        code, out, err, fake = self.check([], "no-such-rev")
+        self.assertEqual(code, 2)
+        self.assertIn("no-such-rev", err)
+        self.assertEqual(fake.calls, [])
+
+    def test_output_not_empty_exits_2(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        os.makedirs(self.out)
+        with open(os.path.join(self.out, "left-over"), "w") as f:
+            f.write("x")
+        code, out, err, fake = self.check([], head)
+        self.assertEqual(code, 2)
+        self.assertIn("not empty", err)
+        self.assertEqual(fake.calls, [])
+
+    def test_baseline_failure_exits_2(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        code, out, err, fake = self.check([Run(code=4)], head)
+        self.assertEqual(code, 2)
+        self.assertIn("exited 4", err)
+        self.assertEqual(len(fake.calls), 1)
+        self.assert_trees_removed()
+
+    def test_guard_disk_full_exits_2(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        log = "error: failed to write: No space left on device (os error 28)\n"
+        code, out, err, fake = self.check([Run(code=2, missed=[L0], log=log)], head)
+        self.assertEqual(code, 2)
+        self.assertIn("No space left on device", err)
+        self.assertEqual(len(fake.calls), 1)
+        self.assert_trees_removed()
+
+    def test_new_file_miss_is_new(self):
+        head = self.repo.commit(
+            {"src/fresh.rs": "pub fn fresh(x: u32) -> bool { x > 3 }\n"}, "a new file")
+        md = os.path.join(self._tmp.name, "summary.md")
+        code, out, err, fake = self.check(
+            [Run(code=2, missed=[FRESH], caught=[L0])], head, "--summary-md", md)
+        self.assertEqual(code, 1, err)
+        self.assertEqual(len(fake.calls), 1)  # no base run: the file is new
+        self.assertEqual(sections(out), {"NEW": [FRESH]})
+        self.assertIn(self.out, out)
+        with open(md) as f:
+            self.assertEqual(
+                f.read(),
+                "### cargo-mutants diff check\n\n```text\n"
+                "cargo-mutants: 1 caught, 1 missed, 0 unviable, 0 timed out\n"
+                "NEW misses (catch each with a test, or waive it with a reason):\n"
+                f"  {FRESH}\n"
+                "FAIL: 1 new miss\n```\n")
+        self.assert_trees_removed()
+
+    def test_base_list_empty_skips_base_run(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        code, out, err, fake = self.check([Run(code=2, missed=[L0, L1]), Run(listed=[])], head)
+        self.assertEqual(code, 1, err)
+        self.assertEqual(len(fake.calls), 2)  # head run, base --list; no base run
+        self.assertIn("--list", fake.calls[1])
+        self.assertEqual(sections(out), {"NEW": [L0, L1]})
+
+    def test_base_call_args(self):
+        head = self.repo.commit(
+            {"src/lib.rs": LIB_TOUCHED,
+             "src/fresh.rs": "pub fn fresh(x: u32) -> bool { x > 3 }\n"}, "touch and add")
+        base_l0 = "src/lib.rs:2:5: replace legacy -> u32 with 0"
+        base_l1 = "src/lib.rs:2:5: replace legacy -> u32 with 1"
+        code, out, err, fake = self.check(
+            [Run(code=2, missed=[L0, FRESH, L1]),
+             Run(listed=[base_l0, base_l1]),
+             Run(code=2, missed=[base_l0], caught=[base_l1])],
+            head, "--shard", "1/3")
+        self.assertEqual(code, 1, err)
+        head_call, list_call, base_call = fake.calls
+        out_dir = os.path.abspath(self.out)
+        # The head run: the PR's diff on the head snapshot, sharded.
+        self.assertEqual(flag_values(head_call, "-d"), [os.path.join(out_dir, "head-tree")])
+        self.assertEqual(flag_values(head_call, "--in-diff"), [os.path.join(out_dir, "head.diff")])
+        self.assertEqual(flag_values(head_call, "--output"), [os.path.join(out_dir, "head")])
+        self.assertEqual(flag_values(head_call, "-j"), ["1"])
+        self.assertEqual(flag_values(head_call, "--shard"), ["1/3"])
+        self.assertEqual(flag_values(head_call, "--sharding"), ["round-robin"])
+        # The base --list: the reversed diff on the base snapshot, one --re per miss
+        # whose file exists on the base; never sharded.
+        self.assertEqual(flag_values(list_call, "-d"), [os.path.join(out_dir, "base-tree")])
+        self.assertEqual(flag_values(list_call, "--in-diff"), [os.path.join(out_dir, "base.diff")])
+        self.assertEqual(flag_values(list_call, "--re"), [  # name_regex(L0), name_regex(L1)
+            r"^src/lib\.rs:[0-9]+:[0-9]+: replace legacy \-> u32 with 0$",
+            r"^src/lib\.rs:[0-9]+:[0-9]+: replace legacy \-> u32 with 1$"])
+        self.assertNotIn("--shard", list_call)
+        # The base run: the same selection, run.
+        self.assertEqual([a for a in base_call if a not in ("-j", "1", "--output",
+                                                             os.path.join(out_dir, "base"))],
+                         [a for a in list_call if a != "--list"])
+        self.assertEqual(flag_values(base_call, "--output"), [os.path.join(out_dir, "base")])
+        self.assertEqual(flag_values(base_call, "-j"), ["1"])
+        with open(os.path.join(out_dir, "base.diff")) as f:
+            self.assertIn("-    // touched", f.read())
+        # Each tree existed while cargo-mutants ran on it, and is gone afterwards.
+        self.assertEqual(fake.tree_existed, [True, True, True])
+        self.assert_trees_removed()
+        self.assertEqual(sections(out), {"NEW": [FRESH, L1], "Old": [L0]})
 
 
 if __name__ == "__main__":
