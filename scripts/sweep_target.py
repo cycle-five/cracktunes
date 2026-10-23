@@ -128,6 +128,12 @@ def main(argv=None, target: Path | None = None) -> int:
     args = p.parse_args(argv)
 
     target = target if target is not None else target_dir()
+    # 🪤 A target dir that does not exist yet (a fresh CI checkout, before the
+    # first build) has nothing to sweep and nothing to protect. Only a directory
+    # that exists without the tag is refused.
+    if not target.exists():
+        print(f"{target} does not exist yet: nothing to sweep")
+        return 0
     if not (target / "CACHEDIR.TAG").is_file():
         print(f"refusing: {target} has no CACHEDIR.TAG, so it is not a cargo target dir",
               file=sys.stderr)

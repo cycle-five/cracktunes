@@ -71,6 +71,14 @@ class SweepTests(SweepBase):
         self.assertEqual(code, 2)
         self.assertTrue(old.exists())
 
+    def test_a_target_dir_that_does_not_exist_yet_is_fine(self):
+        # A fresh CI checkout has no target dir until the first build.
+        import shutil
+        shutil.rmtree(self.target)
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertIn("does not exist yet", out)
+
     def test_stale_scratch_only_matches_cargo_mutants_prefix(self):
         mine = self.scratch / "cargo-mutants-crack-AbCd.tmp"
         other = self.scratch / "something-else"
