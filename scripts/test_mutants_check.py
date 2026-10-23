@@ -643,22 +643,48 @@ class MutantsShTests(unittest.TestCase):
             # yet (nothing to sweep there); anything else is logged.
             with open(os.path.join(bin_dir, "cargo"), "w") as f:
                 f.write(f'#!/bin/sh\necho "cargo $1" >> "{log}"\n'
+                        f'[ "$1" = mutants ] && echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR" >> "{log}"\n'
                         f'[ "$1" = metadata ] && echo \'{{"target_directory": "{tmp}/target"}}\'\n'
                         'exit 0\n')
             os.chmod(os.path.join(bin_dir, "cargo"), 0o755)
-            full_env = {k: v for k, v in os.environ.items() if k != "CRACK_MUTANTS_NO_SWEEP"}
+            full_env = {k: v for k, v in os.environ.items() if k not in (
+                "CRACK_MUTANTS_NO_SWEEP", "CRACK_MUTANTS_SHARED_TARGET", "CARGO_TARGET_DIR")}
             full_env.update(PATH=bin_dir + os.pathsep + os.environ["PATH"],
                             CRACK_MUTANTS_SCRATCH=os.path.join(tmp, "scratch"), **env)
             proc = subprocess.run([mc.MUTANTS_SH, "--list"], env=full_env,
                                   capture_output=True, text=True)
+            if not os.path.exists(log):
+                return proc.returncode, []
             with open(log) as f:
                 return proc.returncode, f.read().splitlines()
 
     def test_sweeps_by_default(self):
-        self.assertEqual(self.run_sh(), (0, ["cargo metadata", "cargo mutants"]))
+        self.assertEqual(self.run_sh(),
+                         (0, ["cargo metadata", "cargo mutants", "CARGO_TARGET_DIR=target"]))
 
     def test_no_sweep_when_told(self):
-        self.assertEqual(self.run_sh(CRACK_MUTANTS_NO_SWEEP="1"), (0, ["cargo mutants"]))
+        self.assertEqual(self.run_sh(CRACK_MUTANTS_NO_SWEEP="1"),
+                         (0, ["cargo mutants", "CARGO_TARGET_DIR=target"]))
+
+    def test_each_copy_builds_into_its_own_target_by_default(self):
+        # A preset CARGO_TARGET_DIR is overridden: locally, parallel jobs
+        # must never share one.
+        code, log = self.run_sh(CRACK_MUTANTS_NO_SWEEP="1", CARGO_TARGET_DIR="/somewhere/target")
+        self.assertEqual((code, log), (0, ["cargo mutants", "CARGO_TARGET_DIR=target"]))
+
+    def test_shared_target_keeps_an_absolute_target_dir(self):
+        code, log = self.run_sh(CRACK_MUTANTS_NO_SWEEP="1", CRACK_MUTANTS_SHARED_TARGET="1",
+                                CARGO_TARGET_DIR="/ci/workspace/target")
+        self.assertEqual((code, log), (0, ["cargo mutants", "CARGO_TARGET_DIR=/ci/workspace/target"]))
+
+    def test_shared_target_refuses_a_relative_or_missing_target_dir(self):
+        for target in ("target", ""):
+            with self.subTest(target=target):
+                env = {"CRACK_MUTANTS_NO_SWEEP": "1", "CRACK_MUTANTS_SHARED_TARGET": "1"}
+                if target:
+                    env["CARGO_TARGET_DIR"] = target
+                code, log = self.run_sh(**env)
+                self.assertEqual((code, log), (2, []))
 
 
 # --- The corresponding selection ---------------------------------------------

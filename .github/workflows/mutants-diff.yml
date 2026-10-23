@@ -134,6 +134,11 @@ jobs:
       SQLX_OFFLINE: "true"
       CRACK_MUTANTS: "1"
       NEXTEST_PROFILE: mutants
+      # 🔑 One target dir for every build in the shard, the workspace's own
+      # `target/`, which rust-cache restores (see scripts/mutants.sh): the
+      # dependencies come from the cache, and the base run reuses the head
+      # run's build instead of paying a second cold one.
+      CRACK_MUTANTS_SHARED_TARGET: "1"
     steps:
       # Full history at the PR head: the check reads both commits (see above).
       - name: Repository Checkout
@@ -165,9 +170,11 @@ jobs:
           postgres-version: "16"
         id: postgres
 
+      # 🪤 Its own key: rust-cache saves nothing after an exact key hit, and
+      # the `mutants` key already holds a cache saved with no target in it.
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: mutants
+          shared-key: mutants-diff
 
       - name: Install cargo-nextest and cargo-mutants
         uses: taiki-e/install-action@v2
@@ -184,6 +191,7 @@ jobs:
           HEAD: ${{ needs.plan.outputs.head }}
           SHARD: ${{ matrix.shard }}
           SHARDS: ${{ needs.plan.outputs.shards }}
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
         shell: bash
         run: |
           code=0

@@ -12,6 +12,11 @@
 # into its own `target/`, so parallel jobs never share (or rebuild over) one.
 # The price is a cold build per job, and disk: scripts/sweep_target.py clears
 # leftovers from killed runs first.
+# 🔑 CI only: CRACK_MUTANTS_SHARED_TARGET=1 keeps a preset ABSOLUTE
+# CARGO_TARGET_DIR instead. A CI shard runs one job at `-j 1`, so per-copy
+# targets buy nothing there, while one shared directory lets rust-cache restore
+# the dependencies' build and lets the base run reuse the head run's. Measured
+# 2026-10-23: see mutants-diff.yml.
 set -euo pipefail
 
 for arg in "$@"; do
@@ -32,7 +37,15 @@ if [[ -z "${CRACK_MUTANTS_NO_SWEEP:-}" ]]; then
 fi
 
 export TMPDIR="$scratch"
-export CARGO_TARGET_DIR=target
+if [[ "${CRACK_MUTANTS_SHARED_TARGET:-}" == 1 ]]; then
+    if [[ "${CARGO_TARGET_DIR:-}" != /* ]]; then
+        echo "mutants.sh: CRACK_MUTANTS_SHARED_TARGET=1 needs an absolute CARGO_TARGET_DIR," \
+            "got '${CARGO_TARGET_DIR:-}'" >&2
+        exit 2
+    fi
+else
+    export CARGO_TARGET_DIR=target
+fi
 export NEXTEST_PROFILE=mutants
 # sqlx's query macros check every query against a live database whenever
 # DATABASE_URL is set (in the environment or a .env), and the result then
