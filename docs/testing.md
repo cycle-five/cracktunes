@@ -200,7 +200,11 @@ summary, in place of the old "mutation -> caught-by" table.
 - **Exit 2 means the environment is broken, not that the tests are weak:**
   Postgres down after a run, "No space left on device" in the logs, the
   unmutated tree failing its tests, a cargo-mutants exit code that contradicts
-  its own lists, or lists missing. Fix the cause and rerun.
+  its own lists, or lists missing. Fix the cause and rerun. (`--summary-md`
+  gets a `broken run: <reason>` line.)
+- **The Postgres guard** runs `pg_isready` against `DATABASE_URL`, or, when
+  that is unset (as it is locally), the tests' own default URL. Without
+  `pg_isready` installed it prints one line and is skipped.
 - **Cost:** every mutant is a rebuild, so it is minutes, not seconds. When
   there are misses, a second and smaller run goes to the base. Measured
   (2026-10-22): a real `crack-core` change (5 new mutants and 2 old, one
@@ -247,13 +251,17 @@ Some mutants no test can or should catch. Waive one in code or in config, and
 always write the reason.
 
 - **In code:** `#[cfg_attr(test, mutants::skip)]` with a `//` reason on the
-  line directly above. The first time a crate uses it, add `mutants = "0.0.4"`
+  line directly above. Any other line that mentions `mutants::skip` (an inner
+  `#![cfg_attr(…)]`, another cfg predicate, an attribute wrapped over several
+  lines) is a waiver too, and needs the same reason directly above it. The first time a crate uses it, add `mutants = "0.0.4"`
   (the current version, `cargo search mutants`) to that crate's
   `[dev-dependencies]`. 🪤 Not a normal dependency: `cfg_attr(test, ...)`
   compiles the attribute only in tests, so the production build never needs
   the crate.
-- **In config:** an exclusion in `.cargo/mutants.toml`, with a `#` reason on
-  the line above each.
+- **In config:** an element of a key that narrows what is mutated in
+  `.cargo/mutants.toml` (`exclude_globs`, `exclude_re`, `examine_globs`,
+  `examine_re`, `skip_calls`), one per line, each with a `#` reason (with
+  text) on the line directly above.
 - **Acceptable reasons:**
   - an equivalent mutant: no test can tell it from the original;
   - logging- or display-only code. 🪤 Never the privacy-critical `Debug`
@@ -302,7 +310,9 @@ gh workflow run mutants-full.yml -f files='crack-core/src/db/**,crack-core/src/g
   the concurrent-job limit is shared with every other workflow).
 - **Timing:** about 2 minutes per mutant on a GitHub runner (2026-10-22), so a
   500-mutant module at 8 shards is about 2 hours. Size it first with
-  `scripts/mutants.sh --list -f '<glob>'`.
+  `scripts/mutants.sh --list -f '<glob>'`, and keep a shard under about 120
+  mutants: the job cap is 340 minutes, one timed-out shard throws away a
+  multi-hour pass, and runners vary by 25-30%.
 - **Artifact:** `mutants-missed`, the combined missed list. Fix what the tests
   should catch; waive the rest, with a reason.
 - A run with any failed shard uploads no `mutants-missed` (only
@@ -374,20 +384,26 @@ break the line and watch a test fail.
 
 Incremental compilation state grows without bound, and mutant runs leave
 scratch copies behind. `scripts/sweep_target.py` clears both, and
-`scripts/mutants.sh` runs it first:
+`scripts/mutants.sh` runs it first. (`scripts/mutants_check.py` runs it once
+itself and sets `CRACK_MUTANTS_NO_SWEEP=1` for its several `mutants.sh`
+calls.)
 
 ```bash
 scripts/sweep_target.py --dry-run     # list what it would delete
 scripts/sweep_target.py
 ```
 
-It deletes exactly two things:
+It deletes exactly three things:
 
 - children of any `incremental/` directory in the target directory (1 to 3
   levels down) untouched for more than 14 days;
 - `cargo-mutants-*` scratch copies under the scratch root untouched for more
-  than 24 hours, which a killed run leaves behind. `--scratch-root DIR`
-  overrides the root.
+  than 24 hours, which a killed run leaves behind;
+- `check-*` output directories of `mutants_check.py` under the scratch root
+  untouched for more than 14 days.
+
+`--scratch-root DIR` overrides the root. The scratch root is swept even when
+the target directory does not exist yet.
 
 🔑 It never deletes the target directory itself and never runs `cargo clean`.
 The target directory is shared with other projects (`build.target-dir` in

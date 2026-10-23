@@ -203,14 +203,19 @@ class Run:
 class FakeTools(mc.Tools):
     """Real git; cargo-mutants replaced by scripted runs, the database always up."""
 
-    def __init__(self, repo, runs):
+    def __init__(self, repo, runs, db_up=True, sweep_ok=True):
         super().__init__(repo)
         self.runs = list(runs)
         self.calls = []
         self.tree_existed = []
+        self.db_up, self.sweep_ok, self.sweeps = db_up, sweep_ok, 0
 
     def database_ready(self):
-        return True
+        return self.db_up
+
+    def sweep(self):
+        self.sweeps += 1
+        return self.sweep_ok
 
     def mutants(self, args, capture=False):
         self.calls.append(list(args))
@@ -251,8 +256,8 @@ class PipelineBase(unittest.TestCase):
             {"Cargo.toml": CARGO_TOML, "src/lib.rs": LIB_RS, "README.md": "fixture\n"}, "base")
         self.out = os.path.join(root, "out")
 
-    def check(self, runs, head, *extra, out=None):
-        fake = FakeTools(self.repo.path, runs)
+    def check(self, runs, head, *extra, out=None, **fake_options):
+        fake = FakeTools(self.repo.path, runs, **fake_options)
         stdout, stderr = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             code = mc.main(["--repo", self.repo.path, "--base", self.base, "--head", head,
@@ -334,6 +339,54 @@ class PipelineTests(PipelineBase):
         self.assertIn("exited 4", err)
         self.assertEqual(len(fake.calls), 1)
         self.assert_trees_removed()
+
+    def test_guard_database_down_exits_2(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        code, out, err, fake = self.check([Run(code=2, missed=[L0])], head, db_up=False)
+        self.assertEqual(code, 2)
+        self.assertIn("pg_isready", err)
+        self.assertEqual(len(fake.calls), 1)
+        self.assert_trees_removed()
+
+    def test_broken_run_goes_to_the_summary_md(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        md = os.path.join(self._tmp.name, "summary.md")
+        code, out, err, fake = self.check([Run(code=4)], head, "--summary-md", md)
+        self.assertEqual(code, 2)
+        with open(md) as f:
+            self.assertEqual(f.read(), f"{mc.MD_HEADING}\n\nbroken run: cargo-mutants exited 4 "
+                             "on the head run (the unmutated tree fails its tests)\n")
+
+    def test_internal_error_goes_to_the_summary_md(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        md = os.path.join(self._tmp.name, "summary.md")
+        code, out, err, fake = self.check([Run(code=0, missed=["garbage"])], head,
+                                          "--summary-md", md)
+        self.assertEqual(code, 2)
+        self.assertIn("internal error", err)
+        with open(md) as f:
+            self.assertEqual(f.read(), f"{mc.MD_HEADING}\n\n"
+                             "broken run: internal error (see the job log)\n")
+
+    def test_sweeps_once_per_check(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        code, out, err, fake = self.check(
+            [Run(code=2, missed=[L0]), Run(listed=[L0]), Run(code=2, missed=[L0])], head)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(len(fake.calls), 3)  # three mutants.sh calls ...
+        self.assertEqual(fake.sweeps, 1)  # ... one sweep
+
+    def test_no_sweep_without_a_run(self):
+        head = self.repo.commit({"README.md": "fixture, edited\n"}, "docs only")
+        code, out, err, fake = self.check([], head)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(fake.sweeps, 0)
+
+    def test_a_failed_sweep_only_warns(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        code, out, err, fake = self.check([Run()], head, sweep_ok=False)
+        self.assertEqual(code, 0, err)
+        self.assertIn("warning: the target sweep failed", err)
 
     def test_guard_disk_full_exits_2(self):
         head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
@@ -512,6 +565,100 @@ class PipelineTests(PipelineBase):
         # The head run's diff carries the tree's lines with their CR too.
         with open(os.path.join(self.out, "head.diff"), "rb") as f:
             self.assertIn("+    // café\r\n".encode(), f.read())
+
+
+class ToolsTests(unittest.TestCase):
+    """The real Tools' database guard and mutants.sh call, against fake programs on PATH."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.bin = os.path.join(self._tmp.name, "bin")
+        os.makedirs(self.bin)
+        self.log = os.path.join(self._tmp.name, "log")
+        env = dict(os.environ)
+        self.addCleanup(lambda: (os.environ.clear(), os.environ.update(env)))
+        os.environ.pop("DATABASE_URL", None)
+        os.environ.pop("CRACK_MUTANTS_NO_SWEEP", None)
+
+    def fake(self, name, code=0, body=""):
+        path = os.path.join(self.bin, name)
+        with open(path, "w") as f:
+            f.write(f'#!/bin/sh\n{body}echo "{name} $*" >> "{self.log}"\nexit {code}\n')
+        os.chmod(path, 0o755)
+        return path
+
+    def logged(self):
+        with open(self.log) as f:
+            return f.read().splitlines()
+
+    def ready(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            ready = mc.Tools(self._tmp.name).database_ready()
+        return ready, out.getvalue()
+
+    def test_database_ready_falls_back_to_the_tests_default_url(self):
+        # Locally DATABASE_URL is unset; the tests then use the ctor's default.
+        self.fake("pg_isready", code=1)
+        os.environ["PATH"] = self.bin + os.pathsep + os.environ["PATH"]
+        ready, out = self.ready()
+        self.assertFalse(ready)
+        self.assertEqual(self.logged(), [
+            "pg_isready --dbname=postgresql://postgres:mysecretpassword@localhost:5432/postgres"])
+
+    def test_database_ready_uses_database_url(self):
+        self.fake("pg_isready", code=0)
+        os.environ["PATH"] = self.bin + os.pathsep + os.environ["PATH"]
+        os.environ["DATABASE_URL"] = "postgresql://u:p@db:5433/x"
+        ready, out = self.ready()
+        self.assertTrue(ready)
+        self.assertEqual(self.logged(), ["pg_isready --dbname=postgresql://u:p@db:5433/x"])
+
+    def test_no_pg_isready_skips_the_guard_and_says_so(self):
+        os.environ["PATH"] = self.bin  # nothing in it
+        ready, out = self.ready()
+        self.assertTrue(ready)
+        self.assertEqual(out, "mutants_check: no pg_isready, so the Postgres guard is skipped\n")
+
+    def test_mutants_sh_is_told_not_to_sweep(self):
+        script = self.fake("mutants.sh", body=f'echo "NO_SWEEP=$CRACK_MUTANTS_NO_SWEEP" >> "{self.log}"\n')
+        real = mc.MUTANTS_SH
+        mc.MUTANTS_SH = script
+        self.addCleanup(setattr, mc, "MUTANTS_SH", real)
+        code, _ = mc.Tools(self._tmp.name).mutants(["--list"], capture=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.logged(), ["NO_SWEEP=1", "mutants.sh --list"])
+
+
+class MutantsShTests(unittest.TestCase):
+    """scripts/mutants.sh sweeps unless CRACK_MUTANTS_NO_SWEEP is set."""
+
+    def run_sh(self, **env):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = os.path.join(tmp, "log")
+            bin_dir = os.path.join(tmp, "bin")
+            os.makedirs(bin_dir)
+            # A fake cargo: `metadata` names a target dir that does not exist
+            # yet (nothing to sweep there); anything else is logged.
+            with open(os.path.join(bin_dir, "cargo"), "w") as f:
+                f.write(f'#!/bin/sh\necho "cargo $1" >> "{log}"\n'
+                        f'[ "$1" = metadata ] && echo \'{{"target_directory": "{tmp}/target"}}\'\n'
+                        'exit 0\n')
+            os.chmod(os.path.join(bin_dir, "cargo"), 0o755)
+            full_env = {k: v for k, v in os.environ.items() if k != "CRACK_MUTANTS_NO_SWEEP"}
+            full_env.update(PATH=bin_dir + os.pathsep + os.environ["PATH"],
+                            CRACK_MUTANTS_SCRATCH=os.path.join(tmp, "scratch"), **env)
+            proc = subprocess.run([mc.MUTANTS_SH, "--list"], env=full_env,
+                                  capture_output=True, text=True)
+            with open(log) as f:
+                return proc.returncode, f.read().splitlines()
+
+    def test_sweeps_by_default(self):
+        self.assertEqual(self.run_sh(), (0, ["cargo metadata", "cargo mutants"]))
+
+    def test_no_sweep_when_told(self):
+        self.assertEqual(self.run_sh(CRACK_MUTANTS_NO_SWEEP="1"), (0, ["cargo mutants"]))
 
 
 # --- The corresponding selection ---------------------------------------------
@@ -831,6 +978,9 @@ class CollectTests(unittest.TestCase):
         code, out, err = self.collect()
         self.assertEqual(code, 2)
         self.assertIn("missing shard result(s): 1 of 0..1", err)
+        with open(self.md) as f:
+            self.assertEqual(f.read(), f"{mc.MD_HEADING}\n\n"
+                             "broken run: missing shard result(s): 1 of 0..1\n")
 
     def test_no_results_exits_2(self):
         code, out, err = self.collect()

@@ -19,7 +19,9 @@ name: Mutants (module pass)
 # 🔑 Timing: about 2 minutes per mutant on CI, spread over the shards, plus a
 # cold build and the unmutated run (about 3 minutes) in each shard. 500
 # mutants at the default 8 shards is about 63 per shard, about 2 hours. Keep a
-# shard under about 150 mutants: the job cap is 340 minutes.
+# shard under about 120 mutants: the job cap is 340 minutes, one timed-out
+# shard throws away a multi-hour pass, and 120 leaves room for the 25-30%
+# runner variance measured below.
 #
 # 🔑 `max_parallel` defaults to 8 because the account's concurrent-job limit is
 # shared with every other workflow. A wider fan-out would starve CI for PRs.

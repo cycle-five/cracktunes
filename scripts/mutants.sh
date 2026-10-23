@@ -25,7 +25,11 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 scratch="${CRACK_MUTANTS_SCRATCH:-$HOME/.cache/cargo-mutants}"
 mkdir -p "$scratch"
-python3 scripts/sweep_target.py --scratch-root "$scratch" >&2
+# scripts/mutants_check.py sweeps once itself and sets CRACK_MUTANTS_NO_SWEEP
+# for the several calls it makes; used directly, this sweeps every time.
+if [[ -z "${CRACK_MUTANTS_NO_SWEEP:-}" ]]; then
+    python3 scripts/sweep_target.py --scratch-root "$scratch" >&2
+fi
 
 export TMPDIR="$scratch"
 export CARGO_TARGET_DIR=target

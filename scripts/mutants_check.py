@@ -59,6 +59,10 @@ RUST_SPECIAL = set("\\.+*?()|[]{}^$#&-~")
 SCRIPTS = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(SCRIPTS)
 MUTANTS_SH = os.path.join(SCRIPTS, "mutants.sh")
+SWEEP_PY = os.path.join(SCRIPTS, "sweep_target.py")
+# The database the tests use when DATABASE_URL is unset: the #[ctor] default
+# in crack-core/src/db/user.rs.
+TEST_DATABASE_URL = "postgresql://postgres:mysecretpassword@localhost:5432/postgres"
 LISTS = ("missed", "caught", "unviable", "timeout")
 # cargo-mutants exit codes that are results: all caught, some missed, some
 # timed out. 4 means the unmutated tree fails its tests; others are errors.
@@ -398,6 +402,7 @@ class Tools:
 
     def __init__(self, repo: str):
         self.repo = repo
+        self._said_no_pg_isready = False
 
     def git_bytes(self, *args: str) -> bytes:
         proc = subprocess.run(["git", "-C", self.repo, *args], capture_output=True)
@@ -424,17 +429,31 @@ class Tools:
             raise CheckError(f"git archive {rev} exited {code}")
 
     def mutants(self, args: list[str], capture: bool = False) -> tuple[int, str]:
-        """Run scripts/mutants.sh; return its exit code and, if captured, its stdout."""
+        """Run scripts/mutants.sh; return its exit code and, if captured, its stdout.
+
+        The check sweeps once itself (sweep), so mutants.sh is told not to."""
         sys.stdout.flush()
         proc = subprocess.run([MUTANTS_SH, *args], text=True,
+                              env={**os.environ, "CRACK_MUTANTS_NO_SWEEP": "1"},
                               stdout=subprocess.PIPE if capture else None)
         return proc.returncode, proc.stdout or ""
 
+    def sweep(self) -> bool:
+        """Run scripts/sweep_target.py once, as mutants.sh would; True if it succeeded."""
+        sys.stdout.flush()
+        return subprocess.run([sys.executable, SWEEP_PY, "--scratch-root", scratch_root()],
+                              cwd=REPO, stdout=sys.stderr).returncode == 0
+
     def database_ready(self) -> bool:
-        """False only if DATABASE_URL is set, pg_isready exists, and it fails."""
-        url = os.environ.get("DATABASE_URL")
-        if not url or shutil.which("pg_isready") is None:
+        """False only if pg_isready exists and cannot reach the database the
+        tests use: DATABASE_URL, or the tests' own default when it is unset
+        (TEST_DATABASE_URL in crack-core/src/db/user.rs), as it is locally."""
+        if shutil.which("pg_isready") is None:
+            if not self._said_no_pg_isready:
+                print("mutants_check: no pg_isready, so the Postgres guard is skipped")
+                self._said_no_pg_isready = True
             return True
+        url = os.environ.get("DATABASE_URL") or TEST_DATABASE_URL
         return subprocess.run(["pg_isready", f"--dbname={url}"],
                               capture_output=True).returncode == 0
 
@@ -518,8 +537,9 @@ def check_guards(tools: Tools, out: str, run: str) -> None:
     🪤 Never grep the logs for SIGKILL: nextest kills timed-out tests with it.
     """
     if not tools.database_ready():
-        raise CheckError(f"guard tripped after the {run} run: pg_isready cannot reach "
-                         "DATABASE_URL, so database tests may have failed for that reason alone")
+        raise CheckError(f"guard tripped after the {run} run: pg_isready cannot reach the "
+                         "tests' database (DATABASE_URL, or the tests' default), so database "
+                         "tests may have failed for that reason alone")
     for dirpath, _, files in os.walk(os.path.join(out, "mutants.out", "log")):
         for name in files:
             path = os.path.join(dirpath, name)
@@ -644,6 +664,10 @@ def check(args: argparse.Namespace, tools: Tools) -> int:
         write_bytes(os.path.join(out, "change.diff"), sel.change)
         write_bytes(os.path.join(out, "head.diff"), sel.head_diff)
         write_bytes(os.path.join(out, "base.diff"), sel.base_diff)
+        # Once per check: every mutants.sh call below skips its own sweep.
+        if not tools.sweep():
+            print("mutants_check: warning: the target sweep failed (above); carrying on",
+                  file=sys.stderr)
         tools.snapshot(head, head_tree)
         shard = ["--shard", args.shard, "--sharding", "round-robin"] if args.shard else []
         head_out = os.path.join(out, "head")
@@ -798,9 +822,17 @@ def main(argv: list[str] | None = None, make_tools=Tools) -> int:
         return check(args, make_tools(os.path.abspath(args.repo)))
     except CheckError as e:
         print(f"mutants_check: {e}", file=sys.stderr)
+        reason = str(e)
     except Exception:  # uncaught, Python would exit 1, which reads as "new misses"
         traceback.print_exc()
         print("mutants_check: internal error (above)", file=sys.stderr)
+        reason = "internal error (see the job log)"
+    if args.summary_md:
+        try:
+            with open(args.summary_md, "a", encoding="utf-8") as f:
+                f.write(f"{MD_HEADING}\n\nbroken run: {reason}\n")
+        except OSError as e:
+            print(f"mutants_check: cannot write {args.summary_md}: {e}", file=sys.stderr)
     return 2
 
 

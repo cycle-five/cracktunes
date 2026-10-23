@@ -7,13 +7,17 @@ projects may be building into it right now. Deleting it, or running
 `cargo clean`, is a person's call and never a script's. Incremental
 compilation state is the part that grows without bound (cargo-mutants runs
 add a `mutants/incremental` of their own) and it is safe to drop, because the
-next build just recompiles. So this deletes exactly two things:
+next build just recompiles. So this deletes exactly three things:
 
   * children of any `incremental/` directory 1-3 levels under the target dir
     (`debug/incremental`, `mutants/incremental`, `<triple>/debug/incremental`)
     untouched for more than 14 days;
   * `cargo-mutants-*` scratch copies under the scratch root (the wrapper's
-    $TMPDIR) untouched for more than 24 hours, i.e. left by a killed run.
+    $TMPDIR) untouched for more than 24 hours, i.e. left by a killed run;
+  * `check-*` output directories of scripts/mutants_check.py under the
+    scratch root untouched for more than 14 days.
+
+The scratch root is swept even when the target dir does not exist yet.
 
 🪤 It refuses a directory with no CACHEDIR.TAG (cargo writes one in every
 target directory), so a wrong `cargo metadata` answer can't point it at
@@ -27,6 +31,7 @@ import argparse
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -34,6 +39,8 @@ from pathlib import Path
 
 INCREMENTAL_MAX_AGE_DAYS = 14
 SCRATCH_MAX_AGE_HOURS = 24
+CHECK_MAX_AGE_DAYS = 14
+CHECK_PREFIX = "check-"
 WARN_BYTES = 150 * 1024**3
 SCRATCH_PREFIX = "cargo-mutants-"
 MAX_DEPTH = 3  # depth of an `incremental` dir below the target dir
@@ -99,6 +106,22 @@ def stale_scratch(root: Path, now: float,
     return sorted(found)
 
 
+def stale_checks(root: Path, now: float, max_age_days: int = CHECK_MAX_AGE_DAYS) -> list[Path]:
+    """mutants_check.py's `check-*` output directories (never a link or a file)."""
+    if not root.is_dir():
+        return []
+    cutoff = now - max_age_days * 86400
+    found = []
+    for c in root.iterdir():
+        try:
+            st = c.lstat()
+        except FileNotFoundError:
+            continue
+        if c.name.startswith(CHECK_PREFIX) and stat.S_ISDIR(st.st_mode) and st.st_mtime < cutoff:
+            found.append(c)
+    return sorted(found)
+
+
 def _remove(p: Path):
     """Remove a file, link (never its target) or tree; a path that is already
     gone is fine, since a concurrent cargo may have pruned it."""
@@ -129,24 +152,28 @@ def main(argv=None, target: Path | None = None) -> int:
 
     target = target if target is not None else target_dir()
     # 🪤 A target dir that does not exist yet (a fresh CI checkout, before the
-    # first build) has nothing to sweep and nothing to protect. Only a directory
-    # that exists without the tag is refused.
-    if not target.exists():
-        print(f"{target} does not exist yet: nothing to sweep")
-        return 0
-    if not (target / "CACHEDIR.TAG").is_file():
+    # first build) has nothing to sweep and nothing to protect; the scratch
+    # root still gets swept. Only a directory that exists without the tag is
+    # refused.
+    exists = target.exists()
+    if not exists:
+        print(f"{target} does not exist yet: nothing to sweep there")
+    elif not (target / "CACHEDIR.TAG").is_file():
         print(f"refusing: {target} has no CACHEDIR.TAG, so it is not a cargo target dir",
               file=sys.stderr)
         return 2
 
     now = time.time()
-    paths = stale_incremental(target, now) + stale_scratch(args.scratch_root, now)
+    paths = ((stale_incremental(target, now) if exists else [])
+             + stale_scratch(args.scratch_root, now) + stale_checks(args.scratch_root, now))
     verb = "would remove" if args.dry_run else "removed"
     for path in paths:
         if not args.dry_run:
             _remove(path)
         print(f"{verb} {path}")
     print(f"{len(paths)} path(s) {verb.replace('would remove', 'to remove')}")
+    if not exists:
+        return 0
 
     size = _size(target)
     if size is None:

@@ -85,6 +85,41 @@ class RustTests(unittest.TestCase):
         code, out = run({"a.txt": f"{SKIP}\n"})
         self.assertEqual(code, 0, out)
 
+    def test_inner_attribute_is_a_waiver(self):
+        inner = "#![cfg_attr(test, mutants::skip)]"
+        code, out = run({"a.rs": f"{inner}\nfn f() {{}}\n"})
+        self.assertEqual(code, 1, out)
+        self.assertIn("a.rs:1: rust-reason", out)
+        code, out = run({"a.rs": f"// The whole module is glue.\n{inner}\nfn f() {{}}\n"})
+        self.assertEqual(code, 0, out)
+        self.assertIn("1 waiver(s) checked", out)
+
+    def test_other_cfg_predicates_are_waivers(self):
+        for attr in ("#[cfg_attr(debug_assertions, mutants::skip)]",
+                     "#[cfg_attr(all(test, feature = \"x\"), mutants::skip)]",
+                     "#[inline] #[cfg_attr(test, mutants::skip)]"):
+            with self.subTest(attr):
+                code, out = run({"a.rs": f"fn g() {{}}\n{attr}\nfn f() {{}}\n"})
+                self.assertEqual(code, 1, out)
+                self.assertIn("a.rs:2: rust-reason", out)
+                code, out = run({"a.rs": f"// Why.\n{attr}\nfn f() {{}}\n"})
+                self.assertEqual(code, 0, out)
+
+    def test_wrapped_attribute_is_a_waiver(self):
+        code, out = run({"a.rs": "#[cfg_attr(\n    test,\n    mutants::skip\n)]\nfn f() {}\n"})
+        self.assertEqual(code, 1, out)
+        self.assertIn("a.rs:3: rust-reason", out)
+
+    def test_inner_bare_form_fails(self):
+        code, out = run({"a.rs": "// Why.\n#![mutants::skip]\nfn f() {}\n"})
+        self.assertEqual(code, 1)
+        self.assertIn("a.rs:2: rust-bare-form", out)
+
+    def test_block_comments_are_not_waivers(self):
+        code, out = run({"a.rs": f"/* {SKIP}\n * {SKIP}\n */\nfn f() {{}}\n"})
+        self.assertEqual(code, 0, out)
+        self.assertIn("0 waiver(s) checked", out)
+
 
 class ConfigTests(unittest.TestCase):
     def test_element_without_comment_fails(self):
@@ -113,6 +148,52 @@ class ConfigTests(unittest.TestCase):
         code, out = run({".cargo/mutants.toml": 'exclude_re = ["x"]\n'})
         self.assertEqual(code, 1)
         self.assertIn(".cargo/mutants.toml:1:", out)
+
+    def test_every_narrowing_key_is_checked(self):
+        for key in ("exclude_globs", "exclude_re", "examine_globs", "examine_re", "skip_calls"):
+            with self.subTest(key):
+                code, out = run({".cargo/mutants.toml": f'{key} = [\n    "a",\n]\n'})
+                self.assertEqual(code, 1, out)
+                self.assertIn(".cargo/mutants.toml:2: config-reason", out)
+
+    def test_quoted_keys_are_checked(self):
+        for key in ('"exclude_re"', "'exclude_re'"):
+            with self.subTest(key):
+                code, out = run({".cargo/mutants.toml": f'{key} = [\n    "a",\n]\n'})
+                self.assertEqual(code, 1, out)
+                self.assertIn(".cargo/mutants.toml:2: config-reason", out)
+
+    def test_a_bare_hash_is_not_a_reason(self):
+        for comment in ("#", "#   ", "##"):
+            with self.subTest(comment):
+                code, out = run({".cargo/mutants.toml":
+                                 f'exclude_globs = [\n    {comment}\n    "a/**",\n]\n'})
+                self.assertEqual(code, 1, out)
+                self.assertIn(".cargo/mutants.toml:3: config-reason", out)
+
+    def test_hash_inside_a_string_does_not_swallow_later_keys(self):
+        toml = ('# Why.\nexclude_globs = ["a#b"]\n'
+                'exclude_re = [\n    "x",\n]\n')
+        code, out = run({".cargo/mutants.toml": toml})
+        self.assertEqual(code, 1, out)
+        self.assertIn(".cargo/mutants.toml:4: config-reason", out)
+        self.assertIn("2 waiver(s) checked", out)
+
+    def test_two_elements_on_one_line_fail(self):
+        code, out = run({".cargo/mutants.toml": '# Why.\nexclude_re = ["a", "b"]\n'})
+        self.assertEqual(code, 1, out)
+        self.assertIn(".cargo/mutants.toml:2: config-reason: 2 elements", out)
+
+    def test_count_mismatch_with_tomllib_is_a_problem(self):
+        # An element the line scanner can't see (not a string) must not pass.
+        code, out = run({".cargo/mutants.toml": 'exclude_re = [\n    # Why.\n    1,\n]\n'})
+        self.assertEqual(code, 1, out)
+        self.assertIn("config-count: `exclude_re` has 1 element(s)", out)
+
+    def test_key_the_scanner_cannot_find_is_a_problem(self):
+        code, out = run({".cargo/mutants.toml": '"exclude\\u005fre" = ["x"]\n'})
+        self.assertEqual(code, 1, out)
+        self.assertIn("config-count: `exclude_re` is set", out)
 
     def test_other_arrays_are_ignored(self):
         code, out = run({".cargo/mutants.toml": 'features = [\n    "x",\n]\n'})
