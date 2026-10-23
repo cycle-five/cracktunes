@@ -21,8 +21,8 @@ name: Mutants (PR diff)
 # about 15 minutes of Build. A big feature PR takes longer; that is accepted.
 #
 # 🔑 Cost, measured on ubuntu-latest (2026-10-23, a throwaway crack-core smoke
-# on #628: 7 mutants in 2 shards, 6 of them missed). Build takes about 9.5
-# minutes, and this job runs beside it.
+# on #628: 7 mutants in 2 shards, 6 of them missed). Build took 5-10 minutes
+# in these runs, and this job runs beside it.
 #   - A crack-core shard first builds and tests the unmutated tree: about 105 s
 #     of build with the dependencies restored by rust-cache (260-290 s cold,
 #     the first run after Cargo.lock or the toolchain changes) plus 51 s of

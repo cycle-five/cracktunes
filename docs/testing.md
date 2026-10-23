@@ -289,7 +289,7 @@ always write the reason.
   fails on new misses. A shard with misses also uploads its output
   (`mutants-diff-<n>`) to read the missed mutants' diffs.
 - **Cost, measured 2026-10-23** (a throwaway `crack-core` smoke on #628:
-  7 mutants in 2 shards, 6 missed; Build takes about 9.5 minutes beside it):
+  7 mutants in 2 shards, 6 missed; Build, beside it, took 5-10 minutes):
   - a `crack-core` shard first builds and tests the unmutated tree: about
     105 s of build with the dependencies restored by rust-cache (260-290 s
     cold, the first run after `Cargo.lock` or the toolchain changes) plus
