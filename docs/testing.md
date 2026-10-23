@@ -253,7 +253,10 @@ always write the reason.
 - **In code:** `#[cfg_attr(test, mutants::skip)]` with a `//` reason on the
   line directly above. Any other line that mentions `mutants::skip` (an inner
   `#![cfg_attr(…)]`, another cfg predicate, an attribute wrapped over several
-  lines) is a waiver too, and needs the same reason directly above it. The first time a crate uses it, add `mutants = "0.0.4"`
+  lines) is a waiver too, and needs the same reason directly above the line
+  that holds `mutants::skip`. 🪤 For a wrapped attribute that line is inside
+  the attribute, so the `//` reason goes inside it too, not above `#[`. The
+  first time a crate uses it, add `mutants = "0.0.4"`
   (the current version, `cargo search mutants`) to that crate's
   `[dev-dependencies]`. 🪤 Not a normal dependency: `cfg_attr(test, ...)`
   compiles the attribute only in tests, so the production build never needs
@@ -290,22 +293,27 @@ always write the reason.
   (`mutants-diff-<n>`) to read the missed mutants' diffs.
 - **Cost, measured 2026-10-23** (a throwaway `crack-core` smoke on #628:
   7 mutants in 2 shards, 6 missed; Build, beside it, took 5-10 minutes):
-  - a `crack-core` shard first builds and tests the unmutated tree: about
-    105 s of build with the dependencies restored by rust-cache (260-290 s
-    cold, the first run after `Cargo.lock` or the toolchain changes) plus
-    51 s of tests;
+  - a `crack-core` shard first builds and tests the unmutated tree:
+    260-290 s of build on a PR's first Mutants run, about 105 s on its later
+    pushes (the dependencies restored by rust-cache), plus 51 s of tests.
+    🪤 A PR's first run is always cold: the job runs only on pull requests,
+    and a cache a PR saves is scoped to that PR, so master never saves one a
+    new PR could restore;
   - each missed `crack-core` mutant then costs 160-170 s (105-120 s build,
-    51 s test); a caught one stops at its first failing test;
+    51 s test); a caught one pays the same build and stops at its first
+    failing test;
   - a shard with misses also runs the base side: one more unmutated run
     (about 2.6 minutes) plus 160-170 s per miss the base has a twin of;
-  - the smoke's 4-mutant shard took 19.6 minutes warm (22.8 cold, 24.5
-    before the shards shared one cached target dir), its 3-mutant shard
-    12-14 minutes, and Plan and the verdict under 20 s each.
+  - the smoke's 4-mutant shard took 22.8 minutes on the PR's first run
+    (cold), 19.6 on a re-run (warm), and 24.5 before the shards shared one
+    cached target dir; its 3-mutant shard 12-14 minutes; Plan and the
+    verdict under 20 s each.
 - 🪤 **So the budget holds for some PRs, not all.** A `crack-core` PR whose
-  mutants are mostly caught finishes within about 15 minutes of Build; one
-  whose shards carry several misses (old ones count too: they are rerun on
-  the base) takes about 30-40 minutes a shard. A `crack-types` shard is a
-  few minutes (2026-10-22: 3.5-4.5 minutes).
+  mutants are mostly caught roughly fits it. That is an estimate, since the
+  smoke caught none: a shard of 6 caught `crack-core` mutants should take
+  about 15-20 minutes. One whose shards carry several misses (old ones count
+  too: they are rerun on the base) takes about 30-40 minutes a shard. A
+  `crack-types` shard is a few minutes (2026-10-22: 3.5-4.5 minutes).
 - In CI, `CRACK_MUTANTS_SHARED_TARGET=1` makes `scripts/mutants.sh` keep the
   job's absolute `CARGO_TARGET_DIR` (the workspace's `target/`, which
   rust-cache restores) instead of a target per scratch copy. Locally nothing
