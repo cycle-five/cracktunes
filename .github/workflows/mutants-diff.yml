@@ -17,13 +17,34 @@ name: Mutants (PR diff)
 # 🔑 The local per-task check is the real gate. This job is the backstop for
 # what slipped past it, so it can afford to be slow but must not be flaky.
 #
-# 🔑 Budget: a typical PR of up to about 20 mutants should finish within about
-# 15 minutes of Build. A big feature PR takes longer; that is accepted.
+# 🔑 Budget (spec): a typical PR of up to about 20 mutants should finish within
+# about 15 minutes of Build. A big feature PR takes longer; that is accepted.
 #
-# 🔑 6 mutants per shard: a shard pays a cold build and the unmutated baseline
-# (about 3 minutes) before its first mutant, then about 2 minutes per mutant.
-# Six keeps a shard near 15 minutes while 24 shards at most (6 running at
-# once, so 4 waves) bound the fan-out for a huge PR.
+# 🔑 Cost, measured on ubuntu-latest (2026-10-23, a throwaway crack-core smoke
+# on #628: 7 mutants in 2 shards, 6 of them missed). Build takes about 9.5
+# minutes, and this job runs beside it.
+#   - A crack-core shard first builds and tests the unmutated tree: about 105 s
+#     of build with the dependencies restored by rust-cache (260-290 s cold,
+#     the first run after Cargo.lock or the toolchain changes) plus 51 s of
+#     tests. Then each MISSED crack-core mutant costs 160-170 s (105-120 s to
+#     build, 51 s to test); a caught one stops at its first failing test.
+#   - A shard with misses then runs the base side: one more unmutated build
+#     and test (about 2.6 minutes, reusing the head run's dependencies) plus
+#     the same 160-170 s for each miss the base has a twin of.
+#   - The smoke's 4-mutant shard took 19.6 minutes with the cache warm, 22.8
+#     cold, and 24.5 before the shared target (scripts/mutants.sh,
+#     CRACK_MUTANTS_SHARED_TARGET); its 3-mutant shard took 12-14 minutes;
+#     Plan and Mutants verdict take under 20 s each.
+#   - So a crack-core PR whose mutants are mostly caught finishes within the
+#     budget, and one whose shards carry several misses (new or old: old
+#     ones are rerun on the base) does not: about 30-40 minutes for a shard
+#     of 6 misses.
+#
+# 🔑 6 mutants per shard: 24 shards at most (6 running at once, so 4 waves)
+# bound the fan-out for a huge PR. The shard timeout, 75 minutes, is about the
+# worst shard (6 crack-core misses rerun on the base, or 6 timeouts, cold:
+# about 43 minutes) plus the 25-30% runner variance and room to spare; a
+# timed-out shard reads as an ordinary red job.
 #
 # 🔑 Both jobs check out the PR HEAD, not the default merge ref: the diff must
 # be the PR's own change, not whatever master gained since. The base is the
@@ -124,7 +145,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.count != '0'
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       max-parallel: 6
