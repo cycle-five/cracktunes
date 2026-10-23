@@ -1,0 +1,186 @@
+name: Mutants (PR diff)
+
+# Gates a pull request on the mutants its own change adds: every Rust line the
+# PR touches is mutation-tested, and the job fails only on NEW misses, meaning a
+# mutant the PR's tests miss that the base's tests catch (or that the base does
+# not have). Old, already-missed mutants in touched code are listed, not failed.
+# The logic is scripts/mutants_check.py; this file only fans it out over shards.
+#
+# 🔑 The local per-task check is the real gate. This job is the backstop for
+# what slipped past it, so it can afford to be slow but must not be flaky.
+#
+# 🔑 Budget: a typical PR of up to about 20 mutants should finish within about
+# 15 minutes of Build. A big feature PR takes longer; that is accepted.
+#
+# 🔑 6 mutants per shard: a shard pays a cold build and the unmutated baseline
+# (about 3 minutes) before its first mutant, then about 2 minutes per mutant.
+# Six keeps a shard near 15 minutes while 24 shards at most (6 running at
+# once, so 4 waves) bound the fan-out for a huge PR.
+#
+# 🔑 Both jobs check out the PR HEAD, not the default merge ref: the diff must
+# be the PR's own change, not whatever master gained since. The base is the
+# merge base with the PR's base commit, for the same reason. `fetch-depth: 0`
+# because the check runs `git diff` and `git archive` on both commits.
+# (In a reusable workflow `github.event` is the caller's event.)
+#
+# 🔑 `max-parallel: 6`: the account's 20 concurrent jobs are shared with every
+# repo, and Build and Lint run beside this.
+
+on:
+  workflow_call:
+
+# Least privilege: these jobs only check out, build and upload artifacts.
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      base: ${{ steps.plan.outputs.base }}
+      head: ${{ steps.plan.outputs.head }}
+      count: ${{ steps.plan.outputs.count }}
+      shards: ${{ steps.plan.outputs.shards }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    env:
+      SQLX_OFFLINE: "true"
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Find the PR's own change
+        id: diff
+        shell: bash
+        run: |
+          base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          # No Rust change, no mutants: skip the toolchain and tool installs.
+          if git diff --quiet "$base" "$HEAD_SHA" -- '*.rs'; then
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+            echo "No Rust changed between $base and $HEAD_SHA: nothing to mutate." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "Install Rust"
+        if: steps.diff.outputs.rust == 'true'
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+        shell: bash
+
+      - name: Install cargo-nextest and cargo-mutants
+        if: steps.diff.outputs.rust == 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149,cargo-mutants@27.1.0
+
+      - name: Count the mutants and plan the shards
+        id: plan
+        env:
+          BASE: ${{ steps.diff.outputs.base }}
+          RUST: ${{ steps.diff.outputs.rust }}
+        shell: bash
+        run: |
+          count=0
+          if [ "$RUST" = "true" ]; then
+            # 🪤 Explicit prefixes, as mutants_check.py writes them: cargo-mutants
+            # strips only a literal `b/`.
+            git diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ \
+              "$BASE" "$HEAD_SHA" -- '*.rs' > "$RUNNER_TEMP/head.diff"
+            count="$(scripts/mutants.sh --list --in-diff "$RUNNER_TEMP/head.diff" | wc -l)"
+          fi
+          shards=$(( (count + 5) / 6 ))
+          [ "$shards" -lt 1 ] && shards=1
+          [ "$shards" -gt 24 ] && shards=24
+          {
+            echo "base=$BASE"
+            echo "head=$HEAD_SHA"
+            echo "count=$count"
+            echo "shards=$shards"
+            echo "matrix=[$(seq -s, 0 $((shards - 1)))]"
+          } >> "$GITHUB_OUTPUT"
+          echo "$count mutants in the PR's changed lines, in $shards shard(s) of at most 6." >> "$GITHUB_STEP_SUMMARY"
+
+  shard:
+    name: Shard ${{ matrix.shard }}
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      SQLX_OFFLINE: "true"
+      CRACK_MUTANTS: "1"
+      NEXTEST_PROFILE: mutants
+    steps:
+      # Full history at the PR head: the check reads both commits (see above).
+      - name: Repository Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: "Install yt-dlp"
+        run: |
+          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
+          chmod +x /usr/local/bin/yt-dlp
+        shell: bash
+
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+        shell: bash
+
+      - uses: ikalnytskyi/action-setup-postgres@v8
+        with:
+          username: postgres
+          password: mysecretpassword
+          database: postgres
+          port: 5432
+          # 🪤 PIN THIS. v8 installs from PGDG and defaults to 18, but both
+          # stacks run postgres:16-alpine (see build.yml).
+          postgres-version: "16"
+        id: postgres
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: mutants
+
+      - name: Install cargo-nextest and cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149,cargo-mutants@27.1.0
+
+      - name: Check the PR's mutants
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
+          BASE: ${{ needs.plan.outputs.base }}
+          HEAD: ${{ needs.plan.outputs.head }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ needs.plan.outputs.shards }}
+        run: |
+          python3 scripts/mutants_check.py --base "$BASE" --head "$HEAD" \
+            --shard "$SHARD/$SHARDS" --summary-md "$GITHUB_STEP_SUMMARY" \
+            --output "$RUNNER_TEMP/mutants-check"
+
+      - name: Upload the check's output for debugging
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-diff-${{ matrix.shard }}
+          path: ${{ runner.temp }}/mutants-check
+          if-no-files-found: ignore
