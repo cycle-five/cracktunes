@@ -79,12 +79,12 @@ jobs:
         if: success() || failure()
         run: cargo clippy -p crack-core --features crack-coin --locked -- -D warnings
 
-  # 🔑 The mutants tooling is Python: scripts/mutants_baseline.py (the
-  # shrink-only baseline) and scripts/sweep_target.py (the target sweep), with
-  # unittest tests beside them. The mutants gate (the follow-up PR) runs these
-  # scripts, so a broken one has to fail here, not pass or block PRs for the
-  # wrong reason. Standard library only, so the runner's own python3 is
-  # enough: no setup step, no Rust.
+  # 🔑 The mutants tooling is Python: scripts/mutants_check.py (the gate),
+  # scripts/check_waivers.py (every waiver carries a reason) and
+  # scripts/sweep_target.py (the target sweep), with unittest tests beside
+  # them. The gate runs these scripts on every PR, so a broken one has to fail
+  # here, not pass or block PRs for the wrong reason. Standard library only, so
+  # the runner's own python3 is enough: no setup step, no Rust.
   scripts:
     name: Script tests
     runs-on: ubuntu-latest
@@ -94,3 +94,6 @@ jobs:
 
       - name: Run the scripts' unit tests
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Every mutants waiver has a reason
+        run: python3 scripts/check_waivers.py
