@@ -147,13 +147,15 @@ class Tools:
     def __init__(self, repo: str):
         self.repo = repo
 
-    def git(self, *args: str) -> str:
-        proc = subprocess.run(["git", "-C", self.repo, *args],
-                              capture_output=True, text=True, encoding="utf-8")
+    def git_bytes(self, *args: str) -> bytes:
+        proc = subprocess.run(["git", "-C", self.repo, *args], capture_output=True)
         if proc.returncode != 0:
             raise CheckError(f"git {' '.join(args)} exited {proc.returncode}: "
-                             f"{proc.stderr.strip()}")
+                             f"{proc.stderr.decode(errors='replace').strip()}")
         return proc.stdout
+
+    def git(self, *args: str) -> str:
+        return self.git_bytes(*args).decode("utf-8")
 
     def snapshot(self, rev: str, dest: str) -> None:
         """Extract `git archive <rev>` into dest: the tracked files of exactly that commit."""
@@ -218,12 +220,18 @@ def prepare_output(path: str) -> str:
     return path
 
 
-def write_diff(tools: Tools, old: str, new: str, path: str) -> str:
-    """The Rust part of the old→new diff, written to path and returned."""
-    text = tools.git("diff", "--no-ext-diff", "--no-color", old, new, "--", "*.rs")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
-    return text
+def write_diff(tools: Tools, old: str, new: str, path: str) -> bytes:
+    """The Rust part of the old→new diff, written to path byte for byte, and returned.
+
+    🔑 The prefixes are explicit: cargo-mutants strips only a literal `b/`, so a
+    user's diff.noprefix or diff.dstPrefix would make it match no file, select
+    no mutant, and the check would pass.
+    """
+    diff = tools.git_bytes("diff", "--no-ext-diff", "--no-color",
+                           "--src-prefix=a/", "--dst-prefix=b/", old, new, "--", "*.rs")
+    with open(path, "wb") as f:
+        f.write(diff)
+    return diff
 
 
 def check_guards(tools: Tools, out: str, run: str) -> None:
@@ -253,14 +261,27 @@ def run_mutants(tools: Tools, selection: list[str], out: str, run: str) -> int:
     return code
 
 
-def read_results(out: str, code: int) -> dict[str, list[str]]:
+def read_results(out: str, code: int, run: str, expect_lists: bool = False) -> dict[str, list[str]]:
+    """A run's four lists, checked against its exit code: a mismatch is a broken run."""
     lists_dir = os.path.join(out, "mutants.out")
-    if code == 0 and not os.path.exists(lists_dir):
+    if not os.path.exists(lists_dir):
         # cargo-mutants exits 0 before creating mutants.out when the diff
         # changes Rust but no line of it holds a mutant (a comment, a test).
+        # 🪤 Any other code without lists is a run that never happened:
+        # mutants.sh itself exits 2 (set -e) when sweep_target.py refuses.
+        if code != 0 or expect_lists:
+            raise CheckError(f"cargo-mutants exited {code} on the {run} run but wrote no {lists_dir}")
         print("cargo-mutants found no mutants in the changed lines")
         return {name: [] for name in LISTS}
-    return {name: read_names(os.path.join(lists_dir, f"{name}.txt")) for name in LISTS}
+    results = {name: read_names(os.path.join(lists_dir, f"{name}.txt")) for name in LISTS}
+    # cargo-mutants' own rule (outcome.rs exit_code): any timeout 3, else any miss 2, else 0.
+    expected = 3 if results["timeout"] else 2 if results["missed"] else 0
+    if code != expected:
+        raise CheckError(
+            f"cargo-mutants exited {code} on the {run} run, but its lists "
+            f"({len(results['missed'])} missed, {len(results['timeout'])} timed out) "
+            f"mean exit {expected}")
+    return results
 
 
 def base_misses(tools: Tools, base: str, head: str, out: str, head_missed: list[str]) -> list[str]:
@@ -288,8 +309,9 @@ def base_misses(tools: Tools, base: str, head: str, out: str, head_missed: list[
     if not listed:
         return []
     base_out = os.path.join(out, "base")
-    run_mutants(tools, selection, base_out, "base")
-    return read_names(os.path.join(base_out, "mutants.out", "missed.txt"))
+    code = run_mutants(tools, selection, base_out, "base")
+    # --list named mutants, so the run must write lists.
+    return read_results(base_out, code, "base", expect_lists=True)["missed"]
 
 
 def report(text: str, summary_md: str | None) -> None:
@@ -315,7 +337,7 @@ def check(args: argparse.Namespace, tools: Tools) -> int:
         head_out = os.path.join(out, "head")
         code = run_mutants(tools, ["-d", head_tree, "--in-diff", head_diff, *shard],
                            head_out, "head")
-        results = read_results(head_out, code)
+        results = read_results(head_out, code, "head")
         missed = results["missed"]
         base_missed = base_misses(tools, base, head, out, missed) if missed else []
         new, old = split_new_old(missed, base_missed)

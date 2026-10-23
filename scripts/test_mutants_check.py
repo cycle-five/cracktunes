@@ -159,14 +159,14 @@ class GitFixture:
                               check=True, capture_output=True, text=True).stdout
 
     def commit(self, files: dict, message: str) -> str:
-        """Write each file (None deletes it), add exactly those paths, commit."""
+        """Write each file (str or bytes; None deletes it), add exactly those paths, commit."""
         for rel, text in files.items():
             path = os.path.join(self.path, rel)
             if text is None:
                 self.git("rm", "-q", "--", rel)
             else:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
-                with open(path, "w") as f:
+                with open(path, "wb" if isinstance(text, bytes) else "w") as f:
                     f.write(text)
                 self.git("add", "--", rel)
         self.git("commit", "-q", "-m", message)
@@ -191,12 +191,12 @@ def sections(text: str) -> dict:
 
 
 class Run:
-    """One scripted cargo-mutants call: its exit code and the lists it writes,
-    or, for `--list`, the names it prints."""
+    """One scripted cargo-mutants call: its exit code and the lists it writes
+    (none at all with write=False), or, for `--list`, the names it prints."""
 
-    def __init__(self, code=0, missed=(), caught=(), listed=(), log=""):
+    def __init__(self, code=0, missed=(), caught=(), timeout=(), listed=(), log="", write=True):
         self.code, self.missed, self.caught = code, list(missed), list(caught)
-        self.listed, self.log = list(listed), log
+        self.timeout, self.listed, self.log, self.write = list(timeout), list(listed), log, write
 
 
 class FakeTools(mc.Tools):
@@ -219,9 +219,12 @@ class FakeTools(mc.Tools):
         run = self.runs.pop(0)
         if "--list" in args:
             return run.code, "".join(n + "\n" for n in run.listed)
+        if not run.write:
+            return run.code, ""
         outdir = os.path.join(args[args.index("--output") + 1], "mutants.out")
         os.makedirs(os.path.join(outdir, "log"))
-        lists = {"missed": run.missed, "caught": run.caught, "unviable": [], "timeout": []}
+        lists = {"missed": run.missed, "caught": run.caught, "unviable": [],
+                 "timeout": run.timeout}
         for name, names in lists.items():
             with open(os.path.join(outdir, f"{name}.txt"), "w") as f:
                 f.write("".join(n + "\n" for n in names))
@@ -245,12 +248,12 @@ class PipelineTests(unittest.TestCase):
             {"Cargo.toml": CARGO_TOML, "src/lib.rs": LIB_RS, "README.md": "fixture\n"}, "base")
         self.out = os.path.join(root, "out")
 
-    def check(self, runs, head, *extra):
+    def check(self, runs, head, *extra, out=None):
         fake = FakeTools(self.repo.path, runs)
         stdout, stderr = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             code = mc.main(["--repo", self.repo.path, "--base", self.base, "--head", head,
-                            "--output", self.out, *extra],
+                            "--output", out or self.out, *extra],
                            make_tools=lambda repo: fake)
         return code, stdout.getvalue(), stderr.getvalue(), fake
 
@@ -367,6 +370,85 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(fake.tree_existed, [True, True, True])
         self.assert_trees_removed()
         self.assertEqual(sections(out), {"NEW": [FRESH, L1], "Old": [L0]})
+
+
+    def test_no_mutants_in_changed_lines_passes(self):
+        # cargo-mutants exits 0 without writing mutants.out when the changed
+        # lines hold no mutant (a comment, test code).
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        code, out, err, fake = self.check([Run(code=0, write=False)], head)
+        self.assertEqual(code, 0, err)
+        self.assertIn("cargo-mutants found no mutants in the changed lines", out)
+        self.assertIn("cargo-mutants: 0 caught, 0 missed, 0 unviable, 0 timed out\n"
+                      "PASS: no new misses", out)
+        self.assertEqual(len(fake.calls), 1)
+
+    def test_no_lists_after_nonzero_exit_exits_2(self):
+        # mutants.sh exits 2 itself when sweep_target.py refuses (set -e): the
+        # same code as "some missed", but nothing ran.
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        code, out, err, fake = self.check([Run(code=2, write=False)], head)
+        self.assertEqual(code, 2)
+        lists_dir = os.path.join(os.path.abspath(self.out), "head", "mutants.out")
+        self.assertIn(f"cargo-mutants exited 2 on the head run but wrote no {lists_dir}", err)
+        self.assertNotIn("internal error", err)
+
+    def test_no_lists_from_base_run_exits_2(self):
+        # The base --list named mutants, so its run must write lists.
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        code, out, err, fake = self.check(
+            [Run(code=2, missed=[L0]), Run(listed=[L0]), Run(code=0, write=False)], head)
+        self.assertEqual(code, 2)
+        lists_dir = os.path.join(os.path.abspath(self.out), "base", "mutants.out")
+        self.assertIn(f"cargo-mutants exited 0 on the base run but wrote no {lists_dir}", err)
+
+    def test_exit_code_contradicting_lists_exits_2(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        cases = [
+            ("exit 2, nothing missed", Run(code=2, caught=[L0]), "exited 2"),
+            ("exit 3, nothing timed out", Run(code=3, missed=[L0]), "exited 3"),
+            ("exit 0, a miss", Run(code=0, missed=[L0]), "exited 0"),
+        ]
+        for i, (label, run, says) in enumerate(cases):
+            with self.subTest(label):
+                code, out, err, fake = self.check(
+                    [run], head, out=os.path.join(self._tmp.name, f"out-{i}"))
+                self.assertEqual(code, 2, out + err)
+                self.assertIn(f"cargo-mutants {says} on the head run, but its lists", err)
+                self.assertEqual(len(fake.calls), 1)
+
+    def test_diff_ignores_user_prefix_config(self):
+        # cargo-mutants strips only a literal b/: with other prefixes it would
+        # match no file, select no mutant, and the check would pass.
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        configs = [("diff.noprefix", "true"), ("diff.mnemonicPrefix", "true"),
+                   ("diff.srcPrefix", "x/"), ("diff.dstPrefix", "y/")]
+        for i, (name, value) in enumerate(configs):
+            with self.subTest(name):
+                self.repo.git("config", name, value)
+                out_dir = os.path.join(self._tmp.name, f"out-{i}")
+                try:
+                    code, out, err, fake = self.check([Run()], head, out=out_dir)
+                finally:
+                    self.repo.git("config", "--unset", name)
+                self.assertEqual(code, 0, err)
+                with open(os.path.join(out_dir, "head.diff"), "rb") as f:
+                    diff = f.read()
+                self.assertTrue(diff.startswith(b"diff --git a/src/lib.rs b/src/lib.rs\n"), diff)
+                self.assertIn(b"\n--- a/src/lib.rs\n+++ b/src/lib.rs\n", diff)
+
+    def test_diff_is_written_byte_for_byte(self):
+        crlf = "pub fn crlf() -> u32 {\r\n    // café\r\n    1\r\n}\r\n".encode()
+        head = self.repo.commit({"src/crlf.rs": crlf}, "a CRLF file")
+        code, out, err, fake = self.check([Run()], head)
+        self.assertEqual(code, 0, err)
+        expected = subprocess.run(
+            ["git", "-C", self.repo.path, "diff", "--no-ext-diff", "--no-color",
+             "--src-prefix=a/", "--dst-prefix=b/", self.base, head, "--", "*.rs"],
+            check=True, capture_output=True).stdout
+        self.assertIn(b"\r\n", expected)
+        with open(os.path.join(self.out, "head.diff"), "rb") as f:
+            self.assertEqual(f.read(), expected)
 
 
 if __name__ == "__main__":
