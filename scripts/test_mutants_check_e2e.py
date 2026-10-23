@@ -36,12 +36,13 @@ def touch(text: str, line: str) -> str:
     return text.replace(line, line.rstrip("\n") + " // touched\n")
 
 
-@unittest.skipUnless(have_cargo_mutants(), "cargo-mutants is not installed")
-class EndToEndTests(unittest.TestCase):
+class E2EBase(unittest.TestCase):
+    """A fixture repo whose base commit is LIB_RS, and `check` to run the script on it."""
+
     @classmethod
     def setUpClass(cls):
         cls.scratch = os.path.join(os.path.expanduser("~"), ".cache", "cargo-mutants",
-                                   f"e2e-{os.getpid()}")
+                                   f"e2e-{os.getpid()}-{cls.__name__}")
         os.makedirs(cls.scratch)
 
     @classmethod
@@ -62,6 +63,9 @@ class EndToEndTests(unittest.TestCase):
             env={**os.environ, "CRACK_MUTANTS_SCRATCH": self.scratch})
         return proc.returncode, proc.stdout, proc.stdout + proc.stderr
 
+
+@unittest.skipUnless(have_cargo_mutants(), "cargo-mutants is not installed")
+class EndToEndTests(E2EBase):
     def test_touching_legacy_reports_old(self):
         code, out, log = self.check(touch(LIB_RS, "    x + 1\n"))
         self.assertEqual(code, 0, log)
@@ -112,6 +116,62 @@ class EndToEndTests(unittest.TestCase):
             "src/lib.rs:6:7: replace * with + in covered",
             "src/lib.rs:6:7: replace * with / in covered"]}, log)
         self.assertIn("FAIL: 4 new misses", out)
+
+
+# 🔑 The two tests below pin the corresponding selection (spec section 4, "New
+# or old"). cargo-mutants marks an inserted line alone, but a deleted line's
+# neighbours on both sides. A base run limited by the REVERSED diff therefore
+# looked at other lines than the head run did: an untested line inserted next
+# to an untested twin passed as old, and a deletion next to an old miss failed.
+PICK_RS = """\
+pub fn pick(a: u32, b: u32) -> u32 {
+    let x = if a > 1 { 10 } else { 20 };
+    let z = x + b;
+    z
+}
+"""
+PICK_DELETABLE_RS = """\
+pub fn pick(a: u32) -> u32 {
+    let x = if a > 1 { 10 } else { 20 };
+    let _unused = a;
+    x
+}
+"""
+
+
+@unittest.skipUnless(have_cargo_mutants(), "cargo-mutants is not installed")
+class CorrespondingSelectionTests(E2EBase):
+    def rebase(self, lib_rs: str):
+        """Make a base whose lib.rs is lib_rs: the e2e base plus an untested `pick`."""
+        self.base = self.repo.commit({"src/lib.rs": lib_rs}, "base with pick")
+
+    def test_inserted_twin_of_an_old_miss_is_new(self):
+        # The head inserts an untested `b > 1` next to the untested `a > 1`.
+        # Each `>` mutant now has two copies on the head and one on the base.
+        self.rebase(PICK_RS + "\n" + LIB_RS)
+        inserted = "    let _y = if b > 1 { 30 } else { 40 };\n"
+        head = PICK_RS.replace("    let z = x + b;\n", inserted + "    let z = x + b;\n")
+        code, out, log = self.check(head + "\n" + LIB_RS)
+        self.assertEqual(code, 1, log)
+        found = sections(out)
+        self.assertEqual(found.get("NEW"), [
+            "src/lib.rs:3:19: replace > with == in pick",
+            "src/lib.rs:3:19: replace > with < in pick",
+            "src/lib.rs:3:19: replace > with >= in pick"], log)
+        self.assertIn("FAIL: 3 new misses", out)
+
+    def test_deletion_beside_an_old_miss_keeps_it_old(self):
+        # The head deletes a statement below the untested `a > 1`. The head
+        # run marks that line (it neighbours the deletion), so the base run
+        # must look at it too.
+        self.rebase(PICK_DELETABLE_RS + "\n" + LIB_RS)
+        head = PICK_DELETABLE_RS.replace("    let _unused = a;\n", "")
+        code, out, log = self.check(head + "\n" + LIB_RS)
+        self.assertEqual(code, 0, log)
+        found = sections(out)
+        self.assertNotIn("NEW", found, log)
+        self.assertIn("src/lib.rs:2:18: replace > with == in pick", found.get("Old", []), log)
+        self.assertIn("PASS: no new misses", out)
 
 
 if __name__ == "__main__":

@@ -185,7 +185,9 @@ scripts/mutants_check.py --help        # every option
 - It reads commits, never the working tree: `--head` defaults to `HEAD`, and
   `--base` to the merge base with `origin/master`. Both are snapshotted with
   `git archive`.
-- It lists the mutants on the lines `base..head` touched and runs them.
+- It lists the mutants on the lines `base..head` touched, plus the head's
+  lines that correspond to what the base side marks (see "New or old"), and
+  runs them.
 - If any are missed, it reruns just those on the base to tell new from old.
 - It prints a summary (`--summary-md FILE` also appends it as Markdown) and
   exits 0 (no new misses), 1 (new misses) or 2 (anything else).
@@ -220,9 +222,22 @@ A miss is **old** if the same mutant is also missed on the base commit, and
   ones.
 - **Misses are matched as a multiset:** two identical descriptions in one file
   count twice.
-- A mutant on a line the change wrote doesn't exist on the base, so it is new.
+- A miss is new unless the base misses a twin on its corresponding lines.
+  A mutant the change adds (a new operator, a new function, a second copy of
+  one) is new. A rewritten line that keeps its operator (`a > 1` to `a > 2`)
+  matches the old line's twin, so if that was missed too, the miss stays old:
+  the change didn't make it worse.
 - A miss in a file the base doesn't have is new. 🪤 So is one in a renamed and
   modified file: the key carries the path.
+- 🔑 **The two runs look at corresponding lines.** cargo-mutants' `--in-diff`
+  marks an inserted line alone, but a deleted line's neighbours on both sides,
+  so the reversed diff on the base would look at other code than the diff on
+  the head. An inserted untested line would then pass as old next to an
+  untested twin, and a deletion next to an old miss would fail as new. The
+  check marks each side by cargo-mutants' rule, maps each onto the other
+  through the diff, and gives each run the union as a synthetic diff
+  (`head.diff`, `base.diff`; the change itself is `change.diff`). The head run
+  so selects a few more mutants than raw `--in-diff` would.
 - **What this gives up:** there is no count of the whole tree's misses until
   each module has had its pass (below).
 

@@ -357,11 +357,28 @@ Timeouts count as caught, but they are listed.
   so the lines a change shifts don't matter. Misses are matched as a multiset, so two identical
   descriptions in one file count twice.
 - **Only the misses are rerun on the base,** so a change whose mutants are all caught pays
-  nothing extra. A mutant on a line the change wrote doesn't exist on the base, so it is new.
+  nothing extra. A miss is new unless the base misses a twin: the same description in the same
+  file, on the base's corresponding lines (below). So a mutant the change adds (a new operator,
+  a new function, a second copy of one) is new, but a rewritten line that keeps its operator
+  (`a > 1` to `a > 2`) matches the old line's twin, and stays old if that was missed too.
 - 🪤 cargo-mutants 27.1 applies its name filter (`--re`) to every mutant except "delete field"
-  ones. The base run is therefore also limited to the code the change touched, with the
-  reversed diff (`--in-diff`), which does apply to them; otherwise every "delete field" mutant
-  in the file would run too.
+  ones. The base run is therefore also limited by line (`--in-diff`), which does apply to them;
+  otherwise every "delete field" mutant in the file would run too.
+- 🪤 **The two runs' lines correspond line for line** (amended 2026-10-22 after the final
+  review; this bullet first prescribed the reversed diff, and that was the defect).
+  - cargo-mutants marks lines asymmetrically (in_diff.rs `affected_lines`): an inserted line
+    marks only itself, and a deleted line marks the line before it and the line after it.
+  - So the reversed diff selected other code on the base than the diff did on the head. For a
+    pure insertion, the base side also took the line above the gap: an untested twin there
+    excused the new line's miss, a silent pass. For a pure deletion, the head side took the
+    gap's neighbours, which the base never ran: an old miss there read as new, a false block.
+  - The check computes both sides from one parsed diff: each side's lines by cargo-mutants'
+    rule, mapped onto the other side through the diff's line correspondence, and the union taken
+    per side. Each run gets a synthetic diff that marks exactly its set (one single-line
+    insertion hunk per line).
+  - The head run therefore selects slightly more than raw `--in-diff` would; that is what makes
+    the two counts comparable. CI's Plan job counts the mutants with the same head diff
+    (`mutants_check.py --write-head-diff`).
 - **What this gives up:** there is no count of the whole tree's misses until each module has
   had its pass.
 

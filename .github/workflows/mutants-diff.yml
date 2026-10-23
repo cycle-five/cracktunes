@@ -54,18 +54,25 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
+      # 🔑 The head selection comes from the check itself (--write-head-diff),
+      # so Plan counts exactly the mutants the shards will run: the PR's lines
+      # plus the lines that correspond to what the base side marks (see "The
+      # corresponding selection" in scripts/mutants_check.py). A raw
+      # `git diff` here would count fewer.
       - name: Find the PR's own change
         id: diff
         shell: bash
         run: |
           base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           echo "base=$base" >> "$GITHUB_OUTPUT"
-          # No Rust change, no mutants: skip the toolchain and tool installs.
-          if git diff --quiet "$base" "$HEAD_SHA" -- '*.rs'; then
-            echo "rust=false" >> "$GITHUB_OUTPUT"
-            echo "No Rust changed between $base and $HEAD_SHA: nothing to mutate." >> "$GITHUB_STEP_SUMMARY"
-          else
+          python3 scripts/mutants_check.py --base "$base" --head "$HEAD_SHA" \
+            --write-head-diff "$RUNNER_TEMP/head.diff"
+          # No Rust line to mutate, no mutants: skip the toolchain and tool installs.
+          if [ -s "$RUNNER_TEMP/head.diff" ]; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+            echo "No Rust line to mutate between $base and $HEAD_SHA." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: "Install Rust"
@@ -90,10 +97,6 @@ jobs:
         run: |
           count=0
           if [ "$RUST" = "true" ]; then
-            # 🪤 Explicit prefixes, as mutants_check.py writes them: cargo-mutants
-            # strips only a literal `b/`.
-            git diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ \
-              "$BASE" "$HEAD_SHA" -- '*.rs' > "$RUNNER_TEMP/head.diff"
             count="$(scripts/mutants.sh --list --in-diff "$RUNNER_TEMP/head.diff" | wc -l)"
           fi
           shards=$(( (count + 5) / 6 ))

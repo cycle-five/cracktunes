@@ -267,6 +267,43 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(code, 0, err)
         self.assertIn(f"no Rust changes between {self.base[:12]} and {head[:12]}", out)
         self.assertEqual(fake.calls, [])
+        self.assertFalse(os.path.exists(self.out))  # nothing to run, nothing left behind
+
+    def test_only_deleting_rust_has_nothing_to_mutate(self):
+        self.repo.commit({"src/gone.rs": "pub fn gone() -> u32 { 1 }\n"}, "add a file")
+        self.base = self.repo.git("rev-parse", "HEAD").strip()
+        head = self.repo.commit({"src/gone.rs": None}, "delete it")
+        code, out, err, fake = self.check([], head)
+        self.assertEqual(code, 0, err)
+        self.assertIn(f"no Rust lines to mutate on {head[:12]}", out)
+        self.assertEqual(fake.calls, [])
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_write_head_diff(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        path = os.path.join(self._tmp.name, "head.diff")
+        code, out, err, fake = self.check([], head, "--write-head-diff", path)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(fake.calls, [])  # it never runs cargo-mutants
+        self.assertFalse(os.path.exists(self.out))
+        with open(path, "rb") as f:
+            written = f.read()
+        # The same synthetic diff the head run would get: lines 1-3 (see
+        # test_base_call_args), one single-line insertion hunk each.
+        self.assertEqual(written, (
+            b"diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n"
+            b"@@ -0,0 +1,1 @@\n+pub fn legacy(x: u32) -> u32 {\n"
+            b"@@ -1,0 +2,1 @@\n+    // touched\n"
+            b"@@ -2,0 +3,1 @@\n+    x + 1\n"))
+
+    def test_write_head_diff_without_rust_changes_is_empty(self):
+        head = self.repo.commit({"README.md": "fixture, edited\n"}, "docs only")
+        path = os.path.join(self._tmp.name, "head.diff")
+        code, out, err, fake = self.check([], head, "--write-head-diff", path)
+        self.assertEqual(code, 0, err)
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), b"")
+        self.assertEqual(fake.calls, [])
 
     def test_bad_rev_exits_2(self):
         code, out, err, fake = self.check([], "no-such-rev")
@@ -350,8 +387,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(flag_values(head_call, "-j"), ["1"])
         self.assertEqual(flag_values(head_call, "--shard"), ["1/3"])
         self.assertEqual(flag_values(head_call, "--sharding"), ["round-robin"])
-        # The base --list: the reversed diff on the base snapshot, one --re per miss
-        # whose file exists on the base; never sharded.
+        # The base --list: the base's corresponding lines on the base snapshot,
+        # one --re per miss whose file exists on the base; never sharded.
         self.assertEqual(flag_values(list_call, "-d"), [os.path.join(out_dir, "base-tree")])
         self.assertEqual(flag_values(list_call, "--in-diff"), [os.path.join(out_dir, "base.diff")])
         self.assertEqual(flag_values(list_call, "--re"), [  # name_regex(L0), name_regex(L1)
@@ -364,8 +401,23 @@ class PipelineTests(unittest.TestCase):
                          [a for a in list_call if a != "--list"])
         self.assertEqual(flag_values(base_call, "--output"), [os.path.join(out_dir, "base")])
         self.assertEqual(flag_values(base_call, "-j"), ["1"])
-        with open(os.path.join(out_dir, "base.diff")) as f:
-            self.assertIn("-    // touched", f.read())
+        # The head inserted line 2 (`// touched`), so the head run marks it; the
+        # base marks the lines either side of the gap, its 1 and 2, which are
+        # the head's 1 and 3. Each side gets the union, line for line.
+        with open(os.path.join(out_dir, "head.diff"), "rb") as f:
+            self.assertEqual(f.read(), (
+                b"diff --git a/src/fresh.rs b/src/fresh.rs\n"
+                b"--- a/src/fresh.rs\n+++ b/src/fresh.rs\n"
+                b"@@ -0,0 +1,1 @@\n+pub fn fresh(x: u32) -> bool { x > 3 }\n"
+                b"diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n"
+                b"@@ -0,0 +1,1 @@\n+pub fn legacy(x: u32) -> u32 {\n"
+                b"@@ -1,0 +2,1 @@\n+    // touched\n"
+                b"@@ -2,0 +3,1 @@\n+    x + 1\n"))
+        with open(os.path.join(out_dir, "base.diff"), "rb") as f:
+            self.assertEqual(f.read(), (
+                b"diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n"
+                b"@@ -0,0 +1,1 @@\n+pub fn legacy(x: u32) -> u32 {\n"
+                b"@@ -1,0 +2,1 @@\n+    x + 1\n"))
         # Each tree existed while cargo-mutants ran on it, and is gone afterwards.
         self.assertEqual(fake.tree_existed, [True, True, True])
         self.assert_trees_removed()
@@ -432,10 +484,12 @@ class PipelineTests(unittest.TestCase):
                 finally:
                     self.repo.git("config", "--unset", name)
                 self.assertEqual(code, 0, err)
-                with open(os.path.join(out_dir, "head.diff"), "rb") as f:
-                    diff = f.read()
-                self.assertTrue(diff.startswith(b"diff --git a/src/lib.rs b/src/lib.rs\n"), diff)
-                self.assertIn(b"\n--- a/src/lib.rs\n+++ b/src/lib.rs\n", diff)
+                for name in ("change.diff", "head.diff", "base.diff"):
+                    with open(os.path.join(out_dir, name), "rb") as f:
+                        diff = f.read()
+                    self.assertTrue(
+                        diff.startswith(b"diff --git a/src/lib.rs b/src/lib.rs\n"), diff)
+                    self.assertIn(b"\n--- a/src/lib.rs\n+++ b/src/lib.rs\n", diff)
 
     def test_diff_is_written_byte_for_byte(self):
         crlf = "pub fn crlf() -> u32 {\r\n    // café\r\n    1\r\n}\r\n".encode()
@@ -447,8 +501,210 @@ class PipelineTests(unittest.TestCase):
              "--src-prefix=a/", "--dst-prefix=b/", self.base, head, "--", "*.rs"],
             check=True, capture_output=True).stdout
         self.assertIn(b"\r\n", expected)
-        with open(os.path.join(self.out, "head.diff"), "rb") as f:
+        with open(os.path.join(self.out, "change.diff"), "rb") as f:
             self.assertEqual(f.read(), expected)
+        # The head run's diff carries the tree's lines with their CR too.
+        with open(os.path.join(self.out, "head.diff"), "rb") as f:
+            self.assertIn("+    // café\r\n".encode(), f.read())
+
+
+# --- The corresponding selection ---------------------------------------------
+
+
+def hunk(old_start, new_start, kinds):
+    """A Hunk whose lengths are counted from kinds (' ', '-', '+')."""
+    return mc.Hunk(old_start, kinds.count(" ") + kinds.count("-"),
+                   new_start, kinds.count(" ") + kinds.count("+"), kinds)
+
+
+class AffectedLinesTests(unittest.TestCase):
+    """The port of cargo-mutants 27.1.0's in_diff.rs affected_lines: an
+    inserted line marks itself; a deleted line marks the line before it and
+    the line after it, in the new file."""
+
+    def test_insert(self):
+        # Lines 1-2 kept, one inserted as line 3, three kept.
+        self.assertEqual(mc.affected_lines([hunk(1, 1, "  +   ")]), [3])
+
+    def test_insert_run(self):
+        self.assertEqual(mc.affected_lines([hunk(1, 1, "  ++ ")]), [3, 4])
+
+    def test_delete(self):
+        # Old line 3 deleted: new lines 2 (before) and 3 (after) are marked.
+        self.assertEqual(mc.affected_lines([hunk(1, 1, "  -  ")]), [2, 3])
+
+    def test_delete_at_line_1(self):
+        # Nothing comes before line 1, so only the line after is marked.
+        self.assertEqual(mc.affected_lines([hunk(1, 1, "-   ")]), [1])
+
+    def test_delete_at_end_of_file(self):
+        # Nothing comes after, so only the line before is marked.
+        self.assertEqual(mc.affected_lines([hunk(1, 1, "  -")]), [2])
+
+    def test_modify(self):
+        # A modified line 2 is a deletion then an insertion: line 1 and line 2.
+        self.assertEqual(mc.affected_lines([hunk(1, 1, " -+ ")]), [1, 2])
+
+    def test_mixed_hunk(self):
+        # " -+ + -  ": modify line 2, insert line 4, delete old line 5.
+        #   ' ' new 1; '-' marks 1; '+' marks 2; ' ' 3; '+' marks 4; ' ' 5;
+        #   '-' marks 5 (before); ' ' marks 6 (after); ' ' 7.
+        self.assertEqual(mc.affected_lines([hunk(1, 1, " -+ + -  ")]), [1, 2, 4, 5, 6])
+
+    def test_multiple_hunks(self):
+        self.assertEqual(
+            mc.affected_lines([hunk(1, 1, "  +   "), hunk(20, 21, "   -   ")]),
+            [3, 23, 24])
+
+    def test_whole_file_added_and_deleted(self):
+        self.assertEqual(mc.affected_lines([hunk(0, 1, "+++")]), [1, 2, 3])
+        # A deleted file's new side starts at 0: nothing in it is marked.
+        self.assertEqual(mc.affected_lines([mc.Hunk(1, 3, 0, 0, "---")]), [])
+
+
+class ReverseAndMapTests(unittest.TestCase):
+    def test_reverse_swaps_sides_and_puts_deletions_first(self):
+        # git prints a change's deletions before its insertions, in either
+        # direction; the reversed modify must too.
+        self.assertEqual(mc.reverse_hunk(hunk(3, 5, " -+ ++ ")),
+                         mc.Hunk(5, 6, 3, 4, " -+ -- "))
+
+    def test_map_lines_insert(self):
+        h = [hunk(1, 1, "  +   ")]  # new line 3 is inserted
+        self.assertEqual(mc.map_lines({1, 2, 3, 4, 5, 9}, h), {1, 2, 4, 5, 6, 10})
+
+    def test_map_lines_delete(self):
+        h = [hunk(1, 1, "  -  ")]  # old line 3 is deleted
+        self.assertEqual(mc.map_lines({2, 3, 4, 9}, h), {2, 3, 8})
+
+    def test_map_lines_zero_context(self):
+        # git -U0: `@@ -5,0 +6,1 @@` inserts after old line 5.
+        h = [mc.Hunk(5, 0, 6, 1, "+")]
+        self.assertEqual(mc.map_lines({5, 6}, h), {5, 7})
+        # `@@ -6,2 +5,0 @@` deletes old lines 6-7.
+        h = [mc.Hunk(6, 2, 5, 0, "--")]
+        self.assertEqual(mc.map_lines({5, 6, 7, 8}, h), {5, 6})
+
+    def test_map_lines_two_hunks(self):
+        h = [hunk(1, 1, "  +   "), hunk(20, 21, "   -   ")]
+        # Old 10 is between the hunks (+1); old 23 is deleted; old 30 is after (+0).
+        self.assertEqual(mc.map_lines({10, 23, 30}, h), {11, 30})
+
+
+PICK = "fn pick(a: u32) -> u32 {\n    let x = if a > 1 { 10 } else { 20 };\n    let z = x + 1;\n    z\n}\n"
+
+
+class SelectionTests(unittest.TestCase):
+    """corresponding_selection on real `git diff` output."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = GitFixture(os.path.join(self._tmp.name, "repo"))
+        self.tools = mc.Tools(self.repo.path)
+
+    def select(self, base_files, head_files):
+        base = self.repo.commit(base_files, "base")
+        head = self.repo.commit(head_files, "head")
+        patches = mc.parse_diff(mc.rust_diff(self.tools, base, head))
+        return mc.corresponding_selection(patches)
+
+    def test_pure_insertion(self):
+        head = PICK.replace("    let z", "    let y = if a > 2 { 1 } else { 2 };\n    let z")
+        h, b = self.select({"f.rs": PICK}, {"f.rs": head})
+        # The head marks its inserted line 3; the base marks the lines around
+        # the gap (2 and 3), which are the head's 2 and 4.
+        self.assertEqual(h, {"f.rs": [2, 3, 4]})
+        self.assertEqual(b, {"f.rs": [2, 3]})
+
+    def test_pure_deletion(self):
+        h, b = self.select({"f.rs": PICK}, {"f.rs": PICK.replace("    let z = x + 1;\n", "")})
+        # The head marks the lines around the gap (2 and 3); the base marks
+        # its deleted line 3, plus 2 and 4, which are the head's 2 and 3.
+        self.assertEqual(h, {"f.rs": [2, 3]})
+        self.assertEqual(b, {"f.rs": [2, 3, 4]})
+
+    def test_modification_is_symmetric(self):
+        h, b = self.select({"f.rs": PICK}, {"f.rs": PICK.replace("x + 1", "x + 2")})
+        self.assertEqual(h, {"f.rs": [2, 3]})
+        self.assertEqual(b, {"f.rs": [2, 3]})
+
+    def test_added_and_deleted_files(self):
+        h, b = self.select({"gone.rs": "fn a() {}\nfn b() {}\n", "keep.rs": "\n"},
+                           {"gone.rs": None, "new.rs": "fn c() {}\n"})
+        # A file only the head has selects on the head alone, and the other
+        # way round; neither is an error.
+        self.assertEqual(h, {"new.rs": [1]})
+        self.assertEqual(b, {"gone.rs": [1, 2]})
+
+    def test_rename_is_found_whatever_the_config(self):
+        body = "".join(f"fn f{i}() -> u32 {{ {i} }}\n" for i in range(20))
+        self.repo.git("config", "diff.renames", "false")
+        h, b = self.select({"old.rs": body}, {"old.rs": None,
+                                              "new.rs": body.replace("{ 7 }", "{ 70 }")})
+        # Without --find-renames, new.rs would be a 20-line addition.
+        self.assertEqual(h, {"new.rs": [7, 8]})
+        self.assertEqual(b, {"old.rs": [7, 8]})
+
+    def test_parse_diff_rejects_missing_prefixes(self):
+        with self.assertRaises(mc.CheckError):
+            mc.parse_diff(b"diff --git x.rs x.rs\n--- x.rs\n+++ x.rs\n@@ -1 +1 @@\n-a\n+b\n")
+
+    def test_parse_diff_rejects_a_truncated_hunk(self):
+        with self.assertRaises(mc.CheckError):
+            mc.parse_diff(b"diff --git a/x.rs b/x.rs\n--- a/x.rs\n+++ b/x.rs\n@@ -1,2 +1,2 @@\n-a\n")
+
+
+class SyntheticDiffTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo = GitFixture(os.path.join(self._tmp.name, "repo"))
+        self.tools = mc.Tools(self.repo.path)
+
+    def test_lines_equal_the_tree_byte_for_byte(self):
+        files = {
+            "src/a.rs": "fn a() {\n    // café\n    1\n}\n",
+            "src/crlf.rs": "fn c() -> u32 {\r\n    2\r\n}\r\n".encode(),
+            "src/b c.rs": "fn b() {}\n// no newline at the end",
+        }
+        rev = self.repo.commit(files, "files")
+        selection = {"src/a.rs": [1, 2, 4], "src/crlf.rs": [2], "src/b c.rs": [2]}
+        diff = mc.synthetic_diff(selection, lambda p: mc.tree_file(self.tools, rev, p))
+        tree = os.path.join(self._tmp.name, "tree")
+        self.tools.snapshot(rev, tree)
+        patches = mc.parse_diff(diff)
+        self.assertEqual([p.new for p in patches], ["src/a.rs", "src/b c.rs", "src/crlf.rs"])
+        # Every hunk is a one-line insertion of exactly line L.
+        lines_in_diff = {}
+        for p in patches:
+            self.assertEqual(p.old, p.new)
+            for h in p.hunks:
+                self.assertEqual((h.old_start, h.old_len, h.new_len, h.kinds),
+                                 (h.new_start - 1, 0, 1, "+"))
+                lines_in_diff.setdefault(p.new, []).append(h.new_start)
+        self.assertEqual(lines_in_diff, selection)
+        # The text of each `+` line is the snapshot's line, byte for byte.
+        plus = [line[1:] for line in diff.split(b"\n")
+                if line.startswith(b"+") and not line.startswith(b"+++ ")]
+        expected = []
+        for path in sorted(selection):
+            with open(os.path.join(tree, path), "rb") as f:
+                text = f.read().split(b"\n")
+            expected += [text[n - 1] for n in selection[path]]
+        self.assertEqual(plus, expected)
+        self.assertIn(b"    2\r", plus)
+        self.assertIn("    // café".encode(), plus)
+        # A path with a space ends its ---/+++ name with a tab, as git's do.
+        self.assertIn(b"\n--- a/src/b c.rs\t\n+++ b/src/b c.rs\t\n", diff)
+
+    def test_line_past_the_end_is_an_error(self):
+        rev = self.repo.commit({"x.rs": "fn x() {}\n"}, "x")
+        with self.assertRaises(mc.CheckError):
+            mc.synthetic_diff({"x.rs": [2]}, lambda p: mc.tree_file(self.tools, rev, p))
+
+    def test_empty_selection_is_empty(self):
+        self.assertEqual(mc.synthetic_diff({}, lambda p: b""), b"")
 
 
 if __name__ == "__main__":
