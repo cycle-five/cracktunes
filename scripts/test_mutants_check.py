@@ -5,6 +5,7 @@ The pipeline tests run real git on a throwaway repo and fake only
 cargo-mutants (and the database check), so they need no cargo."""
 import contextlib
 import io
+import json
 import os
 import re
 import subprocess
@@ -238,7 +239,9 @@ def flag_values(args: list, flag: str) -> list:
     return [args[i + 1] for i, a in enumerate(args) if a == flag]
 
 
-class PipelineTests(unittest.TestCase):
+class PipelineBase(unittest.TestCase):
+    """A fixture repo with a base commit, and `check` to run main() on it with FakeTools."""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
@@ -260,6 +263,9 @@ class PipelineTests(unittest.TestCase):
     def assert_trees_removed(self):
         self.assertFalse(os.path.exists(os.path.join(self.out, "head-tree")))
         self.assertFalse(os.path.exists(os.path.join(self.out, "base-tree")))
+
+
+class PipelineTests(PipelineBase):
 
     def test_no_rust_changes(self):
         head = self.repo.commit({"README.md": "fixture, edited\n"}, "docs only")
@@ -705,6 +711,164 @@ class SyntheticDiffTests(unittest.TestCase):
 
     def test_empty_selection_is_empty(self):
         self.assertEqual(mc.synthetic_diff({}, lambda p: b""), b"")
+
+
+# --- Shards and the verdict ---------------------------------------------------
+
+
+class ShardResultTests(PipelineBase):
+    """The shard's side of the CI verdict: --shard-result writes its lists."""
+
+    def test_shard_result_written(self):
+        head = self.repo.commit(
+            {"src/lib.rs": LIB_TOUCHED,
+             "src/fresh.rs": "pub fn fresh(x: u32) -> bool { x > 3 }\n"}, "touch and add")
+        base_l0 = "src/lib.rs:2:5: replace legacy -> u32 with 0"
+        base_l1 = "src/lib.rs:2:5: replace legacy -> u32 with 1"
+        path = os.path.join(self._tmp.name, "results", "shard-1.json")
+        code, out, err, fake = self.check(
+            [Run(code=2, missed=[L0, FRESH, L1], caught=["src/lib.rs:6:7: replace * with + in covered"]),
+             Run(listed=[base_l0, base_l1]),
+             Run(code=2, missed=[base_l0], caught=[base_l1])],
+            head, "--shard", "1/3", "--shard-result", path)
+        self.assertEqual(code, 1, err)  # this shard's own view
+        self.assertIn("one shard's view", out)
+        with open(path) as f:
+            result = json.load(f)
+        self.assertEqual(result, {
+            "version": 1,
+            "shard": "1/3",
+            "base": self.base,
+            "head": head,
+            "head_lines": {"src/fresh.rs": [1], "src/lib.rs": [1, 2, 3]},
+            "base_lines": {"src/lib.rs": [1, 2]},
+            "missed": [L0, FRESH, L1],
+            "caught": ["src/lib.rs:6:7: replace * with + in covered"],
+            "unviable": [],
+            "timeout": [],
+            "base_missed": [base_l0],
+        })
+
+    def test_no_shard_result_on_a_broken_run(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        path = os.path.join(self._tmp.name, "shard-0.json")
+        code, out, err, fake = self.check([Run(code=4)], head,
+                                          "--shard", "0/2", "--shard-result", path)
+        self.assertEqual(code, 2)
+        self.assertFalse(os.path.exists(path))
+
+    def test_shard_result_needs_a_shard(self):
+        head = self.repo.commit({"src/lib.rs": LIB_TOUCHED}, "touch legacy")
+        code, out, err, fake = self.check(
+            [], head, "--shard-result", os.path.join(self._tmp.name, "r.json"))
+        self.assertEqual(code, 2)
+        self.assertIn("--shard-result needs --shard", err)
+
+
+K10 = "f.rs:10:5: replace a > b with true in g"
+K12 = "f.rs:12:5: replace a > b with true in g"
+K8_BASE = "f.rs:8:5: replace a > b with true in g"
+K20_BASE = "f.rs:20:5: replace a > b with true in g"
+CAUGHT = "f.rs:30:5: replace h -> u32 with 0"
+
+
+def shard_result(k, n, missed=(), caught=(), base_missed=(), base_lines=None):
+    return {"version": 1, "shard": f"{k}/{n}", "base": "b" * 40, "head": "h" * 40,
+            "head_lines": {"f.rs": [10, 11, 12]},
+            "base_lines": base_lines or {"f.rs": [8, 9, 10]},
+            "missed": list(missed), "caught": list(caught), "unviable": [], "timeout": [],
+            "base_missed": list(base_missed)}
+
+
+class CollectTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = os.path.join(self._tmp.name, "results")
+        os.makedirs(self.dir)
+        self.md = os.path.join(self._tmp.name, "summary.md")
+
+    def write(self, name, result):
+        with open(os.path.join(self.dir, name), "w") as f:
+            json.dump(result, f)
+
+    def collect(self, expect="2"):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            code = mc.main(["--collect", self.dir, "--expect-shards", expect,
+                            "--summary-md", self.md])
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_two_shards_one_base_copy_is_one_new(self):
+        # Each shard alone saw one head copy of K and one base copy: 0 new
+        # each. Together, two head copies against one base copy: 1 new.
+        self.write("shard-0.json", shard_result(0, 2, missed=[K10], caught=[CAUGHT],
+                                                base_missed=[K8_BASE]))
+        self.write("shard-1.json", shard_result(1, 2, missed=[K12], base_missed=[K8_BASE]))
+        code, out, err = self.collect()
+        self.assertEqual(code, 1, err)
+        self.assertEqual(sections(out), {"NEW": [K12], "Old": [K10]})
+        text = mc.summary({"caught": 1, "missed": 2, "unviable": 0, "timeout": 0},
+                          [K12], [K10], [])
+        self.assertIn(text, out)
+        with open(self.md) as f:  # ONE summary, the same text
+            self.assertEqual(f.read(), f"{mc.MD_HEADING}\n\n```text\n{text}\n```\n")
+
+    def test_base_misses_dedupe_by_full_name(self):
+        # Both shards reran K on the base and found the same copy at line 8;
+        # shard 0 also found a second copy at 20. Two base copies: both old.
+        self.write("shard-0.json", shard_result(0, 2, missed=[K12],
+                                                base_missed=[K8_BASE, K20_BASE]))
+        self.write("shard-1.json", shard_result(1, 2, missed=[K10], base_missed=[K8_BASE]))
+        code, out, err = self.collect()
+        self.assertEqual(code, 0, err)
+        # Merged in source order, whatever the shard order.
+        self.assertEqual(sections(out), {"Old": [K10, K12]})
+        self.assertIn("PASS: no new misses", out)
+
+    def test_missing_shard_exits_2(self):
+        self.write("shard-0.json", shard_result(0, 2, missed=[K10], base_missed=[K8_BASE]))
+        code, out, err = self.collect()
+        self.assertEqual(code, 2)
+        self.assertIn("missing shard result(s): 1 of 0..1", err)
+
+    def test_no_results_exits_2(self):
+        code, out, err = self.collect()
+        self.assertEqual(code, 2)
+        self.assertIn("no shard results", err)
+
+    def test_shard_count_mismatch_exits_2(self):
+        self.write("shard-0.json", shard_result(0, 3))
+        self.write("shard-1.json", shard_result(1, 3))
+        code, out, err = self.collect(expect="2")
+        self.assertEqual(code, 2)
+        self.assertIn("expected shards of 2", err)
+
+    def test_duplicate_shard_exits_2(self):
+        self.write("shard-0.json", shard_result(0, 2))
+        self.write("shard-0-again.json", shard_result(0, 2))
+        self.write("shard-1.json", shard_result(1, 2))
+        code, out, err = self.collect()
+        self.assertEqual(code, 2)
+        self.assertIn("shard 0/2 reported twice", err)
+
+    def test_shards_that_selected_differently_exit_2(self):
+        self.write("shard-0.json", shard_result(0, 2))
+        self.write("shard-1.json", shard_result(1, 2, base_lines={"f.rs": [8]}))
+        code, out, err = self.collect()
+        self.assertEqual(code, 2)
+        self.assertIn("shards disagree", err)
+
+    def test_garbage_name_exits_2(self):
+        self.write("shard-0.json", shard_result(0, 2, missed=["not a mutant name"]))
+        self.write("shard-1.json", shard_result(1, 2))
+        code, out, err = self.collect()
+        self.assertEqual(code, 2)
+        self.assertNotIn("internal error", err)
+
+    def test_collect_needs_expect_shards(self):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(mc.main(["--collect", self.dir]), 2)
 
 
 if __name__ == "__main__":

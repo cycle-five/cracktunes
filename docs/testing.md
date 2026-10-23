@@ -273,6 +273,13 @@ always write the reason.
 - It is skipped when a PR changes no `.rs` file.
 - Mutants are dealt out at 6 per shard, at most 24 shards, 6 running at once
   (the account's concurrent-job limit is shared by every repo).
+- 🔑 **The `Mutants verdict` job gives the verdict, not the shards.** A shard
+  sees only its share of the mutants, so two copies of one mutant in two
+  shards would each be excused by the same single base copy. Each shard
+  uploads its lists (`--shard-result`) and fails only on a broken run; the
+  verdict job merges them (`mutants_check.py --collect`), compares once, and
+  fails on new misses. A shard with misses also uploads its output
+  (`mutants-diff-<n>`) to read the missed mutants' diffs.
 - A shard pays a cold build and an unmutated run (about 3 minutes), then about
   2 minutes per mutant. Measured smoke (2026-10-22): a 2-shard `crack-types`
   run took about 3.5-4.5 minutes per shard.

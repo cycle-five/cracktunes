@@ -5,6 +5,8 @@ only on NEW misses.
     scripts/mutants_check.py [--base REV] [--head REV] [--shard K/N]
                              [--output DIR] [--summary-md FILE] [--repo DIR]
     scripts/mutants_check.py [--base REV] [--head REV] --write-head-diff FILE
+    scripts/mutants_check.py ... --shard K/N --shard-result FILE   (CI, each shard)
+    scripts/mutants_check.py --collect DIR --expect-shards N       (CI, the verdict)
 
 The gate runs cargo-mutants on the code a PR touched and fails only on NEW
 misses (spec section 4, "New or old"). A miss is old if the base commit has
@@ -38,6 +40,7 @@ Stdlib only.
 """
 import argparse
 import collections
+import json
 import os
 import re
 import shutil
@@ -49,6 +52,7 @@ import traceback
 import typing
 
 LINE_RE = re.compile(r"^(.+?):\d+:\d+: (.+)$")
+POS_RE = re.compile(r"^(.+?):(\d+):(\d+): (.+)$")
 # The characters regex::escape escapes in Rust.
 RUST_SPECIAL = set("\\.+*?()|[]{}^$#&-~")
 
@@ -61,6 +65,7 @@ LISTS = ("missed", "caught", "unviable", "timeout")
 RESULT_CODES = (0, 2, 3)
 DISK_FULL = b"No space left on device"
 MD_HEADING = "### cargo-mutants diff check"
+RESULT_VERSION = 1  # of the --shard-result file
 
 
 def key(name: str) -> str:
@@ -482,16 +487,24 @@ def rust_diff(tools: Tools, old: str, new: str) -> bytes:
                            "--src-prefix=a/", "--dst-prefix=b/", old, new, "--", "*.rs")
 
 
-def selection_diffs(tools: Tools, base: str, head: str) -> tuple[bytes, bytes, bytes]:
-    """(the change's own diff, the head run's synthetic diff, the base run's).
+class Selection(typing.NamedTuple):
+    change: bytes  # the change's own diff, base→head
+    head_lines: dict[str, list[int]]
+    base_lines: dict[str, list[int]]
+    head_diff: bytes  # the synthetic diff that selects head_lines
+    base_diff: bytes  # the synthetic diff that selects base_lines
+
+
+def selection_diffs(tools: Tools, base: str, head: str) -> Selection:
+    """The change's diff, each side's lines, and each run's synthetic diff.
 
     Both synthetic diffs come from the one change diff, so their lines
     correspond (see "The corresponding selection" above)."""
     change = rust_diff(tools, base, head)
     head_lines, base_lines = corresponding_selection(parse_diff(change))
-    head_diff = synthetic_diff(head_lines, lambda path: tree_file(tools, head, path))
-    base_diff = synthetic_diff(base_lines, lambda path: tree_file(tools, base, path))
-    return change, head_diff, base_diff
+    return Selection(change, head_lines, base_lines,
+                     synthetic_diff(head_lines, lambda path: tree_file(tools, head, path)),
+                     synthetic_diff(base_lines, lambda path: tree_file(tools, base, path)))
 
 
 def write_bytes(path: str, data: bytes) -> None:
@@ -588,28 +601,49 @@ def report(text: str, summary_md: str | None) -> None:
             f.write(f"{MD_HEADING}\n\n```text\n{text}\n```\n")
 
 
+def write_shard_result(args: argparse.Namespace, base: str, head: str, sel: Selection,
+                       results: dict[str, list[str]], base_missed: list[str]) -> None:
+    """One shard's lists, for --collect: the head run's four lists, the base
+    run's misses, and the lines both runs selected (every shard must agree)."""
+    if not args.shard_result:
+        return
+    result = {"version": RESULT_VERSION, "shard": args.shard, "base": base, "head": head,
+              "head_lines": sel.head_lines, "base_lines": sel.base_lines,
+              **{name: results[name] for name in LISTS}, "base_missed": base_missed}
+    os.makedirs(os.path.dirname(os.path.abspath(args.shard_result)), exist_ok=True)
+    with open(args.shard_result, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=1)
+    print(f"shard {args.shard}: the summary above is one shard's view; "
+          "the verdict merges every shard (--collect)")
+
+
 def check(args: argparse.Namespace, tools: Tools) -> int:
+    if args.shard_result and not args.shard:
+        raise CheckError("--shard-result needs --shard")
     head = resolve(tools, args.head)
     base = resolve(tools, args.base) if args.base else default_base(tools, head)
-    change, head_diff, base_diff = selection_diffs(tools, base, head)
+    sel = selection_diffs(tools, base, head)
     if args.write_head_diff:
-        write_bytes(args.write_head_diff, head_diff)
+        write_bytes(args.write_head_diff, sel.head_diff)
         print(f"wrote the head selection for {base[:12]}..{head[:12]} to {args.write_head_diff}"
-              f" ({head_diff.count(b'@@ -')} line(s))")
+              f" ({sel.head_diff.count(b'@@ -')} line(s))")
         return 0
-    if not change:
+    nothing = {name: [] for name in LISTS}
+    if not sel.change:
         print(f"no Rust changes between {base[:12]} and {head[:12]}")
+        write_shard_result(args, base, head, sel, nothing, [])
         return 0
-    if not head_diff:
+    if not sel.head_diff:
         print(f"no Rust lines to mutate on {head[:12]}: the change only deletes or renames")
+        write_shard_result(args, base, head, sel, nothing, [])
         return 0
     out = prepare_output(args.output or os.path.join(
         scratch_root(), f"check-{head[:12]}-{int(time.time())}"))
     head_tree = os.path.join(out, "head-tree")
     try:
-        write_bytes(os.path.join(out, "change.diff"), change)
-        write_bytes(os.path.join(out, "head.diff"), head_diff)
-        write_bytes(os.path.join(out, "base.diff"), base_diff)
+        write_bytes(os.path.join(out, "change.diff"), sel.change)
+        write_bytes(os.path.join(out, "head.diff"), sel.head_diff)
+        write_bytes(os.path.join(out, "base.diff"), sel.base_diff)
         tools.snapshot(head, head_tree)
         shard = ["--shard", args.shard, "--sharding", "round-robin"] if args.shard else []
         head_out = os.path.join(out, "head")
@@ -621,12 +655,91 @@ def check(args: argparse.Namespace, tools: Tools) -> int:
         new, old = split_new_old(missed, base_missed)
         counts = {name: len(names) for name, names in results.items()}
         report(summary(counts, new, old, results["timeout"]), args.summary_md)
+        write_shard_result(args, base, head, sel, results, base_missed)
         return 1 if new else 0
     finally:
         # Only the two snapshots go; the diffs and mutants.out stay for inspection.
         for tree in (head_tree, os.path.join(out, "base-tree")):
             shutil.rmtree(tree, ignore_errors=True)
         print(f"output: {out}")
+
+
+# --- The verdict over shards --------------------------------------------------
+#
+# 🔑 Why a sharded run needs a verdict of its own: each shard compares ITS head
+# misses with the base misses it reran. Two copies of a key in two shards are
+# each excused by the same single base copy, so two-against-one reads as no new
+# miss. --collect merges every shard first: the head lists are concatenated
+# (shards partition the head's mutants), the base misses are de-duplicated by
+# FULL name, line and column included (two shards rerunning one key find the
+# same base mutants), and split_new_old runs once.
+
+
+def position(name: str) -> tuple[str, int, int]:
+    """(file, line, column) of a mutant name, to put merged lists in source order."""
+    m = POS_RE.match(name)
+    if not m:
+        raise CheckError(f"not a cargo-mutants line: {name!r}")
+    return m.group(1), int(m.group(2)), int(m.group(3))
+
+
+def read_shard_result(path: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as f:
+            result = json.load(f)
+    except (OSError, ValueError) as e:
+        raise CheckError(f"unreadable shard result {path}: {e}") from None
+    expected = {"version", "shard", "base", "head", "head_lines", "base_lines",
+                *LISTS, "base_missed"}
+    if not isinstance(result, dict) or set(result) != expected:
+        raise CheckError(f"{path} is not a shard result (version {RESULT_VERSION})")
+    if result["version"] != RESULT_VERSION or not isinstance(result["shard"], str) \
+            or not re.fullmatch(r"\d+/\d+", result["shard"]):
+        raise CheckError(f"{path} is not a shard result (version {RESULT_VERSION})")
+    for name in (*LISTS, "base_missed"):
+        names = result[name]
+        if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+            raise CheckError(f"{path}: {name} is not a list of names")
+        for n in names:
+            position(n)
+    return result
+
+
+def collect(args: argparse.Namespace) -> int:
+    if args.expect_shards is None or args.expect_shards < 1:
+        raise CheckError("--collect needs --expect-shards N (N >= 1)")
+    want = args.expect_shards
+    paths = sorted(os.path.join(args.collect, f) for f in os.listdir(args.collect)
+                   if f.endswith(".json")) if os.path.isdir(args.collect) else []
+    if not paths:
+        raise CheckError(f"no shard results (*.json) in {args.collect}")
+    by_shard: dict[int, dict] = {}
+    for path in paths:
+        result = read_shard_result(path)
+        k, n = (int(x) for x in result["shard"].split("/"))
+        if n != want:
+            raise CheckError(f"{path} is shard {result['shard']}, but expected shards of {want}")
+        if k in by_shard:
+            raise CheckError(f"shard {result['shard']} reported twice")
+        by_shard[k] = result
+    missing = sorted(set(range(want)) - set(by_shard))
+    if missing:
+        raise CheckError(f"missing shard result(s): {', '.join(map(str, missing))} "
+                         f"of 0..{want - 1}")
+    first = by_shard[0]
+    for result in by_shard.values():
+        for field in ("base", "head", "head_lines", "base_lines"):
+            if result[field] != first[field]:
+                raise CheckError(f"shards disagree on {field}: shard {result['shard']} "
+                                 f"differs from shard {first['shard']}")
+    merged = {name: sorted((n for k in sorted(by_shard) for n in by_shard[k][name]),
+                           key=position) for name in LISTS}
+    base_missed = list(dict.fromkeys(n for k in sorted(by_shard)
+                                     for n in by_shard[k]["base_missed"]))
+    new, old = split_new_old(merged["missed"], base_missed)
+    counts = {name: len(names) for name, names in merged.items()}
+    report(summary(counts, new, old, merged["timeout"]), args.summary_md)
+    return 1 if new else 0
 
 
 def shard_arg(text: str) -> str:
@@ -660,6 +773,15 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
                    help="write the diff that selects the head run's lines to FILE and exit 0 "
                    "without running cargo-mutants (an empty FILE: nothing to mutate); CI's Plan "
                    "job counts the mutants with it")
+    p.add_argument("--shard-result", metavar="FILE",
+                   help="with --shard: also write the shard's lists to FILE (JSON) for "
+                   "--collect, when the run gives a result (exit 0 or 1)")
+    p.add_argument("--collect", metavar="DIR",
+                   help="give the verdict over a sharded run instead of running one: merge "
+                   "the --shard-result files in DIR, compare once, and exit 0, 1 or 2 as a "
+                   "check does")
+    p.add_argument("--expect-shards", metavar="N", type=int,
+                   help="with --collect: how many shards ran; a missing one is exit 2")
     p.add_argument("--repo", metavar="DIR", default=REPO,
                    help="the git repository the commits are in (default: this script's)")
     return p.parse_args(argv)
@@ -671,6 +793,8 @@ def main(argv: list[str] | None = None, make_tools=Tools) -> int:
     except SystemExit as e:  # argparse: 2 for bad arguments, 0 for --help
         return e.code
     try:
+        if args.collect:
+            return collect(args)
         return check(args, make_tools(os.path.abspath(args.repo)))
     except CheckError as e:
         print(f"mutants_check: {e}", file=sys.stderr)

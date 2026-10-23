@@ -4,7 +4,15 @@ name: Mutants (PR diff)
 # PR touches is mutation-tested, and the job fails only on NEW misses, meaning a
 # mutant the PR's tests miss that the base's tests catch (or that the base does
 # not have). Old, already-missed mutants in touched code are listed, not failed.
-# The logic is scripts/mutants_check.py; this file only fans it out over shards.
+# The logic is scripts/mutants_check.py; this file only fans it out over shards
+# and has `Mutants verdict` give the one verdict.
+#
+# 🔑 The shards do NOT give the verdict. Each shard sees only its share of the
+# head's mutants, and compares them with the base misses it reran itself, so
+# two copies of one mutant in two shards are each excused by the same single
+# base copy. A shard therefore fails only on a broken run (exit 2), and uploads
+# its lists; `Mutants verdict` merges every shard's lists, compares once
+# (`mutants_check.py --collect`), and fails on new misses.
 #
 # 🔑 The local per-task check is the real gate. This job is the backstop for
 # what slipped past it, so it can afford to be slow but must not be flaky.
@@ -166,7 +174,8 @@ jobs:
         with:
           tool: cargo-nextest@0.9.149,cargo-mutants@27.1.0
 
-      - name: Check the PR's mutants
+      - name: Check this shard's mutants
+        id: check
         env:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
           PG_USER: postgres
@@ -175,15 +184,81 @@ jobs:
           HEAD: ${{ needs.plan.outputs.head }}
           SHARD: ${{ matrix.shard }}
           SHARDS: ${{ needs.plan.outputs.shards }}
+        shell: bash
         run: |
+          code=0
           python3 scripts/mutants_check.py --base "$BASE" --head "$HEAD" \
-            --shard "$SHARD/$SHARDS" --summary-md "$GITHUB_STEP_SUMMARY" \
-            --output "$RUNNER_TEMP/mutants-check"
+            --shard "$SHARD/$SHARDS" --output "$RUNNER_TEMP/mutants-check" \
+            --shard-result "$RUNNER_TEMP/results/shard-$SHARD.json" || code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          # 0 and 1 are this shard's results, not the verdict (see the top of
+          # this file). 2 is a broken run, and fails the shard.
+          case "$code" in
+            0|1) exit 0 ;;
+            *) exit "$code" ;;
+          esac
 
+      # Shard-numbered file names: `Mutants verdict` downloads every shard's
+      # artifact into one directory.
+      - name: Upload the shard's result
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-diff-result-${{ matrix.shard }}
+          path: ${{ runner.temp }}/results/
+          if-no-files-found: error
+
+      # The diffs and cargo-mutants' logs: for a broken run, and for a shard
+      # with misses (to read what each missed mutant changed).
       - name: Upload the check's output for debugging
-        if: failure()
+        if: failure() || steps.check.outputs.code == '1'
         uses: actions/upload-artifact@v7
         with:
           name: mutants-diff-${{ matrix.shard }}
           path: ${{ runner.temp }}/mutants-check
           if-no-files-found: ignore
+
+  collect:
+    name: Mutants verdict
+    needs: [plan, shard]
+    # 🔑 always(): a failed or cancelled shard must make this red, not skipped.
+    # It is skipped only when Plan found nothing to mutate; if Plan itself
+    # failed, `count` is empty, so this runs and refuses.
+    if: always() && needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The script only: the same version the shards ran.
+      - name: Repository Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check that every shard succeeded
+        env:
+          SHARD_RESULT: ${{ needs.shard.result }}
+        shell: bash
+        run: |
+          if [ "$SHARD_RESULT" != "success" ]; then
+            echo "::error::broken run: the shard jobs finished as '$SHARD_RESULT'"
+            echo "broken run: the shard jobs finished as '$SHARD_RESULT'" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      # 🪤 merge-multiple: download-artifact@v8 with a pattern extracts a
+      # SINGLE matching artifact flat but several into subdirectories (see
+      # mutants-full.yml's collect job). With it, every shard's file lands in
+      # results/ whatever the shard count.
+      - name: Download every shard's result
+        uses: actions/download-artifact@v8
+        with:
+          pattern: mutants-diff-result-*
+          path: results
+          merge-multiple: true
+
+      - name: Give the verdict
+        env:
+          SHARDS: ${{ needs.plan.outputs.shards }}
+        shell: bash
+        run: |
+          python3 scripts/mutants_check.py --collect results --expect-shards "$SHARDS" \
+            --summary-md "$GITHUB_STEP_SUMMARY"
