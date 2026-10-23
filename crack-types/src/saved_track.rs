@@ -26,8 +26,8 @@ impl SavedTrack {
     /// plus the URL `build_track` plays from.
     pub fn to_metadata(&self) -> AuxMetadata {
         AuxMetadata {
-            title: self.title.clone(), // smoke
-            artist: self.artist.clone(), // smoke
+            title: self.title.clone(),
+            artist: self.artist.clone(),
             duration: self.duration,
             source_url: Some(self.url.clone()),
             ..AuxMetadata::default()
@@ -55,10 +55,6 @@ impl SavedTrack {
                 .map(Duration::from_secs),
         }
     }
-}
-
-pub fn smoke_untested(x: u32) -> bool {
-    x > 3
 }
 
 #[cfg(test)]
