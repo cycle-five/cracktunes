@@ -1,13 +1,27 @@
-name: Mutants (full run)
+name: Mutants (module pass)
 
-# Runs every cargo-mutants mutant across many shards and uploads the combined
-# list of missed mutants as the `mutants-missed` artifact. PR B builds the first
-# baseline from that artifact. There is no gate here yet: `collect` only
-# compares against `.cargo/mutants-baseline.txt` once that file exists.
+# A module pass: run EVERY cargo-mutants mutant in one chosen module, sharded,
+# and upload the combined list of missed mutants as the `mutants-missed`
+# artifact. The pass is ordinary work in its own PR: you read the list, fix
+# what the tests should catch, and waive (with a reason) what no test can.
+# There is no gate and no schedule here; the per-PR gate is mutants-diff.yml.
 #
-# 🔑 Dispatch only, for now. A full run's duration is unknown until one has
-# happened, and a schedule would burn runner minutes blind. The schedule
-# arrives in PR B, once a run has told us how long it takes.
+# Dispatch it with a file glob (several globs: separate them with commas):
+#
+#   gh workflow run mutants-full.yml -f files='crack-core/src/economy/**'
+#   gh workflow run mutants-full.yml -f files='crack-core/src/db/**,crack-core/src/guild/**' -f shards=12
+#
+# Each glob becomes its own `-f` for cargo-mutants. `files` is required: with
+# no glob the run is the whole tree, which is about 35 hours, so the plan job
+# refuses an empty value. List a module's mutants first with
+# `scripts/mutants.sh --list -f '<glob>'` to size `shards`.
+#
+# 🔑 Timing: about 2 minutes per mutant on CI, spread over the shards, plus a
+# cold build and the unmutated run (about 3 minutes) in each shard. 500
+# mutants at the default 8 shards is about 63 per shard, about 2 hours. Keep a
+# shard under about 120 mutants: the job cap is 340 minutes, one timed-out
+# shard throws away a multi-hour pass, and 120 leaves room for the 25-30%
+# runner variance measured below.
 #
 # 🔑 `max_parallel` defaults to 8 because the account's concurrent-job limit is
 # shared with every other workflow. A wider fan-out would starve CI for PRs.
@@ -23,37 +37,34 @@ name: Mutants (full run)
 # 🔑 An incomplete run produces no `mutants-missed`. A shard that fails (a dead
 # Postgres, a timeout) uploads only a debugging artifact, `mutants-failed-<n>`,
 # and `collect` refuses to combine anything unless every shard succeeded. An
-# undercounted missed list would poison the baseline built from it.
+# undercounted missed list would hide misses you then believe you have fixed.
 #
 # `--sharding round-robin` deals the mutants out one at a time, so each shard
 # gets a similar mix of crates and so a similar duration. The default
 # (`slice`) cuts the list into contiguous runs: a shard of quick crack-types
 # mutants would finish long before one of crack-core's database-heavy ones.
-# Even shards keep the shard count, and the run's length, predictable.
 #
-# 🪤 No `--baseline skip`. The baseline run guards against a broken
-# environment: with a dead Postgres every mutant would look caught, and the
-# empty missed list would later wipe the recorded baseline. The checks after
-# the run (see the shard job) guard against one that breaks part-way.
+# 🪤 No `--baseline skip`. The unmutated baseline run guards against a broken
+# environment: with a dead Postgres every mutant would look caught. The checks
+# after the run (see the shard job) guard against one that breaks part-way.
 #
-# 🔑 Timing, measured on ubuntu-latest (2026-10-22, 20 mutants): the baseline
-# took about 3 minutes and a mutant about 2 on average (a missed crack-core
-# mutant: about 110 s to build and 52 s to test). The same 20 mutants ran
-# 25-30% faster on another runner, so runner speed varies. 7,732 mutants at
-# about 124 s each is roughly 266 runner-hours. The default of 70 shards gives
-# about 110 mutants and 4 hours per shard, inside the 340-minute job cap with
-# room for a slow runner. At 8 at a time a full run takes about 35 hours,
-# more than the 12 a scheduled run may take, so the schedule (PR B) will
-# rotate through slices instead of running everything at once.
+# 🔑 Timing, measured on ubuntu-latest (2026-10-22, 20 mutants): the unmutated
+# baseline took about 3 minutes and a mutant about 2 on average (a missed
+# crack-core mutant: about 110 s to build and 52 s to test). The same 20
+# mutants ran 25-30% faster on another runner, so runner speed varies.
 # Disk is not the limit: the runner had 84 GB free, and a shard used about 3.
 
 on:
   workflow_dispatch:
     inputs:
+      files:
+        description: "File glob(s) to mutate, comma-separated, e.g. crack-core/src/economy/**"
+        type: string
+        required: true
       shards:
         description: "Number of shards to split the mutants into"
         type: number
-        default: 70
+        default: 8
       max_parallel:
         description: "Shards allowed to run at once"
         type: number
@@ -63,7 +74,7 @@ on:
 permissions:
   contents: read
 
-# 🔑 One full run at a time. The account's concurrent-job slots are shared with
+# 🔑 One pass at a time. The account's concurrent-job slots are shared with
 # every other workflow, and a second run would double the fan-out that
 # `max_parallel` keeps low. A new dispatch waits for the current run instead of
 # cancelling it, since a cancelled run uploads nothing. (GitHub keeps one run
@@ -84,8 +95,21 @@ jobs:
         id: plan
         env:
           SHARDS: ${{ inputs.shards }}
+          FILES: ${{ inputs.files }}
         shell: bash
         run: |
+          # Globs are data here, never shell patterns.
+          set -f
+          globs=0
+          IFS=',' read -ra parts <<< "$FILES"
+          for part in "${parts[@]}"; do
+            part="${part#"${part%%[![:space:]]*}"}"
+            [ -n "$part" ] && globs=$((globs + 1))
+          done
+          if [ "$globs" -eq 0 ]; then
+            echo "::error::a module pass needs a file glob (the whole tree takes about 35 hours)"
+            exit 1
+          fi
           shards="$SHARDS"
           # GitHub caps a matrix at 256 jobs. At most three digits keeps a huge
           # number from overflowing bash's comparison.
@@ -159,6 +183,7 @@ jobs:
           PG_PASSWORD: mysecretpassword
           SHARD: ${{ matrix.shard }}
           SHARDS: ${{ needs.plan.outputs.shards }}
+          FILES: ${{ inputs.files }}
         # Features and profile come from .cargo/mutants.toml; do not repeat them.
         #
         # 🔑 A broken environment makes the missed list silently too short,
@@ -173,8 +198,18 @@ jobs:
         # mutant would fail the shard.
         run: |
           df -h .
+          # One `-f` per comma-separated glob; set -f keeps the shell from
+          # expanding them.
+          set -f
+          fileargs=()
+          IFS=',' read -ra parts <<< "$FILES"
+          for part in "${parts[@]}"; do
+            part="${part#"${part%%[![:space:]]*}"}"
+            part="${part%"${part##*[![:space:]]}"}"
+            [ -n "$part" ] && fileargs+=(-f "$part")
+          done
           code=0
-          cargo mutants --in-place --sharding round-robin \
+          cargo mutants --in-place --sharding round-robin "${fileargs[@]}" \
             --shard "$SHARD/$SHARDS" --output out || code=$?
           echo "cargo-mutants exited with $code"
           df -h .
@@ -275,7 +310,7 @@ jobs:
         run: |
           cat shards/missed-*.txt | sort > missed-all.txt
           {
-            echo "## cargo-mutants full run"
+            echo "## cargo-mutants module pass"
             for kind in caught missed unviable timeout; do
               echo "- $kind: $(cat shards/$kind-*.txt | wc -l)"
             done
@@ -286,13 +321,3 @@ jobs:
         with:
           name: mutants-missed
           path: missed-all.txt
-
-      - name: Compare with the baseline
-        shell: bash
-        run: |
-          if [ -f .cargo/mutants-baseline.txt ]; then
-            python3 scripts/mutants_baseline.py compare \
-              --baseline .cargo/mutants-baseline.txt --missed missed-all.txt
-          else
-            echo "no baseline yet: recording only" | tee -a "$GITHUB_STEP_SUMMARY"
-          fi

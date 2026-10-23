@@ -44,6 +44,15 @@ jobs:
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
+  # 🔑 Pull requests only: it mutation-tests the PR's own Rust change and runs
+  # beside Build and Lint, not after them. See mutants-diff.yml.
+  mutants:
+    name: Mutants
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/mutants-diff.yml
+
   docker:
     name: Docker
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'

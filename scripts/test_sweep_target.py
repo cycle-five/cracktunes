@@ -71,6 +71,51 @@ class SweepTests(SweepBase):
         self.assertEqual(code, 2)
         self.assertTrue(old.exists())
 
+    def test_a_target_dir_that_does_not_exist_yet_is_fine(self):
+        # A fresh CI checkout has no target dir until the first build.
+        import shutil
+        shutil.rmtree(self.target)
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertIn("does not exist yet", out)
+
+    def test_scratch_is_swept_without_a_target_dir(self):
+        import shutil
+        shutil.rmtree(self.target)
+        mine = self.scratch / "cargo-mutants-crack-AbCd.tmp"
+        check = self.scratch / "check-0123456789ab-1700000000"
+        for p in (mine, check):
+            p.mkdir()
+        age(mine, 3)
+        age(check, 30)
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertFalse(mine.exists())
+        self.assertFalse(check.exists())
+
+    def test_stale_check_output_dirs(self):
+        old = self.scratch / "check-0123456789ab-1700000000"
+        (old / "head" / "mutants.out").mkdir(parents=True)
+        recent = self.scratch / "check-0123456789ab-1790000000"
+        recent.mkdir()
+        other = self.scratch / "e2e-1234"
+        other.mkdir()
+        a_file = self.scratch / "check-notes"
+        a_file.write_text("x")
+        for p in (old, other, a_file):
+            age(p, 30)
+        age(recent, 10)
+        self.assertEqual(st.stale_checks(self.scratch, time.time()), [old])
+        code, out = self.run_main("--dry-run")
+        self.assertEqual(code, 0)
+        self.assertTrue(old.exists())
+        self.assertIn(f"would remove {old}", out)
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertFalse(old.exists())
+        for p in (recent, other, a_file):
+            self.assertTrue(p.exists(), p)
+
     def test_stale_scratch_only_matches_cargo_mutants_prefix(self):
         mine = self.scratch / "cargo-mutants-crack-AbCd.tmp"
         other = self.scratch / "something-else"

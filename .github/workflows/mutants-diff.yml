@@ -1,0 +1,300 @@
+name: Mutants (PR diff)
+
+# Gates a pull request on the mutants its own change adds: every Rust line the
+# PR touches is mutation-tested, and the job fails only on NEW misses, meaning a
+# mutant the PR's tests miss that the base's tests catch (or that the base does
+# not have). Old, already-missed mutants in touched code are listed, not failed.
+# The logic is scripts/mutants_check.py; this file only fans it out over shards
+# and has `Mutants verdict` give the one verdict.
+#
+# 🔑 The shards do NOT give the verdict. Each shard sees only its share of the
+# head's mutants, and compares them with the base misses it reran itself, so
+# two copies of one mutant in two shards are each excused by the same single
+# base copy. A shard therefore fails only on a broken run (exit 2), and uploads
+# its lists; `Mutants verdict` merges every shard's lists, compares once
+# (`mutants_check.py --collect`), and fails on new misses.
+#
+# 🔑 The local per-task check is the real gate. This job is the backstop for
+# what slipped past it, so it can afford to be slow but must not be flaky.
+#
+# 🔑 Budget (spec): a typical PR of up to about 20 mutants should finish within
+# about 15 minutes of Build. A big feature PR takes longer; that is accepted.
+#
+# 🔑 Cost, measured on ubuntu-latest (2026-10-23, a throwaway crack-core smoke
+# on #628: 7 mutants in 2 shards, 6 of them missed). Build took 5-10 minutes
+# in these runs, and this job runs beside it.
+#   - A crack-core shard first builds and tests the unmutated tree: 260-290 s
+#     of build on a PR's FIRST Mutants run, about 105 s on its later pushes
+#     (the dependencies restored by rust-cache), plus 51 s of tests.
+#     🪤 A PR's first run is always cold: this job runs only on pull
+#     requests, a cache a PR saves is scoped to that PR, so master never saves
+#     one that a new PR could restore.
+#   - Then each MISSED crack-core mutant costs 160-170 s (105-120 s to build,
+#     51 s to test). A caught one pays the same build and stops at its first
+#     failing test.
+#   - A shard with misses then runs the base side: one more unmutated build
+#     and test (about 2.6 minutes, reusing the head run's dependencies) plus
+#     the same 160-170 s for each miss the base has a twin of.
+#   - The smoke's 4-mutant shard took 22.8 minutes on the PR's first run
+#     (cold), 19.6 on a re-run (warm), and 24.5 before the shared target
+#     (scripts/mutants.sh, CRACK_MUTANTS_SHARED_TARGET); its 3-mutant shard
+#     took 12-14 minutes; Plan and Mutants verdict take under 20 s each.
+#   - So a crack-core PR whose mutants are mostly caught roughly fits the
+#     budget: an estimate, since the smoke caught none; a shard of 6 caught
+#     crack-core mutants should take about 15-20 minutes. One whose shards
+#     carry several misses (new or old: old ones are rerun on the base) does
+#     not: about 30-40 minutes for a shard of 6 misses.
+#
+# 🔑 6 mutants per shard: 24 shards at most (6 running at once, so 4 waves)
+# bound the fan-out for a huge PR. The shard timeout, 75 minutes, is about the
+# worst shard (6 crack-core misses rerun on the base, or 6 timeouts, cold:
+# about 43 minutes) plus the 25-30% runner variance and room to spare; a
+# timed-out shard reads as an ordinary red job.
+#
+# 🔑 Both jobs check out the PR HEAD, not the default merge ref: the diff must
+# be the PR's own change, not whatever master gained since. The base is the
+# merge base with the PR's base commit, for the same reason. `fetch-depth: 0`
+# because the check runs `git diff` and `git archive` on both commits.
+# (In a reusable workflow `github.event` is the caller's event.)
+#
+# 🔑 `max-parallel: 6`: the account's 20 concurrent jobs are shared with every
+# repo, and Build and Lint run beside this.
+
+on:
+  workflow_call:
+
+# Least privilege: these jobs only check out, build and upload artifacts.
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      base: ${{ steps.plan.outputs.base }}
+      head: ${{ steps.plan.outputs.head }}
+      count: ${{ steps.plan.outputs.count }}
+      shards: ${{ steps.plan.outputs.shards }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    env:
+      SQLX_OFFLINE: "true"
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      # 🔑 The head selection comes from the check itself (--write-head-diff),
+      # so Plan counts exactly the mutants the shards will run: the PR's lines
+      # plus the lines that correspond to what the base side marks (see "The
+      # corresponding selection" in scripts/mutants_check.py). A raw
+      # `git diff` here would count fewer.
+      - name: Find the PR's own change
+        id: diff
+        shell: bash
+        run: |
+          base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          python3 scripts/mutants_check.py --base "$base" --head "$HEAD_SHA" \
+            --write-head-diff "$RUNNER_TEMP/head.diff"
+          # No Rust line to mutate, no mutants: skip the toolchain and tool installs.
+          if [ -s "$RUNNER_TEMP/head.diff" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+            echo "No Rust line to mutate between $base and $HEAD_SHA." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: "Install Rust"
+        if: steps.diff.outputs.rust == 'true'
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+        shell: bash
+
+      - name: Install cargo-nextest and cargo-mutants
+        if: steps.diff.outputs.rust == 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149,cargo-mutants@27.1.0
+
+      - name: Count the mutants and plan the shards
+        id: plan
+        env:
+          BASE: ${{ steps.diff.outputs.base }}
+          RUST: ${{ steps.diff.outputs.rust }}
+        shell: bash
+        run: |
+          count=0
+          if [ "$RUST" = "true" ]; then
+            count="$(scripts/mutants.sh --list --in-diff "$RUNNER_TEMP/head.diff" | wc -l)"
+          fi
+          shards=$(( (count + 5) / 6 ))
+          [ "$shards" -lt 1 ] && shards=1
+          [ "$shards" -gt 24 ] && shards=24
+          {
+            echo "base=$BASE"
+            echo "head=$HEAD_SHA"
+            echo "count=$count"
+            echo "shards=$shards"
+            echo "matrix=[$(seq -s, 0 $((shards - 1)))]"
+          } >> "$GITHUB_OUTPUT"
+          echo "$count mutants in the PR's changed lines, in $shards shard(s) of at most 6." >> "$GITHUB_STEP_SUMMARY"
+
+  shard:
+    name: Shard ${{ matrix.shard }}
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      SQLX_OFFLINE: "true"
+      CRACK_MUTANTS: "1"
+      NEXTEST_PROFILE: mutants
+      # 🔑 One target dir for every build in the shard, the workspace's own
+      # `target/`, which rust-cache restores (see scripts/mutants.sh): the
+      # dependencies come from the cache, and the base run reuses the head
+      # run's build instead of paying a second cold one.
+      CRACK_MUTANTS_SHARED_TARGET: "1"
+    steps:
+      # Full history at the PR head: the check reads both commits (see above).
+      - name: Repository Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: "Install yt-dlp"
+        run: |
+          curl -sSL --output /usr/local/bin/yt-dlp https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux
+          chmod +x /usr/local/bin/yt-dlp
+        shell: bash
+
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+        shell: bash
+
+      - uses: ikalnytskyi/action-setup-postgres@v8
+        with:
+          username: postgres
+          password: mysecretpassword
+          database: postgres
+          port: 5432
+          # 🪤 PIN THIS. v8 installs from PGDG and defaults to 18, but both
+          # stacks run postgres:16-alpine (see build.yml).
+          postgres-version: "16"
+        id: postgres
+
+      # Its own key, apart from the module pass's `mutants`: that pass builds
+      # in place with a different target layout, and rust-cache saves
+      # nothing after an exact key hit, so a shared key would keep whichever
+      # layout saved first.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: mutants-diff
+
+      - name: Install cargo-nextest and cargo-mutants
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149,cargo-mutants@27.1.0
+
+      - name: Check this shard's mutants
+        id: check
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: postgres
+          PG_PASSWORD: mysecretpassword
+          BASE: ${{ needs.plan.outputs.base }}
+          HEAD: ${{ needs.plan.outputs.head }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ needs.plan.outputs.shards }}
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        shell: bash
+        run: |
+          code=0
+          python3 scripts/mutants_check.py --base "$BASE" --head "$HEAD" \
+            --shard "$SHARD/$SHARDS" --output "$RUNNER_TEMP/mutants-check" \
+            --shard-result "$RUNNER_TEMP/results/shard-$SHARD.json" || code=$?
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          # 0 and 1 are this shard's results, not the verdict (see the top of
+          # this file). 2 is a broken run, and fails the shard.
+          case "$code" in
+            0|1) exit 0 ;;
+            *) exit "$code" ;;
+          esac
+
+      # Shard-numbered file names: `Mutants verdict` downloads every shard's
+      # artifact into one directory.
+      - name: Upload the shard's result
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-diff-result-${{ matrix.shard }}
+          path: ${{ runner.temp }}/results/
+          if-no-files-found: error
+
+      # The diffs and cargo-mutants' logs: for a broken run, and for a shard
+      # with misses (to read what each missed mutant changed).
+      - name: Upload the check's output for debugging
+        if: failure() || steps.check.outputs.code == '1'
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutants-diff-${{ matrix.shard }}
+          path: ${{ runner.temp }}/mutants-check
+          if-no-files-found: ignore
+
+  collect:
+    name: Mutants verdict
+    needs: [plan, shard]
+    # 🔑 always(): a failed or cancelled shard must make this red, not skipped.
+    # It is skipped only when Plan found nothing to mutate; if Plan itself
+    # failed, `count` is empty, so this runs and refuses.
+    if: always() && needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The script only: the same version the shards ran.
+      - name: Repository Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check that every shard succeeded
+        env:
+          SHARD_RESULT: ${{ needs.shard.result }}
+        shell: bash
+        run: |
+          if [ "$SHARD_RESULT" != "success" ]; then
+            echo "::error::broken run: the shard jobs finished as '$SHARD_RESULT'"
+            echo "broken run: the shard jobs finished as '$SHARD_RESULT'" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      # 🪤 merge-multiple: download-artifact@v8 with a pattern extracts a
+      # SINGLE matching artifact flat but several into subdirectories (see
+      # mutants-full.yml's collect job). With it, every shard's file lands in
+      # results/ whatever the shard count.
+      - name: Download every shard's result
+        uses: actions/download-artifact@v8
+        with:
+          pattern: mutants-diff-result-*
+          path: results
+          merge-multiple: true
+
+      - name: Give the verdict
+        env:
+          SHARDS: ${{ needs.plan.outputs.shards }}
+        shell: bash
+        run: |
+          python3 scripts/mutants_check.py --collect results --expect-shards "$SHARDS" \
+            --summary-md "$GITHUB_STEP_SUMMARY"

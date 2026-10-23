@@ -43,12 +43,16 @@ profile = "mutants"
 # 🪤 .gitignore also matches a few TRACKED files (`cracktunes.toml`, `data/*`),
 # and those are left out too. No build or test reads them today; a test that
 # starts to would fail the unmutated baseline, not hide among the mutants.
-# (Irrelevant to CI's full run, which mutates the checkout in place.)
+# (Irrelevant to CI's module pass, mutants-full.yml, which mutates its
+# checkout in place on a disposable runner.)
 gitignore = true
 
-# Exclusions are for code that is never worth testing, each with its reason.
-# 🪤 Legacy misses do NOT go here. They go to the baseline, so that the debt
-# stays visible and shrinks on purpose.
+# Exclusions are for code that is never worth testing, each with its reason
+# (scripts/check_waivers.py enforces one per element).
+# 🪤 Legacy misses do NOT go here: an exclusion hides a mutant from every run
+# for good. They are worked down on purpose, a module at a time, in module
+# passes (mutants-full.yml), and nothing lists them in between; the diff check
+# reports the ones a change touches as old.
 exclude_globs = [
     # Test-only tooling: a proc-macro that never ships in the bot. Mutating
     # it says nothing about the bot. (It is also the one crate without the

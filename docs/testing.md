@@ -172,12 +172,187 @@ Coverage says a line ran, not that a test would notice it breaking.
 body with a default) and checks that some test fails. A mutant no test fails on
 is *missed*.
 
-🔑 There is no gate yet. The check on each PR's diff, the baseline and the
-waivers arrive in a follow-up PR; this section covers the tooling that exists.
+### The diff check
+
+The gate mutation-tests only the Rust lines a change touched, and fails only
+on **new** misses. Run it after each task's commit:
+
+```bash
+scripts/mutants_check.py --base <the commit the task started from>
+scripts/mutants_check.py --help        # every option
+```
+
+- It reads commits, never the working tree: `--head` defaults to `HEAD`, and
+  `--base` to the merge base with `origin/master`. Both are snapshotted with
+  `git archive`.
+- It lists the mutants on the lines `base..head` touched, plus the head's
+  lines that correspond to what the base side marks (see "New or old"), and
+  runs them.
+- If any are missed, it reruns just those on the base to tell new from old.
+- It prints a summary (`--summary-md FILE` also appends it as Markdown) and
+  exits 0 (no new misses), 1 (new misses) or 2 (anything else).
+
+🔑 **How the agent uses it:** after each task's commit, run
+`scripts/mutants_check.py --base <the commit the task started from>` in the
+background and give its summary to the task review. A PR's body carries the
+summary, in place of the old "mutation -> caught-by" table.
+
+- **Exit 2 means the environment is broken, not that the tests are weak:**
+  Postgres down after a run, "No space left on device" in the logs, the
+  unmutated tree failing its tests, a cargo-mutants exit code that contradicts
+  its own lists, or lists missing. Fix the cause and rerun. (`--summary-md`
+  gets a `broken run: <reason>` line.)
+- **The Postgres guard** runs `pg_isready` against `DATABASE_URL`, or, when
+  that is unset (as it is locally), the tests' own default URL. Without
+  `pg_isready` installed it prints one line and is skipped.
+- **Cost:** every mutant is a rebuild, so it is minutes, not seconds. When
+  there are misses, a second and smaller run goes to the base. Measured
+  (2026-10-22): a real `crack-core` change (5 new mutants and 2 old, one
+  untested function plus a touched glue function) took 745 s locally end to
+  end, most of it two cold `crack-core` builds.
+- **What a change brings in:** cargo-mutants' whole-function mutants span the
+  function from its first statement to its last. Changing a statement line
+  brings in that function's whole-body mutants; changing a comment or a blank
+  line outside the statements brings in nothing.
+
+### New or old
+
+A miss is **old** if the same mutant is also missed on the base commit, and
+**new** otherwise. This replaced a recorded list of known misses
+(2026-10-22): nothing to keep in step, and no whole-tree run to build it.
+
+- **"The same mutant" is the file plus the mutant's description, with no line
+  or column,** so lines that an edit shifts don't turn old misses into new
+  ones.
+- **Misses are matched as a multiset:** two identical descriptions in one file
+  count twice.
+- A miss is new unless the base misses a twin on its corresponding lines.
+  A mutant the change adds (a new operator, a new function, a second copy of
+  one) is new. A rewritten line that keeps its operator (`a > 1` to `a > 2`)
+  matches the old line's twin, so if that was missed too, the miss stays old:
+  the change didn't make it worse.
+- A miss in a file the base doesn't have is new. 🪤 So is one in a renamed and
+  modified file: the key carries the path.
+- 🔑 **The two runs look at corresponding lines.** cargo-mutants' `--in-diff`
+  marks an inserted line alone, but a deleted line's neighbours on both sides,
+  so the reversed diff on the base would look at other code than the diff on
+  the head. An inserted untested line would then pass as old next to an
+  untested twin, and a deletion next to an old miss would fail as new. The
+  check marks each side by cargo-mutants' rule, maps each onto the other
+  through the diff, and gives each run the union as a synthetic diff
+  (`head.diff`, `base.diff`; the change itself is `change.diff`). The head run
+  so selects a few more mutants than raw `--in-diff` would.
+- **What this gives up:** there is no count of the whole tree's misses until
+  each module has had its pass (below).
+
+### Waivers
+
+Some mutants no test can or should catch. Waive one in code or in config, and
+always write the reason.
+
+- **In code:** `#[cfg_attr(test, mutants::skip)]` with a `//` reason on the
+  line directly above. Any other line that mentions `mutants::skip` (an inner
+  `#![cfg_attr(…)]`, another cfg predicate, an attribute wrapped over several
+  lines) is a waiver too, and needs the same reason directly above the line
+  that holds `mutants::skip`. 🪤 For a wrapped attribute that line is inside
+  the attribute, so the `//` reason goes inside it too, not above `#[`. The
+  first time a crate uses it, add `mutants = "0.0.4"`
+  (the current version, `cargo search mutants`) to that crate's
+  `[dev-dependencies]`. 🪤 Not a normal dependency: `cfg_attr(test, ...)`
+  compiles the attribute only in tests, so the production build never needs
+  the crate.
+- **In config:** an element of a key that narrows what is mutated in
+  `.cargo/mutants.toml` (`exclude_globs`, `exclude_re`, `examine_globs`,
+  `examine_re`, `skip_calls`), one per line, each with a `#` reason (with
+  text) on the line directly above.
+- **Acceptable reasons:**
+  - an equivalent mutant: no test can tell it from the original;
+  - logging- or display-only code. 🪤 Never the privacy-critical `Debug`
+    impls, such as the coin key or anything that could print an address;
+  - performance-only knobs, such as capacities and buffer sizes;
+  - live-Discord glue that can't be reached offline. Prefer moving the
+    decision into a pure function.
+- `scripts/check_waivers.py` fails when a waiver has no reason (and on the
+  bare `#[mutants::skip]`, which would make `mutants` a release dependency).
+  It runs in the `scripts` job of `lint.yml`; run it yourself from the
+  repository root.
+
+### In CI
+
+`mutants-diff.yml` runs the same check as the Mutants job on pull requests.
+
+- It is skipped when a PR changes no `.rs` file.
+- Mutants are dealt out at 6 per shard, at most 24 shards, 6 running at once
+  (the account's concurrent-job limit is shared by every repo).
+- 🔑 **The `Mutants verdict` job gives the verdict, not the shards.** A shard
+  sees only its share of the mutants, so two copies of one mutant in two
+  shards would each be excused by the same single base copy. Each shard
+  uploads its lists (`--shard-result`) and fails only on a broken run; the
+  verdict job merges them (`mutants_check.py --collect`), compares once, and
+  fails on new misses. A shard with misses also uploads its output
+  (`mutants-diff-<n>`) to read the missed mutants' diffs.
+- **Cost, measured 2026-10-23** (a throwaway `crack-core` smoke on #628:
+  7 mutants in 2 shards, 6 missed; Build, beside it, took 5-10 minutes):
+  - a `crack-core` shard first builds and tests the unmutated tree:
+    260-290 s of build on a PR's first Mutants run, about 105 s on its later
+    pushes (the dependencies restored by rust-cache), plus 51 s of tests.
+    🪤 A PR's first run is always cold: the job runs only on pull requests,
+    and a cache a PR saves is scoped to that PR, so master never saves one a
+    new PR could restore;
+  - each missed `crack-core` mutant then costs 160-170 s (105-120 s build,
+    51 s test); a caught one pays the same build and stops at its first
+    failing test;
+  - a shard with misses also runs the base side: one more unmutated run
+    (about 2.6 minutes) plus 160-170 s per miss the base has a twin of;
+  - the smoke's 4-mutant shard took 22.8 minutes on the PR's first run
+    (cold), 19.6 on a re-run (warm), and 24.5 before the shards shared one
+    cached target dir; its 3-mutant shard 12-14 minutes; Plan and the
+    verdict under 20 s each.
+- 🪤 **So the budget holds for some PRs, not all.** A `crack-core` PR whose
+  mutants are mostly caught roughly fits it. That is an estimate, since the
+  smoke caught none: a shard of 6 caught `crack-core` mutants should take
+  about 15-20 minutes. One whose shards carry several misses (old ones count
+  too: they are rerun on the base) takes about 30-40 minutes a shard. A
+  `crack-types` shard is a few minutes (2026-10-22: 3.5-4.5 minutes).
+- In CI, `CRACK_MUTANTS_SHARED_TARGET=1` makes `scripts/mutants.sh` keep the
+  job's absolute `CARGO_TARGET_DIR` (the workspace's `target/`, which
+  rust-cache restores) instead of a target per scratch copy. Locally nothing
+  changes.
+- The local per-task check is the real gate; the job is the backstop for what
+  slipped past it.
+
+### Module passes
+
+The check only sees touched code, so the old misses are worked down on
+purpose, a module at a time, each in its own PR.
+
+```bash
+gh workflow run mutants-full.yml -f files='crack-core/src/economy/**'
+gh workflow run mutants-full.yml -f files='crack-core/src/db/**,crack-core/src/guild/**' -f shards=12
+```
+
+- `files` is required: one glob, or several separated by commas. An empty
+  value fails the run, because the whole tree takes about 35 hours.
+- `shards` (1-256, default 8) and `max_parallel` (default 8, kept low because
+  the concurrent-job limit is shared with every other workflow).
+- **Timing:** about 2 minutes per mutant on a GitHub runner (2026-10-22), so a
+  500-mutant module at 8 shards is about 2 hours. Size it first with
+  `scripts/mutants.sh --list -f '<glob>'`, and keep a shard under about 120
+  mutants: the job cap is 340 minutes, one timed-out shard throws away a
+  multi-hour pass, and runners vary by 25-30%.
+- **Artifact:** `mutants-missed`, the combined missed list. Fix what the tests
+  should catch; waive the rest, with a reason.
+- A run with any failed shard uploads no `mutants-missed` (only
+  `mutants-failed-<n>` for debugging), so a partial list is never mistaken for
+  a full one. A shard also fails when Postgres is down or the disk filled
+  during its run.
+- One pass at a time; a second dispatch waits. There is no schedule.
+
+### Tooling notes
 
 Install it with `cargo install cargo-mutants --version 27.1.0 --locked`, the
-version CI uses: the baseline's keys are 27.1.0's mutant descriptions, and
-another version may word them differently. Run it only through the wrapper:
+version CI uses: the new-or-old key is 27.1.0's mutant description, and
+another version may word it differently. Run it only through the wrapper:
 
 ```bash
 scripts/mutants.sh --list                                 # what would be mutated, no tests run
@@ -194,7 +369,7 @@ the directory you called it in.
 
 - **It refuses `--in-place`.** cargo-mutants copies the tree to a scratch
   directory and mutates the copy; `--in-place` would mutate your working tree,
-  which another session may be editing. (CI's full run does use it, on a
+  which another session may be editing. (CI's module pass does use it, on a
   disposable runner.)
 - **Scratch location:** `$HOME/.cache/cargo-mutants`, or `$CRACK_MUTANTS_SCRATCH`
   if set. Not `/tmp`, which is a small tmpfs in RAM. Each copy has its own
@@ -221,47 +396,6 @@ the directory you called it in.
   Leave the unmutated baseline on (no `--baseline skip`): with a dead
   Postgres, every mutant would look caught.
 
-### The full run
-
-`mutants-full.yml` runs every mutant across shards and uploads the missed ones
-as the `mutants-missed` artifact. It is dispatch-only and exists on master once
-this is merged:
-
-```bash
-gh workflow run mutants-full.yml                          # 70 shards, 8 at a time
-gh workflow run mutants-full.yml -f shards=100 -f max_parallel=8
-```
-
-`shards` is 1-256 (default 70); `max_parallel` is how many run at once
-(default 8), kept low because the concurrent-job limit is shared with every
-other workflow. On a GitHub runner a mutant takes about 2 minutes, so 70
-shards take about 4 hours each, and a whole run about 35 hours at 8 at a
-time.
-A run with any failed shard uploads no `mutants-missed`, so a partial list can
-never become a baseline. A shard also fails when Postgres is down or the disk
-filled during its run, since either would quietly shorten its missed list.
-Only one full run goes at a time; a second dispatch waits.
-
-### The baseline
-
-`.cargo/mutants-baseline.txt` will list the mutants the tests are known to
-miss. It only shrinks. It does not exist yet: the first one is built from the
-full run's artifact in the follow-up PR. Entries carry the file and the
-description but no line or column, so an unrelated edit above a mutant does not
-make a known miss look new.
-
-```bash
-scripts/mutants_baseline.py compare --baseline .cargo/mutants-baseline.txt --missed missed.txt
-scripts/mutants_baseline.py refresh --baseline .cargo/mutants-baseline.txt --missed missed.txt
-```
-
-`compare` exits 1 when the run missed something the baseline does not list.
-`refresh` rewrites the baseline from a missed list and refuses to add entries;
-`--init` creates the file the first time and refuses if it exists. 🪤 Give
-`refresh` the missed list of a COMPLETE full run (the `mutants-missed`
-artifact): a list from one file, one module, an `--in-diff` run or one shard
-drops every baseline entry outside it.
-
 ### What stays manual
 
 cargo-mutants cannot mutate these, so a change to one still needs a hand check:
@@ -277,20 +411,26 @@ break the line and watch a test fail.
 
 Incremental compilation state grows without bound, and mutant runs leave
 scratch copies behind. `scripts/sweep_target.py` clears both, and
-`scripts/mutants.sh` runs it first:
+`scripts/mutants.sh` runs it first. (`scripts/mutants_check.py` runs it once
+itself and sets `CRACK_MUTANTS_NO_SWEEP=1` for its several `mutants.sh`
+calls.)
 
 ```bash
 scripts/sweep_target.py --dry-run     # list what it would delete
 scripts/sweep_target.py
 ```
 
-It deletes exactly two things:
+It deletes exactly three things:
 
 - children of any `incremental/` directory in the target directory (1 to 3
   levels down) untouched for more than 14 days;
 - `cargo-mutants-*` scratch copies under the scratch root untouched for more
-  than 24 hours, which a killed run leaves behind. `--scratch-root DIR`
-  overrides the root.
+  than 24 hours, which a killed run leaves behind;
+- `check-*` output directories of `mutants_check.py` under the scratch root
+  untouched for more than 14 days.
+
+`--scratch-root DIR` overrides the root. The scratch root is swept even when
+the target directory does not exist yet.
 
 🔑 It never deletes the target directory itself and never runs `cargo clean`.
 The target directory is shared with other projects (`build.target-dir` in

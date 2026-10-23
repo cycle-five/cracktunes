@@ -2,6 +2,14 @@
 
 2026-10-22. Agreed with the owner in chat, after a measurement spike the same day.
 
+> **Changed 2026-10-22, after PR A (#624) merged: no full run, no committed baseline.**
+> A full run measured at about 35 hours on GitHub's runners (7,732 mutants at about 2 minutes
+> each, 8 at a time). The owner: "We can't run the 35 hours, we'll be 15 versions ahead of
+> ourselves when it finished, we're moving too fast." The baseline existed only so the diff
+> check could tell an old miss from a new one. The check now asks the base commit instead
+> (section 4, "New or old"). Legacy misses are worked down module by module ("Module
+> passes"). The sections below are updated; the order of work drops the run between the PRs.
+
 ## Why
 
 Two things, in the owner's words.
@@ -27,9 +35,10 @@ of build and test time counts many times over.
      better test, or waived with a written reason.
    - The check replaces the hand-sabotage step in the agent's task loop, and the
      "mutation → caught-by" table in PR bodies.
-4. **Legacy misses are worked down on purpose.**
-   - A committed baseline lists every known missed mutant, and it may only shrink.
-   - A scheduled full run keeps the baseline honest.
+4. **Legacy misses are worked down on purpose,** one module at a time, in deliberate passes.
+   - The diff check never blocks a change for a miss the code already had.
+   - No list of every miss is kept: it would take a 35-hour run to build and be out of date
+     before it finished.
 5. **Tests and builds are faster:**
    - template test databases;
    - a lighter debug-info profile;
@@ -265,11 +274,14 @@ don't have.
      its own change. Comparing every task against master would re-check the whole branch so
      far, and the run would get longer with each task.
 2. Run `cargo mutants --in-diff` with parallel jobs.
-3. Compare the misses with the baseline and print a short summary:
+3. Rerun the misses on the base commit (below, "New or old"), and print a short summary:
    - counts of caught, missed, unviable and timed-out mutants;
    - each new miss, with its location;
-   - known misses in the touched code, listed separately.
+   - old misses in the touched code, listed separately.
 4. Exit non-zero on any **new** miss.
+
+The check works on private snapshots of the two commits, never on the working tree, because
+the agent's loop runs it in the background while the next task edits that tree.
 
 Timeouts count as caught, but they are listed.
 
@@ -338,38 +350,47 @@ Timeouts count as caught, but they are listed.
   function, which the platform-seam rules
   (`docs/investigations/2026-10-22-matrix-music.md`, "Keep the seam in mind") ask for anyway.
 
-**The baseline:**
-- A committed file lists every known missed mutant.
-- **Each entry is the file and the mutant's description, without line and column,** so normal
-  edits don't churn it. Entries are matched as a multiset, so two identical descriptions in one
-  file count twice.
-- **It may only shrink:**
-  - A full run that finds a miss not in the baseline goes red and lists it. That can happen
-    when a test is deleted, or when a waiver is removed.
-  - A refresh drops entries that are no longer missed.
-  - Nothing adds entries automatically. A new miss is fixed or waived.
+**New or old (replaces the baseline, 2026-10-22):**
+- A miss is **old** if the same mutant is also missed on the base commit, and **new**
+  otherwise.
+- **"The same mutant" is the file plus the mutant's description, without line and column,**
+  so the lines a change shifts don't matter. Misses are matched as a multiset, so two identical
+  descriptions in one file count twice.
+- **Only the misses are rerun on the base,** so a change whose mutants are all caught pays
+  nothing extra. A miss is new unless the base misses a twin: the same description in the same
+  file, on the base's corresponding lines (below). So a mutant the change adds (a new operator,
+  a new function, a second copy of one) is new, but a rewritten line that keeps its operator
+  (`a > 1` to `a > 2`) matches the old line's twin, and stays old if that was missed too.
+- 🪤 cargo-mutants 27.1 applies its name filter (`--re`) to every mutant except "delete field"
+  ones. The base run is therefore also limited by line (`--in-diff`), which does apply to them;
+  otherwise every "delete field" mutant in the file would run too.
+- 🪤 **The two runs' lines correspond line for line** (amended 2026-10-22 after the final
+  review; this bullet first prescribed the reversed diff, and that was the defect).
+  - cargo-mutants marks lines asymmetrically (in_diff.rs `affected_lines`): an inserted line
+    marks only itself, and a deleted line marks the line before it and the line after it.
+  - So the reversed diff selected other code on the base than the diff did on the head. For a
+    pure insertion, the base side also took the line above the gap: an untested twin there
+    excused the new line's miss, a silent pass. For a pure deletion, the head side took the
+    gap's neighbours, which the base never ran: an old miss there read as new, a false block.
+  - The check computes both sides from one parsed diff: each side's lines by cargo-mutants'
+    rule, mapped onto the other side through the diff's line correspondence, and the union taken
+    per side. Each run gets a synthetic diff that marks exactly its set (one single-line
+    insertion hunk per line).
+  - The head run therefore selects slightly more than raw `--in-diff` would; that is what makes
+    the two counts comparable. CI's Plan job counts the mutants with the same head diff
+    (`mutants_check.py --write-head-diff`).
+- **What this gives up:** there is no count of the whole tree's misses until each module has
+  had its pass.
 
-**The full run** is a scheduled workflow, sharded across a matrix on GitHub's free runners:
-- **When:** weekly, plus manual dispatch.
-- **What it produces:** the missed list as an artifact.
-- **Refreshing:** a script downloads that artifact and rewrites the baseline. The refresh
-  happens in a normal PR.
-- **My call:** no workflow write permissions. An agent or the owner runs the refresh. A
-  workflow that opens PRs needs `contents: write`, `pull-requests: write` and a repository
-  setting, and buys little.
-- **Shard count:** set from measured per-mutant times, so that each shard finishes in about
-  three hours, well under the six-hour job limit.
-- **Concurrency: a cap of 8 jobs at once, with `max-parallel`. My call.**
-  - `cycle-five` is a user account. Its concurrent-job limit (20 on Free) is shared by every
-    repo it owns: sleevenote, crack-coin, and cracktunes' own PR builds.
-  - A full run must not queue their CI behind it for hours.
-  - **The schedule:** a weekly window when nobody is usually pushing. The builder picks the
-    exact time.
-  - **If a measured full run would take more than about 12 hours** at that cap, it rotates
-    instead: each week covers a fixed slice of the files, and the whole tree is covered every
-    few weeks. The ratchet then checks each slice against the baseline entries for its files.
-- **The first baseline is committed in the same PR that turns the diff check on**
-  ("Order of work"), so no PR ever runs against a missing baseline.
+**Module passes (replace the full run, 2026-10-22):**
+- A pass picks one module, runs every mutant in it, and fixes or waives what it finds. It is
+  ordinary work in its own PR, chosen on purpose, as the owner's "chip away on purpose" asked.
+- PR A's `mutants-full.yml` becomes the tool for it: dispatched by hand with a file glob, it
+  shards that module's mutants and uploads their missed list. It has no schedule.
+- **Concurrency: a cap of 8 jobs at once, with `max-parallel`.** `cycle-five` is a user
+  account. Its concurrent-job limit (20 on Free) is shared by every repo it owns.
+- A pass runs only within the account's limits: about 2 minutes per mutant on CI, so a
+  500-mutant module takes about 2 hours at 8 at a time.
 
 **What stays manual.** cargo-mutants can't mutate:
 - SQL text, including `WHERE` guards;
@@ -408,12 +429,11 @@ test fail. `docs/testing.md` lists these cases, and they are the only hand sabot
 - nextest commands and profiles;
 - the template databases;
 - coverage;
-- the mutants check, waivers, the baseline and its refresh;
+- the mutants check, how it tells new misses from old, and waivers;
 - what stays manual;
 - how to do a per-module pass:
   1. Run cargo-mutants on one file or module.
   2. Fix tests or waive.
-  3. Refresh the baseline.
 
 **PR bodies** carry the mutants summary in place of the hand-made "mutation → caught-by"
 table, plus any manual checks from the list above.
@@ -432,12 +452,12 @@ in the same PR as the tarpaulin removal.
 - 56 of the tarpaulin attributes sit directly above a one-line `fn … {`, so deleting them pulls
   those functions' whole-body mutants into the diff. They are mostly glue that tarpaulin was
   told to skip.
-- With no baseline yet, the PR would fail its own check.
+- The gate would judge the tarpaulin removal itself and block on those glue functions.
 - A workflow can only be dispatched once it is on the default branch.
 
 So the work goes in this order.
 
-**PR A: the tooling, with no gate yet.**
+**PR A: the tooling, with no gate yet.** (Merged as #624.)
 1. **Tarpaulin out** across the repo, the README and the scripts.
 2. **The stdout ctor fixed.**
 3. **nextest:** its config and the CI switch, with doctests kept.
@@ -451,15 +471,14 @@ So the work goes in this order.
 8. **The sweep script.**
 9. **The docs for all of the above.**
 
-**Between the PRs:** dispatch the full run on master, and wait for its missed list.
+**Between the PRs:** nothing (changed 2026-10-22: the full run is dropped).
 
 **PR B: the gate.**
-1. The diff-check script.
-2. The gate script, comparing against the baseline.
-3. The waiver-reason check.
-4. The PR CI job.
-5. The first baseline file, from that full run.
-6. The mutants sections of `docs/testing.md`.
+1. The diff-check script, which tells new misses from old on the base commit.
+2. The waiver-reason check.
+3. The PR CI job.
+4. `mutants-full.yml` turned into the module-pass tool; the baseline script retired.
+5. The mutants sections of `docs/testing.md`.
 
 **Separately:** the catacombs `.gitignore` PR.
 
@@ -472,7 +491,7 @@ The builder decides these, measuring where a number is called for:
 - **local mutant runs:** the job count, and `--copy-target`;
 - **CI:**
   - the diff check's mutants-per-shard figure, and its shard cap;
-  - the full run's shard count and schedule, and whether it rotates;
+  - the module-pass workflow's default shard count;
   - how tools are installed;
 - **cargo-mutants:** the initial exclusion list, each with its reason;
 - **scripts:** the summary format, and the script languages (bash or Python, as the repo's
