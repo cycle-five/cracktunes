@@ -141,6 +141,28 @@ fn tuple_field_owner(symbol: &str) -> Option<usize> {
     (digits > 0 && body[..body.len() - digits].ends_with('#')).then_some(body.len() - digits)
 }
 
+/// An impl block has no definition occurrence of its own, and neither do the
+/// members a `#[derive]` generates, yet source refers to them: `Self` is the
+/// impl (`m/impl#[Foo]`), `a == b` is a derived `m/impl#[Foo][`PartialEq<Self>`]eq().`.
+/// Returns the symbol of the self type (`m/Foo#`), which is what such a
+/// reference means. Only for a self type that is a plain path defined in the
+/// impl's own module; anything else stays unmapped and warns.
+fn impl_self_type(symbol: &str) -> Option<String> {
+    let at = symbol
+        .match_indices("impl#[")
+        .map(|(i, _)| i)
+        .find(|&i| i > 0 && matches!(symbol.as_bytes()[i - 1], b' ' | b'/'))?;
+    let rest = &symbol[at + "impl#[".len()..];
+    let inner = match rest.strip_prefix('`') {
+        Some(quoted) => &quoted[..quoted.find('`')?],
+        None => &rest[..rest.find(']')?],
+    };
+    let name = inner.split('<').next().filter(|n| !n.is_empty())?;
+    name.chars()
+        .all(is_ident_char)
+        .then(|| format!("{}{name}#", &symbol[..at]))
+}
+
 fn module_id(krate: &str, path: &[String]) -> UnitId {
     let mut id = krate.to_string();
     for part in path {
@@ -368,10 +390,14 @@ impl<'a> Placer<'a> {
         line: &str,
         from_krate: &str,
     ) -> Option<&Def> {
-        let cands = self.defs.get(&occ.symbol).or_else(|| {
-            self.defs
-                .get(&occ.symbol[..tuple_field_owner(&occ.symbol)?])
-        })?;
+        let cands = self
+            .defs
+            .get(&occ.symbol)
+            .or_else(|| {
+                self.defs
+                    .get(&occ.symbol[..tuple_field_owner(&occ.symbol)?])
+            })
+            .or_else(|| self.defs.get(&impl_self_type(&occ.symbol)?))?;
         let lib = self.lib_of.get(sym.package.as_str()).copied();
         let by = |k: &str| {
             cands
@@ -530,6 +556,31 @@ mod tests {
         assert_eq!(tuple_field_owner("p 1 a/Pair#."), None);
         assert_eq!(tuple_field_owner("p 1 a/f0."), None);
         assert_eq!(tuple_field_owner("p 1 a/Pair#0"), None);
+    }
+
+    #[test]
+    fn impl_self_type_cases() {
+        let p = "rust-analyzer cargo c 0.1.0 ";
+        let t = |d: &str| impl_self_type(&format!("{p}{d}"));
+        assert_eq!(t("a/b/impl#[Foo]"), Some(format!("{p}a/b/Foo#")));
+        assert_eq!(t("impl#[Foo]"), Some(format!("{p}Foo#")));
+        assert_eq!(
+            t("a/impl#[Foo][`PartialEq<Self>`]eq()."),
+            Some(format!("{p}a/Foo#"))
+        );
+        assert_eq!(
+            t("a/impl#[`Help<'_>`][Default]default()."),
+            Some(format!("{p}a/Help#"))
+        );
+        assert_eq!(t("a/Foo#"), None);
+        assert_eq!(t("a/notimpl#[Foo]"), None);
+        // `impl#[` at the very start of the string is not a descriptor.
+        assert_eq!(impl_self_type("impl#[Foo]"), None);
+        assert_eq!(t("a/impl#[&Foo]"), None);
+        assert_eq!(t("a/impl#[`[u8]`]"), None);
+        assert_eq!(t("a/impl#[]"), None);
+        assert_eq!(t("a/impl#[Foo"), None);
+        assert_eq!(t("a/impl#[`Foo"), None);
     }
 
     #[test]

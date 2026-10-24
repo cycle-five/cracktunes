@@ -729,3 +729,61 @@ fn synthetic_unsorted() -> rust_topology::placement::Placed {
         ..p
     }
 }
+
+/// `Self` is the impl block and a derived method has no source definition;
+/// neither has an occurrence of its own to map to, so both mean the self type
+/// (when it is defined in the impl's module); a self type from elsewhere still
+/// warns instead of being guessed.
+#[test]
+fn impl_symbols_mean_their_self_type() {
+    use synthetic::*;
+    let f = "appcore/src/x.rs";
+    let mut s = S::default();
+    s.units.push(unit(
+        "appcore::x",
+        K::Module,
+        "appcore",
+        f,
+        span(pos(1, 0), pos(11, 0)),
+        None,
+        None,
+    ));
+    s.units.push(unit(
+        "appcore::x::S",
+        K::Struct,
+        "appcore",
+        f,
+        span(pos(3, 0), pos(4, 0)),
+        Some(pos(3, 11)),
+        None,
+    ));
+    file(
+        &mut s,
+        f,
+        "appcore",
+        "appcore::x",
+        "\n\npub struct S;\n\n\n\n\n\n\n\n",
+    );
+    let sym = |d: &str| format!("rust-analyzer cargo appcore 0.1.0 {d}");
+    let p = placed(
+        &s,
+        vec![doc(
+            f,
+            vec![
+                occ(0, 0, 1, &sym("x/"), true),
+                occ(2, 11, 12, &sym("x/S#"), true),
+                occ(5, 0, 1, &sym("x/impl#[S]"), false),
+                occ(6, 0, 1, &sym("x/impl#[S][`PartialEq<Self>`]eq()."), false),
+                occ(7, 0, 1, &sym("x/impl#[Elsewhere]"), false),
+            ],
+        )],
+    );
+    assert_eq!(p.stats.references, 3);
+    assert_eq!(p.stats.references_unmapped, 1);
+    assert_eq!(target_on_line(&p, 6), &RefTarget::Unit(id("appcore::x::S")));
+    assert_eq!(target_on_line(&p, 7), &RefTarget::Unit(id("appcore::x::S")));
+    assert_eq!(
+        kinds(&p),
+        vec![rust_topology::model::WarningKind::UnmappedReference]
+    );
+}
