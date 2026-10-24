@@ -340,7 +340,6 @@ pub struct DataInner {
     pub user_activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
     #[cfg(feature = "crack-activity")]
     pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
-    pub authorized_users: HashSet<u64>,
     // Why not Arc here?
     /// Who owns playback per guild. Written ONLY by `claim_playback` /
     /// `release_playback`, which are called from inside the methods that move
@@ -407,7 +406,6 @@ impl std::fmt::Debug for DataInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
         result.push_str(&format!("bot_settings: {:?}\n", self.bot_settings));
-        result.push_str(&format!("authorized_users: {:?}\n", self.authorized_users));
         result.push_str(&format!(
             "guild_settings_map: {:?}\n",
             self.guild_settings_map
@@ -582,7 +580,6 @@ impl Default for DataInner {
             np_presses: crate::messaging::throttle::Throttle::new(
                 crate::messaging::buttons::NP_PRESS_WINDOW,
             ),
-            authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             id_cache_map: dashmap::DashMap::default(),

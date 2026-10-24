@@ -8,7 +8,6 @@ use lazy_static::lazy_static;
 use poise::serenity_prelude::{self as serenity, FullEvent, GenericChannelId};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::fs::{create_dir_all, OpenOptions};
 use std::io::Write;
@@ -38,8 +37,6 @@ pub(crate) const DEFAULT_PREMIUM: bool = false;
 pub(crate) const ADDITIONAL_PREFIXES: [&str; 8] = [
     "hey bot,", "hey bot", "bot,", "bot", "!play", "!music", "!youtube", "!yt", //, "m/", "M/",
 ];
-pub(crate) const MOD_VAL: u64 = 1 << 1;
-pub(crate) const ADMIN_VAL: u64 = 2 << 1;
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
@@ -223,80 +220,6 @@ impl WelcomeSettings {
     }
 }
 
-/// A struct that represents a user's permission level for a guild.
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct UserPermission {
-    pub user_id: i64,
-    pub guild_id: i64,
-    pub permission: i64,
-}
-
-/// A struct that represents a user's permission level for a guild.
-impl UserPermission {
-    /// Creates a new UserPermission with default values.
-    pub fn new_default(user_id: i64, guild_id: i64) -> Self {
-        Self {
-            user_id,
-            guild_id,
-            permission: 0,
-        }
-    }
-
-    /// Creates a new UserPermission with the given values.
-    pub fn new(user_id: i64, guild_id: i64, permission: i64) -> Self {
-        Self {
-            user_id,
-            guild_id,
-            permission,
-        }
-    }
-
-    /// Get the user id.
-    pub fn get_user_id(&self) -> i64 {
-        self.user_id
-    }
-
-    /// Get the guild id.
-    pub fn get_guild_id(&self) -> i64 {
-        self.guild_id
-    }
-
-    /// Get the permission level.
-    pub fn get_permission(&self) -> i64 {
-        self.permission
-    }
-
-    /// Set the permission level, mutating
-    pub fn set_permission(&mut self, permission: i64) {
-        self.permission = permission;
-    }
-
-    /// Set the user id, mutating
-    pub fn set_user_id(&mut self, user_id: i64) {
-        self.user_id = user_id;
-    }
-
-    /// Set the guild id, mutating
-    pub fn set_guild_id(&mut self, guild_id: i64) {
-        self.guild_id = guild_id;
-    }
-
-    /// Set the permission level, returning a new UserPermission
-    pub fn with_permission(self, permission: i64) -> Self {
-        Self { permission, ..self }
-    }
-
-    /// Set the user id, returning a new UserPermission
-    pub fn with_user_id(self, user_id: i64) -> Self {
-        Self { user_id, ..self }
-    }
-
-    /// Set the guild id, returning a new UserPermission
-    pub fn with_guild_id(self, guild_id: i64) -> Self {
-        Self { guild_id, ..self }
-    }
-}
-
 use super::permissions::GenericPermissionSettings;
 
 /// Where a guild's in-memory settings came from, and therefore whether writing
@@ -358,10 +281,6 @@ pub struct GuildSettings {
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
-    #[serde(default = "authorized_users_default")]
-    pub authorized_users: BTreeMap<u64, u64>,
-    #[serde(default = "authorized_users_default")]
-    pub authorized_groups: BTreeMap<u64, u64>,
     pub ignored_channels: HashSet<u64>,
     #[serde(default = "volume_default")]
     pub old_volume: f32,
@@ -400,8 +319,6 @@ impl PartialEq for GuildSettings {
             && self.allow_all_domains == other.allow_all_domains
             && self.allowed_domains == other.allowed_domains
             && self.banned_domains == other.banned_domains
-            && self.authorized_users == other.authorized_users
-            && self.authorized_groups == other.authorized_groups
             && self.ignored_channels == other.ignored_channels
             && self.old_volume == other.old_volume
             && self.volume == other.volume
@@ -426,11 +343,6 @@ fn default_true() -> bool {
 /// Default value function for serialization for allow all domains.
 fn allow_all_domains_default() -> Option<bool> {
     Some(DEFAULT_ALLOW_ALL_DOMAINS)
-}
-
-/// Default value function for serialization for authorized users.
-fn authorized_users_default() -> BTreeMap<u64, u64> {
-    BTreeMap::new()
 }
 
 /// Default value function for serialization for additional prefixes.
@@ -485,8 +397,6 @@ impl From<GuildSettingsRead> for GuildSettings {
         settings.allow_all_domains = Some(settings_db.allow_all_domains);
         settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
         settings.banned_domains = settings_db.banned_domains.into_iter().collect();
-        settings.authorized_users = BTreeMap::<u64, u64>::new(); // FIXME
-        settings.authorized_groups = BTreeMap::<u64, u64>::new(); // FIXME
 
         settings.ignored_channels = settings_db
             .ignored_channels
@@ -537,8 +447,6 @@ impl GuildSettings {
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),
-            authorized_users: BTreeMap::new(),
-            authorized_groups: BTreeMap::new(),
             ignored_channels: asdf.into_iter().collect(),
             old_volume: DEFAULT_VOLUME_LEVEL,
             volume: DEFAULT_VOLUME_LEVEL,
@@ -698,49 +606,6 @@ impl GuildSettings {
             self.allowed_domains.insert(String::from("youtube.com"));
             self.banned_domains.clear();
         }
-    }
-
-    /// Authorize a user.
-    pub fn authorize_user(&mut self, user_id: i64) -> &mut Self {
-        self.authorized_users.entry(user_id as u64).or_insert(0);
-        self
-    }
-
-    /// Deauthorize a user.
-    pub fn deauthorize_user(&mut self, user_id: i64) {
-        if self.authorized_users.contains_key(&(user_id as u64)) {
-            self.authorized_users.remove(&(user_id as u64));
-        }
-    }
-
-    /// Check if the user is authorized.
-    pub fn check_authorized(&self, user_id: u64) -> bool {
-        self.authorized_users.contains_key(&user_id)
-    }
-
-    /// Check if the user is authorized.
-    pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.contains_key(&user_id.into())
-    }
-
-    /// Check if the user is a mod.
-    pub fn check_mod(&self, user_id: u64) -> bool {
-        self.authorized_users.get(&user_id).unwrap_or(&0) >= &MOD_VAL
-    }
-
-    /// Check if the user is a mod.
-    pub fn check_mod_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &MOD_VAL
-    }
-
-    /// Check if the user is an admin.
-    pub fn check_admin(&self, user_id: u64) -> bool {
-        self.authorized_users.get(&user_id).unwrap_or(&0) >= &ADMIN_VAL
-    }
-
-    /// Check if the user is an admin.
-    pub fn check_admin_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &ADMIN_VAL
     }
 
     /// Set the volume level without mutating.
@@ -1167,7 +1032,6 @@ mod test {
         assert_eq!(settings.allowed_domains.len(), 1);
         assert!(settings.allowed_domains.contains("youtube.com"));
         assert_eq!(settings.banned_domains.len(), 0);
-        assert_eq!(settings.authorized_users.len(), 0);
         assert_eq!(settings.ignored_channels.len(), 1);
         assert_eq!(settings.old_volume, 1.0);
         assert_eq!(settings.volume, 1.0);
@@ -1176,6 +1040,20 @@ mod test {
         assert!(settings.welcome_settings.is_none());
         assert!(settings.log_settings.is_none());
         assert_eq!(settings.additional_prefixes.len(), 0);
+    }
+
+    #[test]
+    fn settings_json_with_the_removed_authorization_keys_still_loads() {
+        let settings = GuildSettings::new(GuildId::new(123), None, None);
+        let mut value = serde_json::to_value(&settings).unwrap();
+        let obj = value.as_object_mut().unwrap();
+        obj.insert("authorized_users".into(), serde_json::json!({"1": 2}));
+        obj.insert("authorized_groups".into(), serde_json::json!({}));
+        let back: GuildSettings = serde_json::from_value(value).unwrap();
+        assert_eq!(back, settings);
+        assert!(!serde_json::to_string(&settings)
+            .unwrap()
+            .contains("authorized"));
     }
 
     #[test]
@@ -1209,11 +1087,10 @@ mod test {
     #[test]
     fn test_default_functions() {
         use super::{
-            additional_prefixes_default, allow_all_domains_default, authorized_users_default,
-            default_false, default_true, premium_default, volume_default,
+            additional_prefixes_default, allow_all_domains_default, default_false, default_true,
+            premium_default, volume_default,
         };
         assert_eq!(allow_all_domains_default(), Some(true));
-        assert_eq!(authorized_users_default().len(), 0);
         assert_eq!(additional_prefixes_default().len(), 0);
         assert_eq!(volume_default(), 1.0);
         assert!(!premium_default());

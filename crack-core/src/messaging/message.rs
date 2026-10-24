@@ -165,18 +165,6 @@ pub enum CrackedMessage {
         mention: String,
         seconds: u64,
     },
-    UserAuthorized {
-        id: UserId,
-        mention: Mention,
-        guild_id: serenity::GuildId,
-        guild_name: FixedString,
-    },
-    UserDeauthorized {
-        id: UserId,
-        mention: Mention,
-        guild_id: serenity::GuildId,
-        guild_name: FixedString,
-    },
     UserTimeout {
         id: UserId,
         mention: Mention,
@@ -494,24 +482,6 @@ impl Display for CrackedMessage {
                 "**{}**\n {}",
                 mention,
                 duration_to_string(Duration::from_secs(*seconds)),
-            )),
-            Self::UserAuthorized {
-                id,
-                mention,
-                guild_id,
-                guild_name,
-            } => f.write_str(&format!(
-                "{}\n User: {} ({}) Guild: {} ({})",
-                AUTHORIZED, mention, id, guild_name, guild_id
-            )),
-            Self::UserDeauthorized {
-                id,
-                mention,
-                guild_id,
-                guild_name,
-            } => f.write_str(&format!(
-                "{}\n User: {} ({}) Guild: {} ({})",
-                DEAUTHORIZED, mention, id, guild_name, guild_id
             )),
             Self::UserTimeout {
                 mention,

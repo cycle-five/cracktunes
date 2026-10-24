@@ -218,32 +218,6 @@ impl GuildEntity {
         .execute(pool)
         .await?;
 
-        let guild_id = settings.guild_id.get() as i64;
-
-        let user_perm_arr = &settings
-            .authorized_users
-            .clone()
-            .into_iter()
-            .map(|(user, perm)| (user as i64, perm as i64))
-            .collect::<Vec<(i64, i64)>>()
-            .clone();
-
-        for (user, perm) in user_perm_arr {
-            sqlx::query!(
-                r#"
-                INSERT INTO authorized_users (guild_id, user_id, permissions)
-                VALUES ($1, $2, $3)
-                ON CONFLICT (guild_id, user_id)
-                DO UPDATE SET permissions = $3
-                "#,
-                guild_id,
-                *user,
-                *perm,
-            )
-            .execute(pool)
-            .await?;
-        }
-
         let guild_id = settings.guild_id.get();
 
         if let Some(welcome_settings) = settings.welcome_settings.as_ref() {
