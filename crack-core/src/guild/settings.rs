@@ -1288,4 +1288,37 @@ mod test {
         assert_eq!(w.auto_role, None);
         assert_eq!(w.message.as_deref(), Some("hi"));
     }
+
+    #[test]
+    fn every_log_channel_getter_reads_its_own_field() {
+        use super::LogSettings;
+        let r = |n: u64| GenericChannelId::new(n).to_ref();
+        let mut l = LogSettings::default();
+        l.set_all_log_channel(r(1))
+            .set_server_log_channel(r(2))
+            .set_join_leave_log_channel(r(3))
+            .set_member_log_channel(r(4))
+            .set_voice_log_channel(r(5));
+        assert_eq!(l.get_all_log_channel(), Some(r(1)));
+        assert_eq!(l.get_server_log_channel(), Some(r(2)));
+        assert_eq!(l.get_join_leave_log_channel(), Some(r(3)));
+        assert_eq!(l.get_member_log_channel(), Some(r(4)));
+        assert_eq!(l.get_voice_log_channel(), Some(r(5)));
+        assert_eq!(l.raw_event_log_channel, None);
+    }
+
+    #[test]
+    fn the_join_leave_channel_is_set_without_touching_the_rest() {
+        let r = |n: u64| GenericChannelId::new(n).to_ref();
+        let mut s = GuildSettings::new(GuildId::new(1), None, None);
+        s.set_all_log_channel(r(1));
+        let with = s.with_join_leave_log_channel(r(3));
+        assert_eq!(with.get_join_leave_log_channel(), Some(r(3)));
+        assert_eq!(with.get_all_log_channel(), Some(r(1)));
+        assert_eq!(s.get_join_leave_log_channel(), None, "the original is kept");
+        let fresh =
+            GuildSettings::new(GuildId::new(1), None, None).with_join_leave_log_channel(r(4));
+        assert_eq!(fresh.get_join_leave_log_channel(), Some(r(4)));
+        assert_eq!(fresh.get_all_log_channel(), None);
+    }
 }
