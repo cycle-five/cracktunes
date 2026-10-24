@@ -1,6 +1,6 @@
 use crate::common::fixture_structure;
 use rust_topology::model::{UnitKind, WarningKind};
-use rust_topology::structure::{Pos, Span, UnitDraft};
+use rust_topology::structure::{Pos, UnitDraft};
 use std::collections::BTreeSet;
 
 fn unit(id: &str) -> &'static UnitDraft {
@@ -204,10 +204,6 @@ fn unparsed_kind_is_not_used_on_good_workspace() {
             .iter()
             .all(|w| w.kind != WarningKind::UnparsedFile)
     );
-    let _ = Span {
-        start: Pos { line: 1, col: 0 },
-        end: Pos { line: 1, col: 1 },
-    };
 }
 
 mod scratch {

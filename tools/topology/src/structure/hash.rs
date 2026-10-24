@@ -77,6 +77,11 @@ mod tests {
         assert_ne!(h("fn f() { # x }"), h("fn f() { x }"));
         assert_ne!(h("fn f() { #! x }"), h("fn f() { ! x }"));
         assert_ne!(h("fn f() { # (doc) }"), h("fn f() { }"));
+        // only `#` starts an attribute: a bracket group after other punctuation stays
+        assert_ne!(
+            h("fn f() { let _ = &[doc, 1]; }"),
+            h("fn f() { let _ = ; }")
+        );
     }
 
     #[test]

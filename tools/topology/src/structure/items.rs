@@ -732,6 +732,16 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn only_feature_keys_are_features() {
+        let s = parse(
+            "#[cfg(target_os = \"linux\")] fn f() {} #[cfg(all(unix, target_os = \"mac\", feature = \"x\"))] fn g() {}",
+        );
+        assert!(s.get("c::f").unit.features.is_empty());
+        let g: Vec<_> = s.get("c::g").unit.features.iter().cloned().collect();
+        assert_eq!(g, ["x"]);
+    }
+
+    #[test]
     fn trait_consts_and_types_are_units() {
         let s = parse("trait T { const N: u32; const D: u32 = 1; type A; }");
         assert_eq!(s.get("c::T::N").unit.kind, UnitKind::Const);
