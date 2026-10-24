@@ -1,5 +1,6 @@
 //! Maps a Cargo workspace into facts from rust-analyzer's SCIP export plus `syn`.
 
+pub mod analysis;
 pub mod config;
 pub mod graph;
 pub mod model;

@@ -1,3 +1,4 @@
+mod analysis;
 #[path = "../common/mod.rs"]
 mod common;
 mod index;
