@@ -11,6 +11,8 @@ use crate::{
 };
 use cfg_if;
 use colored::Colorize;
+use crack_model::RoomRef;
+use crack_types::discord::generic_channel_id;
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{FullEvent, GenericChannelId, GuildId};
 use serde::{ser::SerializeStruct, Serialize};
@@ -57,6 +59,96 @@ impl<T: Serialize> Serialize for LogEntry<T> {
     }
 }
 
+/// Get the log channel for the given event type.
+pub fn log_channel_for(settings: &GuildSettings, event: &FullEvent) -> Option<RoomRef> {
+    let log_settings = settings.log_settings.clone().unwrap_or_default();
+    match event {
+        FullEvent::PresenceUpdate { .. } => {
+            None
+            //.or(log_settings.get_all_log_channel()),
+        },
+        FullEvent::GuildMemberAddition { .. } | FullEvent::GuildMemberRemoval { .. } => {
+            log_settings
+                .get_join_leave_log_channel()
+                .or(log_settings.get_all_log_channel())
+        },
+        FullEvent::GuildBanRemoval { .. }
+        | FullEvent::GuildBanAddition { .. }
+        | FullEvent::GuildScheduledEventCreate { .. }
+        | FullEvent::GuildScheduledEventUpdate { .. }
+        | FullEvent::GuildScheduledEventDelete { .. }
+        | FullEvent::GuildScheduledEventUserAdd { .. }
+        | FullEvent::GuildScheduledEventUserRemove { .. }
+        | FullEvent::GuildStickersUpdate { .. }
+        | FullEvent::GuildCreate { .. }
+        | FullEvent::GuildDelete { .. }
+        | FullEvent::GuildEmojisUpdate { .. }
+        | FullEvent::GuildIntegrationsUpdate { .. }
+        | FullEvent::GuildMemberUpdate { .. }
+        | FullEvent::GuildMembersChunk { .. }
+        | FullEvent::GuildRoleCreate { .. }
+        | FullEvent::GuildRoleDelete { .. }
+        | FullEvent::GuildRoleUpdate { .. }
+        | FullEvent::GuildUpdate { .. } => log_settings
+            .get_server_log_channel()
+            .or(log_settings.get_all_log_channel()),
+        FullEvent::Message { .. }
+        | FullEvent::Resume { .. }
+        | FullEvent::ShardStageUpdate { .. }
+        | FullEvent::WebhookUpdate { .. }
+        | FullEvent::CommandPermissionsUpdate { .. }
+        | FullEvent::AutoModActionExecution { .. }
+        | FullEvent::AutoModRuleCreate { .. }
+        | FullEvent::AutoModRuleUpdate { .. }
+        | FullEvent::AutoModRuleDelete { .. }
+        | FullEvent::CacheReady { .. }
+        | FullEvent::ChannelCreate { .. }
+        | FullEvent::CategoryCreate { .. }
+        | FullEvent::CategoryDelete { .. }
+        | FullEvent::ChannelDelete { .. }
+        | FullEvent::ChannelPinsUpdate { .. }
+        | FullEvent::ChannelUpdate { .. }
+        | FullEvent::IntegrationCreate { .. }
+        | FullEvent::IntegrationUpdate { .. }
+        | FullEvent::IntegrationDelete { .. }
+        | FullEvent::InteractionCreate { .. }
+        | FullEvent::InviteCreate { .. }
+        | FullEvent::InviteDelete { .. }
+        | FullEvent::MessageDelete { .. }
+        | FullEvent::MessageDeleteBulk { .. }
+        | FullEvent::MessageUpdate { .. }
+        | FullEvent::ReactionAdd { .. }
+        | FullEvent::ReactionRemove { .. }
+        | FullEvent::ReactionRemoveAll { .. }
+        | FullEvent::Ready { .. }
+        | FullEvent::StageInstanceCreate { .. }
+        | FullEvent::StageInstanceDelete { .. }
+        | FullEvent::StageInstanceUpdate { .. }
+        | FullEvent::ThreadCreate { .. }
+        | FullEvent::ThreadDelete { .. }
+        | FullEvent::ThreadListSync { .. }
+        | FullEvent::ThreadMemberUpdate { .. }
+        | FullEvent::ThreadMembersUpdate { .. }
+        | FullEvent::ThreadUpdate { .. }
+        | FullEvent::TypingStart { .. }
+        | FullEvent::UserUpdate { .. }
+        | FullEvent::VoiceServerUpdate { .. }
+        | FullEvent::VoiceStateUpdate { .. } => {
+            // tracing::warn!(
+            //     "{}",
+            //     format!("Event: {:?}", event).as_str().to_string().white()
+            // );
+            log_settings.get_all_log_channel()
+        },
+        //| FullEvent::GuildUnavailable { .. }
+        // | FullEvent::Unknown { .. }
+        _ => {
+            tracing::warn!("Event Not Implemented: {:?}", event);
+            None
+        },
+    }
+}
+
 /// Gets the log channel for a given guild.
 pub async fn get_log_channel(
     channel_name: &str,
@@ -67,6 +159,7 @@ pub async fn get_log_channel(
     guild_settings_map
         .get(&guild_id)
         .and_then(|x| x.get_log_channel(channel_name))
+        .and_then(|room| generic_channel_id(&room).ok())
 }
 
 // .unwrap_or_else(|| {
@@ -87,7 +180,9 @@ pub async fn get_channel_id(
     let guild_settings_map = guild_settings_map.read().await;
 
     match guild_settings_map.get(&guild_id) {
-        Some(guild_settings) => match guild_settings.get_log_channel_type_fe(event) {
+        Some(guild_settings) => match log_channel_for(guild_settings, event)
+            .and_then(|room| generic_channel_id(&room).ok())
+        {
             Some(channel_id) => {
                 if guild_settings.ignored_channels.contains(&channel_id.get()) {
                     return Err(CrackedError::LogChannelWarning(
@@ -541,8 +636,8 @@ pub async fn handle_event(
             let new = new.clone().unwrap();
             let maybe_log_channel = guild_settings
                 .get(&new.guild_id)
-                .map(|x| x.get_join_leave_log_channel())
-                .unwrap_or(None);
+                .and_then(|x| x.get_join_leave_log_channel())
+                .and_then(|room| generic_channel_id(&room).ok());
             let id = new.user.id;
             let description = format!(
                 "User: {}\nID: {}\nAccount Created: {}\nJoined: {:?}",
@@ -1150,7 +1245,24 @@ pub async fn handle_event(
 
 #[cfg(test)]
 mod tests {
-    use super::kept_out_of_event_log;
+    use super::{kept_out_of_event_log, log_channel_for};
+    use crate::guild::settings::GuildSettings;
+    use crack_types::discord::ToRef;
+    use poise::serenity_prelude::{GenericChannelId, GuildId};
+
+    #[test]
+    fn test_log_channel_for() {
+        let mut settings = GuildSettings::new(GuildId::new(123), None, None);
+        settings.set_all_log_channel(GenericChannelId::new(123).to_ref());
+        let event = poise::serenity_prelude::FullEvent::GuildCreate {
+            guild: poise::serenity_prelude::Guild::default(),
+            is_new: Some(true),
+        };
+        assert_eq!(
+            log_channel_for(&settings, &event),
+            Some(GenericChannelId::new(123).to_ref())
+        );
+    }
 
     #[test]
     fn only_wallet_is_kept_out_of_the_event_log() {

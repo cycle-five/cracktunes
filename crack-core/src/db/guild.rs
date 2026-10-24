@@ -113,6 +113,7 @@ impl GuildEntity {
         guild_id: i64,
         settings: &crate::guild::settings::LogSettings,
     ) -> Result<(), crate::CrackedError> {
+        use crate::guild::settings::column_opt;
         sqlx::query!(
             r#"
             INSERT INTO log_settings (guild_id, all_log_channel, raw_event_log_channel, server_log_channel, member_log_channel, join_leave_log_channel, voice_log_channel)
@@ -121,12 +122,12 @@ impl GuildEntity {
             DO UPDATE SET all_log_channel = $2, raw_event_log_channel = $3, server_log_channel = $4, member_log_channel = $5, join_leave_log_channel = $6, voice_log_channel = $7
             "#,
             guild_id,
-            settings.all_log_channel.map(|x| x as i64),
-            settings.raw_event_log_channel.map(|x| x as i64),
-            settings.server_log_channel.map(|x| x as i64),
-            settings.member_log_channel.map(|x| x as i64),
-            settings.join_leave_log_channel.map(|x| x as i64),
-            settings.voice_log_channel.map(|x| x as i64),
+            column_opt(&settings.all_log_channel)?,
+            column_opt(&settings.raw_event_log_channel)?,
+            column_opt(&settings.server_log_channel)?,
+            column_opt(&settings.member_log_channel)?,
+            column_opt(&settings.join_leave_log_channel)?,
+            column_opt(&settings.voice_log_channel)?,
         )
         .execute(pool)
         .await?;
@@ -138,7 +139,8 @@ impl GuildEntity {
         pool: &PgPool,
         guild_id: i64,
         settings: &crate::guild::settings::WelcomeSettings,
-    ) -> Result<(), sqlx::Error> {
+    ) -> Result<(), crate::CrackedError> {
+        use crate::guild::settings::column_opt;
         sqlx::query!(
             r#"
             INSERT INTO welcome_settings (guild_id, auto_role, channel_id, message)
@@ -147,8 +149,8 @@ impl GuildEntity {
             DO UPDATE SET auto_role = $2, channel_id = $3, message = $4
             "#,
             guild_id,
-            settings.auto_role.map(|x| x as i64),
-            settings.channel_id.map(|x| x as i64),
+            column_opt(&settings.auto_role)?,
+            column_opt(&settings.channel_id)?,
             settings.message,
         )
         .execute(pool)
@@ -445,7 +447,9 @@ impl GuildEntity {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crack_types::discord::ToRef;
     use crack_types::to_fixed;
+    use serenity::all::{GenericChannelId, RoleId};
     use sqlx::PgPool;
     use std::collections::HashSet;
     use std::str::FromStr;
@@ -529,8 +533,8 @@ mod test {
         assert!(log_settings.is_none());
 
         let welcome_settings_new = crate::guild::settings::WelcomeSettings {
-            auto_role: Some(123),
-            channel_id: Some(123),
+            auto_role: Some(RoleId::new(123).to_ref()),
+            channel_id: Some(GenericChannelId::new(123).to_ref()),
             message: Some("test".to_string()),
             password: None,
         };
@@ -625,12 +629,12 @@ mod test {
         let guild_id = guild.id;
 
         let log_settings = crate::guild::settings::LogSettings {
-            all_log_channel: Some(123),
-            raw_event_log_channel: Some(123),
-            server_log_channel: Some(123),
-            member_log_channel: Some(123),
-            join_leave_log_channel: Some(123),
-            voice_log_channel: Some(123),
+            all_log_channel: Some(GenericChannelId::new(123).to_ref()),
+            raw_event_log_channel: Some(GenericChannelId::new(123).to_ref()),
+            server_log_channel: Some(GenericChannelId::new(123).to_ref()),
+            member_log_channel: Some(GenericChannelId::new(123).to_ref()),
+            join_leave_log_channel: Some(GenericChannelId::new(123).to_ref()),
+            voice_log_channel: Some(GenericChannelId::new(123).to_ref()),
         };
 
         GuildEntity::write_log_settings(&pool, guild_id, &log_settings)

@@ -92,6 +92,7 @@ pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 use crate::messaging::message::CrackedMessage;
 // use crate::serenity::prelude::SerenityError;
+use crack_types::discord::ToRef;
 use crack_types::reply_handle::MessageOrReplyHandle;
 
 /// Struct for the cammed down kicking configuration.
@@ -708,7 +709,7 @@ impl Data {
             .await
             .entry(guild_id)
             .or_insert_with(GuildSettings::default)
-            .add_denied_music_user(user)
+            .add_denied_music_user(user.to_ref())
             .await
     }
 
@@ -717,7 +718,7 @@ impl Data {
         if let Some(settings) = self.guild_settings_map.read().await.get(&guild_id).cloned() {
             settings
                 .get_music_permissions()
-                .map(|x| x.is_user_allowed(user.get()))
+                .map(|x| x.is_user_allowed(&user.to_ref()))
                 .unwrap_or(true)
         } else {
             true
@@ -803,6 +804,33 @@ msg_on_dc:     false
         let guild_settings = GuildSettingsMapParam::default();
         let new_data = new_data.with_guild_settings_map(guild_settings);
         assert!(new_data.guild_settings_map.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn check_music_permissions_reads_refs() {
+        let data = Data::default();
+        let mut settings = GuildSettings::new(GuildId::new(5), None, None);
+        settings
+            .add_denied_music_user(UserId::new(7).to_ref())
+            .await
+            .unwrap();
+        data.guild_settings_map
+            .write()
+            .await
+            .insert(GuildId::new(5), settings);
+        assert!(
+            !data
+                .check_music_permissions(GuildId::new(5), UserId::new(7))
+                .await
+        );
+        assert!(
+            data.check_music_permissions(GuildId::new(5), UserId::new(8))
+                .await
+        );
+        assert!(
+            data.check_music_permissions(GuildId::new(6), UserId::new(7))
+                .await
+        );
     }
 }
 

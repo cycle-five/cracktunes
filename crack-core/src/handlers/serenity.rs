@@ -427,11 +427,14 @@ impl SerenityHandler {
 
         tracing::trace!("welcome: {:?}", welcome);
 
-        match (welcome.message, welcome.channel_id) {
+        let welcome_channel = welcome
+            .channel_id
+            .as_ref()
+            .and_then(|room| crack_types::discord::generic_channel_id(room).ok());
+        match (welcome.message, welcome_channel) {
             (None, _) => {},
             (_, None) => {},
             (Some(message), Some(channel)) => {
-                let channel = serenity::GenericChannelId::new(channel);
                 #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
                 let x = channel
                     .send_message(
@@ -453,9 +456,12 @@ impl SerenityHandler {
             },
         };
 
-        if let Some(role_id) = welcome.auto_role {
+        if let Some(role_id) = welcome
+            .auto_role
+            .as_ref()
+            .and_then(|role| crack_types::discord::role_id(role).ok())
+        {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
-            let role_id = serenity::RoleId::new(role_id);
             match new_member.add_role(ctx.http(), role_id, None).await {
                 Ok(_) => {
                     tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());

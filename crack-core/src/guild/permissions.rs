@@ -1,9 +1,15 @@
+use crack_model::{CommunityRef, Kind, Ref, RoleRef, RoomRef, UserRef};
+use crack_types::discord::{as_snowflake, as_snowflake_set};
 use serde::{Deserialize, Serialize};
-use serenity::all::{GenericChannelId, GuildId};
+use serenity::all::GuildId;
 use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
 
-use crate::{errors::CrackedError, Context, Error};
+use crate::{
+    errors::CrackedError,
+    guild::settings::{column_i64, ref_from_column, stored_ref},
+    Error,
+};
 
 /// Type alias for a HashSet of strings.
 type HashSetString = HashSet<String>;
@@ -31,33 +37,21 @@ impl ConvertToHashSetString for Vec<String> {
     }
 }
 
-/// Type alias for a HashSet of u64.
-type HashSetU64 = HashSet<u64>;
-
-/// Trait for converting a serde_json::Value to a HashSet of u64.
-pub trait ConvertToHashSetU64 {
-    fn convert(self) -> HashSetU64;
+/// Convert a stored `BIGINT[]` to a set of refs. An element that is not a
+/// snowflake is dropped with a warning, never panicked on.
+fn ref_set<K: Kind + std::hash::Hash + Eq>(column: &'static str, raw: Vec<i64>) -> HashSet<Ref<K>> {
+    raw.into_iter()
+        .filter_map(|x| stored_ref(column, Some(x)))
+        .collect()
 }
 
-/// Implementation of ConvertToHashSetU64 for serde_json::Value.
-impl ConvertToHashSetU64 for serde_json::Value {
-    fn convert(self) -> HashSetU64 {
-        self.as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_u64().unwrap())
-            .collect()
-    }
+/// The `BIGINT[]` to store for a set of refs.
+fn to_column<K: Kind>(set: &HashSet<Ref<K>>) -> Result<Vec<i64>, CrackedError> {
+    set.iter().map(column_i64).collect()
 }
 
-/// Implementation of ConvertToHashSetU64 for `Vec<i64>`.
-impl ConvertToHashSetU64 for Vec<i64> {
-    fn convert(self) -> HashSetU64 {
-        self.iter().map(|&x| x as u64).collect()
-    }
-}
 /// Struct for generic permission settings. Includes allowed and denied commands, roles, and users.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GenericPermissionSettings {
     pub id: i64,
     #[serde(default = "default_true")]
@@ -66,14 +60,18 @@ pub struct GenericPermissionSettings {
     pub default_allow_all_users: bool,
     #[serde(default = "default_true")]
     pub default_allow_all_roles: bool,
-    pub allowed_roles: HashSet<u64>,
-    pub denied_roles: HashSet<u64>,
-    pub allowed_users: HashSet<u64>,
-    pub denied_users: HashSet<u64>,
-    #[serde(default)]
-    pub allowed_channels: HashSet<u64>,
-    #[serde(default)]
-    pub denied_channels: HashSet<u64>,
+    #[serde(with = "as_snowflake_set")]
+    pub allowed_roles: HashSet<RoleRef>,
+    #[serde(with = "as_snowflake_set")]
+    pub denied_roles: HashSet<RoleRef>,
+    #[serde(with = "as_snowflake_set")]
+    pub allowed_users: HashSet<UserRef>,
+    #[serde(with = "as_snowflake_set")]
+    pub denied_users: HashSet<UserRef>,
+    #[serde(default, with = "as_snowflake_set")]
+    pub allowed_channels: HashSet<RoomRef>,
+    #[serde(default, with = "as_snowflake_set")]
+    pub denied_channels: HashSet<RoomRef>,
     // pub allowed_commands: HashSet<String>,
     // pub denied_commands: HashSet<String>,
 }
@@ -85,12 +83,15 @@ impl From<GenericPermissionSettingsReadWCommand> for GenericPermissionSettings {
             default_allow_all_commands: read.default_allow_all_commands,
             default_allow_all_users: read.default_allow_all_users,
             default_allow_all_roles: read.default_allow_all_roles,
-            allowed_roles: read.allowed_roles.convert(),
-            denied_roles: read.denied_roles.convert(),
-            allowed_users: read.allowed_users.convert(),
-            denied_users: read.denied_users.convert(),
-            allowed_channels: read.allowed_channels.convert(),
-            denied_channels: read.denied_channels.convert(),
+            allowed_roles: ref_set("permission_settings.allowed_roles", read.allowed_roles),
+            denied_roles: ref_set("permission_settings.denied_roles", read.denied_roles),
+            allowed_users: ref_set("permission_settings.allowed_users", read.allowed_users),
+            denied_users: ref_set("permission_settings.denied_users", read.denied_users),
+            allowed_channels: ref_set(
+                "permission_settings.allowed_channels",
+                read.allowed_channels,
+            ),
+            denied_channels: ref_set("permission_settings.denied_channels", read.denied_channels),
         }
     }
 }
@@ -145,12 +146,15 @@ impl GenericPermissionSettingsRead {
             default_allow_all_roles: self.default_allow_all_roles,
             // allowed_commands: ConvertToHashSetString::convert(self.allowed_commands),
             // denied_commands: ConvertToHashSetString::convert(self.denied_commands),
-            allowed_roles: self.allowed_roles.convert(),
-            denied_roles: self.denied_roles.convert(),
-            allowed_users: self.allowed_users.convert(),
-            denied_users: self.denied_users.convert(),
-            allowed_channels: self.allowed_channels.convert(),
-            denied_channels: self.denied_channels.convert(),
+            allowed_roles: ref_set("permission_settings.allowed_roles", self.allowed_roles),
+            denied_roles: ref_set("permission_settings.denied_roles", self.denied_roles),
+            allowed_users: ref_set("permission_settings.allowed_users", self.allowed_users),
+            denied_users: ref_set("permission_settings.denied_users", self.denied_users),
+            allowed_channels: ref_set(
+                "permission_settings.allowed_channels",
+                self.allowed_channels,
+            ),
+            denied_channels: ref_set("permission_settings.denied_channels", self.denied_channels),
         }
     }
 }
@@ -198,32 +202,31 @@ impl GenericPermissionSettings {
     // }
 
     /// Check if a role is allowed by the permission settings.
-    pub fn is_role_allowed(&self, role: u64) -> bool {
+    pub fn is_role_allowed(&self, role: &RoleRef) -> bool {
         (self.allowed_roles.is_empty()
             && self.denied_roles.is_empty()
             && self.default_allow_all_roles)
             || self.default_allow_all_roles
                 && self.allowed_roles.is_empty()
-                && !self.denied_roles.contains(&role)
-            || self.allowed_roles.contains(&role) && !self.denied_roles.contains(&role)
+                && !self.denied_roles.contains(role)
+            || self.allowed_roles.contains(role) && !self.denied_roles.contains(role)
     }
 
     /// Check if a user is allowed by the permission settings.
-    pub fn is_user_allowed(&self, user: u64) -> bool {
+    pub fn is_user_allowed(&self, user: &UserRef) -> bool {
         (self.allowed_users.is_empty()
             && self.denied_users.is_empty()
             && self.default_allow_all_users)
             || self.default_allow_all_users
                 && self.allowed_users.is_empty()
-                && !self.denied_users.contains(&user)
-            || self.allowed_users.contains(&user) && !self.denied_users.contains(&user)
+                && !self.denied_users.contains(user)
+            || self.allowed_users.contains(user) && !self.denied_users.contains(user)
     }
 
-    pub fn is_channel_allowed(&self, channel: u64) -> bool {
+    pub fn is_channel_allowed(&self, channel: &RoomRef) -> bool {
         (self.allowed_channels.is_empty() && self.denied_channels.is_empty())
-            || (self.allowed_channels.is_empty() && !self.denied_channels.contains(&channel))
-            || (self.allowed_channels.contains(&channel)
-                && !self.denied_channels.contains(&channel))
+            || (self.allowed_channels.is_empty() && !self.denied_channels.contains(channel))
+            || (self.allowed_channels.contains(channel) && !self.denied_channels.contains(channel))
     }
 
     // /// Add a command to the allowed commands.
@@ -247,63 +250,63 @@ impl GenericPermissionSettings {
     // }
 
     /// Add a role to the allowed roles.
-    pub fn add_allowed_role(&mut self, role: u64) -> bool {
+    pub fn add_allowed_role(&mut self, role: RoleRef) -> bool {
         self.allowed_roles.insert(role)
     }
 
     /// Remove a role from the allowed roles.
-    pub fn remove_allowed_role(&mut self, role: u64) -> bool {
-        self.allowed_roles.remove(&role)
+    pub fn remove_allowed_role(&mut self, role: &RoleRef) -> bool {
+        self.allowed_roles.remove(role)
     }
 
     /// Add a role to the denied roles.
-    pub fn add_denied_role(&mut self, role: u64) -> bool {
+    pub fn add_denied_role(&mut self, role: RoleRef) -> bool {
         self.denied_roles.insert(role)
     }
 
     /// Remove a role from the denied roles.
-    pub fn remove_denied_role(&mut self, role: u64) -> bool {
-        self.denied_roles.remove(&role)
+    pub fn remove_denied_role(&mut self, role: &RoleRef) -> bool {
+        self.denied_roles.remove(role)
     }
 
     /// Add a user to the allowed users.
-    pub fn add_allowed_user(&mut self, user: u64) -> bool {
+    pub fn add_allowed_user(&mut self, user: UserRef) -> bool {
         self.allowed_users.insert(user)
     }
 
     /// Remove a user from the allowed users.
-    pub fn remove_allowed_user(&mut self, user: u64) -> bool {
-        self.allowed_users.remove(&user)
+    pub fn remove_allowed_user(&mut self, user: &UserRef) -> bool {
+        self.allowed_users.remove(user)
     }
 
     /// Add a user to the denied users.
-    pub fn add_denied_user(&mut self, user: u64) -> bool {
+    pub fn add_denied_user(&mut self, user: UserRef) -> bool {
         self.denied_users.insert(user)
     }
 
     /// Remove a user from the denied users.
-    pub fn remove_denied_user(&mut self, user: u64) -> bool {
-        self.denied_users.remove(&user)
+    pub fn remove_denied_user(&mut self, user: &UserRef) -> bool {
+        self.denied_users.remove(user)
     }
 
     /// Add a channel to the allowed channels.
-    pub fn add_allowed_channel(&mut self, channel: u64) -> bool {
+    pub fn add_allowed_channel(&mut self, channel: RoomRef) -> bool {
         self.allowed_channels.insert(channel)
     }
 
     /// Remove a channel from the allowed channels.
-    pub fn remove_allowed_channel(&mut self, channel: u64) -> bool {
-        self.allowed_channels.remove(&channel)
+    pub fn remove_allowed_channel(&mut self, channel: &RoomRef) -> bool {
+        self.allowed_channels.remove(channel)
     }
 
     /// Add a channel to the denied channels.
-    pub fn add_denied_channel(&mut self, channel: u64) -> bool {
+    pub fn add_denied_channel(&mut self, channel: RoomRef) -> bool {
         self.denied_channels.insert(channel)
     }
 
     /// Remove a channel from the denied channels.
-    pub fn remove_denied_channel(&mut self, channel: u64) -> bool {
-        self.denied_channels.remove(&channel)
+    pub fn remove_denied_channel(&mut self, channel: &RoomRef) -> bool {
+        self.denied_channels.remove(channel)
     }
 
     /// Clear all allowed and denied commands, roles, and users.
@@ -343,36 +346,12 @@ impl GenericPermissionSettings {
             self.default_allow_all_roles,
             // json!(settings.allowed_commands) as serde_json::Value, // Convert to JSON
             // json!(settings.denied_commands) as serde_json::Value,
-            &self
-                .allowed_roles
-                .iter()
-                .map(|&x| x as i64)
-                .collect::<Vec<i64>>(), // Convert to Vec<i64>
-            &self
-                .denied_roles
-                .iter()
-                .map(|&x| x as i64)
-                .collect::<Vec<i64>>(),
-            &self
-                .allowed_users
-                .iter()
-                .map(|&x| x as i64)
-                .collect::<Vec<i64>>(),
-            &self
-                .denied_users
-                .iter()
-                .map(|&x| x as i64)
-                .collect::<Vec<i64>>(),
-            &self
-                .allowed_channels
-                .iter()
-                .map(|&x| x as i64)
-                .collect::<Vec<i64>>(),
-            &self
-                .denied_channels
-                .iter()
-                .map(|&x| x as i64)
-                .collect::<Vec<i64>>(),
+            &to_column(&self.allowed_roles)?,
+            &to_column(&self.denied_roles)?,
+            &to_column(&self.allowed_users)?,
+            &to_column(&self.denied_users)?,
+            &to_column(&self.allowed_channels)?,
+            &to_column(&self.denied_channels)?,
         )
         .fetch_one(pool)
         .await
@@ -401,8 +380,10 @@ impl GenericPermissionSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CommandChannel {
     pub command: String,
-    pub channel_id: GenericChannelId,
-    pub guild_id: GuildId,
+    #[serde(with = "as_snowflake")]
+    pub channel_id: RoomRef,
+    #[serde(with = "as_snowflake")]
+    pub guild_id: CommunityRef,
     pub permission_settings: GenericPermissionSettings,
 }
 
@@ -413,17 +394,6 @@ pub struct CommandChannelRead {
     pub channel_id: i64,
     pub guild_id: i64,
     pub permission_settings_id: i64,
-}
-
-impl Default for CommandChannel {
-    fn default() -> Self {
-        Self {
-            command: "".to_string(),
-            channel_id: GenericChannelId::new(0),
-            guild_id: GuildId::new(0),
-            permission_settings: GenericPermissionSettings::default(),
-        }
-    }
 }
 
 impl CommandChannel {
@@ -439,8 +409,8 @@ impl CommandChannel {
         .await?;
         Ok(Self {
             command: read.command,
-            channel_id: GenericChannelId::new(read.channel_id as u64),
-            guild_id: GuildId::new(read.guild_id as u64),
+            channel_id: ref_from_column(read.channel_id)?,
+            guild_id: ref_from_column(read.guild_id)?,
             permission_settings: perms,
         })
     }
@@ -466,8 +436,8 @@ impl CommandChannel {
             RETURNING *
             "#,
             self.command,
-            self.guild_id.get() as i64,
-            self.channel_id.get() as i64,
+            column_i64(&self.guild_id)?,
+            column_i64(&self.channel_id)?,
             settings.id,
         )
         .fetch_one(pool)
@@ -510,33 +480,23 @@ impl CommandChannel {
     }
 }
 
-pub async fn command_check_music(ctx: Context<'_>) -> Result<bool, Error> {
-    if ctx.author().bot() {
-        return Ok(false);
-    };
-
-    // let data: &Data = ctx.data();
-    // let user_row = data.userinfo_db.get(ctx.author().id.into()).await?;
-    // if user_row.bot_banned() {
-    //     notify_banned(ctx).await?;
-    //     return Ok(false);
-    // }
-
-    let Some(guild_id) = ctx.guild_id() else {
-        return Ok(true);
-    };
-
-    Ok(ctx
-        .data()
-        .check_music_permissions(guild_id, ctx.author().id)
-        .await)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crack_types::discord::ToRef;
     use serde_json::json;
+    use serenity::all::{GenericChannelId, RoleId, UserId};
     use sqlx::PgPool;
+
+    fn role(n: u64) -> RoleRef {
+        RoleId::new(n).to_ref()
+    }
+    fn user(n: u64) -> UserRef {
+        UserId::new(n).to_ref()
+    }
+    fn room(n: u64) -> RoomRef {
+        GenericChannelId::new(n).to_ref()
+    }
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
@@ -554,21 +514,21 @@ mod tests {
     #[test]
     fn test_is_role_allowed() {
         let mut settings = GenericPermissionSettings::default();
-        settings.add_allowed_role(1);
-        assert!(settings.is_role_allowed(1));
-        assert!(!settings.is_role_allowed(2));
-        settings.add_denied_role(1);
-        assert!(!settings.is_role_allowed(1));
+        settings.add_allowed_role(role(1));
+        assert!(settings.is_role_allowed(&role(1)));
+        assert!(!settings.is_role_allowed(&role(2)));
+        settings.add_denied_role(role(1));
+        assert!(!settings.is_role_allowed(&role(1)));
     }
 
     #[test]
     fn test_is_user_allowed() {
         let mut settings = GenericPermissionSettings::default();
-        settings.add_allowed_user(1);
-        assert!(settings.is_user_allowed(1));
-        assert!(!settings.is_user_allowed(2));
-        settings.add_denied_user(1);
-        assert!(!settings.is_user_allowed(1));
+        settings.add_allowed_user(user(1));
+        assert!(settings.is_user_allowed(&user(1)));
+        assert!(!settings.is_user_allowed(&user(2)));
+        settings.add_denied_user(user(1));
+        assert!(!settings.is_user_allowed(&user(1)));
     }
 
     // #[test]
@@ -594,41 +554,41 @@ mod tests {
     #[test]
     fn test_add_remove_allowed_role() {
         let mut settings = GenericPermissionSettings::default();
-        settings.add_allowed_role(1);
-        assert!(settings.is_role_allowed(1));
-        settings.remove_allowed_role(1);
-        assert!(settings.is_role_allowed(1));
-        settings.add_allowed_role(2);
-        assert!(!settings.is_role_allowed(1));
+        settings.add_allowed_role(role(1));
+        assert!(settings.is_role_allowed(&role(1)));
+        settings.remove_allowed_role(&role(1));
+        assert!(settings.is_role_allowed(&role(1)));
+        settings.add_allowed_role(role(2));
+        assert!(!settings.is_role_allowed(&role(1)));
     }
 
     #[test]
     fn test_add_remove_denied_role() {
         let mut settings = GenericPermissionSettings::default();
-        settings.add_denied_role(1);
-        assert!(!settings.is_role_allowed(1));
-        settings.remove_denied_role(1);
-        assert!(settings.is_role_allowed(1));
-        settings.add_denied_role(2);
-        assert!(settings.is_role_allowed(1));
+        settings.add_denied_role(role(1));
+        assert!(!settings.is_role_allowed(&role(1)));
+        settings.remove_denied_role(&role(1));
+        assert!(settings.is_role_allowed(&role(1)));
+        settings.add_denied_role(role(2));
+        assert!(settings.is_role_allowed(&role(1)));
     }
 
     #[test]
     fn test_add_remove_allowed_user() {
         let mut settings = GenericPermissionSettings::default();
-        settings.add_allowed_user(1);
-        assert!(settings.is_user_allowed(1));
-        settings.remove_allowed_user(1);
-        assert!(settings.is_user_allowed(1));
+        settings.add_allowed_user(user(1));
+        assert!(settings.is_user_allowed(&user(1)));
+        settings.remove_allowed_user(&user(1));
+        assert!(settings.is_user_allowed(&user(1)));
     }
 
     #[test]
     fn test_add_remove_denied_user() {
         let mut settings = GenericPermissionSettings::default();
-        settings.add_denied_user(1);
-        assert!(!settings.is_user_allowed(1));
-        settings.remove_denied_user(1);
-        assert!(settings.is_user_allowed(1));
+        settings.add_denied_user(user(1));
+        assert!(!settings.is_user_allowed(&user(1)));
+        settings.remove_denied_user(&user(1));
+        assert!(settings.is_user_allowed(&user(1)));
     }
 
     #[test]
@@ -636,14 +596,14 @@ mod tests {
         let mut settings = GenericPermissionSettings::default();
         // settings.add_allowed_command("test".to_string());
         // settings.add_denied_command("test".to_string());
-        settings.add_allowed_role(1);
-        settings.add_denied_role(1);
-        settings.add_allowed_user(1);
-        settings.add_denied_user(1);
+        settings.add_allowed_role(role(1));
+        settings.add_denied_role(role(1));
+        settings.add_allowed_user(user(1));
+        settings.add_denied_user(user(1));
         settings.clear();
         // assert!(settings.is_command_allowed("test"));
-        assert!(settings.is_role_allowed(1));
-        assert!(settings.is_user_allowed(1));
+        assert!(settings.is_role_allowed(&role(1)));
+        assert!(settings.is_user_allowed(&user(1)));
     }
 
     #[test]
@@ -664,12 +624,12 @@ mod tests {
         };
         let settings = settings_read.convert();
         // assert!(settings.is_command_allowed("test"));
-        assert!(!settings.is_role_allowed(1));
-        assert!(!settings.is_user_allowed(1));
-        assert!(!settings.is_channel_allowed(1));
-        assert!(settings.is_role_allowed(2));
-        assert!(settings.is_user_allowed(2));
-        assert!(settings.is_channel_allowed(2));
+        assert!(!settings.is_role_allowed(&role(1)));
+        assert!(!settings.is_user_allowed(&user(1)));
+        assert!(!settings.is_channel_allowed(&room(1)));
+        assert!(settings.is_role_allowed(&role(2)));
+        assert!(settings.is_user_allowed(&user(2)));
+        assert!(settings.is_channel_allowed(&room(2)));
     }
 
     #[test]
@@ -681,16 +641,62 @@ mod tests {
     }
 
     #[test]
-    fn test_convert_to_hash_set_u64() {
-        let value = json!([1, 2]);
-        let hash_set = ConvertToHashSetU64::convert(value);
-        assert!(hash_set.contains(&1));
-        assert!(hash_set.contains(&2));
+    fn music_permissions_still_deny_a_denied_user() {
+        let mut settings = GenericPermissionSettings {
+            default_allow_all_users: true,
+            ..Default::default()
+        };
+        settings.denied_users.insert(UserId::new(7).to_ref());
+        assert!(!settings.is_user_allowed(&UserId::new(7).to_ref()));
+        assert!(settings.is_user_allowed(&UserId::new(8).to_ref()));
 
-        let value2 = vec![1, 2];
-        let hash_set2 = value2.convert();
-        assert!(hash_set2.contains(&1));
-        assert!(hash_set2.contains(&2));
+        let read = GenericPermissionSettingsRead {
+            id: 1,
+            default_allow_all_commands: true,
+            default_allow_all_users: true,
+            default_allow_all_roles: true,
+            allowed_roles: vec![],
+            denied_roles: vec![],
+            allowed_users: vec![],
+            denied_users: vec![7, 0],
+            allowed_channels: vec![],
+            denied_channels: vec![],
+        };
+        let converted = read.convert();
+        assert_eq!(converted.denied_users, HashSet::from([user(7)]));
+    }
+
+    #[test]
+    fn permission_sets_serialise_as_arrays_of_numbers() {
+        let mut settings = GenericPermissionSettings::default();
+        settings.add_allowed_role(role(5));
+        settings.add_denied_user(user(7));
+        settings.add_allowed_channel(room(9));
+        let v = serde_json::to_value(&settings).unwrap();
+        assert_eq!(v["allowed_roles"], json!([5]));
+        assert_eq!(v["denied_users"], json!([7]));
+        assert_eq!(v["allowed_channels"], json!([9]));
+        assert_eq!(
+            serde_json::from_value::<GenericPermissionSettings>(v).unwrap(),
+            settings
+        );
+    }
+
+    #[test]
+    fn a_command_channel_serialises_its_ids_as_numbers() {
+        let channel = CommandChannel {
+            command: "music".into(),
+            channel_id: room(3),
+            guild_id: GuildId::new(4).to_ref(),
+            permission_settings: GenericPermissionSettings::default(),
+        };
+        let v = serde_json::to_value(&channel).unwrap();
+        assert_eq!(v["channel_id"], 3);
+        assert_eq!(v["guild_id"], 4);
+        assert_eq!(
+            serde_json::from_value::<CommandChannel>(v).unwrap(),
+            channel
+        );
     }
 
     #[crack_test_macros::db_test(migrator = "MIGRATOR")]
@@ -702,8 +708,8 @@ mod tests {
         let mut settings = GenericPermissionSettings::default();
         // settings.add_allowed_command("test".to_string());
         // settings.add_denied_command("test2".to_string());
-        settings.add_allowed_role(1);
-        settings.add_allowed_user(1);
+        settings.add_allowed_role(role(1));
+        settings.add_allowed_user(user(1));
         settings.insert_permission_settings(&pool).await.unwrap();
 
         let settings_read = GenericPermissionSettings::get_permission_settings(&pool, 1)
@@ -730,12 +736,12 @@ mod tests {
         let mut settings = GenericPermissionSettings::default();
         // settings.add_allowed_command("test".to_string());
         // settings.add_denied_command("test2".to_string());
-        settings.add_allowed_role(1);
-        settings.add_allowed_user(1);
+        settings.add_allowed_role(role(1));
+        settings.add_allowed_user(user(1));
         let channel = CommandChannel {
             permission_settings: settings,
-            channel_id: GenericChannelId::new(1),
-            guild_id: GuildId::new(1),
+            channel_id: room(1),
+            guild_id: GuildId::new(1).to_ref(),
             command: "test".to_string(),
         };
         channel.insert_command_channel(&pool).await.unwrap();

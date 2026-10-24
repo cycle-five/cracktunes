@@ -829,7 +829,9 @@ mod tests {
     async fn the_music_channel_beats_the_last_command_channel() {
         let data = crate::Data::default();
         let mut settings = crate::guild::settings::GuildSettings::new(GUILD, None, None);
-        settings.set_music_channel(7);
+        settings.set_music_channel(crack_types::discord::ToRef::to_ref(
+            &serenity::all::GenericChannelId::new(7),
+        ));
         data.guild_settings_map
             .write()
             .await

@@ -618,7 +618,9 @@ mod tests {
     async fn a_press_outside_the_music_channel_is_refused_privately() {
         let data = Data::default();
         let mut s = crate::guild::settings::GuildSettings::new(G, None, None);
-        s.set_music_channel(77);
+        s.set_music_channel(crack_types::discord::ToRef::to_ref(
+            &serenity::all::GenericChannelId::new(77),
+        ));
         data.guild_settings_map.write().await.insert(G, s);
         let id = NowPlayingButton::Shuffle { guild: G }.custom_id();
         let (ops, ran) = press_with(&data, &id, presser(Some(G)), Ok(None)).await;

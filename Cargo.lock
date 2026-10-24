@@ -1090,6 +1090,7 @@ dependencies = [
  "const-random",
  "crack-bf",
  "crack-coin",
+ "crack-model",
  "crack-musicreco",
  "crack-osint",
  "crack-sleevenote",

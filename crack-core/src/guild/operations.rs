@@ -1,4 +1,5 @@
 use crate::{errors::CrackedError, Data, GuildSettings};
+use crack_types::discord::{from_snowflake, generic_channel_id, snowflake, ToRef};
 use serenity::{
     all::{Context as SerenityContext, GenericChannelId, GuildId},
     small_fixed_array::FixedString,
@@ -124,6 +125,7 @@ impl GuildSettingsOperations for Data {
             .await
             .get(&guild_id)
             .and_then(|x| x.get_music_channel())
+            .and_then(|room| generic_channel_id(&room).ok())
     }
 
     /// Set the music channel for the guild.
@@ -131,7 +133,7 @@ impl GuildSettingsOperations for Data {
         let mut guard = self.guild_settings_map.write().await;
         let _ = guard
             .entry(guild_id)
-            .and_modify(|x| x.set_music_channel(channel_id.get()))
+            .and_modify(|x| x.set_music_channel(channel_id.to_ref()))
             .or_insert_with(|| GuildSettings::new(guild_id, None, None));
     }
 
@@ -344,17 +346,22 @@ impl GuildSettingsOperations for Data {
             .await
             .get(&guild_id)
             .and_then(|x| x.welcome_settings.as_ref())
-            .and_then(|x| x.auto_role)
+            .and_then(|x| x.auto_role.as_ref())
+            .and_then(|role| snowflake(role).ok())
     }
 
     /// Set the auto role for the guild.
     async fn set_auto_role(&self, guild_id: GuildId, auto_role: u64) {
+        let Ok(auto_role) = from_snowflake::<crack_model::Role>(auto_role) else {
+            tracing::warn!(auto_role, "ignored an auto role id that is not a snowflake");
+            return;
+        };
         self.guild_settings_map
             .write()
             .await
             .entry(guild_id)
             .and_modify(|e| {
-                e.set_auto_role(Some(auto_role));
+                e.set_auto_role(Some(auto_role.clone()));
             });
     }
 
@@ -579,7 +586,7 @@ mod test {
     use super::*;
     use crate::guild::cache::GuildCache;
     use crate::{Data, DataInner};
-    use serenity::model::id::GenericChannelId;
+    use serenity::model::id::{GenericChannelId, RoleId};
     use std::collections::HashMap;
     use tokio::sync::{Mutex, RwLock};
 
@@ -760,7 +767,7 @@ mod test {
         let guild_id = GuildId::new(1);
         let channel_id = GenericChannelId::new(2);
         let mut settings = crate::GuildSettings::default();
-        settings.set_music_channel(channel_id.get());
+        settings.set_music_channel(channel_id.to_ref());
         guild_settings_map.insert(guild_id, settings);
         let data = Arc::new(Data(Arc::new(DataInner {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
@@ -776,7 +783,7 @@ mod test {
         let guild_id = GuildId::new(1);
         let channel_id = GenericChannelId::new(2);
         let mut settings = crate::GuildSettings::default();
-        settings.set_music_channel(channel_id.get());
+        settings.set_music_channel(channel_id.to_ref());
         guild_settings_map.insert(guild_id, settings);
         let data = Arc::new(Data(Arc::new(DataInner {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
@@ -983,7 +990,7 @@ mod test {
         let guild_id = GuildId::new(1);
         let auto_role = 123;
         let mut settings = crate::GuildSettings::default();
-        settings.set_auto_role(Some(auto_role));
+        settings.set_auto_role(Some(RoleId::new(auto_role).to_ref()));
         guild_settings_map.insert(guild_id, settings);
         let data = Arc::new(Data(Arc::new(DataInner {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),

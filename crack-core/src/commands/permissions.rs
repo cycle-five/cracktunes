@@ -2,6 +2,7 @@ use crate::{
     commands::music::gp::GP_BLOCKED_COMMANDS, guild::operations::GuildSettingsOperations,
     utils::OptionTryUnwrap, Context, CrackedError, Data, Error,
 };
+use crack_types::discord::generic_channel_id;
 use poise::serenity_prelude as serenity;
 use serenity::all::{GenericChannelId, GuildId, Member, Permissions, RoleId};
 use std::borrow::Cow;
@@ -32,7 +33,8 @@ pub async fn music_access(
     let music_channel = data
         .get_guild_settings(guild)
         .await
-        .and_then(|settings| settings.get_music_channel());
+        .and_then(|settings| settings.get_music_channel())
+        .and_then(|room| generic_channel_id(&room).ok());
     if let Some(allowed) = music_channel {
         if allowed != channel {
             return Err(CrackedError::NotInMusicChannel(allowed));
@@ -71,6 +73,28 @@ pub async fn cmd_check_music(ctx: Context<'_>) -> Result<bool, Error> {
     }
 }
 
+pub async fn command_check_music(ctx: Context<'_>) -> Result<bool, Error> {
+    if ctx.author().bot() {
+        return Ok(false);
+    };
+
+    // let data: &Data = ctx.data();
+    // let user_row = data.userinfo_db.get(ctx.author().id.into()).await?;
+    // if user_row.bot_banned() {
+    //     notify_banned(ctx).await?;
+    //     return Ok(false);
+    // }
+
+    let Some(guild_id) = ctx.guild_id() else {
+        return Ok(true);
+    };
+
+    Ok(ctx
+        .data()
+        .check_music_permissions(guild_id, ctx.author().id)
+        .await)
+}
+
 /// Check if the user is authorized to use the music commands.
 pub fn is_authorized_music(
     member: Option<Cow<'_, Member>>,
@@ -100,6 +124,7 @@ mod tests {
     use super::*;
     use crate::guild::settings::GuildSettings;
     use crate::Data;
+    use crack_types::discord::ToRef;
     use poise::serenity_prelude::{ChannelId, GuildId, UserId};
 
     const G: GuildId = GuildId::new(1);
@@ -109,7 +134,7 @@ mod tests {
     async fn with_music_channel() -> Data {
         let data = Data::default();
         let mut s = GuildSettings::new(G, None, None);
-        s.set_music_channel(MUSIC.get());
+        s.set_music_channel(MUSIC.to_ref());
         data.guild_settings_map.write().await.insert(G, s);
         data
     }

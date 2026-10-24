@@ -1,11 +1,12 @@
 use self::serenity::model::id::GuildId;
-use self::serenity::model::prelude::UserId;
 use crate::db::{GuildEntity, WelcomeSettingsRead};
 use crate::errors::CrackedError;
 use crate::CrackedResult;
 use ::serenity::small_fixed_array::FixedString;
+use crack_model::{RoleRef, RoomRef, UserRef};
+use crack_types::discord::{as_snowflake_opt, from_snowflake, snowflake};
 use lazy_static::lazy_static;
-use poise::serenity_prelude::{self as serenity, FullEvent, GenericChannelId};
+use poise::serenity_prelude::{self as serenity};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::fmt::{Display, Formatter};
@@ -58,84 +59,145 @@ pub fn get_log_prefix() -> String {
 #[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct LogSettings {
     // TODO: Decide if I want to have separate raw events and all log channels.
-    pub all_log_channel: Option<u64>,
-    pub raw_event_log_channel: Option<u64>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub all_log_channel: Option<RoomRef>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub raw_event_log_channel: Option<RoomRef>,
     // TODO: Decide on what level of granularity I want for logging options.
     // Also should they be able to overlap?
-    pub server_log_channel: Option<u64>,
-    pub member_log_channel: Option<u64>,
-    pub join_leave_log_channel: Option<u64>,
-    pub voice_log_channel: Option<u64>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub server_log_channel: Option<RoomRef>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub member_log_channel: Option<RoomRef>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub join_leave_log_channel: Option<RoomRef>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub voice_log_channel: Option<RoomRef>,
+}
+
+/// Convert one stored id. A value that is not a snowflake is dropped with a
+/// warning rather than panicking a conversion that cannot fail.
+pub(crate) fn stored_ref<K: crack_model::Kind>(
+    column: &'static str,
+    raw: Option<i64>,
+) -> Option<crack_model::Ref<K>> {
+    let raw = raw?;
+    match u64::try_from(raw)
+        .ok()
+        .and_then(|n| from_snowflake::<K>(n).ok())
+    {
+        Some(r) => Some(r),
+        None => {
+            tracing::warn!(column, raw, "dropped a stored id that is not a snowflake");
+            None
+        },
+    }
+}
+
+/// The `BIGINT` to store for a ref. A ref that is not a Discord snowflake
+/// cannot be stored in these columns and is refused, never truncated.
+pub(crate) fn column_i64<K: crack_model::Kind>(
+    r: &crack_model::Ref<K>,
+) -> Result<i64, CrackedError> {
+    snowflake(r)
+        .map(|n| n as i64)
+        .map_err(|_| CrackedError::Other("a stored id must be a Discord snowflake"))
+}
+
+/// The ref for a stored `BIGINT` that must be there. A value that is not a
+/// snowflake is an error, because the row it sits in cannot be used without it.
+pub(crate) fn ref_from_column<K: crack_model::Kind>(
+    raw: i64,
+) -> Result<crack_model::Ref<K>, CrackedError> {
+    u64::try_from(raw)
+        .ok()
+        .and_then(|n| from_snowflake::<K>(n).ok())
+        .ok_or(CrackedError::Other(
+            "a stored id is not a Discord snowflake",
+        ))
+}
+
+/// [`column_i64`] for an optional column.
+pub(crate) fn column_opt<K: crack_model::Kind>(
+    r: &Option<crack_model::Ref<K>>,
+) -> Result<Option<i64>, CrackedError> {
+    r.as_ref().map(column_i64).transpose()
 }
 
 impl From<crate::db::LogSettingsRead> for LogSettings {
     fn from(settings_db: crate::db::LogSettingsRead) -> Self {
         LogSettings {
-            all_log_channel: settings_db.all_log_channel.map(|x| x as u64),
-            raw_event_log_channel: settings_db.raw_event_log_channel.map(|x| x as u64),
-            server_log_channel: settings_db.server_log_channel.map(|x| x as u64),
-            member_log_channel: settings_db.member_log_channel.map(|x| x as u64),
-            join_leave_log_channel: settings_db.join_leave_log_channel.map(|x| x as u64),
-            voice_log_channel: settings_db.voice_log_channel.map(|x| x as u64),
+            all_log_channel: stored_ref(
+                "log_settings.all_log_channel",
+                settings_db.all_log_channel,
+            ),
+            raw_event_log_channel: stored_ref(
+                "log_settings.raw_event_log_channel",
+                settings_db.raw_event_log_channel,
+            ),
+            server_log_channel: stored_ref(
+                "log_settings.server_log_channel",
+                settings_db.server_log_channel,
+            ),
+            member_log_channel: stored_ref(
+                "log_settings.member_log_channel",
+                settings_db.member_log_channel,
+            ),
+            join_leave_log_channel: stored_ref(
+                "log_settings.join_leave_log_channel",
+                settings_db.join_leave_log_channel,
+            ),
+            voice_log_channel: stored_ref(
+                "log_settings.voice_log_channel",
+                settings_db.voice_log_channel,
+            ),
         }
     }
 }
 
-const DEFAULT_LOG_CHANNEL: Option<GenericChannelId> = None;
-
 impl LogSettings {
-    pub fn get_all_log_channel(&self) -> Option<GenericChannelId> {
-        self.all_log_channel
-            .map(GenericChannelId::new)
-            .or(DEFAULT_LOG_CHANNEL)
+    pub fn get_all_log_channel(&self) -> Option<RoomRef> {
+        self.all_log_channel.clone()
     }
 
-    pub fn get_server_log_channel(&self) -> Option<GenericChannelId> {
-        self.server_log_channel
-            .map(GenericChannelId::new)
-            .or(DEFAULT_LOG_CHANNEL)
+    pub fn get_server_log_channel(&self) -> Option<RoomRef> {
+        self.server_log_channel.clone()
     }
 
-    pub fn get_join_leave_log_channel(&self) -> Option<GenericChannelId> {
-        self.join_leave_log_channel
-            .map(GenericChannelId::new)
-            .or(DEFAULT_LOG_CHANNEL)
+    pub fn get_join_leave_log_channel(&self) -> Option<RoomRef> {
+        self.join_leave_log_channel.clone()
     }
 
-    pub fn get_member_log_channel(&self) -> Option<GenericChannelId> {
-        self.member_log_channel
-            .map(GenericChannelId::new)
-            .or(DEFAULT_LOG_CHANNEL)
+    pub fn get_member_log_channel(&self) -> Option<RoomRef> {
+        self.member_log_channel.clone()
     }
 
-    pub fn get_voice_log_channel(&self) -> Option<GenericChannelId> {
-        self.voice_log_channel
-            .map(GenericChannelId::new)
-            .or(DEFAULT_LOG_CHANNEL)
+    pub fn get_voice_log_channel(&self) -> Option<RoomRef> {
+        self.voice_log_channel.clone()
     }
 
-    pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.all_log_channel = Some(channel_id);
+    pub fn set_all_log_channel(&mut self, channel: RoomRef) -> &mut Self {
+        self.all_log_channel = Some(channel);
         self
     }
 
-    pub fn set_server_log_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.server_log_channel = Some(channel_id);
+    pub fn set_server_log_channel(&mut self, channel: RoomRef) -> &mut Self {
+        self.server_log_channel = Some(channel);
         self
     }
 
-    pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.join_leave_log_channel = Some(channel_id);
+    pub fn set_join_leave_log_channel(&mut self, channel: RoomRef) -> &mut Self {
+        self.join_leave_log_channel = Some(channel);
         self
     }
 
-    pub fn set_member_log_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.member_log_channel = Some(channel_id);
+    pub fn set_member_log_channel(&mut self, channel: RoomRef) -> &mut Self {
+        self.member_log_channel = Some(channel);
         self
     }
 
-    pub fn set_voice_log_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.voice_log_channel = Some(channel_id);
+    pub fn set_voice_log_channel(&mut self, channel: RoomRef) -> &mut Self {
+        self.voice_log_channel = Some(channel);
         self
     }
 
@@ -147,9 +209,11 @@ impl LogSettings {
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone, PartialEq)]
 pub struct WelcomeSettings {
-    pub channel_id: Option<u64>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub channel_id: Option<RoomRef>,
     pub message: Option<String>,
-    pub auto_role: Option<u64>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub auto_role: Option<RoleRef>,
     pub password: Option<String>,
 }
 
@@ -166,9 +230,9 @@ impl Display for WelcomeSettings {
 impl From<WelcomeSettingsRead> for WelcomeSettings {
     fn from(settings_db: WelcomeSettingsRead) -> Self {
         WelcomeSettings {
-            channel_id: settings_db.channel_id.map(|x| x as u64),
+            channel_id: stored_ref("welcome_settings.channel_id", settings_db.channel_id),
             message: settings_db.message,
-            auto_role: settings_db.auto_role.map(|x| x as u64),
+            auto_role: stored_ref("welcome_settings.auto_role", settings_db.auto_role),
             password: None,
         }
     }
@@ -181,7 +245,7 @@ impl WelcomeSettings {
     }
 
     /// Set the channel id, returning a new WelcomeSettings.
-    pub fn with_channel_id(self, channel_id: u64) -> Self {
+    pub fn with_channel_id(self, channel_id: RoomRef) -> Self {
         Self {
             channel_id: Some(channel_id),
             ..self
@@ -197,7 +261,7 @@ impl WelcomeSettings {
     }
 
     /// Set the auto role, returning a new WelcomeSettings.
-    pub fn with_auto_role(self, auto_role: u64) -> Self {
+    pub fn with_auto_role(self, auto_role: RoleRef) -> Self {
         Self {
             auto_role: Some(auto_role),
             ..self
@@ -214,9 +278,7 @@ impl WelcomeSettings {
 
     /// Save the welcome settings to the database.
     pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
-        crate::db::GuildEntity::write_welcome_settings(pool, guild_id as i64, self)
-            .await
-            .map_err(CrackedError::SQLX)
+        crate::db::GuildEntity::write_welcome_settings(pool, guild_id as i64, self).await
     }
 }
 
@@ -581,13 +643,13 @@ impl GuildSettings {
     }
 
     /// Set the music channel, mutating.
-    pub fn set_music_channel(&mut self, channel_id: u64) {
+    pub fn set_music_channel(&mut self, channel_id: RoomRef) {
         self.command_settings
             .entry("music".to_string())
             .and_modify(|perms| {
                 perms.allowed_channels.clear();
                 perms.denied_channels.clear();
-                perms.add_allowed_channel(channel_id);
+                perms.add_allowed_channel(channel_id.clone());
             })
             .or_insert_with(|| {
                 let mut perms = GenericPermissionSettings::default();
@@ -671,8 +733,8 @@ impl GuildSettings {
     /// Another set welcome settings
     pub fn set_welcome_settings2(
         &mut self,
-        channel_id: u64,
-        auto_role: Option<u64>,
+        channel_id: RoomRef,
+        auto_role: Option<RoleRef>,
         message: &str,
     ) -> &mut Self {
         self.welcome_settings = Some(WelcomeSettings {
@@ -685,7 +747,7 @@ impl GuildSettings {
     }
 
     /// And a third.
-    pub fn set_welcome_settings3(&mut self, channel_id: u64, message: String) -> &mut Self {
+    pub fn set_welcome_settings3(&mut self, channel_id: RoomRef, message: String) -> &mut Self {
         self.welcome_settings = Some(WelcomeSettings {
             channel_id: Some(channel_id),
             message: Some(message.to_string()),
@@ -701,7 +763,7 @@ impl GuildSettings {
     }
 
     /// Set the auto role,without mutating.
-    pub fn with_auto_role(self, auto_role: Option<u64>) -> Self {
+    pub fn with_auto_role(self, auto_role: Option<RoleRef>) -> Self {
         let welcome_settings = if let Some(welcome_settings) = self.welcome_settings {
             WelcomeSettings {
                 auto_role,
@@ -721,7 +783,7 @@ impl GuildSettings {
     }
 
     /// Set the auto role, mutating.
-    pub fn set_auto_role(&mut self, auto_role: Option<u64>) -> &mut Self {
+    pub fn set_auto_role(&mut self, auto_role: Option<RoleRef>) -> &mut Self {
         if let Some(welcome_settings) = &mut self.welcome_settings {
             welcome_settings.auto_role = auto_role;
         } else {
@@ -737,8 +799,8 @@ impl GuildSettings {
     /// Set the log settings, mutating.
     pub fn set_log_settings(
         &mut self,
-        all_log_channel: u64,
-        join_leave_log_channel: u64,
+        all_log_channel: RoomRef,
+        join_leave_log_channel: RoomRef,
     ) -> &mut Self {
         self.log_settings = Some(LogSettings {
             all_log_channel: Some(all_log_channel),
@@ -793,7 +855,7 @@ impl GuildSettings {
     }
 
     /// Set the all log channel, with mutating.
-    pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {
+    pub fn set_all_log_channel(&mut self, channel_id: RoomRef) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.all_log_channel = Some(channel_id);
         } else {
@@ -805,10 +867,10 @@ impl GuildSettings {
     }
 
     /// Set the join/leave log channel, without mutating.
-    pub fn with_join_leave_log_channel(&self, channel_id: u64) -> Self {
+    pub fn with_join_leave_log_channel(&self, channel_id: RoomRef) -> Self {
         let log_settings = if let Some(log_settings) = self.log_settings.clone() {
             LogSettings {
-                join_leave_log_channel: Some(channel_id),
+                join_leave_log_channel: Some(channel_id.clone()),
                 ..log_settings
             }
         } else {
@@ -824,7 +886,7 @@ impl GuildSettings {
     }
 
     /// Set the server join/leave log channel, mutating.
-    pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
+    pub fn set_join_leave_log_channel(&mut self, channel_id: RoomRef) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.join_leave_log_channel = Some(channel_id);
         } else {
@@ -855,126 +917,27 @@ impl GuildSettings {
         self
     }
 
-    /// Get the log channel for the given event type.
-    pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<GenericChannelId> {
-        let log_settings = self.log_settings.clone().unwrap_or_default();
-        match event {
-            FullEvent::PresenceUpdate { .. } => {
-                None
-                //.or(log_settings.get_all_log_channel()),
-            },
-            FullEvent::GuildMemberAddition { .. } | FullEvent::GuildMemberRemoval { .. } => {
-                log_settings
-                    .get_join_leave_log_channel()
-                    .or(log_settings.get_all_log_channel())
-            },
-            FullEvent::GuildBanRemoval { .. }
-            | FullEvent::GuildBanAddition { .. }
-            | FullEvent::GuildScheduledEventCreate { .. }
-            | FullEvent::GuildScheduledEventUpdate { .. }
-            | FullEvent::GuildScheduledEventDelete { .. }
-            | FullEvent::GuildScheduledEventUserAdd { .. }
-            | FullEvent::GuildScheduledEventUserRemove { .. }
-            | FullEvent::GuildStickersUpdate { .. }
-            | FullEvent::GuildCreate { .. }
-            | FullEvent::GuildDelete { .. }
-            | FullEvent::GuildEmojisUpdate { .. }
-            | FullEvent::GuildIntegrationsUpdate { .. }
-            | FullEvent::GuildMemberUpdate { .. }
-            | FullEvent::GuildMembersChunk { .. }
-            | FullEvent::GuildRoleCreate { .. }
-            | FullEvent::GuildRoleDelete { .. }
-            | FullEvent::GuildRoleUpdate { .. }
-            | FullEvent::GuildUpdate { .. } => log_settings
-                .get_server_log_channel()
-                .or(log_settings.get_all_log_channel()),
-            FullEvent::Message { .. }
-            | FullEvent::Resume { .. }
-            | FullEvent::ShardStageUpdate { .. }
-            | FullEvent::WebhookUpdate { .. }
-            | FullEvent::CommandPermissionsUpdate { .. }
-            | FullEvent::AutoModActionExecution { .. }
-            | FullEvent::AutoModRuleCreate { .. }
-            | FullEvent::AutoModRuleUpdate { .. }
-            | FullEvent::AutoModRuleDelete { .. }
-            | FullEvent::CacheReady { .. }
-            | FullEvent::ChannelCreate { .. }
-            | FullEvent::CategoryCreate { .. }
-            | FullEvent::CategoryDelete { .. }
-            | FullEvent::ChannelDelete { .. }
-            | FullEvent::ChannelPinsUpdate { .. }
-            | FullEvent::ChannelUpdate { .. }
-            | FullEvent::IntegrationCreate { .. }
-            | FullEvent::IntegrationUpdate { .. }
-            | FullEvent::IntegrationDelete { .. }
-            | FullEvent::InteractionCreate { .. }
-            | FullEvent::InviteCreate { .. }
-            | FullEvent::InviteDelete { .. }
-            | FullEvent::MessageDelete { .. }
-            | FullEvent::MessageDeleteBulk { .. }
-            | FullEvent::MessageUpdate { .. }
-            | FullEvent::ReactionAdd { .. }
-            | FullEvent::ReactionRemove { .. }
-            | FullEvent::ReactionRemoveAll { .. }
-            | FullEvent::Ready { .. }
-            | FullEvent::StageInstanceCreate { .. }
-            | FullEvent::StageInstanceDelete { .. }
-            | FullEvent::StageInstanceUpdate { .. }
-            | FullEvent::ThreadCreate { .. }
-            | FullEvent::ThreadDelete { .. }
-            | FullEvent::ThreadListSync { .. }
-            | FullEvent::ThreadMemberUpdate { .. }
-            | FullEvent::ThreadMembersUpdate { .. }
-            | FullEvent::ThreadUpdate { .. }
-            | FullEvent::TypingStart { .. }
-            | FullEvent::UserUpdate { .. }
-            | FullEvent::VoiceServerUpdate { .. }
-            | FullEvent::VoiceStateUpdate { .. } => {
-                // tracing::warn!(
-                //     "{}",
-                //     format!("Event: {:?}", event).as_str().to_string().white()
-                // );
-                log_settings.get_all_log_channel()
-            },
-            //| FullEvent::GuildUnavailable { .. }
-            // | FullEvent::Unknown { .. }
-            _ => {
-                tracing::warn!("Event Not Implemented: {:?}", event);
-                None
-            },
-        }
-    }
-
-    pub fn get_log_channel(&self, _name: &str) -> Option<GenericChannelId> {
+    pub fn get_log_channel(&self, _name: &str) -> Option<RoomRef> {
         self.get_all_log_channel()
     }
 
-    pub fn get_all_log_channel(&self) -> Option<GenericChannelId> {
+    pub fn get_all_log_channel(&self) -> Option<RoomRef> {
         if let Some(log_settings) = &self.log_settings {
             return log_settings.get_all_log_channel();
         }
         None
     }
 
-    pub fn get_join_leave_log_channel(&self) -> Option<GenericChannelId> {
-        if let Some(log_settings) = &self.log_settings {
-            if let Some(channel_id) = log_settings.join_leave_log_channel {
-                return Some(GenericChannelId::new(channel_id));
-            }
-        }
-        None
+    pub fn get_join_leave_log_channel(&self) -> Option<RoomRef> {
+        self.log_settings
+            .as_ref()
+            .and_then(|log_settings| log_settings.join_leave_log_channel.clone())
     }
 
-    pub fn get_music_channel(&self) -> Option<GenericChannelId> {
+    pub fn get_music_channel(&self) -> Option<RoomRef> {
         self.command_settings
             .get("music")
-            .and_then(|x| {
-                x.allowed_channels
-                    .iter()
-                    .map(|x| GenericChannelId::new(*x))
-                    .next()
-            })
-            .or(None)
+            .and_then(|x| x.allowed_channels.iter().next().cloned())
     }
 
     pub fn get_music_permissions(&self) -> Option<GenericPermissionSettings> {
@@ -982,8 +945,7 @@ impl GuildSettings {
     }
 
     /// Adds a user to the denied music users list.
-    pub async fn add_denied_music_user(&mut self, user_id: UserId) -> CrackedResult<bool> {
-        let user_id = user_id.get();
+    pub async fn add_denied_music_user(&mut self, user_id: UserRef) -> CrackedResult<bool> {
         let mut perms = self.get_music_permissions().unwrap_or_default();
         perms.add_denied_user(user_id);
         self.command_settings.insert("music".to_string(), perms);
@@ -1023,7 +985,8 @@ pub type GuildSettingsMapParam =
 #[cfg(test)]
 mod test {
     use crate::guild::settings::{GuildSettings, Provenance};
-    use serenity::all::GuildId;
+    use crack_types::discord::ToRef;
+    use serenity::all::{GenericChannelId, GuildId};
 
     #[test]
     fn test_default() {
@@ -1061,26 +1024,10 @@ mod test {
         let mut settings =
             crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
         let channel_id = 123;
-        settings.set_all_log_channel(channel_id);
+        settings.set_all_log_channel(GenericChannelId::new(channel_id).to_ref());
         assert_eq!(
             settings.get_log_channel("all"),
-            Some(serenity::model::id::GenericChannelId::new(123))
-        );
-    }
-
-    #[test]
-    fn test_get_log_channel_type_fe() {
-        let mut settings =
-            crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
-        let channel_id = 123;
-        settings.set_all_log_channel(channel_id);
-        let event = serenity::all::FullEvent::GuildCreate {
-            guild: serenity::model::guild::Guild::default(),
-            is_new: Some(true),
-        };
-        assert_eq!(
-            settings.get_log_channel_type_fe(&event),
-            Some(serenity::model::id::GenericChannelId::new(123))
+            Some(GenericChannelId::new(123).to_ref())
         );
     }
 
@@ -1278,5 +1225,67 @@ mod test {
         let mut off = on.clone();
         off.control_echoes = false;
         assert_ne!(on, off);
+    }
+
+    #[test]
+    fn the_welcome_reply_text_is_unchanged() {
+        use super::WelcomeSettings;
+        use serenity::all::RoleId;
+        // set_welcome_settings.rs replies with this Display, so its bytes are user-visible.
+        let w = WelcomeSettings::new()
+            .with_channel_id(GenericChannelId::new(123).to_ref())
+            .with_message("hi".into())
+            .with_auto_role(RoleId::new(456).to_ref());
+        assert_eq!(
+            w.to_string(),
+            "{\n  \"channel_id\": 123,\n  \"message\": \"hi\",\n  \"auto_role\": 456,\n  \"password\": null\n}"
+        );
+    }
+
+    #[test]
+    fn log_settings_serialise_channels_as_numbers() {
+        use super::LogSettings;
+        let mut l = LogSettings::default();
+        l.set_all_log_channel(GenericChannelId::new(9).to_ref());
+        let v = serde_json::to_value(&l).unwrap();
+        assert_eq!(v["all_log_channel"], 9);
+        assert_eq!(serde_json::from_value::<LogSettings>(v).unwrap(), l);
+    }
+
+    #[test]
+    fn garbage_stored_ids_are_dropped_not_panicked_on() {
+        use super::LogSettings;
+        use crack_types::discord::from_snowflake;
+        let row = crate::db::LogSettingsRead {
+            guild_id: 1,
+            all_log_channel: Some(0),
+            raw_event_log_channel: Some(-5),
+            server_log_channel: Some(i64::MAX),
+            member_log_channel: None,
+            join_leave_log_channel: None,
+            voice_log_channel: None,
+        };
+        let l = LogSettings::from(row);
+        assert_eq!(l.get_all_log_channel(), None);
+        assert_eq!(l.raw_event_log_channel, None);
+        assert_eq!(
+            l.get_server_log_channel(),
+            Some(from_snowflake(i64::MAX as u64).unwrap())
+        );
+    }
+
+    #[test]
+    fn garbage_welcome_ids_are_dropped_not_panicked_on() {
+        use super::WelcomeSettings;
+        let row = crate::db::WelcomeSettingsRead {
+            guild_id: 1,
+            auto_role: Some(-1),
+            channel_id: Some(0),
+            message: Some("hi".into()),
+        };
+        let w = WelcomeSettings::from(row);
+        assert_eq!(w.channel_id, None);
+        assert_eq!(w.auto_role, None);
+        assert_eq!(w.message.as_deref(), Some("hi"));
     }
 }
