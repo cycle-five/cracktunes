@@ -60,3 +60,14 @@ pub fn fixture_index() -> &'static rust_topology::scip::ScipIndex {
         rust_topology::scip::read(&cached).unwrap()
     })
 }
+
+/// The fixture workspace's syn-derived structure, read once per test binary.
+pub fn fixture_structure() -> &'static rust_topology::structure::Structure {
+    use std::sync::OnceLock;
+    static S: OnceLock<rust_topology::structure::Structure> = OnceLock::new();
+    S.get_or_init(|| {
+        let ws = rust_topology::workspace::Workspace::load(&fixture_ws(), &["apptesting".into()])
+            .unwrap();
+        rust_topology::structure::read(&ws, &fixture_config()).unwrap()
+    })
+}

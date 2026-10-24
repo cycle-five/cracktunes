@@ -4,6 +4,7 @@ pub mod config;
 pub mod model;
 pub mod rust_analyzer;
 pub mod scip;
+pub mod structure;
 pub mod symbol;
 pub mod workspace;
 
