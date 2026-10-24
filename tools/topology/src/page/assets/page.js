@@ -68,7 +68,12 @@ function table(cols, rows, text, initialSort) {
     draw();
   });
   function draw() {
-    let shown = rows.filter((r) => !state.q || text(r).toLowerCase().includes(state.q));
+    // Every space-separated word must appear: "crack_core::rooms clean".
+    const words = state.q.split(/\s+/).filter(Boolean);
+    let shown = rows.filter((r) => {
+      const t = text(r).toLowerCase();
+      return words.every((w) => t.includes(w));
+    });
     if (state.col >= 0 && cols[state.col].sort) {
       const f = cols[state.col].sort;
       shown = shown.slice().sort((a, b) => {
@@ -232,7 +237,7 @@ const TABS = {
       draw();
     });
     host.append(
-      el("p", { class: "muted" }, "Every unit with its state for the group. Filter by text, e.g. a crate or file prefix, or by state."),
+      el("p", { class: "muted" }, "Every unit with its state for the group. Filter by words, e.g. 'crack_core clean' for the clean units of crack-core."),
       el("div", { class: "controls" }, el("label", {}, "group "), groupSelect((g) => { group = g; draw(); }), el("label", {}, toggle, " show tests")),
       inner
     );
