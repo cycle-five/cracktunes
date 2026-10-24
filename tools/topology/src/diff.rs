@@ -1079,39 +1079,50 @@ mod tests {
 
     #[test]
     fn crate_lines_sum_modules_and_list_the_headline_group_first() {
-        let lines = |c, b| StateLines {
+        let lines = |c, s, b, i| StateLines {
             clean: c,
+            signature: s,
             body: b,
-            ..StateLines::default()
+            inherited: i,
         };
         let mut a = digest(&[]);
         let mut b = digest(&[]);
-        for (d, c1, c2) in [(&mut a, 10, 30), (&mut b, 14, 26)] {
+        for (d, k) in [(&mut a, 1), (&mut b, 2)] {
             d.module_lines.insert(
                 "zeta".into(),
-                BTreeMap::from([(id("core"), lines(c1, 0)), (id("core::m"), lines(c2, 5))]),
+                BTreeMap::from([
+                    (id("core"), lines(10, 20, 30, 40)),
+                    (id("core::m"), lines(100, 200, 300, 400)),
+                    (id("other"), lines(1, 1, 1, 1)),
+                ]),
             );
             d.module_lines.insert(
                 "alpha".into(),
-                BTreeMap::from([(id("core::m"), lines(c1, 0))]),
+                BTreeMap::from([(id("core::m"), lines(10 * k, 20 * k, 30 * k, 40 * k))]),
             );
         }
         let mut r = compare(&a, &b);
-        // core: zeta clean 40 -> 40 with body 5 -> 5; only alpha changes.
+        // zeta is the same on both sides: only alpha changes.
         assert!(!r.crate_lines.contains_key("zeta"), "{:?}", r.crate_lines);
+        assert_eq!(r.crate_lines["alpha"].len(), 1);
         assert_eq!(r.crate_lines["alpha"][0].krate, "core");
-        assert_eq!(r.crate_lines["alpha"][0].before.clean, 10);
-        assert_eq!(r.crate_lines["alpha"][0].after.clean, 14);
+        assert_eq!(r.crate_lines["alpha"][0].before, lines(10, 20, 30, 40));
+        assert_eq!(r.crate_lines["alpha"][0].after, lines(20, 40, 60, 80));
         // Make zeta change too, with zeta as the headline.
         b.module_lines
             .get_mut("zeta")
             .unwrap()
-            .insert(id("core"), lines(11, 0));
+            .insert(id("core"), lines(11, 22, 33, 44));
         r = compare(&a, &b);
+        assert_eq!(r.crate_lines["zeta"].len(), 1);
+        assert_eq!(r.crate_lines["zeta"][0].before, lines(110, 220, 330, 440));
+        assert_eq!(r.crate_lines["zeta"][0].after, lines(111, 222, 333, 444));
         r.headline = Some("zeta".into());
         let text = render(&r);
         assert!(
-            text.contains("core: clean 40->37, signature 0->0, body 5->5"),
+            text.contains(
+                "core: clean 110->111, signature 220->222, body 330->333, inherited 440->444"
+            ),
             "{text}"
         );
         let (z, al) = (
@@ -1122,5 +1133,20 @@ mod tests {
         r.headline = None;
         let text = render(&r);
         assert!(text.find("for alpha").unwrap() < text.find("for zeta").unwrap());
+    }
+
+    #[test]
+    fn only_numeric_suffixes_are_positional() {
+        let a = digest(&[("a::f#x", Function, "h")]);
+        let b = digest(&[("a::f#y", Function, "h")]);
+        let r = compare(&a, &b);
+        assert_eq!((r.removed.len(), r.added.len()), (1, 1), "{r:?}");
+        assert!(r.moved.is_empty());
+        let a = digest(&[("a::f#", Function, "h")]);
+        let b = digest(&[("a::f", Function, "h")]);
+        let r = compare(&a, &b);
+        assert_eq!(r.removed, vec![id("a::f#")]);
+        assert_eq!(r.added, vec![id("a::f")]);
+        assert!(r.moved.is_empty() && r.changed.is_empty());
     }
 }
