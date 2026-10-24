@@ -1219,6 +1219,7 @@ dependencies = [
 name = "crack-types"
 version = "0.36.2"
 dependencies = [
+ "crack-model",
  "humantime",
  "poise",
  "reqwest 0.12.28",
