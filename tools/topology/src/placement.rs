@@ -12,7 +12,7 @@ use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// What a reference points at.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RefTarget {
     Unit(UnitId),
     Module(UnitId),
@@ -21,7 +21,7 @@ pub enum RefTarget {
 }
 
 /// One reference occurrence placed inside a unit.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RawRef {
     pub from: UnitId,
     pub target: RefTarget,
@@ -36,6 +36,10 @@ pub struct PlacementStats {
     pub definitions_unmapped: u32,
     pub references: u32,
     pub references_unmapped: u32,
+    /// A symbol defined twice in one crate with different mappings.
+    pub definitions_ambiguous: u32,
+    /// Non-local symbols `Symbol::parse` rejected.
+    pub symbols_unparsed: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -49,7 +53,7 @@ pub struct Placed {
     pub stats: PlacementStats,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Mapped {
     Unit(UnitId),
     Module(UnitId),
@@ -243,7 +247,30 @@ impl<'a> Placer<'a> {
                 self.reference(&doc.path, &info.krate, &lines, occ);
             }
         }
+        let out = &mut self.out;
+        out.refs.sort();
+        out.reexports.sort_by(|a, b| {
+            (&a.module, &a.target, &a.first).cmp(&(&b.module, &b.target, &b.first))
+        });
+        out.warnings
+            .sort_by(|a, b| (&a.loc, a.kind, &a.message).cmp(&(&b.loc, b.kind, &b.message)));
         self.out
+    }
+
+    /// Records a non-local symbol that did not parse; locals are skipped silently.
+    fn unparsed(&mut self, file: &str, line0: u32, symbol: &str) {
+        if symbol.starts_with("local ") {
+            return;
+        }
+        self.out.stats.symbols_unparsed += 1;
+        self.out.warnings.push(Warning {
+            kind: WarningKind::UnparsedSymbol,
+            message: format!("cannot parse symbol {symbol:?}"),
+            loc: Some(Loc {
+                file: file.into(),
+                line: line0 + 1,
+            }),
+        });
     }
 
     /// The innermost unit whose span contains `pos`.
@@ -266,6 +293,7 @@ impl<'a> Placer<'a> {
 
     fn define(&mut self, file: &str, krate: &str, lines: &Lines, occ: &Occurrence) {
         let Some(sym) = Symbol::parse(&occ.symbol) else {
+            self.unparsed(file, occ.start_line, &occ.symbol);
             return;
         };
         if !self.ws.is_member(&sym.package) {
@@ -311,8 +339,24 @@ impl<'a> Placer<'a> {
             mapped,
         };
         let slot = self.defs.entry(occ.symbol.clone()).or_default();
-        if !slot.contains(&def) {
-            slot.push(def);
+        if slot.contains(&def) {
+            return;
+        }
+        let clash = slot.iter().any(|d| d.krate == def.krate);
+        slot.push(def);
+        if clash {
+            self.out.stats.definitions_ambiguous += 1;
+            self.out.warnings.push(Warning {
+                kind: WarningKind::AmbiguousDefinition,
+                message: format!(
+                    "{} is defined more than once in {krate}; the smallest unit id wins",
+                    occ.symbol
+                ),
+                loc: Some(Loc {
+                    file: file.into(),
+                    line: pos.line,
+                }),
+            });
         }
     }
 
@@ -329,7 +373,12 @@ impl<'a> Placer<'a> {
                 .get(&occ.symbol[..tuple_field_owner(&occ.symbol)?])
         })?;
         let lib = self.lib_of.get(sym.package.as_str()).copied();
-        let by = |k: &str| cands.iter().find(|d| d.krate == k);
+        let by = |k: &str| {
+            cands
+                .iter()
+                .filter(|d| d.krate == k)
+                .min_by(|a, b| a.mapped.cmp(&b.mapped))
+        };
         let start = occ.start_col as usize;
         let names_lib = lib.is_some_and(|l| {
             if sym.module_path().is_some_and(|p| p.is_empty()) {
@@ -346,6 +395,7 @@ impl<'a> Placer<'a> {
 
     fn reference(&mut self, file: &str, file_krate: &str, lines: &Lines, occ: &Occurrence) {
         let Some(sym) = Symbol::parse(&occ.symbol) else {
+            self.unparsed(file, occ.start_line, &occ.symbol);
             return;
         };
         let pos = lines.pos(occ.start_line, occ.start_col);
@@ -373,10 +423,11 @@ impl<'a> Placer<'a> {
                 }
                 return;
             }
-            // `a` in `pub use a::B;` is only a path prefix, not what is re-exported.
-            if line
-                .get(occ.end_col as usize..)
-                .is_some_and(|r| r.starts_with("::"))
+            // `a` in `pub use a::B;` is only a path prefix, not what is re-exported;
+            // in `pub use a::*;` it is the only thing the glob names.
+            let rest = line.get(occ.end_col as usize..).unwrap_or("");
+            if let Some(after) = rest.strip_prefix("::")
+                && !after.trim_start().starts_with('*')
             {
                 return;
             }

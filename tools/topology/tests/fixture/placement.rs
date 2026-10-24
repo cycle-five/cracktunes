@@ -381,8 +381,8 @@ fn contained_and_unmapped_definitions() {
     assert_eq!(
         kinds(&p),
         vec![
-            rust_topology::model::WarningKind::UnmappedDefinition,
-            rust_topology::model::WarningKind::UnmappedReference
+            rust_topology::model::WarningKind::UnmappedReference,
+            rust_topology::model::WarningKind::UnmappedDefinition
         ]
     );
 }
@@ -530,4 +530,202 @@ fn outside_tree_and_unindexed_files_warn() {
             .starts_with("1 occurrences in elsewhere.rs")
     );
     assert_eq!(p.stats.references, 0);
+}
+
+#[test]
+fn glob_reexport_is_kept_but_path_prefix_is_not() {
+    use rust_topology::structure::UseSpan;
+    use synthetic::*;
+    let f = "appcore/src/x.rs";
+    let mut s = S::default();
+    s.units.push(unit(
+        "appcore::x",
+        K::Module,
+        "appcore",
+        f,
+        span(pos(1, 0), pos(4, 0)),
+        None,
+        None,
+    ));
+    for line in [1, 2] {
+        s.uses.push(UseSpan {
+            module: id("appcore::x"),
+            file: f.into(),
+            span: span(pos(line, 0), pos(line + 1, 0)),
+            public: true,
+        });
+    }
+    file(
+        &mut s,
+        f,
+        "appcore",
+        "appcore::x",
+        "pub use serde::*;\npub use serde::Thing;\n\n",
+    );
+    let sym = |d: &str| format!("rust-analyzer cargo serde 1.0.0 {d}");
+    let p = placed(
+        &s,
+        vec![doc(
+            f,
+            vec![
+                occ(0, 8, 13, &sym("crate/"), false),
+                occ(1, 8, 13, &sym("crate/"), false),
+                occ(1, 15, 20, &sym("Thing#"), false),
+            ],
+        )],
+    );
+    let got: Vec<_> = p
+        .reexports
+        .iter()
+        .map(|r| (r.target.as_str(), r.first.line))
+        .collect();
+    assert_eq!(got, vec![("serde Thing#", 2), ("serde crate/", 1)]);
+}
+
+#[test]
+fn same_crate_duplicates_are_counted_and_resolved_deterministically() {
+    use synthetic::*;
+    let f = "appcore/src/x.rs";
+    let build = |reverse: bool| {
+        let mut s = S::default();
+        s.units.push(unit(
+            "appcore::x",
+            K::Module,
+            "appcore",
+            f,
+            span(pos(1, 0), pos(5, 0)),
+            None,
+            None,
+        ));
+        for (name, col) in [("appcore::x::B", 4), ("appcore::x::A", 14)] {
+            s.units.push(unit(
+                name,
+                K::Function,
+                "appcore",
+                f,
+                span(pos(2, col - 4), pos(2, col + 6)),
+                Some(pos(2, col)),
+                None,
+            ));
+        }
+        file(
+            &mut s,
+            f,
+            "appcore",
+            "appcore::x",
+            "\nfn b() {} fn a() {}\n\nx;\n",
+        );
+        let sym = "rust-analyzer cargo appcore 0.1.0 x/dup().";
+        let mut defs = vec![occ(1, 4, 5, sym, true), occ(1, 14, 15, sym, true)];
+        if reverse {
+            defs.reverse();
+        }
+        defs.push(occ(3, 0, 1, sym, false));
+        placed(&s, vec![doc(f, defs)])
+    };
+    for reverse in [false, true] {
+        let p = build(reverse);
+        assert_eq!(p.stats.definitions_ambiguous, 1);
+        assert_eq!(
+            kinds(&p),
+            vec![rust_topology::model::WarningKind::AmbiguousDefinition]
+        );
+        assert_eq!(target_on_line(&p, 4), &RefTarget::Unit(id("appcore::x::A")));
+    }
+}
+
+#[test]
+fn malformed_symbols_are_counted_and_locals_are_not() {
+    use synthetic::*;
+    let f = "appcore/src/x.rs";
+    let mut s = S::default();
+    s.units.push(unit(
+        "appcore::x",
+        K::Module,
+        "appcore",
+        f,
+        span(pos(1, 0), pos(3, 0)),
+        None,
+        None,
+    ));
+    file(&mut s, f, "appcore", "appcore::x", "x\nx\n");
+    let p = placed(
+        &s,
+        vec![doc(
+            f,
+            vec![
+                occ(0, 0, 1, "rust-analyzer cargo appcore", true),
+                occ(1, 0, 1, "garbage", false),
+                occ(1, 0, 1, "local 4", false),
+                occ(0, 0, 1, "local 5", true),
+            ],
+        )],
+    );
+    assert_eq!(p.stats.symbols_unparsed, 2);
+    assert_eq!(p.stats.references, 0);
+    assert_eq!(
+        kinds(&p),
+        vec![rust_topology::model::WarningKind::UnparsedSymbol; 2]
+    );
+    assert_eq!(p.warnings[0].loc.as_ref().unwrap().line, 1);
+    assert_eq!(p.warnings[1].loc.as_ref().unwrap().line, 2);
+}
+
+#[test]
+fn output_is_sorted() {
+    let p = &fixture_placed().1;
+    assert!(p.refs.windows(2).all(|w| w[0] <= w[1]));
+    assert!(
+        p.reexports
+            .windows(2)
+            .all(|w| (&w[0].module, &w[0].target) <= (&w[1].module, &w[1].target))
+    );
+    let s = synthetic_unsorted();
+    let files: Vec<_> = s
+        .warnings
+        .iter()
+        .map(|w| w.loc.as_ref().unwrap().file.as_str())
+        .collect();
+    assert_eq!(files, vec!["aa.rs", "zz.rs"]);
+}
+
+/// Occurrences fed in reverse order still produce sorted warnings.
+fn synthetic_unsorted() -> rust_topology::placement::Placed {
+    use synthetic::*;
+    let mut s = S::default();
+    file(&mut s, "appcore/src/y.rs", "appcore", "appcore::y", "");
+    let p = placed(
+        &s,
+        vec![
+            doc(
+                "zz.rs",
+                vec![occ(
+                    0,
+                    0,
+                    1,
+                    "rust-analyzer cargo appcore 0.1.0 f().",
+                    false,
+                )],
+            ),
+            doc(
+                "aa.rs",
+                vec![occ(
+                    0,
+                    0,
+                    1,
+                    "rust-analyzer cargo appcore 0.1.0 g().",
+                    false,
+                )],
+            ),
+        ],
+    );
+    // UnindexedFile for y.rs sorts after aa.rs / zz.rs? Keep only the two outside-tree ones.
+    rust_topology::placement::Placed {
+        warnings: p
+            .warnings
+            .into_iter()
+            .filter(|w| w.kind == rust_topology::model::WarningKind::OccurrenceOutsideTree)
+            .collect(),
+        ..p
+    }
 }

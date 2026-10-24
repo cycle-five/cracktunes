@@ -191,6 +191,8 @@ pub enum WarningKind {
     OccurrenceOutsideTree,
     UnmappedDefinition,
     UnmappedReference,
+    AmbiguousDefinition,
+    UnparsedSymbol,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
