@@ -41,3 +41,7 @@ __pycache__/
 
 # git worktrees created for parallel work; never part of the tree
 .worktrees/
+
+# topology tool output and fixture build dirs
+tools/topology/out/
+tools/topology/tests/fixtures/*/target/

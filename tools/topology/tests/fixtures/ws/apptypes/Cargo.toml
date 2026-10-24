@@ -1,0 +1,7 @@
+[package]
+name = "apptypes"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fakecord = { path = "../fakecord" }

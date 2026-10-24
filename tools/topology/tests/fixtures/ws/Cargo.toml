@@ -1,0 +1,3 @@
+[workspace]
+members = ["fakechars", "fakecord-macros", "fakecord", "apptypes", "appcore", "apptesting", "appbin"]
+resolver = "2"

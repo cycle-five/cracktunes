@@ -1,0 +1,8 @@
+[package]
+name = "fakecord"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fakecord-macros = { path = "../fakecord-macros" }
+fakechars = { path = "../fakechars" }

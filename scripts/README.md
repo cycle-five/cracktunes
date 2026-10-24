@@ -41,6 +41,7 @@ hardcoded in `docker-compose.yml`, missing external volumes, and a missing
 | `install_psql.sh` | install the postgres client |
 | `test_curl.sh` | poke the crack-voting webhook endpoint by hand |
 | `start.sh` | the container entrypoint — `COPY`d into the image by the Dockerfile, not run directly |
+| `topology.sh` | run `tools/topology` (workspace crate/module/item map from rust-analyzer SCIP + syn) against this repo; arguments pass through |
 
 ## Broken — do not use
 
