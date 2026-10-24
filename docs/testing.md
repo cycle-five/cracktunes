@@ -282,6 +282,10 @@ always write the reason.
 `mutants-diff.yml` runs the same check as the Mutants job on pull requests.
 
 - It is skipped when a PR changes no `.rs` file.
+- 🔑 **`Mutants / Mutants verdict` is a required check on master** (since
+  2026-10-23). A skipped verdict (no Rust to mutate) counts as passing.
+  Master's protection also requires a branch to be up to date before it
+  merges, so a PR behind master is updated and its checks run again.
 - Mutants are dealt out at 6 per shard, at most 24 shards, 6 running at once
   (the account's concurrent-job limit is shared by every repo).
 - 🔑 **The `Mutants verdict` job gives the verdict, not the shards.** A shard
@@ -294,11 +298,13 @@ always write the reason.
 - **Cost, measured 2026-10-23** (a throwaway `crack-core` smoke on #628:
   7 mutants in 2 shards, 6 missed; Build, beside it, took 5-10 minutes):
   - a `crack-core` shard first builds and tests the unmutated tree:
-    260-290 s of build on a PR's first Mutants run, about 105 s on its later
-    pushes (the dependencies restored by rust-cache), plus 51 s of tests.
-    🪤 A PR's first run is always cold: the job runs only on pull requests,
-    and a cache a PR saves is scoped to that PR, so master never saves one a
-    new PR could restore;
+    260-290 s of build cold, about 105 s with the dependencies restored by
+    rust-cache, plus 51 s of tests. 🔑 A cache a PR saves is scoped to that
+    PR, so master saves the one a new PR restores (`mutants-warm.yml`, the
+    **Mutants cache** job, crack-core only). A PR's first run is still cold
+    when master has no cache for its lockfile and toolchain: a dependency
+    PR, the first push after a new stable, or a PR opened before master's
+    job finished;
   - each missed `crack-core` mutant then costs 160-170 s (105-120 s build,
     51 s test); a caught one pays the same build and stops at its first
     failing test;
