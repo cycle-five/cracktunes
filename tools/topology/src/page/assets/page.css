@@ -55,7 +55,9 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
-  padding: 0 16px 48px;
+  padding-block: 0 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   background: var(--bg);
   color: var(--text);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -103,6 +105,9 @@ a.unit, button.link {
 #detail {
   position: fixed; right: 0; top: 0; bottom: 0; width: min(440px, 100%); overflow-y: auto;
   background: var(--surface); border-left: 1px solid var(--border); padding: 16px; z-index: 5;
+  padding-top: calc(16px + env(safe-area-inset-top, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   box-shadow: -4px 0 16px rgba(0,0,0,0.15);
 }
 #detail h3 { margin: 0 0 8px; font-size: 1rem; }

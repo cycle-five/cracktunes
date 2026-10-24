@@ -95,6 +95,10 @@ fn html_contract() {
     assert!(h.contains("<title>fixture topology</title>"));
     assert!(h.contains("prefers-color-scheme: dark"));
     assert!(h.contains(r#":root[data-theme="dark"]"#));
+    // The side gutter clears a phone's system bar, as the Artifact contract asks.
+    assert!(h.contains("viewport-fit=cover"));
+    assert!(h.contains(r#"<meta name="claude:viewport-fit-sides" content="cover">"#));
+    assert!(h.contains("padding-left: max(16px, env(safe-area-inset-left, 0px))"));
     assert!(!h.contains("http://"));
     assert!(!h.contains("https://"));
     assert!(!data_block(&h).contains("</"));
