@@ -56,8 +56,9 @@ scripts/topology.sh diff /somewhere/before.json tools/topology/out/digest.json
 ```
 
 It reports units added, removed, changed and moved (same kind, name and hash under a new
-id), taint transitions per group (what became clean), lines per state per module, and
-cycle and wide-struct changes. Modules that exist on one side only are listed with a zero
+id; positional `#N` ids of one base, such as the 18 `<impl From for E>` blocks, are paired by hash first), taint transitions per group (what became clean), lines per state per module and
+per crate lines per state (headline group first), modules that joined or left a cycle, and
+wide-struct changes. Modules that exist on one side only are listed with a zero
 on the other. It always exits 0. The first lines say if the tool, rust-analyzer or the
 config differ between the runs; then a difference may come from the tooling, not the code.
 

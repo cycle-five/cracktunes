@@ -29,8 +29,18 @@ pub struct ModuleLinesChange {
     pub after: StateLines,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CrateLinesChange {
+    #[serde(rename = "crate")]
+    pub krate: String,
+    pub before: StateLines,
+    pub after: StateLines,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct DiffReport {
+    /// The group `render` lists first; set by the caller (the digest does not know it).
+    pub headline: Option<String>,
     pub notes: Vec<String>,
     pub added: Vec<UnitId>,
     pub removed: Vec<UnitId>,
@@ -38,8 +48,14 @@ pub struct DiffReport {
     pub moved: Vec<Move>,
     pub transitions: BTreeMap<String, Vec<Transition>>,
     pub module_lines: BTreeMap<String, Vec<ModuleLinesChange>>,
+    /// group -> crates whose lines per state changed (sums of the module lines).
+    pub crate_lines: BTreeMap<String, Vec<CrateLinesChange>>,
     pub cycles_added: Vec<Vec<UnitId>>,
     pub cycles_removed: Vec<Vec<UnitId>>,
+    /// Modules that are in a cycle now and were not.
+    pub cycle_joined: Vec<UnitId>,
+    /// Modules that were in a cycle and are not now.
+    pub cycle_left: Vec<UnitId>,
     pub wide_changes: Vec<String>,
     pub orphans_added: Vec<String>,
     pub orphans_removed: Vec<String>,
@@ -63,8 +79,73 @@ pub fn load(path: &Path) -> Result<Digest> {
     }
 }
 
+/// An id without its positional `#N` suffix, and that N (1 when there is none).
+fn split_ordinal(id: &UnitId) -> (&str, u32) {
+    match id.0.rsplit_once('#') {
+        Some((head, n)) if !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()) => {
+            (head, n.parse().unwrap_or(u32::MAX))
+        },
+        _ => (id.0.as_str(), 1),
+    }
+}
+
+/// Which ids of the two sides are the same unit.
+struct Pairing {
+    /// (before id, after id), identical or changed.
+    matched: Vec<(UnitId, UnitId)>,
+    removed: BTreeSet<UnitId>,
+    added: BTreeSet<UnitId>,
+}
+
+/// Pair ids across the two sides. Positional `#N` ids (`<impl From for E>#2`) are
+/// grouped by their base id and paired by equal hash first, so taking one block out
+/// does not renumber its neighbours into a cascade of changes. What is left pairs in
+/// order of N.
+fn pair_units(a: &Digest, b: &Digest) -> Pairing {
+    type Members<'x> = Vec<(u32, &'x UnitId)>;
+    let mut groups: BTreeMap<&str, (Members, Members)> = BTreeMap::new();
+    for id in a.units.keys() {
+        let (base, n) = split_ordinal(id);
+        groups.entry(base).or_default().0.push((n, id));
+    }
+    for id in b.units.keys() {
+        let (base, n) = split_ordinal(id);
+        groups.entry(base).or_default().1.push((n, id));
+    }
+    let mut out = Pairing {
+        matched: Vec::new(),
+        removed: BTreeSet::new(),
+        added: BTreeSet::new(),
+    };
+    for (mut before, mut after) in groups.into_values() {
+        before.sort();
+        after.sort();
+        // Equal hashes first.
+        let mut left_b: Members = Vec::new();
+        for (n, id) in before {
+            let hash = &a.units[id].hash;
+            match after.iter().position(|(_, x)| b.units[*x].hash == *hash) {
+                Some(i) => out.matched.push((id.clone(), after.remove(i).1.clone())),
+                None => left_b.push((n, id)),
+            }
+        }
+        // The rest in order of N.
+        let mut rest = after.into_iter();
+        for (_, id) in left_b {
+            match rest.next() {
+                Some((_, x)) => out.matched.push((id.clone(), x.clone())),
+                None => {
+                    out.removed.insert(id.clone());
+                },
+            }
+        }
+        out.added.extend(rest.map(|(_, x)| x.clone()));
+    }
+    out
+}
+
 /// The last path segment of a unit id (the last two for methods).
-fn name_of(id: &UnitId, kind: UnitKind) -> String {
+fn match_name(id: &UnitId, kind: UnitKind) -> String {
     let keep = if kind == UnitKind::Method { 2 } else { 1 };
     let base = match id.0.rsplit_once('#') {
         Some((head, n)) if !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()) => head,
@@ -84,7 +165,7 @@ fn group<'a>(
     let mut m: BTreeMap<Key, Vec<&UnitId>> = BTreeMap::new();
     for id in ids {
         let kind = units[*id].kind;
-        m.entry((kind, name_of(id, kind))).or_default().push(id);
+        m.entry((kind, match_name(id, kind))).or_default().push(id);
     }
     m
 }
@@ -101,7 +182,7 @@ fn find_moves(
     for id in removed.iter() {
         let u = &a.units[id];
         by_hash
-            .entry((u.kind, name_of(id, u.kind), u.hash.as_str()))
+            .entry((u.kind, match_name(id, u.kind), u.hash.as_str()))
             .or_default()
             .0
             .push(id);
@@ -109,7 +190,7 @@ fn find_moves(
     for id in added.iter() {
         let u = &b.units[id];
         by_hash
-            .entry((u.kind, name_of(id, u.kind), u.hash.as_str()))
+            .entry((u.kind, match_name(id, u.kind), u.hash.as_str()))
             .or_default()
             .1
             .push(id);
@@ -179,6 +260,27 @@ fn cycle_set(d: &Digest) -> BTreeSet<&Vec<UnitId>> {
         .collect()
 }
 
+fn cycle_members(d: &Digest) -> BTreeSet<&UnitId> {
+    cycle_set(d).into_iter().flatten().collect()
+}
+
+/// A module id's crate: its first path segment.
+fn crate_of(module: &UnitId) -> &str {
+    module.0.split("::").next().unwrap_or(&module.0)
+}
+
+fn crate_totals(modules: &BTreeMap<UnitId, StateLines>) -> BTreeMap<&str, StateLines> {
+    let mut m: BTreeMap<&str, StateLines> = BTreeMap::new();
+    for (id, l) in modules {
+        let t = m.entry(crate_of(id)).or_default();
+        t.clean += l.clean;
+        t.signature += l.signature;
+        t.body += l.body;
+        t.inherited += l.inherited;
+    }
+    m
+}
+
 fn wide_changes(a: &Digest, b: &Digest) -> Vec<String> {
     let empty = BTreeMap::new();
     let none = BTreeSet::new();
@@ -210,33 +312,21 @@ fn wide_changes(a: &Digest, b: &Digest) -> Vec<String> {
 }
 
 pub fn compare(a: &Digest, b: &Digest) -> DiffReport {
-    let mut removed: BTreeSet<UnitId> = a
-        .units
-        .keys()
-        .filter(|k| !b.units.contains_key(*k))
-        .cloned()
-        .collect();
-    let mut added: BTreeSet<UnitId> = b
-        .units
-        .keys()
-        .filter(|k| !a.units.contains_key(*k))
-        .cloned()
-        .collect();
-    let changed: Vec<UnitId> = a
-        .units
+    let Pairing {
+        matched,
+        mut removed,
+        mut added,
+    } = pair_units(a, b);
+    let mut changed: Vec<UnitId> = matched
         .iter()
-        .filter(|(k, u)| b.units.get(*k).is_some_and(|v| v.hash != u.hash))
-        .map(|(k, _)| k.clone())
+        .filter(|(f, t)| a.units[f].hash != b.units[t].hash)
+        .map(|(_, t)| t.clone())
         .collect();
+    changed.sort();
     let moved = find_moves(a, b, &mut removed, &mut added);
 
-    // Unit pairs whose state is compared: same id, or a recognised move.
-    let mut pairs: Vec<(&UnitId, &UnitId)> = a
-        .units
-        .keys()
-        .filter(|k| b.units.contains_key(*k))
-        .map(|k| (k, k))
-        .collect();
+    // Unit pairs whose state is compared: paired ids, or a recognised move.
+    let mut pairs: Vec<(&UnitId, &UnitId)> = matched.iter().map(|(f, t)| (f, t)).collect();
     pairs.extend(moved.iter().map(|m| (&m.from, &m.to)));
     let mut transitions: BTreeMap<String, Vec<Transition>> = BTreeMap::new();
     for (from, to) in pairs {
@@ -275,7 +365,7 @@ pub fn compare(a: &Digest, b: &Digest) -> DiffReport {
         v.sort_by(|x, y| x.unit.cmp(&y.unit));
     }
 
-    let zero = zero_lines();
+    let zero = StateLines::default();
     let mut module_lines: BTreeMap<String, Vec<ModuleLinesChange>> = BTreeMap::new();
     let line_groups: BTreeSet<&String> =
         a.module_lines.keys().chain(b.module_lines.keys()).collect();
@@ -300,6 +390,32 @@ pub fn compare(a: &Digest, b: &Digest) -> DiffReport {
         }
     }
 
+    let mut crate_lines: BTreeMap<String, Vec<CrateLinesChange>> = BTreeMap::new();
+    let line_groups: BTreeSet<&String> =
+        a.module_lines.keys().chain(b.module_lines.keys()).collect();
+    for g in line_groups {
+        let ta = crate_totals(a.module_lines.get(g).unwrap_or(&no_modules));
+        let tb = crate_totals(b.module_lines.get(g).unwrap_or(&no_modules));
+        let crates: BTreeSet<&&str> = ta.keys().chain(tb.keys()).collect();
+        for c in crates {
+            let before = ta.get(*c).cloned().unwrap_or_default();
+            let after = tb.get(*c).cloned().unwrap_or_default();
+            if before != after {
+                crate_lines
+                    .entry(g.clone())
+                    .or_default()
+                    .push(CrateLinesChange {
+                        krate: (*c).to_string(),
+                        before,
+                        after,
+                    });
+            }
+        }
+    }
+
+    let (ma, mb) = (cycle_members(a), cycle_members(b));
+    let cycle_joined: Vec<UnitId> = mb.difference(&ma).map(|m| (*m).clone()).collect();
+    let cycle_left: Vec<UnitId> = ma.difference(&mb).map(|m| (*m).clone()).collect();
     let (ca, cb) = (cycle_set(a), cycle_set(b));
     let cycles_added: Vec<Vec<UnitId>> = cb.difference(&ca).map(|c| (*c).clone()).collect();
     let cycles_removed: Vec<Vec<UnitId>> = ca.difference(&cb).map(|c| (*c).clone()).collect();
@@ -332,6 +448,7 @@ pub fn compare(a: &Digest, b: &Digest) -> DiffReport {
     }
 
     DiffReport {
+        headline: None,
         notes: generator_notes(a, b),
         added: added.into_iter().collect(),
         removed: removed.into_iter().collect(),
@@ -339,21 +456,15 @@ pub fn compare(a: &Digest, b: &Digest) -> DiffReport {
         moved,
         transitions,
         module_lines,
+        crate_lines,
         cycles_added,
         cycles_removed,
+        cycle_joined,
+        cycle_left,
         wide_changes: wide_changes(a, b),
         orphans_added,
         orphans_removed,
         warnings: (wa, wb),
-    }
-}
-
-fn zero_lines() -> StateLines {
-    StateLines {
-        clean: 0,
-        signature: 0,
-        body: 0,
-        inherited: 0,
     }
 }
 
@@ -371,11 +482,21 @@ fn section(out: &mut String, title: &str, lines: Vec<String>) {
     }
 }
 
-fn cycle_line(c: &[UnitId]) -> String {
-    c.iter()
-        .map(|u| u.0.as_str())
-        .collect::<Vec<_>>()
-        .join(" -> ")
+fn lines_line(l: &StateLines, m: &StateLines) -> String {
+    format!(
+        "clean {}->{}, signature {}->{}, body {}->{}, inherited {}->{}",
+        l.clean, m.clean, l.signature, m.signature, l.body, m.body, l.inherited, m.inherited
+    )
+}
+
+/// The map's entries with the headline group first, the rest in name order.
+fn headline_first<'a, V>(
+    m: &'a BTreeMap<String, V>,
+    headline: Option<&str>,
+) -> Vec<(&'a String, &'a V)> {
+    let mut v: Vec<_> = m.iter().collect();
+    v.sort_by_key(|(g, _)| Some(g.as_str()) != headline);
+    v
 }
 
 pub fn render(r: &DiffReport) -> String {
@@ -402,7 +523,16 @@ pub fn render(r: &DiffReport) -> String {
     section(&mut out, "added", ids(&r.added));
     section(&mut out, "removed", ids(&r.removed));
     section(&mut out, "changed", ids(&r.changed));
-    for (g, ts) in &r.transitions {
+    for (g, cs) in headline_first(&r.crate_lines, r.headline.as_deref()) {
+        section(
+            &mut out,
+            &format!("lines per state for {g}, per crate"),
+            cs.iter()
+                .map(|c| format!("{}: {}", c.krate, lines_line(&c.before, &c.after)))
+                .collect(),
+        );
+    }
+    for (g, ts) in headline_first(&r.transitions, r.headline.as_deref()) {
         section(
             &mut out,
             &format!("state changes for {g}"),
@@ -423,45 +553,30 @@ pub fn render(r: &DiffReport) -> String {
                 .collect(),
         );
     }
-    for (g, ms) in &r.module_lines {
+    for (g, ms) in headline_first(&r.module_lines, r.headline.as_deref()) {
         section(
             &mut out,
             &format!("module lines for {g}"),
             ms.iter()
                 .map(|m| {
-                    let note = if m.before == zero_lines() {
+                    let note = if m.before == StateLines::default() {
                         " (new module)"
-                    } else if m.after == zero_lines() {
+                    } else if m.after == StateLines::default() {
                         " (module gone)"
                     } else {
                         ""
                     };
-                    format!(
-                        "{}: clean {}->{}, signature {}->{}, body {}->{}, inherited {}->{}",
-                        m.module.0,
-                        m.before.clean,
-                        m.after.clean,
-                        m.before.signature,
-                        m.after.signature,
-                        m.before.body,
-                        m.after.body,
-                        m.before.inherited,
-                        m.after.inherited
-                    ) + note
+                    format!("{}: {}", m.module.0, lines_line(&m.before, &m.after)) + note
                 })
                 .collect(),
         );
     }
     section(
         &mut out,
-        "cycles added",
-        r.cycles_added.iter().map(|c| cycle_line(c)).collect(),
+        "modules that joined a cycle",
+        ids(&r.cycle_joined),
     );
-    section(
-        &mut out,
-        "cycles removed",
-        r.cycles_removed.iter().map(|c| cycle_line(c)).collect(),
-    );
+    section(&mut out, "modules that left a cycle", ids(&r.cycle_left));
     section(&mut out, "wide struct changes", r.wide_changes.clone());
     section(&mut out, "orphans added", r.orphans_added.clone());
     section(&mut out, "orphans removed", r.orphans_removed.clone());
@@ -483,14 +598,12 @@ pub fn render(r: &DiffReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Generator;
-
-    fn generator() -> Generator {
-        Generator {
+    use crate::digest::DigestGenerator;
+    fn generator() -> DigestGenerator {
+        DigestGenerator {
             tool_hash: "t".into(),
             rust_analyzer: "ra 1".into(),
             config_hash: "c".into(),
-            ra_error_lines: 0,
         }
     }
 
@@ -752,16 +865,18 @@ mod tests {
         let text = render(&r);
         for want in [
             "module lines for g",
-            "cycles added",
-            "cycles removed",
+            "modules that joined a cycle",
+            "modules that left a cycle",
             "orphans added",
             "orphans removed",
             "warnings",
             "k: 1 -> 2",
             "S.f: +m2 -m1",
             "T.g: +m3",
-            "r -> s",
-            "p -> q",
+            "  r\n",
+            "  s\n",
+            "  p\n",
+            "  q\n",
         ] {
             assert!(text.contains(want), "{want} missing in {text}");
         }
@@ -806,8 +921,8 @@ mod tests {
                 changed: false
             }]
         );
-        assert_eq!(name_of(&id("a::f#x"), Function), "f#x");
-        assert_eq!(name_of(&id("a::f#"), Function), "f#");
+        assert_eq!(match_name(&id("a::f#x"), Function), "f#x");
+        assert_eq!(match_name(&id("a::f#"), Function), "f#");
     }
 
     #[test]
@@ -867,13 +982,13 @@ mod tests {
             vec![
                 ModuleLinesChange {
                     module: id("new"),
-                    before: zero_lines(),
+                    before: StateLines::default(),
                     after: lines(6)
                 },
                 ModuleLinesChange {
                     module: id("old"),
                     before: lines(4),
-                    after: zero_lines()
+                    after: StateLines::default()
                 },
             ]
         );
@@ -887,5 +1002,125 @@ mod tests {
             text.contains("old: clean 4->0") && text.contains("(module gone)"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn positional_ids_pair_by_hash_not_by_number() {
+        let a = digest(&[
+            ("a::<impl X>", UnitKind::Impl, "h1"),
+            ("a::<impl X>#2", UnitKind::Impl, "h2"),
+            ("a::<impl X>#3", UnitKind::Impl, "h3"),
+        ]);
+        let b = digest(&[
+            ("a::<impl X>", UnitKind::Impl, "h1"),
+            ("a::<impl X>#2", UnitKind::Impl, "h3"),
+        ]);
+        let r = compare(&a, &b);
+        assert!(r.changed.is_empty(), "{:?}", r.changed);
+        assert_eq!(r.removed, vec![id("a::<impl X>#2")]);
+        assert!(r.added.is_empty() && r.moved.is_empty());
+    }
+
+    #[test]
+    fn positional_leftovers_pair_in_order_and_count_as_changed() {
+        let a = digest(&[
+            ("a::<impl X>", UnitKind::Impl, "h1"),
+            ("a::<impl X>#2", UnitKind::Impl, "h2"),
+        ]);
+        let b = digest(&[
+            ("a::<impl X>", UnitKind::Impl, "h1"),
+            ("a::<impl X>#2", UnitKind::Impl, "h9"),
+            ("a::<impl X>#3", UnitKind::Impl, "h8"),
+        ]);
+        let r = compare(&a, &b);
+        assert_eq!(r.changed, vec![id("a::<impl X>#2")]);
+        assert_eq!(r.added, vec![id("a::<impl X>#3")]);
+        assert!(r.removed.is_empty());
+    }
+
+    #[test]
+    fn positional_states_follow_the_hash_pairing() {
+        let mut a = digest(&[
+            ("a::<impl X>", UnitKind::Impl, "h1"),
+            ("a::<impl X>#2", UnitKind::Impl, "h2"),
+        ]);
+        let mut b = digest(&[("a::<impl X>", UnitKind::Impl, "h2")]);
+        a.units
+            .get_mut(&id("a::<impl X>#2"))
+            .unwrap()
+            .states
+            .insert("g".into(), State::Body);
+        b.units
+            .get_mut(&id("a::<impl X>"))
+            .unwrap()
+            .states
+            .insert("g".into(), State::Body);
+        let r = compare(&a, &b);
+        assert!(r.transitions.is_empty(), "{:?}", r.transitions);
+    }
+
+    #[test]
+    fn a_cycle_that_grows_reports_only_the_new_member() {
+        let mut a = digest(&[]);
+        a.cycles_by_module = vec![vec![id("p"), id("q")]];
+        let mut b = digest(&[]);
+        b.cycles_by_module = vec![vec![id("p"), id("q"), id("t")]];
+        let r = compare(&a, &b);
+        assert_eq!(r.cycle_joined, vec![id("t")]);
+        assert!(r.cycle_left.is_empty());
+        let text = render(&r);
+        assert!(
+            text.contains("modules that joined a cycle (1)\n  t\n"),
+            "{text}"
+        );
+        assert!(!text.contains("left a cycle"), "{text}");
+        assert!(!text.contains(" -> "), "{text}");
+    }
+
+    #[test]
+    fn crate_lines_sum_modules_and_list_the_headline_group_first() {
+        let lines = |c, b| StateLines {
+            clean: c,
+            body: b,
+            ..StateLines::default()
+        };
+        let mut a = digest(&[]);
+        let mut b = digest(&[]);
+        for (d, c1, c2) in [(&mut a, 10, 30), (&mut b, 14, 26)] {
+            d.module_lines.insert(
+                "zeta".into(),
+                BTreeMap::from([(id("core"), lines(c1, 0)), (id("core::m"), lines(c2, 5))]),
+            );
+            d.module_lines.insert(
+                "alpha".into(),
+                BTreeMap::from([(id("core::m"), lines(c1, 0))]),
+            );
+        }
+        let mut r = compare(&a, &b);
+        // core: zeta clean 40 -> 40 with body 5 -> 5; only alpha changes.
+        assert!(!r.crate_lines.contains_key("zeta"), "{:?}", r.crate_lines);
+        assert_eq!(r.crate_lines["alpha"][0].krate, "core");
+        assert_eq!(r.crate_lines["alpha"][0].before.clean, 10);
+        assert_eq!(r.crate_lines["alpha"][0].after.clean, 14);
+        // Make zeta change too, with zeta as the headline.
+        b.module_lines
+            .get_mut("zeta")
+            .unwrap()
+            .insert(id("core"), lines(11, 0));
+        r = compare(&a, &b);
+        r.headline = Some("zeta".into());
+        let text = render(&r);
+        assert!(
+            text.contains("core: clean 40->37, signature 0->0, body 5->5"),
+            "{text}"
+        );
+        let (z, al) = (
+            text.find("per state for zeta").expect("zeta"),
+            text.find("per state for alpha").expect("alpha"),
+        );
+        assert!(z < al, "{text}");
+        r.headline = None;
+        let text = render(&r);
+        assert!(text.find("for alpha").unwrap() < text.find("for zeta").unwrap());
     }
 }

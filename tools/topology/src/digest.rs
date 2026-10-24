@@ -15,9 +15,28 @@ pub struct DigestUnit {
     pub states: BTreeMap<String, State>,
 }
 
+/// What produced a digest. Log noise such as the rust-analyzer error-line count stays
+/// in topology.json, so two digests of the same code compare byte-identical.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DigestGenerator {
+    pub tool_hash: String,
+    pub rust_analyzer: String,
+    pub config_hash: String,
+}
+
+impl From<&Generator> for DigestGenerator {
+    fn from(g: &Generator) -> Self {
+        DigestGenerator {
+            tool_hash: g.tool_hash.clone(),
+            rust_analyzer: g.rust_analyzer.clone(),
+            config_hash: g.config_hash.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Digest {
-    pub generator: Generator,
+    pub generator: DigestGenerator,
     pub units: BTreeMap<UnitId, DigestUnit>,
     /// `"<from> -> <to> [signature|body]"`, and `"<from> -> ext:<package> [..]"` for externals.
     pub edges: BTreeMap<String, u32>,
@@ -102,7 +121,7 @@ impl Digest {
             *warnings.entry(name_of(&w.kind)).or_default() += 1;
         }
         Digest {
-            generator: t.generator.clone(),
+            generator: DigestGenerator::from(&t.generator),
             units,
             edges,
             module_lines: t.module_lines.clone(),

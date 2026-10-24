@@ -299,7 +299,10 @@ mod sample {
         assert_eq!(d.warnings.len(), 2);
         assert_eq!(d.orphans["big/o.rs"], 10);
         assert_eq!(d.orphans["big/p.rs"], 1);
-        assert_eq!(d.generator.ra_error_lines, 7);
+        // The error-line count is log noise: in topology.json, not in the digest.
+        let text = serde_json::to_string(&d).unwrap();
+        assert!(!text.contains("ra_error_lines"), "{text}");
+        assert_eq!(d.generator.tool_hash, "t");
     }
 
     #[test]
@@ -357,8 +360,12 @@ mod sample {
         assert!(s.contains("rust-analyzer error lines: 7"), "{s}");
         assert!(s.contains("cycles: 2 by module, 0 by top module"), "{s}");
         // seams: a (0 cuts) and a2 (1 cut), cheapest first; tst/clean/module absent.
-        let seam_a = s.find("big::a function body cuts=0 lines=10").expect("seam a");
-        let seam_a2 = s.find("big::a2 function body cuts=1 lines=20").expect("seam a2");
+        let seam_a = s
+            .find("big::a function body cuts=0 lines=10")
+            .expect("seam a");
+        let seam_a2 = s
+            .find("big::a2 function body cuts=1 lines=20")
+            .expect("seam a2");
         assert!(seam_a < seam_a2);
         assert!(!s.contains("big::t "), "{s}");
         // db inherited-state unit only shows under db.

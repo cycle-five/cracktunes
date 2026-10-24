@@ -71,7 +71,9 @@ fn main() -> Result<()> {
             Ok(())
         },
         Command::Diff { a, b, json } => {
-            let report = diff::compare(&diff::load(&a)?, &diff::load(&b)?);
+            let cfg = extract::load_config(&cli.workspace, cli.config.as_deref())?;
+            let mut report = diff::compare(&diff::load(&a)?, &diff::load(&b)?);
+            report.headline = Some(cfg.headline_group.clone());
             if json {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
