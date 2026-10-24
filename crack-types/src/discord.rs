@@ -234,6 +234,19 @@ mod tests {
             r#"{"g":5,"c":null,"s":[7]}"#
         );
         assert_eq!(serde_json::from_str::<S>(r#"{"g":5,"s":[7]}"#).unwrap(), s);
+        let some = S {
+            c: Some(ChannelId::new(6).to_ref()),
+            ..s
+        };
+        assert_eq!(
+            serde_json::to_string(&some).unwrap(),
+            r#"{"g":5,"c":6,"s":[7]}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<S>(r#"{"g":5,"c":6,"s":[7]}"#).unwrap(),
+            some
+        );
+        assert!(serde_json::from_str::<S>(r#"{"g":5,"c":0,"s":[]}"#).is_err());
         assert!(serde_json::from_str::<S>(r#"{"g":0,"s":[]}"#).is_err());
         assert!(serde_json::from_str::<S>(r#"{"g":5,"s":[0]}"#).is_err());
     }
