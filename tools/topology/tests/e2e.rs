@@ -231,6 +231,7 @@ fn timings_on_fixture() {
         ("appcore", "appbin")
     );
     assert_eq!(rb.samples.len(), 1);
+    assert!(rb.samples.iter().all(|s| *s > 0.0));
     let back: Timings =
         serde_json::from_str(&std::fs::read_to_string(out.join("timings.json")).unwrap()).unwrap();
     assert_eq!(back, t);

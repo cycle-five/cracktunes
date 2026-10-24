@@ -137,6 +137,10 @@ fn rustc_vv() -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// Measures every workspace target (median of `repeats` touched rebuilds) and,
+/// when configured, a core rebuild. Both a `--workspace` build and a
+/// `-p <through_package>` build run untimed first, because feature unification
+/// can differ between them and the first timed sample must not compile deps.
 pub fn run(
     ws: &Workspace,
     cfg: &Config,
@@ -231,6 +235,19 @@ pub fn run(
                 })
                 .map(|t| ws.root.join(&t.root_file))
                 .ok_or_else(|| anyhow!("rebuild_package `{pkg}` has no lib target"))?;
+            // Untimed warm-up: `-p` may unify features differently from `--workspace`.
+            cargo(
+                ws,
+                &target_dir,
+                &[
+                    "build",
+                    "-p",
+                    through,
+                    "--all-features",
+                    "--profile",
+                    profile,
+                ],
+            )?;
             let mut samples = Vec::new();
             for _ in 0..repeats {
                 touch(&root)?;
