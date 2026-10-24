@@ -33,7 +33,7 @@ fn model_seams_sorted() {
     assert!(
         g.seams
             .iter()
-            .any(|s| s.unit.0 == "appcore::rules::wrapper")
+            .any(|s| m.units[s.index as usize].id.0 == "appcore::rules::wrapper")
     );
 }
 
@@ -84,8 +84,8 @@ fn data_block(html: &str) -> &str {
 #[test]
 fn html_embeds_model() {
     let h = html();
-    let text = data_block(&h).replace("<\\/", "</");
-    let back: PageModel = serde_json::from_str(&text).unwrap();
+    let text = data_block(&h);
+    let back: PageModel = serde_json::from_str(text).unwrap();
     assert_eq!(back, model());
 }
 
@@ -98,6 +98,7 @@ fn html_contract() {
     assert!(!h.contains("http://"));
     assert!(!h.contains("https://"));
     assert!(!data_block(&h).contains("</"));
+    assert!(!data_block(&h).contains("<!--"));
     // Exactly one closing tag for the data script: the one that ends it.
     assert!(h.contains("</script"));
 }
@@ -154,7 +155,7 @@ fn module_rows_count_units_per_state() {
         for u in t
             .units
             .iter()
-            .filter(|u| u.module.as_ref() == Some(&r.module))
+            .filter(|u| !u.test && u.module.as_ref() == Some(&r.module))
         {
             use rust_topology::model::State::*;
             match t.taint["discord"].get(&u.id).map(|x| x.state) {
@@ -187,7 +188,126 @@ fn module_rows_count_units_per_state() {
         (4, 2, 1, 1)
     );
     assert_eq!(rules.lines.signature, 6);
-    assert_eq!(rules.loc.file, "appcore/src/rules.rs");
+}
+
+#[test]
+fn module_unit_counts_leave_out_tests() {
+    let t = topo();
+    let m = model();
+    let tests_mod = m
+        .modules
+        .iter()
+        .find(|g| g.group == "discord")
+        .unwrap()
+        .rows
+        .iter()
+        .find(|r| r.module.0 == "appcore::tests")
+        .unwrap();
+    // `appcore::tests::t` is a test unit in a test module: not counted.
+    assert!(
+        t.units
+            .iter()
+            .any(|u| u.id.0 == "appcore::tests::t" && u.test)
+    );
+    let n = &tests_mod.units;
+    assert_eq!(n.clean + n.signature + n.body + n.inherited, 0);
+}
+
+#[test]
+fn locations_are_interned_and_round_trip() {
+    let t = topo();
+    let m = model();
+    assert!(m.files.windows(2).all(|w| w[0] < w[1]), "sorted and unique");
+    for (i, u) in m.units.iter().enumerate() {
+        assert_eq!(m.files[u.loc.0 as usize], t.units[i].file);
+        assert_eq!(u.loc.1, t.units[i].start_line);
+    }
+    for (e, te) in m.edges.iter().zip(&t.edges) {
+        assert_eq!(m.files[e.first.0 as usize], te.first.file);
+        assert_eq!(e.first.1, te.first.line);
+    }
+    let text = serde_json::to_string(&m.units[0]).unwrap();
+    assert!(
+        text.contains(&format!("\"loc\":[{},", m.units[0].loc.0)),
+        "{text}"
+    );
+}
+
+#[test]
+fn via_is_unit_indices_and_clean_taint_is_the_state_alone() {
+    let t = topo();
+    let m = model();
+    let gi = m.groups.iter().position(|g| g == "discord").unwrap();
+    let at = |id: &str| {
+        let i = m.units.iter().position(|u| u.id.0 == id).unwrap();
+        (i, m.units[i].taint[gi].clone().unwrap())
+    };
+    let (_, alias) = at("appcore::rules::uses_alias");
+    let via: Vec<&str> = alias
+        .via
+        .iter()
+        .map(|&v| m.units[v as usize].id.0.as_str())
+        .collect();
+    assert_eq!(via, ["apptypes::SharedCtx"]);
+    assert_eq!(
+        alias.cuts,
+        t.taint["discord"][&m.units[at("appcore::rules::uses_alias").0].id].cuts
+    );
+    let (i, clean) = at("appcore::rules::plain");
+    assert_eq!(clean.state, rust_topology::model::State::Clean);
+    let json = serde_json::to_string(&m.units[i].taint[gi]).unwrap();
+    assert_eq!(json, r#"{"state":"clean"}"#);
+    let (_, greet) = at("appcore::rules::greet");
+    assert!(!greet.direct.is_empty());
+    let first = greet.direct[0].first;
+    assert!((first.0 as usize) < m.files.len());
+}
+
+#[test]
+fn units_know_their_module_and_the_page_knows_the_generator() {
+    let m = model();
+    let greet = m
+        .units
+        .iter()
+        .find(|u| u.id.0 == "appcore::rules::greet")
+        .unwrap();
+    let module = &m.units[greet.module.unwrap() as usize];
+    assert_eq!(module.id.0, "appcore::rules");
+    assert!(module.module.is_some());
+    assert_eq!(m.generator.tool_hash, "t");
+    assert_eq!(m.generator.rust_analyzer, "ra");
+}
+
+#[test]
+fn seams_have_no_impl_rows() {
+    let m = model();
+    for g in &m.seams {
+        for s in &g.seams {
+            let u = &m.units[s.index as usize];
+            assert_ne!(u.kind, rust_topology::model::UnitKind::Impl, "{}", u.id.0);
+        }
+    }
+}
+
+#[test]
+fn html_comment_openers_in_data_are_escaped() {
+    let mut m = model();
+    m.name = "a<!--b</script>c".into();
+    let h = page::render(&m);
+    let block = data_block(&h);
+    assert!(!block.contains("<!--"), "{block}");
+    assert!(!block.contains("</"), "{block}");
+    assert!(block.contains("\\u003c!--"));
+    let back: PageModel = serde_json::from_str(block).unwrap();
+    assert_eq!(back.name, "a<!--b</script>c");
+    assert_eq!(back, m);
+}
+
+#[test]
+fn page_size_warning_starts_above_the_limit() {
+    assert_eq!(page::size_warning(page::MAX_PAGE_BYTES), None);
+    let w = page::size_warning(page::MAX_PAGE_BYTES + 1).unwrap();
+    assert!(w.contains("16000001") && w.contains("16000000"), "{w}");
 }
 
 #[test]

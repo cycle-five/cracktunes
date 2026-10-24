@@ -128,6 +128,10 @@ fn main() -> Result<()> {
             let html = page::render(&model);
             std::fs::write(&path, &html).with_context(|| format!("writing {}", path.display()))?;
             println!("page: wrote {} ({} bytes)", path.display(), html.len());
+            if let Some(w) = page::size_warning(html.len()) {
+                eprintln!("warning: {w}");
+                println!("warning: {w}");
+            }
             Ok(())
         },
     }

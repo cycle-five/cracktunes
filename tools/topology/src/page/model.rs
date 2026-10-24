@@ -2,8 +2,8 @@
 
 use crate::config::Config;
 use crate::model::{
-    CrateInfo, Cycles, Loc, Orphan, Position, State, StateLines, TargetKind, Topology, UnitId,
-    UnitKind, UnitTaint, Warning, WarningKind,
+    CrateInfo, Cycles, Generator, Loc, Orphan, Position, State, StateLines, TargetKind, Topology,
+    UnitId, UnitKind, Warning, WarningKind,
 };
 use crate::taint;
 use crate::timings::Timings;
@@ -16,6 +16,10 @@ const WARNINGS_SHOWN: usize = 50;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PageModel {
     pub name: String,
+    /// What produced the map: the tool and rust-analyzer versions.
+    pub generator: Generator,
+    /// Every file named by a unit, an edge or evidence, sorted; a `PageLoc` indexes it.
+    pub files: Vec<String>,
     pub groups: Vec<String>,
     pub headline_group: String,
     pub near_clean_max_cuts: u32,
@@ -31,6 +35,36 @@ pub struct PageModel {
     pub wide_structs: Vec<WideRow>,
     pub orphans: Vec<Orphan>,
     pub warnings: Vec<WarningGroup>,
+}
+
+/// A source location as `[index into PageModel::files, line]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PageLoc(pub u32, pub u32);
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+/// A unit's taint for one group. A clean unit serialises as its state alone.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PageTaint {
+    pub state: State,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub cuts: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub direct: Vec<PageEvidence>,
+    /// Indices into `PageModel::units`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub via: Vec<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PageEvidence {
+    pub package: String,
+    pub symbol: String,
+    pub position: Position,
+    pub count: u32,
+    pub first: PageLoc,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -59,11 +93,13 @@ pub struct PageUnit {
     pub kind: UnitKind,
     #[serde(rename = "crate")]
     pub krate: String,
-    pub loc: Loc,
+    pub loc: PageLoc,
     pub lines: u32,
     pub test: bool,
+    /// The module this unit is in, as an index into `PageModel::units`.
+    pub module: Option<u32>,
     /// One entry per group, in `PageModel::groups` order; `None` where the unit has no taint.
-    pub taint: Vec<Option<UnitTaint>>,
+    pub taint: Vec<Option<PageTaint>>,
     /// Indices into `PageModel::edges`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub uses: Vec<u32>,
@@ -78,7 +114,7 @@ pub struct PageEdge {
     pub to: u32,
     pub position: Position,
     pub count: u32,
-    pub first: Loc,
+    pub first: PageLoc,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,7 +128,6 @@ pub struct StateCounts {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModuleRow {
     pub module: UnitId,
-    pub loc: Loc,
     pub lines: StateLines,
     pub units: StateCounts,
     /// Groups the module's units reach, with the number of references.
@@ -108,13 +143,11 @@ pub struct GroupModules {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SeamRow {
-    pub unit: UnitId,
     /// Index into `PageModel::units`.
     pub index: u32,
     pub state: State,
     pub cuts: u32,
     pub lines: u32,
-    pub loc: Loc,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -160,16 +193,32 @@ fn add_lines(into: &mut StateLines, l: &StateLines) {
     into.inherited += l.inherited;
 }
 
-fn zero_lines() -> StateLines {
-    StateLines {
-        clean: 0,
-        signature: 0,
-        body: 0,
-        inherited: 0,
+/// The sorted, de-duplicated files that locations in the page refer to.
+fn interned_files(t: &Topology) -> Vec<String> {
+    let mut files: BTreeSet<&str> = BTreeSet::new();
+    files.extend(t.units.iter().map(|u| u.file.as_str()));
+    files.extend(t.edges.iter().map(|e| e.first.file.as_str()));
+    for m in t.taint.values() {
+        for x in m.values() {
+            files.extend(x.direct.iter().map(|e| e.first.file.as_str()));
+        }
     }
+    files.into_iter().map(str::to_string).collect()
 }
 
 pub fn build(t: &Topology, timings: Option<&Timings>, cfg: &Config) -> PageModel {
+    let files = interned_files(t);
+    let file_index: BTreeMap<&str, u32> = files
+        .iter()
+        .enumerate()
+        .map(|(i, f)| (f.as_str(), i as u32))
+        .collect();
+    let page_loc = |l: &Loc| {
+        PageLoc(
+            file_index.get(l.file.as_str()).copied().unwrap_or(0),
+            l.line,
+        )
+    };
     let index: BTreeMap<&UnitId, u32> = t
         .units
         .iter()
@@ -190,7 +239,7 @@ pub fn build(t: &Topology, timings: Option<&Timings>, cfg: &Config) -> PageModel
             to,
             position: e.position,
             count: e.count,
-            first: e.first.clone(),
+            first: page_loc(&e.first),
         });
         uses.entry(from).or_default().push(n);
         used_by.entry(to).or_default().push(n);
@@ -204,16 +253,35 @@ pub fn build(t: &Topology, timings: Option<&Timings>, cfg: &Config) -> PageModel
             id: u.id.clone(),
             kind: u.kind,
             krate: u.krate.clone(),
-            loc: Loc {
+            loc: page_loc(&Loc {
                 file: u.file.clone(),
                 line: u.start_line,
-            },
+            }),
             lines: u.lines,
             test: u.test,
+            module: u.module.as_ref().and_then(|m| index.get(m).copied()),
             taint: t
                 .groups
                 .iter()
-                .map(|g| t.taint.get(g).and_then(|m| m.get(&u.id)).cloned())
+                .map(|g| {
+                    let x = t.taint.get(g)?.get(&u.id)?;
+                    Some(PageTaint {
+                        state: x.state,
+                        cuts: x.cuts,
+                        direct: x
+                            .direct
+                            .iter()
+                            .map(|e| PageEvidence {
+                                package: e.package.clone(),
+                                symbol: e.symbol.clone(),
+                                position: e.position,
+                                count: e.count,
+                                first: page_loc(&e.first),
+                            })
+                            .collect(),
+                        via: x.via.iter().filter_map(|v| index.get(v).copied()).collect(),
+                    })
+                })
                 .collect(),
             uses: uses.remove(&(i as u32)).unwrap_or_default(),
             used_by: used_by.remove(&(i as u32)).unwrap_or_default(),
@@ -221,22 +289,30 @@ pub fn build(t: &Topology, timings: Option<&Timings>, cfg: &Config) -> PageModel
         .collect();
 
     let loc_of = |id: &UnitId| -> Loc {
-        index
-            .get(id)
-            .map(|&i| units[i as usize].loc.clone())
-            .unwrap_or(Loc {
+        index.get(id).map_or_else(
+            || Loc {
                 file: String::new(),
                 line: 0,
-            })
+            },
+            |&i| {
+                let u = &t.units[i as usize];
+                Loc {
+                    file: u.file.clone(),
+                    line: u.start_line,
+                }
+            },
+        )
     };
 
     PageModel {
         name: t.name.clone(),
+        generator: t.generator.clone(),
+        files,
         groups: t.groups.clone(),
         headline_group: cfg.headline_group.clone(),
         near_clean_max_cuts: cfg.near_clean_max_cuts,
         overview: overview(t, timings, cfg),
-        modules: modules(t, &loc_of),
+        modules: modules(t),
         seams: t
             .groups
             .iter()
@@ -250,8 +326,6 @@ pub fn build(t: &Topology, timings: Option<&Timings>, cfg: &Config) -> PageModel
                 .into_iter()
                 .map(|s| SeamRow {
                     index: index.get(&s.unit).copied().unwrap_or(0),
-                    loc: loc_of(&s.unit),
-                    unit: s.unit,
                     state: s.state,
                     cuts: s.cuts,
                     lines: s.lines,
@@ -321,11 +395,11 @@ fn overview(t: &Topology, timings: Option<&Timings>, cfg: &Config) -> Overview {
         .map(|u| (&u.id, u.krate.as_str()))
         .collect();
     let mut per_crate: BTreeMap<&str, StateLines> = BTreeMap::new();
-    let mut headline = zero_lines();
+    let mut headline = StateLines::default();
     if let Some(lines) = t.module_lines.get(&cfg.headline_group) {
         for (m, l) in lines {
             if let Some(c) = module_crate.get(m) {
-                add_lines(per_crate.entry(c).or_insert_with(zero_lines), l);
+                add_lines(per_crate.entry(c).or_default(), l);
             }
             add_lines(&mut headline, l);
         }
@@ -349,13 +423,14 @@ fn overview(t: &Topology, timings: Option<&Timings>, cfg: &Config) -> Overview {
     }
 }
 
-fn modules(t: &Topology, loc_of: &dyn Fn(&UnitId) -> Loc) -> Vec<GroupModules> {
+fn modules(t: &Topology) -> Vec<GroupModules> {
     let mut counts: BTreeMap<(&str, &UnitId), StateCounts> = BTreeMap::new();
     for g in &t.groups {
         let Some(taints) = t.taint.get(g) else {
             continue;
         };
-        for u in &t.units {
+        // Test units are left out, as they are from the lines.
+        for u in t.units.iter().filter(|u| !u.test) {
             let (Some(m), Some(x)) = (&u.module, taints.get(&u.id)) else {
                 continue;
             };
@@ -379,7 +454,6 @@ fn modules(t: &Topology, loc_of: &dyn Fn(&UnitId) -> Loc) -> Vec<GroupModules> {
                 .flatten()
                 .map(|(m, lines)| ModuleRow {
                     module: m.clone(),
-                    loc: loc_of(m),
                     lines: lines.clone(),
                     units: counts.remove(&(g.as_str(), m)).unwrap_or_default(),
                     groups_reached: t.module_groups.get(m).cloned().unwrap_or_default(),

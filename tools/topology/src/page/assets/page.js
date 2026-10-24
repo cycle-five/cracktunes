@@ -19,7 +19,8 @@ function el(tag, attrs, ...kids) {
   return n;
 }
 const num = (n) => (n === null || n === undefined ? "" : String(n));
-const locText = (l) => (l && l.file ? l.file + ":" + l.line : "");
+// A location is [file index, line] in units, edges and evidence; {file, line} elsewhere.
+const locText = (l) => (Array.isArray(l) ? M.files[l[0]] + ":" + l[1] : l && l.file ? l.file + ":" + l.line : "");
 
 function badge(state) {
   return el("span", { class: "badge s-" + state }, state);
@@ -112,6 +113,8 @@ const TABS = {
   Overview() {
     const o = M.overview;
     const root = el("div");
+    const g = M.generator;
+    root.append(el("p", { class: "muted" }, "rust-analyzer " + g.rust_analyzer + ", tool " + g.tool_hash + ", config " + g.config_hash));
     root.append(el("h2", {}, "Crates"));
     root.append(
       table(
@@ -181,18 +184,60 @@ const TABS = {
         el("p", { class: "muted" }, "Tainted units at most " + M.near_clean_max_cuts + " cuts from clean, cheapest and biggest first."),
         table(
           [
-            { label: "unit", cell: (r) => unitLink(r.index), sort: (r) => r.unit },
+            { label: "unit", cell: (r) => unitLink(r.index), sort: (r) => M.units[r.index].id },
             { label: "state", cell: (r) => badge(r.state), sort: (r) => r.state },
             { label: "cuts", num: true, cell: (r) => num(r.cuts), sort: (r) => r.cuts },
             { label: "lines", num: true, cell: (r) => num(r.lines), sort: (r) => r.lines },
-            { label: "where", cell: (r) => locText(r.loc), sort: (r) => locText(r.loc) },
+            { label: "where", cell: (r) => locText(M.units[r.index].loc), sort: (r) => locText(M.units[r.index].loc) },
           ],
           rows,
-          (r) => r.unit + " " + r.state,
+          (r) => M.units[r.index].id + " " + r.state,
           [2, 1]
         )
       );
     });
+  },
+
+  Units() {
+    const host = el("div");
+    const inner = el("div");
+    let group = M.headline_group;
+    let showTests = false;
+    const draw = () => {
+      const gi = M.groups.indexOf(group);
+      const rows = [];
+      M.units.forEach((u, i) => {
+        const t = u.taint[gi];
+        if (t && (showTests || !u.test)) rows.push({ index: i, t });
+      });
+      inner.replaceChildren(
+        table(
+          [
+            { label: "unit", cell: (r) => unitLink(r.index), sort: (r) => M.units[r.index].id },
+            { label: "kind", cell: (r) => M.units[r.index].kind, sort: (r) => M.units[r.index].kind },
+            { label: "state", cell: (r) => badge(r.t.state), sort: (r) => r.t.state },
+            { label: "cuts", num: true, cell: (r) => num(r.t.cuts || 0), sort: (r) => r.t.cuts || 0 },
+            { label: "lines", num: true, cell: (r) => num(M.units[r.index].lines), sort: (r) => M.units[r.index].lines },
+            { label: "file", cell: (r) => M.files[M.units[r.index].loc[0]], sort: (r) => M.files[M.units[r.index].loc[0]] },
+          ],
+          rows,
+          (r) => M.units[r.index].id + " " + r.t.state + " " + M.units[r.index].kind + " " + M.files[M.units[r.index].loc[0]],
+          [4, -1]
+        )
+      );
+    };
+    const toggle = el("input", { type: "checkbox", "aria-label": "show tests" });
+    toggle.addEventListener("change", () => {
+      showTests = toggle.checked;
+      draw();
+    });
+    host.append(
+      el("p", { class: "muted" }, "Every unit with its state for the group. Filter by text, e.g. a crate or file prefix, or by state."),
+      el("div", { class: "controls" }, el("label", {}, "group "), groupSelect((g) => { group = g; draw(); }), el("label", {}, toggle, " show tests")),
+      inner
+    );
+    draw();
+    return host;
   },
 
   Tests() {
@@ -300,12 +345,19 @@ function openDetail(index) {
   M.groups.forEach((g, i) => {
     const t = u.taint[i];
     if (!t) return;
-    parts.push(el("h3", {}, g, " ", badge(t.state), " ", el("span", { class: "muted" }, t.cuts + " cuts")));
-    if (t.direct.length) {
+    parts.push(el("h3", {}, g, " ", badge(t.state), " ", el("span", { class: "muted" }, (t.cuts || 0) + " cuts")));
+    if (t.direct && t.direct.length) {
       parts.push(el("ul", {}, t.direct.map((e) => el("li", {}, e.package + " " + e.symbol, " ", el("span", { class: "muted" }, e.position + " x" + e.count + " " + locText(e.first))))));
     }
-    if (t.via.length) parts.push(el("p", { class: "muted" }, "via"), el("ul", {}, t.via.map((v) => el("li", {}, idLink(v)))));
+    if (t.via && t.via.length) parts.push(el("p", { class: "muted" }, "via"), el("ul", {}, t.via.map((v) => el("li", {}, unitLink(v)))));
   });
+  if (u.kind === "module") {
+    const kids = [];
+    M.units.forEach((c, i) => {
+      if (c.module === index && !c.test) kids.push(i);
+    });
+    parts.push(...section("Units (" + kids.length + ")", el("ul", {}, kids.slice(0, 200).map((i) => el("li", {}, unitLink(i), " ", el("span", { class: "muted" }, M.units[i].kind)))), kids.length > 200 ? el("p", { class: "muted" }, kids.length - 200 + " more: see the Units tab.") : null));
+  }
   if (u.uses && u.uses.length) parts.push(...section("Uses (" + u.uses.length + ")", edgeList(u.uses, "to")));
   if (u.used_by && u.used_by.length) parts.push(...section("Used by (" + u.used_by.length + ")", edgeList(u.used_by, "from")));
   d.replaceChildren(...parts);
