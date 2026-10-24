@@ -20,7 +20,7 @@
 - All file paths in output are relative to the workspace root with `/` separators, whatever the cwd.
 - Never `cargo clean` or delete `~/.cache/cargo-target`. Test scratch lives in `env!("CARGO_TARGET_TMPDIR")`. The timings target dir defaults to `$HOME/.cache/crack-topology/timings-target`. Mutation scratch: `TMPDIR=$HOME/.cache/cargo-mutants`; never `--in-place`.
 - Commits: `git add <paths>` only (never `-A`), message ends with exactly `Co-Authored-By: Claude & Lothrop (cycle.five@proton.me)` and no other Co-Authored-By line. Tooling only: no version bump anywhere.
-- **Mutation proof** for each task's pure-logic files (named in the task): `TMPDIR=$HOME/.cache/cargo-mutants cargo mutants --dir tools/topology --file <files> -j 4 -- --lib --test fixture`. Every missed mutant gets a test or a one-line waiver with its reason in the task report.
+- **Mutation proof** for each task's pure-logic files (named in the task): `TMPDIR=$HOME/.cache/cargo-mutants CARGO_TARGET_DIR=target cargo mutants --dir tools/topology --file <files> -j 4 -- --lib --test fixture` (the RELATIVE `CARGO_TARGET_DIR` gives each scratch copy its own target dir; without it the machine's global `~/.cache/cargo-target` is shared by every copy and by the real tree, and copies overwrite each other's test binaries — false MISSED and stale mutated binaries in the real tree, seen in Task 3). Every missed mutant gets a test or a one-line waiver with its reason in the task report.
 
 ## Shared vocabulary (model.rs, Task 1)
 
