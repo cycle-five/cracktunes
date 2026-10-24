@@ -44,8 +44,14 @@ pub fn run(ws: &Workspace, cfg: &Config, out: &Path) -> Result<RaRun> {
 pub fn run_with(binary: &OsStr, ws: &Workspace, cfg: &Config, out: &Path) -> Result<RaRun> {
     const HINT: &str =
         "install it with `rustup component add rust-analyzer` or set TOPOLOGY_RUST_ANALYZER";
+    // Every command runs from the workspace root, so every path it gets is absolute.
+    let root = ws
+        .root
+        .canonicalize()
+        .with_context(|| format!("workspace {}", ws.root.display()))?;
     let version_out = Command::new(binary)
         .arg("--version")
+        .current_dir(&root)
         .output()
         .with_context(|| {
             format!(
@@ -65,12 +71,7 @@ pub fn run_with(binary: &OsStr, ws: &Workspace, cfg: &Config, out: &Path) -> Res
         .to_string();
 
     std::fs::create_dir_all(out).with_context(|| format!("creating {}", out.display()))?;
-    // The command runs from the workspace root, so every path it gets is absolute.
     let out = std::path::absolute(out)?;
-    let root = ws
-        .root
-        .canonicalize()
-        .with_context(|| format!("workspace {}", ws.root.display()))?;
 
     let config_path = out.join("ra-config.json");
     let ra_config = RaConfigFile {

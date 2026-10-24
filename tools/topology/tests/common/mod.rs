@@ -44,6 +44,16 @@ pub fn fixture_index_path() -> &'static std::path::Path {
             h.update(std::fs::read(f).unwrap());
             h.update([0]);
         }
+        // A newer rust-analyzer can index differently: it is part of the key.
+        let binary = rust_topology::rust_analyzer::resolve_binary(std::env::var_os(
+            "TOPOLOGY_RUST_ANALYZER",
+        ));
+        let version = std::process::Command::new(binary)
+            .arg("--version")
+            .output()
+            .map(|o| o.stdout)
+            .unwrap_or_default();
+        h.update(&version);
         let hash: String = h
             .finalize()
             .iter()

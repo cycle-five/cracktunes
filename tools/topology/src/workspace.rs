@@ -3,6 +3,7 @@
 use crate::model::TargetKind;
 use anyhow::{Context, Result};
 use cargo_metadata::{MetadataCommand, TargetKind as CmKind};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -50,6 +51,22 @@ fn kind_of(kinds: &[CmKind]) -> Option<TargetKind> {
 
 fn normalise(name: &str) -> String {
     name.replace('-', "_")
+}
+
+/// Two targets with one crate id (each package's `tests/it.rs` is `it[test]`) would
+/// merge their units. Qualify every colliding id with its package: `<package>/<id>`.
+fn qualify_collisions(packages: &mut [Package]) {
+    let mut seen: BTreeMap<String, u32> = BTreeMap::new();
+    for t in packages.iter().flat_map(|p| &p.targets) {
+        *seen.entry(t.crate_id.clone()).or_default() += 1;
+    }
+    for p in packages.iter_mut() {
+        for t in &mut p.targets {
+            if seen[&t.crate_id] > 1 {
+                t.crate_id = format!("{}/{}", p.name, t.crate_id);
+            }
+        }
+    }
 }
 
 impl Workspace {
@@ -107,6 +124,7 @@ impl Workspace {
             });
         }
         packages.sort_by(|a, b| a.name.cmp(&b.name));
+        qualify_collisions(&mut packages);
         let name = root
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -120,5 +138,55 @@ impl Workspace {
 
     pub fn is_member(&self, package: &str) -> bool {
         self.packages.iter().any(|p| p.name == package)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn package(name: &str, ids: &[&str]) -> Package {
+        Package {
+            name: name.into(),
+            version: "0.1.0".into(),
+            dir: name.into(),
+            test_only: false,
+            targets: ids
+                .iter()
+                .map(|id| Target {
+                    crate_id: (*id).into(),
+                    name: (*id).into(),
+                    kind: TargetKind::Lib,
+                    root_file: format!("{name}/{id}.rs"),
+                })
+                .collect(),
+        }
+    }
+
+    fn ids(p: &[Package]) -> Vec<Vec<&str>> {
+        p.iter()
+            .map(|p| p.targets.iter().map(|t| t.crate_id.as_str()).collect())
+            .collect()
+    }
+
+    #[test]
+    fn colliding_crate_ids_are_qualified_by_package() {
+        let mut ps = vec![
+            package("a", &["a", "it[test]"]),
+            package("b", &["b", "it[test]"]),
+            package("c", &["c"]),
+        ];
+        qualify_collisions(&mut ps);
+        assert_eq!(
+            ids(&ps),
+            vec![vec!["a", "a/it[test]"], vec!["b", "b/it[test]"], vec!["c"]]
+        );
+    }
+
+    #[test]
+    fn distinct_ids_are_left_alone() {
+        let mut ps = vec![package("a", &["a", "x[test]"]), package("b", &["b"])];
+        qualify_collisions(&mut ps);
+        assert_eq!(ids(&ps), vec![vec!["a", "x[test]"], vec!["b"]]);
     }
 }

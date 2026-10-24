@@ -27,6 +27,28 @@ fn missing_binary_is_explained() {
 }
 
 #[test]
+fn version_runs_from_the_workspace_root() {
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
+    let ws = Workspace::load(&fixture_ws(), &[]).unwrap();
+    let out = scratch("version-cwd");
+    std::fs::create_dir_all(&out).unwrap();
+    let script = out.join("fake-ra.sh");
+    let mut f = std::fs::File::create(&script).unwrap();
+    f.write_all(
+        b"#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"fake $PWD\"; exit 0; fi\nwhile [ $# -gt 0 ]; do if [ \"$1\" = \"--output\" ]; then : > \"$2\"; fi; shift; done\n",
+    )
+    .unwrap();
+    f.set_permissions(std::fs::Permissions::from_mode(0o755))
+        .unwrap();
+    f.sync_all().unwrap();
+    drop(f);
+    let run = rust_analyzer::run_with(script.as_os_str(), &ws, &fixture_config(), &out).unwrap();
+    assert_eq!(run.version, format!("fake {}", ws.root.display()));
+    let _ = std::fs::remove_dir_all(&out);
+}
+
+#[test]
 fn run_records_version_and_log() {
     let ws = Workspace::load(&fixture_ws(), &["apptesting".into()]).unwrap();
     let out = scratch("run");
