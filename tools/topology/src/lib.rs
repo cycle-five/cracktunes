@@ -2,6 +2,7 @@
 
 pub mod analysis;
 pub mod config;
+pub mod diff;
 pub mod digest;
 pub mod extract;
 pub mod graph;

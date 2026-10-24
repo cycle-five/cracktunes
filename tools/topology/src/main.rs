@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
-use rust_topology::extract;
+use rust_topology::{diff, extract};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -68,7 +68,16 @@ fn main() -> Result<()> {
             }
             Ok(())
         },
-        Command::Diff { .. } | Command::Page { .. } | Command::Timings { .. } => {
+        Command::Diff { a, b, json } => {
+            let report = diff::compare(&diff::load(&a)?, &diff::load(&b)?);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                print!("{}", diff::render(&report));
+            }
+            Ok(())
+        },
+        Command::Page { .. } | Command::Timings { .. } => {
             bail!("not implemented yet")
         },
     }

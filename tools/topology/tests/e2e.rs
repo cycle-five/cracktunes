@@ -110,3 +110,67 @@ fn summary_mentions_headline() {
     assert!(s.contains("orphans: 1 files, 1 lines"), "{s}");
     let _ = std::fs::remove_dir_all(out);
 }
+
+fn copy_tree(from: &std::path::Path, to: &std::path::Path) {
+    for e in walkdir::WalkDir::new(from)
+        .into_iter()
+        .filter_entry(|e| e.file_name() != "target")
+    {
+        let e = e.unwrap();
+        let dest = to.join(e.path().strip_prefix(from).unwrap());
+        if e.file_type().is_dir() {
+            std::fs::create_dir_all(&dest).unwrap();
+        } else {
+            std::fs::copy(e.path(), &dest).unwrap();
+        }
+    }
+}
+
+#[test]
+fn moved_function_reads_as_move() {
+    use rust_topology::diff;
+    use rust_topology::model::UnitId;
+    let moved = scratch("moved-ws");
+    copy_tree(&fixture_ws(), &moved);
+    let src = "pub fn score(t: &Track) -> u32 {\n    t.id * 2\n}\n";
+    let rules = moved.join("appcore/src/rules.rs");
+    let text = std::fs::read_to_string(&rules).unwrap();
+    assert!(text.contains(src));
+    std::fs::write(&rules, text.replace(&format!("{src}\n"), "")).unwrap();
+    let texts = moved.join("appcore/src/text.rs");
+    let mut t = std::fs::read_to_string(&texts).unwrap();
+    t.push_str(&format!("\nuse crate::rules::Track;\n\n{src}"));
+    std::fs::write(&texts, t).unwrap();
+    let handlers = moved.join("appcore/src/handlers.rs");
+    let h = std::fs::read_to_string(&handlers).unwrap();
+    assert!(h.contains("crate::rules::score"));
+    std::fs::write(
+        &handlers,
+        h.replace("crate::rules::score", "crate::text::score"),
+    )
+    .unwrap();
+
+    let out_a = scratch("moved-a");
+    let out_b = scratch("moved-b");
+    extract::run(&fixture_ws(), None, &out_a, None).unwrap();
+    extract::run(&moved, None, &out_b, None).unwrap();
+    let a = diff::load(&out_a.join("topology.json")).unwrap();
+    let b = diff::load(&out_b.join("digest.json")).unwrap();
+    let r = diff::compare(&a, &b);
+    assert!(r.notes.is_empty(), "{:?}", r.notes);
+    let want = diff::Move {
+        from: UnitId("appcore::rules::score".into()),
+        to: UnitId("appcore::text::score".into()),
+        changed: false,
+    };
+    assert!(r.moved.contains(&want), "{:?}", r.moved);
+    assert!(
+        r.changed.contains(&UnitId("appcore::handlers::cmd".into())),
+        "{:?}",
+        r.changed
+    );
+    assert!(!r.added.contains(&want.to) && !r.removed.contains(&want.from));
+    for o in [moved, out_a, out_b] {
+        let _ = std::fs::remove_dir_all(o);
+    }
+}
