@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
-use rust_topology::{diff, extract};
+use rust_topology::{diff, extract, timings};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -77,7 +77,22 @@ fn main() -> Result<()> {
             }
             Ok(())
         },
-        Command::Page { .. } | Command::Timings { .. } => {
+        Command::Timings {
+            repeats,
+            target_dir,
+        } => {
+            let cfg = extract::load_config(&cli.workspace, cli.config.as_deref())?;
+            let ws = rust_topology::workspace::Workspace::load(&cli.workspace, &cfg.test_crates)?;
+            let repeats = repeats.unwrap_or(cfg.timings.repeats);
+            let t = timings::run(&ws, &cfg, &out, repeats, target_dir.as_deref())?;
+            println!(
+                "timings: {} crates, wrote {}",
+                t.crates.len(),
+                out.join("timings.json").display()
+            );
+            Ok(())
+        },
+        Command::Page { .. } => {
             bail!("not implemented yet")
         },
     }

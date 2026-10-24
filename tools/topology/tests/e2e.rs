@@ -197,3 +197,41 @@ fn load_reads_both_formats_and_explains_garbage() {
     assert!(msg.contains("missing field"), "{msg}");
     let _ = std::fs::remove_dir_all(&out);
 }
+
+#[test]
+fn timings_on_fixture() {
+    use rust_topology::timings::{self, Timings};
+    let ws = Workspace::load(&fixture_ws(), &["apptesting".into()]).unwrap();
+    let mut cfg = fixture_config();
+    cfg.timings.rebuild_package = Some("appcore".into());
+    cfg.timings.profile = "dev".into();
+    cfg.timings.through_package = Some("appbin".into());
+    let out = scratch("timings");
+    let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("timings-target");
+    let started = std::time::Instant::now();
+    let t = timings::run(&ws, &cfg, &out, 1, Some(&target)).unwrap();
+    eprintln!("timings_on_fixture took {:?}", started.elapsed());
+    for p in &ws.packages {
+        for tg in p
+            .targets
+            .iter()
+            .filter(|t| matches!(t.kind, rust_topology::model::TargetKind::Lib))
+        {
+            let c = t
+                .crates
+                .iter()
+                .find(|c| c.package == p.name && c.target == tg.crate_id)
+                .unwrap_or_else(|| panic!("no timing for {}", tg.crate_id));
+            assert_eq!(c.samples.len(), 1);
+        }
+    }
+    let rb = t.rebuild.as_ref().expect("rebuild timing");
+    assert_eq!(
+        (rb.package.as_str(), rb.through.as_str()),
+        ("appcore", "appbin")
+    );
+    assert_eq!(rb.samples.len(), 1);
+    let back: Timings =
+        serde_json::from_str(&std::fs::read_to_string(out.join("timings.json")).unwrap()).unwrap();
+    assert_eq!(back, t);
+}

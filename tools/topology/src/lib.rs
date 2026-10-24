@@ -14,6 +14,7 @@ pub mod structure;
 pub mod summary;
 pub mod symbol;
 pub mod taint;
+pub mod timings;
 pub mod workspace;
 
 /// Hash of this tool's own sources, set by `build.rs`.
