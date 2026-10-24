@@ -50,22 +50,27 @@ pub struct DiffReport {
 pub fn load(path: &Path) -> Result<Digest> {
     let text = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("reading {}: {e}", path.display()))?;
-    if let Ok(t) = serde_json::from_str::<Topology>(&text) {
-        return Ok(Digest::from_topology(&t));
+    let topology_err = match serde_json::from_str::<Topology>(&text) {
+        Ok(t) => return Ok(Digest::from_topology(&t)),
+        Err(e) => e,
+    };
+    match serde_json::from_str::<Digest>(&text) {
+        Ok(d) => Ok(d),
+        Err(digest_err) => bail!(
+            "{} is neither a topology.json ({topology_err}) nor a digest.json ({digest_err})",
+            path.display()
+        ),
     }
-    if let Ok(d) = serde_json::from_str::<Digest>(&text) {
-        return Ok(d);
-    }
-    bail!(
-        "{} is neither a topology.json nor a digest.json",
-        path.display()
-    )
 }
 
 /// The last path segment of a unit id (the last two for methods).
 fn name_of(id: &UnitId, kind: UnitKind) -> String {
     let keep = if kind == UnitKind::Method { 2 } else { 1 };
-    let parts: Vec<&str> = id.0.split("::").collect();
+    let base = match id.0.rsplit_once('#') {
+        Some((head, n)) if !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()) => head,
+        _ => id.0.as_str(),
+    };
+    let parts: Vec<&str> = base.split("::").collect();
     parts[parts.len().saturating_sub(keep)..].join("::")
 }
 
@@ -248,19 +253,41 @@ pub fn compare(a: &Digest, b: &Digest) -> DiffReport {
             }
         }
     }
+    for id in &added {
+        for (g, st) in &b.units[id].states {
+            transitions.entry(g.clone()).or_default().push(Transition {
+                unit: id.clone(),
+                before: None,
+                after: Some(*st),
+            });
+        }
+    }
+    for id in &removed {
+        for (g, st) in &a.units[id].states {
+            transitions.entry(g.clone()).or_default().push(Transition {
+                unit: id.clone(),
+                before: Some(*st),
+                after: None,
+            });
+        }
+    }
     for v in transitions.values_mut() {
         v.sort_by(|x, y| x.unit.cmp(&y.unit));
     }
 
+    let zero = zero_lines();
     let mut module_lines: BTreeMap<String, Vec<ModuleLinesChange>> = BTreeMap::new();
-    for (g, ma) in &a.module_lines {
-        let Some(mb) = b.module_lines.get(g) else {
-            continue;
-        };
-        for (m, before) in ma {
-            if let Some(after) = mb.get(m)
-                && before != after
-            {
+    let line_groups: BTreeSet<&String> =
+        a.module_lines.keys().chain(b.module_lines.keys()).collect();
+    let no_modules = BTreeMap::new();
+    for g in line_groups {
+        let ma = a.module_lines.get(g).unwrap_or(&no_modules);
+        let mb = b.module_lines.get(g).unwrap_or(&no_modules);
+        let modules: BTreeSet<&UnitId> = ma.keys().chain(mb.keys()).collect();
+        for m in modules {
+            let before = ma.get(m).unwrap_or(&zero);
+            let after = mb.get(m).unwrap_or(&zero);
+            if before != after {
                 module_lines
                     .entry(g.clone())
                     .or_default()
@@ -321,6 +348,15 @@ pub fn compare(a: &Digest, b: &Digest) -> DiffReport {
     }
 }
 
+fn zero_lines() -> StateLines {
+    StateLines {
+        clean: 0,
+        signature: 0,
+        body: 0,
+        inherited: 0,
+    }
+}
+
 fn state_name(s: Option<State>) -> String {
     s.map_or_else(|| "-".to_string(), |s| crate::digest::name_of(&s))
 }
@@ -372,8 +408,13 @@ pub fn render(r: &DiffReport) -> String {
             &format!("state changes for {g}"),
             ts.iter()
                 .map(|t| {
+                    let note = match (t.before, t.after) {
+                        (None, _) => " (new unit)",
+                        (_, None) => " (unit gone)",
+                        _ => "",
+                    };
                     format!(
-                        "{}: {} -> {}",
+                        "{}: {} -> {}{note}",
                         t.unit.0,
                         state_name(t.before),
                         state_name(t.after)
@@ -388,6 +429,13 @@ pub fn render(r: &DiffReport) -> String {
             &format!("module lines for {g}"),
             ms.iter()
                 .map(|m| {
+                    let note = if m.before == zero_lines() {
+                        " (new module)"
+                    } else if m.after == zero_lines() {
+                        " (module gone)"
+                    } else {
+                        ""
+                    };
                     format!(
                         "{}: clean {}->{}, signature {}->{}, body {}->{}, inherited {}->{}",
                         m.module.0,
@@ -399,7 +447,7 @@ pub fn render(r: &DiffReport) -> String {
                         m.after.body,
                         m.before.inherited,
                         m.after.inherited
-                    )
+                    ) + note
                 })
                 .collect(),
         );
@@ -740,17 +788,104 @@ mod tests {
     }
 
     #[test]
-    fn load_reads_digest_and_rejects_garbage() {
-        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target");
-        let _ = std::fs::create_dir_all(&dir);
-        let good = dir.join(format!("diff-load-{}.json", std::process::id()));
-        let d = digest(&[("a::f", Function, "h")]);
-        std::fs::write(&good, serde_json::to_string(&d).unwrap()).unwrap();
-        assert_eq!(load(&good).unwrap(), d);
-        std::fs::write(&good, "{}").unwrap();
-        let err = load(&good).unwrap_err();
-        assert!(format!("{err}").contains("diff-load-"), "{err}");
-        let _ = std::fs::remove_file(&good);
-        assert!(load(&dir.join("does-not-exist.json")).is_err());
+    fn load_missing_file_is_an_error() {
+        let err = load(Path::new("/nonexistent/dir/x.json")).unwrap_err();
+        assert!(format!("{err}").contains("x.json"), "{err}");
+    }
+
+    #[test]
+    fn duplicate_suffix_is_ignored_when_matching() {
+        let a = digest(&[("a::Bot::ping#2", Method, "h")]);
+        let b = digest(&[("b::Bot::ping", Method, "h")]);
+        let r = compare(&a, &b);
+        assert_eq!(
+            r.moved,
+            vec![Move {
+                from: id("a::Bot::ping#2"),
+                to: id("b::Bot::ping"),
+                changed: false
+            }]
+        );
+        assert_eq!(name_of(&id("a::f#x"), Function), "f#x");
+        assert_eq!(name_of(&id("a::f#"), Function), "f#");
+    }
+
+    #[test]
+    fn added_and_removed_units_have_transitions() {
+        let mut a = digest(&[("a::gone", Function, "1")]);
+        let mut b = digest(&[("a::new", Function, "2")]);
+        a.units
+            .get_mut(&id("a::gone"))
+            .unwrap()
+            .states
+            .insert("g".into(), State::Body);
+        b.units
+            .get_mut(&id("a::new"))
+            .unwrap()
+            .states
+            .insert("g".into(), State::Clean);
+        let r = compare(&a, &b);
+        assert_eq!(
+            r.transitions["g"],
+            vec![
+                Transition {
+                    unit: id("a::gone"),
+                    before: Some(State::Body),
+                    after: None
+                },
+                Transition {
+                    unit: id("a::new"),
+                    before: None,
+                    after: Some(State::Clean)
+                },
+            ]
+        );
+        let text = render(&r);
+        assert!(text.contains("a::new: - -> clean (new unit)"), "{text}");
+        assert!(text.contains("a::gone: body -> - (unit gone)"), "{text}");
+    }
+
+    #[test]
+    fn one_sided_modules_get_zeroed_lines() {
+        let lines = |c| StateLines {
+            clean: c,
+            signature: 0,
+            body: 0,
+            inherited: 0,
+        };
+        let mut a = digest(&[]);
+        let mut b = digest(&[]);
+        a.module_lines
+            .insert("g".into(), BTreeMap::from([(id("old"), lines(4))]));
+        b.module_lines
+            .insert("g".into(), BTreeMap::from([(id("new"), lines(6))]));
+        b.module_lines
+            .insert("h".into(), BTreeMap::from([(id("only"), lines(1))]));
+        let r = compare(&a, &b);
+        assert_eq!(
+            r.module_lines["g"],
+            vec![
+                ModuleLinesChange {
+                    module: id("new"),
+                    before: zero_lines(),
+                    after: lines(6)
+                },
+                ModuleLinesChange {
+                    module: id("old"),
+                    before: lines(4),
+                    after: zero_lines()
+                },
+            ]
+        );
+        assert_eq!(r.module_lines["h"].len(), 1);
+        let text = render(&r);
+        assert!(
+            text.contains("new: clean 0->6") && text.contains("(new module)"),
+            "{text}"
+        );
+        assert!(
+            text.contains("old: clean 4->0") && text.contains("(module gone)"),
+            "{text}"
+        );
     }
 }

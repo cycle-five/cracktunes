@@ -174,3 +174,26 @@ fn moved_function_reads_as_move() {
         let _ = std::fs::remove_dir_all(o);
     }
 }
+
+#[test]
+fn load_reads_both_formats_and_explains_garbage() {
+    use rust_topology::diff;
+    let out = scratch("load");
+    extract::run(
+        &fixture_ws(),
+        None,
+        &out,
+        Some(common::fixture_index_path()),
+    )
+    .unwrap();
+    let from_topology = diff::load(&out.join("topology.json")).unwrap();
+    let from_digest = diff::load(&out.join("digest.json")).unwrap();
+    assert_eq!(from_topology, from_digest);
+    assert!(!from_digest.units.is_empty());
+    let bad = out.join("garbage.json");
+    std::fs::write(&bad, "{}").unwrap();
+    let msg = format!("{:#}", diff::load(&bad).unwrap_err());
+    assert!(msg.contains("garbage.json"), "{msg}");
+    assert!(msg.contains("missing field"), "{msg}");
+    let _ = std::fs::remove_dir_all(&out);
+}
