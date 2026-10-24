@@ -8,6 +8,7 @@ pub mod rust_analyzer;
 pub mod scip;
 pub mod structure;
 pub mod symbol;
+pub mod taint;
 pub mod workspace;
 
 /// Hash of this tool's own sources, set by `build.rs`.

@@ -3,4 +3,5 @@ mod common;
 mod index;
 mod placement;
 mod structure;
+mod taint;
 mod workspace;
