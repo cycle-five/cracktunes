@@ -71,3 +71,35 @@ pub fn fixture_structure() -> &'static rust_topology::structure::Structure {
         rust_topology::structure::read(&ws, &fixture_config()).unwrap()
     })
 }
+
+/// The fixture's structure, its placed occurrences and the aggregated graph.
+/// Packages the config puts in a group count as external, as they do for the
+/// real workspace's dependencies (`fakecord` is a path dependency here).
+pub fn fixture_placed() -> &'static (
+    rust_topology::structure::Structure,
+    rust_topology::placement::Placed,
+    rust_topology::graph::Graph,
+) {
+    use std::sync::OnceLock;
+    static P: OnceLock<(
+        rust_topology::structure::Structure,
+        rust_topology::placement::Placed,
+        rust_topology::graph::Graph,
+    )> = OnceLock::new();
+    P.get_or_init(|| {
+        let ws = rust_topology::workspace::Workspace::load(&fixture_ws(), &["apptesting".into()])
+            .unwrap();
+        let cfg = fixture_config();
+        let structure = fixture_structure().clone();
+        let external = ws
+            .packages
+            .iter()
+            .filter(|p| cfg.group_of(&p.name).is_some())
+            .map(|p| p.name.clone())
+            .collect();
+        let placed =
+            rust_topology::placement::place_with(&structure, fixture_index(), &ws, &external);
+        let graph = rust_topology::graph::aggregate(&placed);
+        (structure, placed, graph)
+    })
+}
