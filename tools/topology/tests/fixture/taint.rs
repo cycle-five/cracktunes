@@ -92,3 +92,23 @@ fn seams_exclude_tests_and_sort_by_cuts() {
 fn test_unit_still_has_a_state() {
     assert_eq!(state("appcore::tests::t"), Body);
 }
+
+#[test]
+fn group_crate_units_have_no_entry_for_their_own_group() {
+    let g = &all().by_group["discord"];
+    assert!(
+        g.keys()
+            .all(|k| !k.0.starts_with("fakecord::") && !k.0.starts_with("fakecord_macros::"))
+    );
+    assert!(g.contains_key(&id("appcore::rules::greet")));
+    assert!(
+        all().module_lines["discord"]
+            .keys()
+            .all(|k| !k.0.starts_with("fakecord"))
+    );
+    assert!(
+        seams("discord", 2)
+            .iter()
+            .all(|s| s.unit != id("fakecord::Context::say"))
+    );
+}

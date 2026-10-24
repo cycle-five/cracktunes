@@ -2,7 +2,10 @@
 
 use crate::config::Config;
 use crate::graph::Graph;
-use crate::model::{Evidence, Loc, Position, State, StateLines, Unit, UnitId, UnitKind, UnitTaint};
+use crate::model::{
+    Edge, Evidence, ExternalRef, Loc, Position, State, StateLines, Unit, UnitId, UnitKind,
+    UnitTaint,
+};
 use crate::placement::{Placed, RefTarget};
 use crate::structure::Structure;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -38,6 +41,15 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
     let is_module = |u: &UnitId| units.get(u).is_some_and(|u| u.kind == UnitKind::Module);
     // Workspace edges without the ones into modules.
     let edges: Vec<_> = graph.edges.iter().filter(|e| !is_module(&e.to)).collect();
+    let mut out_edges: BTreeMap<&UnitId, Vec<&Edge>> = BTreeMap::new();
+    for e in &edges {
+        out_edges.entry(&e.from).or_default().push(e);
+    }
+    let package_of: BTreeMap<&str, &str> = structure
+        .crates
+        .iter()
+        .map(|c| (c.id.as_str(), c.package.as_str()))
+        .collect();
     let mut out = Taint::default();
     for group in cfg.groups.keys() {
         let in_group = |package: &str| cfg.group_of(package) == Some(group.as_str());
@@ -46,6 +58,16 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
             .iter()
             .filter(|e| in_group(&e.package))
             .collect();
+        let mut direct_by: BTreeMap<&UnitId, Vec<&ExternalRef>> = BTreeMap::new();
+        for e in &direct {
+            direct_by.entry(&e.from).or_default().push(e);
+        }
+        // Units of a package that is itself in this group have no entry for it.
+        let skip = |u: &Unit| {
+            package_of
+                .get(u.krate.as_str())
+                .is_some_and(|p| in_group(p))
+        };
         let direct_sig: BTreeSet<&UnitId> = direct
             .iter()
             .filter(|e| e.position == Position::Signature)
@@ -88,18 +110,20 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
                 break;
             }
         }
-        let own_sig = |u: &UnitId| {
-            direct_sig.contains(u)
-                || edges.iter().any(|e| {
-                    &e.from == u && e.position == Position::Signature && tainted.contains(&e.to)
-                })
-        };
+        let mut own_sig: BTreeSet<&UnitId> = direct_sig.clone();
+        own_sig.extend(
+            edges
+                .iter()
+                .filter(|e| e.position == Position::Signature && tainted.contains(&e.to))
+                .map(|e| &e.from),
+        );
         let sig: BTreeSet<&UnitId> = units
             .values()
             .filter(|u| u.kind != UnitKind::Module)
             .filter(|u| {
-                own_sig(&u.id)
-                    || (u.kind == UnitKind::Method && u.parent.as_ref().is_some_and(own_sig))
+                own_sig.contains(&u.id)
+                    || (u.kind == UnitKind::Method
+                        && u.parent.as_ref().is_some_and(|p| own_sig.contains(p)))
             })
             .map(|u| &u.id)
             .collect();
@@ -134,22 +158,27 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
         };
 
         let mut by_unit = BTreeMap::new();
-        for u in units.values().filter(|u| u.kind != UnitKind::Module) {
+        for u in units
+            .values()
+            .filter(|u| u.kind != UnitKind::Module && !skip(u))
+        {
             let state = state_of(&u.id);
-            let mut via: BTreeSet<UnitId> = edges
-                .iter()
-                .filter(|e| e.from == u.id && state_of(&e.to) != State::Clean)
+            let mut via: BTreeSet<UnitId> = out_edges
+                .get(&u.id)
+                .into_iter()
+                .flatten()
+                .filter(|e| state_of(&e.to) != State::Clean)
                 .map(|e| e.to.clone())
                 .collect();
             if let Some(p) = u
                 .parent
                 .as_ref()
-                .filter(|p| u.kind == UnitKind::Method && own_sig(p))
+                .filter(|p| u.kind == UnitKind::Method && own_sig.contains(p))
             {
                 via.insert(p.clone());
             }
             let mut ev: BTreeMap<(&str, &str, Position), (u32, &Loc)> = BTreeMap::new();
-            for e in direct.iter().filter(|e| e.from == u.id) {
+            for e in direct_by.get(&u.id).into_iter().flatten() {
                 ev.insert((&e.package, &e.symbol, e.position), (e.count, &e.first));
             }
             let evidence: Vec<Evidence> = ev
@@ -180,7 +209,7 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
 
         let mut lines: BTreeMap<UnitId, StateLines> = units
             .values()
-            .filter(|u| u.kind == UnitKind::Module)
+            .filter(|u| u.kind == UnitKind::Module && !skip(u))
             .map(|u| {
                 (
                     u.id.clone(),
@@ -195,7 +224,7 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
             .collect();
         for u in units
             .values()
-            .filter(|u| u.kind != UnitKind::Module && !u.test)
+            .filter(|u| u.kind != UnitKind::Module && !u.test && !skip(u))
         {
             let Some(m) = &u.module else { continue };
             let l = lines.entry(m.clone()).or_insert(StateLines {
@@ -481,6 +510,26 @@ mod tests {
         assert_eq!(m.state, State::Signature);
         assert_eq!(m.via, vec![id("c::<impl T for X>")]);
         assert_eq!(m.cuts, 1);
+    }
+
+    #[test]
+    fn method_takes_signature_from_a_parent_tainted_through_a_type() {
+        let mut m = unit("c::<impl X>::go", UnitKind::Method);
+        m.parent = Some(id("c::<impl X>"));
+        let t = run(
+            vec![
+                unit("c::B", UnitKind::Struct),
+                unit("c::<impl X>", UnitKind::Impl),
+                m,
+            ],
+            vec![
+                ext("c::B", Position::Signature, 1),
+                uref("c::<impl X>", "c::B", Position::Signature, 2),
+            ],
+        );
+        let m = &t[&id("c::<impl X>::go")];
+        assert_eq!(m.state, State::Signature);
+        assert_eq!(m.via, vec![id("c::<impl X>")]);
     }
 
     #[test]
