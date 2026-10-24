@@ -667,6 +667,64 @@ mod tests {
     }
 
     #[test]
+    fn a_channel_is_allowed_by_the_lists_it_is_on() {
+        let mut s = GenericPermissionSettings::default();
+        assert!(s.is_channel_allowed(&room(1)), "empty lists allow all");
+        s.add_denied_channel(room(1));
+        assert!(!s.is_channel_allowed(&room(1)), "denied");
+        assert!(s.is_channel_allowed(&room(2)), "others pass a deny list");
+        s.add_allowed_channel(room(2));
+        assert!(s.is_channel_allowed(&room(2)), "allowed");
+        assert!(!s.is_channel_allowed(&room(3)), "others fail an allow list");
+        s.add_denied_channel(room(2));
+        assert!(!s.is_channel_allowed(&room(2)), "denied beats allowed");
+    }
+
+    #[test]
+    fn removing_reports_whether_the_ref_was_there() {
+        let mut s = GenericPermissionSettings::default();
+        assert!(!s.remove_allowed_user(&user(1)));
+        s.add_allowed_user(user(1));
+        assert!(s.remove_allowed_user(&user(1)));
+        assert!(!s.remove_allowed_user(&user(1)));
+        assert!(!s.remove_allowed_channel(&room(1)));
+        s.add_allowed_channel(room(1));
+        assert!(s.remove_allowed_channel(&room(1)));
+        assert!(!s.remove_denied_channel(&room(1)));
+        s.add_denied_channel(room(1));
+        assert!(s.remove_denied_channel(&room(1)));
+        assert!(!s.remove_denied_channel(&room(1)));
+    }
+
+    #[test]
+    fn a_command_row_converts_to_its_ref_sets() {
+        let row = GenericPermissionSettingsReadWCommand {
+            command: "music".into(),
+            id: 4,
+            default_allow_all_commands: false,
+            default_allow_all_users: true,
+            default_allow_all_roles: false,
+            allowed_roles: vec![1],
+            denied_roles: vec![2],
+            allowed_users: vec![3],
+            denied_users: vec![4, -1],
+            allowed_channels: vec![5],
+            denied_channels: vec![6],
+        };
+        let s = GenericPermissionSettings::from(row);
+        assert_eq!(s.id, 4);
+        assert!(!s.default_allow_all_commands);
+        assert!(s.default_allow_all_users);
+        assert!(!s.default_allow_all_roles);
+        assert_eq!(s.allowed_roles, HashSet::from([role(1)]));
+        assert_eq!(s.denied_roles, HashSet::from([role(2)]));
+        assert_eq!(s.allowed_users, HashSet::from([user(3)]));
+        assert_eq!(s.denied_users, HashSet::from([user(4)]));
+        assert_eq!(s.allowed_channels, HashSet::from([room(5)]));
+        assert_eq!(s.denied_channels, HashSet::from([room(6)]));
+    }
+
+    #[test]
     fn permission_sets_serialise_as_arrays_of_numbers() {
         let mut settings = GenericPermissionSettings::default();
         settings.add_allowed_role(role(5));

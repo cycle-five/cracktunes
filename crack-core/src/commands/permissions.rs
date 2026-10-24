@@ -73,6 +73,8 @@ pub async fn cmd_check_music(ctx: Context<'_>) -> Result<bool, Error> {
     }
 }
 
+// live-Discord glue, moved unchanged from guild/permissions.rs
+#[cfg_attr(test, mutants::skip)]
 pub async fn command_check_music(ctx: Context<'_>) -> Result<bool, Error> {
     if ctx.author().bot() {
         return Ok(false);

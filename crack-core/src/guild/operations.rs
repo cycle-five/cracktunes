@@ -1001,6 +1001,23 @@ mod test {
     }
 
     #[tokio::test]
+    async fn set_auto_role_stores_a_snowflake_and_ignores_garbage() {
+        let guild_id = GuildId::new(1);
+        let data = Data::default();
+        data.guild_settings_map
+            .write()
+            .await
+            .insert(guild_id, GuildSettings::new(guild_id, None, None));
+
+        data.set_auto_role(guild_id, 456).await;
+        assert_eq!(data.get_auto_role(guild_id).await, Some(456));
+
+        data.set_auto_role(guild_id, 0).await;
+        data.set_auto_role(guild_id, u64::MAX).await;
+        assert_eq!(data.get_auto_role(guild_id).await, Some(456));
+    }
+
+    #[tokio::test]
     async fn test_get_set_autoplay() {
         let mut guild_cache_map = HashMap::new();
         let guild_id = GuildId::new(1);
