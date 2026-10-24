@@ -2,12 +2,25 @@
 
 use crate::config::Config;
 use crate::digest::name_of;
-use crate::model::{State, Topology, Unit, UnitKind};
+use crate::model::{State, Topology, TopologyStats, Unit, UnitKind};
 use crate::taint;
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
 const TOP_SEAMS: usize = 15;
+
+/// `references: N workspace, M unmapped (P%)`; the unmapped share should stay under 1%.
+pub fn references_line(st: &TopologyStats) -> String {
+    let pct = if st.workspace_references == 0 {
+        0.0
+    } else {
+        100.0 * f64::from(st.references_unmapped) / f64::from(st.workspace_references)
+    };
+    format!(
+        "references: {} workspace, {} unmapped ({pct:.2}%)",
+        st.workspace_references, st.references_unmapped
+    )
+}
 
 pub fn render(t: &Topology, cfg: &Config) -> String {
     let mut s = String::new();
@@ -99,6 +112,7 @@ pub fn render(t: &Topology, cfg: &Config) -> String {
         t.orphans.len(),
         t.orphans.iter().map(|o| o.lines).sum::<u32>()
     );
+    let _ = writeln!(s, "{}", references_line(&t.stats));
     let mut kinds: BTreeMap<String, u32> = BTreeMap::new();
     for w in &t.warnings {
         *kinds.entry(name_of(&w.kind)).or_default() += 1;
@@ -113,4 +127,26 @@ pub fn render(t: &Topology, cfg: &Config) -> String {
         t.generator.ra_error_lines
     );
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn references_line_gives_the_unmapped_share() {
+        let st = |w, u| TopologyStats {
+            workspace_references: w,
+            references_unmapped: u,
+            definitions_unmapped: 9,
+        };
+        assert_eq!(
+            references_line(&st(1000, 5)),
+            "references: 1000 workspace, 5 unmapped (0.50%)"
+        );
+        assert_eq!(
+            references_line(&st(0, 0)),
+            "references: 0 workspace, 0 unmapped (0.00%)"
+        );
+    }
 }

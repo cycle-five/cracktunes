@@ -3,7 +3,7 @@
 use crate::analysis::{cycles, groups, wide};
 use crate::config::Config;
 use crate::digest::Digest;
-use crate::model::{Generator, Topology, Warning};
+use crate::model::{Generator, Topology, TopologyStats, Warning};
 use crate::scip::ScipIndex;
 use crate::workspace::Workspace;
 use crate::{graph, placement, rust_analyzer, scip, structure, taint};
@@ -80,6 +80,11 @@ pub fn build(
 
     Ok(Topology {
         generator,
+        stats: TopologyStats {
+            workspace_references: placed.stats.references,
+            references_unmapped: placed.stats.references_unmapped,
+            definitions_unmapped: placed.stats.definitions_unmapped,
+        },
         name: if cfg.name.is_empty() {
             ws.name.clone()
         } else {

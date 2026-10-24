@@ -202,9 +202,21 @@ pub struct Warning {
     pub loc: Option<Loc>,
 }
 
+/// How well placement did. In topology.json and the summary, never in the digest.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TopologyStats {
+    /// References made from workspace sources, to workspace and external symbols.
+    pub workspace_references: u32,
+    /// References no unit could take (macro output and the like).
+    pub references_unmapped: u32,
+    pub definitions_unmapped: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Topology {
     pub generator: Generator,
+    #[serde(default)]
+    pub stats: TopologyStats,
     pub name: String,
     pub groups: Vec<String>,
     pub crates: Vec<CrateInfo>,

@@ -14,6 +14,16 @@ fn generator() -> Generator {
     }
 }
 
+#[test]
+fn real_extraction_records_placement_stats() {
+    let t = topo();
+    assert!(t.stats.workspace_references > 100, "{:?}", t.stats);
+    assert_eq!(t.stats.references_unmapped, 0);
+    assert_eq!(t.stats.definitions_unmapped, 0);
+    let text = serde_json::to_string(t).unwrap();
+    assert!(text.contains("\"workspace_references\""));
+}
+
 fn topo() -> &'static Topology {
     static T: OnceLock<Topology> = OnceLock::new();
     T.get_or_init(|| {
@@ -191,6 +201,11 @@ mod sample {
                 config_hash: "c".into(),
                 ra_error_lines: 7,
             },
+            stats: TopologyStats {
+                workspace_references: 200,
+                references_unmapped: 3,
+                definitions_unmapped: 1,
+            },
             name: "sample".into(),
             groups: vec!["discord".into(), "db".into()],
             crates: vec![
@@ -303,6 +318,7 @@ mod sample {
         let text = serde_json::to_string(&d).unwrap();
         assert!(!text.contains("ra_error_lines"), "{text}");
         assert_eq!(d.generator.tool_hash, "t");
+        assert!(!text.contains("workspace_references"), "{text}");
     }
 
     #[test]
@@ -358,6 +374,10 @@ mod sample {
         assert!(s.contains("unparsed_file: 2"), "{s}");
         assert!(s.contains("unmapped_reference: 1"), "{s}");
         assert!(s.contains("rust-analyzer error lines: 7"), "{s}");
+        assert!(
+            s.contains("references: 200 workspace, 3 unmapped (1.50%)"),
+            "{s}"
+        );
         assert!(s.contains("cycles: 2 by module, 0 by top module"), "{s}");
         // seams: a (0 cuts) and a2 (1 cut), cheapest first; tst/clean/module absent.
         let seam_a = s

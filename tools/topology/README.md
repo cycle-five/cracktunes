@@ -114,7 +114,9 @@ Nothing is guessed or silently dropped; what the tool cannot place is listed by 
 - `ambiguous_definition`: one symbol defined twice in a crate; the smallest unit id wins.
 - `unparsed_symbol`: a SCIP symbol string the tool could not parse.
 
-Unmapped references should stay under 1% of workspace references; the summary prints the counts.
+Unmapped references should stay under 1% of workspace references: the summary prints
+`references: N workspace, M unmapped (P%)`, and `topology.json` keeps the counts in `stats`
+(they are not in the digest).
 
 ## Config
 
