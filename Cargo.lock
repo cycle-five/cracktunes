@@ -1135,6 +1135,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "crack-model"
+version = "0.36.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "crack-musicreco"
 version = "0.36.2"
 dependencies = [

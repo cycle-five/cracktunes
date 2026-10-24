@@ -8,6 +8,7 @@ members = [
   "crack-web",
   "crack-testing",
   "crack-test-macros",
+  "crack-model",
   "crack-types",
 ]
 resolver = "2"
