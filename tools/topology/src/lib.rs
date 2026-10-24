@@ -2,6 +2,9 @@
 
 pub mod config;
 pub mod model;
+pub mod rust_analyzer;
+pub mod scip;
+pub mod symbol;
 pub mod workspace;
 
 /// Hash of this tool's own sources, set by `build.rs`.
