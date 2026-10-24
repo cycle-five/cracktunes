@@ -223,6 +223,7 @@ fn timings_on_fixture() {
                 .find(|c| c.package == p.name && c.target == tg.crate_id)
                 .unwrap_or_else(|| panic!("no timing for {}", tg.crate_id));
             assert_eq!(c.samples.len(), 1);
+            assert!(c.samples.iter().all(|s| *s > 0.0), "{c:?}");
         }
     }
     let rb = t.rebuild.as_ref().expect("rebuild timing");

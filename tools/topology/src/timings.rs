@@ -133,7 +133,14 @@ fn rustc_vv() -> Result<String> {
     let out = Command::new("rustc")
         .arg("-vV")
         .output()
-        .context("rustc -vV")?;
+        .context("running rustc -vV")?;
+    if !out.status.success() {
+        bail!(
+            "`rustc -vV` failed: {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
@@ -156,11 +163,15 @@ pub fn run(
     };
     let profile = t.profile.as_str();
     let verbose = rustc_vv()?;
-    let rustc = verbose.lines().next().unwrap_or_default().to_string();
+    let rustc = verbose
+        .lines()
+        .next()
+        .ok_or_else(|| anyhow!("`rustc -vV` printed nothing"))?
+        .to_string();
     let host = verbose
         .lines()
         .find_map(|l| l.strip_prefix("host: "))
-        .unwrap_or_default()
+        .ok_or_else(|| anyhow!("`rustc -vV` has no host line"))?
         .to_string();
     let jobs = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
 
