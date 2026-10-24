@@ -3,6 +3,7 @@ mod analysis;
 mod common;
 mod extract;
 mod index;
+mod page;
 mod placement;
 mod structure;
 mod taint;

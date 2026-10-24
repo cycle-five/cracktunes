@@ -7,6 +7,7 @@ pub mod digest;
 pub mod extract;
 pub mod graph;
 pub mod model;
+pub mod page;
 pub mod placement;
 pub mod rust_analyzer;
 pub mod scip;

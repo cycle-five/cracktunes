@@ -1,6 +1,8 @@
-use anyhow::{Result, bail};
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use rust_topology::{diff, extract, timings};
+use rust_topology::model::Topology;
+use rust_topology::timings::Timings;
+use rust_topology::{diff, extract, page, timings};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -92,8 +94,39 @@ fn main() -> Result<()> {
             );
             Ok(())
         },
-        Command::Page { .. } => {
-            bail!("not implemented yet")
+        Command::Page {
+            input,
+            timings: timings_path,
+        } => {
+            let input = input.unwrap_or_else(|| out.join("topology.json"));
+            let text = std::fs::read_to_string(&input)
+                .with_context(|| format!("reading {}", input.display()))?;
+            let topology: Topology = serde_json::from_str(&text)
+                .with_context(|| format!("{} is not a topology.json", input.display()))?;
+            let timings_path = timings_path.or_else(|| {
+                let p = out.join("timings.json");
+                p.is_file().then_some(p)
+            });
+            let timings: Option<Timings> = match timings_path {
+                Some(p) => {
+                    let text = std::fs::read_to_string(&p)
+                        .with_context(|| format!("reading {}", p.display()))?;
+                    Some(
+                        serde_json::from_str(&text)
+                            .with_context(|| format!("{} is not a timings.json", p.display()))?,
+                    )
+                },
+                None => None,
+            };
+            let cfg = extract::load_config(&cli.workspace, cli.config.as_deref())?;
+            let model = page::model::build(&topology, timings.as_ref(), &cfg);
+            let dir = out.join("page");
+            std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+            let path = dir.join("topology.html");
+            let html = page::render(&model);
+            std::fs::write(&path, &html).with_context(|| format!("writing {}", path.display()))?;
+            println!("page: wrote {} ({} bytes)", path.display(), html.len());
+            Ok(())
         },
     }
 }
