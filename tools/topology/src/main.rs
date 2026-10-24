@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
-use rust_topology::config::Config;
+use rust_topology::extract;
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -55,27 +55,21 @@ enum Command {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let config_path = cli.config.clone().or_else(|| {
-        let p = cli.workspace.join("topology.toml");
-        p.is_file().then_some(p)
-    });
-    let mut config = Config::load(config_path.as_deref())?;
-    if config.name.is_empty() {
-        config.name = cli
-            .workspace
-            .canonicalize()?
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-    }
-    let _out = cli
+    let out = cli
         .out
         .clone()
         .unwrap_or_else(|| cli.workspace.join("topology-out"));
     match cli.command {
-        Command::Extract { .. }
-        | Command::Diff { .. }
-        | Command::Page { .. }
-        | Command::Timings { .. } => bail!("not implemented yet"),
+        Command::Extract { scip, summary } => {
+            let t = extract::run(&cli.workspace, cli.config.as_deref(), &out, scip.as_deref())?;
+            if summary {
+                let cfg = extract::load_config(&cli.workspace, cli.config.as_deref())?;
+                print!("{}", rust_topology::summary::render(&t, &cfg));
+            }
+            Ok(())
+        },
+        Command::Diff { .. } | Command::Page { .. } | Command::Timings { .. } => {
+            bail!("not implemented yet")
+        },
     }
 }

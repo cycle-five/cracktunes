@@ -2,12 +2,15 @@
 
 pub mod analysis;
 pub mod config;
+pub mod digest;
+pub mod extract;
 pub mod graph;
 pub mod model;
 pub mod placement;
 pub mod rust_analyzer;
 pub mod scip;
 pub mod structure;
+pub mod summary;
 pub mod symbol;
 pub mod taint;
 pub mod workspace;

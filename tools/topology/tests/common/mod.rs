@@ -17,10 +17,17 @@ pub fn fixture_config() -> Config {
 /// result is cached under `CARGO_TARGET_TMPDIR`, keyed by a hash of the fixture
 /// sources (everything under `tests/fixtures/ws` except `target/`).
 pub fn fixture_index() -> &'static rust_topology::scip::ScipIndex {
-    use sha2::{Digest, Sha256};
     use std::sync::OnceLock;
     static INDEX: OnceLock<rust_topology::scip::ScipIndex> = OnceLock::new();
-    INDEX.get_or_init(|| {
+    INDEX.get_or_init(|| rust_topology::scip::read(fixture_index_path()).unwrap())
+}
+
+/// Path of the cached SCIP file behind [`fixture_index`].
+pub fn fixture_index_path() -> &'static std::path::Path {
+    use sha2::{Digest, Sha256};
+    use std::sync::OnceLock;
+    static PATH: OnceLock<PathBuf> = OnceLock::new();
+    PATH.get_or_init(|| {
         let root = fixture_ws();
         let mut files: Vec<PathBuf> = walkdir::WalkDir::new(&root)
             .into_iter()
@@ -57,7 +64,7 @@ pub fn fixture_index() -> &'static rust_topology::scip::ScipIndex {
             std::fs::rename(&tmp_name, &cached).unwrap();
             let _ = std::fs::remove_dir_all(&out);
         }
-        rust_topology::scip::read(&cached).unwrap()
+        cached
     })
 }
 
