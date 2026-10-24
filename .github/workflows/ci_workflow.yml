@@ -53,6 +53,15 @@ jobs:
       contents: read
     uses: ./.github/workflows/mutants-diff.yml
 
+  # 🔑 Master only: saves the cache the PR job above restores, so a PR's first
+  # Mutants run starts warm. See mutants-warm.yml.
+  mutants-warm:
+    name: Mutants cache
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/mutants-warm.yml
+
   docker:
     name: Docker
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'

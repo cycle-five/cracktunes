@@ -24,11 +24,13 @@ name: Mutants (PR diff)
 # on #628: 7 mutants in 2 shards, 6 of them missed). Build took 5-10 minutes
 # in these runs, and this job runs beside it.
 #   - A crack-core shard first builds and tests the unmutated tree: 260-290 s
-#     of build on a PR's FIRST Mutants run, about 105 s on its later pushes
-#     (the dependencies restored by rust-cache), plus 51 s of tests.
-#     🪤 A PR's first run is always cold: this job runs only on pull
-#     requests, a cache a PR saves is scoped to that PR, so master never saves
-#     one that a new PR could restore.
+#     of build cold, about 105 s with the dependencies restored by
+#     rust-cache, plus 51 s of tests.
+#     🔑 A cache a PR saves is scoped to that PR, so master saves the one a
+#     new PR restores (mutants-warm.yml). A PR's first run is still cold when
+#     master has no cache for its lockfile and toolchain: a dependency PR, the
+#     first push after a new stable, or a PR opened before master's job
+#     finished.
 #   - Then each MISSED crack-core mutant costs 160-170 s (105-120 s to build,
 #     51 s to test). A caught one pays the same build and stops at its first
 #     failing test.

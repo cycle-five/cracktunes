@@ -1,0 +1,90 @@
+name: Mutants cache (master)
+
+# Saves, from master, the cache a PR's mutants shards restore, so a PR's FIRST
+# Mutants run starts warm. Without it every PR's first run was cold: the shards
+# run only on pull requests, and a cache a PR saves is scoped to that PR, so
+# nothing a new PR could restore was ever saved. A cache saved on master is
+# visible to every PR into master.
+#
+# 🔑 The cache must be the one a shard looks up, or this buys nothing:
+#   - the same rust-cache `shared-key` (mutants-diff), toolchain install and
+#     job env as the shard job in mutants-diff.yml. rust-cache's key hashes
+#     rustc's version, the CARGO*/RUST*/CC*/CFLAGS*/CXX*/CMAKE* env and the
+#     lockfiles, so keep this file's copies of those in step with that one.
+#   - the same build: the command cargo-mutants runs for a crack-core
+#     baseline (its log: `cargo nextest run --no-run --cargo-profile=mutants
+#     --package=crack-core --features=mutation-testing`), into the same
+#     absolute target dir the shards use (CRACK_MUTANTS_SHARED_TARGET).
+#     Measured locally 2026-10-23: after this build, cargo-mutants' baseline
+#     recompiled no registry or git crate, only the workspace's own.
+#
+# 🔑 crack-core only. It is where nearly every mutant lands, and the slowest
+# build. A crack-web or crack-cli shard still gets most of it: their
+# dependencies are mostly crack-core's, though a feature set that differs
+# rebuilds what it touches. The repo's Actions cache is at GitHub's 10 GB
+# limit, so one more ~1 GB entry is the most this should add.
+#
+# 🔑 Cheap on most pushes: `lookup-only` downloads nothing, and an exact hit
+# (the lockfile and toolchain unchanged since the last save) skips the build.
+# A miss (a dependency bump, a new stable) builds cold, about 5 minutes on
+# ubuntu-latest, and rust-cache saves the result. rust-cache never saves over
+# an exact hit, so a PR whose lockfile matches master saves nothing of its own.
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    name: Warm the shards' cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # The shard job's env, verbatim (mutants-diff.yml).
+    env:
+      SQLX_OFFLINE: "true"
+      CRACK_MUTANTS: "1"
+      NEXTEST_PROFILE: mutants
+      CRACK_MUTANTS_SHARED_TARGET: "1"
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v7
+
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+        shell: bash
+
+      - uses: Swatinem/rust-cache@v2
+        id: cache
+        with:
+          shared-key: mutants-diff
+          lookup-only: true
+
+      - name: Install cargo-nextest
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149
+
+      - name: Build what a crack-core shard builds
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        shell: bash
+        run: |
+          cargo nextest run --no-run --cargo-profile=mutants \
+            --package=crack-core --features=mutation-testing
+
+      - name: Say what happened
+        env:
+          HIT: ${{ steps.cache.outputs.cache-hit }}
+        shell: bash
+        run: |
+          if [ "$HIT" = "true" ]; then
+            echo "The mutants-diff cache for this lockfile and toolchain already exists; nothing to build." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Built crack-core's mutants baseline; rust-cache saves it as the mutants-diff cache." >> "$GITHUB_STEP_SUMMARY"
+          fi
