@@ -73,11 +73,13 @@ pub fn render(t: &Topology, cfg: &Config) -> String {
                 cfg.near_clean_max_cuts,
             );
             let _ = writeln!(s, "  top seams (at most {} cuts):", cfg.near_clean_max_cuts);
+            let kind_of: BTreeMap<_, _> = units.iter().map(|u| (&u.id, u.kind)).collect();
             for seam in seams.iter().take(TOP_SEAMS) {
                 let _ = writeln!(
                     s,
-                    "    {} {} cuts={} lines={}",
+                    "    {} {} {} cuts={} lines={}",
                     seam.unit.0,
+                    kind_of.get(&seam.unit).map_or_else(String::new, name_of),
                     name_of(&seam.state),
                     seam.cuts,
                     seam.lines

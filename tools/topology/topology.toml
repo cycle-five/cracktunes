@@ -1,5 +1,6 @@
 name = "cracktunes"
-test_crates = ["crack-testing", "crack-test-macros"]
+# crack-testing is production code (a default-feature dependency of crack-core).
+test_crates = ["crack-test-macros"]
 
 [groups]
 discord = ["serenity", "serenity-voice-model", "poise", "poise_macros", "songbird", "discortp", "davey"]

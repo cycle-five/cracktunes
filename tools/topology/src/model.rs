@@ -138,7 +138,7 @@ pub struct UnitTaint {
     pub via: Vec<UnitId>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct StateLines {
     pub clean: u32,
     pub signature: u32,

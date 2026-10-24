@@ -40,8 +40,10 @@ into `$HOME/.cache/crack-topology/timings-target`, never the shared target dir).
 `--repeats N` sets how many timing repeats are taken (the median is reported).
 
 Output goes to `tools/topology/out/` (gitignored). `topology.json` has every fact with
-line numbers; `digest.json` has the facts without them, sorted, so moving code within a
-file leaves it byte-identical and two runs on the same tree are byte-identical.
+line numbers; `digest.json` has the facts without them, sorted, so moving a whole item
+within a file leaves it byte-identical, and two runs on the same tree are byte-identical.
+Container hashes (module, impl, trait) cover the whole item in source order, so
+reordering items inside a container marks the container as changed.
 Timings live in their own file and never enter the digest.
 
 ## Comparing before and after a split
@@ -79,7 +81,13 @@ like `pub use serenity::all::UserId` carries Discord into everything that names 
 **`cuts`** is how far a unit is from clean: the number of distinct source lines that
 reference the group directly plus the number of distinct tainted workspace units it
 uses. A clean unit has 0. Seams are ranked by `cuts`, then by lines, so the cheapest and
-biggest come first.
+biggest come first. Impl blocks are not seams: an `impl` header has one cut, its self
+type, and its lines include all its methods. The self type and each method have their own
+rows.
+
+A trait is tainted by its items: when one item's signature mentions a group symbol or a
+tainted type, the trait is `signature` and its `via` lists those items. Functions
+generic over the trait, and impls of it, are then `signature` too.
 
 ## The two path rules
 

@@ -45,6 +45,14 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
     for e in &edges {
         out_edges.entry(&e.from).or_default().push(e);
     }
+    // Trait item -> its trait: an item's signature is part of the trait's.
+    let trait_of: BTreeMap<&UnitId, &UnitId> = units
+        .values()
+        .filter_map(|u| {
+            let p = u.parent.as_ref()?;
+            (units.get(p)?.kind == UnitKind::Trait).then_some((&u.id, p))
+        })
+        .collect();
     let package_of: BTreeMap<&str, &str> = structure
         .crates
         .iter()
@@ -91,19 +99,30 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
         }
 
         // Types whose signature mentions the group, directly or through another such type.
+        // A trait is tainted by its items' signatures; `trait_items` remembers which items.
+        let mut trait_items: BTreeMap<&UnitId, BTreeSet<&UnitId>> = BTreeMap::new();
         let mut tainted: BTreeSet<&UnitId> = units
             .values()
             .filter(|u| is_type(u.kind) && direct_sig.contains(&u.id))
             .map(|u| &u.id)
             .collect();
+        for &item in &direct_sig {
+            if let Some(&t) = trait_of.get(item) {
+                tainted.insert(t);
+                trait_items.entry(t).or_default().insert(item);
+            }
+        }
         loop {
             let before = tainted.len();
             for e in &edges {
-                if e.position == Position::Signature
-                    && tainted.contains(&e.to)
-                    && units.get(&e.from).is_some_and(|u| is_type(u.kind))
-                {
-                    tainted.insert(&e.from);
+                if e.position == Position::Signature && tainted.contains(&e.to) {
+                    if units.get(&e.from).is_some_and(|u| is_type(u.kind)) {
+                        tainted.insert(&e.from);
+                    }
+                    if let Some(&t) = trait_of.get(&e.from) {
+                        tainted.insert(t);
+                        trait_items.entry(t).or_default().insert(&e.from);
+                    }
                 }
             }
             if tainted.len() == before {
@@ -117,12 +136,14 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
                 .filter(|e| e.position == Position::Signature && tainted.contains(&e.to))
                 .map(|e| &e.from),
         );
+        own_sig.extend(trait_items.keys().copied());
         let sig: BTreeSet<&UnitId> = units
             .values()
             .filter(|u| u.kind != UnitKind::Module)
             .filter(|u| {
                 own_sig.contains(&u.id)
                     || (u.kind == UnitKind::Method
+                        && !trait_of.contains_key(&u.id)
                         && u.parent.as_ref().is_some_and(|p| own_sig.contains(p)))
             })
             .map(|u| &u.id)
@@ -170,13 +191,18 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
                 .filter(|e| state_of(&e.to) != State::Clean)
                 .map(|e| e.to.clone())
                 .collect();
-            if let Some(p) = u
-                .parent
-                .as_ref()
-                .filter(|p| u.kind == UnitKind::Method && own_sig.contains(p))
-            {
+            if let Some(p) = u.parent.as_ref().filter(|p| {
+                u.kind == UnitKind::Method && !trait_of.contains_key(&u.id) && own_sig.contains(p)
+            }) {
                 via.insert(p.clone());
             }
+            via.extend(
+                trait_items
+                    .get(&u.id)
+                    .into_iter()
+                    .flatten()
+                    .map(|&i| i.clone()),
+            );
             let mut ev: BTreeMap<(&str, &str, Position), (u32, &Loc)> = BTreeMap::new();
             for e in direct_by.get(&u.id).into_iter().flatten() {
                 ev.insert((&e.package, &e.symbol, e.position), (e.count, &e.first));
@@ -210,29 +236,14 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
         let mut lines: BTreeMap<UnitId, StateLines> = units
             .values()
             .filter(|u| u.kind == UnitKind::Module && !skip(u))
-            .map(|u| {
-                (
-                    u.id.clone(),
-                    StateLines {
-                        clean: 0,
-                        signature: 0,
-                        body: 0,
-                        inherited: 0,
-                    },
-                )
-            })
+            .map(|u| (u.id.clone(), StateLines::default()))
             .collect();
         for u in units
             .values()
             .filter(|u| u.kind != UnitKind::Module && !u.test && !skip(u))
         {
             let Some(m) = &u.module else { continue };
-            let l = lines.entry(m.clone()).or_insert(StateLines {
-                clean: 0,
-                signature: 0,
-                body: 0,
-                inherited: 0,
-            });
+            let l = lines.entry(m.clone()).or_default();
             match by_unit[&u.id].state {
                 State::Clean => l.clean += u.own_lines,
                 State::Signature => l.signature += u.own_lines,
@@ -246,7 +257,7 @@ pub fn compute(structure: &Structure, placed: &Placed, graph: &Graph, cfg: &Conf
     out
 }
 
-/// Non-test, tainted units at most `max_cuts` cuts from clean; cheapest and biggest first.
+/// Non-test, non-module, non-impl tainted units at most `max_cuts` cuts from clean; cheapest and biggest first.
 pub fn seams(
     group_taint: &BTreeMap<UnitId, UnitTaint>,
     units: &[Unit],
@@ -254,7 +265,7 @@ pub fn seams(
 ) -> Vec<Seam> {
     let mut out: Vec<Seam> = units
         .iter()
-        .filter(|u| !u.test && u.kind != UnitKind::Module)
+        .filter(|u| !u.test && !matches!(u.kind, UnitKind::Module | UnitKind::Impl))
         .filter_map(|u| {
             let t = group_taint.get(&u.id)?;
             (t.state != State::Clean && t.cuts <= max_cuts).then(|| Seam {
@@ -679,5 +690,110 @@ mod tests {
             ]
         );
         assert_eq!(seams(&t, &units, 3).len(), 5);
+    }
+
+    fn trait_with_item(item_name: &str) -> Vec<Unit> {
+        let mut item = unit(&format!("c::T::{item_name}"), UnitKind::Method);
+        item.parent = Some(id("c::T"));
+        vec![unit("c::T", UnitKind::Trait), item]
+    }
+
+    #[test]
+    fn a_trait_is_tainted_by_an_item_signature() {
+        let t = run(
+            trait_with_item("go"),
+            vec![ext("c::T::go", Position::Signature, 1)],
+        );
+        assert_eq!(t[&id("c::T")].state, State::Signature);
+        assert_eq!(t[&id("c::T")].via, vec![id("c::T::go")]);
+        assert_eq!(t[&id("c::T::go")].state, State::Signature);
+    }
+
+    #[test]
+    fn a_trait_is_tainted_by_an_item_signature_through_a_type() {
+        let mut units = trait_with_item("go");
+        units.push(unit("c::B", UnitKind::Struct));
+        let t = run(
+            units,
+            vec![
+                ext("c::B", Position::Signature, 1),
+                uref("c::T::go", "c::B", Position::Signature, 2),
+            ],
+        );
+        assert_eq!(t[&id("c::T")].state, State::Signature);
+        assert_eq!(t[&id("c::T")].via, vec![id("c::T::go")]);
+    }
+
+    #[test]
+    fn a_tainted_trait_does_not_taint_its_other_items() {
+        let mut units = trait_with_item("go");
+        let mut other = unit("c::T::other", UnitKind::Method);
+        other.parent = Some(id("c::T"));
+        units.push(other);
+        let t = run(units, vec![ext("c::T::go", Position::Signature, 1)]);
+        assert_eq!(t[&id("c::T::other")].state, State::Clean);
+    }
+
+    #[test]
+    fn a_fn_bounded_by_a_tainted_trait_is_signature() {
+        let mut units = trait_with_item("go");
+        units.push(unit("c::f", UnitKind::Function));
+        let t = run(
+            units,
+            vec![
+                ext("c::T::go", Position::Signature, 1),
+                uref("c::f", "c::T", Position::Signature, 2),
+            ],
+        );
+        assert_eq!(t[&id("c::f")].state, State::Signature);
+        assert_eq!(t[&id("c::f")].via, vec![id("c::T")]);
+    }
+
+    #[test]
+    fn an_impl_of_a_tainted_trait_is_signature() {
+        let mut units = trait_with_item("go");
+        units.push(unit("c::<impl T for X>", UnitKind::Impl));
+        let t = run(
+            units,
+            vec![
+                ext("c::T::go", Position::Signature, 1),
+                uref("c::<impl T for X>", "c::T", Position::Signature, 2),
+            ],
+        );
+        assert_eq!(t[&id("c::<impl T for X>")].state, State::Signature);
+    }
+
+    #[test]
+    fn a_trait_with_clean_items_stays_clean() {
+        let t = run(
+            trait_with_item("go"),
+            vec![ext("c::T::go", Position::Body, 1)],
+        );
+        assert_eq!(t[&id("c::T")].state, State::Clean);
+        let t = run(trait_with_item("go"), vec![]);
+        assert_eq!(t[&id("c::T")].state, State::Clean);
+        assert!(t[&id("c::T")].via.is_empty());
+    }
+
+    #[test]
+    fn seams_exclude_impl_blocks() {
+        let units = vec![
+            unit("c::<impl X>", UnitKind::Impl),
+            unit("c::f", UnitKind::Function),
+        ];
+        let mk = |state, cuts| UnitTaint {
+            state,
+            cuts,
+            direct: vec![],
+            via: vec![],
+        };
+        let t: BTreeMap<_, _> = [
+            (id("c::<impl X>"), mk(State::Body, 1)),
+            (id("c::f"), mk(State::Body, 1)),
+        ]
+        .into_iter()
+        .collect();
+        let got: Vec<_> = seams(&t, &units, 2).into_iter().map(|s| s.unit.0).collect();
+        assert_eq!(got, vec!["c::f".to_string()]);
     }
 }
