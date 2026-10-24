@@ -187,7 +187,9 @@ jobs:
           rustup default stable
         shell: bash
 
-      - uses: ikalnytskyi/action-setup-postgres@v8
+      # 🪤 A commit, not @v8: v8 needs `apt-key`, which ubuntu-26.04
+      # doesn't have (see build.yml).
+      - uses: ikalnytskyi/action-setup-postgres@0f1fdf59c857aabfa61ab1a2619e9af34de678d3 # master, 2026-08-02
         with:
           username: postgres
           password: mysecretpassword

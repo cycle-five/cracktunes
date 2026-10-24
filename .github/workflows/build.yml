@@ -38,7 +38,13 @@ jobs:
           rustup update
         shell: bash
       
-      - uses: ikalnytskyi/action-setup-postgres@v8
+      # 🪤 A commit, not @v8. v8 adds the PGDG signing key with `apt-key`,
+      # which the ubuntu-26.04 image doesn't have, and ubuntu-latest moved
+      # to 26.04 on 2026-10-24. Upstream fixed it in their #68 but hasn't
+      # tagged a release since v8 (their issue #77). Go back to a tag once
+      # one ships. v8..this commit changes nothing we use; it only adds
+      # inputs, drops postgres 14 and URI-encodes the credentials.
+      - uses: ikalnytskyi/action-setup-postgres@0f1fdf59c857aabfa61ab1a2619e9af34de678d3 # master, 2026-08-02
         with:
           username: postgres
           password: mysecretpassword
