@@ -200,10 +200,15 @@ pub enum IdError { WrongPlatform{kind, found}, NotASnowflake{kind, raw} }
 - **Bad stored ids:** an invalid id inside a set or an optional field is dropped with a `warn!` naming the column. An invalid `guild_id` makes that row fail to load with an error. Neither ever panics.
 - `.sqlx` is unchanged, because no SQL text changes.
 
-**Serde shape:**
-- `GuildSettings` serialises `guild_id` and `ignored_channels` as ref pairs.
-- Nothing reads that today: no config sets `guild_settings_map`, and `save_json` has no caller.
-- The CHANGELOG notes the new shape for the `guild_settings_map` config option.
+**Serde shape: unchanged, byte for byte.**
+- Every type converted here keeps its exact serialised form: an id is still a bare JSON number, and an id set is still an array of numbers. That covers `GuildSettings`, `LogSettings`, `WelcomeSettings`, `GenericPermissionSettings` and `CommandChannel`.
+- `crack_types::discord` provides serde adapters (`#[serde(with = …)]`) for `Ref`, `Option<Ref>` and sets of refs, through `snowflake`/`from_snowflake`.
+- Why, as the builder check found:
+  - `/settings set welcome` replies with `WelcomeSettings`' `Display`, which is its JSON (set_welcome_settings.rs:116);
+  - `GuildSettings`' `Display` is JSON too;
+  - the `guild_settings_map` config option deserialises `GuildSettings`.
+- The `{platform, id}` pair stays `Ref`'s default serde, for new uses. Old shapes move to it with the storage migration.
+- No serialised map is keyed by a ref.
 
 ### 4. Dashboard (PR 1)
 
@@ -299,6 +304,25 @@ pub enum Mention { User(UserRef), Room(RoomRef), Role(RoleRef) }   // Display: <
 - **Output, PR 2:** for every `Card` and `Control` field, the conversion's serenity JSON matches what the old builder code produced. Every existing render test (descriptions, colours, clipping, allowed mentions, ephemeral flags, extra embeds) passes unchanged.
 - **Per task:** the mutants diff check runs against the task's base.
 - **Before each PR:** the full suite with the db-tests and crack-coin features, `clippy -D warnings`, `fmt` and `check_waivers.py`.
+
+## Calls settled after the builder check (mine)
+
+1. **Serialised shapes don't change** (§3). The anti-goal decides it: a user reads `WelcomeSettings`' JSON.
+2. **`GuildSettings` loses `Default`.**
+   - Its only non-test caller, `Data::add_denied_music_user`, inserted defaults whose `guild_id` was `GuildId::default()`, not the guild's. It now builds the settings for the real guild.
+   - Test sites name a guild explicitly.
+   - A sentinel ref was rejected: it could pass for a real guild.
+3. **`From<GuildSettingsRead>` becomes `TryFrom`.**
+   - Every loader fetches one guild by its id, so a bad `guild_id` there is unreachable in practice.
+   - If it does happen, the loader returns its existing error, and the caller takes the path it already has for a failed load: defaults, tagged `Provenance::Fallback`, never written back. No load is all-or-nothing.
+4. **No settings type in scope is stored as JSON.** Its tables have `BIGINT` and `BIGINT[]` columns. The JSONB columns (queue audit, queue snapshot, economy config) are out of scope.
+5. **A garbage stored id is dropped on load and is gone after the next save.**
+   - "Garbage" means 0, a negative number, or `u64::MAX` in a set or optional field.
+   - serenity could not even construct such an id, so it matched nothing.
+   - The `warn!` names the column.
+6. **One conversion per command invocation or gateway event is fine** (`cmd_check_music`, the event log's ignore check). The anti-goal is about per-frame and per-item loops. A check over a small set may compare snowflakes instead of building a ref.
+7. **`Ref` derives `Clone`, `Eq`, `Ord` and `Hash`.** The kinds derive them, so the bounds hold, which leaves no hand-written impl to mutate. `Debug`, `Display`, serde, `FromStr` and validation are hand-written and tested.
+8. **Plan A covers PR 1 only.** PR 2's plan comes after PR 1, from an inventory of the code as PR 1 leaves it.
 
 ## Left to the builder
 
