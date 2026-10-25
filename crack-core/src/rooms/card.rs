@@ -11,7 +11,7 @@ use crate::messaging::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, F
 use crate::messaging::messages::*;
 use crate::messaging::render::{RenderCx, Rendered};
 use crack_model::{Button, ButtonStyle, Card, Field, Mention, RoleRef, RoomRef, Row, UserRef};
-use crack_types::discord::{channel_id, ToRef};
+use crack_types::discord::ToRef;
 use serenity::all::{ChannelId, Permissions};
 
 /// Why a room action was refused.
@@ -501,10 +501,22 @@ pub fn finding_text(
 ) -> String {
     finding_line(
         &FindingView::from(finding),
-        // A ref made from a `ChannelId` always converts back.
-        &|r| name_of(channel_id(r).expect("a ref made from a ChannelId converts back")),
+        // A ref made from a `ChannelId` converts back, even a stored 0, which
+        // the checked conversion refuses but serenity holds.
+        &|r| channel_of(r).map_or_else(|| r.raw().as_str().to_owned(), &name_of),
         bold,
     )
+}
+
+/// The channel a room ref names, 0 included. serenity holds 0 but panics on
+/// `u64::MAX`, which is refused here.
+fn channel_of(r: &RoomRef) -> Option<ChannelId> {
+    r.raw()
+        .as_str()
+        .parse::<u64>()
+        .ok()
+        .filter(|n| *n != u64::MAX)
+        .map(ChannelId::new)
 }
 
 fn finding_line(
@@ -999,6 +1011,28 @@ mod tests {
             finding_text(&lock, name_of, false),
             format!("{ROOM_FINDING_LOCK} Manage Messages.")
         );
+    }
+
+    #[test]
+    fn finding_text_does_not_panic_on_a_stored_zero_channel() {
+        let zero = Finding::Missing {
+            at: Where::Category(ChannelId::new(0)),
+            perms: Permissions::MOVE_MEMBERS,
+        };
+        assert_eq!(
+            finding_text(&zero, |c| format!("chan-{c}"), false),
+            "Give CrackTunes Move Members on chan-0"
+        );
+    }
+
+    #[test]
+    fn channel_of_refuses_what_serenity_cannot_hold() {
+        use crack_model::Platform;
+        let room = |raw: &str| RoomRef::new(Platform::Discord, raw).unwrap();
+        assert_eq!(channel_of(&room("0")), Some(ChannelId::new(0)));
+        assert_eq!(channel_of(&room("7")), Some(ChannelId::new(7)));
+        assert_eq!(channel_of(&room(&u64::MAX.to_string())), None);
+        assert_eq!(channel_of(&room("abc")), None);
     }
 
     #[test]

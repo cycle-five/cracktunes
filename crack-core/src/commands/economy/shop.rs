@@ -622,7 +622,7 @@ pub fn theme_reply_text(balance: i64, currency: &str, emoji: &str) -> String {
 
 /// Have a song play for someone the next time they join voice.
 #[poise::command(slash_command, guild_only)]
-// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build.
 #[cfg_attr(test, mutants::skip)]
 pub async fn theme(
     ctx: Context<'_>,
@@ -778,7 +778,7 @@ enum PaidPlay {
 /// 🔑 No defer before the play (ruling P6): `/play` chooses its reply's
 /// visibility, so every check up to the charge reads only the cache and the
 /// database.
-// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build; the keep-or-refund decision is the pure `play_settlement`, tested apart.
 #[cfg_attr(test, mutants::skip)]
 async fn paid_play(
     ctx: Context<'_>,

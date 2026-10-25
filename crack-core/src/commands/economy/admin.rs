@@ -367,7 +367,7 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Make a member immune to pranks, for some hours or until lifted.
 #[poise::command(slash_command, guild_only)]
-// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build.
 #[cfg_attr(test, mutants::skip)]
 pub async fn grant(
     ctx: Context<'_>,
@@ -426,7 +426,7 @@ pub async fn grant(
 
 /// Remove a member's moderator immunity.
 #[poise::command(slash_command, guild_only)]
-// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build.
 #[cfg_attr(test, mutants::skip)]
 pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
@@ -457,7 +457,7 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
 
 /// End every prank running on a member, undone as if it had expired.
 #[poise::command(slash_command, guild_only)]
-// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build.
 #[cfg_attr(test, mutants::skip)]
 pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Result<(), Error> {
     // Needs only the database: the lever for pranks still running after the
@@ -497,7 +497,7 @@ pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Re
 
 /// Add or remove credits (negative removes). Needs Manage Server.
 #[poise::command(slash_command, guild_only)]
-// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build.
 #[cfg_attr(test, mutants::skip)]
 pub async fn adjust(
     ctx: Context<'_>,

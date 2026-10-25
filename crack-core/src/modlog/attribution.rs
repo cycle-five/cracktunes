@@ -943,6 +943,21 @@ mod tests {
         }
     }
 
+    /// A ref orders as text ("10" < "9"); actors are credited in account order.
+    #[test]
+    fn actors_are_sorted_by_account_number_not_by_text() {
+        let snaps = seeded(&[]);
+        let (nine, ten) = (UserId::new(9), UserId::new(10));
+        let out = attribute(
+            &snaps,
+            &[dc(1, ten, 1), dc(2, nine, 1)],
+            &[left(T1), left(T2)],
+            BOT,
+        );
+        let both = Attribution::OneOf(vec![Actor::person(nine), Actor::person(ten)]);
+        assert_eq!(out, vec![disc(T1, both.clone()), disc(T2, both)]);
+    }
+
     const OTHER_BOT: UserId = UserId::new(98);
 
     /// A row by another bot account.
