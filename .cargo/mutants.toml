@@ -59,3 +59,19 @@ exclude_globs = [
     # `mutation-testing` feature, so its mutants could not build.)
     "crack-test-macros/**",
 ]
+
+# 🔑 The one exception to "legacy misses don't go here" (owner's call,
+# 2026-10-25). It covers one mutant per function: a command entry point's whole
+# body replaced with `Ok(())`. These bodies talk to live Discord, so no offline
+# test can see them do nothing. In the local runs of 2026-10-22..25, all 29
+# that ran were missed, and each diff check that touched one reran it on the
+# base just to call it old. Their other mutants (operators, deleted `!`, etc.)
+# are still tested.
+# 🪤 Scoped to the command-entry files on purpose. /gp's playback helpers
+# (commands/music/gp/) and commands/permissions.rs have tested whole-body
+# mutants, and those were caught, so they stay in. Measured: this excludes 141
+# of the 1,486 mutants under crack-core/src/commands.
+exclude_re = [
+    # Live-Discord glue: a poise command entry point's whole body, which only a live Discord can observe.
+    '^crack-core/src/commands/(admin/.*|economy/.*|utility/.*|music/[^/]+|register|status)\.rs:[0-9]+:[0-9]+: replace \S+ -> Result<\(\), (Error|serenity::Error|CrackedError)> with Ok\(\(\)\)$',
+]

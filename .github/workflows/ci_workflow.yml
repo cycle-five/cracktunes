@@ -44,17 +44,13 @@ jobs:
     uses: ./.github/workflows/lint.yml
     secrets: inherit
 
-  # 🔑 Pull requests only: it mutation-tests the PR's own Rust change and runs
-  # beside Build and Lint, not after them. See mutants-diff.yml.
-  mutants:
-    name: Mutants
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-    uses: ./.github/workflows/mutants-diff.yml
+  # 🔑 The PR mutants check is opt-in, not here: mutants-pr.yml runs it on a
+  # pull request labelled `mutants` (owner's call, 2026-10-25). A crack-core
+  # PR's check took up to ~3.5 h and ~18 runner-hours, so it no longer runs
+  # on every PR.
 
-  # 🔑 Master only: saves the cache the PR job above restores, so a PR's first
-  # Mutants run starts warm. See mutants-warm.yml.
+  # 🔑 Master only: saves the cache the opt-in Mutants job (mutants-pr.yml)
+  # restores, so its first run starts warm. See mutants-warm.yml.
   mutants-warm:
     name: Mutants cache
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'

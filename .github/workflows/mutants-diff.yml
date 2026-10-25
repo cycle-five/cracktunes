@@ -1,9 +1,11 @@
 name: Mutants (PR diff)
 
-# Gates a pull request on the mutants its own change adds: every Rust line the
-# PR touches is mutation-tested, and the job fails only on NEW misses, meaning a
-# mutant the PR's tests miss that the base's tests catch (or that the base does
-# not have). Old, already-missed mutants in touched code are listed, not failed.
+# Checks a pull request labelled `mutants` (mutants-pr.yml; opt-in and
+# advisory since 2026-10-25) for the mutants its own change adds: every Rust
+# line the PR touches is mutation-tested, and the job fails only on NEW
+# misses, meaning a mutant the PR's tests miss that the base's tests catch (or
+# that the base does not have). Old, already-missed mutants in touched code are
+# listed, not failed.
 # The logic is scripts/mutants_check.py; this file only fans it out over shards
 # and has `Mutants verdict` give the one verdict.
 #
@@ -14,8 +16,8 @@ name: Mutants (PR diff)
 # its lists; `Mutants verdict` merges every shard's lists, compares once
 # (`mutants_check.py --collect`), and fails on new misses.
 #
-# 🔑 The local per-task check is the real gate. This job is the backstop for
-# what slipped past it, so it can afford to be slow but must not be flaky.
+# 🔑 Neither this job nor a local run is a gate any more. Use it where a
+# change's tests most need proving; it must not be flaky.
 #
 # 🔑 Budget (spec): a typical PR of up to about 20 mutants should finish within
 # about 15 minutes of Build. A big feature PR takes longer; that is accepted.
