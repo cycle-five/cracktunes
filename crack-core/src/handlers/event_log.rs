@@ -12,7 +12,7 @@ use crate::{
 use cfg_if;
 use colored::Colorize;
 use crack_model::RoomRef;
-use crack_types::discord::generic_channel_id;
+use crack_types::discord::{generic_channel_id, ToRef};
 use poise::serenity_prelude as serenity;
 use poise::serenity_prelude::{FullEvent, GenericChannelId, GuildId};
 use serde::{ser::SerializeStruct, Serialize};
@@ -172,6 +172,11 @@ pub async fn get_log_channel(
 // })?
 // .clone();
 
+/// Whether the guild has asked for events in this channel to go unlogged.
+fn is_ignored(settings: &GuildSettings, channel_id: GenericChannelId) -> bool {
+    settings.ignored_channels.contains(&channel_id.to_ref())
+}
+
 /// Gets the log channel for a given event and guild.
 pub async fn get_channel_id(
     guild_settings_map: &ArcTRwMap<GuildId, GuildSettings>,
@@ -185,7 +190,7 @@ pub async fn get_channel_id(
             .and_then(|room| generic_channel_id(&room).ok())
         {
             Some(channel_id) => {
-                if guild_settings.ignored_channels.contains(&channel_id.get()) {
+                if is_ignored(guild_settings, channel_id) {
                     return Err(CrackedError::LogChannelWarning(
                         full_event_name(event),
                         guild_id,
@@ -528,7 +533,7 @@ pub async fn handle_event(
                     let (_, new_guild_settings) = GuildEntity::get_or_create(
                         p,
                         guild.id.get() as i64,
-                        guild.name.clone(),
+                        guild.name.to_string(),
                         prefix,
                     )
                     .await?;
@@ -1246,7 +1251,9 @@ pub async fn handle_event(
 
 #[cfg(test)]
 mod tests {
-    use super::{get_channel_id, get_log_channel, kept_out_of_event_log, log_channel_for};
+    use super::{
+        get_channel_id, get_log_channel, is_ignored, kept_out_of_event_log, log_channel_for,
+    };
     use crate::guild::settings::GuildSettings;
     use crack_types::discord::ToRef;
     use poise::serenity_prelude::{GenericChannelId, GuildId};
@@ -1255,8 +1262,18 @@ mod tests {
         GenericChannelId::new(n).to_ref()
     }
 
+    #[test]
+    fn an_event_in_an_ignored_channel_is_not_logged() {
+        let settings = GuildSettings::new(GuildId::new(1).to_ref(), None, None);
+        assert!(is_ignored(
+            &settings,
+            GenericChannelId::new(1165246445654388746)
+        ));
+        assert!(!is_ignored(&settings, GenericChannelId::new(1)));
+    }
+
     fn logging(all: u64, join_leave: Option<u64>, server: Option<u64>) -> GuildSettings {
-        let mut settings = GuildSettings::new(GuildId::new(1), None, None);
+        let mut settings = GuildSettings::new(GuildId::new(1).to_ref(), None, None);
         settings.set_all_log_channel(room(all));
         if let Some(c) = join_leave {
             settings.set_join_leave_log_channel(room(c));
@@ -1343,7 +1360,7 @@ mod tests {
 
     #[test]
     fn test_log_channel_for() {
-        let mut settings = GuildSettings::new(GuildId::new(123), None, None);
+        let mut settings = GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         settings.set_all_log_channel(GenericChannelId::new(123).to_ref());
         let event = poise::serenity_prelude::FullEvent::GuildCreate {
             guild: poise::serenity_prelude::Guild::default(),

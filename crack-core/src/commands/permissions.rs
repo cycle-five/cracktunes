@@ -135,7 +135,7 @@ mod tests {
 
     async fn with_music_channel() -> Data {
         let data = Data::default();
-        let mut s = GuildSettings::new(G, None, None);
+        let mut s = GuildSettings::new(crack_types::discord::ToRef::to_ref(&G), None, None);
         s.set_music_channel(MUSIC.to_ref());
         data.guild_settings_map.write().await.insert(G, s);
         data

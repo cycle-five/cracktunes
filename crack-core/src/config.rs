@@ -1,5 +1,6 @@
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::DEFAULT_PREFIX;
+use crack_types::discord::guild_id;
 use crack_types::to_fixed;
 // #[cfg(feature = "crack-metrics")]
 // use crate::metrics::COMMAND_ERRORS;
@@ -242,11 +243,7 @@ pub async fn poise_framework(
     let guild_settings_map = config_ref
         .guild_settings_map
         .as_ref()
-        .map(|x| {
-            x.iter()
-                .map(|gs| (gs.guild_id, gs.clone()))
-                .collect::<HashMap<GuildId, GuildSettings>>()
-        })
+        .map(|x| settings_by_guild(x))
         .unwrap_or_default();
 
     // Only attempt a connection when a database was actually configured.
@@ -482,6 +479,22 @@ pub async fn poise_framework(
     Ok(client)
 }
 
+/// The configured per-guild settings, keyed by serenity id. An entry whose
+/// guild is not a Discord guild cannot be reached by any event, so it is
+/// skipped with a warning rather than keyed wrongly.
+fn settings_by_guild(configured: &[GuildSettings]) -> HashMap<GuildId, GuildSettings> {
+    configured
+        .iter()
+        .filter_map(|gs| match guild_id(&gs.guild_id) {
+            Ok(id) => Some((id, gs.clone())),
+            Err(err) => {
+                tracing::warn!(%err, "skipped a configured guild whose id is not a Discord guild");
+                None
+            },
+        })
+        .collect()
+}
+
 /// Checks if the message starts with any of the given prefixes.
 fn check_prefixes(prefixes: &[String], content: &str) -> Option<usize> {
     for prefix in prefixes {
@@ -501,6 +514,32 @@ pub(crate) fn songbird_config() -> songbird::Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_settings_are_keyed_by_their_guild() {
+        use crack_types::discord::ToRef;
+        let configured = vec![
+            GuildSettings::new(GuildId::new(5).to_ref(), None, None),
+            GuildSettings::new(GuildId::new(9).to_ref(), None, None),
+        ];
+        let map = settings_by_guild(&configured);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map[&GuildId::new(5)], configured[0]);
+        assert_eq!(map[&GuildId::new(9)], configured[1]);
+    }
+
+    #[test]
+    fn a_configured_guild_that_is_not_a_snowflake_is_skipped() {
+        use crack_model::{Platform, Ref};
+        use crack_types::discord::ToRef;
+        let bad = Ref::new(Platform::Discord, "not-a-number").unwrap();
+        let configured = vec![
+            GuildSettings::new(bad, None, None),
+            GuildSettings::new(GuildId::new(5).to_ref(), None, None),
+        ];
+        let map = settings_by_guild(&configured);
+        assert_eq!(map.keys().copied().collect::<Vec<_>>(), [GuildId::new(5)]);
+    }
 
     #[test]
     fn songbird_decodes_nothing() {

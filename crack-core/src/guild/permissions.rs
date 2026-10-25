@@ -39,7 +39,10 @@ impl ConvertToHashSetString for Vec<String> {
 
 /// Convert a stored `BIGINT[]` to a set of refs. An element that is not a
 /// snowflake is dropped with a warning, never panicked on.
-fn ref_set<K: Kind + std::hash::Hash + Eq>(column: &'static str, raw: Vec<i64>) -> HashSet<Ref<K>> {
+pub(crate) fn ref_set<K: Kind + std::hash::Hash + Eq>(
+    column: &'static str,
+    raw: Vec<i64>,
+) -> HashSet<Ref<K>> {
     raw.into_iter()
         .filter_map(|x| stored_ref(column, Some(x)))
         .collect()

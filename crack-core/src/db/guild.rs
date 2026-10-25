@@ -8,7 +8,6 @@ use crate::{
 };
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use serenity::small_fixed_array::FixedString;
 use sqlx::PgPool;
 use std::collections::HashMap;
 
@@ -177,7 +176,7 @@ impl GuildEntity {
         )
         .fetch_one(pool)
         .await?;
-        Ok(GuildSettings::from(settings))
+        GuildSettings::try_from(settings).map_err(CrackedError::InvalidId)
     }
 
     /// Write the settings for a guild to the database.
@@ -187,11 +186,11 @@ impl GuildEntity {
     ) -> Result<(), CrackedError> {
         let ignored_channels = settings
             .ignored_channels
-            .clone()
-            .into_iter()
-            .map(|x| x as i64)
-            .collect::<Vec<i64>>();
-        let to_write = settings.guild_name.to_string();
+            .iter()
+            .map(crate::guild::settings::column_i64)
+            .collect::<Result<Vec<i64>, _>>()?;
+        let guild_id = crate::guild::settings::column_i64(&settings.guild_id)?;
+        let to_write = settings.guild_name.clone();
         sqlx::query!(
             r#"
             INSERT INTO guild_settings (guild_id, guild_name, prefix, premium, autopause, allow_all_domains, allowed_domains, banned_domains, ignored_channels, old_volume, volume, self_deafen, timeout_seconds, additional_prefixes, ephemeral_replies, control_echoes, now_playing_buttons)
@@ -199,7 +198,7 @@ impl GuildEntity {
             ON CONFLICT (guild_id)
             DO UPDATE SET guild_name = $2, prefix = $3, premium = $4, autopause = $5, allow_all_domains = $6, allowed_domains = $7, banned_domains = $8, ignored_channels = $9, old_volume = $10::FLOAT, volume = $11::FLOAT, self_deafen = $12, timeout_seconds = $13, additional_prefixes = $14, ephemeral_replies = $15, control_echoes = $16, now_playing_buttons = $17
             "#,
-            settings.guild_id.get() as i64,
+            guild_id,
             to_write,
             settings.prefix,
             settings.premium,
@@ -220,7 +219,7 @@ impl GuildEntity {
         .execute(pool)
         .await?;
 
-        let guild_id = settings.guild_id.get();
+        let guild_id = guild_id as u64;
 
         if let Some(welcome_settings) = settings.welcome_settings.as_ref() {
             welcome_settings.save(pool, guild_id).await?;
@@ -303,7 +302,8 @@ impl GuildEntity {
         let log_settings = GuildEntity::get_log_settings(pool, self.id).await?;
         let cmd_settings = GuildEntity::load_command_settings(self.id, pool).await?;
 
-        Ok(GuildSettings::from(settings)
+        Ok(GuildSettings::try_from(settings)
+            .map_err(|_| SerenityError::from("invalid guild_id in guild_settings"))?
             .with_welcome_settings(welcome_settings)
             .with_log_settings(log_settings)
             .with_command_settings(cmd_settings))
@@ -339,10 +339,10 @@ impl GuildEntity {
     pub async fn get_or_create(
         pool: &PgPool,
         guild_id: i64,
-        name: FixedString,
+        name: String,
         prefix: String,
     ) -> Result<(GuildEntity, GuildSettings), SerenityError> {
-        let name_str = name.to_string();
+        let name_str = name;
         let guild_entity = sqlx::query_as!(
             GuildEntity,
             r#"
@@ -377,7 +377,8 @@ impl GuildEntity {
         let welcome_settings = GuildEntity::get_welcome_settings(pool, guild_id).await?;
         let log_settings = GuildEntity::get_log_settings(pool, guild_id).await?;
         let command_settings = GuildEntity::load_command_settings(guild_id, pool).await?;
-        let guild_settings = GuildSettings::from(guild_settings)
+        let guild_settings = GuildSettings::try_from(guild_settings)
+            .map_err(CrackedError::InvalidId)?
             .with_welcome_settings(welcome_settings)
             .with_log_settings(log_settings)
             .with_command_settings(command_settings);
@@ -448,11 +449,9 @@ impl GuildEntity {
 mod test {
     use super::*;
     use crack_types::discord::ToRef;
-    use crack_types::to_fixed;
-    use serenity::all::{GenericChannelId, RoleId};
+    use serenity::all::{GenericChannelId, GuildId, RoleId};
     use sqlx::PgPool;
     use std::collections::HashSet;
-    use std::str::FromStr;
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
@@ -465,14 +464,14 @@ mod test {
         let (guild, settings) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            to_fixed("test"),
+            "test".to_string(),
             "test".to_string(),
         )
         .await
         .unwrap();
         assert_eq!(guild.id, 123);
         assert_eq!(guild.name, "test");
-        assert_eq!(settings.guild_id.get(), 123);
+        assert_eq!(settings.guild_id, GuildId::new(123).to_ref());
         assert_eq!(settings.guild_name, "test");
         assert_eq!(settings.prefix, "test");
     }
@@ -486,7 +485,7 @@ mod test {
         let (mut guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            FixedString::from_str("test").unwrap(),
+            "test".to_string(),
             "test".to_string(),
         )
         .await
@@ -514,7 +513,7 @@ mod test {
         let (guild, settings) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            to_fixed("test"),
+            "test".to_string(),
             "test".to_string(),
         )
         .await
@@ -560,7 +559,7 @@ mod test {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            to_fixed("test"),
+            "test".to_string(),
             "test".to_string(),
         )
         .await
@@ -590,7 +589,7 @@ mod test {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            to_fixed("test"),
+            "test".to_string(),
             "test".to_string(),
         )
         .await
@@ -620,7 +619,7 @@ mod test {
         let (guild, _) = crate::db::guild::GuildEntity::get_or_create(
             &pool,
             123,
-            to_fixed("test"),
+            "test".to_string(),
             "test".to_string(),
         )
         .await
@@ -650,7 +649,6 @@ mod test {
 #[cfg(test)]
 mod ephemeral_replies_db_tests {
     use super::*;
-    use std::str::FromStr;
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
@@ -661,7 +659,7 @@ mod ephemeral_replies_db_tests {
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     async fn ephemeral_replies_survive_a_save_and_load(pool: PgPool) -> Result<(), SerenityError> {
-        let name = FixedString::from_str("status test").expect("a short name");
+        let name = "status test".to_string();
         let (_guild, mut settings) =
             GuildEntity::get_or_create(&pool, 424242, name, "r!".to_string()).await?;
         assert!(!settings.ephemeral_replies);
@@ -680,7 +678,6 @@ mod ephemeral_replies_db_tests {
 #[cfg(test)]
 mod control_echoes_db_tests {
     use super::*;
-    use std::str::FromStr;
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
@@ -691,7 +688,7 @@ mod control_echoes_db_tests {
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     async fn control_echoes_survive_a_save_and_load(pool: PgPool) -> Result<(), SerenityError> {
-        let name = FixedString::from_str("echo test").expect("a short name");
+        let name = "echo test".to_string();
         let (_guild, mut settings) =
             GuildEntity::get_or_create(&pool, 434343, name, "r!".to_string()).await?;
         assert!(settings.control_echoes);
@@ -710,7 +707,6 @@ mod control_echoes_db_tests {
 #[cfg(test)]
 mod now_playing_buttons_db_tests {
     use super::*;
-    use std::str::FromStr;
 
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
@@ -723,7 +719,7 @@ mod now_playing_buttons_db_tests {
     async fn now_playing_buttons_survive_a_save_and_load(
         pool: PgPool,
     ) -> Result<(), SerenityError> {
-        let name = FixedString::from_str("buttons test").expect("a short name");
+        let name = "buttons test".to_string();
         let (_guild, mut settings) =
             GuildEntity::get_or_create(&pool, 454545, name, "r!".to_string()).await?;
         assert!(settings.now_playing_buttons);

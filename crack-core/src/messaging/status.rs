@@ -828,7 +828,11 @@ mod tests {
     #[tokio::test]
     async fn the_music_channel_beats_the_last_command_channel() {
         let data = crate::Data::default();
-        let mut settings = crate::guild::settings::GuildSettings::new(GUILD, None, None);
+        let mut settings = crate::guild::settings::GuildSettings::new(
+            crack_types::discord::ToRef::to_ref(&GUILD),
+            None,
+            None,
+        );
         settings.set_music_channel(crack_types::discord::ToRef::to_ref(
             &serenity::all::GenericChannelId::new(7),
         ));
@@ -1026,7 +1030,11 @@ mod tests {
     }
 
     async fn buttons_off(data: &crate::Data) {
-        let mut s = crate::guild::settings::GuildSettings::new(GUILD, None, None);
+        let mut s = crate::guild::settings::GuildSettings::new(
+            crack_types::discord::ToRef::to_ref(&GUILD),
+            None,
+            None,
+        );
         s.now_playing_buttons = false;
         data.guild_settings_map.write().await.insert(GUILD, s);
     }

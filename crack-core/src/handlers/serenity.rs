@@ -17,6 +17,7 @@ use ::serenity::{
     gateway::ActivityData,
 };
 use colored::Colorize;
+use crack_types::discord::ToRef;
 // use dashmap;
 use poise::serenity_prelude::{self as serenity, Member, Mentionable};
 use serenity::CacheHttp;
@@ -571,7 +572,7 @@ impl SerenityHandler {
             Some(pool) => match GuildEntity::get_or_create(
                 pool,
                 guild.id.get() as i64,
-                name.clone(),
+                name.to_string(),
                 prefix.clone(),
             )
             .await
@@ -589,10 +590,10 @@ impl SerenityHandler {
                          falling back to defaults: {err}",
                         guild.id
                     );
-                    GuildSettings::new(guild.id, Some(&prefix), Some(name))
+                    GuildSettings::new(guild.id.to_ref(), Some(&prefix), Some(name.to_string()))
                 },
             },
-            None => GuildSettings::new(guild.id, Some(&prefix), Some(name)),
+            None => GuildSettings::new(guild.id.to_ref(), Some(&prefix), Some(name.to_string())),
         };
         self.data
             .guild_settings_map

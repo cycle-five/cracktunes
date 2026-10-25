@@ -708,7 +708,7 @@ impl Data {
             .write()
             .await
             .entry(guild_id)
-            .or_insert_with(GuildSettings::default)
+            .or_insert_with(|| GuildSettings::new(guild_id.to_ref(), None, None))
             .add_denied_music_user(user.to_ref())
             .await
     }
@@ -809,7 +809,7 @@ msg_on_dc:     false
     #[tokio::test]
     async fn check_music_permissions_reads_refs() {
         let data = Data::default();
-        let mut settings = GuildSettings::new(GuildId::new(5), None, None);
+        let mut settings = GuildSettings::new(GuildId::new(5).to_ref(), None, None);
         settings
             .add_denied_music_user(UserId::new(7).to_ref())
             .await
