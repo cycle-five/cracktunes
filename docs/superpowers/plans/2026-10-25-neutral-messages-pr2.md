@@ -241,6 +241,10 @@
 - Consumes: Tasks 1–5.
 - Produces:
   - These payloads hold refs, and their renderers build `Card`/`Row`, wrapped as in Task 4.
+  - **No serenity type anywhere inside a payload, including the structs it embeds** (ruling P5).
+    - Where a payload embeds a domain or state struct that keeps serenity ids for its own sending (as `/gp` did), the payload carries a small view struct instead.
+    - The view holds only what the renderer reads, as refs and Strings, and is built with a `From` impl where the payload is constructed.
+    - Don't convert the domain or state structs themselves.
   - The mod log's card timestamp is `Some(cx.now_unix)`.
 
 - [ ] **Step 1: Pin today's output:** `room_cards_render_as_before` and `modlog_events_render_as_before`. One case per `RoomCard` and `ModLogEvent` variant that builds an embed or components. Assert the JSON captured at the base.
