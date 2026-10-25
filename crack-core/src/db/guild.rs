@@ -303,7 +303,7 @@ impl GuildEntity {
         let cmd_settings = GuildEntity::load_command_settings(self.id, pool).await?;
 
         Ok(GuildSettings::try_from(settings)
-            .map_err(|_| SerenityError::from("invalid guild_id in guild_settings"))?
+            .map_err(|e| SerenityError::from(format!("invalid guild_id in guild_settings: {e}")))?
             .with_welcome_settings(welcome_settings)
             .with_log_settings(log_settings)
             .with_command_settings(cmd_settings))
@@ -342,7 +342,6 @@ impl GuildEntity {
         name: String,
         prefix: String,
     ) -> Result<(GuildEntity, GuildSettings), SerenityError> {
-        let name_str = name;
         let guild_entity = sqlx::query_as!(
             GuildEntity,
             r#"
@@ -353,7 +352,7 @@ impl GuildEntity {
                 RETURNING *
                 "#,
             guild_id,
-            name_str.clone()
+            name.clone()
         )
         .fetch_one(pool)
         .await?;
@@ -368,7 +367,7 @@ impl GuildEntity {
                     RETURNING *
                     "#,
             guild_id,
-            Some(name_str.clone()),
+            Some(name.clone()),
             prefix
         )
         .fetch_one(pool)

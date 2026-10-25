@@ -676,7 +676,9 @@ impl Backend for LiveBackend {
         Ok(self.economy_settings(g.to_ref()).await)
     }
 
-    // Live Discord glue: the cache and HTTP calls cannot be driven in a test.
+    // Needs a `LiveBackend`, which tests cannot build (no constructor without a live
+    // `Data`, DB pool and Discord cache/HTTP), so the whole method, including its
+    // filter, game exclusion and plan floor, is exempt from mutants.
     #[cfg_attr(test, mutants::skip)]
     async fn history(
         &self,

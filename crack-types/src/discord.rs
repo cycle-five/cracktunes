@@ -62,7 +62,8 @@ macro_rules! discord_ids {
         impl ToRef for $id {
             type Kind = crack_model::$kind;
             fn to_ref(&self) -> Ref<Self::Kind> {
-                // A serenity id is never 0 or u64::MAX.
+                // Decimal text is always a valid raw id. Id 0 (and u64::MAX, which
+                // serenity cannot hold) maps to a ref that no back-conversion accepts.
                 Ref::new(Platform::Discord, self.get().to_string())
                     .expect("a decimal id is a valid raw id")
             }

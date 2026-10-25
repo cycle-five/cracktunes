@@ -63,7 +63,8 @@ jobs:
       - name: crack-model depends on no platform crate
         if: success() || failure()
         run: |
-          if cargo tree -p crack-model -e normal --prefix none | grep -E '^(serenity|poise|songbird|sqlx|reqwest)'; then
+          tree=$(cargo tree -p crack-model -e normal --prefix none)
+          if echo "$tree" | grep -E '^(serenity|poise|songbird|sqlx|reqwest)'; then
             echo "crack-model must not depend on a platform crate" >&2
             exit 1
           fi

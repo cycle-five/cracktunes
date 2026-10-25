@@ -70,7 +70,7 @@ macro_rules! kinds {
 kinds! {
     /// A person or bot account.
     User => UserRef,
-    /// A Discord guild.
+    /// A server, guild or space.
     Community => CommunityRef,
     /// Where messages (and maybe voice) happen: a channel.
     Room => RoomRef,
