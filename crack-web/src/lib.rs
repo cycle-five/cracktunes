@@ -297,6 +297,8 @@ impl Backend for LiveBackend {
         .await
     }
 
+    // Live Discord glue: the cache and HTTP calls cannot be driven in a test.
+    #[cfg_attr(test, mutants::skip)]
     async fn control(
         &self,
         user: UserRef,
@@ -365,6 +367,8 @@ impl Backend for LiveBackend {
         out
     }
 
+    // Live Discord glue: the cache and HTTP calls cannot be driven in a test.
+    #[cfg_attr(test, mutants::skip)]
     fn guild_name(&self, g: CommunityRef) -> Option<String> {
         let g = guild_id(&g).ok()?;
         self.deps.cache.guild(g).map(|guild| guild.name.to_string())
@@ -414,6 +418,8 @@ impl Backend for LiveBackend {
         crack_core::music::search::search(&self.deps.data, g, q, sources, since).await
     }
 
+    // Live Discord glue: the cache and HTTP calls cannot be driven in a test.
+    #[cfg_attr(test, mutants::skip)]
     async fn add(
         &self,
         user: UserRef,
@@ -670,6 +676,8 @@ impl Backend for LiveBackend {
         Ok(self.economy_settings(g.to_ref()).await)
     }
 
+    // Live Discord glue: the cache and HTTP calls cannot be driven in a test.
+    #[cfg_attr(test, mutants::skip)]
     async fn history(
         &self,
         g: CommunityRef,
