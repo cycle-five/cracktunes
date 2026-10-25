@@ -83,6 +83,11 @@ concurrency:
   group: mutants-full
   cancel-in-progress: false
 
+# 🪤 CMake 4 on ubuntu-26.04 refuses audiopus_sys's old
+# cmake_minimum_required; see build.yml.
+env:
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
 jobs:
   plan:
     name: Plan
