@@ -4,6 +4,7 @@ use crate::messaging::format::{
     clip, duration_text, http_url, progress_text, Progress, TrackLabel, AUTHOR_MAX,
     EMBED_TITLE_MAX, FIELD_MAX, INLINE_TITLE_MAX,
 };
+use crate::messaging::interface::requesting_user_to_string;
 use crate::messaging::messages::{
     ECHO_ADDED, ECHO_ADDED_NEXT, ECHO_FROM_DASHBOARD, ECHO_PAUSED, ECHO_REMOVED, ECHO_REPEAT_OFF,
     ECHO_REPEAT_ON, ECHO_RESUMED, ECHO_SHUFFLED, ECHO_SKIPPED, PROGRESS, QUEUE_NOW_PLAYING,
@@ -114,7 +115,7 @@ impl Echo {
 pub fn now_playing(card: &NowPlayingCard, cx: &RenderCx) -> Rendered {
     let url = http_url(card.label.url.as_deref());
     let requester = match &card.requester {
-        Some(id) => format!(">>> {}", requester_text(id)),
+        Some(id) => format!(">>> {}", requesting_user_to_string(id)),
         None => ">>> N/A".to_owned(),
     };
     let progress = clip(
@@ -161,14 +162,6 @@ pub fn now_playing(card: &NowPlayingCard, cx: &RenderCx) -> Rendered {
     match &card.controls {
         Some(c) => rendered.with_rows(c.rows()),
         None => rendered,
-    }
-}
-
-/// Who asked for the track: autoplay (stored as user 1) or a mention.
-fn requester_text(user: &UserRef) -> String {
-    match user.raw().as_str() {
-        "1" => "(auto)".to_owned(),
-        raw => format!("<@{raw}>"),
     }
 }
 
@@ -625,9 +618,7 @@ mod tests {
     fn an_autoplayed_card_names_the_requester_auto() {
         let mut c = card(None, None);
         c.requester = Some(UserId::new(1).to_ref());
-        assert_eq!(
-            v(&now_playing(&c, &RenderCx::default()))["fields"][1]["value"],
-            ">>> (auto)"
-        );
+        let out = now_playing(&c, &RenderCx::default());
+        assert_eq!(out.cards[0].fields[1].value, ">>> (auto)");
     }
 }

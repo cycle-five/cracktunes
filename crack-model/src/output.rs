@@ -6,12 +6,23 @@ use std::fmt;
 use crate::{RoleRef, RoomRef, UserRef};
 
 /// One outgoing message: text, cards and rows of controls.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Rendered {
     pub content: Option<String>,
     pub cards: Vec<Card>,
     pub rows: Vec<Row>,
     pub mentions: Mentions,
+}
+
+impl Card {
+    /// A card holding only a description.
+    #[must_use]
+    pub fn described(text: impl Into<String>) -> Self {
+        Self {
+            description: Some(text.into()),
+            ..Self::default()
+        }
+    }
 }
 
 impl Rendered {
@@ -33,12 +44,14 @@ impl Rendered {
         }
     }
 
+    /// Sets the text, replacing any already present.
     #[must_use]
     pub fn with_content(mut self, content: impl Into<String>) -> Self {
         self.content = Some(content.into());
         self
     }
 
+    /// Sets the rows of controls, replacing any already present.
     #[must_use]
     pub fn with_rows(mut self, rows: Vec<Row>) -> Self {
         self.rows = rows;
@@ -53,8 +66,20 @@ impl Rendered {
     }
 }
 
+/// Colours as 0xRRGGBB, the same values as serenity's `Colour` constants.
+pub mod colour {
+    pub const RED: u32 = 0xE74C3C;
+    pub const GOLD: u32 = 0xF1C40F;
+    pub const BLUE: u32 = 0x3498DB;
+    pub const BLURPLE: u32 = 0x7289DA;
+    pub const FOOYOO: u32 = 0x11CA80;
+    pub const DARKER_GREY: u32 = 0x546E7A;
+    pub const DARK_GREEN: u32 = 0x1F8B4C;
+    pub const DARK_GOLD: u32 = 0xC27C0E;
+}
+
 /// A rich block: the neutral shape of an embed.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Card {
     pub title: Option<String>,
     pub url: Option<String>,
@@ -69,6 +94,7 @@ pub struct Card {
     pub colour: Option<u32>,
 }
 
+/// Who a card is by.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Author {
     pub name: String,
@@ -76,6 +102,7 @@ pub struct Author {
     pub icon_url: Option<String>,
 }
 
+/// A titled value inside a card; inline fields may sit side by side.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Field {
     pub name: String,
@@ -83,6 +110,7 @@ pub struct Field {
     pub inline: bool,
 }
 
+/// The small text at the foot of a card.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Footer {
     pub text: String,
@@ -117,6 +145,7 @@ pub struct Select {
     pub max: Option<u8>,
 }
 
+/// How a button is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ButtonStyle {
     Primary,
@@ -125,6 +154,7 @@ pub enum ButtonStyle {
     Danger,
 }
 
+/// One choice in a select menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelectOption {
     pub label: String,
@@ -137,6 +167,8 @@ pub struct SelectOption {
 pub enum Mentions {
     #[default]
     None,
+    /// Users mentioned in the text may be pinged. Unused until the welcome
+    /// message moves here.
     Users,
 }
 
@@ -187,6 +219,17 @@ mod tests {
         };
         let r = Rendered::card(card("a")).with_cards(vec![card("b"), card("c")]);
         assert_eq!(r.cards, vec![card("a"), card("b"), card("c")]);
+    }
+
+    #[test]
+    fn a_described_card_has_only_a_description() {
+        assert_eq!(
+            Card::described("hi"),
+            Card {
+                description: Some("hi".to_string()),
+                ..Card::default()
+            }
+        );
     }
 
     #[test]

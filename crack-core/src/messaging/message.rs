@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt::Display};
 
-use crack_model::{Card, Mention, RoleRef, RoomRef, UserRef};
+use crack_model::{colour, Card, Mention, RoleRef, RoomRef, UserRef};
 #[cfg(feature = "crack-osint")]
 use crack_osint::virustotal::VirusTotalApiResponse;
 use std::time::Duration;
@@ -300,13 +300,10 @@ impl CrackedMessage {
     /// The embed colour, 0xRRGGBB.
     #[must_use]
     pub fn colour(&self) -> u32 {
-        const RED: u32 = 0xE74C3C;
-        const GOLD: u32 = 0xF1C40F;
-        const BLUE: u32 = 0x3498DB;
         match self {
-            Self::Error | Self::CrackedError(_) | Self::CrackedRed(_) => RED,
-            Self::Other(_) => GOLD,
-            _ => BLUE,
+            Self::Error | Self::CrackedError(_) | Self::CrackedRed(_) => colour::RED,
+            Self::Other(_) => colour::GOLD,
+            _ => colour::BLUE,
         }
     }
 

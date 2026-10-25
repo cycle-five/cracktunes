@@ -156,8 +156,9 @@ disallowed-methods = [
 # 🔒 Output is built neutral (crack_model::Card and Row) and converted once, in
 # messaging::discord. A serenity embed or component built anywhere else skips
 # that conversion (clipping, mentions, the byte pins). The files that
-# legitimately build them -- the converter, the transports, the press handlers
-# and the modal builders -- carry a reasoned #[allow(clippy::disallowed_types)].
+# legitimately build them -- the converter, the two transport functions that
+# clear components, and the modal builders -- carry a reasoned
+# #[expect(clippy::disallowed_types)].
 disallowed-types = [
     { path = "serenity::builder::CreateEmbed", reason = "build crack_model::Card/Row; convert in messaging::discord" },
     { path = "serenity::builder::CreateEmbedAuthor", reason = "build crack_model::Card/Row; convert in messaging::discord" },

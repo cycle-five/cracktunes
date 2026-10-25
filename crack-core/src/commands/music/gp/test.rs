@@ -3073,8 +3073,6 @@ fn a_long_title_is_capped_and_a_real_one_is_not() {
     assert!(d.contains(&format!("[**{real}**]")), "{d}");
 }
 
-/// A card as Discord receives it: content, embed and components, each as the
-/// JSON serenity writes.
 /// A neutral card as the embed Discord receives, for the JSON assertions.
 // Test helper: turns neutral output into the builders Discord receives, for JSON pins.
 #[allow(clippy::disallowed_types)]
@@ -3089,6 +3087,8 @@ fn rows_of(rows: Vec<crack_model::Row>) -> Vec<::serenity::builder::CreateCompon
     crate::messaging::discord::action_rows(&rows)
 }
 
+/// A card as Discord receives it: content, embed and components, each as the
+/// JSON serenity writes.
 fn wire(r: &Rendered) -> (String, String, String) {
     (
         r.content.clone().unwrap_or_default(),
@@ -3225,6 +3225,20 @@ where
         for alias in *aliases {
             assert_eq!(parsed(alias), Some(*variant), "alias {alias}");
         }
+    }
+}
+
+/// The dropdown mirrors the domain's categories: a category added to
+/// `GpCategory` but not to `GpCategoryChoice` would be missing from `/gp start`.
+#[test]
+fn the_category_dropdown_lists_every_category_by_its_label() {
+    use poise::ChoiceParameter;
+    let list = GpCategoryChoice::list();
+    // Every category, plus Random and Pick several.
+    assert_eq!(list.len(), GpCategory::CATEGORIES.len() + 2);
+    for choice in list.iter() {
+        let parsed = GpCategoryChoice::from_name(&choice.name).expect(&choice.name);
+        assert_eq!(GpCategory::from(parsed).label(), choice.name);
     }
 }
 

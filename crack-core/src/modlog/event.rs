@@ -764,15 +764,10 @@ mod tests {
     #[test]
     fn modlog_events_render_as_before() {
         let cases = pin_cases();
-        if std::env::var_os("PIN_PRINT").is_some() {
-            for e in &cases {
-                println!("PIN    r##\"{}\"##,", sent(&render(e, &cx())));
-            }
-            return;
-        }
         assert_eq!(cases.len(), EXPECTED.len());
         for (e, expected) in cases.iter().zip(EXPECTED) {
-            assert_eq!(&sent(&render(e, &cx())), expected, "{e:?}");
+            let actual = sent(&render(e, &cx()));
+            assert_eq!(&actual, expected, "{e:?}: {actual}");
         }
     }
 

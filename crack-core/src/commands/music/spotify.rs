@@ -3,15 +3,11 @@ use crate::messaging::format::{duration_text, escape, http_url};
 use crate::messaging::{courier, message::CrackedMessage};
 use crate::sources::sleevenote::{self, MediaType};
 use crate::{Context, Error};
-use crack_model::{Card, Field};
+use crack_model::{colour, Card, Field};
 use crack_sleevenote::{Album, Error as SleevenoteError, Playlist, Track};
 
 /// How many tracks of a collection to list before saying "and N more".
 const PREVIEW_TRACKS: usize = 10;
-/// 0x7289DA, serenity's `Color::BLURPLE`.
-const BLURPLE: u32 = 0x7289DA;
-/// 0xE74C3C, serenity's `Color::RED`.
-const RED: u32 = 0xE74C3C;
 
 /// Look up a Spotify track, album or playlist.
 #[poise::command(category = "Music", prefix_command, slash_command)]
@@ -79,7 +75,7 @@ fn track_embed(track: Track) -> Card {
         title: Some(track.name.clone()),
         url: Some(track.url.clone()),
         description: Some(artists(&track)),
-        colour: Some(BLURPLE),
+        colour: Some(colour::BLURPLE),
         ..Card::default()
     };
 
@@ -159,7 +155,7 @@ fn collection_embed(
         url: Some(url),
         description: Some(byline),
         fields: vec![field("Tracks", tracks.len().to_string(), true)],
-        colour: Some(BLURPLE),
+        colour: Some(colour::BLURPLE),
         ..Card::default()
     };
 
@@ -203,7 +199,7 @@ fn artists(track: &Track) -> String {
 fn fail(msg: &str) -> Card {
     Card {
         description: Some(msg.to_string()),
-        colour: Some(RED),
+        colour: Some(colour::RED),
         ..Card::default()
     }
 }

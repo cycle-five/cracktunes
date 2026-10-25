@@ -44,7 +44,10 @@ use crate::messaging::transport::{DiscordModalPress, DiscordPress, DiscordTransp
 use crate::modlog::live::ChannelSink;
 use crate::Data;
 // Modal select menus are Discord input, not neutral output (spec: modals stay Discord).
-#[allow(clippy::disallowed_types)]
+#[expect(
+    clippy::disallowed_types,
+    reason = "modal select menus are Discord input, not neutral output"
+)]
 use serenity::all::{
     Cache, ChannelId, ComponentInteraction, CreateInputText, CreateLabel, CreateModal,
     CreateModalComponent, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, GuildId,
@@ -496,7 +499,10 @@ fn labelled(
 /// A required pick of one of `people`, each by name (else by id), valued by
 /// user id.
 // Modal select menus are Discord input, not neutral output (spec: modals stay Discord).
-#[allow(clippy::disallowed_types)]
+#[expect(
+    clippy::disallowed_types,
+    reason = "modal select menus are Discord input, not neutral output"
+)]
 fn pick_member(
     facts: &GuildFacts,
     people: Vec<UserId>,
@@ -533,7 +539,10 @@ fn pick_member(
 
 /// A pick of any one member of the server.
 // Modal select menus are Discord input, not neutral output (spec: modals stay Discord).
-#[allow(clippy::disallowed_types)]
+#[expect(
+    clippy::disallowed_types,
+    reason = "modal select menus are Discord input, not neutral output"
+)]
 fn pick_user(
     label: &'static str,
     description: &'static str,
@@ -554,7 +563,10 @@ fn pick_user(
 
 /// An optional pick of one role.
 // Modal select menus are Discord input, not neutral output (spec: modals stay Discord).
-#[allow(clippy::disallowed_types)]
+#[expect(
+    clippy::disallowed_types,
+    reason = "modal select menus are Discord input, not neutral output"
+)]
 fn pick_role(label: &'static str, description: &'static str) -> CreateModalComponent<'static> {
     let menu = CreateSelectMenu::new(
         field::ROLE,
@@ -572,7 +584,10 @@ fn pick_role(label: &'static str, description: &'static str) -> CreateModalCompo
 /// A select of at most one; an optional one may be left empty (Discord
 /// allows `min_values` 0 only when `required` is false).
 // Modal select menus are Discord input, not neutral output (spec: modals stay Discord).
-#[allow(clippy::disallowed_types)]
+#[expect(
+    clippy::disallowed_types,
+    reason = "modal select menus are Discord input, not neutral output"
+)]
 fn one(menu: CreateSelectMenu<'static>, required: bool) -> CreateSelectMenu<'static> {
     menu.min_values(u8::from(required))
         .max_values(1)
@@ -581,7 +596,10 @@ fn one(menu: CreateSelectMenu<'static>, required: bool) -> CreateSelectMenu<'sta
 
 /// A required choice of one `(label, value)`.
 // Modal select menus are Discord input, not neutral output (spec: modals stay Discord).
-#[allow(clippy::disallowed_types)]
+#[expect(
+    clippy::disallowed_types,
+    reason = "modal select menus are Discord input, not neutral output"
+)]
 fn choose(
     description: &'static str,
     choices: &[(&'static str, &'static str)],

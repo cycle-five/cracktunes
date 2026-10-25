@@ -75,7 +75,7 @@ async fn fill_metadata_reply(
     let crack_msg = CrackedMessage::Other(str);
     match crate::utils::edit_embed_response2(
         ctx,
-        description_card(crack_msg.to_string()),
+        Card::described(crack_msg.to_string()),
         search_msg.clone(),
         None,
     )
@@ -109,14 +109,6 @@ pub async fn get_metadata(ctx: Context<'_>, query_or_url: String) -> Result<(), 
     .await
 }
 
-/// A card that is only its description.
-fn description_card(description: String) -> Card {
-    Card {
-        description: Some(description),
-        ..Card::default()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,7 +116,7 @@ mod tests {
 
     #[test]
     fn the_metadata_reply_renders_as_a_bare_description() {
-        let wire = serde_json::to_string(&discord::embed(&description_card("a\nb".into())));
+        let wire = serde_json::to_string(&discord::embed(&Card::described("a\nb")));
         assert_eq!(wire.unwrap(), r#"{"type":"rich","description":"a\nb"}"#);
     }
 }

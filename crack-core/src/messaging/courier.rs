@@ -1,7 +1,5 @@
 //! Delivery: replies through a [`ReplySink`], background posts through a
 //! [`Transport`], all rendered by [`render`]. Spec: the messaging-layer design.
-// The transport is where builders meet Discord: it clears a reply's components with an empty `CreateComponent` list.
-#![allow(clippy::disallowed_types)]
 
 use crate::errors::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
@@ -90,6 +88,10 @@ async fn edit_poise<'ctx>(
 #[expect(
     clippy::disallowed_methods,
     reason = "messaging is where sends are made"
+)]
+#[expect(
+    clippy::disallowed_types,
+    reason = "clearing a reply's components takes an empty CreateComponent list"
 )]
 async fn retire_poise<'ctx>(
     ctx: crate::Context<'ctx>,

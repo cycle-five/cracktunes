@@ -1,8 +1,10 @@
 //! The Discord adapter for the neutral output types: each function turns one
 //! of them into the serenity builder that sends the same thing today.
 
-// This file is where neutral output becomes Discord builders.
-#![allow(clippy::disallowed_types)]
+#![expect(
+    clippy::disallowed_types,
+    reason = "this file is where neutral output becomes Discord builders"
+)]
 
 use std::borrow::Cow;
 
@@ -496,6 +498,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_trait_method_allows_users_only_for_users() {
+        let users = Rendered {
+            mentions: Mentions::Users,
+            ..Rendered::text("<@1>")
+        };
+        assert_eq!(
+            json(&users.allowed_mentions()),
+            json(&CreateAllowedMentions::new().all_users(true))
+        );
+    }
+
+    #[test]
+    fn a_reply_edit_says_whether_it_carries_rows() {
+        assert!(!Rendered::text("x").to_reply_edit().1);
+        let rows = vec![Row::Buttons(vec![btn(
+            "a",
+            None,
+            None,
+            ButtonStyle::Primary,
+            false,
+        )])];
+        assert!(Rendered::text("x").with_rows(rows).to_reply_edit().1);
+    }
+
+    #[test]
+    fn the_colour_table_is_serenitys() {
+        use crack_model::colour;
+        assert_eq!(colour::RED, Colour::RED.0);
+        assert_eq!(colour::GOLD, Colour::GOLD.0);
+        assert_eq!(colour::BLUE, Colour::BLUE.0);
+        assert_eq!(colour::BLURPLE, Colour::BLURPLE.0);
+        assert_eq!(colour::FOOYOO, Colour::FOOYOO.0);
+        assert_eq!(colour::DARKER_GREY, Colour::DARKER_GREY.0);
+        assert_eq!(colour::DARK_GREEN, Colour::DARK_GREEN.0);
+        assert_eq!(colour::DARK_GOLD, Colour::DARK_GOLD.0);
+    }
+
     fn long() -> Rendered {
         Rendered::text("a".repeat(3000))
     }
@@ -517,9 +557,12 @@ mod tests {
         assert_eq!(content_len(&r.to_interaction_message()), CONTENT_MAX);
         assert_eq!(content_len(&r.to_followup(false)), CONTENT_MAX);
         assert_eq!(content_len(&r.to_edit()), CONTENT_MAX);
-        // 🪤 Waiver: `poise::CreateReply` is not `Serialize` and exposes no
-        // content accessor, so `to_reply` and `to_reply_edit` (which share the
-        // `content` helper with the four paths above) are not observed here.
+        let reply = r
+            .to_reply(false)
+            .to_slash_initial_response(CreateInteractionResponseMessage::new());
+        assert_eq!(content_len(&reply), CONTENT_MAX);
+        let reply_edit = r.to_reply_edit().0.to_prefix_edit(EditMessage::new());
+        assert_eq!(content_len(&reply_edit), CONTENT_MAX);
     }
 
     #[test]
@@ -543,6 +586,11 @@ mod tests {
             json(&r.to_interaction_message()),
             json(&r.to_followup(false)),
             json(&r.to_edit()),
+            json(
+                &r.to_reply(false)
+                    .to_slash_initial_response(CreateInteractionResponseMessage::new()),
+            ),
+            json(&r.to_reply_edit().0.to_prefix_edit(EditMessage::new())),
         ] {
             assert!(wire.contains(none), "{wire}");
         }

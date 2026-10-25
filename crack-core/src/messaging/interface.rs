@@ -23,7 +23,7 @@ use crate::{
     utils::{get_requesting_user, get_track_handle_metadata},
     Context as CrackContext, Error,
 };
-use crack_model::{Author, Button, ButtonStyle, Card, Field, Footer, Row};
+use crack_model::{Author, Button, ButtonStyle, Card, Field, Footer, Mention, Row, UserRef};
 use crack_types::discord::ToRef;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
@@ -141,10 +141,10 @@ pub async fn send_log_embed_thumb(
 // ------ Queue Display / Interaction ------ //
 
 /// Converts a user id to a string, with special handling for autoplay.
-pub fn requesting_user_to_string(user_id: UserId) -> String {
-    match user_id.get() {
-        1 => "(auto)".to_string(),
-        _ => user_id.mention().to_string(),
+pub fn requesting_user_to_string(user: &UserRef) -> String {
+    match user.raw().as_str() {
+        "1" => "(auto)".to_string(),
+        _ => Mention::User(user.clone()).to_string(),
     }
 }
 
@@ -201,7 +201,7 @@ impl QueueEntry {
             "{}. {} • {}\n",
             self.number,
             track_text(&label),
-            requesting_user_to_string(self.requester),
+            requesting_user_to_string(&self.requester.to_ref()),
         )
     }
 }
@@ -1014,10 +1014,14 @@ mod test {
     #[test]
     fn test_requesting_user_to_string() {
         use super::requesting_user_to_string;
+        use crack_types::discord::ToRef;
         use serenity::model::id::UserId;
 
-        assert_eq!(requesting_user_to_string(UserId::new(1)), "(auto)");
-        assert_eq!(requesting_user_to_string(UserId::new(2)), "<@2>");
+        assert_eq!(
+            requesting_user_to_string(&UserId::new(1).to_ref()),
+            "(auto)"
+        );
+        assert_eq!(requesting_user_to_string(&UserId::new(2).to_ref()), "<@2>");
     }
 
     /// 🪤 Measured on production v0.11.0: lyric_finder credited a song to
@@ -1055,6 +1059,22 @@ mod test {
         assert_eq!(embed.thumbnail.as_deref(), Some(avatar_url));
         // `YYYY-MM-DD HH:MM:SS`
         assert_eq!(embed.footer.map(|f| f.text.len()), Some(19));
+    }
+
+    #[tokio::test]
+    async fn test_build_log_embed_thumb() {
+        let card =
+            super::build_log_embed_thumb("guild", "title", "42", "description", "avatar_url")
+                .await
+                .unwrap();
+        let author = card.author.unwrap();
+        assert_eq!(author.name, "title");
+        assert_eq!(author.icon_url.as_deref(), Some("avatar_url"));
+        assert_eq!(card.description.as_deref(), Some("description"));
+        let footer = card.footer.unwrap().text;
+        let stamp = footer.strip_prefix("guild | 42 | ").expect(&footer);
+        // `YYYY-MM-DD HH:MM:SS`
+        assert_eq!(stamp.len(), 19, "{footer}");
     }
 
     fn wire<T: serde::Serialize>(t: &T) -> String {

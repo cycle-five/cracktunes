@@ -102,20 +102,12 @@ mod tests {
 
     #[test]
     fn a_search_hit_is_escaped_and_linked_only_to_the_web() {
-        let v = serde_json::to_value(discord::embed(&search_result_card(
-            2,
-            &hit(Some("a*b @everyone"), "javascript:alert(1)"),
-        )))
-        .unwrap();
-        assert_eq!(v["title"], "(2)[a\\*b \\@everyone]");
-        assert!(v.get("url").is_none() || v["url"].is_null(), "{v}");
+        let card = search_result_card(2, &hit(Some("a*b @everyone"), "javascript:alert(1)"));
+        assert_eq!(card.title.as_deref(), Some("(2)[a\\*b \\@everyone]"));
+        assert_eq!(card.url, None);
 
-        let v = serde_json::to_value(discord::embed(&search_result_card(
-            3,
-            &hit(None, "https://youtu.be/x"),
-        )))
-        .unwrap();
-        assert_eq!(v["title"], "(3)[(untitled)]");
-        assert_eq!(v["url"], "https://youtu.be/x");
+        let card = search_result_card(3, &hit(None, "https://youtu.be/x"));
+        assert_eq!(card.title.as_deref(), Some("(3)[(untitled)]"));
+        assert_eq!(card.url.as_deref(), Some("https://youtu.be/x"));
     }
 }

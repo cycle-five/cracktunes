@@ -19,18 +19,10 @@ use crate::messaging::{
 };
 use ::serenity::all::{GuildId, UserId};
 use crack_model::{
-    Button, ButtonStyle, Card, CommunityRef, Field, Mention, Row, Select, SelectOption, UserRef,
+    colour, Button, ButtonStyle, Card, CommunityRef, Field, Mention, Row, Select, SelectOption,
+    UserRef,
 };
 use crack_types::discord::ToRef;
-
-/// The colours `/gp` cards wear, as 0xRRGGBB.
-const FOOYOO: u32 = 0x11_CA_80;
-const BLURPLE: u32 = 0x72_89_DA;
-const DARKER_GREY: u32 = 0x54_6E_7A;
-const DARK_GREEN: u32 = 0x1F_8B_4C;
-const DARK_GOLD: u32 = 0xC2_7C_0E;
-const GOLD: u32 = 0xF1_C4_0F;
-const RED: u32 = 0xE7_4C_3C;
 
 /// A submitted song's title is third-party text; YouTube caps titles at 100,
 /// so a real one is never cut and only a pathological one is.
@@ -338,35 +330,34 @@ impl std::fmt::Display for GpCard {
 
 /// What a card looks like in Discord. Reached through `messaging::render`.
 pub fn render_card(card: &GpCard, _cx: &RenderCx) -> Rendered {
-    let embed = |card: &Card| Rendered::card(card.clone());
     match card {
-        GpCard::Rules => embed(&gp_rules_embed()),
-        GpCard::Status(status) => embed(&gp_status_embed(status)),
+        GpCard::Rules => Rendered::card(gp_rules_embed()),
+        GpCard::Status(status) => Rendered::card(gp_status_embed(status)),
         GpCard::Picker { text, picked, open } => {
-            let out = embed(&gp_pick_embed(text));
+            let out = Rendered::card(gp_pick_embed(text));
             if *open {
                 out.with_rows(gp_pick_components(picked))
             } else {
                 out
             }
         },
-        GpCard::Prompt(w) => embed(&gp_prompt_embed(w)),
-        GpCard::PromptClosed(c) => embed(&gp_prompt_closed_embed(c)),
-        GpCard::Song(song) => embed(&gp_track_embed(song)).with_rows(gp_components(
+        GpCard::Prompt(w) => Rendered::card(gp_prompt_embed(w)),
+        GpCard::PromptClosed(c) => Rendered::card(gp_prompt_closed_embed(c)),
+        GpCard::Song(song) => Rendered::card(gp_track_embed(song)).with_rows(gp_components(
             &song.guild,
             song.round_idx,
             song.track_idx,
             &song.players,
             song.guessable,
         )),
-        GpCard::Reveal(res) => embed(&gp_reveal_embed(res)),
-        GpCard::RoundResults(r) => embed(&gp_round_results_embed(r)),
+        GpCard::Reveal(res) => Rendered::card(gp_reveal_embed(res)),
+        GpCard::RoundResults(r) => Rendered::card(gp_round_results_embed(r)),
         GpCard::Scoreboard {
             scores,
             title,
             lead,
         } => {
-            let out = embed(&gp_scoreboard_embed(scores, title));
+            let out = Rendered::card(gp_scoreboard_embed(scores, title));
             match lead {
                 Some(lead) => out.with_content(*lead),
                 None => out,
@@ -574,7 +565,7 @@ pub(in crate::commands::music::gp) fn gp_pick_embed(text: &str) -> Card {
     Card {
         title: Some(GP_PICK_TITLE.to_string()),
         description: Some(text.to_string()),
-        colour: Some(FOOYOO),
+        colour: Some(colour::FOOYOO),
         ..Card::default()
     }
 }
@@ -613,7 +604,7 @@ pub fn gp_rules_embed() -> Card {
         title: Some(GP_TITLE.to_string()),
         description: Some(GP_RULES_TEXT.to_string()),
         fields: vec![field(GP_HOW_TO_TITLE, GP_HOW_TO, false)],
-        colour: Some(FOOYOO),
+        colour: Some(colour::FOOYOO),
         ..Card::default()
     }
 }
@@ -638,7 +629,7 @@ pub fn gp_prompt_embed(w: &GpPromptView) -> Card {
                 false,
             ),
         ],
-        colour: Some(FOOYOO),
+        colour: Some(colour::FOOYOO),
         ..Card::default()
     }
 }
@@ -655,7 +646,7 @@ pub fn gp_prompt_closed_embed(c: &GpClosedView) -> Card {
             &format!("{}\n\n{status}", prompt_text(&c.prompt, c.category)),
             DESCRIPTION_MAX,
         )),
-        colour: Some(DARKER_GREY),
+        colour: Some(colour::DARKER_GREY),
         ..Card::default()
     }
 }
@@ -689,7 +680,7 @@ pub fn gp_track_embed(s: &GpSongView) -> Card {
             ),
             DESCRIPTION_MAX,
         )),
-        colour: Some(BLURPLE),
+        colour: Some(colour::BLURPLE),
         ..Card::default()
     }
 }
@@ -714,12 +705,12 @@ pub fn gp_reveal_embed(res: &GpRevealView) -> Card {
         let (fields, colour) = if res.failed {
             (
                 vec![field(GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, false)],
-                RED,
+                colour::RED,
             )
         } else {
             (
                 vec![field(GP_LIKES, res.likes.to_string(), true)],
-                DARKER_GREY,
+                colour::DARKER_GREY,
             )
         };
         return Card {
@@ -751,7 +742,7 @@ pub fn gp_reveal_embed(res: &GpRevealView) -> Card {
                 field(GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, false),
                 scoreboard,
             ],
-            colour: Some(RED),
+            colour: Some(colour::RED),
             ..Card::default()
         };
     }
@@ -780,7 +771,7 @@ pub fn gp_reveal_embed(res: &GpRevealView) -> Card {
         title: Some(title),
         description: Some(description),
         fields,
-        colour: Some(DARK_GREEN),
+        colour: Some(colour::DARK_GREEN),
         ..Card::default()
     }
 }
@@ -789,7 +780,7 @@ pub fn gp_scoreboard_embed(scores: &[(UserRef, u32)], title: &str) -> Card {
     Card {
         title: Some(title.to_string()),
         description: Some(clip(&scores_lines(scores), DESCRIPTION_MAX)),
-        colour: Some(GOLD),
+        colour: Some(colour::GOLD),
         ..Card::default()
     }
 }
@@ -882,7 +873,7 @@ pub fn gp_round_results_embed(r: &GpRoundView) -> Card {
                 false,
             ),
         ],
-        colour: Some(DARK_GOLD),
+        colour: Some(colour::DARK_GOLD),
         ..Card::default()
     }
 }
@@ -924,7 +915,7 @@ pub fn gp_status_embed(status: &GpStatusView) -> Card {
                     false,
                 ),
             ],
-            colour: Some(FOOYOO),
+            colour: Some(colour::FOOYOO),
             ..Card::default()
         },
         GpStatusView::Playing {
@@ -950,7 +941,7 @@ pub fn gp_status_embed(status: &GpStatusView) -> Card {
                     false,
                 ),
             ],
-            colour: Some(BLURPLE),
+            colour: Some(colour::BLURPLE),
             ..Card::default()
         },
     }

@@ -35,7 +35,7 @@ pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
     let call = match manager.get(guild.id) {
         Some(call) => call,
         None => {
-            let card = note_card(format!("{}", CrackedError::NotConnected));
+            let card = Card::described(format!("{}", CrackedError::NotConnected));
             send_embed_response_poise(ctx, card).await?;
             return Ok(());
         },
@@ -46,21 +46,13 @@ pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
     let queue_str = queue_to_str(queue);
     // let global_handlers = get_global_handlers(ctx);
 
-    let card = note_card(format!(
+    let card = Card::described(format!(
         "data: {}old_data_str{}\nqueue: {}",
         data_str, old_data_str, queue_str
     ));
     send_embed_response_poise(ctx, card).await?;
 
     Ok(())
-}
-
-/// A card that is only its description.
-fn note_card(description: String) -> Card {
-    Card {
-        description: Some(description),
-        ..Card::default()
-    }
 }
 
 /// Simple helper to convert a `[TrackQueue]' to a `[String]`.
@@ -81,7 +73,7 @@ mod tests {
 
     #[test]
     fn the_debug_note_renders_as_before() {
-        let wire = serde_json::to_string(&discord::embed(&note_card("hello there".into())));
+        let wire = serde_json::to_string(&discord::embed(&Card::described("hello there")));
         assert_eq!(
             wire.unwrap(),
             r#"{"type":"rich","description":"hello there"}"#

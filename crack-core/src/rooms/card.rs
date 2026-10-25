@@ -224,7 +224,7 @@ impl std::fmt::Display for RoomCard {
 pub fn render_card(card: &RoomCard, _cx: &RenderCx) -> Rendered {
     match card {
         RoomCard::Panel(view) => panel(view),
-        RoomCard::Guide => embed_card(Card {
+        RoomCard::Guide => Rendered::card(Card {
             title: Some(ROOM_GUIDE_TITLE.to_string()),
             description: Some(clip(&guide_text(), DESCRIPTION_MAX)),
             ..Card::default()
@@ -235,7 +235,7 @@ pub fn render_card(card: &RoomCard, _cx: &RenderCx) -> Rendered {
             settings,
             findings,
             dashboard,
-        } => embed_card(Card {
+        } => Rendered::card(Card {
             title: Some(ROOM_STATUS_TITLE.to_string()),
             description: Some(clip(
                 &status_text(settings, findings.as_deref(), dashboard.as_deref()),
@@ -249,10 +249,6 @@ pub fn render_card(card: &RoomCard, _cx: &RenderCx) -> Rendered {
             ROOM_SWITCHED_OFF
         }),
     }
-}
-
-fn embed_card(card: Card) -> Rendered {
-    Rendered::card(card)
 }
 
 /// Every control, one line each, then the two facts worth knowing.
@@ -356,7 +352,7 @@ fn panel(view: &PanelView) -> Rendered {
         ],
         ..Card::default()
     };
-    embed_card(embed).with_rows(panel_rows(view))
+    Rendered::card(embed).with_rows(panel_rows(view))
 }
 
 fn panel_rows(view: &PanelView) -> Vec<Row> {
@@ -798,16 +794,11 @@ mod tests {
     #[test]
     fn room_cards_render_as_before() {
         let cases = pin_cases();
-        if std::env::var_os("PIN_PRINT").is_some() {
-            for (name, card) in &cases {
-                println!("PIN    ({name:?}, r##\"{}\"##),", sent(&render(card)));
-            }
-            return;
-        }
         assert_eq!(cases.len(), EXPECTED.len());
         for ((name, card), (expected_name, expected)) in cases.iter().zip(EXPECTED) {
             assert_eq!(name, expected_name);
-            assert_eq!(&sent(&render(card)), expected, "{name}");
+            let actual = sent(&render(card));
+            assert_eq!(&actual, expected, "{name}: {actual}");
         }
     }
 
