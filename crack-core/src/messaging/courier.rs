@@ -523,7 +523,8 @@ mod tests {
         let data = Data(Arc::new(DataInner::default()));
         let guild = GuildId::new(1);
         status::note_command_channel(&data, guild, GenericChannelId::new(10)).await;
-        let mut settings = GuildSettings::new(guild, None, None);
+        let mut settings =
+            GuildSettings::new(crack_types::discord::ToRef::to_ref(&guild), None, None);
         settings.control_echoes = false;
         data.guild_settings_map
             .write()

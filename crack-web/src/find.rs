@@ -28,8 +28,8 @@ use crack_core::music::remote::{AddRefused, At};
 use crack_core::music::search::{
     Hit, HitDetail, Query, QueryRefused, SavedTrack, Source, SourceResult, SourceSet,
 };
+use crack_model::{CommunityRef, UserRef};
 use serde::{Deserialize, Serialize};
-use serenity::all::{GuildId, UserId};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -209,8 +209,8 @@ fn history_since(plan: PlanView) -> Option<chrono::DateTime<chrono::Utc>> {
 /// Store each source's hits in the memo and build the answer.
 fn answer_search(
     memo: &HitMemo,
-    user: UserId,
-    g: GuildId,
+    user: &UserRef,
+    g: &CommunityRef,
     results: Vec<(Source, SourceResult)>,
 ) -> SearchResult {
     // One pass: each hit gets its id and its view together, so an id can
@@ -259,7 +259,7 @@ pub(crate) async fn search<B: Backend>(
     let Some((user, _)) = user_id(session) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    match decide(&s.backend.presence(g, user).await) {
+    match decide(&s.backend.presence(g.clone(), user.clone()).await) {
         Access::Hidden => return StatusCode::NOT_FOUND.into_response(),
         Access::Unavailable => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
         Access::View | Access::Control => {},
@@ -268,12 +268,12 @@ pub(crate) async fn search<B: Backend>(
         Ok(p) => p,
         Err(bad) => return error_json(StatusCode::BAD_REQUEST, bad.0),
     };
-    if !s.search_limiter.allow(user, Instant::now()) {
+    if !s.search_limiter.allow(&user, Instant::now()) {
         return StatusCode::TOO_MANY_REQUESTS.into_response();
     }
-    let since = history_since(plan_or_free(s.backend.as_ref(), g).await);
-    let results = s.backend.search(g, &q, sources, since).await;
-    Json(answer_search(&s.hits, user, g, results)).into_response()
+    let since = history_since(plan_or_free(s.backend.as_ref(), g.clone()).await);
+    let results = s.backend.search(g.clone(), &q, sources, since).await;
+    Json(answer_search(&s.hits, &user, &g, results)).into_response()
 }
 
 fn add_answer(status: StatusCode, result: AddResult) -> Response {
@@ -303,27 +303,31 @@ pub(crate) async fn add<B: Backend>(
     let Ok(req) = serde_json::from_slice::<AddRequest>(&body) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    match decide(&s.backend.presence(g, user).await) {
+    match decide(&s.backend.presence(g.clone(), user.clone()).await) {
         Access::Hidden => return not_found(),
         Access::Unavailable => return unavailable(),
         Access::View => return add_answer(StatusCode::FORBIDDEN, AddResult::NotAllowed),
         Access::Control => {},
     }
-    if !s.limiter.allow(user, Instant::now()) {
+    if !s.limiter.allow(&user, Instant::now()) {
         return add_answer(StatusCode::TOO_MANY_REQUESTS, AddResult::TooMany);
     }
-    if s.backend.plan(g).await != PlanView::Premium {
+    if s.backend.plan(g.clone()).await != PlanView::Premium {
         return add_answer(StatusCode::FORBIDDEN, AddResult::PremiumRequired);
     }
-    let Some(track) = s.hits.get(user, g, req.hit, Instant::now()) else {
+    let Some(track) = s.hits.get(&user, &g, req.hit, Instant::now()) else {
         return add_answer(StatusCode::GONE, AddResult::Expired);
     };
     let at = At::from(req.at);
-    match s.backend.add(user, &name, g, track, at).await {
+    match s
+        .backend
+        .add(user.clone(), &name, g.clone(), track, at)
+        .await
+    {
         Ok(()) => {
             tracing::info!(guild = %g, user = %user, at = ?at, "dashboard add");
-            s.hub.refresh(g).await;
-            let view = s.backend.view(g).await;
+            s.hub.refresh(g.clone()).await;
+            let view = s.backend.view(g.clone()).await;
             add_answer(StatusCode::OK, AddResult::Added { view })
         },
         Err(AddRefused::NotPlaying) => add_answer(StatusCode::CONFLICT, AddResult::NotPlaying),
@@ -428,7 +432,6 @@ mod route_test {
         body::Body,
         http::{header, Request, StatusCode},
     };
-    use serenity::all::{GuildId, UserId};
     use tower::ServiceExt;
 
     fn search_req(uri: &str, cookie: &str) -> Request<Body> {
@@ -534,7 +537,7 @@ mod route_test {
         assert_eq!(
             (g, text.as_str(), set),
             (
-                GuildId::new(5),
+                guild(5),
                 "abba",
                 SourceSet::empty().with(Source::Queue).with(Source::YouTube)
             )
@@ -656,7 +659,7 @@ mod route_test {
 
     #[tokio::test]
     async fn a_hit_found_by_search_is_what_add_queues() {
-        let fake = FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing());
+        let fake = FakeBackend::new(Membership::Member, Some(bot_channel()), playing());
         *fake.search_result.lock().unwrap() = vec![(
             Source::YouTube,
             SourceResult::Hits(vec![found("https://y/1"), found("https://y/2")]),
@@ -686,22 +689,22 @@ mod route_test {
         assert_eq!(ans.result, "added");
         let adds = fake.adds.lock().unwrap();
         assert_eq!(adds.len(), 1);
-        let (g, user, name, track, at) = &adds[0];
+        let (g, who, name, track, at) = &adds[0];
         assert_eq!(
-            (*g, *user, name.as_str(), track.url.as_str(), *at),
             (
-                GuildId::new(5),
-                UserId::new(9),
-                "tester",
-                "https://y/2",
-                At::Next
-            )
+                g.clone(),
+                who.clone(),
+                name.as_str(),
+                track.url.as_str(),
+                *at
+            ),
+            (guild(5), user(9), "tester", "https://y/2", At::Next)
         );
     }
 
     #[tokio::test]
     async fn an_unknown_or_foreign_hit_is_gone() {
-        let fake = FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing());
+        let fake = FakeBackend::new(Membership::Member, Some(bot_channel()), playing());
         *fake.search_result.lock().unwrap() = vec![(
             Source::YouTube,
             SourceResult::Hits(vec![found("https://y/1")]),
@@ -899,12 +902,12 @@ mod route_test {
             ),
         ];
         for (cookie, ctype, origin, text, membership, in_voice, plan, want, result) in cases {
-            let fake = FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing());
+            let fake = FakeBackend::new(Membership::Member, Some(bot_channel()), playing());
             one_hit(&fake);
             let app = router(state(fake.clone()));
             let id = first_hit(&app).await;
             *fake.membership.lock().unwrap() = membership;
-            *fake.user_channel.lock().unwrap() = in_voice.then_some(BOT_CHANNEL);
+            *fake.user_channel.lock().unwrap() = in_voice.then(bot_channel);
             *fake.plan.lock().unwrap() = plan;
             let s9 = session(9);
             let req = raw_add(
@@ -945,7 +948,7 @@ mod route_test {
                 "failed",
             ),
         ] {
-            let fake = FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing());
+            let fake = FakeBackend::new(Membership::Member, Some(bot_channel()), playing());
             one_hit(&fake);
             *fake.add_result.lock().unwrap() = Err(refused);
             let app = router(state(fake.clone()));
@@ -990,7 +993,7 @@ mod route_test {
 
     #[tokio::test]
     async fn every_hit_of_every_source_adds_its_own_track() {
-        let fake = FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing());
+        let fake = FakeBackend::new(Membership::Member, Some(bot_channel()), playing());
         *fake.search_result.lock().unwrap() = vec![
             (
                 Source::Queue,
@@ -1025,13 +1028,13 @@ mod route_test {
     #[tokio::test(start_paused = true)]
     async fn an_add_answers_with_the_new_view_and_reaches_open_watchers_at_once() {
         use crate::watch::TICK;
-        let fake = FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing());
+        let fake = FakeBackend::new(Membership::Member, Some(bot_channel()), playing());
         one_hit(&fake);
         *fake.view_after_add.lock().unwrap() = Some(after_add());
         let st = state(fake.clone());
         let app = router(st.clone());
         let id = first_hit(&app).await;
-        let mut rx = st.hub.subscribe(GuildId::new(5)).await;
+        let mut rx = st.hub.subscribe(guild(5)).await;
         rx.borrow_and_update();
         let r = add_hit(&app, id, "end").await;
         assert_eq!(r.status(), StatusCode::OK);
@@ -1173,7 +1176,7 @@ mod route_test {
             ),
         ];
         for (what, cookie, ctype, origin, text, in_voice, plan, exhaust, want, result) in rows {
-            let fake = FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing());
+            let fake = FakeBackend::new(Membership::Member, Some(bot_channel()), playing());
             one_hit(&fake);
             let app = router(state(fake.clone()));
             let id = first_hit(&app).await;
@@ -1182,7 +1185,7 @@ mod route_test {
                     app.clone().oneshot(control_req(&session(9))).await.unwrap();
                 }
             }
-            *fake.user_channel.lock().unwrap() = in_voice.then_some(BOT_CHANNEL);
+            *fake.user_channel.lock().unwrap() = in_voice.then(bot_channel);
             *fake.plan.lock().unwrap() = plan;
             let s9 = session(9);
             let req = raw_add(

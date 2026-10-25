@@ -92,6 +92,7 @@ pub type FrameworkContext<'a> = poise::FrameworkContext<'a, Data, CommandError>;
 
 use crate::messaging::message::CrackedMessage;
 // use crate::serenity::prelude::SerenityError;
+use crack_types::discord::ToRef;
 use crack_types::reply_handle::MessageOrReplyHandle;
 
 /// Struct for the cammed down kicking configuration.
@@ -340,7 +341,6 @@ pub struct DataInner {
     pub user_activity_map: Arc<dashmap::DashMap<UserId, Activity>>,
     #[cfg(feature = "crack-activity")]
     pub activity_user_map: Arc<dashmap::DashMap<String, dashmap::DashSet<UserId>>>,
-    pub authorized_users: HashSet<u64>,
     // Why not Arc here?
     /// Who owns playback per guild. Written ONLY by `claim_playback` /
     /// `release_playback`, which are called from inside the methods that move
@@ -407,7 +407,6 @@ impl std::fmt::Debug for DataInner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut result = String::new();
         result.push_str(&format!("bot_settings: {:?}\n", self.bot_settings));
-        result.push_str(&format!("authorized_users: {:?}\n", self.authorized_users));
         result.push_str(&format!(
             "guild_settings_map: {:?}\n",
             self.guild_settings_map
@@ -582,7 +581,6 @@ impl Default for DataInner {
             np_presses: crate::messaging::throttle::Throttle::new(
                 crate::messaging::buttons::NP_PRESS_WINDOW,
             ),
-            authorized_users: Default::default(),
             guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
             guild_cache_map: Arc::new(Mutex::new(HashMap::new())),
             id_cache_map: dashmap::DashMap::default(),
@@ -710,8 +708,8 @@ impl Data {
             .write()
             .await
             .entry(guild_id)
-            .or_insert_with(GuildSettings::default)
-            .add_denied_music_user(user)
+            .or_insert_with(|| GuildSettings::new(guild_id.to_ref(), None, None))
+            .add_denied_music_user(user.to_ref())
             .await
     }
 
@@ -720,7 +718,7 @@ impl Data {
         if let Some(settings) = self.guild_settings_map.read().await.get(&guild_id).cloned() {
             settings
                 .get_music_permissions()
-                .map(|x| x.is_user_allowed(user.get()))
+                .map(|x| x.is_user_allowed(&user.to_ref()))
                 .unwrap_or(true)
         } else {
             true
@@ -806,6 +804,33 @@ msg_on_dc:     false
         let guild_settings = GuildSettingsMapParam::default();
         let new_data = new_data.with_guild_settings_map(guild_settings);
         assert!(new_data.guild_settings_map.read().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn check_music_permissions_reads_refs() {
+        let data = Data::default();
+        let mut settings = GuildSettings::new(GuildId::new(5).to_ref(), None, None);
+        settings
+            .add_denied_music_user(UserId::new(7).to_ref())
+            .await
+            .unwrap();
+        data.guild_settings_map
+            .write()
+            .await
+            .insert(GuildId::new(5), settings);
+        assert!(
+            !data
+                .check_music_permissions(GuildId::new(5), UserId::new(7))
+                .await
+        );
+        assert!(
+            data.check_music_permissions(GuildId::new(5), UserId::new(8))
+                .await
+        );
+        assert!(
+            data.check_music_permissions(GuildId::new(6), UserId::new(7))
+                .await
+        );
     }
 }
 

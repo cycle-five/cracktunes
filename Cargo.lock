@@ -887,7 +887,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1078,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.36.2"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1090,6 +1090,7 @@ dependencies = [
  "const-random",
  "crack-bf",
  "crack-coin",
+ "crack-model",
  "crack-musicreco",
  "crack-osint",
  "crack-sleevenote",
@@ -1106,6 +1107,7 @@ dependencies = [
  "itertools 0.15.0",
  "lazy_static",
  "lyric_finder",
+ "mutants",
  "once_cell",
  "poise",
  "prometheus",
@@ -1135,8 +1137,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "crack-model"
+version = "0.37.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "crack-musicreco"
-version = "0.36.2"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "reqwest 0.12.28",
@@ -1163,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "crack-sleevenote"
-version = "0.36.2"
+version = "0.37.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -1176,7 +1187,7 @@ dependencies = [
 
 [[package]]
 name = "crack-test-macros"
-version = "0.36.2"
+version = "0.37.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1185,7 +1196,7 @@ dependencies = [
 
 [[package]]
 name = "crack-testing"
-version = "0.36.2"
+version = "0.37.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1208,8 +1219,9 @@ dependencies = [
 
 [[package]]
 name = "crack-types"
-version = "0.36.2"
+version = "0.37.0"
 dependencies = [
+ "crack-model",
  "humantime",
  "poise",
  "reqwest 0.12.28",
@@ -1228,7 +1240,7 @@ dependencies = [
 
 [[package]]
 name = "crack-voting"
-version = "0.36.2"
+version = "0.37.0"
 dependencies = [
  "chrono",
  "dbl-rs",
@@ -1243,15 +1255,17 @@ dependencies = [
 
 [[package]]
 name = "crack-web"
-version = "0.36.2"
+version = "0.37.0"
 dependencies = [
  "axum",
  "catacombs",
  "chrono",
  "crack-core",
+ "crack-model",
  "crack-types",
  "dashmap 6.2.1",
  "http-body-util",
+ "mutants",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -1266,7 +1280,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.36.2"
+version = "0.37.0"
 dependencies = [
  "config-file",
  "crack-core",
@@ -1946,7 +1960,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3805,6 +3819,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
+name = "mutants"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "add0ac067452ff1aca8c5002111bd6b1c895baee6e45fcbc44e0193aea17be56"
+
+[[package]]
 name = "nanorand"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4693,7 +4713,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
@@ -4732,9 +4752,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5281,7 +5301,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5340,7 +5360,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6873,7 +6893,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7968,7 +7988,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

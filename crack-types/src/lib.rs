@@ -1,6 +1,7 @@
 // ------------------------------------------------------------------
 // Modules
 // ------------------------------------------------------------------
+pub mod discord;
 pub mod fallback;
 pub use fallback::*;
 pub mod http;
@@ -44,6 +45,7 @@ pub type SongbirdCall = Arc<Mutex<Call>>;
 // Public Re-exports
 // ------------------------------------------------------------------
 pub use serenity::all::Attachment;
+pub use serenity::all::GuildId;
 pub use serenity::all::UserId;
 pub use thiserror::Error as ThisError;
 pub use typemap_rev::TypeMapKey;
@@ -86,7 +88,7 @@ pub enum Mode {
 }
 
 use serenity::all::Token;
-use serenity::model::id::{ChannelId, GuildId};
+use serenity::model::id::ChannelId;
 /// Enum for 64 bit integer Ids.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum DiscId {

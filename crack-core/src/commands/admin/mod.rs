@@ -1,11 +1,9 @@
 #![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
 
 // pub mod audit_logs;
-// pub mod authorize;
 // pub mod broadcast_voice;
 // pub mod create_text_channel;
 // pub mod create_voice_channel;
-// pub mod deauthorize;
 // pub mod debug;
 // pub mod defend;
 // pub mod delete_channel;
@@ -23,11 +21,9 @@ pub mod user;
 
 use crate::{Context, Error};
 // pub use audit_logs::*;
-// pub use authorize::*;
 // pub use broadcast_voice::*;
 // pub use create_text_channel::*;
 // pub use create_voice_channel::*;
-// pub use deauthorize::*;
 // pub use debug::*;
 // pub use defend::*;
 // pub use delete_channel::*;
@@ -55,13 +51,11 @@ pub use user::*;
     required_bot_permissions = "ADMINISTRATOR",
     subcommands(
         // "audit_logs",
-        // "authorize",
         // "broadcast_voice",
         // "create_text_channel",
         // "create_voice_channel",
         "deafen",
         // "defend",
-        // "deauthorize",
         // "delete_channel",
         // "kick",
         // "changenicks",

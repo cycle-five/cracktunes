@@ -63,6 +63,17 @@ jobs:
         if: success() || failure()
         run: cargo clippy --all -- -D clippy::all -D warnings --allow clippy::needless_return
 
+      # crack-model is the platform-neutral layer: nothing it depends on may
+      # be a chat-platform, runtime-networking or database crate.
+      - name: crack-model depends on no platform crate
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-model -e normal --prefix none)
+          if echo "$tree" | grep -E '^(serenity|poise|songbird|sqlx|reqwest)'; then
+            echo "crack-model must not depend on a platform crate" >&2
+            exit 1
+          fi
+
       # 🔑 The only job that compiles the optional-module seam. crack-bf and
       # crack-osint now live in their own repositories, so their crates are
       # gated by their own CI -- but `commands/osint.rs`, `commands/bf.rs` and

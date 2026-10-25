@@ -16,6 +16,8 @@ mutation-testing = []
 
 [dependencies]
 crack-core = { path = "../crack-core" }
+crack-model = { path = "../crack-model" }
+crack-types = { path = "../crack-types" }
 # The website login flow. Memory storage: nothing about web users is persisted
 # yet. (0.2's SqlxStorage would now coexist with our migrations, in its own
 # `catacombs_*` tables, if that ever changes.)
@@ -37,4 +39,5 @@ tracing = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
-crack-types = { path = "../crack-types" }
+# `#[cfg_attr(test, mutants::skip)]` waivers: see docs/testing.md.
+mutants = "0.0.4"

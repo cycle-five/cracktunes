@@ -15,14 +15,14 @@ use crate::{
 use chrono::{DateTime, Utc};
 pub use crack_core::music::remote::{AddRefused, At, Control, ControlRefused, MoveRefused};
 pub use crack_core::music::search::{Query, SavedTrack, Source, SourceResult, SourceSet};
-use serenity::all::{GuildId, UserId};
+use crack_model::{CommunityRef, UserRef};
 use std::future::Future;
 use uuid::Uuid;
 
 /// A guild on the picker.
 #[derive(Debug, Clone)]
 pub struct GuildEntry {
-    pub id: GuildId,
+    pub id: CommunityRef,
     pub name: String,
     /// The voice channel the bot is in, by name.
     pub channel: Option<String>,
@@ -38,63 +38,68 @@ pub enum HistoryError {
 }
 
 pub trait Backend: ViewSource {
-    fn presence(&self, g: GuildId, u: UserId) -> impl Future<Output = Presence> + Send;
+    fn presence(&self, g: CommunityRef, u: UserRef) -> impl Future<Output = Presence> + Send;
     fn move_track(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         id: Uuid,
         to: usize,
     ) -> impl Future<Output = Result<usize, MoveRefused>> + Send;
     fn control(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         c: Control,
     ) -> impl Future<Output = Result<(), ControlRefused>> + Send;
-    fn plan(&self, g: GuildId) -> impl Future<Output = PlanView> + Send;
-    fn guilds_for(&self, u: UserId) -> impl Future<Output = Vec<GuildEntry>> + Send;
-    fn guild_name(&self, g: GuildId) -> Option<String>;
-    fn history_access(&self, g: GuildId, u: UserId) -> impl Future<Output = HistoryAccess> + Send;
+    fn plan(&self, g: CommunityRef) -> impl Future<Output = PlanView> + Send;
+    fn guilds_for(&self, u: UserRef) -> impl Future<Output = Vec<GuildEntry>> + Send;
+    fn guild_name(&self, g: CommunityRef) -> Option<String>;
+    fn history_access(
+        &self,
+        g: CommunityRef,
+        u: UserRef,
+    ) -> impl Future<Output = HistoryAccess> + Send;
     fn history(
         &self,
-        g: GuildId,
+        g: CommunityRef,
         q: &HistoryQuery,
     ) -> impl Future<Output = Result<HistoryPage, HistoryError>> + Send;
     fn search(
         &self,
-        g: GuildId,
+        g: CommunityRef,
         q: &Query,
         sources: SourceSet,
         since: Option<DateTime<Utc>>,
     ) -> impl Future<Output = Vec<(Source, SourceResult)>> + Send;
     fn add(
         &self,
-        user: UserId,
+        user: UserRef,
         name: &str,
-        g: GuildId,
+        g: CommunityRef,
         track: SavedTrack,
         at: At,
     ) -> impl Future<Output = Result<(), AddRefused>> + Send;
-    fn room_settings(&self, g: GuildId) -> impl Future<Output = RoomSettingsView> + Send;
+    fn room_settings(&self, g: CommunityRef) -> impl Future<Output = RoomSettingsView> + Send;
     fn save_room_settings(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         f: RoomSettingsForm,
     ) -> impl Future<Output = Result<RoomSettingsView, SaveRefused>> + Send;
-    fn mod_log_settings(&self, g: GuildId) -> impl Future<Output = ModLogSettingsView> + Send;
+    fn mod_log_settings(&self, g: CommunityRef) -> impl Future<Output = ModLogSettingsView> + Send;
     fn save_mod_log_settings(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         f: ModLogSettingsForm,
     ) -> impl Future<Output = Result<ModLogSettingsView, ModLogSaveRefused>> + Send;
-    fn economy_settings(&self, g: GuildId) -> impl Future<Output = EconomySettingsView> + Send;
+    fn economy_settings(&self, g: CommunityRef)
+        -> impl Future<Output = EconomySettingsView> + Send;
     fn save_economy_settings(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         f: EconomySettingsForm,
     ) -> impl Future<Output = Result<EconomySettingsView, EconomySaveRefused>> + Send;
 }

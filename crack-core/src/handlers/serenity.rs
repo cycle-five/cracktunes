@@ -17,6 +17,7 @@ use ::serenity::{
     gateway::ActivityData,
 };
 use colored::Colorize;
+use crack_types::discord::ToRef;
 // use dashmap;
 use poise::serenity_prelude::{self as serenity, Member, Mentionable};
 use serenity::CacheHttp;
@@ -427,11 +428,14 @@ impl SerenityHandler {
 
         tracing::trace!("welcome: {:?}", welcome);
 
-        match (welcome.message, welcome.channel_id) {
+        let welcome_channel = welcome
+            .channel_id
+            .as_ref()
+            .and_then(|room| crack_types::discord::generic_channel_id(room).ok());
+        match (welcome.message, welcome_channel) {
             (None, _) => {},
             (_, None) => {},
             (Some(message), Some(channel)) => {
-                let channel = serenity::GenericChannelId::new(channel);
                 #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
                 let x = channel
                     .send_message(
@@ -453,9 +457,12 @@ impl SerenityHandler {
             },
         };
 
-        if let Some(role_id) = welcome.auto_role {
+        if let Some(role_id) = welcome
+            .auto_role
+            .as_ref()
+            .and_then(|role| crack_types::discord::role_id(role).ok())
+        {
             tracing::info!("{}{}", "role_id: ".white(), role_id.to_string().white());
-            let role_id = serenity::RoleId::new(role_id);
             match new_member.add_role(ctx.http(), role_id, None).await {
                 Ok(_) => {
                     tracing::info!("{}{}", "role added: ".white(), role_id.to_string().white());
@@ -565,7 +572,7 @@ impl SerenityHandler {
             Some(pool) => match GuildEntity::get_or_create(
                 pool,
                 guild.id.get() as i64,
-                name.clone(),
+                name.to_string(),
                 prefix.clone(),
             )
             .await
@@ -583,10 +590,10 @@ impl SerenityHandler {
                          falling back to defaults: {err}",
                         guild.id
                     );
-                    GuildSettings::new(guild.id, Some(&prefix), Some(name))
+                    GuildSettings::new(guild.id.to_ref(), Some(&prefix), Some(name.to_string()))
                 },
             },
-            None => GuildSettings::new(guild.id, Some(&prefix), Some(name)),
+            None => GuildSettings::new(guild.id.to_ref(), Some(&prefix), Some(name.to_string())),
         };
         self.data
             .guild_settings_map

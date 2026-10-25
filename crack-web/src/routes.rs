@@ -36,7 +36,8 @@ use crack_core::messaging::messages::{
     DASH_SETTINGS_UNKNOWN_CHANNEL, DASH_SETTINGS_UNREADABLE, MODLOG_SETTINGS_NOT_LOADED,
     MODLOG_SETTINGS_SAVE_FAILED,
 };
-use serenity::all::{GuildId, UserId};
+use crack_model::{CommunityRef, UserRef};
+use crack_types::discord::from_snowflake;
 use std::{
     convert::Infallible,
     num::NonZeroU64,
@@ -104,17 +105,17 @@ impl<B: Backend> catacombs::HasAuth for WebState<B> {
 /// The session's user, or `None` if the session is missing or invalid.
 pub(crate) type Session = Result<AuthenticatedUser, StatusCode>;
 
-pub(crate) fn user_id(s: Session) -> Option<(UserId, String)> {
+pub(crate) fn user_id(s: Session) -> Option<(UserRef, String)> {
     let u = s.ok()?;
-    let id = NonZeroU64::new(u64::try_from(u.user_id).ok()?)?;
-    Some((UserId::new(id.get()), u.username))
+    let id = from_snowflake(u64::try_from(u.user_id).ok()?).ok()?;
+    Some((id, u.username))
 }
 
-/// `/g/0`, `/g/abc` and overflow are not guilds. `GuildId::new(0)` panics.
-pub(crate) fn parse_guild(raw: &str) -> Option<GuildId> {
+/// `/g/0`, `/g/abc`, `/g/18446744073709551615` and overflow are not guilds.
+pub(crate) fn parse_guild(raw: &str) -> Option<CommunityRef> {
     raw.parse::<NonZeroU64>()
         .ok()
-        .map(|n| GuildId::new(n.get()))
+        .and_then(|n| from_snowflake(n.get()).ok())
 }
 
 fn login_redirect(return_to: &str) -> Response {
@@ -161,28 +162,30 @@ async fn guild_page<B: Backend>(
         return not_found();
     };
     let Some((user, _)) = user_id(session) else {
-        return login_redirect(&format!("/g/{g}"));
+        return login_redirect(&format!("/g/{}", g.raw().as_str()));
     };
-    let access = decide(&s.backend.presence(g, user).await);
+    let access = decide(&s.backend.presence(g.clone(), user.clone()).await);
     match access {
         Access::Hidden => not_found(),
         Access::Unavailable => unavailable(),
         Access::View | Access::Control => {
-            let view = s.backend.view(g).await;
+            let view = s.backend.view(g.clone()).await;
             let name = s
                 .backend
-                .guild_name(g)
+                .guild_name(g.clone())
                 .unwrap_or_else(|| "Server".to_owned());
             let state = PageState {
                 view: &view,
                 can_control: access == Access::Control,
-                plan: plan_or_free(s.backend.as_ref(), g).await,
+                plan: plan_or_free(s.backend.as_ref(), g.clone()).await,
             };
-            let history_link =
-                tokio::time::timeout(HISTORY_LINK_TIMEOUT, s.backend.history_access(g, user))
-                    .await
-                    .is_ok_and(|a| a == HistoryAccess::Allowed);
-            Html(page::queue_page(&name, g, &state, history_link)).into_response()
+            let history_link = tokio::time::timeout(
+                HISTORY_LINK_TIMEOUT,
+                s.backend.history_access(g.clone(), user.clone()),
+            )
+            .await
+            .is_ok_and(|a| a == HistoryAccess::Allowed);
+            Html(page::queue_page(&name, &g, &state, history_link)).into_response()
         },
     }
 }
@@ -212,21 +215,21 @@ async fn history_page<B: Backend>(
         return not_found();
     };
     let Some((user, _)) = user_id(session) else {
-        return login_redirect(&format!("/g/{g}/history"));
+        return login_redirect(&format!("/g/{}/history", g.raw().as_str()));
     };
-    match s.backend.history_access(g, user).await {
+    match s.backend.history_access(g.clone(), user.clone()).await {
         HistoryAccess::Hidden => return not_found(),
         HistoryAccess::Unavailable => return unavailable(),
         HistoryAccess::Forbidden => return forbidden_page(),
         HistoryAccess::Allowed => {},
     }
-    match s.backend.history(g, &HistoryQuery::default()).await {
+    match s.backend.history(g.clone(), &HistoryQuery::default()).await {
         Ok(first) => {
             let name = s
                 .backend
-                .guild_name(g)
+                .guild_name(g.clone())
                 .unwrap_or_else(|| "Server".to_owned());
-            Html(page::history_page(&name, g, &first)).into_response()
+            Html(page::history_page(&name, &g, &first)).into_response()
         },
         Err(HistoryError::NoDatabase) => (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -249,7 +252,7 @@ async fn history_json<B: Backend>(
     let Some((user, _)) = user_id(session) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    match s.backend.history_access(g, user).await {
+    match s.backend.history_access(g.clone(), user.clone()).await {
         HistoryAccess::Hidden => return StatusCode::NOT_FOUND.into_response(),
         HistoryAccess::Unavailable => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
         HistoryAccess::Forbidden => return error_json(StatusCode::FORBIDDEN, NEEDS_MANAGE),
@@ -259,7 +262,7 @@ async fn history_json<B: Backend>(
         Ok(q) => q,
         Err(bad) => return error_json(StatusCode::BAD_REQUEST, bad.0),
     };
-    match s.backend.history(g, &q).await {
+    match s.backend.history(g.clone(), &q).await {
         Ok(page) => Json(page).into_response(),
         Err(HistoryError::NoDatabase) => error_json(StatusCode::SERVICE_UNAVAILABLE, NO_DATABASE),
         Err(HistoryError::Failed) => error_json(StatusCode::SERVICE_UNAVAILABLE, HISTORY_FAILED),
@@ -277,22 +280,22 @@ async fn settings_page<B: Backend>(
         return not_found();
     };
     let Some((user, _)) = user_id(session) else {
-        return login_redirect(&format!("/g/{g}/settings"));
+        return login_redirect(&format!("/g/{}/settings", g.raw().as_str()));
     };
-    match s.backend.history_access(g, user).await {
+    match s.backend.history_access(g.clone(), user.clone()).await {
         HistoryAccess::Hidden => return not_found(),
         HistoryAccess::Unavailable => return unavailable(),
         HistoryAccess::Forbidden => return forbidden_with(DASH_SETTINGS_NEEDS_MANAGE),
         HistoryAccess::Allowed => {},
     }
-    let view = s.backend.room_settings(g).await;
-    let modlog = s.backend.mod_log_settings(g).await;
-    let economy = s.backend.economy_settings(g).await;
+    let view = s.backend.room_settings(g.clone()).await;
+    let modlog = s.backend.mod_log_settings(g.clone()).await;
+    let economy = s.backend.economy_settings(g.clone()).await;
     let name = s
         .backend
-        .guild_name(g)
+        .guild_name(g.clone())
         .unwrap_or_else(|| "Server".to_owned());
-    Html(page::settings_page(&name, g, &view, &modlog, &economy)).into_response()
+    Html(page::settings_page(&name, &g, &view, &modlog, &economy)).into_response()
 }
 
 /// JSON only and same-origin, as `/control`; the same Manage Server access
@@ -316,7 +319,7 @@ async fn save_rooms<B: Backend>(
     if headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) != Some(&*s.origin) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    match s.backend.history_access(g, user).await {
+    match s.backend.history_access(g.clone(), user.clone()).await {
         HistoryAccess::Hidden => return StatusCode::NOT_FOUND.into_response(),
         HistoryAccess::Unavailable => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
         HistoryAccess::Forbidden => {
@@ -324,13 +327,17 @@ async fn save_rooms<B: Backend>(
         },
         HistoryAccess::Allowed => {},
     }
-    if !s.limiter.allow(user, Instant::now()) {
+    if !s.limiter.allow(&user, Instant::now()) {
         return error_json(StatusCode::TOO_MANY_REQUESTS, DASH_SETTINGS_TOO_MANY);
     }
     let Ok(form) = serde_json::from_slice::<RoomSettingsForm>(&body) else {
         return error_json(StatusCode::BAD_REQUEST, DASH_SETTINGS_UNREADABLE);
     };
-    match s.backend.save_room_settings(user, g, form).await {
+    match s
+        .backend
+        .save_room_settings(user.clone(), g.clone(), form)
+        .await
+    {
         Ok(view) => Json(view).into_response(),
         Err(SaveRefused::Invalid(e)) => {
             error_json(StatusCode::BAD_REQUEST, settings::invalid_message(e))
@@ -368,7 +375,7 @@ async fn save_modlog<B: Backend>(
     if headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) != Some(&*s.origin) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    match s.backend.history_access(g, user).await {
+    match s.backend.history_access(g.clone(), user.clone()).await {
         HistoryAccess::Hidden => return StatusCode::NOT_FOUND.into_response(),
         HistoryAccess::Unavailable => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
         HistoryAccess::Forbidden => {
@@ -376,13 +383,17 @@ async fn save_modlog<B: Backend>(
         },
         HistoryAccess::Allowed => {},
     }
-    if !s.limiter.allow(user, Instant::now()) {
+    if !s.limiter.allow(&user, Instant::now()) {
         return error_json(StatusCode::TOO_MANY_REQUESTS, DASH_SETTINGS_TOO_MANY);
     }
     let Ok(form) = serde_json::from_slice::<ModLogSettingsForm>(&body) else {
         return error_json(StatusCode::BAD_REQUEST, DASH_SETTINGS_UNREADABLE);
     };
-    match s.backend.save_mod_log_settings(user, g, form).await {
+    match s
+        .backend
+        .save_mod_log_settings(user.clone(), g.clone(), form)
+        .await
+    {
         Ok(view) => Json(view).into_response(),
         Err(ModLogSaveRefused::Invalid(e)) => {
             error_json(StatusCode::BAD_REQUEST, settings::modlog_invalid_message(e))
@@ -419,7 +430,7 @@ async fn save_economy<B: Backend>(
     if headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) != Some(&*s.origin) {
         return StatusCode::FORBIDDEN.into_response();
     }
-    match s.backend.history_access(g, user).await {
+    match s.backend.history_access(g.clone(), user.clone()).await {
         HistoryAccess::Hidden => return StatusCode::NOT_FOUND.into_response(),
         HistoryAccess::Unavailable => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
         HistoryAccess::Forbidden => {
@@ -427,13 +438,17 @@ async fn save_economy<B: Backend>(
         },
         HistoryAccess::Allowed => {},
     }
-    if !s.limiter.allow(user, Instant::now()) {
+    if !s.limiter.allow(&user, Instant::now()) {
         return error_json(StatusCode::TOO_MANY_REQUESTS, DASH_SETTINGS_TOO_MANY);
     }
     let Ok(form) = serde_json::from_slice::<EconomySettingsForm>(&body) else {
         return error_json(StatusCode::BAD_REQUEST, DASH_SETTINGS_UNREADABLE);
     };
-    match s.backend.save_economy_settings(user, g, form).await {
+    match s
+        .backend
+        .save_economy_settings(user.clone(), g.clone(), form)
+        .await
+    {
         Ok(view) => Json(view).into_response(),
         Err(EconomySaveRefused::Invalid(e)) => error_json(
             StatusCode::BAD_REQUEST,
@@ -495,23 +510,27 @@ async fn move_track<B: Backend>(
     let Ok(req) = serde_json::from_slice::<MoveRequest>(&body) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    match decide(&s.backend.presence(g, user).await) {
+    match decide(&s.backend.presence(g.clone(), user.clone()).await) {
         Access::Hidden => return not_found(),
         Access::Unavailable => return unavailable(),
         Access::View => return answer(StatusCode::FORBIDDEN, MoveResult::NotAllowed),
         Access::Control => {},
     }
-    match s.backend.move_track(user, g, req.id, req.to).await {
+    match s
+        .backend
+        .move_track(user.clone(), g.clone(), req.id, req.to)
+        .await
+    {
         Ok(to) => {
             tracing::info!(guild = %g, user = %user, track = %req.id, to, "dashboard move");
             // Open tabs follow through the poller, which reads after this;
             // the mover gets a read of its own.
-            s.hub.refresh(g).await;
-            let view = s.backend.view(g).await;
+            s.hub.refresh(g.clone()).await;
+            let view = s.backend.view(g.clone()).await;
             answer(StatusCode::OK, MoveResult::Moved { view })
         },
         Err(MoveRefused::Absent | MoveRefused::NowPlaying) => {
-            let view = s.backend.view(g).await;
+            let view = s.backend.view(g.clone()).await;
             answer(StatusCode::CONFLICT, MoveResult::Conflict { view })
         },
         Err(MoveRefused::GameInProgress) => answer(StatusCode::LOCKED, MoveResult::GameInProgress),
@@ -546,27 +565,27 @@ async fn control<B: Backend>(
     let Ok(req) = serde_json::from_slice::<ControlRequest>(&body) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    match decide(&s.backend.presence(g, user).await) {
+    match decide(&s.backend.presence(g.clone(), user.clone()).await) {
         Access::Hidden => return not_found(),
         Access::Unavailable => return unavailable(),
         Access::View => return control_answer(StatusCode::FORBIDDEN, ControlResult::NotAllowed),
         Access::Control => {},
     }
-    if !s.limiter.allow(user, Instant::now()) {
+    if !s.limiter.allow(&user, Instant::now()) {
         return control_answer(StatusCode::TOO_MANY_REQUESTS, ControlResult::TooMany);
     }
-    if s.backend.plan(g).await != PlanView::Premium {
+    if s.backend.plan(g.clone()).await != PlanView::Premium {
         return control_answer(StatusCode::FORBIDDEN, ControlResult::PremiumRequired);
     }
-    match s.backend.control(user, g, req.into()).await {
+    match s.backend.control(user.clone(), g.clone(), req.into()).await {
         Ok(()) => {
             tracing::info!(guild = %g, user = %user, control = ?req, "dashboard control");
-            s.hub.refresh(g).await;
-            let view = s.backend.view(g).await;
+            s.hub.refresh(g.clone()).await;
+            let view = s.backend.view(g.clone()).await;
             control_answer(StatusCode::OK, ControlResult::Done { view })
         },
         Err(ControlRefused::Conflict) => {
-            let view = s.backend.view(g).await;
+            let view = s.backend.view(g.clone()).await;
             control_answer(StatusCode::CONFLICT, ControlResult::Conflict { view })
         },
         Err(ControlRefused::GameInProgress) => {
@@ -584,8 +603,8 @@ async fn control<B: Backend>(
 /// The plan, or `Free` if it is not read within [`PRESENCE_TIMEOUT`]: the page
 /// and a stream's first event are drawn regardless, and the stream's next
 /// recheck corrects it.
-pub(crate) async fn plan_or_free<B: Backend>(backend: &B, g: GuildId) -> PlanView {
-    tokio::time::timeout(PRESENCE_TIMEOUT, backend.plan(g))
+pub(crate) async fn plan_or_free<B: Backend>(backend: &B, g: CommunityRef) -> PlanView {
+    tokio::time::timeout(PRESENCE_TIMEOUT, backend.plan(g.clone()))
         .await
         .unwrap_or(PlanView::Free)
 }
@@ -613,18 +632,18 @@ async fn events<B: Backend>(
     let Some((user, _)) = user_id(session) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    let access = decide(&s.backend.presence(g, user).await);
+    let access = decide(&s.backend.presence(g.clone(), user.clone()).await);
     match access {
         Access::Hidden => return not_found(),
         Access::Unavailable => return unavailable(),
         Access::View | Access::Control => {},
     }
-    let mut rx = s.hub.subscribe(g).await;
+    let mut rx = s.hub.subscribe(g.clone()).await;
     let (tx, out) = tokio::sync::mpsc::channel::<Event>(8);
     let backend = s.backend.clone();
     tokio::spawn(async move {
         let mut can_control = access == Access::Control;
-        let mut plan = plan_or_free(backend.as_ref(), g).await;
+        let mut plan = plan_or_free(backend.as_ref(), g.clone()).await;
         let mut last = rx.borrow_and_update().clone();
         if tx.send(event(&last, can_control, plan)).await.is_err() {
             return;
@@ -645,8 +664,8 @@ async fn events<B: Backend>(
                 },
                 _ = recheck.tick() => {
                     let (presence, now_plan) = tokio::join!(
-                        tokio::time::timeout(PRESENCE_TIMEOUT, backend.presence(g, user)),
-                        tokio::time::timeout(PRESENCE_TIMEOUT, backend.plan(g)),
+                        tokio::time::timeout(PRESENCE_TIMEOUT, backend.presence(g.clone(), user.clone())),
+                        tokio::time::timeout(PRESENCE_TIMEOUT, backend.plan(g.clone())),
                     );
                     let access = presence.map_or(Access::Unavailable, |p| decide(&p));
                     // Left the guild: close the stream.
@@ -855,6 +874,15 @@ mod test {
         );
     }
 
+    /// A session whose user id is not a snowflake is no session at all.
+    #[tokio::test]
+    async fn a_session_user_that_is_not_a_snowflake_is_signed_out() {
+        let r = get(member_viewing(), "/g/5", Some(&session(0))).await;
+        assert_eq!(r.status(), StatusCode::SEE_OTHER);
+        let r = get(member_viewing(), "/g/5", Some(&session(9))).await;
+        assert_eq!(r.status(), StatusCode::OK);
+    }
+
     /// The landing page's preview image (`og:image`), served from the binary.
     #[tokio::test]
     async fn the_preview_image_is_served_as_webp() {
@@ -897,6 +925,29 @@ mod test {
         }
     }
 
+    #[test]
+    fn parse_guild_accepts_only_snowflakes() {
+        for raw in ["18446744073709551615", "0", "abc", "18446744073709551616"] {
+            assert_eq!(super::parse_guild(raw), None, "{raw}");
+        }
+        assert_eq!(
+            super::parse_guild("5").map(|g| g.key()),
+            Some("discord:5".to_owned())
+        );
+    }
+
+    #[tokio::test]
+    async fn an_out_of_range_guild_is_not_found() {
+        // u64::MAX is a u64 and non-zero, but not a snowflake serenity can hold.
+        let r = get(
+            member_viewing(),
+            "/g/18446744073709551615",
+            Some(&session(9)),
+        )
+        .await;
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+    }
+
     #[tokio::test]
     async fn a_non_member_gets_404_and_an_unknown_gets_503() {
         let r = get(
@@ -933,7 +984,7 @@ mod test {
         assert!(!viewer.can_control);
         let controller = state_of(FakeBackend::new(
             Membership::Member,
-            Some(BOT_CHANNEL),
+            Some(bot_channel()),
             QueueView::Idle,
         ))
         .await;
@@ -1101,7 +1152,6 @@ mod test {
 
     use crate::backend::MoveRefused;
     use crate::routes::RECHECK;
-    use serenity::all::GuildId;
     use uuid::Uuid;
 
     const MOVE: &str = r#"{"id":"00000000-0000-0000-0000-000000000003","to":0}"#;
@@ -1152,7 +1202,7 @@ mod test {
         assert_eq!(a.view, Some(playing()));
         assert_eq!(
             *fake.moves.lock().unwrap(),
-            vec![(GuildId::new(5), Uuid::from_u128(3), 0)]
+            vec![(guild(5), Uuid::from_u128(3), 0)]
         );
     }
 
@@ -1219,7 +1269,7 @@ mod test {
 
     #[tokio::test]
     async fn a_viewer_not_in_the_bots_channel_is_not_allowed() {
-        for channel in [None, Some(serenity::all::ChannelId::new(1))] {
+        for channel in [None, Some(room(1))] {
             let fake = FakeBackend::new(Membership::Member, channel, playing());
             let r = post_move(
                 fake.clone(),
@@ -1238,7 +1288,7 @@ mod test {
 
     #[tokio::test]
     async fn a_non_member_gets_404_even_to_a_move() {
-        let fake = FakeBackend::new(Membership::NotMember, Some(BOT_CHANNEL), playing());
+        let fake = FakeBackend::new(Membership::NotMember, Some(bot_channel()), playing());
         let r = post_move(
             fake.clone(),
             Some(&session(9)),
@@ -1323,7 +1373,7 @@ mod test {
             .await
             .unwrap();
         assert_eq!(r.status(), StatusCode::OK);
-        assert_eq!(fake.last_mover(), Some(serenity::all::UserId::new(9)));
+        assert_eq!(fake.last_mover(), Some(user(9)));
     }
 
     const SKIP: &str = r#"{"type":"skip","id":"00000000-0000-0000-0000-000000000001"}"#;
@@ -1382,8 +1432,8 @@ mod test {
         assert_eq!(
             *fake.controls.lock().unwrap(),
             vec![(
-                GuildId::new(5),
-                serenity::all::UserId::new(9),
+                guild(5),
+                user(9),
                 Control::Skip {
                     expect: Uuid::from_u128(1)
                 }
@@ -1477,7 +1527,7 @@ mod test {
             ),
         ];
         for (cookie, ctype, origin, text, membership, want) in cases {
-            let fake = FakeBackend::new(membership, Some(BOT_CHANNEL), playing());
+            let fake = FakeBackend::new(membership, Some(bot_channel()), playing());
             let r = post_control(fake.clone(), cookie.as_deref(), ctype, origin, text).await;
             assert_eq!(
                 r.status(),
@@ -1490,7 +1540,7 @@ mod test {
 
     #[tokio::test]
     async fn a_member_not_in_voice_is_not_allowed_to_control() {
-        for channel in [None, Some(serenity::all::ChannelId::new(1))] {
+        for channel in [None, Some(room(1))] {
             let fake = FakeBackend::new(Membership::Member, channel, playing());
             let r = post_skip(fake.clone()).await;
             assert_eq!(r.status(), StatusCode::FORBIDDEN);
@@ -1636,7 +1686,7 @@ mod test {
         let fake = controller();
         *fake.view_after_control.lock().unwrap() = Some(reordered());
         let st = state(fake.clone());
-        let mut rx = st.hub.subscribe(GuildId::new(5)).await;
+        let mut rx = st.hub.subscribe(guild(5)).await;
         rx.borrow_and_update();
         let r = crate::routes::router(st)
             .oneshot(control_request(
@@ -1678,7 +1728,7 @@ mod test {
         let fake = controller();
         *fake.view_after_move.lock().unwrap() = Some(reordered());
         let st = state(fake.clone());
-        let mut rx = st.hub.subscribe(GuildId::new(5)).await;
+        let mut rx = st.hub.subscribe(guild(5)).await;
         rx.borrow_and_update();
         let r = crate::routes::router(st)
             .oneshot(move_request())
@@ -1706,7 +1756,7 @@ mod test {
         let fake = controller();
         *fake.move_result.lock().unwrap() = Err(MoveRefused::Absent);
         let st = state(fake.clone());
-        let mut rx = st.hub.subscribe(GuildId::new(5)).await;
+        let mut rx = st.hub.subscribe(guild(5)).await;
         rx.borrow_and_update();
         // The queue changed since the hub's last read; its next tick is not due.
         *fake.view.lock().unwrap() = reordered();
@@ -1941,7 +1991,7 @@ mod test {
 
     #[tokio::test]
     async fn an_unknown_membership_is_503_for_the_stream_and_the_move() {
-        let fake = FakeBackend::new(Membership::Unknown, Some(BOT_CHANNEL), playing());
+        let fake = FakeBackend::new(Membership::Unknown, Some(bot_channel()), playing());
         let r = get(fake.clone(), "/g/5/events", Some(&session(9))).await;
         assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
         let r = post_move(
@@ -2373,8 +2423,8 @@ mod test {
         assert_eq!(
             fake.saves.lock().unwrap().clone(),
             vec![(
-                GuildId::new(5),
-                serenity::all::UserId::new(9),
+                guild(5),
+                user(9),
                 RoomSettingsForm {
                     enabled: true,
                     hub: Some("123".into()),
@@ -2639,8 +2689,8 @@ mod test {
         assert_eq!(
             fake.modlog_saves.lock().unwrap().clone(),
             vec![(
-                GuildId::new(5),
-                serenity::all::UserId::new(9),
+                guild(5),
+                user(9),
                 ModLogSettingsForm {
                     enabled: true,
                     channel: Some("123".into()),
@@ -2861,8 +2911,8 @@ mod test {
         assert_eq!(
             fake.economy_saves.lock().unwrap().clone(),
             vec![(
-                GuildId::new(5),
-                serenity::all::UserId::new(9),
+                guild(5),
+                user(9),
                 EconomySettingsForm {
                     enabled: true,
                     currency_name: "gems".into(),

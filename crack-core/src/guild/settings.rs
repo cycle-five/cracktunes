@@ -1,18 +1,18 @@
-use self::serenity::model::id::GuildId;
-use self::serenity::model::prelude::UserId;
+use super::permissions::ref_set;
 use crate::db::{GuildEntity, WelcomeSettingsRead};
 use crate::errors::CrackedError;
 use crate::CrackedResult;
-use ::serenity::small_fixed_array::FixedString;
+use crack_model::{CommunityRef, RoleRef, RoomRef, UserRef};
+use crack_types::discord::{
+    as_snowflake_opt, as_snowflake_set, as_snowflake_string, from_snowflake, snowflake, IdError,
+};
+use crack_types::GuildId;
 use lazy_static::lazy_static;
-use poise::serenity_prelude::{self as serenity, FullEvent, GenericChannelId};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
 use std::fs::{create_dir_all, OpenOptions};
 use std::io::Write;
-use std::str::FromStr;
 use std::sync::{atomic, Arc};
 use std::{
     collections::{HashMap, HashSet},
@@ -38,8 +38,6 @@ pub(crate) const DEFAULT_PREMIUM: bool = false;
 pub(crate) const ADDITIONAL_PREFIXES: [&str; 8] = [
     "hey bot,", "hey bot", "bot,", "bot", "!play", "!music", "!youtube", "!yt", //, "m/", "M/",
 ];
-pub(crate) const MOD_VAL: u64 = 1 << 1;
-pub(crate) const ADMIN_VAL: u64 = 2 << 1;
 
 lazy_static! {
     static ref SETTINGS_PATH: String =
@@ -61,84 +59,148 @@ pub fn get_log_prefix() -> String {
 #[derive(Default, Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct LogSettings {
     // TODO: Decide if I want to have separate raw events and all log channels.
-    pub all_log_channel: Option<u64>,
-    pub raw_event_log_channel: Option<u64>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub all_log_channel: Option<RoomRef>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub raw_event_log_channel: Option<RoomRef>,
     // TODO: Decide on what level of granularity I want for logging options.
     // Also should they be able to overlap?
-    pub server_log_channel: Option<u64>,
-    pub member_log_channel: Option<u64>,
-    pub join_leave_log_channel: Option<u64>,
-    pub voice_log_channel: Option<u64>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub server_log_channel: Option<RoomRef>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub member_log_channel: Option<RoomRef>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub join_leave_log_channel: Option<RoomRef>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub voice_log_channel: Option<RoomRef>,
+}
+
+/// Convert one stored id. A value that is not a snowflake is dropped with a
+/// warning rather than panicking a conversion that cannot fail.
+pub(crate) fn stored_ref<K: crack_model::Kind>(
+    column: &'static str,
+    raw: Option<i64>,
+) -> Option<crack_model::Ref<K>> {
+    let raw = raw?;
+    match u64::try_from(raw)
+        .ok()
+        .and_then(|n| from_snowflake::<K>(n).ok())
+    {
+        Some(r) => Some(r),
+        None => {
+            tracing::warn!(column, raw, "dropped a stored id that is not a snowflake");
+            None
+        },
+    }
+}
+
+/// The `BIGINT` to store for a ref. A ref that is not a Discord snowflake
+/// cannot be stored in these columns and is refused, never truncated.
+pub(crate) fn column_i64<K: crack_model::Kind>(
+    r: &crack_model::Ref<K>,
+) -> Result<i64, CrackedError> {
+    snowflake(r)
+        .ok()
+        .and_then(|n| i64::try_from(n).ok())
+        .ok_or(CrackedError::Other(
+            "a stored id must be a Discord snowflake",
+        ))
+}
+
+/// The ref for a stored `BIGINT` that must be there. A value that is not a
+/// snowflake is an error, because the row it sits in cannot be used without it.
+pub(crate) fn ref_from_column<K: crack_model::Kind>(
+    raw: i64,
+) -> Result<crack_model::Ref<K>, CrackedError> {
+    u64::try_from(raw)
+        .ok()
+        .and_then(|n| from_snowflake::<K>(n).ok())
+        .ok_or(CrackedError::Other(
+            "a stored id is not a Discord snowflake",
+        ))
+}
+
+/// [`column_i64`] for an optional column.
+pub(crate) fn column_opt<K: crack_model::Kind>(
+    r: &Option<crack_model::Ref<K>>,
+) -> Result<Option<i64>, CrackedError> {
+    r.as_ref().map(column_i64).transpose()
 }
 
 impl From<crate::db::LogSettingsRead> for LogSettings {
     fn from(settings_db: crate::db::LogSettingsRead) -> Self {
         LogSettings {
-            all_log_channel: settings_db.all_log_channel.map(|x| x as u64),
-            raw_event_log_channel: settings_db.raw_event_log_channel.map(|x| x as u64),
-            server_log_channel: settings_db.server_log_channel.map(|x| x as u64),
-            member_log_channel: settings_db.member_log_channel.map(|x| x as u64),
-            join_leave_log_channel: settings_db.join_leave_log_channel.map(|x| x as u64),
-            voice_log_channel: settings_db.voice_log_channel.map(|x| x as u64),
+            all_log_channel: stored_ref(
+                "log_settings.all_log_channel",
+                settings_db.all_log_channel,
+            ),
+            raw_event_log_channel: stored_ref(
+                "log_settings.raw_event_log_channel",
+                settings_db.raw_event_log_channel,
+            ),
+            server_log_channel: stored_ref(
+                "log_settings.server_log_channel",
+                settings_db.server_log_channel,
+            ),
+            member_log_channel: stored_ref(
+                "log_settings.member_log_channel",
+                settings_db.member_log_channel,
+            ),
+            join_leave_log_channel: stored_ref(
+                "log_settings.join_leave_log_channel",
+                settings_db.join_leave_log_channel,
+            ),
+            voice_log_channel: stored_ref(
+                "log_settings.voice_log_channel",
+                settings_db.voice_log_channel,
+            ),
         }
     }
 }
 
-const DEFAULT_LOG_CHANNEL: Option<GenericChannelId> = None;
-
 impl LogSettings {
-    pub fn get_all_log_channel(&self) -> Option<GenericChannelId> {
-        self.all_log_channel
-            .map(GenericChannelId::new)
-            .or(DEFAULT_LOG_CHANNEL)
+    pub fn get_all_log_channel(&self) -> Option<RoomRef> {
+        self.all_log_channel.clone()
     }
 
-    pub fn get_server_log_channel(&self) -> Option<GenericChannelId> {
-        self.server_log_channel
-            .map(GenericChannelId::new)
-            .or(DEFAULT_LOG_CHANNEL)
+    pub fn get_server_log_channel(&self) -> Option<RoomRef> {
+        self.server_log_channel.clone()
     }
 
-    pub fn get_join_leave_log_channel(&self) -> Option<GenericChannelId> {
-        self.join_leave_log_channel
-            .map(GenericChannelId::new)
-            .or(DEFAULT_LOG_CHANNEL)
+    pub fn get_join_leave_log_channel(&self) -> Option<RoomRef> {
+        self.join_leave_log_channel.clone()
     }
 
-    pub fn get_member_log_channel(&self) -> Option<GenericChannelId> {
-        self.member_log_channel
-            .map(GenericChannelId::new)
-            .or(DEFAULT_LOG_CHANNEL)
+    pub fn get_member_log_channel(&self) -> Option<RoomRef> {
+        self.member_log_channel.clone()
     }
 
-    pub fn get_voice_log_channel(&self) -> Option<GenericChannelId> {
-        self.voice_log_channel
-            .map(GenericChannelId::new)
-            .or(DEFAULT_LOG_CHANNEL)
+    pub fn get_voice_log_channel(&self) -> Option<RoomRef> {
+        self.voice_log_channel.clone()
     }
 
-    pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.all_log_channel = Some(channel_id);
+    pub fn set_all_log_channel(&mut self, channel: RoomRef) -> &mut Self {
+        self.all_log_channel = Some(channel);
         self
     }
 
-    pub fn set_server_log_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.server_log_channel = Some(channel_id);
+    pub fn set_server_log_channel(&mut self, channel: RoomRef) -> &mut Self {
+        self.server_log_channel = Some(channel);
         self
     }
 
-    pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.join_leave_log_channel = Some(channel_id);
+    pub fn set_join_leave_log_channel(&mut self, channel: RoomRef) -> &mut Self {
+        self.join_leave_log_channel = Some(channel);
         self
     }
 
-    pub fn set_member_log_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.member_log_channel = Some(channel_id);
+    pub fn set_member_log_channel(&mut self, channel: RoomRef) -> &mut Self {
+        self.member_log_channel = Some(channel);
         self
     }
 
-    pub fn set_voice_log_channel(&mut self, channel_id: u64) -> &mut Self {
-        self.voice_log_channel = Some(channel_id);
+    pub fn set_voice_log_channel(&mut self, channel: RoomRef) -> &mut Self {
+        self.voice_log_channel = Some(channel);
         self
     }
 
@@ -150,9 +212,11 @@ impl LogSettings {
 
 #[derive(Deserialize, Serialize, Default, Debug, Clone, PartialEq)]
 pub struct WelcomeSettings {
-    pub channel_id: Option<u64>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub channel_id: Option<RoomRef>,
     pub message: Option<String>,
-    pub auto_role: Option<u64>,
+    #[serde(default, with = "as_snowflake_opt")]
+    pub auto_role: Option<RoleRef>,
     pub password: Option<String>,
 }
 
@@ -169,9 +233,9 @@ impl Display for WelcomeSettings {
 impl From<WelcomeSettingsRead> for WelcomeSettings {
     fn from(settings_db: WelcomeSettingsRead) -> Self {
         WelcomeSettings {
-            channel_id: settings_db.channel_id.map(|x| x as u64),
+            channel_id: stored_ref("welcome_settings.channel_id", settings_db.channel_id),
             message: settings_db.message,
-            auto_role: settings_db.auto_role.map(|x| x as u64),
+            auto_role: stored_ref("welcome_settings.auto_role", settings_db.auto_role),
             password: None,
         }
     }
@@ -184,7 +248,7 @@ impl WelcomeSettings {
     }
 
     /// Set the channel id, returning a new WelcomeSettings.
-    pub fn with_channel_id(self, channel_id: u64) -> Self {
+    pub fn with_channel_id(self, channel_id: RoomRef) -> Self {
         Self {
             channel_id: Some(channel_id),
             ..self
@@ -200,7 +264,7 @@ impl WelcomeSettings {
     }
 
     /// Set the auto role, returning a new WelcomeSettings.
-    pub fn with_auto_role(self, auto_role: u64) -> Self {
+    pub fn with_auto_role(self, auto_role: RoleRef) -> Self {
         Self {
             auto_role: Some(auto_role),
             ..self
@@ -217,83 +281,7 @@ impl WelcomeSettings {
 
     /// Save the welcome settings to the database.
     pub async fn save(&self, pool: &PgPool, guild_id: u64) -> Result<(), CrackedError> {
-        crate::db::GuildEntity::write_welcome_settings(pool, guild_id as i64, self)
-            .await
-            .map_err(CrackedError::SQLX)
-    }
-}
-
-/// A struct that represents a user's permission level for a guild.
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct UserPermission {
-    pub user_id: i64,
-    pub guild_id: i64,
-    pub permission: i64,
-}
-
-/// A struct that represents a user's permission level for a guild.
-impl UserPermission {
-    /// Creates a new UserPermission with default values.
-    pub fn new_default(user_id: i64, guild_id: i64) -> Self {
-        Self {
-            user_id,
-            guild_id,
-            permission: 0,
-        }
-    }
-
-    /// Creates a new UserPermission with the given values.
-    pub fn new(user_id: i64, guild_id: i64, permission: i64) -> Self {
-        Self {
-            user_id,
-            guild_id,
-            permission,
-        }
-    }
-
-    /// Get the user id.
-    pub fn get_user_id(&self) -> i64 {
-        self.user_id
-    }
-
-    /// Get the guild id.
-    pub fn get_guild_id(&self) -> i64 {
-        self.guild_id
-    }
-
-    /// Get the permission level.
-    pub fn get_permission(&self) -> i64 {
-        self.permission
-    }
-
-    /// Set the permission level, mutating
-    pub fn set_permission(&mut self, permission: i64) {
-        self.permission = permission;
-    }
-
-    /// Set the user id, mutating
-    pub fn set_user_id(&mut self, user_id: i64) {
-        self.user_id = user_id;
-    }
-
-    /// Set the guild id, mutating
-    pub fn set_guild_id(&mut self, guild_id: i64) {
-        self.guild_id = guild_id;
-    }
-
-    /// Set the permission level, returning a new UserPermission
-    pub fn with_permission(self, permission: i64) -> Self {
-        Self { permission, ..self }
-    }
-
-    /// Set the user id, returning a new UserPermission
-    pub fn with_user_id(self, user_id: i64) -> Self {
-        Self { user_id, ..self }
-    }
-
-    /// Set the guild id, returning a new UserPermission
-    pub fn with_guild_id(self, guild_id: i64) -> Self {
-        Self { guild_id, ..self }
+        crate::db::GuildEntity::write_welcome_settings(pool, guild_id as i64, self).await
     }
 }
 
@@ -328,8 +316,9 @@ pub enum Provenance {
 //#[derive(Debug, Clone, Serialize, PartialEq)]
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GuildSettings {
-    pub guild_id: GuildId,
-    pub guild_name: FixedString,
+    #[serde(with = "as_snowflake_string")]
+    pub guild_id: CommunityRef,
+    pub guild_name: String,
     pub prefix: String,
     // A vc token per guild.
     #[serde(default = "premium_default")]
@@ -358,11 +347,8 @@ pub struct GuildSettings {
     pub allow_all_domains: Option<bool>,
     pub allowed_domains: HashSet<String>,
     pub banned_domains: HashSet<String>,
-    #[serde(default = "authorized_users_default")]
-    pub authorized_users: BTreeMap<u64, u64>,
-    #[serde(default = "authorized_users_default")]
-    pub authorized_groups: BTreeMap<u64, u64>,
-    pub ignored_channels: HashSet<u64>,
+    #[serde(with = "as_snowflake_set")]
+    pub ignored_channels: HashSet<RoomRef>,
     #[serde(default = "volume_default")]
     pub old_volume: f32,
     #[serde(default = "volume_default")]
@@ -400,8 +386,6 @@ impl PartialEq for GuildSettings {
             && self.allow_all_domains == other.allow_all_domains
             && self.allowed_domains == other.allowed_domains
             && self.banned_domains == other.banned_domains
-            && self.authorized_users == other.authorized_users
-            && self.authorized_groups == other.authorized_groups
             && self.ignored_channels == other.ignored_channels
             && self.old_volume == other.old_volume
             && self.volume == other.volume
@@ -428,11 +412,6 @@ fn allow_all_domains_default() -> Option<bool> {
     Some(DEFAULT_ALLOW_ALL_DOMAINS)
 }
 
-/// Default value function for serialization for authorized users.
-fn authorized_users_default() -> BTreeMap<u64, u64> {
-    BTreeMap::new()
-}
-
 /// Default value function for serialization for additional prefixes.
 fn additional_prefixes_default() -> Vec<String> {
     Vec::<String>::new()
@@ -448,12 +427,6 @@ fn premium_default() -> bool {
     DEFAULT_PREMIUM
 }
 
-impl Default for GuildSettings {
-    fn default() -> Self {
-        GuildSettings::new(GuildId::default(), Some("r!"), None)
-    }
-}
-
 impl Display for GuildSettings {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let res = match serde_json::to_string_pretty(self) {
@@ -466,15 +439,22 @@ impl Display for GuildSettings {
 
 use crate::db::GuildSettingsRead;
 
-impl From<GuildSettingsRead> for GuildSettings {
-    fn from(settings_db: GuildSettingsRead) -> Self {
+/// A row whose `guild_id` is not a snowflake cannot be used at all, so it is an
+/// error. A bad `ignored_channels` element is dropped with a warning.
+impl TryFrom<GuildSettingsRead> for GuildSettings {
+    type Error = IdError;
+
+    fn try_from(settings_db: GuildSettingsRead) -> Result<Self, IdError> {
+        let guild_id = u64::try_from(settings_db.guild_id)
+            .map_err(|_| IdError::NotASnowflake {
+                kind: <crack_model::Community as crack_model::Kind>::NAME,
+                raw: settings_db.guild_id.to_string(),
+            })
+            .and_then(from_snowflake::<crack_model::Community>)?;
         let mut settings = GuildSettings::new(
-            GuildId::new(settings_db.guild_id as u64),
+            guild_id,
             Some(&settings_db.prefix),
-            Some(
-                FixedString::from_str(&settings_db.guild_name)
-                    .expect("Failed to convert guild name"),
-            ),
+            Some(settings_db.guild_name),
         );
         settings.premium = settings_db.premium;
         settings.autopause = settings_db.autopause;
@@ -485,14 +465,11 @@ impl From<GuildSettingsRead> for GuildSettings {
         settings.allow_all_domains = Some(settings_db.allow_all_domains);
         settings.allowed_domains = settings_db.allowed_domains.into_iter().collect();
         settings.banned_domains = settings_db.banned_domains.into_iter().collect();
-        settings.authorized_users = BTreeMap::<u64, u64>::new(); // FIXME
-        settings.authorized_groups = BTreeMap::<u64, u64>::new(); // FIXME
 
-        settings.ignored_channels = settings_db
-            .ignored_channels
-            .into_iter()
-            .map(|x| x as u64)
-            .collect();
+        settings.ignored_channels = ref_set(
+            "guild_settings.ignored_channels",
+            settings_db.ignored_channels,
+        );
         settings.old_volume = settings_db.volume as f32;
         settings.volume = settings_db.volume as f32;
         settings.self_deafen = settings_db.self_deafen;
@@ -500,15 +477,15 @@ impl From<GuildSettingsRead> for GuildSettings {
         settings.welcome_settings = None; // FIXME
         settings.log_settings = None; //FIXME
         settings.additional_prefixes = settings_db.additional_prefixes;
-        settings
+        Ok(settings)
     }
 }
 
 impl GuildSettings {
     pub fn new(
-        guild_id: GuildId,
+        guild_id: CommunityRef,
         prefix: Option<&str>,
-        guild_name: Option<FixedString>,
+        guild_name: Option<String>,
     ) -> GuildSettings {
         let allowed_domains: HashSet<String> = DEFAULT_ALLOWED_DOMAINS
             .iter()
@@ -521,7 +498,8 @@ impl GuildSettings {
         };
 
         let guild_name = guild_name.unwrap_or_default();
-        let asdf: Vec<u64> = vec![1165246445654388746];
+        let default_ignored = from_snowflake::<crack_model::Room>(1165246445654388746)
+            .expect("the default ignored channel is a snowflake");
         GuildSettings {
             guild_id,
             guild_name,
@@ -537,9 +515,7 @@ impl GuildSettings {
             allow_all_domains: Some(DEFAULT_ALLOW_ALL_DOMAINS),
             allowed_domains,
             banned_domains: HashSet::new(),
-            authorized_users: BTreeMap::new(),
-            authorized_groups: BTreeMap::new(),
-            ignored_channels: asdf.into_iter().collect(),
+            ignored_channels: HashSet::from([default_ignored]),
             old_volume: DEFAULT_VOLUME_LEVEL,
             volume: DEFAULT_VOLUME_LEVEL,
             self_deafen: true,
@@ -552,7 +528,7 @@ impl GuildSettings {
     }
 
     /// Create a new GuildSettings with the given guild id.
-    pub fn new_gid(guild_id: GuildId) -> GuildSettings {
+    pub fn new_gid(guild_id: CommunityRef) -> GuildSettings {
         GuildSettings::new(guild_id, None, None)
     }
 
@@ -563,7 +539,7 @@ impl GuildSettings {
 
     /// Load the guild settings from the database or create them if they don't exist.
     pub async fn load_or_create(&mut self, pool: &PgPool) -> Result<GuildSettings, CrackedError> {
-        let guild_id = self.guild_id.get() as i64;
+        let guild_id = column_i64(&self.guild_id)?;
         let name = self.guild_name.clone();
         let prefix = self.prefix.clone();
         let (_guild, settings) =
@@ -572,7 +548,7 @@ impl GuildSettings {
     }
 
     pub async fn load_if_exists(&mut self, pool: &PgPool) -> Result<GuildSettings, CrackedError> {
-        let guild_id = self.guild_id.get() as i64;
+        let guild_id = column_i64(&self.guild_id)?;
         let name = self.guild_name.clone();
         let prefix = self.prefix.clone();
         let (guild, _guild_settings) =
@@ -582,7 +558,7 @@ impl GuildSettings {
     }
 
     pub async fn save(&self, pool: &PgPool) -> Result<(), CrackedError> {
-        let guild_id = self.guild_id.get() as i64;
+        let guild_id = column_i64(&self.guild_id)?;
         let guild_name = self.guild_name.clone();
         let prefix = self.prefix.clone();
         let (_guild, _guild_settings) = crate::db::GuildEntity::get_or_create(
@@ -603,7 +579,7 @@ impl GuildSettings {
             "{}/{}-{}.json",
             SETTINGS_PATH.as_str(),
             self.get_guild_name(),
-            self.guild_id
+            self.guild_id.raw().as_str()
         );
         tracing::warn!("path: {:?}", path);
 
@@ -673,13 +649,13 @@ impl GuildSettings {
     }
 
     /// Set the music channel, mutating.
-    pub fn set_music_channel(&mut self, channel_id: u64) {
+    pub fn set_music_channel(&mut self, channel_id: RoomRef) {
         self.command_settings
             .entry("music".to_string())
             .and_modify(|perms| {
                 perms.allowed_channels.clear();
                 perms.denied_channels.clear();
-                perms.add_allowed_channel(channel_id);
+                perms.add_allowed_channel(channel_id.clone());
             })
             .or_insert_with(|| {
                 let mut perms = GenericPermissionSettings::default();
@@ -698,49 +674,6 @@ impl GuildSettings {
             self.allowed_domains.insert(String::from("youtube.com"));
             self.banned_domains.clear();
         }
-    }
-
-    /// Authorize a user.
-    pub fn authorize_user(&mut self, user_id: i64) -> &mut Self {
-        self.authorized_users.entry(user_id as u64).or_insert(0);
-        self
-    }
-
-    /// Deauthorize a user.
-    pub fn deauthorize_user(&mut self, user_id: i64) {
-        if self.authorized_users.contains_key(&(user_id as u64)) {
-            self.authorized_users.remove(&(user_id as u64));
-        }
-    }
-
-    /// Check if the user is authorized.
-    pub fn check_authorized(&self, user_id: u64) -> bool {
-        self.authorized_users.contains_key(&user_id)
-    }
-
-    /// Check if the user is authorized.
-    pub fn check_authorized_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.contains_key(&user_id.into())
-    }
-
-    /// Check if the user is a mod.
-    pub fn check_mod(&self, user_id: u64) -> bool {
-        self.authorized_users.get(&user_id).unwrap_or(&0) >= &MOD_VAL
-    }
-
-    /// Check if the user is a mod.
-    pub fn check_mod_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &MOD_VAL
-    }
-
-    /// Check if the user is an admin.
-    pub fn check_admin(&self, user_id: u64) -> bool {
-        self.authorized_users.get(&user_id).unwrap_or(&0) >= &ADMIN_VAL
-    }
-
-    /// Check if the user is an admin.
-    pub fn check_admin_user_id(&self, user_id: UserId) -> bool {
-        self.authorized_users.get(&user_id.into()).unwrap_or(&0) >= &ADMIN_VAL
     }
 
     /// Set the volume level without mutating.
@@ -806,8 +739,8 @@ impl GuildSettings {
     /// Another set welcome settings
     pub fn set_welcome_settings2(
         &mut self,
-        channel_id: u64,
-        auto_role: Option<u64>,
+        channel_id: RoomRef,
+        auto_role: Option<RoleRef>,
         message: &str,
     ) -> &mut Self {
         self.welcome_settings = Some(WelcomeSettings {
@@ -820,7 +753,7 @@ impl GuildSettings {
     }
 
     /// And a third.
-    pub fn set_welcome_settings3(&mut self, channel_id: u64, message: String) -> &mut Self {
+    pub fn set_welcome_settings3(&mut self, channel_id: RoomRef, message: String) -> &mut Self {
         self.welcome_settings = Some(WelcomeSettings {
             channel_id: Some(channel_id),
             message: Some(message.to_string()),
@@ -836,7 +769,7 @@ impl GuildSettings {
     }
 
     /// Set the auto role,without mutating.
-    pub fn with_auto_role(self, auto_role: Option<u64>) -> Self {
+    pub fn with_auto_role(self, auto_role: Option<RoleRef>) -> Self {
         let welcome_settings = if let Some(welcome_settings) = self.welcome_settings {
             WelcomeSettings {
                 auto_role,
@@ -856,7 +789,7 @@ impl GuildSettings {
     }
 
     /// Set the auto role, mutating.
-    pub fn set_auto_role(&mut self, auto_role: Option<u64>) -> &mut Self {
+    pub fn set_auto_role(&mut self, auto_role: Option<RoleRef>) -> &mut Self {
         if let Some(welcome_settings) = &mut self.welcome_settings {
             welcome_settings.auto_role = auto_role;
         } else {
@@ -872,8 +805,8 @@ impl GuildSettings {
     /// Set the log settings, mutating.
     pub fn set_log_settings(
         &mut self,
-        all_log_channel: u64,
-        join_leave_log_channel: u64,
+        all_log_channel: RoomRef,
+        join_leave_log_channel: RoomRef,
     ) -> &mut Self {
         self.log_settings = Some(LogSettings {
             all_log_channel: Some(all_log_channel),
@@ -908,7 +841,7 @@ impl GuildSettings {
     }
 
     /// Set the ignored channels, mutating.
-    pub fn set_ignored_channels(&mut self, ignored_channels: HashSet<u64>) -> &mut Self {
+    pub fn set_ignored_channels(&mut self, ignored_channels: HashSet<RoomRef>) -> &mut Self {
         self.ignored_channels = ignored_channels;
         self
     }
@@ -916,7 +849,7 @@ impl GuildSettings {
     /// Get the guild name.
     pub fn get_guild_name(&self) -> String {
         if self.guild_name.is_empty() {
-            self.guild_id.to_string()
+            self.guild_id.raw().as_str().to_string()
         } else {
             self.guild_name.to_string()
         }
@@ -928,7 +861,7 @@ impl GuildSettings {
     }
 
     /// Set the all log channel, with mutating.
-    pub fn set_all_log_channel(&mut self, channel_id: u64) -> &mut Self {
+    pub fn set_all_log_channel(&mut self, channel_id: RoomRef) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.all_log_channel = Some(channel_id);
         } else {
@@ -940,10 +873,10 @@ impl GuildSettings {
     }
 
     /// Set the join/leave log channel, without mutating.
-    pub fn with_join_leave_log_channel(&self, channel_id: u64) -> Self {
+    pub fn with_join_leave_log_channel(&self, channel_id: RoomRef) -> Self {
         let log_settings = if let Some(log_settings) = self.log_settings.clone() {
             LogSettings {
-                join_leave_log_channel: Some(channel_id),
+                join_leave_log_channel: Some(channel_id.clone()),
                 ..log_settings
             }
         } else {
@@ -959,7 +892,7 @@ impl GuildSettings {
     }
 
     /// Set the server join/leave log channel, mutating.
-    pub fn set_join_leave_log_channel(&mut self, channel_id: u64) -> &mut Self {
+    pub fn set_join_leave_log_channel(&mut self, channel_id: RoomRef) -> &mut Self {
         if let Some(log_settings) = &mut self.log_settings {
             log_settings.join_leave_log_channel = Some(channel_id);
         } else {
@@ -990,126 +923,27 @@ impl GuildSettings {
         self
     }
 
-    /// Get the log channel for the given event type.
-    pub fn get_log_channel_type_fe(&self, event: &FullEvent) -> Option<GenericChannelId> {
-        let log_settings = self.log_settings.clone().unwrap_or_default();
-        match event {
-            FullEvent::PresenceUpdate { .. } => {
-                None
-                //.or(log_settings.get_all_log_channel()),
-            },
-            FullEvent::GuildMemberAddition { .. } | FullEvent::GuildMemberRemoval { .. } => {
-                log_settings
-                    .get_join_leave_log_channel()
-                    .or(log_settings.get_all_log_channel())
-            },
-            FullEvent::GuildBanRemoval { .. }
-            | FullEvent::GuildBanAddition { .. }
-            | FullEvent::GuildScheduledEventCreate { .. }
-            | FullEvent::GuildScheduledEventUpdate { .. }
-            | FullEvent::GuildScheduledEventDelete { .. }
-            | FullEvent::GuildScheduledEventUserAdd { .. }
-            | FullEvent::GuildScheduledEventUserRemove { .. }
-            | FullEvent::GuildStickersUpdate { .. }
-            | FullEvent::GuildCreate { .. }
-            | FullEvent::GuildDelete { .. }
-            | FullEvent::GuildEmojisUpdate { .. }
-            | FullEvent::GuildIntegrationsUpdate { .. }
-            | FullEvent::GuildMemberUpdate { .. }
-            | FullEvent::GuildMembersChunk { .. }
-            | FullEvent::GuildRoleCreate { .. }
-            | FullEvent::GuildRoleDelete { .. }
-            | FullEvent::GuildRoleUpdate { .. }
-            | FullEvent::GuildUpdate { .. } => log_settings
-                .get_server_log_channel()
-                .or(log_settings.get_all_log_channel()),
-            FullEvent::Message { .. }
-            | FullEvent::Resume { .. }
-            | FullEvent::ShardStageUpdate { .. }
-            | FullEvent::WebhookUpdate { .. }
-            | FullEvent::CommandPermissionsUpdate { .. }
-            | FullEvent::AutoModActionExecution { .. }
-            | FullEvent::AutoModRuleCreate { .. }
-            | FullEvent::AutoModRuleUpdate { .. }
-            | FullEvent::AutoModRuleDelete { .. }
-            | FullEvent::CacheReady { .. }
-            | FullEvent::ChannelCreate { .. }
-            | FullEvent::CategoryCreate { .. }
-            | FullEvent::CategoryDelete { .. }
-            | FullEvent::ChannelDelete { .. }
-            | FullEvent::ChannelPinsUpdate { .. }
-            | FullEvent::ChannelUpdate { .. }
-            | FullEvent::IntegrationCreate { .. }
-            | FullEvent::IntegrationUpdate { .. }
-            | FullEvent::IntegrationDelete { .. }
-            | FullEvent::InteractionCreate { .. }
-            | FullEvent::InviteCreate { .. }
-            | FullEvent::InviteDelete { .. }
-            | FullEvent::MessageDelete { .. }
-            | FullEvent::MessageDeleteBulk { .. }
-            | FullEvent::MessageUpdate { .. }
-            | FullEvent::ReactionAdd { .. }
-            | FullEvent::ReactionRemove { .. }
-            | FullEvent::ReactionRemoveAll { .. }
-            | FullEvent::Ready { .. }
-            | FullEvent::StageInstanceCreate { .. }
-            | FullEvent::StageInstanceDelete { .. }
-            | FullEvent::StageInstanceUpdate { .. }
-            | FullEvent::ThreadCreate { .. }
-            | FullEvent::ThreadDelete { .. }
-            | FullEvent::ThreadListSync { .. }
-            | FullEvent::ThreadMemberUpdate { .. }
-            | FullEvent::ThreadMembersUpdate { .. }
-            | FullEvent::ThreadUpdate { .. }
-            | FullEvent::TypingStart { .. }
-            | FullEvent::UserUpdate { .. }
-            | FullEvent::VoiceServerUpdate { .. }
-            | FullEvent::VoiceStateUpdate { .. } => {
-                // tracing::warn!(
-                //     "{}",
-                //     format!("Event: {:?}", event).as_str().to_string().white()
-                // );
-                log_settings.get_all_log_channel()
-            },
-            //| FullEvent::GuildUnavailable { .. }
-            // | FullEvent::Unknown { .. }
-            _ => {
-                tracing::warn!("Event Not Implemented: {:?}", event);
-                None
-            },
-        }
-    }
-
-    pub fn get_log_channel(&self, _name: &str) -> Option<GenericChannelId> {
+    pub fn get_log_channel(&self, _name: &str) -> Option<RoomRef> {
         self.get_all_log_channel()
     }
 
-    pub fn get_all_log_channel(&self) -> Option<GenericChannelId> {
+    pub fn get_all_log_channel(&self) -> Option<RoomRef> {
         if let Some(log_settings) = &self.log_settings {
             return log_settings.get_all_log_channel();
         }
         None
     }
 
-    pub fn get_join_leave_log_channel(&self) -> Option<GenericChannelId> {
-        if let Some(log_settings) = &self.log_settings {
-            if let Some(channel_id) = log_settings.join_leave_log_channel {
-                return Some(GenericChannelId::new(channel_id));
-            }
-        }
-        None
+    pub fn get_join_leave_log_channel(&self) -> Option<RoomRef> {
+        self.log_settings
+            .as_ref()
+            .and_then(|log_settings| log_settings.join_leave_log_channel.clone())
     }
 
-    pub fn get_music_channel(&self) -> Option<GenericChannelId> {
+    pub fn get_music_channel(&self) -> Option<RoomRef> {
         self.command_settings
             .get("music")
-            .and_then(|x| {
-                x.allowed_channels
-                    .iter()
-                    .map(|x| GenericChannelId::new(*x))
-                    .next()
-            })
-            .or(None)
+            .and_then(|x| x.allowed_channels.iter().next().cloned())
     }
 
     pub fn get_music_permissions(&self) -> Option<GenericPermissionSettings> {
@@ -1117,8 +951,7 @@ impl GuildSettings {
     }
 
     /// Adds a user to the denied music users list.
-    pub async fn add_denied_music_user(&mut self, user_id: UserId) -> CrackedResult<bool> {
-        let user_id = user_id.get();
+    pub async fn add_denied_music_user(&mut self, user_id: UserRef) -> CrackedResult<bool> {
         let mut perms = self.get_music_permissions().unwrap_or_default();
         perms.add_denied_user(user_id);
         self.command_settings.insert("music".to_string(), perms);
@@ -1158,16 +991,17 @@ pub type GuildSettingsMapParam =
 #[cfg(test)]
 mod test {
     use crate::guild::settings::{GuildSettings, Provenance};
-    use serenity::all::GuildId;
+    use crack_types::discord::ToRef;
+    use serenity::all::{GenericChannelId, GuildId};
 
     #[test]
     fn test_default() {
-        let settings = crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
+        let settings =
+            crate::guild::settings::GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         assert_eq!(settings.prefix, "r!");
         assert_eq!(settings.allowed_domains.len(), 1);
         assert!(settings.allowed_domains.contains("youtube.com"));
         assert_eq!(settings.banned_domains.len(), 0);
-        assert_eq!(settings.authorized_users.len(), 0);
         assert_eq!(settings.ignored_channels.len(), 1);
         assert_eq!(settings.old_volume, 1.0);
         assert_eq!(settings.volume, 1.0);
@@ -1179,41 +1013,38 @@ mod test {
     }
 
     #[test]
-    fn test_get_log_channel() {
-        let mut settings =
-            crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
-        let channel_id = 123;
-        settings.set_all_log_channel(channel_id);
-        assert_eq!(
-            settings.get_log_channel("all"),
-            Some(serenity::model::id::GenericChannelId::new(123))
+    fn settings_json_with_the_removed_authorization_keys_still_loads() {
+        let settings = GuildSettings::new(GuildId::new(123).to_ref(), None, None);
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(!json.contains("authorized"));
+        let legacy = json.replacen(
+            '{',
+            r#"{"authorized_users":{"1":2},"authorized_groups":{},"#,
+            1,
         );
+        let back: GuildSettings = serde_json::from_str(&legacy).unwrap();
+        assert_eq!(back, settings);
     }
 
     #[test]
-    fn test_get_log_channel_type_fe() {
+    fn test_get_log_channel() {
         let mut settings =
-            crate::guild::settings::GuildSettings::new(GuildId::new(123), None, None);
+            crate::guild::settings::GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         let channel_id = 123;
-        settings.set_all_log_channel(channel_id);
-        let event = serenity::all::FullEvent::GuildCreate {
-            guild: serenity::model::guild::Guild::default(),
-            is_new: Some(true),
-        };
+        settings.set_all_log_channel(GenericChannelId::new(channel_id).to_ref());
         assert_eq!(
-            settings.get_log_channel_type_fe(&event),
-            Some(serenity::model::id::GenericChannelId::new(123))
+            settings.get_log_channel("all"),
+            Some(GenericChannelId::new(123).to_ref())
         );
     }
 
     #[test]
     fn test_default_functions() {
         use super::{
-            additional_prefixes_default, allow_all_domains_default, authorized_users_default,
-            default_false, default_true, premium_default, volume_default,
+            additional_prefixes_default, allow_all_domains_default, default_false, default_true,
+            premium_default, volume_default,
         };
         assert_eq!(allow_all_domains_default(), Some(true));
-        assert_eq!(authorized_users_default().len(), 0);
         assert_eq!(additional_prefixes_default().len(), 0);
         assert_eq!(volume_default(), 1.0);
         assert!(!premium_default());
@@ -1225,7 +1056,7 @@ mod test {
     fn a_fresh_settings_value_is_fallback() {
         // The safe direction: anything not explicitly loaded from Postgres
         // must never be written back over a stored row.
-        let settings = GuildSettings::new(GuildId::new(123), None, None);
+        let settings = GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         assert_eq!(settings.provenance, Provenance::Fallback);
         assert!(!settings.is_persistable());
     }
@@ -1237,8 +1068,8 @@ mod test {
 
     #[test]
     fn with_provenance_marks_it_persistable() {
-        let settings =
-            GuildSettings::new(GuildId::new(123), None, None).with_provenance(Provenance::Database);
+        let settings = GuildSettings::new(GuildId::new(123).to_ref(), None, None)
+            .with_provenance(Provenance::Database);
         assert_eq!(settings.provenance, Provenance::Database);
         assert!(settings.is_persistable());
     }
@@ -1247,7 +1078,7 @@ mod test {
     fn provenance_does_not_affect_equality() {
         // GuildSettings derives PartialEq and is compared in existing tests.
         // Provenance is bookkeeping, not part of a guild's settings.
-        let fallback = GuildSettings::new(GuildId::new(123), None, None);
+        let fallback = GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         let from_db = fallback.clone().with_provenance(Provenance::Database);
         assert_eq!(fallback, from_db);
     }
@@ -1255,8 +1086,8 @@ mod test {
     #[test]
     fn provenance_is_not_serialized() {
         // It is not a column and must not reach the wire.
-        let from_db =
-            GuildSettings::new(GuildId::new(123), None, None).with_provenance(Provenance::Database);
+        let from_db = GuildSettings::new(GuildId::new(123).to_ref(), None, None)
+            .with_provenance(Provenance::Database);
         let json = serde_json::to_string(&from_db).expect("serialize");
         assert!(
             !json.contains("provenance"),
@@ -1268,20 +1099,92 @@ mod test {
     fn a_builder_that_copies_self_preserves_provenance() {
         // `with_volume` and friends use `..self`. A mutation must not silently
         // downgrade a Database-loaded value back to Fallback.
-        let from_db = GuildSettings::new(GuildId::new(123), None, None)
+        let from_db = GuildSettings::new(GuildId::new(123).to_ref(), None, None)
             .with_provenance(Provenance::Database)
             .with_volume(0.8);
         assert_eq!(from_db.provenance, Provenance::Database);
     }
 
+    fn row(guild_id: i64, ignored_channels: Vec<i64>) -> crate::db::GuildSettingsRead {
+        crate::db::GuildSettingsRead {
+            guild_id,
+            guild_name: "guild".to_string(),
+            prefix: "r!".to_string(),
+            premium: false,
+            autopause: false,
+            allow_all_domains: true,
+            allowed_domains: vec![],
+            banned_domains: vec![],
+            ignored_channels,
+            old_volume: 1.0,
+            volume: 1.0,
+            self_deafen: true,
+            timeout_seconds: Some(360),
+            additional_prefixes: vec![],
+            ephemeral_replies: false,
+            control_echoes: true,
+            now_playing_buttons: true,
+        }
+    }
+
+    #[test]
+    fn settings_json_keeps_its_shape() {
+        let s = GuildSettings::new(GuildId::new(123).to_ref(), None, Some("G".into()));
+        let json = serde_json::to_string(&s).unwrap();
+        // serenity writes an id as a string.
+        assert!(json.contains(r#""guild_id":"123","#), "{json}");
+        assert!(json.contains(r#""guild_name":"G""#), "{json}");
+        assert!(
+            json.contains(r#""ignored_channels":[1165246445654388746]"#),
+            "{json}"
+        );
+        assert_eq!(serde_json::from_str::<GuildSettings>(&json).unwrap(), s);
+    }
+
+    #[test]
+    fn settings_json_in_masters_shape_loads() {
+        let s = GuildSettings::new(GuildId::new(123).to_ref(), None, Some("G".into()));
+        // Master's `guild_id` was a serenity id: a string.
+        let master = serde_json::to_string(&s).unwrap();
+        assert!(master.contains(r#""guild_id":"123","#), "{master}");
+        assert_eq!(serde_json::from_str::<GuildSettings>(&master).unwrap(), s);
+        // serenity read a number as well.
+        let number = master.replacen(r#""guild_id":"123","#, r#""guild_id":123,"#, 1);
+        assert_eq!(serde_json::from_str::<GuildSettings>(&number).unwrap(), s);
+        let bad = master.replacen(r#""guild_id":"123","#, r#""guild_id":"0","#, 1);
+        assert!(serde_json::from_str::<GuildSettings>(&bad).is_err());
+    }
+
+    #[test]
+    fn a_row_with_a_garbage_ignored_channel_keeps_the_rest() {
+        let s = GuildSettings::try_from(row(5, vec![0, 77])).unwrap();
+        assert_eq!(
+            s.ignored_channels,
+            [GenericChannelId::new(77).to_ref()].into()
+        );
+    }
+
+    #[test]
+    fn a_row_with_a_garbage_guild_id_is_an_error() {
+        assert!(GuildSettings::try_from(row(0, vec![])).is_err());
+        assert!(GuildSettings::try_from(row(-1, vec![])).is_err());
+    }
+
+    #[test]
+    fn a_good_row_keeps_its_guild_and_name() {
+        let s = GuildSettings::try_from(row(5, vec![77])).unwrap();
+        assert_eq!(s.guild_id, GuildId::new(5).to_ref());
+        assert_eq!(s.guild_name, "guild");
+    }
+
     #[test]
     fn ephemeral_replies_are_off_by_default() {
-        assert!(!GuildSettings::new(GuildId::new(123), None, None).ephemeral_replies);
+        assert!(!GuildSettings::new(GuildId::new(123).to_ref(), None, None).ephemeral_replies);
     }
 
     #[test]
     fn toggling_ephemeral_replies_flips_them() {
-        let mut settings = GuildSettings::new(GuildId::new(123), None, None);
+        let mut settings = GuildSettings::new(GuildId::new(123).to_ref(), None, None);
 
         settings.toggle_ephemeral_replies();
         assert!(settings.ephemeral_replies);
@@ -1311,7 +1214,7 @@ mod test {
             now_playing_buttons: true,
         };
 
-        assert!(GuildSettings::from(row).ephemeral_replies);
+        assert!(GuildSettings::try_from(row).unwrap().ephemeral_replies);
     }
 
     #[test]
@@ -1335,12 +1238,12 @@ mod test {
             control_echoes: true,
             now_playing_buttons: false,
         };
-        assert!(!GuildSettings::from(row).now_playing_buttons);
+        assert!(!GuildSettings::try_from(row).unwrap().now_playing_buttons);
     }
 
     #[test]
     fn new_settings_have_buttons_and_settings_differing_in_them_are_not_equal() {
-        let on = GuildSettings::new(GuildId::new(123), None, None);
+        let on = GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         assert!(on.now_playing_buttons);
         let mut off = on.clone();
         off.toggle_now_playing_buttons();
@@ -1350,7 +1253,7 @@ mod test {
 
     #[test]
     fn settings_differing_only_in_ephemeral_replies_are_not_equal() {
-        let visible = GuildSettings::new(GuildId::new(123), None, None);
+        let visible = GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         let mut private = visible.clone();
         private.ephemeral_replies = true;
 
@@ -1359,12 +1262,12 @@ mod test {
 
     #[test]
     fn control_echoes_are_on_by_default() {
-        assert!(GuildSettings::new(GuildId::new(123), None, None).control_echoes);
+        assert!(GuildSettings::new(GuildId::new(123).to_ref(), None, None).control_echoes);
     }
 
     #[test]
     fn toggling_control_echoes_flips_them() {
-        let mut settings = GuildSettings::new(GuildId::new(123), None, None);
+        let mut settings = GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         settings.toggle_control_echoes();
         assert!(!settings.control_echoes);
         settings.toggle_control_echoes();
@@ -1392,14 +1295,121 @@ mod test {
             control_echoes: false,
             now_playing_buttons: true,
         };
-        assert!(!GuildSettings::from(row).control_echoes);
+        assert!(!GuildSettings::try_from(row).unwrap().control_echoes);
     }
 
     #[test]
     fn settings_differing_only_in_control_echoes_are_not_equal() {
-        let on = GuildSettings::new(GuildId::new(123), None, None);
+        let on = GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         let mut off = on.clone();
         off.control_echoes = false;
         assert_ne!(on, off);
+    }
+
+    #[test]
+    fn the_welcome_reply_text_is_unchanged() {
+        use super::WelcomeSettings;
+        use serenity::all::RoleId;
+        // set_welcome_settings.rs replies with this Display, so its bytes are user-visible.
+        let w = WelcomeSettings::new()
+            .with_channel_id(GenericChannelId::new(123).to_ref())
+            .with_message("hi".into())
+            .with_auto_role(RoleId::new(456).to_ref());
+        assert_eq!(
+            w.to_string(),
+            "{\n  \"channel_id\": 123,\n  \"message\": \"hi\",\n  \"auto_role\": 456,\n  \"password\": null\n}"
+        );
+    }
+
+    #[test]
+    fn log_settings_serialise_channels_as_numbers() {
+        use super::LogSettings;
+        let mut l = LogSettings::default();
+        l.set_all_log_channel(GenericChannelId::new(9).to_ref());
+        let json = serde_json::to_string(&l).unwrap();
+        assert_eq!(
+            json,
+            r#"{"all_log_channel":9,"raw_event_log_channel":null,"server_log_channel":null,"member_log_channel":null,"join_leave_log_channel":null,"voice_log_channel":null}"#
+        );
+        assert_eq!(serde_json::from_str::<LogSettings>(&json).unwrap(), l);
+    }
+
+    #[test]
+    fn a_snowflake_above_i64_max_is_refused_not_wrapped() {
+        use crack_types::discord::from_snowflake;
+        let big = from_snowflake::<crack_model::User>(i64::MAX as u64 + 1).unwrap();
+        assert!(super::column_i64(&big).is_err());
+        let top = from_snowflake::<crack_model::User>(i64::MAX as u64).unwrap();
+        assert_eq!(super::column_i64(&top).unwrap(), i64::MAX);
+    }
+
+    #[test]
+    fn garbage_stored_ids_are_dropped_not_panicked_on() {
+        use super::LogSettings;
+        use crack_types::discord::from_snowflake;
+        let row = crate::db::LogSettingsRead {
+            guild_id: 1,
+            all_log_channel: Some(0),
+            raw_event_log_channel: Some(-5),
+            server_log_channel: Some(i64::MAX),
+            member_log_channel: None,
+            join_leave_log_channel: None,
+            voice_log_channel: None,
+        };
+        let l = LogSettings::from(row);
+        assert_eq!(l.get_all_log_channel(), None);
+        assert_eq!(l.raw_event_log_channel, None);
+        assert_eq!(
+            l.get_server_log_channel(),
+            Some(from_snowflake(i64::MAX as u64).unwrap())
+        );
+    }
+
+    #[test]
+    fn garbage_welcome_ids_are_dropped_not_panicked_on() {
+        use super::WelcomeSettings;
+        let row = crate::db::WelcomeSettingsRead {
+            guild_id: 1,
+            auto_role: Some(-1),
+            channel_id: Some(0),
+            message: Some("hi".into()),
+        };
+        let w = WelcomeSettings::from(row);
+        assert_eq!(w.channel_id, None);
+        assert_eq!(w.auto_role, None);
+        assert_eq!(w.message.as_deref(), Some("hi"));
+    }
+
+    #[test]
+    fn every_log_channel_getter_reads_its_own_field() {
+        use super::LogSettings;
+        let r = |n: u64| GenericChannelId::new(n).to_ref();
+        let mut l = LogSettings::default();
+        l.set_all_log_channel(r(1))
+            .set_server_log_channel(r(2))
+            .set_join_leave_log_channel(r(3))
+            .set_member_log_channel(r(4))
+            .set_voice_log_channel(r(5));
+        assert_eq!(l.get_all_log_channel(), Some(r(1)));
+        assert_eq!(l.get_server_log_channel(), Some(r(2)));
+        assert_eq!(l.get_join_leave_log_channel(), Some(r(3)));
+        assert_eq!(l.get_member_log_channel(), Some(r(4)));
+        assert_eq!(l.get_voice_log_channel(), Some(r(5)));
+        assert_eq!(l.raw_event_log_channel, None);
+    }
+
+    #[test]
+    fn the_join_leave_channel_is_set_without_touching_the_rest() {
+        let r = |n: u64| GenericChannelId::new(n).to_ref();
+        let mut s = GuildSettings::new(GuildId::new(1).to_ref(), None, None);
+        s.set_all_log_channel(r(1));
+        let with = s.with_join_leave_log_channel(r(3));
+        assert_eq!(with.get_join_leave_log_channel(), Some(r(3)));
+        assert_eq!(with.get_all_log_channel(), Some(r(1)));
+        assert_eq!(s.get_join_leave_log_channel(), None, "the original is kept");
+        let fresh = GuildSettings::new(GuildId::new(1).to_ref(), None, None)
+            .with_join_leave_log_channel(r(4));
+        assert_eq!(fresh.get_join_leave_log_channel(), Some(r(4)));
+        assert_eq!(fresh.get_all_log_channel(), None);
     }
 }

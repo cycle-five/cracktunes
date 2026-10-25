@@ -545,6 +545,20 @@
   answers signed-out visitors with a landing page that carries its own preview
   (title, description and image) and a "Sign in with Discord" link. (#589)
 
+### Internal
+
+- **`crack-model`**, a new crate with no platform dependency, holds
+  platform-neutral refs (`UserRef`, `CommunityRef`, `RoomRef`, `RoleRef`,
+  `MessageRef`), and `crack_types::discord` converts them to and from serenity
+  ids. CI checks that `crack-model` stays free of platform crates.
+- **Server settings hold refs** instead of serenity ids or bare numbers.
+  Storage and every serialised form are unchanged. The never-loaded
+  `authorized_users`/`authorized_groups` settings and the unregistered
+  `/authorize` and `/deauthorize` commands are gone; their tables stay until
+  v0.36.2 is out of the rollback window.
+- **The dashboard backend speaks refs.** A dashboard URL with the guild id
+  `18446744073709551615` now answers 404 instead of panicking.
+
 ## TODO:
 
 - [ ] /changenicks command. Renames all users in the guild

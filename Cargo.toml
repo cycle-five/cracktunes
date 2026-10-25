@@ -8,6 +8,7 @@ members = [
   "crack-web",
   "crack-testing",
   "crack-test-macros",
+  "crack-model",
   "crack-types",
 ]
 resolver = "2"
@@ -22,7 +23,7 @@ resolver = "2"
 # did not bump it. docker.yml refuses a tag that does not match this line, since
 # a mismatched tag would publish yesterday's code under the new image name that
 # the homelab compose files pin to.
-version = "0.36.2"
+version = "0.37.0"
 edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
