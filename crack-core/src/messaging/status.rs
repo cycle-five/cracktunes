@@ -12,7 +12,7 @@ use crate::messaging::messages::{
 use crate::messaging::render::RenderCx;
 use crate::messaging::render::Rendered;
 use crate::Data;
-use serenity::all::{Cache, CreateEmbed, GenericChannelId, GuildId, Http, MessageId, MessageLink};
+use serenity::all::{Cache, GenericChannelId, GuildId, Http, MessageId, MessageLink};
 use songbird::Call;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -403,10 +403,12 @@ pub async fn show_finished(
 }
 
 /// The "Finished" status.
-pub fn finished_embed() -> CreateEmbed<'static> {
-    CreateEmbed::new()
-        .title(STATUS_FINISHED_TITLE)
-        .description(STATUS_FINISHED_DESCRIPTION)
+pub fn finished_card() -> crack_model::Card {
+    crack_model::Card {
+        title: Some(STATUS_FINISHED_TITLE.to_owned()),
+        description: Some(STATUS_FINISHED_DESCRIPTION.to_owned()),
+        ..crack_model::Card::default()
+    }
 }
 
 /// `/nowplaying`'s one-line reply: a jump link when the status exists
@@ -463,7 +465,7 @@ mod tests {
     }
 
     fn embed() -> Rendered {
-        Rendered::embed(CreateEmbed::new().title("status"))
+        Rendered::embed(serenity::all::CreateEmbed::new().title("status"))
     }
 
     // ---- placement ----

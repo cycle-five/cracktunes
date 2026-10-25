@@ -289,6 +289,7 @@ impl From<&ops::OpRefused> for ControlRefused {
 
 pub use crate::messaging::cards::Echo;
 pub use crate::music::ops::At;
+use crack_types::discord::ToRef;
 use crack_types::SavedTrack;
 
 /// The audit actor for a control from `via`.
@@ -374,7 +375,11 @@ pub async fn control(
         };
         let anchor = match posted {
             Some(echo) => {
-                let line = EchoLine { echo, user, via };
+                let line = EchoLine {
+                    echo,
+                    user: user.to_ref(),
+                    via,
+                };
                 courier::post(
                     &cx.data,
                     &transport,
@@ -465,7 +470,7 @@ pub async fn add(
         };
         let line = EchoLine {
             echo: posted,
-            user,
+            user: user.to_ref(),
             via,
         };
         let anchor = courier::post(
@@ -579,7 +584,7 @@ mod test {
     fn line(echo: Echo, user: UserId) -> String {
         let msg = CrackedMessage::Echo(Box::new(EchoLine {
             echo,
-            user,
+            user: user.to_ref(),
             via: Via::Dashboard,
         }));
         crate::messaging::render::description(&crate::messaging::render::render(

@@ -7,11 +7,12 @@
 use crate::messaging::format::{clip, CONTENT_MAX, DESCRIPTION_MAX};
 use crate::messaging::message::CrackedMessage;
 use serenity::all::{
-    Colour, CreateAllowedMentions, CreateComponent, CreateEmbed, CreateInteractionResponseFollowup,
+    CreateAllowedMentions, CreateComponent, CreateEmbed, CreateInteractionResponseFollowup,
     CreateInteractionResponseMessage, CreateMessage, EditMessage,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crack_model::Card;
 pub use crack_model::Mentions;
 
 /// One message, ready to send.
@@ -222,20 +223,23 @@ pub fn render(msg: &CrackedMessage, cx: &RenderCx) -> Rendered {
         CrackedMessage::Room(card) => crate::rooms::card::render_card(card, cx),
         CrackedMessage::ModLog(event) => crate::modlog::event::render(event, cx),
         CrackedMessage::TrackFailed { listed, more } => {
-            Rendered::embed(CreateEmbed::new().description(clip(
-                &super::track_failed::render_text(listed, *more),
-                DESCRIPTION_MAX,
-            )))
+            Rendered::embed(super::discord::embed(&Card {
+                description: Some(clip(
+                    &super::track_failed::render_text(listed, *more),
+                    DESCRIPTION_MAX,
+                )),
+                ..Card::default()
+            }))
         },
         other => {
             let text = other.to_string();
             match other.style() {
                 Style::Text => Rendered::text(text),
-                Style::Embed => Rendered::embed(
-                    CreateEmbed::new()
-                        .description(clip(&text, DESCRIPTION_MAX))
-                        .colour(Colour::new(other.colour())),
-                ),
+                Style::Embed => Rendered::embed(super::discord::embed(&Card {
+                    description: Some(clip(&text, DESCRIPTION_MAX)),
+                    colour: Some(other.colour()),
+                    ..Card::default()
+                })),
             }
         },
     }

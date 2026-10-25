@@ -263,7 +263,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
 /// `get_info` (`(false, false)` when it does not answer).
 async fn read_card(track: &TrackHandle) -> (NowPlayingCard, (bool, bool)) {
     let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
-    let requester = get_requesting_user(track).await.ok();
+    let requester = get_requesting_user(track).await.ok().map(|u| u.to_ref());
     let label = TrackLabel::from_metadata(&metadata);
     let info = tokio::time::timeout(crate::music::ops::TRACK_INFO_TIMEOUT, track.get_info())
         .await
@@ -296,7 +296,7 @@ pub async fn now_playing_card(track: &TrackHandle) -> NowPlayingCard {
 pub async fn now_playing_status_card(track: &TrackHandle, guild: GuildId) -> NowPlayingCard {
     let (mut card, (paused, looping)) = read_card(track).await;
     card.controls = Some(crate::messaging::buttons::Controls {
-        guild,
+        guild: guild.to_ref(),
         track: track.uuid(),
         paused,
         looping,
@@ -570,6 +570,7 @@ mod test {
     async fn the_status_card_of_a_stalled_driver_has_default_controls() {
         use super::now_playing_status_card;
         use crate::messaging::buttons::Controls;
+        use crack_types::discord::ToRef;
         use std::time::Duration;
         let (_data, call, ids, _rx) = crate::music::ops::test_support::queue_of(1).await;
         let handle = call.lock().await.queue().current_queue()[0].clone();
@@ -583,7 +584,7 @@ mod test {
         assert_eq!(
             card.controls,
             Some(Controls {
-                guild,
+                guild: guild.to_ref(),
                 track: ids[0],
                 paused: false,
                 looping: false

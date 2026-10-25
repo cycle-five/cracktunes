@@ -1,10 +1,10 @@
 //! The structured messages: now playing, queued, the echo of a dashboard or
 //! button control, and their renderers.
+use crate::messaging::discord;
 use crate::messaging::format::{
     clip, duration_text, http_url, progress_text, Progress, TrackLabel, AUTHOR_MAX,
     EMBED_TITLE_MAX, FIELD_MAX, INLINE_TITLE_MAX,
 };
-use crate::messaging::interface::requesting_user_to_string;
 use crate::messaging::messages::{
     ECHO_ADDED, ECHO_ADDED_NEXT, ECHO_FROM_DASHBOARD, ECHO_PAUSED, ECHO_REMOVED, ECHO_REPEAT_OFF,
     ECHO_REPEAT_ON, ECHO_RESUMED, ECHO_SHUFFLED, ECHO_SKIPPED, PROGRESS, QUEUE_NOW_PLAYING,
@@ -12,7 +12,7 @@ use crate::messaging::messages::{
 };
 use crate::messaging::render::{RenderCx, Rendered};
 use crate::utils::build_footer_info;
-use serenity::all::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, UserId};
+use crack_model::{Author, Card, Field, Footer, UserRef};
 use std::time::Duration;
 
 /// The now-playing card.
@@ -20,7 +20,7 @@ use std::time::Duration;
 pub struct NowPlayingCard {
     pub label: TrackLabel,
     pub thumbnail: Option<String>,
-    pub requester: Option<UserId>,
+    pub requester: Option<UserRef>,
     pub progress: Progress,
     /// The buttons: only the status message has them, never a reply or a DM.
     pub controls: Option<crate::messaging::buttons::Controls>,
@@ -47,14 +47,14 @@ pub enum Via {
 #[derive(Debug, Clone)]
 pub struct EchoLine {
     pub echo: Echo,
-    pub user: UserId,
+    pub user: UserRef,
     pub via: Via,
 }
 
 impl EchoLine {
     #[must_use]
     pub fn line(&self) -> String {
-        self.echo.line(self.user, self.via)
+        self.echo.line(&self.user, self.via)
     }
 }
 
@@ -76,7 +76,7 @@ impl Echo {
     /// are cut to `INLINE_TITLE_MAX` characters, then escaped; a blank one is
     /// `(untitled)`, never `****`.
     #[must_use]
-    pub fn line(&self, user: UserId, via: Via) -> String {
+    pub fn line(&self, user: &UserRef, via: Via) -> String {
         let (what, title) = match self {
             Self::Skipped { title } => (ECHO_SKIPPED, title.as_deref()),
             Self::Paused => (ECHO_PAUSED, None),
@@ -95,14 +95,15 @@ impl Echo {
         };
         match title {
             Some(t) => format!(
-                "{what} **{}**{from} — <@{user}>",
+                "{what} **{}**{from} — <@{}>",
                 TrackLabel {
                     title: Some(t.to_owned()),
                     ..TrackLabel::default()
                 }
-                .title_text(INLINE_TITLE_MAX)
+                .title_text(INLINE_TITLE_MAX),
+                user.raw().as_str()
             ),
-            None => format!("{what}{from} — <@{user}>"),
+            None => format!("{what}{from} — <@{}>", user.raw().as_str()),
         }
     }
 }
@@ -113,8 +114,8 @@ impl Echo {
 #[must_use]
 pub fn now_playing(card: &NowPlayingCard, cx: &RenderCx) -> Rendered {
     let url = http_url(card.label.url.as_deref());
-    let requester = match card.requester {
-        Some(id) => format!(">>> {}", requesting_user_to_string(id)),
+    let requester = match &card.requester {
+        Some(id) => format!(">>> {}", requester_text(id)),
         None => ">>> N/A".to_owned(),
     };
     let progress = clip(
@@ -125,31 +126,56 @@ pub fn now_playing(card: &NowPlayingCard, cx: &RenderCx) -> Rendered {
     let title = clip(&card.label.title_text(EMBED_TITLE_MAX), EMBED_TITLE_MAX);
     let (footer_text, footer_icon, vanity) =
         build_footer_info(url.as_ref().map_or("", |u| u.as_str()));
-    let mut embed = CreateEmbed::new()
-        .author(CreateEmbedAuthor::new(clip(QUEUE_NOW_PLAYING, AUTHOR_MAX)))
-        .title(title)
-        .field(PROGRESS, progress, true)
-        .field(REQUESTED_BY, requester, true)
-        .description(vanity);
+    let mut out = Card {
+        title: Some(title),
+        description: Some(vanity),
+        author: Some(Author {
+            name: clip(QUEUE_NOW_PLAYING, AUTHOR_MAX),
+            url: None,
+            icon_url: None,
+        }),
+        fields: vec![
+            Field {
+                name: PROGRESS.to_owned(),
+                value: progress,
+                inline: true,
+            },
+            Field {
+                name: REQUESTED_BY.to_owned(),
+                value: requester,
+                inline: true,
+            },
+        ],
+        ..Card::default()
+    };
     if let Some(u) = &url {
-        embed = embed.url(u.to_string());
+        out.url = Some(u.to_string());
         if u.host_str().is_some() {
-            embed = embed.footer(CreateEmbedFooter::new(footer_text).icon_url(footer_icon));
+            out.footer = Some(Footer {
+                text: footer_text,
+                icon_url: Some(footer_icon),
+            });
         }
     }
-    if let Some(t) = http_url(card.thumbnail.as_deref()) {
-        embed = embed.thumbnail(t.to_string(), None);
-    }
-    let out = Rendered::embed(embed);
+    out.thumbnail = http_url(card.thumbnail.as_deref()).map(|t| t.to_string());
+    let rendered = Rendered::embed(discord::embed(&out));
     match &card.controls {
-        Some(c) => out.with_components(vec![crate::messaging::buttons::now_playing_row(c)]),
-        None => out,
+        Some(c) => rendered.with_components(discord::action_rows(&c.rows())),
+        None => rendered,
+    }
+}
+
+/// Who asked for the track: autoplay (stored as user 1) or a mention.
+fn requester_text(user: &UserRef) -> String {
+    match user.raw().as_str() {
+        "1" => "(auto)".to_owned(),
+        raw => format!("<@{raw}>"),
     }
 }
 
 #[must_use]
 pub fn finished() -> Rendered {
-    Rendered::embed(crate::messaging::status::finished_embed())
+    Rendered::embed(discord::embed(&crate::messaging::status::finished_card()))
 }
 
 /// The card for a track added to the queue. Its length and its wait are each
@@ -159,15 +185,6 @@ pub fn finished() -> Rendered {
 pub fn queued(card: &QueuedCard, _cx: &RenderCx) -> Rendered {
     // `title_text` escapes after capping, so the escaped title can be longer.
     let title = clip(&card.label.title_text(EMBED_TITLE_MAX), EMBED_TITLE_MAX);
-    let mut embed = CreateEmbed::new()
-        .author(CreateEmbedAuthor::new(clip(card.author, AUTHOR_MAX)))
-        .title(title);
-    if let Some(u) = http_url(card.label.url.as_deref()) {
-        embed = embed.url(u.to_string());
-    }
-    if let Some(t) = http_url(card.thumbnail.as_deref()) {
-        embed = embed.thumbnail(t.to_string(), None);
-    }
     let footer: Vec<String> = [
         duration_text(card.label.duration).map(|d| format!("{TRACK_DURATION} {d}")),
         duration_text(card.wait).map(|w| format!("{TRACK_TIME_TO_PLAY} {w}")),
@@ -175,15 +192,30 @@ pub fn queued(card: &QueuedCard, _cx: &RenderCx) -> Rendered {
     .into_iter()
     .flatten()
     .collect();
-    if !footer.is_empty() {
-        embed = embed.footer(CreateEmbedFooter::new(footer.join("\n")));
-    }
-    Rendered::embed(embed)
+    let out = Card {
+        title: Some(title),
+        url: http_url(card.label.url.as_deref()).map(|u| u.to_string()),
+        author: Some(Author {
+            name: clip(card.author, AUTHOR_MAX),
+            url: None,
+            icon_url: None,
+        }),
+        thumbnail: http_url(card.thumbnail.as_deref()).map(|t| t.to_string()),
+        footer: (!footer.is_empty()).then(|| Footer {
+            text: footer.join("\n"),
+            icon_url: None,
+        }),
+        ..Card::default()
+    };
+    Rendered::embed(discord::embed(&out))
 }
 
 #[must_use]
 pub fn echo(line: &EchoLine) -> Rendered {
-    Rendered::embed(CreateEmbed::new().description(line.line()))
+    Rendered::embed(discord::embed(&Card {
+        description: Some(line.line()),
+        ..Card::default()
+    }))
 }
 
 #[cfg(test)]
@@ -192,6 +224,8 @@ mod tests {
     use crate::messaging::format::{Progress, TrackLabel};
     use crate::messaging::messages::STATUS_FINISHED_TITLE;
     use crate::messaging::render::RenderCx;
+    use crack_types::discord::ToRef;
+    use serenity::all::UserId;
     use std::time::Duration;
 
     fn v(r: &Rendered) -> serde_json::Value {
@@ -206,7 +240,7 @@ mod tests {
                 duration: Some(Duration::from_secs(273)),
             },
             thumbnail: thumb.map(str::to_owned),
-            requester: Some(UserId::new(42)),
+            requester: Some(UserId::new(42).to_ref()),
             progress: Progress::Playing {
                 position: Duration::from_secs(73),
                 duration: Some(Duration::from_secs(273)),
@@ -315,44 +349,44 @@ mod tests {
             title: Some("t0".into()),
         };
         assert_eq!(
-            skipped.line(UserId::new(42), Via::Button),
+            skipped.line(&UserId::new(42).to_ref(), Via::Button),
             "⏭ Skipped **t0** — <@42>"
         );
         assert_eq!(
-            skipped.line(UserId::new(42), Via::Dashboard),
+            skipped.line(&UserId::new(42).to_ref(), Via::Dashboard),
             "⏭ Skipped **t0** from the dashboard — <@42>"
         );
         assert_eq!(
-            Echo::Paused.line(UserId::new(42), Via::Button),
+            Echo::Paused.line(&UserId::new(42).to_ref(), Via::Button),
             "⏸ Paused — <@42>"
         );
         assert_eq!(
-            Echo::Repeat { on: true }.line(UserId::new(42), Via::Button),
+            Echo::Repeat { on: true }.line(&UserId::new(42).to_ref(), Via::Button),
             "🔁 Repeat on — <@42>"
         );
     }
 
     #[test]
     fn add_echoes_name_the_track_where_it_went_and_who() {
-        let u = UserId::new(5);
+        let u = UserId::new(5).to_ref();
         assert_eq!(
             Echo::Added {
                 title: Some("Waterloo".into())
             }
-            .line(u, Via::Dashboard),
+            .line(&u, Via::Dashboard),
             format!("{ECHO_ADDED} **Waterloo** {ECHO_FROM_DASHBOARD} — <@5>")
         );
         assert_eq!(
             Echo::AddedNext {
                 title: Some("Waterloo".into())
             }
-            .line(u, Via::Dashboard),
+            .line(&u, Via::Dashboard),
             format!("{ECHO_ADDED_NEXT} **Waterloo** {ECHO_FROM_DASHBOARD} — <@5>")
         );
         let hostile = Echo::Added {
             title: Some("**x** @everyone".into()),
         }
-        .line(u, Via::Dashboard);
+        .line(&u, Via::Dashboard);
         assert!(
             !hostile.contains("**x**"),
             "the title is escaped: {hostile}"
@@ -361,7 +395,7 @@ mod tests {
             let line = Echo::AddedNext {
                 title: Some(blank.into()),
             }
-            .line(u, Via::Dashboard);
+            .line(&u, Via::Dashboard);
             assert!(line.contains("**(untitled)**"), "{blank:?}: {line}");
         }
     }
@@ -375,7 +409,7 @@ mod tests {
                 title: Some(blank.into()),
             };
             assert_eq!(
-                echo.line(UserId::new(42), Via::Dashboard),
+                echo.line(&UserId::new(42).to_ref(), Via::Dashboard),
                 "⏭ Skipped **(untitled)** from the dashboard — <@42>",
                 "{blank:?}"
             );
@@ -482,7 +516,7 @@ mod tests {
         let mut c = card(None, None);
         assert!(now_playing(&c, &RenderCx::default()).components.is_empty());
         c.controls = Some(Controls {
-            guild: serenity::all::GuildId::new(1),
+            guild: serenity::all::GuildId::new(1).to_ref(),
             track: uuid::Uuid::nil(),
             paused: false,
             looping: false,
@@ -499,5 +533,100 @@ mod tests {
         assert!(finished().components.is_empty());
         let edit = serde_json::to_value(finished().to_edit()).unwrap();
         assert_eq!(edit["components"].as_array().map(Vec::len), Some(0));
+    }
+
+    /// The Discord bytes of each music message, captured before the cards
+    /// were built neutral. Only the payloads' construction may change.
+    #[test]
+    fn music_cards_render_as_before() {
+        use crate::messaging::buttons::Controls;
+        use crate::messaging::message::CrackedMessage;
+        use crate::messaging::render::render;
+        use crate::messaging::track_failed::{FailReason, Failure};
+
+        fn bytes(r: &Rendered) -> (String, String, String) {
+            (
+                serde_json::to_string(&r.embed).unwrap(),
+                serde_json::to_string(&r.components).unwrap(),
+                serde_json::to_string(&r.embeds_extra).unwrap(),
+            )
+        }
+        fn pin(r: &Rendered, embed: &str, components: &str) {
+            assert_eq!(
+                bytes(r),
+                (embed.to_owned(), components.to_owned(), "[]".to_owned())
+            );
+        }
+        let cx = RenderCx {
+            now_unix: 1_000_000,
+            embed_links: true,
+        };
+
+        let mut playing = card(
+            Some("https://www.youtube.com/watch?v=x"),
+            Some("https://i.ytimg.com/a.jpg"),
+        );
+        playing.controls = Some(Controls {
+            guild: serenity::all::GuildId::new(7).to_ref(),
+            track: uuid::Uuid::nil(),
+            paused: false,
+            looping: true,
+        });
+        pin(&now_playing(&playing, &cx), "{\"title\":\"OH SHIT I'M FEELING IT\",\"type\":\"rich\",\"description\":\"[vote](https://top.gg/bot/1115229568006103122/vote) • [invite](https://discord.com/oauth2/authorize?client_id=1115229568006103122&permissions=551940115520&scope=bot+applications.commands)\",\"url\":\"https://www.youtube.com/watch?v=x\",\"footer\":{\"text\":\"Streaming via youtube.com\",\"icon_url\":\"https://www.google.com/s2/favicons?domain=youtube.com\"},\"thumbnail\":{\"url\":\"https://i.ytimg.com/a.jpg\",\"description\":null},\"author\":{\"name\":\"🔊 Now playing\",\"url\":null,\"icon_url\":null},\"fields\":[{\"name\":\"Progress\",\"value\":\">>> 4:33 · ends <t:1000200:R>\",\"inline\":true},{\"name\":\"Requested by\",\"value\":\">>> <@42>\",\"inline\":true}]}",
+            "[{\"type\":1,\"components\":[{\"style\":2,\"type\":2,\"custom_id\":\"np:pause:7\",\"emoji\":{\"name\":\"⏸\u{fe0f}\"},\"disabled\":false},{\"style\":2,\"type\":2,\"custom_id\":\"np:skip:7:00000000-0000-0000-0000-000000000000\",\"emoji\":{\"name\":\"⏭\u{fe0f}\"},\"disabled\":false},{\"style\":3,\"type\":2,\"custom_id\":\"np:repeat-off:7\",\"emoji\":{\"name\":\"🔁\"},\"disabled\":false},{\"style\":2,\"type\":2,\"custom_id\":\"np:shuffle:7\",\"emoji\":{\"name\":\"🔀\"},\"disabled\":false}]}]");
+
+        pin(
+            &queued(
+                &queued_card(
+                    Some(Duration::from_secs(273)),
+                    Some(Duration::from_secs(48)),
+                ),
+                &cx,
+            ),
+            "{\"title\":\"OH SHIT I'M FEELING IT\",\"type\":\"rich\",\"url\":\"https://www.youtube.com/watch?v=x\",\"footer\":{\"text\":\"Track duration: 4:33\\nEstimated time until play: 0:48\",\"icon_url\":null},\"thumbnail\":{\"url\":\"https://i.ytimg.com/a.jpg\",\"description\":null},\"author\":{\"name\":\"📃 Added to queue!\",\"url\":null,\"icon_url\":null}}",
+            "[]",
+        );
+
+        let line = EchoLine {
+            echo: Echo::Skipped {
+                title: Some("A*B".into()),
+            },
+            user: UserId::new(42).to_ref(),
+            via: Via::Dashboard,
+        };
+        pin(&echo(&line), "{\"type\":\"rich\",\"description\":\"⏭ Skipped **A\\\\*B** from the dashboard — <@42>\"}",
+            "[]");
+        pin(&finished(), "{\"title\":\"⏹\u{fe0f} Finished\",\"type\":\"rich\",\"description\":\"Nothing is playing. Use /play to start again.\"}",
+            "[]");
+
+        let failed = CrackedMessage::TrackFailed {
+            listed: vec![
+                Failure {
+                    title: Some("one".into()),
+                    reason: FailReason::Open,
+                },
+                Failure {
+                    title: None,
+                    reason: FailReason::Seek,
+                },
+            ],
+            more: 3,
+        };
+        pin(&render(&failed, &cx), "{\"type\":\"rich\",\"description\":\"⚠\u{fe0f} Couldn't play 5 tracks:\\n• **one**: couldn't open the stream\\n• **(untitled)**: couldn't seek in it\\n+3 more\"}",
+            "[]");
+
+        pin(&render(&CrackedMessage::Error, &cx), "{\"type\":\"rich\",\"description\":\"Fatality! Something went wrong ☹\u{fe0f}\",\"color\":15158332}",
+            "[]");
+    }
+
+    /// Autoplay is stored as user 1; the card says so instead of mentioning it.
+    #[test]
+    fn an_autoplayed_card_names_the_requester_auto() {
+        let mut c = card(None, None);
+        c.requester = Some(UserId::new(1).to_ref());
+        assert_eq!(
+            v(&now_playing(&c, &RenderCx::default()))["fields"][1]["value"],
+            ">>> (auto)"
+        );
     }
 }
