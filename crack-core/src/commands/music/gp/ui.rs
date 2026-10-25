@@ -13,7 +13,6 @@ use crate::messaging::messages::{
     GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN,
 };
 use crate::messaging::{
-    discord,
     format::{clip, escape, TrackLabel, DESCRIPTION_MAX, FIELD_MAX},
     message::CrackedMessage,
     render::{render, RenderCx, Rendered},
@@ -339,29 +338,27 @@ impl std::fmt::Display for GpCard {
 
 /// What a card looks like in Discord. Reached through `messaging::render`.
 pub fn render_card(card: &GpCard, _cx: &RenderCx) -> Rendered {
-    let embed = |card: &Card| Rendered::embed(discord::embed(card));
+    let embed = |card: &Card| Rendered::card(card.clone());
     match card {
         GpCard::Rules => embed(&gp_rules_embed()),
         GpCard::Status(status) => embed(&gp_status_embed(status)),
         GpCard::Picker { text, picked, open } => {
             let out = embed(&gp_pick_embed(text));
             if *open {
-                out.with_components(discord::action_rows(&gp_pick_components(picked)))
+                out.with_rows(gp_pick_components(picked))
             } else {
                 out
             }
         },
         GpCard::Prompt(w) => embed(&gp_prompt_embed(w)),
         GpCard::PromptClosed(c) => embed(&gp_prompt_closed_embed(c)),
-        GpCard::Song(song) => {
-            embed(&gp_track_embed(song)).with_components(discord::action_rows(&gp_components(
-                &song.guild,
-                song.round_idx,
-                song.track_idx,
-                &song.players,
-                song.guessable,
-            )))
-        },
+        GpCard::Song(song) => embed(&gp_track_embed(song)).with_rows(gp_components(
+            &song.guild,
+            song.round_idx,
+            song.track_idx,
+            &song.players,
+            song.guessable,
+        )),
         GpCard::Reveal(res) => embed(&gp_reveal_embed(res)),
         GpCard::RoundResults(r) => embed(&gp_round_results_embed(r)),
         GpCard::Scoreboard {

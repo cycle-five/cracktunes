@@ -459,11 +459,7 @@ pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<Row> {
 /// order.
 #[must_use]
 pub fn create_search_results_reply(results: Vec<Card>) -> Rendered {
-    let mut results = results.iter().map(discord::embed);
-    let mut out = Rendered::text("Search results:");
-    out.embed = results.next();
-    out.embeds_extra = results.collect();
-    out
+    Rendered::text("Search results:").with_cards(results)
 }
 /// The card for a query that could not be parsed.
 fn search_failed_card() -> Card {
@@ -618,6 +614,7 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<Field> {
 #[cfg(test)]
 mod test {
     use super::discord;
+    use crate::messaging::discord::ToDiscord;
     /// Every hit is in the one reply, in order, under its line of text.
     #[test]
     fn search_results_are_one_reply_with_every_hit_in_order() {

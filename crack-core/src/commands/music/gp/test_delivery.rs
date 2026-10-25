@@ -38,7 +38,9 @@ fn fail_sends(fake: &FakeTransport, n: usize) {
 
 fn embed_title(fake: &FakeTransport, i: usize) -> String {
     let sent = fake.sent.lock().unwrap();
-    let e = serde_json::to_value(sent[i].embed.clone().expect("an embed")).unwrap();
+    let e =
+        serde_json::to_value(crate::messaging::discord::first_embed(&sent[i]).expect("an embed"))
+            .unwrap();
     e["title"].as_str().unwrap_or_default().to_string()
 }
 
@@ -51,7 +53,7 @@ async fn a_round_opens_by_posting_its_prompt_and_recording_where() {
         .await
         .unwrap();
     assert_eq!(fake.ops(), vec![Op::Send(TC.get())]);
-    assert!(fake.sent.lock().unwrap()[0].components.is_empty());
+    assert!(fake.sent.lock().unwrap()[0].rows.is_empty());
     assert_eq!(
         game(&data).rounds[0].prompt_message,
         Some((TC, MessageId::new(1000)))
@@ -88,7 +90,7 @@ async fn a_prompt_that_fails_twice_ends_the_game_and_says_so() {
     assert_eq!(fake.ops().len(), 3);
     assert_eq!(fake.texts().last().unwrap(), GP_ABORTED);
     assert!(
-        fake.sent.lock().unwrap()[2].embed.is_none(),
+        fake.sent.lock().unwrap()[2].cards.is_empty(),
         "the abort is a line"
     );
 }
@@ -155,7 +157,7 @@ async fn the_reveal_replaces_the_song_message_and_its_controls() {
         .unwrap();
     assert_eq!(fake.ops()[0], Op::Edit(TC.get(), 88));
     let reveal = fake.sent.lock().unwrap()[0].clone();
-    assert!(reveal.embed.is_some() && reveal.components.is_empty());
+    assert!(!reveal.cards.is_empty() && reveal.rows.is_empty());
 }
 
 /// However the song ended, the advance takes that path and the song keeps it:
@@ -280,7 +282,7 @@ async fn the_window_warning_is_a_line() {
     tokio::time::sleep(Duration::from_secs(11)).await;
     let sent = fake.sent.lock().unwrap().clone();
     assert_eq!(sent.len(), 1, "the warning, and the close not yet");
-    assert!(sent[0].embed.is_none());
+    assert!(sent[0].cards.is_empty());
     assert!(sent[0]
         .content
         .as_deref()

@@ -802,11 +802,11 @@ mod tests {
     #[test]
     fn the_panel_is_drawn_from_the_room() {
         let r = panel(&live(vec![]));
-        let embed = serde_json::to_string(&r.embed).unwrap();
+        let embed = serde_json::to_string(&crate::messaging::discord::first_embed(&r)).unwrap();
         assert!(embed.contains("Saucey's room"), "{embed}");
         assert!(embed.contains(&format!("<@{}>", OWNER.get())), "{embed}");
         assert!(embed.contains(&format!("<@{}>", HELPER.get())), "{embed}");
-        let rows = serde_json::to_string(&r.components).unwrap();
+        let rows = serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap();
         assert!(
             rows.contains(&format!("room:kick:{}", ROOM.get())),
             "{rows}"

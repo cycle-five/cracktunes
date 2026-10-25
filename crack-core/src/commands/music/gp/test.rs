@@ -2795,7 +2795,7 @@ fn cx() -> RenderCx {
 }
 
 fn embed_json(r: &Rendered) -> serde_json::Value {
-    serde_json::to_value(r.embed.clone().expect("an embed")).unwrap()
+    serde_json::to_value(crate::messaging::discord::first_embed(r).expect("an embed")).unwrap()
 }
 
 fn description(r: &Rendered) -> String {
@@ -2860,7 +2860,7 @@ fn every_card_renders_through_the_one_renderer() {
     let r = render(&line, &cx());
     assert_eq!(r.content.as_deref(), Some("hello"));
     assert!(
-        r.embed.is_none(),
+        r.cards.is_empty(),
         "a line is plain text, as /gp sends it today"
     );
     assert_eq!(line.to_string(), "hello");
@@ -2899,7 +2899,7 @@ fn every_card_renders_through_the_one_renderer() {
             .into(),
     ));
     assert_eq!(title_of(&prompt), round);
-    assert!(prompt.components.is_empty());
+    assert!(prompt.rows.is_empty());
     assert!(!field_value(&prompt, GP_PROMPT_HOW_TO_TITLE).is_empty());
     assert!(!description(&prompt).contains(GP_WINDOW_EMPTY));
 
@@ -2978,16 +2978,13 @@ fn a_song_carries_its_controls_and_a_reveal_carries_none() {
     let data = data();
     let start = playing_with_title(&data, "Song", GpReveal::Song);
     let song = render_card(&GpCard::Song((&start, G).into()), &cx());
-    assert!(!song.components.is_empty(), "the 👍 row at least");
+    assert!(!song.rows.is_empty(), "the 👍 row at least");
     let res = data
         .gp_reveal_and_advance(G, 0, 0, NOW)
         .expect("the song was playing");
     let reveal = render_card(&GpCard::Reveal((&res).into()), &cx());
-    assert!(
-        reveal.components.is_empty(),
-        "the reveal takes the dropdown away"
-    );
-    assert!(reveal.embed.is_some());
+    assert!(reveal.rows.is_empty(), "the reveal takes the dropdown away");
+    assert!(!reveal.cards.is_empty());
 }
 
 #[test]
@@ -3008,8 +3005,8 @@ fn the_picker_has_its_rows_only_while_open() {
         },
         &cx(),
     );
-    assert_eq!(open.components.len(), 2);
-    assert!(closed.components.is_empty());
+    assert_eq!(open.rows.len(), 2);
+    assert!(closed.rows.is_empty());
 }
 
 #[test]
@@ -3079,11 +3076,15 @@ fn a_long_title_is_capped_and_a_real_one_is_not() {
 /// A card as Discord receives it: content, embed and components, each as the
 /// JSON serenity writes.
 /// A neutral card as the embed Discord receives, for the JSON assertions.
+// Test helper: turns neutral output into the builders Discord receives, for JSON pins.
+#[allow(clippy::disallowed_types)]
 fn embed_of(card: crack_model::Card) -> ::serenity::builder::CreateEmbed<'static> {
     crate::messaging::discord::embed(&card)
 }
 
 /// Neutral rows as the components Discord receives.
+// Test helper: turns neutral output into the builders Discord receives, for JSON pins.
+#[allow(clippy::disallowed_types)]
 fn rows_of(rows: Vec<crack_model::Row>) -> Vec<::serenity::builder::CreateComponent<'static>> {
     crate::messaging::discord::action_rows(&rows)
 }
@@ -3091,8 +3092,8 @@ fn rows_of(rows: Vec<crack_model::Row>) -> Vec<::serenity::builder::CreateCompon
 fn wire(r: &Rendered) -> (String, String, String) {
     (
         r.content.clone().unwrap_or_default(),
-        serde_json::to_string(&r.embed).unwrap(),
-        serde_json::to_string(&r.components).unwrap(),
+        serde_json::to_string(&crate::messaging::discord::first_embed(r)).unwrap(),
+        serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap(),
     )
 }
 

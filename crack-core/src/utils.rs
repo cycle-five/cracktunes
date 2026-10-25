@@ -1,6 +1,6 @@
 use crate::http_utils::CacheHttpExt;
 use crate::messaging::courier::{self, Destination};
-use crate::messaging::discord;
+use crate::messaging::discord::ToDiscord;
 use crate::messaging::format::{duration_text, TrackLabel, INLINE_TITLE_MAX};
 use crate::messaging::messages::{SEARCH_RESULTS_NOT_POSTED, TRACK_UNTITLED};
 use crate::messaging::render::{RenderCx, Rendered};
@@ -192,8 +192,7 @@ pub async fn yt_search_select(
         .clone()
         .map(|(elem, link)| (link, elem))
         .collect::<HashMap<_, _>>();
-    let out = Rendered::text("Search results")
-        .with_components(discord::action_rows(&song_select_rows(res)));
+    let out = Rendered::text("Search results").with_rows(song_select_rows(res));
     let transport = DiscordTransport::of(&ctx);
     // The collector needs the menu's id, so this send is the fallible one.
     let menu_id = courier::post_message(&transport, channel_id, &out)
@@ -291,7 +290,7 @@ pub async fn send_embed_response_poise_as<'ctx>(
     card: Card,
     ephemeral: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-    courier::reply_rendered(ctx, Rendered::embed(discord::embed(&card)), ephemeral).await
+    courier::reply_rendered(ctx, Rendered::card(card), ephemeral).await
 }
 
 /// Edit the message `msg` points to.
@@ -318,7 +317,7 @@ pub async fn edit_embed_response2(
     msg: ReplyHandle<'_>,
     content: Option<String>,
 ) -> Result<(), Error> {
-    let mut out = Rendered::embed(discord::embed(&card));
+    let mut out = Rendered::card(card);
     if let Some(content) = content {
         out = out.with_content(content);
     }
@@ -548,14 +547,8 @@ pub async fn create_paged_embed(
         let reply_handle = {
             courier::reply_rendered(
                 ctx,
-                Rendered::embed(discord::embed(&paged_card(
-                    &title,
-                    &author,
-                    page_getter(0),
-                    0,
-                    num_pages,
-                )))
-                .with_components(discord::action_rows(&create_nav_btns(0, num_pages))),
+                Rendered::card(paged_card(&title, &author, page_getter(0), 0, num_pages))
+                    .with_rows(create_nav_btns(0, num_pages)),
                 style.ephemeral,
             )
             .await?
@@ -585,17 +578,14 @@ pub async fn create_paged_embed(
                 None => continue,
             };
 
-            let flipped = Rendered::embed(discord::embed(&paged_card(
+            let flipped = Rendered::card(paged_card(
                 &title,
                 &author,
                 page_getter(*page_wlock),
                 *page_wlock,
                 num_pages,
-            )))
-            .with_components(discord::action_rows(&create_nav_btns(
-                *page_wlock,
-                num_pages,
-            )));
+            ))
+            .with_rows(create_nav_btns(*page_wlock, num_pages));
             #[expect(
                 clippy::disallowed_methods,
                 reason = "component responses move in PR 2"
@@ -841,6 +831,7 @@ mod search_option_tests {
 
 #[cfg(test)]
 mod test {
+    use crate::messaging::discord;
 
     /// A pick stands when its menu cannot be deleted: the delete failure is
     /// logged, and the pick is what comes back.

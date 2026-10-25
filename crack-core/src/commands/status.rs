@@ -4,7 +4,6 @@
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::plan::Plan;
 use crate::messaging::courier;
-use crate::messaging::discord;
 use crate::messaging::format::{cap, escape, INLINE_TITLE_MAX};
 use crate::messaging::messages::{
     STATUS_AUTOPAUSE, STATUS_AUTOPLAY, STATUS_BOT, STATUS_FREE, STATUS_GAME, STATUS_IDLE,
@@ -58,7 +57,7 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
         autoplay: data.get_autoplay(guild_id).await,
     };
     let card = status_card(compose_status(&facts));
-    courier::reply_rendered(ctx, Rendered::embed(discord::embed(&card)), true).await?;
+    courier::reply_rendered(ctx, Rendered::card(card), true).await?;
     Ok(())
 }
 
@@ -231,6 +230,7 @@ fn minutes_text(secs: u32) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::messaging::discord;
 
     fn facts(plan: Plan, playback: Playback) -> StatusFacts {
         StatusFacts {

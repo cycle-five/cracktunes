@@ -240,7 +240,7 @@ impl super::transport::Press for FakePress {
     async fn update(&self, out: Rendered) -> Result<(), TransportError> {
         self.ops.lock().unwrap().push(PressOp::Update {
             text: text_of(&out),
-            rows: out.components.len(),
+            rows: out.rows.len(),
         });
         Ok(())
     }

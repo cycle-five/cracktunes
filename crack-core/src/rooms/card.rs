@@ -6,7 +6,6 @@
 use super::ids::RoomButton;
 use super::preflight::{Finding, Where};
 use super::settings::RoomSettings;
-use crate::messaging::discord;
 use crate::messaging::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
 use crate::messaging::messages::*;
 use crate::messaging::render::{RenderCx, Rendered};
@@ -253,7 +252,7 @@ pub fn render_card(card: &RoomCard, _cx: &RenderCx) -> Rendered {
 }
 
 fn embed_card(card: Card) -> Rendered {
-    Rendered::embed(discord::embed(&card))
+    Rendered::card(card)
 }
 
 /// Every control, one line each, then the two facts worth knowing.
@@ -357,7 +356,7 @@ fn panel(view: &PanelView) -> Rendered {
         ],
         ..Card::default()
     };
-    embed_card(embed).with_components(discord::action_rows(&panel_rows(view)))
+    embed_card(embed).with_rows(panel_rows(view))
 }
 
 fn panel_rows(view: &PanelView) -> Vec<Row> {
@@ -617,7 +616,7 @@ mod tests {
 
     /// `(custom_id, label)` per button, per row.
     fn rows(r: &Rendered) -> Vec<Vec<(String, String)>> {
-        r.components
+        crate::messaging::discord::action_rows(&r.rows)
             .iter()
             .map(|row| {
                 json(row)["components"]
@@ -636,7 +635,7 @@ mod tests {
     }
 
     fn description(r: &Rendered) -> String {
-        json(r.embed.as_ref().unwrap())["description"]
+        json(&crate::messaging::discord::first_embed(r).unwrap())["description"]
             .as_str()
             .unwrap()
             .to_owned()
@@ -647,9 +646,9 @@ mod tests {
         format!(
             "{:?}|{}|{}|{}|{:?}",
             r.content,
-            serde_json::to_string(&r.embed).unwrap(),
-            serde_json::to_string(&r.embeds_extra).unwrap(),
-            serde_json::to_string(&r.components).unwrap(),
+            serde_json::to_string(&crate::messaging::discord::first_embed(r)).unwrap(),
+            serde_json::to_string(&crate::messaging::discord::extra_embeds(r)).unwrap(),
+            serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap(),
             r.mentions
         )
     }
@@ -896,7 +895,7 @@ mod tests {
         }));
         assert_eq!(r.mentions, Mentions::None);
         assert_eq!(r.content, None);
-        let embed = json(r.embed.as_ref().unwrap());
+        let embed = json(&crate::messaging::discord::first_embed(&r).unwrap());
         assert_eq!(embed["title"], "🔊 @everyone");
         let owner = embed["fields"]
             .as_array()
@@ -906,7 +905,9 @@ mod tests {
             .unwrap();
         assert_eq!(owner["value"], "<@7>");
         // `@everyone` is only ever inside the embed.
-        assert!(!json(&r.components).to_string().contains("@everyone"));
+        assert!(!json(&crate::messaging::discord::action_rows(&r.rows))
+            .to_string()
+            .contains("@everyone"));
     }
 
     #[test]
@@ -948,7 +949,8 @@ mod tests {
             locked: true,
             ..view()
         }));
-        let fields = json(r.embed.as_ref().unwrap())["fields"].to_string();
+        let fields =
+            json(&crate::messaging::discord::first_embed(&r).unwrap())["fields"].to_string();
         assert!(fields.contains("5 people") && fields.contains("<@8> <@9>"));
         assert!(fields.contains("🔒 Locked · 💬 Chat open"));
     }
@@ -1080,7 +1082,7 @@ mod tests {
         for r in all {
             let out = render(&RoomCard::Refused(r));
             let text = out.content.expect("a text reply");
-            assert!(!text.trim().is_empty() && out.embed.is_none(), "{r:?}");
+            assert!(!text.trim().is_empty() && out.cards.is_empty(), "{r:?}");
             assert_eq!(out.mentions, Mentions::None);
             assert!(seen.insert(text), "{r:?} repeats another refusal");
         }

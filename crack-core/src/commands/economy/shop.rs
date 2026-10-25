@@ -442,9 +442,7 @@ pub(crate) async fn run_prank(
     }
     let mut rendered = Rendered::text(card);
     if carries_buttons(kind, bought.outcome) {
-        rendered = rendered.with_components(crate::messaging::discord::action_rows(&card_buttons(
-            bought.action_id,
-        )));
+        rendered = rendered.with_rows(card_buttons(bought.action_id));
     }
     let transport = DiscordTransport::of(ctx);
     if let Err(err) =

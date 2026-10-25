@@ -1,7 +1,6 @@
 use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings};
 use crate::messaging::courier;
-use crate::messaging::discord;
 use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::music::TrackReadyData;
 use crate::{
@@ -364,12 +363,14 @@ pub fn rendered_from_params(params: &SendMessageParams) -> Rendered {
         return Rendered::text(params.msg.to_string());
     }
     let out = match &params.embed {
-        Some(card) => Rendered::embed(discord::embed(card)),
+        Some(card) => Rendered::card(card.clone()),
         None => {
             let mut out = render(&params.msg, &RenderCx::now());
             // A colour other than the default is the caller's choice.
             if params.color != serenity::Colour::BLUE {
-                out.embed = out.embed.map(|e| e.colour(params.color));
+                if let Some(card) = out.cards.first_mut() {
+                    card.colour = Some(params.color.0);
+                }
             }
             out
         },
@@ -380,7 +381,7 @@ pub fn rendered_from_params(params: &SendMessageParams) -> Rendered {
 /// A message must carry something: one that rendered to neither content nor
 /// embed (not reachable with today's `render`) is sent as its plain text.
 fn finish(out: Rendered, msg: &CrackedMessage) -> Rendered {
-    if out.embed.is_none() && out.content.is_none() {
+    if out.cards.is_empty() && out.content.is_none() {
         Rendered::text(msg.to_string())
     } else {
         out
@@ -666,7 +667,7 @@ mod tests {
         let text = out.content.expect("plain text goes in content");
         assert_eq!(text, "hello");
         assert!(!text.contains('\u{1b}'), "ANSI escape in {text:?}");
-        assert!(out.embed.is_none());
+        assert!(out.cards.is_empty());
     }
 
     #[test]
@@ -697,7 +698,8 @@ mod tests {
                 ..Card::default()
             }));
         let out = rendered_from_params(&p);
-        let v = serde_json::to_value(out.embed.unwrap()).unwrap();
+        let v =
+            serde_json::to_value(crate::messaging::discord::first_embed(&out).unwrap()).unwrap();
         assert_eq!(v["description"], "mine");
         assert!(v.get("color").is_none(), "colour applied: {v}");
     }
@@ -709,14 +711,15 @@ mod tests {
         let msg = CrackedMessage::Other("fallback".into());
         out = finish(out, &msg);
         assert_eq!(out.content.as_deref(), Some("fallback"));
-        assert!(out.embed.is_none());
+        assert!(out.cards.is_empty());
     }
 
     #[test]
     fn a_non_default_colour_is_applied_to_the_built_embed() {
         let p = params("hello").with_color(serenity::Colour::RED);
         let out = rendered_from_params(&p);
-        let v = serde_json::to_value(out.embed.unwrap()).unwrap();
+        let v =
+            serde_json::to_value(crate::messaging::discord::first_embed(&out).unwrap()).unwrap();
         assert_eq!(v["color"], serenity::Colour::RED.0);
     }
 }

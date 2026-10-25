@@ -465,7 +465,10 @@ mod tests {
     }
 
     fn embed() -> Rendered {
-        Rendered::embed(serenity::all::CreateEmbed::new().title("status"))
+        Rendered::card(crack_model::Card {
+            title: Some("status".into()),
+            ..crack_model::Card::default()
+        })
     }
 
     // ---- placement ----
@@ -1024,7 +1027,9 @@ mod tests {
             assert!(shown.is_some());
             assert_eq!(t.ops(), vec![Op::Send(10)]);
             let sent = t.sent.lock().unwrap();
-            let row = serde_json::to_value(&sent[0].components[0]).unwrap();
+            let row =
+                serde_json::to_value(&crate::messaging::discord::action_rows(&sent[0].rows)[0])
+                    .unwrap();
             assert_eq!(row["components"][0]["custom_id"], "np:pause:1");
         })
         .await
@@ -1055,8 +1060,8 @@ mod tests {
                 .await
                 .is_some());
             let sent = t.sent.lock().unwrap();
-            assert!(sent[0].components.is_empty());
-            assert!(sent[0].embed.is_some(), "still the now-playing card");
+            assert!(sent[0].rows.is_empty());
+            assert!(!sent[0].cards.is_empty(), "still the now-playing card");
         })
         .await
         .expect("get_info is bounded, so the render finishes");
@@ -1122,7 +1127,9 @@ mod tests {
             buttons_switched(&data, &t, GUILD, true, Some(&call)).await;
             assert_eq!(t.ops(), vec![Op::Send(10)]);
             let sent = t.sent.lock().unwrap();
-            let row = serde_json::to_value(&sent[0].components[0]).unwrap();
+            let row =
+                serde_json::to_value(&crate::messaging::discord::action_rows(&sent[0].rows)[0])
+                    .unwrap();
             assert_eq!(row["components"][0]["custom_id"], "np:pause:1");
         })
         .await

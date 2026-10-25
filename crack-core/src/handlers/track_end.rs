@@ -1,4 +1,3 @@
-use crate::messaging::discord;
 use crate::{
     errors::CrackedError,
     guild::operations::GuildSettingsOperations,
@@ -539,8 +538,7 @@ pub async fn update_queue_messages(
             transport,
             message.channel_id,
             message.id,
-            Rendered::embed(discord::embed(&embed))
-                .with_components(discord::action_rows(&create_nav_btns(page_val, num_pages))),
+            Rendered::card(embed).with_rows(create_nav_btns(page_val, num_pages)),
         )
         .await;
 

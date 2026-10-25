@@ -1,6 +1,6 @@
+use crate::messaging::courier;
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
-use crate::messaging::{courier, discord};
 use crate::{Context, Error};
 use ::serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use crack_model::{Button, ButtonStyle, Row};
@@ -25,10 +25,10 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
 
     let id_str = format!("{}", uuid_boop);
 
-    let button = discord::action_rows(&boop_button(id_str));
+    let button = boop_button(id_str);
     courier::reply_rendered(
         ctx,
-        Rendered::text("I want some boops!").with_components(button.clone()),
+        Rendered::text("I want some boops!").with_rows(button.clone()),
         false,
     )
     .await?;
@@ -49,7 +49,7 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
             &DiscordTransport::of(ctx.serenity_context()),
             mci.message.channel_id,
             mci.message.id,
-            Rendered::text(format!("Boop count: {}", boop_count)).with_components(button.clone()),
+            Rendered::text(format!("Boop count: {}", boop_count)).with_rows(button.clone()),
         )
         .await
         {
@@ -73,6 +73,7 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::messaging::discord;
     #[test]
     fn boop_button_renders_as_before() {
         assert_eq!(

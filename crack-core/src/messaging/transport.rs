@@ -1,6 +1,10 @@
 //! The wire to Discord for channel messages: send, edit, delete, and what the
 //! cache knows of a channel. Tests swap in `test_support::FakeTransport`.
+// The transport is where builders meet Discord: it clears a message's components with an empty `CreateComponent` list.
+#![allow(clippy::disallowed_types)]
+
 use crate::http_utils::is_unknown_message;
+use crate::messaging::discord::ToDiscord;
 use crate::messaging::render::Rendered;
 use serenity::all::{
     Cache, ComponentInteraction, CreateInteractionResponse, CreateModal, GenericChannelId, GuildId,

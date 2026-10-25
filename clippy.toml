@@ -152,3 +152,19 @@ disallowed-methods = [
     { path = "poise::say_reply", reason = "reply through messaging::courier" },
     { path = "poise::ReplyHandle::edit", reason = "edit through messaging::courier" },
 ]
+
+# 🔒 Output is built neutral (crack_model::Card and Row) and converted once, in
+# messaging::discord. A serenity embed or component built anywhere else skips
+# that conversion (clipping, mentions, the byte pins). The files that
+# legitimately build them -- the converter, the transports, the press handlers
+# and the modal builders -- carry a reasoned #[allow(clippy::disallowed_types)].
+disallowed-types = [
+    { path = "serenity::builder::CreateEmbed", reason = "build crack_model::Card/Row; convert in messaging::discord" },
+    { path = "serenity::builder::CreateEmbedAuthor", reason = "build crack_model::Card/Row; convert in messaging::discord" },
+    { path = "serenity::builder::CreateEmbedFooter", reason = "build crack_model::Card/Row; convert in messaging::discord" },
+    { path = "serenity::builder::CreateButton", reason = "build crack_model::Card/Row; convert in messaging::discord" },
+    { path = "serenity::builder::CreateSelectMenu", reason = "build crack_model::Card/Row; convert in messaging::discord" },
+    { path = "serenity::builder::CreateSelectMenuOption", reason = "build crack_model::Card/Row; convert in messaging::discord" },
+    { path = "serenity::builder::CreateActionRow", reason = "build crack_model::Card/Row; convert in messaging::discord" },
+    { path = "serenity::builder::CreateComponent", reason = "build crack_model::Card/Row; convert in messaging::discord" },
+]

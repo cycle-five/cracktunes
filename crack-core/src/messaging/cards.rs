@@ -1,6 +1,5 @@
 //! The structured messages: now playing, queued, the echo of a dashboard or
 //! button control, and their renderers.
-use crate::messaging::discord;
 use crate::messaging::format::{
     clip, duration_text, http_url, progress_text, Progress, TrackLabel, AUTHOR_MAX,
     EMBED_TITLE_MAX, FIELD_MAX, INLINE_TITLE_MAX,
@@ -158,9 +157,9 @@ pub fn now_playing(card: &NowPlayingCard, cx: &RenderCx) -> Rendered {
         }
     }
     out.thumbnail = http_url(card.thumbnail.as_deref()).map(|t| t.to_string());
-    let rendered = Rendered::embed(discord::embed(&out));
+    let rendered = Rendered::card(out);
     match &card.controls {
-        Some(c) => rendered.with_components(discord::action_rows(&c.rows())),
+        Some(c) => rendered.with_rows(c.rows()),
         None => rendered,
     }
 }
@@ -175,7 +174,7 @@ fn requester_text(user: &UserRef) -> String {
 
 #[must_use]
 pub fn finished() -> Rendered {
-    Rendered::embed(discord::embed(&crate::messaging::status::finished_card()))
+    Rendered::card(crate::messaging::status::finished_card())
 }
 
 /// The card for a track added to the queue. Its length and its wait are each
@@ -207,20 +206,21 @@ pub fn queued(card: &QueuedCard, _cx: &RenderCx) -> Rendered {
         }),
         ..Card::default()
     };
-    Rendered::embed(discord::embed(&out))
+    Rendered::card(out)
 }
 
 #[must_use]
 pub fn echo(line: &EchoLine) -> Rendered {
-    Rendered::embed(discord::embed(&Card {
+    Rendered::card(Card {
         description: Some(line.line()),
         ..Card::default()
-    }))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::messaging::discord::ToDiscord;
     use crate::messaging::format::{Progress, TrackLabel};
     use crate::messaging::messages::STATUS_FINISHED_TITLE;
     use crate::messaging::render::RenderCx;
@@ -229,7 +229,7 @@ mod tests {
     use std::time::Duration;
 
     fn v(r: &Rendered) -> serde_json::Value {
-        serde_json::to_value(r.embed.as_ref().unwrap()).unwrap()
+        serde_json::to_value(crate::messaging::discord::first_embed(r).unwrap()).unwrap()
     }
 
     fn card(url: Option<&str>, thumb: Option<&str>) -> NowPlayingCard {
@@ -514,7 +514,7 @@ mod tests {
     fn a_card_with_controls_carries_one_row_and_one_without_carries_none() {
         use crate::messaging::buttons::Controls;
         let mut c = card(None, None);
-        assert!(now_playing(&c, &RenderCx::default()).components.is_empty());
+        assert!(now_playing(&c, &RenderCx::default()).rows.is_empty());
         c.controls = Some(Controls {
             guild: serenity::all::GuildId::new(1).to_ref(),
             track: uuid::Uuid::nil(),
@@ -522,15 +522,16 @@ mod tests {
             looping: false,
         });
         let r = now_playing(&c, &RenderCx::default());
-        assert_eq!(r.components.len(), 1);
-        let row = serde_json::to_value(&r.components[0]).unwrap();
+        assert_eq!(r.rows.len(), 1);
+        let row =
+            serde_json::to_value(&crate::messaging::discord::action_rows(&r.rows)[0]).unwrap();
         assert_eq!(row["components"][0]["custom_id"], "np:pause:1");
     }
 
     /// "None on Finished": the edit to Finished clears the row.
     #[test]
     fn the_finished_card_has_no_buttons() {
-        assert!(finished().components.is_empty());
+        assert!(finished().rows.is_empty());
         let edit = serde_json::to_value(finished().to_edit()).unwrap();
         assert_eq!(edit["components"].as_array().map(Vec::len), Some(0));
     }
@@ -546,9 +547,9 @@ mod tests {
 
         fn bytes(r: &Rendered) -> (String, String, String) {
             (
-                serde_json::to_string(&r.embed).unwrap(),
-                serde_json::to_string(&r.components).unwrap(),
-                serde_json::to_string(&r.embeds_extra).unwrap(),
+                serde_json::to_string(&crate::messaging::discord::first_embed(r)).unwrap(),
+                serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap(),
+                serde_json::to_string(&crate::messaging::discord::extra_embeds(r)).unwrap(),
             )
         }
         fn pin(r: &Rendered, embed: &str, components: &str) {

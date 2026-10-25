@@ -470,9 +470,13 @@ pub async fn build_play_reply(
 /// `out` with the permission note added where [`NoticeDelivery`] says.
 fn with_notice(mut out: Rendered, notice: Option<NoticeDelivery>) -> Rendered {
     match notice {
-        Some(NoticeDelivery::Field(note)) => match out.embed.take() {
-            Some(embed) => {
-                out.embed = Some(embed.field("⚠️ Limited permissions", note, false));
+        Some(NoticeDelivery::Field(note)) => match out.cards.first_mut() {
+            Some(card) => {
+                card.fields.push(crack_model::Field {
+                    name: "⚠️ Limited permissions".into(),
+                    value: note,
+                    inline: false,
+                });
                 out
             },
             // Every play reply is an embed; were one not, the note still rides.
@@ -1238,6 +1242,7 @@ mod degraded_perms_notice_tests {
 #[cfg(test)]
 mod degraded_notice_wiring_tests {
     use super::*;
+    use crate::messaging::discord::ToDiscord;
     use crate::music::perms::{TextKind, TextPerms, TEXT_REQUIRED};
     use poise::serenity_prelude::all::{GenericChannelId, Permissions};
 
@@ -1263,10 +1268,11 @@ mod degraded_notice_wiring_tests {
         // `CreateEmbed` is a third-party builder with no accessors, so its
         // own `Serialize` is the only way to read one back. An opaque
         // payload whose shape we do not own is exactly what `Value` is for.
-        let rendered =
-            serde_json::to_value(out.embed.as_ref().expect("the play reply is an embed"))
-                .expect("CreateEmbed serialises")
-                .to_string();
+        let rendered = serde_json::to_value(
+            crate::messaging::discord::first_embed(&out).expect("the play reply is an embed"),
+        )
+        .expect("CreateEmbed serialises")
+        .to_string();
         (rendered, out.content)
     }
 
@@ -1427,7 +1433,10 @@ mod time_until_play_tests {
                 None,
             )
             .await;
-            let v = serde_json::to_value(out.embed.expect("the play reply is an embed")).unwrap();
+            let v = serde_json::to_value(
+                crate::messaging::discord::first_embed(&out).expect("the play reply is an embed"),
+            )
+            .unwrap();
             assert_eq!(v["author"]["name"], PLAY_QUEUE);
             assert_eq!(v["title"], "t1");
             v["footer"]["text"].as_str().map(str::to_owned)

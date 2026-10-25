@@ -1,14 +1,21 @@
 //! The Discord adapter for the neutral output types: each function turns one
 //! of them into the serenity builder that sends the same thing today.
 
+// This file is where neutral output becomes Discord builders.
+#![allow(clippy::disallowed_types)]
+
 use std::borrow::Cow;
 
-use crack_model::{Button, ButtonStyle, Card, Mentions, Row, Select, SelectOption};
+use crack_model::{Button, ButtonStyle, Card, Mentions, Rendered, Row, Select, SelectOption};
 use serenity::all::{
     ButtonStyle as DiscordStyle, Colour, CreateActionRow, CreateAllowedMentions, CreateButton,
-    CreateComponent, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateSelectMenu,
-    CreateSelectMenuKind, CreateSelectMenuOption, ReactionType, Timestamp,
+    CreateComponent, CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter,
+    CreateInteractionResponseFollowup, CreateInteractionResponseMessage, CreateMessage,
+    CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, EditMessage, ReactionType,
+    Timestamp,
 };
+
+use super::format::{clip, CONTENT_MAX};
 use serenity::small_fixed_array::FixedString;
 
 /// A card as an embed. A timestamp serenity cannot represent is dropped.
@@ -137,10 +144,139 @@ pub fn allowed_mentions(m: Mentions) -> CreateAllowedMentions<'static> {
     }
 }
 
-/// A message as a bare description embed, for the edit paths that take one.
-impl From<crate::messaging::message::CrackedMessage> for CreateEmbed<'_> {
-    fn from(message: crate::messaging::message::CrackedMessage) -> Self {
-        CreateEmbed::default().description(message.to_string())
+/// A [`Rendered`] as the Discord builder for each way it is sent.
+///
+/// Every conversion clips `content` to Discord's limit: this is the one place
+/// the limit is applied, so no send path can skip it.
+pub trait ToDiscord {
+    fn allowed_mentions(&self) -> CreateAllowedMentions<'static>;
+    /// Every command reply is a reply-reference to the invoking message
+    /// (`.reply(true)`): no caller ever asked for a bare message, and poise
+    /// ignores the flag for slash commands. The flag is private on
+    /// `poise::CreateReply`, so no test can observe it; this line is deliberate.
+    fn to_reply(&self, ephemeral: bool) -> poise::CreateReply<'static>;
+    /// The reply for `ReplyHandle::edit`, which ties the builder's lifetime to
+    /// the context's. `CreateReply` and `CreateComponent` are invariant in it,
+    /// so a `'static` component list cannot be passed: it is left out, and the
+    /// caller is told so by the returned flag.
+    ///
+    /// 🪤 Unlike [`ToDiscord::to_edit`], this does not clear absent content:
+    /// poise sets the content only when it is `Some`, so an edit without
+    /// content leaves the old text on the message. (Embeds it always
+    /// replaces, an empty list included.)
+    fn to_reply_edit<'a>(&self) -> (poise::CreateReply<'a>, bool);
+    fn to_message(&self) -> CreateMessage<'static>;
+    /// The body of a component interaction's `UpdateMessage` response (a page
+    /// flip). The response itself stays with the caller.
+    fn to_interaction_message(&self) -> CreateInteractionResponseMessage<'static>;
+    /// A follow-up to a component interaction (a button press's answer).
+    fn to_followup(&self, ephemeral: bool) -> CreateInteractionResponseFollowup<'static>;
+    /// An edit replaces everything: a field left empty is cleared, so a
+    /// status that loses its buttons really loses them.
+    fn to_edit(&self) -> EditMessage<'static>;
+}
+
+fn content(r: &Rendered) -> Option<String> {
+    r.content.as_deref().map(|c| clip(c, CONTENT_MAX))
+}
+
+fn embeds(r: &Rendered) -> Vec<CreateEmbed<'static>> {
+    r.cards.iter().map(embed).collect()
+}
+
+/// The first card as an embed, for tests that read what Discord would get.
+#[cfg(test)]
+pub fn first_embed(r: &Rendered) -> Option<CreateEmbed<'static>> {
+    r.cards.first().map(embed)
+}
+
+/// Every card after the first, as embeds, for tests.
+#[cfg(test)]
+pub fn extra_embeds(r: &Rendered) -> Vec<CreateEmbed<'static>> {
+    r.cards.iter().skip(1).map(embed).collect()
+}
+
+impl ToDiscord for Rendered {
+    fn allowed_mentions(&self) -> CreateAllowedMentions<'static> {
+        allowed_mentions(self.mentions)
+    }
+
+    fn to_reply(&self, ephemeral: bool) -> poise::CreateReply<'static> {
+        let mut reply = poise::CreateReply::default()
+            .reply(true)
+            .ephemeral(ephemeral)
+            .allowed_mentions(self.allowed_mentions())
+            .components(action_rows(&self.rows));
+        if let Some(content) = content(self) {
+            reply = reply.content(content);
+        }
+        for e in embeds(self) {
+            reply = reply.embed(e);
+        }
+        reply
+    }
+
+    fn to_reply_edit<'a>(&self) -> (poise::CreateReply<'a>, bool) {
+        let mut reply: poise::CreateReply<'a> =
+            poise::CreateReply::default().allowed_mentions(self.allowed_mentions());
+        if let Some(content) = content(self) {
+            reply = reply.content(content);
+        }
+        for e in embeds(self) {
+            reply = reply.embed(e);
+        }
+        (reply, !self.rows.is_empty())
+    }
+
+    fn to_message(&self) -> CreateMessage<'static> {
+        let mut m = CreateMessage::new()
+            .allowed_mentions(self.allowed_mentions())
+            .components(action_rows(&self.rows));
+        if let Some(content) = content(self) {
+            m = m.content(content);
+        }
+        let embeds = embeds(self);
+        if !embeds.is_empty() {
+            m = m.embeds(embeds);
+        }
+        m
+    }
+
+    fn to_interaction_message(&self) -> CreateInteractionResponseMessage<'static> {
+        let mut m = CreateInteractionResponseMessage::new()
+            .allowed_mentions(self.allowed_mentions())
+            .components(action_rows(&self.rows));
+        if let Some(content) = content(self) {
+            m = m.content(content);
+        }
+        let embeds = embeds(self);
+        if !embeds.is_empty() {
+            m = m.embeds(embeds);
+        }
+        m
+    }
+
+    fn to_followup(&self, ephemeral: bool) -> CreateInteractionResponseFollowup<'static> {
+        let mut f = CreateInteractionResponseFollowup::new()
+            .ephemeral(ephemeral)
+            .allowed_mentions(self.allowed_mentions())
+            .components(action_rows(&self.rows));
+        if let Some(content) = content(self) {
+            f = f.content(content);
+        }
+        let embeds = embeds(self);
+        if !embeds.is_empty() {
+            f = f.embeds(embeds);
+        }
+        f
+    }
+
+    fn to_edit(&self) -> EditMessage<'static> {
+        EditMessage::new()
+            .allowed_mentions(self.allowed_mentions())
+            .components(action_rows(&self.rows))
+            .content(content(self).unwrap_or_default())
+            .embeds(embeds(self))
     }
 }
 
@@ -151,15 +287,6 @@ mod tests {
 
     fn json<T: serde::Serialize>(v: &T) -> String {
         serde_json::to_string(v).unwrap()
-    }
-
-    #[test]
-    fn a_message_is_an_embed_of_its_text() {
-        let embed = CreateEmbed::from(crate::messaging::message::CrackedMessage::Pong);
-        assert_eq!(
-            json(&embed),
-            json(&CreateEmbed::default().description("Pong"))
-        );
     }
 
     #[test]
@@ -366,6 +493,133 @@ mod tests {
         assert_ne!(
             json(&allowed_mentions(Mentions::Users)),
             json(&allowed_mentions(Mentions::None))
+        );
+    }
+
+    fn long() -> Rendered {
+        Rendered::text("a".repeat(3000))
+    }
+
+    /// The `content` of a serialised builder, as a character count.
+    fn content_len<T: serde::Serialize>(v: &T) -> usize {
+        #[derive(serde::Deserialize)]
+        struct Body {
+            content: String,
+        }
+        let body: Body = serde_json::from_str(&json(v)).unwrap();
+        body.content.chars().count()
+    }
+
+    #[test]
+    fn every_send_path_clips_long_content() {
+        let r = long();
+        assert_eq!(content_len(&r.to_message()), CONTENT_MAX);
+        assert_eq!(content_len(&r.to_interaction_message()), CONTENT_MAX);
+        assert_eq!(content_len(&r.to_followup(false)), CONTENT_MAX);
+        assert_eq!(content_len(&r.to_edit()), CONTENT_MAX);
+        // 🪤 Waiver: `poise::CreateReply` is not `Serialize` and exposes no
+        // content accessor, so `to_reply` and `to_reply_edit` (which share the
+        // `content` helper with the four paths above) are not observed here.
+    }
+
+    #[test]
+    fn an_edit_without_rows_clears_the_buttons() {
+        let edit = json(&Rendered::text("x").to_edit());
+        assert!(edit.contains("\"components\":[]"), "{edit}");
+    }
+
+    #[test]
+    fn an_edit_without_content_clears_the_text() {
+        let edit = json(&Rendered::default().to_edit());
+        assert!(edit.contains("\"content\":\"\""), "{edit}");
+    }
+
+    #[test]
+    fn mentions_none_survives_every_send_path() {
+        let r = Rendered::text("<@123>");
+        let none = "\"allowed_mentions\":{\"parse\":[],\"users\":[],\"roles\":[]}";
+        for wire in [
+            json(&r.to_message()),
+            json(&r.to_interaction_message()),
+            json(&r.to_followup(false)),
+            json(&r.to_edit()),
+        ] {
+            assert!(wire.contains(none), "{wire}");
+        }
+    }
+
+    #[test]
+    fn the_send_paths_match_the_old_ones() {
+        let card = |t: &str| Card {
+            title: Some(t.into()),
+            ..Card::default()
+        };
+        let rows = vec![Row::Buttons(vec![btn(
+            "a",
+            Some("L"),
+            None,
+            ButtonStyle::Primary,
+            false,
+        )])];
+        let r = Rendered::card(card("one"))
+            .with_cards(vec![card("two")])
+            .with_content("hello")
+            .with_rows(rows);
+        let embeds = || {
+            vec![
+                CreateEmbed::new().title("one"),
+                CreateEmbed::new().title("two"),
+            ]
+        };
+        let components = || {
+            vec![CreateComponent::ActionRow(CreateActionRow::Buttons(
+                Cow::Owned(vec![CreateButton::new("a")
+                    .label("L")
+                    .style(DiscordStyle::Primary)]),
+            ))]
+        };
+        let mentions = CreateAllowedMentions::new;
+
+        assert_eq!(
+            json(&r.to_message()),
+            json(
+                &CreateMessage::new()
+                    .allowed_mentions(mentions())
+                    .components(components())
+                    .content("hello")
+                    .embeds(embeds())
+            )
+        );
+        assert_eq!(
+            json(&r.to_interaction_message()),
+            json(
+                &CreateInteractionResponseMessage::new()
+                    .allowed_mentions(mentions())
+                    .components(components())
+                    .content("hello")
+                    .embeds(embeds())
+            )
+        );
+        assert_eq!(
+            json(&r.to_followup(true)),
+            json(
+                &CreateInteractionResponseFollowup::new()
+                    .ephemeral(true)
+                    .allowed_mentions(mentions())
+                    .components(components())
+                    .content("hello")
+                    .embeds(embeds())
+            )
+        );
+        assert_eq!(
+            json(&r.to_edit()),
+            json(
+                &EditMessage::new()
+                    .allowed_mentions(mentions())
+                    .components(components())
+                    .content("hello")
+                    .embeds(embeds())
+            )
         );
     }
 }

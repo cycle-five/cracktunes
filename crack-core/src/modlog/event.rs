@@ -1,6 +1,5 @@
 //! The events the mod log posts, and the one embed each renders to.
 use crate::economy::settings::ActionKind;
-use crate::messaging::discord;
 use crate::messaging::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
 use crate::messaging::messages::*;
 use crate::messaging::render::{RenderCx, Rendered};
@@ -522,7 +521,7 @@ pub fn render(e: &ModLogEvent, cx: &RenderCx) -> Rendered {
     }
     card.timestamp = Some(cx.now_unix);
     // `Mentions::default()` pings nobody; the tests pin it.
-    Rendered::embed(discord::embed(&card))
+    Rendered::card(card)
 }
 
 #[cfg(test)]
@@ -560,7 +559,7 @@ mod tests {
     }
 
     fn json(r: &Rendered) -> serde_json::Value {
-        serde_json::to_value(r.embed.as_ref().unwrap()).unwrap()
+        serde_json::to_value(crate::messaging::discord::first_embed(r).unwrap()).unwrap()
     }
 
     fn ids(n: u64) -> Vec<UserRef> {
@@ -684,9 +683,9 @@ mod tests {
         format!(
             "{:?}|{}|{}|{}|{:?}",
             r.content,
-            serde_json::to_string(&r.embed).unwrap(),
-            serde_json::to_string(&r.embeds_extra).unwrap(),
-            serde_json::to_string(&r.components).unwrap(),
+            serde_json::to_string(&crate::messaging::discord::first_embed(r)).unwrap(),
+            serde_json::to_string(&crate::messaging::discord::extra_embeds(r)).unwrap(),
+            serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap(),
             r.mentions
         )
     }
@@ -783,7 +782,7 @@ mod tests {
         for e in all() {
             let r = render(&e, &cx());
             assert_eq!(r.mentions, Mentions::None, "{e:?}");
-            assert!(r.embeds_extra.is_empty() && r.content.is_none(), "{e:?}");
+            assert!(r.cards.len() <= 1 && r.content.is_none(), "{e:?}");
             let j = json(&r);
             let title = j["title"].as_str().unwrap().to_owned();
             assert!(!title.is_empty());
