@@ -95,10 +95,16 @@ When this is done, crack-core is the Discord layer, about 25k non-test lines. A 
    
    It never depends on crack-core (cargo would refuse the cycle anyway) or on poise. Prefer no feature-to-feature dependency at all.
 2. **It never names `Data`, `DataInner` or poise's `Context`.** Functions take the narrow handles they use: the pool, the feature's registry, songbird or the http client. The table above shows how few those are. crack-core keeps `Data`, with a field for each feature's registry.
-3. **A feature owns its queries.** `db/<feature>.rs` moves with the feature. The schema and migrations don't change, and `.sqlx/` stays at the workspace root, where the `query!` macros already find it.
+
+   Today about 64 functions in `economy/`, `coin/`, `rooms/` and `modlog/` take `&Data`. The heaviest files are `economy/mod.rs`, `shop`, `effects`, `theme`, `buttons` and `lock`, `rooms/lifecycle`, `ops` and `interact`, and `modlog/live` and `batch`. Converting them is part of steps 2 and 3. (The `Context` those files name is serenity's, which rule 6 allows.)
+   
+   My call: each feature's registry also holds a clone of the pool (a `PgPool` is a cheap handle) and is the handle its functions take. A call site then changes from `data` to `&data.economy`. Where a function really needs several features' state, it stays in crack-core as glue.
+3. **A feature owns its queries.** `db/<feature>.rs` moves with the feature. The schema and migrations don't change, and `.sqlx/` stays at the workspace root, where the `query!` macros already find it. crack-voting already compiles its own `query!` macros against that root `.sqlx/`.
 4. **Tests move with the code they test.** That way `cargo test -p crack-economy`, and a mutant in crack-economy, never build crack-core. cargo-mutants already tests each mutant with its own crate only (`test_workspace` is left at its default in `.cargo/mutants.toml`). Database-backed tests need the template-database support that is now `crack-core/src/test_db.rs`, so it has to move to where every crate can use it.
 
    A test left behind in crack-core stops catching mutants in the new crate, because a mutant is tested only with its own crate's tests.
+
+   The test schema is `crack-core/test_migrations/`, which 10 test modules load with `sqlx::migrate!("./test_migrations")`. That path is relative to each crate's manifest. My call: keep one copy, and have new crates point at it by relative path. No copies.
 5. **Features:** every new crate defines `mutation-testing` (`.cargo/mutants.toml` requires it of every member, even if empty), plus whichever of `db-tests` and `crack-coin` it needs. crack-core's features forward to them.
 6. **Discord (my call; the owner to confirm).** A feature crate may use serenity types where the feature's job is a Discord action: rooms' channels and permission overwrites, economy's mutes, nicknames and theme songs. Being Discord-free is **measured** with the topology tool, not required. Code that is already clean, such as the wallet, ledger and settings, should stay clean.
 
@@ -110,6 +116,8 @@ When this is done, crack-core is the Discord layer, about 25k non-test lines. A 
    - The same commands are registered.
 9. **CI checks the boundary.** For each new crate, `lint.yml` gets a `cargo tree` step: no `poise`. It is modelled on the existing "crack-model depends on no platform crate" step. The root `clippy.toml` (the serenity builder bans) already applies to every workspace crate.
 
+   So moved files import serenity directly, or through crack-types, never `poise::serenity_prelude`. That's a mechanical change in most moved files, including `errors.rs`, which uses poise only for that prelude.
+
 ## Steps
 
 One PR per step. Each PR lands before the next one starts: sequential, not stacked. That way in-flight feature work rebases onto one small change at a time.
@@ -117,7 +125,9 @@ One PR per step. Each PR lands before the next one starts: sequential, not stack
 ### Step 1: crack-common (errors, strings, neutral messages)
 
 **Moves:**
-- `errors.rs`: `CrackedError` and the result aliases. Its only internal references are the `FAIL_*` strings, which move with it. It wraps external errors (sqlx, serenity, songbird, reqwest), so crack-common depends on those external crates.
+- `errors.rs`: `CrackedError` and the result aliases. Its only internal references are the `FAIL_*` strings, which move with it.
+
+  It wraps external errors: sqlx, serenity, songbird, reqwest, rusty_ytdl, rspotify and audiopus. So crack-common depends on those crates. That costs no extra build time, because an external crate compiles once whichever workspace crates use it. The music-source variants may move to the music crate in step 4.
 - From `messaging/`: `messages.rs`, `message.rs` (`CrackedMessage`), `format.rs` and `render.rs`, plus whichever of `cards.rs`, `placeholder.rs` and `track_failed.rs` turn out neutral once their references are checked.
 - The neutral helpers they need from `utils` (for example `duration_to_string`).
 
@@ -132,6 +142,9 @@ One PR per step. Each PR lands before the next one starts: sequential, not stack
 - The render code lives with the feature. It stays in crack-core until that feature is carved.
 - The mechanism is the builder's choice: the existing `CrackedMessage::Card(Box<Card>)` variant, or a small trait in crack-common.
 - Byte pins show nothing changed.
+- These variants are small to move. Outside `messaging/`, they're built in four places: `commands/music/gp/ui.rs` twice, `commands/rooms/admin.rs` and `commands/rooms/room.rs`. Only `render.rs` matches on them.
+
+Step 1 may land as two PRs: `errors` and the strings first, then the neutral messaging.
 
 **Done when:**
 - crack-common builds on its own;
@@ -206,8 +219,12 @@ songbird lives here, so the Matrix-seam rule applies: no new state in songbird's
 
 ## How each step is done
 
-1. **Cut the wrong-way references inside crack-core first,** with behaviour unchanged and the suite passing. The map confirms the module set has no references upward.
+1. **Cut the wrong-way references inside crack-core first,** with behaviour unchanged and the suite passing. This includes replacing `&Data` parameters with the feature's handle (rule 2). The map confirms the module set has no references upward.
+
+   For steps 2 and 3, this is likely its own PR, landing before the move.
 2. **Move the files and keep old paths working.** Move with `git mv`, so history follows, and add the crate to the workspace. In crack-core, `pub use crack_x as x;` keeps `crate::x::…` paths working. That keeps the diff, and the conflicts with parallel feature work, small. (My call.)
+
+   The shims stay. They don't affect the loop measure, because the module now lives in another crate. Removing them is optional cleanup for later.
 3. **Move the tests with the code.**
 4. **Measure** (next section) and put the numbers in the PR body.
 5. **Release and deploy.** Bump the minor version, following the transpose arc's precedent. Tag the release, and the Release workflow publishes it. Deploy to TuneTitan. Production needs the owner's go-ahead, as always.
