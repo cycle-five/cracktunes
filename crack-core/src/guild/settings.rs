@@ -100,8 +100,11 @@ pub(crate) fn column_i64<K: crack_model::Kind>(
     r: &crack_model::Ref<K>,
 ) -> Result<i64, CrackedError> {
     snowflake(r)
-        .map(|n| n as i64)
-        .map_err(|_| CrackedError::Other("a stored id must be a Discord snowflake"))
+        .ok()
+        .and_then(|n| i64::try_from(n).ok())
+        .ok_or(CrackedError::Other(
+            "a stored id must be a Discord snowflake",
+        ))
 }
 
 /// The ref for a stored `BIGINT` that must be there. A value that is not a
@@ -444,7 +447,7 @@ impl TryFrom<GuildSettingsRead> for GuildSettings {
     fn try_from(settings_db: GuildSettingsRead) -> Result<Self, IdError> {
         let guild_id = u64::try_from(settings_db.guild_id)
             .map_err(|_| IdError::NotASnowflake {
-                kind: "community",
+                kind: <crack_model::Community as crack_model::Kind>::NAME,
                 raw: settings_db.guild_id.to_string(),
             })
             .and_then(from_snowflake::<crack_model::Community>)?;
@@ -1012,15 +1015,15 @@ mod test {
     #[test]
     fn settings_json_with_the_removed_authorization_keys_still_loads() {
         let settings = GuildSettings::new(GuildId::new(123).to_ref(), None, None);
-        let mut value = serde_json::to_value(&settings).unwrap();
-        let obj = value.as_object_mut().unwrap();
-        obj.insert("authorized_users".into(), serde_json::json!({"1": 2}));
-        obj.insert("authorized_groups".into(), serde_json::json!({}));
-        let back: GuildSettings = serde_json::from_value(value).unwrap();
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(!json.contains("authorized"));
+        let legacy = json.replacen(
+            '{',
+            r#"{"authorized_users":{"1":2},"authorized_groups":{},"#,
+            1,
+        );
+        let back: GuildSettings = serde_json::from_str(&legacy).unwrap();
         assert_eq!(back, settings);
-        assert!(!serde_json::to_string(&settings)
-            .unwrap()
-            .contains("authorized"));
     }
 
     #[test]
@@ -1323,9 +1326,21 @@ mod test {
         use super::LogSettings;
         let mut l = LogSettings::default();
         l.set_all_log_channel(GenericChannelId::new(9).to_ref());
-        let v = serde_json::to_value(&l).unwrap();
-        assert_eq!(v["all_log_channel"], 9);
-        assert_eq!(serde_json::from_value::<LogSettings>(v).unwrap(), l);
+        let json = serde_json::to_string(&l).unwrap();
+        assert_eq!(
+            json,
+            r#"{"all_log_channel":9,"raw_event_log_channel":null,"server_log_channel":null,"member_log_channel":null,"join_leave_log_channel":null,"voice_log_channel":null}"#
+        );
+        assert_eq!(serde_json::from_str::<LogSettings>(&json).unwrap(), l);
+    }
+
+    #[test]
+    fn a_snowflake_above_i64_max_is_refused_not_wrapped() {
+        use crack_types::discord::from_snowflake;
+        let big = from_snowflake::<crack_model::User>(i64::MAX as u64 + 1).unwrap();
+        assert!(super::column_i64(&big).is_err());
+        let top = from_snowflake::<crack_model::User>(i64::MAX as u64).unwrap();
+        assert_eq!(super::column_i64(&top).unwrap(), i64::MAX);
     }
 
     #[test]

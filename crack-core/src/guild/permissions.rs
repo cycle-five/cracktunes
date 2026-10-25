@@ -1,7 +1,6 @@
 use crack_model::{CommunityRef, Kind, Ref, RoleRef, RoomRef, UserRef};
 use crack_types::discord::{as_snowflake_set, as_snowflake_string};
 use serde::{Deserialize, Serialize};
-use serenity::all::GuildId;
 use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
 
@@ -39,6 +38,10 @@ impl ConvertToHashSetString for Vec<String> {
 
 /// Convert a stored `BIGINT[]` to a set of refs. An element that is not a
 /// snowflake is dropped with a warning, never panicked on.
+///
+/// Dropping garbage ids can empty an allow-list, which then reads as "allow
+/// all". Writes go through `to_column`, which refuses garbage, so only a
+/// hand-edited row can trigger it.
 pub(crate) fn ref_set<K: Kind + std::hash::Hash + Eq>(
     column: &'static str,
     raw: Vec<i64>,
@@ -453,34 +456,6 @@ impl CommandChannel {
     pub async fn save(&self, pool: &PgPool) -> Result<CommandChannel, Error> {
         self.insert_command_channel(pool).await
     }
-
-    pub async fn get_command_channels(
-        pool: &PgPool,
-        command: String,
-        guild_id: GuildId,
-    ) -> Vec<Self> {
-        let read = sqlx::query_as!(
-            CommandChannelRead,
-            "SELECT * FROM command_channel WHERE command = $1 AND guild_id = $2",
-            command,
-            guild_id.get() as i64
-        )
-        .fetch_all(pool)
-        .await;
-        let read = match read {
-            Ok(r) => r,
-            Err(_) => return Vec::new(),
-        };
-        let mut channels = Vec::new();
-        for r in read {
-            let channel = CommandChannel::from_command_channel_read(pool, r)
-                .await
-                .unwrap();
-            channels.push(channel);
-        }
-
-        channels
-    }
 }
 
 #[cfg(test)]
@@ -488,7 +463,7 @@ mod tests {
     use super::*;
     use crack_types::discord::ToRef;
     use serde_json::json;
-    use serenity::all::{GenericChannelId, RoleId, UserId};
+    use serenity::all::{GenericChannelId, GuildId, RoleId, UserId};
     use sqlx::PgPool;
 
     fn role(n: u64) -> RoleRef {
@@ -733,12 +708,13 @@ mod tests {
         settings.add_allowed_role(role(5));
         settings.add_denied_user(user(7));
         settings.add_allowed_channel(room(9));
-        let v = serde_json::to_value(&settings).unwrap();
-        assert_eq!(v["allowed_roles"], json!([5]));
-        assert_eq!(v["denied_users"], json!([7]));
-        assert_eq!(v["allowed_channels"], json!([9]));
+        let json = serde_json::to_string(&settings).unwrap();
         assert_eq!(
-            serde_json::from_value::<GenericPermissionSettings>(v).unwrap(),
+            json,
+            r#"{"id":0,"default_allow_all_commands":true,"default_allow_all_users":true,"default_allow_all_roles":true,"allowed_roles":[5],"denied_roles":[],"allowed_users":[],"denied_users":[7],"allowed_channels":[9],"denied_channels":[]}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<GenericPermissionSettings>(&json).unwrap(),
             settings
         );
     }
@@ -752,9 +728,9 @@ mod tests {
             permission_settings: GenericPermissionSettings::default(),
         };
         let json = serde_json::to_string(&channel).unwrap();
-        assert!(
-            json.starts_with(r#"{"command":"music","channel_id":"3","guild_id":"4","#),
-            "{json}"
+        assert_eq!(
+            json,
+            r#"{"command":"music","channel_id":"3","guild_id":"4","permission_settings":{"id":0,"default_allow_all_commands":true,"default_allow_all_users":true,"default_allow_all_roles":true,"allowed_roles":[],"denied_roles":[],"allowed_users":[],"denied_users":[],"allowed_channels":[],"denied_channels":[]}}"#
         );
         assert_eq!(
             serde_json::from_str::<CommandChannel>(&json).unwrap(),
@@ -796,31 +772,5 @@ mod tests {
         assert!(settings_read.denied_users == settings.denied_users);
         // assert!(settings_read.is_command_allowed("test"));
         // assert!(!settings_read.is_command_allowed("test2"));
-    }
-
-    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
-    #[cfg_attr(
-        not(feature = "db-tests"),
-        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
-    )]
-    async fn test_insert_command_channel(pool: PgPool) {
-        let mut settings = GenericPermissionSettings::default();
-        // settings.add_allowed_command("test".to_string());
-        // settings.add_denied_command("test2".to_string());
-        settings.add_allowed_role(role(1));
-        settings.add_allowed_user(user(1));
-        let channel = CommandChannel {
-            permission_settings: settings,
-            channel_id: room(1),
-            guild_id: GuildId::new(1).to_ref(),
-            command: "test".to_string(),
-        };
-        channel.insert_command_channel(&pool).await.unwrap();
-
-        let channel_read =
-            CommandChannel::get_command_channels(&pool, "test".to_string(), GuildId::new(1)).await;
-        // assert!(channel_read.permission_settings.is_command_allowed("test"));
-        // assert!(!channel_read.permission_settings.is_command_allowed("test2"));
-        assert!(channel_read.len() == 1);
     }
 }
