@@ -12,15 +12,7 @@ use serenity::all::{
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Who a message may ping. Every send states it; the default is nobody.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum Mentions {
-    #[default]
-    None,
-    /// Users mentioned in the text may be pinged. Unused until the welcome
-    /// message moves here.
-    Users,
-}
+pub use crack_model::Mentions;
 
 /// One message, ready to send.
 #[derive(Debug, Clone, Default)]

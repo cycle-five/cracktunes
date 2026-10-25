@@ -1,6 +1,7 @@
 pub mod buttons;
 pub mod cards;
 pub mod courier;
+pub mod discord;
 pub mod format;
 pub mod interface;
 pub mod message;
