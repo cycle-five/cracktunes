@@ -56,6 +56,11 @@ on:
     tags:
       - '**[0-9]+.[0-9]+.[0-9]+*'
 
+# 🪤 CMake 4 on ubuntu-26.04 refuses audiopus_sys's old
+# cmake_minimum_required; see build.yml.
+env:
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
 jobs:
   # Run 'dist plan' (or host) to determine what tasks we need to do
   plan:
