@@ -4,7 +4,7 @@ use crate::errors::CrackedError;
 use crate::CrackedResult;
 use crack_model::{CommunityRef, RoleRef, RoomRef, UserRef};
 use crack_types::discord::{
-    as_snowflake, as_snowflake_opt, as_snowflake_set, from_snowflake, snowflake, IdError,
+    as_snowflake_opt, as_snowflake_set, as_snowflake_string, from_snowflake, snowflake, IdError,
 };
 use crack_types::GuildId;
 use lazy_static::lazy_static;
@@ -313,7 +313,7 @@ pub enum Provenance {
 //#[derive(Debug, Clone, Serialize, PartialEq)]
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GuildSettings {
-    #[serde(with = "as_snowflake")]
+    #[serde(with = "as_snowflake_string")]
     pub guild_id: CommunityRef,
     pub guild_name: String,
     pub prefix: String,
@@ -1128,13 +1128,28 @@ mod test {
     fn settings_json_keeps_its_shape() {
         let s = GuildSettings::new(GuildId::new(123).to_ref(), None, Some("G".into()));
         let json = serde_json::to_string(&s).unwrap();
-        assert!(json.contains(r#""guild_id":123"#), "{json}");
+        // serenity writes an id as a string.
+        assert!(json.contains(r#""guild_id":"123","#), "{json}");
         assert!(json.contains(r#""guild_name":"G""#), "{json}");
         assert!(
             json.contains(r#""ignored_channels":[1165246445654388746]"#),
             "{json}"
         );
         assert_eq!(serde_json::from_str::<GuildSettings>(&json).unwrap(), s);
+    }
+
+    #[test]
+    fn settings_json_in_masters_shape_loads() {
+        let s = GuildSettings::new(GuildId::new(123).to_ref(), None, Some("G".into()));
+        // Master's `guild_id` was a serenity id: a string.
+        let master = serde_json::to_string(&s).unwrap();
+        assert!(master.contains(r#""guild_id":"123","#), "{master}");
+        assert_eq!(serde_json::from_str::<GuildSettings>(&master).unwrap(), s);
+        // serenity read a number as well.
+        let number = master.replacen(r#""guild_id":"123","#, r#""guild_id":123,"#, 1);
+        assert_eq!(serde_json::from_str::<GuildSettings>(&number).unwrap(), s);
+        let bad = master.replacen(r#""guild_id":"123","#, r#""guild_id":"0","#, 1);
+        assert!(serde_json::from_str::<GuildSettings>(&bad).is_err());
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use crack_model::{CommunityRef, Kind, Ref, RoleRef, RoomRef, UserRef};
-use crack_types::discord::{as_snowflake, as_snowflake_set};
+use crack_types::discord::{as_snowflake_set, as_snowflake_string};
 use serde::{Deserialize, Serialize};
 use serenity::all::GuildId;
 use sqlx::{FromRow, PgPool};
@@ -383,9 +383,9 @@ impl GenericPermissionSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CommandChannel {
     pub command: String,
-    #[serde(with = "as_snowflake")]
+    #[serde(with = "as_snowflake_string")]
     pub channel_id: RoomRef,
-    #[serde(with = "as_snowflake")]
+    #[serde(with = "as_snowflake_string")]
     pub guild_id: CommunityRef,
     pub permission_settings: GenericPermissionSettings,
 }
@@ -744,18 +744,28 @@ mod tests {
     }
 
     #[test]
-    fn a_command_channel_serialises_its_ids_as_numbers() {
+    fn a_command_channel_serialises_its_ids_as_strings_like_serenity() {
         let channel = CommandChannel {
             command: "music".into(),
             channel_id: room(3),
             guild_id: GuildId::new(4).to_ref(),
             permission_settings: GenericPermissionSettings::default(),
         };
-        let v = serde_json::to_value(&channel).unwrap();
-        assert_eq!(v["channel_id"], 3);
-        assert_eq!(v["guild_id"], 4);
+        let json = serde_json::to_string(&channel).unwrap();
+        assert!(
+            json.starts_with(r#"{"command":"music","channel_id":"3","guild_id":"4","#),
+            "{json}"
+        );
         assert_eq!(
-            serde_json::from_value::<CommandChannel>(v).unwrap(),
+            serde_json::from_str::<CommandChannel>(&json).unwrap(),
+            channel
+        );
+        // The numbers an earlier build of this branch wrote still load.
+        let numbers = json
+            .replacen(r#""channel_id":"3""#, r#""channel_id":3"#, 1)
+            .replacen(r#""guild_id":"4""#, r#""guild_id":4"#, 1);
+        assert_eq!(
+            serde_json::from_str::<CommandChannel>(&numbers).unwrap(),
             channel
         );
     }

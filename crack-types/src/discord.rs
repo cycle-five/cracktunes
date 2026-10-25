@@ -106,6 +106,47 @@ pub mod as_snowflake {
     }
 }
 
+/// `#[serde(with = "…::as_snowflake_string")]`: a ref as serenity writes an id,
+/// a JSON string of the decimal snowflake. Reads a string or a number.
+pub mod as_snowflake_string {
+    use super::*;
+    use serde::de::{self, Visitor};
+    use serde::{Deserializer, Serializer};
+    use std::fmt;
+    use std::marker::PhantomData;
+
+    pub fn serialize<K: Kind, S: Serializer>(r: &Ref<K>, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(&snowflake(r).map_err(serde::ser::Error::custom)?)
+    }
+
+    struct SnowflakeVisitor<K>(PhantomData<K>);
+
+    impl<K: Kind> Visitor<'_> for SnowflakeVisitor<K> {
+        type Value = Ref<K>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("a snowflake as a string or an integer")
+        }
+
+        fn visit_u64<E: de::Error>(self, n: u64) -> Result<Ref<K>, E> {
+            from_snowflake(n).map_err(E::custom)
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<Ref<K>, E> {
+            // The same rule as `snowflake`: canonical digits only.
+            let canonical = !v.starts_with('0') && v.bytes().all(|b| b.is_ascii_digit());
+            match v.parse::<u64>() {
+                Ok(n) if canonical => self.visit_u64(n),
+                _ => Err(E::custom(format!("{:?} is not a snowflake", v))),
+            }
+        }
+    }
+
+    pub fn deserialize<'de, K: Kind, D: Deserializer<'de>>(d: D) -> Result<Ref<K>, D::Error> {
+        d.deserialize_any(SnowflakeVisitor(PhantomData))
+    }
+}
+
 /// `#[serde(with = "…::as_snowflake_opt", default)]` for `Option<Ref<K>>`.
 pub mod as_snowflake_opt {
     use super::*;
@@ -249,5 +290,47 @@ mod tests {
         assert!(serde_json::from_str::<S>(r#"{"g":5,"c":0,"s":[]}"#).is_err());
         assert!(serde_json::from_str::<S>(r#"{"g":0,"s":[]}"#).is_err());
         assert!(serde_json::from_str::<S>(r#"{"g":5,"s":[0]}"#).is_err());
+    }
+    #[test]
+    fn the_string_adapter_writes_what_serenity_writes() {
+        #[derive(Serialize)]
+        struct Raw {
+            id: GuildId,
+        }
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        struct Neutral {
+            #[serde(with = "as_snowflake_string")]
+            id: CommunityRef,
+        }
+        let serenity = serde_json::to_string(&Raw {
+            id: GuildId::new(123),
+        })
+        .unwrap();
+        let ours = serde_json::to_string(&Neutral {
+            id: GuildId::new(123).to_ref(),
+        })
+        .unwrap();
+        assert_eq!(serenity, r#"{"id":"123"}"#);
+        assert_eq!(ours, serenity);
+        let want = Neutral {
+            id: GuildId::new(123).to_ref(),
+        };
+        assert_eq!(serde_json::from_str::<Neutral>(&serenity).unwrap(), want);
+        assert_eq!(
+            serde_json::from_str::<Neutral>(r#"{"id":123}"#).unwrap(),
+            want
+        );
+        for bad in [
+            r#"{"id":"0"}"#,
+            r#"{"id":"18446744073709551615"}"#,
+            r#"{"id":"abc"}"#,
+            r#"{"id":-1}"#,
+            r#"{"id":0}"#,
+            r#"{"id":"007"}"#,
+            r#"{"id":" 7"}"#,
+            r#"{"id":null}"#,
+        ] {
+            assert!(serde_json::from_str::<Neutral>(bad).is_err(), "{bad}");
+        }
     }
 }
