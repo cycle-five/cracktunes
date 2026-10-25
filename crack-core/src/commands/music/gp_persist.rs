@@ -48,8 +48,8 @@
 //! until it does, and the next reconnect would post it all again.
 
 use super::gp::{
-    gp_after_close, gp_play_track, gp_post, gp_rendered, gp_spawn_window_timer_secs, now, GpCard,
-    GpClip, GpGame, GpPhase, GpPlayback, GpPlayed, GpReveal, GpRound, GpTrack,
+    gp_after_close, gp_play_track, gp_post, gp_rendered, gp_spawn_window_timer_secs, now,
+    user_refs, GpCard, GpClip, GpGame, GpPhase, GpPlayback, GpPlayed, GpReveal, GpRound, GpTrack,
     GP_RESUME_WINDOW_SECS,
 };
 use super::gp_prompts::{GpCategories, GpCategory};
@@ -799,7 +799,7 @@ pub(crate) async fn close_out<Fut>(
         GpCloseOut::Lost => (GP_SCOREBOARD, Some(GP_LOST)),
     };
     let card = GpCard::Scoreboard {
-        scores: game.sorted_scores(),
+        scores: user_refs(&game.sorted_scores()),
         title,
         lead,
     };
@@ -813,7 +813,7 @@ pub(crate) async fn close_out<Fut>(
 pub(crate) async fn post_owed_results(transport: &dyn Transport, game: &GpGame) -> Vec<usize> {
     let mut posted = Vec::new();
     for idx in game.unposted_results() {
-        let out = gp_rendered(GpCard::RoundResults(game.round_result(idx)));
+        let out = gp_rendered(GpCard::RoundResults((&game.round_result(idx)).into()));
         match courier::post_message(transport, game.text_channel, &out).await {
             Ok(_) => posted.push(idx),
             Err(e) => tracing::warn!(

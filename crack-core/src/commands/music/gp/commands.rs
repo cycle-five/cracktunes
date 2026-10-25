@@ -899,7 +899,7 @@ pub async fn gp_status(ctx: Context<'_>) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     gp_require_player(ctx, guild_id)?;
     let status = ctx.data().gp_status(guild_id)?;
-    courier::reply_as(ctx, GpCard::Status(status).into(), false).await?;
+    courier::reply_as(ctx, GpCard::Status((&status).into()).into(), false).await?;
     Ok(())
 }
 
@@ -969,7 +969,7 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
         courier::reply_as(
             ctx,
             GpCard::Scoreboard {
-                scores: game.sorted_scores(),
+                scores: user_refs(&game.sorted_scores()),
                 title: GP_SCOREBOARD,
                 lead: None,
             }

@@ -19,7 +19,9 @@ use crate::messaging::{
     render::{render, RenderCx, Rendered},
 };
 use ::serenity::all::{GuildId, UserId};
-use crack_model::{Button, ButtonStyle, Card, Field, Mention, Row, Select, SelectOption};
+use crack_model::{
+    Button, ButtonStyle, Card, CommunityRef, Field, Mention, Row, Select, SelectOption, UserRef,
+};
 use crack_types::discord::ToRef;
 
 /// The colours `/gp` cards wear, as 0xRRGGBB.
@@ -39,36 +41,275 @@ pub const GP_TITLE_MAX: usize = 100;
 /// output, and `messaging::render` reaches it through `CrackedMessage::Gp`, so
 /// `/gp` has no way to Discord but the one renderer.
 #[derive(Debug, Clone)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Song carries a ResolvedTrack (~2.4KB); a card is built once per message and travels boxed inside CrackedMessage::Gp"
-)]
 pub enum GpCard {
     Rules,
-    Status(GpStatus),
+    Status(GpStatusView),
     /// The category picker; its menu and Start/Cancel only while `open`.
     Picker {
         text: String,
         picked: Vec<GpCategory>,
         open: bool,
     },
-    Prompt(GpWindowOpened),
-    PromptClosed(GpWindowClosed),
-    /// The song message and its guess/👍 controls. `GpTrackStart` has no guild.
-    Song {
-        start: GpTrackStart,
-        guild: GuildId,
-    },
-    Reveal(GpTrackResult),
-    RoundResults(GpRoundResult),
+    Prompt(GpPromptView),
+    PromptClosed(GpClosedView),
+    /// The song message and its guess/👍 controls.
+    Song(GpSongView),
+    Reveal(GpRevealView),
+    RoundResults(GpRoundView),
     /// `lead` rides as content above the embed (a lost game's `GP_LOST`).
     Scoreboard {
-        scores: Vec<(UserId, u32)>,
+        scores: Vec<(UserRef, u32)>,
         title: &'static str,
         lead: Option<&'static str>,
     },
     /// Plain text, as `/gp` has always sent its one-liners.
     Line(String),
+}
+
+/// `UserId`s as refs, for the views below.
+pub fn user_refs(scores: &[(UserId, u32)]) -> Vec<(UserRef, u32)> {
+    scores.iter().map(|(id, n)| (id.to_ref(), *n)).collect()
+}
+
+/// A prompt window opening, with only what its card shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GpPromptView {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub prompt: String,
+    pub category: Option<GpCategory>,
+    pub closes_at: i64,
+}
+
+impl From<&GpWindowOpened> for GpPromptView {
+    fn from(w: &GpWindowOpened) -> Self {
+        Self {
+            round_idx: w.round_idx,
+            total_rounds: w.total_rounds,
+            prompt: w.prompt.clone(),
+            category: w.category,
+            closes_at: w.closes_at,
+        }
+    }
+}
+
+/// A prompt window closing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GpClosedView {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub prompt: String,
+    pub category: Option<GpCategory>,
+    pub count: usize,
+}
+
+impl From<&GpWindowClosed> for GpClosedView {
+    fn from(c: &GpWindowClosed) -> Self {
+        Self {
+            round_idx: c.round_idx,
+            total_rounds: c.total_rounds,
+            prompt: c.prompt.clone(),
+            category: c.category,
+            count: c.count,
+        }
+    }
+}
+
+/// A song starting: its text and its dropdown.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GpSongView {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub track_idx: usize,
+    pub total_tracks: usize,
+    pub prompt: String,
+    pub title: String,
+    pub url: String,
+    pub players: Vec<(UserRef, String)>,
+    pub guessable: bool,
+    pub guild: CommunityRef,
+}
+
+impl From<(&GpTrackStart, GuildId)> for GpSongView {
+    fn from((s, guild): (&GpTrackStart, GuildId)) -> Self {
+        Self {
+            round_idx: s.round_idx,
+            total_rounds: s.total_rounds,
+            track_idx: s.track_idx,
+            total_tracks: s.total_tracks,
+            prompt: s.prompt.clone(),
+            title: s.track.get_title(),
+            url: s.track.get_url(),
+            players: s
+                .players
+                .iter()
+                .map(|(id, name)| (id.to_ref(), name.clone()))
+                .collect(),
+            guessable: s.guessable,
+            guild: guild.to_ref(),
+        }
+    }
+}
+
+/// A song that has ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GpRevealView {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub track_idx: usize,
+    pub total_tracks: usize,
+    pub prompt: String,
+    pub submitter: UserRef,
+    pub title: String,
+    pub url: String,
+    pub correct: Vec<UserRef>,
+    pub fooled_everyone: bool,
+    pub likes: usize,
+    pub played_full: bool,
+    pub guessable: bool,
+    pub scores: Vec<(UserRef, u32)>,
+    pub failed: bool,
+    pub held: bool,
+}
+
+impl From<&GpTrackResult> for GpRevealView {
+    fn from(r: &GpTrackResult) -> Self {
+        Self {
+            round_idx: r.round_idx,
+            total_rounds: r.total_rounds,
+            track_idx: r.track_idx,
+            total_tracks: r.total_tracks,
+            prompt: r.prompt.clone(),
+            submitter: r.submitter.to_ref(),
+            title: r.title.clone(),
+            url: r.url.clone(),
+            correct: r.correct.iter().map(ToRef::to_ref).collect(),
+            fooled_everyone: r.fooled_everyone,
+            likes: r.likes,
+            played_full: r.played_full,
+            guessable: r.guessable,
+            scores: user_refs(&r.scores),
+            failed: r.failed,
+            held: r.held,
+        }
+    }
+}
+
+/// One song on the round-results card.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GpSongRow {
+    pub submitter: UserRef,
+    pub title: String,
+    pub correct: Vec<UserRef>,
+    pub fooled_everyone: bool,
+    pub likes: usize,
+    pub played_full: bool,
+    pub failed: bool,
+}
+
+/// A round as it ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GpRoundView {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub prompt: String,
+    pub guessable: bool,
+    pub songs: Vec<GpSongRow>,
+    pub points: Vec<(UserRef, u32)>,
+    pub scores: Vec<(UserRef, u32)>,
+}
+
+impl From<&GpRoundResult> for GpRoundView {
+    fn from(r: &GpRoundResult) -> Self {
+        Self {
+            round_idx: r.round_idx,
+            total_rounds: r.total_rounds,
+            prompt: r.prompt.clone(),
+            guessable: r.guessable,
+            songs: r
+                .songs
+                .iter()
+                .map(|s| GpSongRow {
+                    submitter: s.submitter.to_ref(),
+                    title: s.title.clone(),
+                    correct: s.correct.iter().map(ToRef::to_ref).collect(),
+                    fooled_everyone: s.fooled_everyone,
+                    likes: s.likes,
+                    played_full: s.played_full,
+                    failed: s.failed,
+                })
+                .collect(),
+            points: user_refs(&r.points),
+            scores: user_refs(&r.scores),
+        }
+    }
+}
+
+/// `/gp status`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GpStatusView {
+    Submitting {
+        host: UserRef,
+        round: usize,
+        total: usize,
+        prompt: String,
+        closes_at: i64,
+        submitted: Vec<String>,
+        scores: Vec<(UserRef, u32)>,
+    },
+    Playing {
+        round: usize,
+        total: usize,
+        track: usize,
+        tracks: usize,
+        prompt: String,
+        guessed: Vec<String>,
+        likes: usize,
+        scores: Vec<(UserRef, u32)>,
+    },
+}
+
+impl From<&GpStatus> for GpStatusView {
+    fn from(status: &GpStatus) -> Self {
+        match status {
+            GpStatus::Submitting {
+                host,
+                round,
+                total,
+                prompt,
+                closes_at,
+                submitted,
+                scores,
+            } => Self::Submitting {
+                host: host.to_ref(),
+                round: *round,
+                total: *total,
+                prompt: prompt.clone(),
+                closes_at: *closes_at,
+                submitted: submitted.clone(),
+                scores: user_refs(scores),
+            },
+            GpStatus::Playing {
+                round,
+                total,
+                track,
+                tracks,
+                prompt,
+                guessed,
+                likes,
+                scores,
+            } => Self::Playing {
+                round: *round,
+                total: *total,
+                track: *track,
+                tracks: *tracks,
+                prompt: prompt.clone(),
+                guessed: guessed.clone(),
+                likes: *likes,
+                scores: user_refs(scores),
+            },
+        }
+    }
 }
 
 impl From<GpCard> for CrackedMessage {
@@ -112,13 +353,13 @@ pub fn render_card(card: &GpCard, _cx: &RenderCx) -> Rendered {
         },
         GpCard::Prompt(w) => embed(&gp_prompt_embed(w)),
         GpCard::PromptClosed(c) => embed(&gp_prompt_closed_embed(c)),
-        GpCard::Song { start, guild } => {
-            embed(&gp_track_embed(start)).with_components(discord::action_rows(&gp_components(
-                *guild,
-                start.round_idx,
-                start.track_idx,
-                &start.players,
-                start.guessable,
+        GpCard::Song(song) => {
+            embed(&gp_track_embed(song)).with_components(discord::action_rows(&gp_components(
+                &song.guild,
+                song.round_idx,
+                song.track_idx,
+                &song.players,
+                song.guessable,
             )))
         },
         GpCard::Reveal(res) => embed(&gp_reveal_embed(res)),
@@ -189,10 +430,14 @@ pub fn gp_custom_id(
     round_idx: usize,
     track_idx: usize,
 ) -> String {
+    custom_id_for(kind, &guild_id.get().to_string(), round_idx, track_idx)
+}
+
+/// [`gp_custom_id`] for a guild already written as its snowflake.
+fn custom_id_for(kind: GpComponent, guild: &str, round_idx: usize, track_idx: usize) -> String {
     format!(
-        "{GP_CUSTOM_ID_PREFIX}{}:{}:{round_idx}:{track_idx}",
-        kind.tag(),
-        guild_id.get()
+        "{GP_CUSTOM_ID_PREFIX}{}:{guild}:{round_idx}:{track_idx}",
+        kind.tag()
     )
 }
 
@@ -216,10 +461,10 @@ pub fn parse_custom_id(custom_id: &str) -> Option<(GpComponent, GuildId, usize, 
 /// The controls under a playing song: the "who submitted this?" dropdown
 /// (only when there is something to guess) and the 👍 button.
 pub fn gp_components(
-    guild_id: GuildId,
+    guild: &CommunityRef,
     round_idx: usize,
     track_idx: usize,
-    players: &[(UserId, String)],
+    players: &[(UserRef, String)],
     guessable: bool,
 ) -> Vec<Row> {
     let mut rows = Vec::with_capacity(2);
@@ -229,12 +474,17 @@ pub fn gp_components(
             .take(GP_MAX_PLAYERS)
             .map(|(id, name)| SelectOption {
                 label: name.clone(),
-                value: id.to_string(),
+                value: id.raw().as_str().to_string(),
                 default: false,
             })
             .collect();
         rows.push(Row::Select(Select {
-            id: gp_custom_id(GpComponent::Guess, guild_id, round_idx, track_idx),
+            id: custom_id_for(
+                GpComponent::Guess,
+                guild.raw().as_str(),
+                round_idx,
+                track_idx,
+            ),
             placeholder: Some(GP_SELECT_PLACEHOLDER.to_string()),
             options,
             min: Some(1),
@@ -242,7 +492,12 @@ pub fn gp_components(
         }));
     }
     rows.push(Row::Buttons(vec![Button {
-        id: gp_custom_id(GpComponent::Like, guild_id, round_idx, track_idx),
+        id: custom_id_for(
+            GpComponent::Like,
+            guild.raw().as_str(),
+            round_idx,
+            track_idx,
+        ),
         label: Some(GP_LIKE_LABEL.to_string()),
         emoji: Some("👍".to_string()),
         style: ButtonStyle::Secondary,
@@ -306,8 +561,8 @@ pub fn gp_picked<'a>(values: impl IntoIterator<Item = &'a str>) -> Vec<GpCategor
 }
 
 /// A user written into message text.
-fn mention(id: UserId) -> String {
-    Mention::User(id.to_ref()).to_string()
+fn mention(id: &UserRef) -> String {
+    Mention::User(id.clone()).to_string()
 }
 
 fn field(name: impl Into<String>, value: impl Into<String>, inline: bool) -> Field {
@@ -327,14 +582,14 @@ pub(in crate::commands::music::gp) fn gp_pick_embed(text: &str) -> Card {
     }
 }
 
-fn scores_lines(scores: &[(UserId, u32)]) -> String {
+fn scores_lines(scores: &[(UserRef, u32)]) -> String {
     if scores.is_empty() {
         return "-".to_string();
     }
     scores
         .iter()
         .enumerate()
-        .map(|(i, (id, pts))| format!("{}. {} — {pts}", i + 1, mention(*id)))
+        .map(|(i, (id, pts))| format!("{}. {} — {pts}", i + 1, mention(id)))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -374,7 +629,7 @@ fn prompt_text(prompt: &str, category: Option<GpCategory>) -> String {
     }
 }
 
-pub fn gp_prompt_embed(w: &GpWindowOpened) -> Card {
+pub fn gp_prompt_embed(w: &GpPromptView) -> Card {
     Card {
         title: Some(round_title(w.round_idx, w.total_rounds)),
         description: Some(prompt_text(&w.prompt, w.category)),
@@ -391,7 +646,7 @@ pub fn gp_prompt_embed(w: &GpWindowOpened) -> Card {
     }
 }
 
-pub fn gp_prompt_closed_embed(c: &GpWindowClosed) -> Card {
+pub fn gp_prompt_closed_embed(c: &GpClosedView) -> Card {
     let status = if c.count == 0 {
         GP_WINDOW_EMPTY.to_string()
     } else {
@@ -416,7 +671,7 @@ pub fn gp_warning_text(w: &GpWindowWarning) -> String {
 }
 
 /// The song message: prompt, title and what to do. Never the submitter.
-pub fn gp_track_embed(s: &GpTrackStart) -> Card {
+pub fn gp_track_embed(s: &GpSongView) -> Card {
     let hint = if s.guessable {
         format!("{GP_ROUND_HINT}\n{GP_LIKE_HINT}")
     } else {
@@ -433,7 +688,7 @@ pub fn gp_track_embed(s: &GpTrackStart) -> Card {
             &format!(
                 "*{}*\n\n{}\n\n{hint}",
                 s.prompt,
-                song_link(&s.track.get_title(), &s.track.get_url())
+                song_link(&s.title, &s.url)
             ),
             DESCRIPTION_MAX,
         )),
@@ -446,7 +701,7 @@ pub fn gp_track_embed(s: &GpTrackStart) -> Card {
 /// they scored -- unless the game reveals at the end of the round, in which
 /// case it names nobody and shows no scores: only that the song is over, and
 /// its likes, which give nothing away.
-pub fn gp_reveal_embed(res: &GpTrackResult) -> Card {
+pub fn gp_reveal_embed(res: &GpRevealView) -> Card {
     let title = song_title(
         res.round_idx,
         res.total_rounds,
@@ -482,7 +737,7 @@ pub fn gp_reveal_embed(res: &GpTrackResult) -> Card {
         &format!(
             "*{}*\n\n{link}\n\n{GP_REVEAL} {}",
             res.prompt,
-            mention(res.submitter)
+            mention(&res.submitter)
         ),
         DESCRIPTION_MAX,
     );
@@ -510,13 +765,13 @@ pub fn gp_reveal_embed(res: &GpTrackResult) -> Card {
         } else {
             res.correct
                 .iter()
-                .map(|id| mention(*id))
+                .map(mention)
                 .collect::<Vec<_>>()
                 .join(", ")
         };
         fields.push(field(GP_GUESSED_RIGHT, clip(&correct, FIELD_MAX), false));
         if res.fooled_everyone {
-            fields.push(field(GP_FOOLED_EVERYONE, mention(res.submitter), false));
+            fields.push(field(GP_FOOLED_EVERYONE, mention(&res.submitter), false));
         }
     }
     if res.played_full {
@@ -533,7 +788,7 @@ pub fn gp_reveal_embed(res: &GpTrackResult) -> Card {
     }
 }
 
-pub fn gp_scoreboard_embed(scores: &[(UserId, u32)], title: &str) -> Card {
+pub fn gp_scoreboard_embed(scores: &[(UserRef, u32)], title: &str) -> Card {
     Card {
         title: Some(title.to_string()),
         description: Some(clip(&scores_lines(scores), DESCRIPTION_MAX)),
@@ -542,26 +797,26 @@ pub fn gp_scoreboard_embed(scores: &[(UserId, u32)], title: &str) -> Card {
     }
 }
 
-fn points_lines(points: &[(UserId, u32)]) -> String {
+fn points_lines(points: &[(UserRef, u32)]) -> String {
     if points.is_empty() {
         return GP_RESULTS_NOBODY_SCORED.to_string();
     }
     points
         .iter()
         .enumerate()
-        .map(|(i, (id, pts))| format!("{}. {} — +{pts}", i + 1, mention(*id)))
+        .map(|(i, (id, pts))| format!("{}. {} — +{pts}", i + 1, mention(id)))
         .collect::<Vec<_>>()
         .join("\n")
 }
 
 /// One line of the results per song. `names` lists who guessed right by
 /// mention; otherwise it is a count, for a round too big for the names to fit.
-fn song_result_line(i: usize, s: &GpSongResult, guessable: bool, names: bool) -> String {
+fn song_result_line(i: usize, s: &GpSongRow, guessable: bool, names: bool) -> String {
     let mut line = format!(
         "{}. **{}** · {}",
         i + 1,
         song_name(&s.title),
-        mention(s.submitter)
+        mention(&s.submitter)
     );
     if s.failed {
         line.push_str(&format!(" · {GP_TRACK_FAILED}"));
@@ -571,11 +826,7 @@ fn song_result_line(i: usize, s: &GpSongResult, guessable: bool, names: bool) ->
         let guessed = if s.correct.is_empty() {
             GP_NOBODY_GUESSED.to_string()
         } else if names {
-            s.correct
-                .iter()
-                .map(|id| mention(*id))
-                .collect::<Vec<_>>()
-                .join(", ")
+            s.correct.iter().map(mention).collect::<Vec<_>>().join(", ")
         } else {
             format!("{} {GP_RESULTS_GUESSED_COUNT}", s.correct.len())
         };
@@ -597,7 +848,7 @@ fn song_result_line(i: usize, s: &GpSongResult, guessable: bool, names: bool) ->
 /// edit of a message somewhere up the channel, and after five songs nobody
 /// finds them; this is the one place the round's results are together. In a
 /// game that reveals at the end of the round it is also the reveal itself.
-pub fn gp_round_results_embed(r: &GpRoundResult) -> Card {
+pub fn gp_round_results_embed(r: &GpRoundView) -> Card {
     let lines = |names: bool| {
         let songs = r
             .songs
@@ -639,7 +890,7 @@ pub fn gp_round_results_embed(r: &GpRoundResult) -> Card {
     }
 }
 
-pub fn gp_status_embed(status: &GpStatus) -> Card {
+pub fn gp_status_embed(status: &GpStatusView) -> Card {
     let list = |names: &[String]| {
         if names.is_empty() {
             GP_NOBODY_YET.to_string()
@@ -655,7 +906,7 @@ pub fn gp_status_embed(status: &GpStatus) -> Card {
         }
     };
     match status {
-        GpStatus::Submitting {
+        GpStatusView::Submitting {
             host,
             round,
             total,
@@ -667,7 +918,7 @@ pub fn gp_status_embed(status: &GpStatus) -> Card {
             title: Some(format!("{GP_STATUS_SUBMITTING} {round}/{total}")),
             fields: vec![
                 field(GP_STATUS_PROMPT, prompt.clone(), false),
-                field("Host", mention(*host), true),
+                field("Host", mention(host), true),
                 field(GP_STATUS_CLOSES, format!("<t:{closes_at}:R>"), true),
                 field(GP_STATUS_SUBMITTED, list(submitted), false),
                 field(
@@ -679,7 +930,7 @@ pub fn gp_status_embed(status: &GpStatus) -> Card {
             colour: Some(FOOYOO),
             ..Card::default()
         },
-        GpStatus::Playing {
+        GpStatusView::Playing {
             round,
             total,
             track,
