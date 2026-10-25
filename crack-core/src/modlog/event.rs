@@ -1229,3 +1229,9 @@ mod tests {
         r##"None|{"title":"🎉 Crowdfund executed","type":"rich","description":"Mute on <@11> until <t:1700003600:f> (crowdfunded by <@22>, <@11>)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
     ];
 }
+
+impl crate::messaging::render::Payload for ModLogEvent {
+    fn render(&self, cx: &RenderCx) -> Rendered {
+        render(self, cx)
+    }
+}

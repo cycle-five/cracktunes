@@ -221,15 +221,6 @@ pub enum CrackedMessage {
         submitted: usize,
         of: usize,
     },
-    GpStarted {
-        category: String,
-        rounds: usize,
-        timer_secs: u64,
-        clip: Option<crate::commands::music::gp::GpClip>,
-        reveal: crate::commands::music::gp::GpReveal,
-        round_results: bool,
-        cleared_queue: bool,
-    },
     GpRoundSkipped,
     GpEnded {
         by: String,
@@ -277,15 +268,15 @@ pub enum CrackedMessage {
     ControlEchoesOff,
     ButtonOutOfDate,
     /// Every `/gp` message, rendered by `gp::render_card`.
-    Gp(Box<crate::commands::music::gp::GpCard>),
+    Gp(Box<dyn crate::messaging::render::Payload>),
     NowPlayingButtonsDisabled,
     NowPlayingButtonsOn,
     NowPlayingButtonsOff,
     QueueResumed,
     /// Every voice-room message, rendered by `rooms::card::render_card`.
-    Room(Box<crate::rooms::card::RoomCard>),
+    Room(Box<dyn crate::messaging::render::Payload>),
     /// A mod log entry, rendered by `modlog::event::render`.
-    ModLog(Box<crate::modlog::event::ModLogEvent>),
+    ModLog(Box<dyn crate::messaging::render::Payload>),
 }
 
 impl CrackedMessage {
@@ -597,49 +588,6 @@ impl Display for CrackedMessage {
                     ))
                 }
             },
-            Self::GpStarted {
-                category,
-                rounds,
-                timer_secs,
-                clip,
-                reveal,
-                round_results,
-                cleared_queue,
-            } => f.write_str(&format!(
-                "{} {} {} {} — {} {}{}{}{}{}",
-                GP_STARTED,
-                rounds,
-                GP_STARTED_ROUNDS,
-                category,
-                crate::utils::duration_to_string(std::time::Duration::from_secs(*timer_secs)),
-                GP_STARTED_TIMER,
-                match clip {
-                    Some(c) => format!(
-                        " {} {} {} {}",
-                        GP_STARTED_CLIP,
-                        duration_to_string(c.length),
-                        GP_STARTED_CLIP_FROM,
-                        duration_to_string(c.start)
-                    ),
-                    None => String::new(),
-                },
-                match reveal {
-                    crate::commands::music::gp::GpReveal::Song => {
-                        format!(" {}", GP_STARTED_REVEAL_SONG)
-                    },
-                    crate::commands::music::gp::GpReveal::Round => String::new(),
-                },
-                if *round_results {
-                    String::new()
-                } else {
-                    format!(" {}", GP_STARTED_NO_RESULTS)
-                },
-                if *cleared_queue {
-                    format!(" {}", GP_QUEUE_CLEARED)
-                } else {
-                    String::new()
-                }
-            )),
             Self::GpRoundSkipped => f.write_str(GP_ROUND_SKIPPED),
             Self::GpEnded { by } => f.write_str(&format!("{} {}", GP_ENDED_BY, by)),
             Self::GpWindowClosed { count } => f.write_str(&format!(
@@ -793,8 +741,7 @@ mod test {
     #[test]
     fn test_gp_messages_display() {
         use crate::messaging::messages::{
-            GP_CLOSED_BY_HOST, GP_ENDED_BY, GP_QUEUE_CLEARED, GP_ROUND_SKIPPED, GP_STARTED,
-            GP_STARTED_NO_RESULTS, GP_STARTED_REVEAL_SONG, GP_SUBMITTED, GP_SUBMITTED_REPLACED,
+            GP_CLOSED_BY_HOST, GP_ENDED_BY, GP_ROUND_SKIPPED, GP_SUBMITTED, GP_SUBMITTED_REPLACED,
             GP_VOTEFULL_CARRIED, GP_VOTEFULL_ROOM, GP_VOTEFULL_ROOM_NEEDED, GP_VOTESKIP_CARRIED,
             GP_VOTESKIP_PULLED, GP_VOTESKIP_ROOM, GP_VOTESKIP_ROOM_NEEDED, GP_WINDOW_CLOSED_SONGS,
         };
@@ -818,58 +765,6 @@ mod test {
         let s = msg.to_string();
         assert!(s.starts_with(GP_SUBMITTED_REPLACED), "{s}");
         assert!(s.ends_with("(1 in)"), "{s}");
-
-        let msg = CrackedMessage::GpStarted {
-            category: "🥹 Nostalgia".into(),
-            rounds: 5,
-            timer_secs: 180,
-            clip: None,
-            reveal: crate::commands::music::gp::GpReveal::Song,
-            round_results: true,
-            cleared_queue: false,
-        };
-        let s = msg.to_string();
-        assert!(s.starts_with(&format!("{} 5", GP_STARTED)), "{s}");
-        assert!(s.contains("🥹 Nostalgia"), "{s}");
-        assert!(!s.contains(GP_QUEUE_CLEARED), "{s}");
-        let msg = CrackedMessage::GpStarted {
-            category: "🎲 Random".into(),
-            rounds: 3,
-            timer_secs: 60,
-            clip: None,
-            reveal: crate::commands::music::gp::GpReveal::Round,
-            round_results: true,
-            cleared_queue: true,
-        };
-        assert!(msg.to_string().ends_with(&format!(" {}", GP_QUEUE_CLEARED)));
-        let s = msg.to_string();
-        assert!(
-            !s.contains(GP_STARTED_REVEAL_SONG),
-            "the default says nothing: {s}"
-        );
-        let msg = CrackedMessage::GpStarted {
-            category: "🎲 Random".into(),
-            rounds: 3,
-            timer_secs: 60,
-            clip: None,
-            reveal: crate::commands::music::gp::GpReveal::Song,
-            round_results: true,
-            cleared_queue: false,
-        };
-        let s = msg.to_string();
-        assert!(s.ends_with(GP_STARTED_REVEAL_SONG), "{s}");
-        assert!(!s.contains(GP_STARTED_NO_RESULTS), "{s}");
-        let msg = CrackedMessage::GpStarted {
-            category: "🎲 Random".into(),
-            rounds: 3,
-            timer_secs: 60,
-            clip: None,
-            reveal: crate::commands::music::gp::GpReveal::Song,
-            round_results: false,
-            cleared_queue: false,
-        };
-        let s = msg.to_string();
-        assert!(s.ends_with(GP_STARTED_NO_RESULTS), "{s}");
 
         // A vote answers the voter and the room separately; only the voter's
         // line carries the count so far, and the room's names nobody.

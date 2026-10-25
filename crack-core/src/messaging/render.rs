@@ -48,6 +48,12 @@ pub enum Style {
     Text,
 }
 
+/// A feature's own message type: it displays as a log line and renders itself.
+/// `CrackedMessage` holds one per feature, so it names none of them.
+pub trait Payload: std::fmt::Debug + std::fmt::Display + Send + Sync {
+    fn render(&self, cx: &RenderCx) -> Rendered;
+}
+
 /// Render `msg`. Pure and total.
 #[must_use]
 pub fn render(msg: &CrackedMessage, cx: &RenderCx) -> Rendered {
@@ -57,9 +63,7 @@ pub fn render(msg: &CrackedMessage, cx: &RenderCx) -> Rendered {
         CrackedMessage::Finished => super::cards::finished(),
         CrackedMessage::Queued(card) => super::cards::queued(card, cx),
         CrackedMessage::Echo(line) => super::cards::echo(line),
-        CrackedMessage::Gp(card) => crate::commands::music::gp::render_card(card, cx),
-        CrackedMessage::Room(card) => crate::rooms::card::render_card(card, cx),
-        CrackedMessage::ModLog(event) => crate::modlog::event::render(event, cx),
+        CrackedMessage::Gp(p) | CrackedMessage::Room(p) | CrackedMessage::ModLog(p) => p.render(cx),
         CrackedMessage::TrackFailed { listed, more } => Rendered::card(Card {
             description: Some(clip(
                 &super::track_failed::render_text(listed, *more),

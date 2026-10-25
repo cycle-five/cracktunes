@@ -1263,3 +1263,9 @@ mod tests {
         ),
     ];
 }
+
+impl crate::messaging::render::Payload for RoomCard {
+    fn render(&self, cx: &RenderCx) -> Rendered {
+        render_card(self, cx)
+    }
+}

@@ -4,10 +4,12 @@ use crate::messaging::messages::{
     GP_FOOLED_EVERYONE, GP_FULL_SONG, GP_FULL_SONG_NOTE, GP_GUESSED_RIGHT, GP_HOW_TO,
     GP_HOW_TO_TITLE, GP_LIKES, GP_LIKE_HINT, GP_LIKE_LABEL, GP_NOBODY_GUESSED, GP_NOBODY_YET,
     GP_PICK_CANCEL, GP_PICK_PLACEHOLDER, GP_PICK_START, GP_PICK_TITLE, GP_PROMPT_CLOSES_EARLY,
-    GP_PROMPT_CLOSES_TITLE, GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE, GP_RESULTS_GUESSED_BY,
-    GP_RESULTS_GUESSED_COUNT, GP_RESULTS_NOBODY_SCORED, GP_RESULTS_THIS_ROUND, GP_RESULTS_TITLE,
-    GP_REVEAL, GP_REVEAL_HELD, GP_ROUND_HINT, GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD,
-    GP_SELECT_PLACEHOLDER, GP_SONG_TITLE, GP_STATUS_CLOSES, GP_STATUS_GUESSED, GP_STATUS_LIKES,
+    GP_PROMPT_CLOSES_TITLE, GP_PROMPT_HOW_TO, GP_PROMPT_HOW_TO_TITLE, GP_QUEUE_CLEARED,
+    GP_RESULTS_GUESSED_BY, GP_RESULTS_GUESSED_COUNT, GP_RESULTS_NOBODY_SCORED,
+    GP_RESULTS_THIS_ROUND, GP_RESULTS_TITLE, GP_REVEAL, GP_REVEAL_HELD, GP_ROUND_HINT,
+    GP_ROUND_TITLE, GP_RULES_TEXT, GP_SCOREBOARD, GP_SELECT_PLACEHOLDER, GP_SONG_TITLE, GP_STARTED,
+    GP_STARTED_CLIP, GP_STARTED_CLIP_FROM, GP_STARTED_NO_RESULTS, GP_STARTED_REVEAL_SONG,
+    GP_STARTED_ROUNDS, GP_STARTED_TIMER, GP_STATUS_CLOSES, GP_STATUS_GUESSED, GP_STATUS_LIKES,
     GP_STATUS_PLAYING, GP_STATUS_PROMPT, GP_STATUS_SCORES, GP_STATUS_SUBMITTED,
     GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, GP_WINDOW_CLOSED,
     GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN,
@@ -17,6 +19,7 @@ use crate::messaging::{
     message::CrackedMessage,
     render::{render, RenderCx, Rendered},
 };
+use crate::utils::duration_to_string;
 use ::serenity::all::{GuildId, UserId};
 use crack_model::{
     colour, Button, ButtonStyle, Card, CommunityRef, Field, Mention, Row, Select, SelectOption,
@@ -55,6 +58,16 @@ pub enum GpCard {
     },
     /// Plain text, as `/gp` has always sent its one-liners.
     Line(String),
+    /// `/gp start`'s notice: what was opened, and how.
+    Started {
+        category: String,
+        rounds: usize,
+        timer_secs: u64,
+        clip: Option<GpClip>,
+        reveal: GpReveal,
+        round_results: bool,
+        cleared_queue: bool,
+    },
 }
 
 /// `UserId`s as refs, for the views below.
@@ -314,6 +327,49 @@ impl std::fmt::Display for GpCard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let kind = match self {
             Self::Line(text) => return f.write_str(text),
+            Self::Started {
+                category,
+                rounds,
+                timer_secs,
+                clip,
+                reveal,
+                round_results,
+                cleared_queue,
+            } => {
+                return f.write_str(&format!(
+                    "{} {} {} {} — {} {}{}{}{}{}",
+                    GP_STARTED,
+                    rounds,
+                    GP_STARTED_ROUNDS,
+                    category,
+                    duration_to_string(std::time::Duration::from_secs(*timer_secs)),
+                    GP_STARTED_TIMER,
+                    match clip {
+                        Some(c) => format!(
+                            " {} {} {} {}",
+                            GP_STARTED_CLIP,
+                            duration_to_string(c.length),
+                            GP_STARTED_CLIP_FROM,
+                            duration_to_string(c.start)
+                        ),
+                        None => String::new(),
+                    },
+                    match reveal {
+                        GpReveal::Song => format!(" {}", GP_STARTED_REVEAL_SONG),
+                        GpReveal::Round => String::new(),
+                    },
+                    if *round_results {
+                        String::new()
+                    } else {
+                        format!(" {}", GP_STARTED_NO_RESULTS)
+                    },
+                    if *cleared_queue {
+                        format!(" {}", GP_QUEUE_CLEARED)
+                    } else {
+                        String::new()
+                    }
+                ))
+            },
             Self::Rules => "rules",
             Self::Status(_) => "status",
             Self::Picker { .. } => "picker",
@@ -364,6 +420,17 @@ pub fn render_card(card: &GpCard, _cx: &RenderCx) -> Rendered {
             }
         },
         GpCard::Line(text) => Rendered::text(text.clone()),
+        GpCard::Started { .. } => Rendered::card(Card {
+            description: Some(clip(&card.to_string(), DESCRIPTION_MAX)),
+            colour: Some(colour::BLUE),
+            ..Card::default()
+        }),
+    }
+}
+
+impl crate::messaging::render::Payload for GpCard {
+    fn render(&self, cx: &RenderCx) -> Rendered {
+        render_card(self, cx)
     }
 }
 
@@ -944,5 +1011,110 @@ pub fn gp_status_embed(status: &GpStatusView) -> Card {
             colour: Some(colour::BLURPLE),
             ..Card::default()
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messaging::messages::{
+        GP_QUEUE_CLEARED, GP_STARTED, GP_STARTED_NO_RESULTS, GP_STARTED_REVEAL_SONG,
+    };
+    use std::time::Duration;
+
+    #[test]
+    fn gp_started_renders_as_before() {
+        let plain = CrackedMessage::Gp(Box::new(GpCard::Started {
+            category: "🥹 Nostalgia".into(),
+            rounds: 5,
+            timer_secs: 180,
+            clip: None,
+            reveal: GpReveal::Song,
+            round_results: true,
+            cleared_queue: false,
+        }));
+        assert_eq!(
+            render(&plain, &RenderCx::default()),
+            Rendered::card(Card {
+                description: Some("🎭 Game on! 5 rounds of 🥹 Nostalgia — 00:03:00 to submit each round. Submitters are revealed after each song.".into()),
+                colour: Some(colour::BLUE),
+                ..Card::default()
+            })
+        );
+        let clipped = CrackedMessage::Gp(Box::new(GpCard::Started {
+            category: "🥹 Nostalgia".into(),
+            rounds: 5,
+            timer_secs: 180,
+            clip: Some(GpClip {
+                start: Duration::from_secs(30),
+                length: Duration::from_secs(20),
+            }),
+            reveal: GpReveal::Song,
+            round_results: true,
+            cleared_queue: false,
+        }));
+        assert_eq!(
+            render(&clipped, &RenderCx::default()),
+            Rendered::card(Card {
+                description: Some("🎭 Game on! 5 rounds of 🥹 Nostalgia — 00:03:00 to submit each round. Playing 00:00:20 of each song, from 00:00:30 Submitters are revealed after each song.".into()),
+                colour: Some(colour::BLUE),
+                ..Card::default()
+            })
+        );
+    }
+
+    #[test]
+    fn gp_started_messages_display() {
+        let msg = CrackedMessage::Gp(Box::new(GpCard::Started {
+            category: "🥹 Nostalgia".into(),
+            rounds: 5,
+            timer_secs: 180,
+            clip: None,
+            reveal: GpReveal::Song,
+            round_results: true,
+            cleared_queue: false,
+        }));
+        let s = msg.to_string();
+        assert!(s.starts_with(&format!("{} 5", GP_STARTED)), "{s}");
+        assert!(s.contains("🥹 Nostalgia"), "{s}");
+        assert!(!s.contains(GP_QUEUE_CLEARED), "{s}");
+        let msg = CrackedMessage::Gp(Box::new(GpCard::Started {
+            category: "🎲 Random".into(),
+            rounds: 3,
+            timer_secs: 60,
+            clip: None,
+            reveal: GpReveal::Round,
+            round_results: true,
+            cleared_queue: true,
+        }));
+        assert!(msg.to_string().ends_with(&format!(" {}", GP_QUEUE_CLEARED)));
+        let s = msg.to_string();
+        assert!(
+            !s.contains(GP_STARTED_REVEAL_SONG),
+            "the default says nothing: {s}"
+        );
+        let msg = CrackedMessage::Gp(Box::new(GpCard::Started {
+            category: "🎲 Random".into(),
+            rounds: 3,
+            timer_secs: 60,
+            clip: None,
+            reveal: GpReveal::Song,
+            round_results: true,
+            cleared_queue: false,
+        }));
+        let s = msg.to_string();
+        assert!(s.ends_with(GP_STARTED_REVEAL_SONG), "{s}");
+        assert!(!s.contains(GP_STARTED_NO_RESULTS), "{s}");
+        let msg = CrackedMessage::Gp(Box::new(GpCard::Started {
+            category: "🎲 Random".into(),
+            rounds: 3,
+            timer_secs: 60,
+            clip: None,
+            reveal: GpReveal::Song,
+            round_results: false,
+            cleared_queue: false,
+        }));
+        let s = msg.to_string();
+        assert!(s.ends_with(GP_STARTED_NO_RESULTS), "{s}");
     }
 }
