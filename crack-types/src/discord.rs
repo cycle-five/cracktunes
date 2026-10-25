@@ -333,5 +333,13 @@ mod tests {
         ] {
             assert!(serde_json::from_str::<Neutral>(bad).is_err(), "{bad}");
         }
+        // A type that is neither says what is expected.
+        let wrong = serde_json::from_str::<Neutral>(r#"{"id":true}"#).unwrap_err();
+        assert!(
+            wrong
+                .to_string()
+                .contains("a snowflake as a string or an integer"),
+            "{wrong}"
+        );
     }
 }
