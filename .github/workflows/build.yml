@@ -7,6 +7,13 @@ on:
 permissions:
   contents: read
 
+# 🪤 ubuntu-26.04 (ubuntu-latest since 2026-10-24) ships CMake 4, which refuses
+# any `cmake_minimum_required` below 3.5. audiopus_sys 0.2.2 (songbird's opus
+# build) declares an older one, so its build script fails on a cold cache.
+# This is the opt-in CMake's own error message names.
+env:
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
 jobs:
   build:
     name: Build
