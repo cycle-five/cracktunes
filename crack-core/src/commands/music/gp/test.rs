@@ -3405,3 +3405,25 @@ fn user_players(players: &[(UserId, String)]) -> Vec<(crack_model::UserRef, Stri
         .map(|(id, name)| (id.to_ref(), name.clone()))
         .collect()
 }
+
+/// poise takes `/gp start`'s slash description from the fn's doc comment.
+#[test]
+fn gp_start_keeps_its_description() {
+    assert_eq!(
+        gp_start().description.as_deref(),
+        Some("Start a game in your voice channel: pick a category, rounds, and the submission timer.")
+    );
+}
+
+/// Parsing is case-insensitive and refuses a name no variant has.
+#[test]
+fn the_gp_category_choice_parses_as_before() {
+    use poise::ChoiceParameter;
+    let parse = |name: &str| GpCategoryChoice::from_name(name).map(GpCategory::from);
+    for name in ["🎲 Random", "random", "RANDOM", "mixed"] {
+        assert_eq!(parse(name), Some(GpCategory::Random), "{name}");
+    }
+    assert_eq!(parse("pick"), Some(GpCategory::PickSeveral));
+    assert_eq!(parse("NOSTALGIA"), Some(GpCategory::Nostalgia));
+    assert_eq!(parse("nope"), None);
+}

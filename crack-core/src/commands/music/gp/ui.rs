@@ -67,7 +67,7 @@ pub enum GpCard {
 }
 
 /// `UserId`s as refs, for the views below.
-pub fn user_refs(scores: &[(UserId, u32)]) -> Vec<(UserRef, u32)> {
+pub(crate) fn user_refs(scores: &[(UserId, u32)]) -> Vec<(UserRef, u32)> {
     scores.iter().map(|(id, n)| (id.to_ref(), *n)).collect()
 }
 

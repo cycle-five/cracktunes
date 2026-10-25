@@ -211,7 +211,6 @@ async fn gp_pick_update(
     Ok(())
 }
 
-/// Start a game in your voice channel: pick a category, rounds, and the submission timer.
 /// `/gp start`'s category dropdown. The first `#[name]` is what Discord shows;
 /// the others are what prefix commands can type (`!gp start nostalgia 5`). The
 /// domain's [`GpCategory`] knows nothing of poise; this is the command's copy.
@@ -326,6 +325,7 @@ impl From<GpRevealChoice> for GpReveal {
     }
 }
 
+/// Start a game in your voice channel: pick a category, rounds, and the submission timer.
 // Live-Discord glue: it needs a poise Context (a voice channel, a picker the
 // host answers). Its parts are tested; the choice conversions by
 // `the_gp_choices_keep_their_names`.
