@@ -1,5 +1,6 @@
 use crate::http_utils::CacheHttpExt;
 use crate::messaging::courier::{self, Destination};
+use crate::messaging::discord;
 use crate::messaging::format::{duration_text, TrackLabel, INLINE_TITLE_MAX};
 use crate::messaging::messages::{SEARCH_RESULTS_NOT_POSTED, TRACK_UNTITLED};
 use crate::messaging::render::{RenderCx, Rendered};
@@ -21,19 +22,13 @@ use crate::{
 };
 use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
-    all::{
-        CacheHttp, ComponentInteractionDataKind, CreateActionRow, CreateComponent,
-        CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, GenericChannelId, GuildId,
-        Interaction,
-    },
-    builder::{
-        CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter, CreateInteractionResponse,
-        CreateInteractionResponseMessage,
-    },
+    all::{CacheHttp, ComponentInteractionDataKind, GenericChannelId, GuildId, Interaction},
+    builder::{CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage},
     futures::StreamExt,
     model::channel::Message,
 };
 use anyhow::Result;
+use crack_model::{Author, Card, Field, Footer, Row, Select, SelectOption};
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
 use poise::{
@@ -128,6 +123,60 @@ fn search_option(hit: &AuxMetadata) -> (String, String) {
     (label.chars().take(99).collect(), link)
 }
 
+/// The search results menu: one option per hit, the label first and the link
+/// as the value.
+fn song_select_rows(options: impl Iterator<Item = (String, String)>) -> Vec<Row> {
+    vec![Row::Select(Select {
+        id: "song_select".to_owned(),
+        placeholder: Some("Select Song to Play".to_owned()),
+        options: options
+            .map(|(label, value)| SelectOption {
+                label,
+                value,
+                default: false,
+            })
+            .collect(),
+        min: None,
+        max: None,
+    })]
+}
+
+/// The page a navigation button leads to from `current` (counting from 0), or
+/// `None` for a button that is not navigation.
+fn flip_page(button: &str, current: usize, num_pages: usize) -> Option<usize> {
+    match button {
+        "<<" => Some(0),
+        "<" => Some(min(current.saturating_sub(1), num_pages - 1)),
+        ">" => Some(min(current.add(1), num_pages - 1)),
+        ">>" => Some(num_pages - 1),
+        _ => None,
+    }
+}
+
+/// One page of a paged embed; `page` counts from 0, the footer from 1.
+fn paged_card(
+    title: &str,
+    author: &str,
+    description: String,
+    page: usize,
+    num_pages: usize,
+) -> Card {
+    Card {
+        title: Some(title.to_owned()),
+        author: Some(Author {
+            name: author.to_owned(),
+            url: None,
+            icon_url: None,
+        }),
+        description: Some(description),
+        footer: Some(Footer {
+            text: format!("Page {}/{}", page + 1, num_pages),
+            icon_url: None,
+        }),
+        ..Card::default()
+    }
+}
+
 /// Interactive youtube search and selection.
 pub async fn yt_search_select(
     ctx: SerenityContext,
@@ -143,19 +192,8 @@ pub async fn yt_search_select(
         .clone()
         .map(|(elem, link)| (link, elem))
         .collect::<HashMap<_, _>>();
-    let menu = CreateSelectMenu::new(
-        "song_select",
-        CreateSelectMenuKind::String {
-            options: res
-                .map(|(x, y)| CreateSelectMenuOption::new(x, y))
-                .collect(),
-        },
-    )
-    .custom_id("song_select")
-    .placeholder("Select Song to Play");
-    let out = Rendered::text("Search results").with_components(vec![CreateComponent::ActionRow(
-        CreateActionRow::SelectMenu(menu),
-    )]);
+    let out = Rendered::text("Search results")
+        .with_components(discord::action_rows(&song_select_rows(res)));
     let transport = DiscordTransport::of(&ctx);
     // The collector needs the menu's id, so this send is the fallible one.
     let menu_id = courier::post_message(&transport, channel_id, &out)
@@ -437,7 +475,7 @@ pub async fn forget_queue_message(
     Ok(())
 }
 
-pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> CreateEmbed<'_> {
+pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> Card {
     let content = if !playlists.is_empty() {
         let start_idx = EMBED_PAGE_SIZE * page;
         let playlists: Vec<&Playlist> = playlists.iter().skip(start_idx).take(10).collect();
@@ -460,35 +498,36 @@ pub async fn build_playlist_list_embed(playlists: &[Playlist], page: usize) -> C
         PLAYLIST_LIST_EMPTY.to_string()
     };
 
-    CreateEmbed::default().title(PLAYLISTS).description(content)
-    //     .footer(CreateEmbedFooter::new(format!(
-    //         "{} {} {} {}",
-    //         QUEUE_PAGE,
-    //         page + 1,
-    //         QUEUE_PAGE_OF,
-    //         calculate_num_pages(playlists),
-    //     )))
+    Card {
+        title: Some(PLAYLISTS.to_owned()),
+        description: Some(content),
+        ..Card::default()
+    }
 }
 
 pub async fn build_tracks_embed_metadata(
     playlist_name: String,
     metadata_arr: &[NewAuxMetadata],
     page: usize,
-) -> CreateEmbed<'_> {
-    CreateEmbed::default()
-        //.field("Playlist:", &playlist_name, true)
-        .field(
-            playlist_name,
-            build_queue_page_metadata(metadata_arr, page).await,
-            false,
-        )
-        .footer(CreateEmbedFooter::new(format!(
-            "{} {} {} {}",
-            QUEUE_PAGE,
-            page + 1,
-            QUEUE_PAGE_OF,
-            calculate_num_pages(metadata_arr),
-        )))
+) -> Card {
+    Card {
+        fields: vec![Field {
+            name: playlist_name,
+            value: build_queue_page_metadata(metadata_arr, page).await,
+            inline: false,
+        }],
+        footer: Some(Footer {
+            text: format!(
+                "{} {} {} {}",
+                QUEUE_PAGE,
+                page + 1,
+                QUEUE_PAGE_OF,
+                calculate_num_pages(metadata_arr),
+            ),
+            icon_url: None,
+        }),
+        ..Card::default()
+    }
 }
 
 /// Creates and sends a paged embed.
@@ -509,13 +548,13 @@ pub async fn create_paged_embed(
         let reply_handle = {
             courier::reply_rendered(
                 ctx,
-                Rendered::embed(
-                    CreateEmbed::new()
-                        .title(title.clone())
-                        .author(CreateEmbedAuthor::new(author.clone()))
-                        .description(page_getter(0))
-                        .footer(CreateEmbedFooter::new(format!("Page {}/{}", 1, num_pages))),
-                )
+                Rendered::embed(discord::embed(&paged_card(
+                    &title,
+                    &author,
+                    page_getter(0),
+                    0,
+                    num_pages,
+                )))
                 .with_components(create_nav_btns(0, num_pages)),
                 style.ephemeral,
             )
@@ -541,25 +580,18 @@ pub async fn create_paged_embed(
 
             let mut page_wlock = page.write().await;
 
-            *page_wlock = match btn_id.as_str() {
-                "<<" => 0,
-                "<" => min(page_wlock.saturating_sub(1), num_pages - 1),
-                ">" => min(page_wlock.add(1), num_pages - 1),
-                ">>" => num_pages - 1,
-                _ => continue,
+            *page_wlock = match flip_page(btn_id, *page_wlock, num_pages) {
+                Some(next) => next,
+                None => continue,
             };
 
-            let flipped = Rendered::embed(
-                CreateEmbed::new()
-                    .title(title.clone())
-                    .author(CreateEmbedAuthor::new(author.clone()))
-                    .description(page_getter(*page_wlock))
-                    .footer(CreateEmbedFooter::new(format!(
-                        "Page {}/{}",
-                        *page_wlock + 1,
-                        num_pages
-                    ))),
-            )
+            let flipped = Rendered::embed(discord::embed(&paged_card(
+                &title,
+                &author,
+                page_getter(*page_wlock),
+                *page_wlock,
+                num_pages,
+            )))
             .with_components(create_nav_btns(*page_wlock, num_pages));
             #[expect(
                 clippy::disallowed_methods,
@@ -966,5 +998,101 @@ mod test {
         } else {
             panic!("create_nav_btns did not return an action row of buttons");
         }
+    }
+
+    fn sample_playlists() -> Vec<Playlist> {
+        vec![
+            Playlist {
+                id: 7,
+                name: "mix".into(),
+                ..Default::default()
+            },
+            Playlist {
+                id: 9,
+                name: "two".into(),
+                ..Default::default()
+            },
+        ]
+    }
+
+    fn sample_tracks() -> Vec<NewAuxMetadata> {
+        vec![NewAuxMetadata(AuxMetadata {
+            title: Some("Song".into()),
+            source_url: Some("https://youtu.be/x".into()),
+            duration: Some(Duration::from_secs(61)),
+            ..Default::default()
+        })]
+    }
+
+    #[test]
+    fn song_select_menu_renders_as_before() {
+        let options = vec![
+            ("a".to_string(), "https://x/a".to_string()),
+            ("b".to_string(), "https://x/b".to_string()),
+        ];
+        let rows = song_select_rows(options.into_iter());
+        assert_eq!(
+            serde_json::to_string(&discord::action_rows(&rows)).unwrap(),
+            r#"[{"type":1,"components":[{"custom_id":"song_select","placeholder":"Select Song to Play","type":3,"options":[{"label":"a","value":"https://x/a"},{"label":"b","value":"https://x/b"}]}]}]"#
+        );
+    }
+
+    #[test]
+    fn navigation_buttons_flip_pages_within_bounds() {
+        assert_eq!(flip_page("<<", 3, 5), Some(0));
+        assert_eq!(flip_page("<", 3, 5), Some(2));
+        assert_eq!(flip_page("<", 0, 5), Some(0));
+        assert_eq!(flip_page("<", 9, 5), Some(4));
+        assert_eq!(flip_page(">", 3, 5), Some(4));
+        assert_eq!(flip_page(">", 0, 5), Some(1));
+        assert_eq!(flip_page(">", 4, 5), Some(4));
+        assert_eq!(flip_page(">>", 1, 5), Some(4));
+        assert_eq!(flip_page("x", 1, 5), None);
+    }
+
+    #[test]
+    fn paged_embed_renders_as_before() {
+        let first = paged_card("T", "Au", "desc".to_string(), 0, 5);
+        assert_eq!(
+            serde_json::to_string(&discord::embed(&first)).unwrap(),
+            r#"{"title":"T","type":"rich","description":"desc","footer":{"text":"Page 1/5","icon_url":null},"author":{"name":"Au","url":null,"icon_url":null}}"#
+        );
+        let card = paged_card("T", "Au", "desc".to_string(), 1, 5);
+        assert_eq!(
+            serde_json::to_string(&discord::embed(&card)).unwrap(),
+            r#"{"title":"T","type":"rich","description":"desc","footer":{"text":"Page 2/5","icon_url":null},"author":{"name":"Au","url":null,"icon_url":null}}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn an_empty_playlist_list_renders_as_before() {
+        let card = build_playlist_list_embed(&[], 0).await;
+        assert_eq!(
+            serde_json::to_string(&discord::embed(&card)).unwrap(),
+            "{\"title\":\"Playlists\",\"type\":\"rich\",\"description\":\"📃\u{2002}You have no playlists currently.\"}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_playlist_list_renders_as_before() {
+        let card = build_playlist_list_embed(&sample_playlists(), 0).await;
+        assert_eq!(
+            serde_json::to_string(&discord::embed(&card)).unwrap(),
+            r#"{"title":"Playlists","type":"rich","description":"`1.` mix (7)\n`2.` two (9)\n"}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn a_playlist_page_renders_as_before() {
+        let card = build_tracks_embed_metadata("My list".into(), &sample_tracks(), 0).await;
+        assert_eq!(
+            serde_json::to_string(&discord::embed(&card)).unwrap(),
+            r#"{"type":"rich","footer":{"text":"Page 1 of 1","icon_url":null},"fields":[{"name":"My list","value":"`1.` [**Song**](https://youtu.be/x) • `1:01`\n","inline":false}]}"#
+        );
+        let card = build_tracks_embed_metadata("My list".into(), &sample_tracks(), 3).await;
+        assert_eq!(
+            serde_json::to_string(&discord::embed(&card)).unwrap(),
+            "{\"type\":\"rich\",\"footer\":{\"text\":\"Page 4 of 1\",\"icon_url\":null},\"fields\":[{\"name\":\"My list\",\"value\":\"📃\u{2002}This playlist has no songs!\",\"inline\":false}]}"
+        );
     }
 }

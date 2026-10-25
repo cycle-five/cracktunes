@@ -1,6 +1,7 @@
 use crate::{
     commands::cmd_check_music,
     db::{metadata::aux_metadata_from_db, playlist::Playlist, Metadata},
+    messaging::discord,
     utils::{build_tracks_embed_metadata, send_embed_response_poise},
     Context, CrackedError, Error,
 };
@@ -17,7 +18,9 @@ use crack_types::NewAuxMetadata;
 pub async fn get_playlist(ctx: Context<'_>, #[rest] playlist: String) -> Result<(), Error> {
     let (aux_metadata, playlist_name): (Vec<NewAuxMetadata>, String) =
         get_playlist_(ctx, playlist).await?;
-    let embed = build_tracks_embed_metadata(playlist_name, aux_metadata.as_slice(), 0).await;
+    let embed = discord::embed(
+        &build_tracks_embed_metadata(playlist_name, aux_metadata.as_slice(), 0).await,
+    );
 
     // Send the embed
     send_embed_response_poise(&ctx, embed).await?;

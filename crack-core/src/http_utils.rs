@@ -4,10 +4,12 @@ use std::future::Future;
 
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
+use crate::messaging::discord;
 use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
 use crate::music::NewQueryType;
 use crate::serenity::Color;
 use crate::CrackedResult;
+use crack_model::Card;
 use serenity::all::{
     CacheHttp, CreateEmbed, CreateMessage, GenericChannelId, GuildId, Message, UserId,
 };
@@ -98,6 +100,20 @@ impl<'a> SendMessageParams<'a> {
     }
 }
 
+/// A channel message of `content`: the text itself, or the one embed that
+/// holds it.
+fn channel_message(content: String, as_embed: bool) -> CreateMessage<'static> {
+    if as_embed {
+        let card = Card {
+            description: Some(content),
+            ..Card::default()
+        };
+        CreateMessage::new().add_embed(discord::embed(&card))
+    } else {
+        CreateMessage::new().content(content)
+    }
+}
+
 /// Extension trait for CacheHttp to add some utility functions.
 pub trait CacheHttpExt {
     fn get_bot_id(&self) -> impl Future<Output = CrackedResult<UserId>> + Send;
@@ -142,13 +158,7 @@ impl<T: CacheHttp> CacheHttpExt for T {
     #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
     async fn send_channel_message(&self, params: SendMessageParams<'_>) -> CrackedResult<Message> {
         let channel = params.channel;
-        let content = format!("{}", params.msg);
-        let msg = if params.as_embed {
-            let embed = CreateEmbed::default().description(content);
-            CreateMessage::new().add_embed(embed)
-        } else {
-            CreateMessage::new().content(content)
-        };
+        let msg = channel_message(format!("{}", params.msg), params.as_embed);
         channel
             .send_message(self.http(), msg)
             .await
@@ -393,5 +403,18 @@ mod test {
             CrackedMessage::Other("Hello, world!".to_string())
         );
         assert!(params.embed.is_none());
+    }
+
+    #[test]
+    fn channel_message_renders_as_before() {
+        use super::channel_message;
+        assert_eq!(
+            serde_json::to_string(&channel_message("hi *there*".into(), true)).unwrap(),
+            r#"{"tts":false,"embeds":[{"type":"rich","description":"hi *there*"}],"sticker_ids":[],"attachments":[],"enforce_nonce":false}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&channel_message("hi *there*".into(), false)).unwrap(),
+            r#"{"content":"hi *there*","tts":false,"embeds":[],"sticker_ids":[],"attachments":[],"enforce_nonce":false}"#
+        );
     }
 }
