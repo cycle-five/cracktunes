@@ -3,17 +3,16 @@
 //!
 //! The panel is the room's documentation, so it names every control in plain
 //! words next to the slash command that does the same thing.
-use super::ids::{ButtonId, RoomButton};
+use super::ids::RoomButton;
 use super::preflight::{Finding, Where};
 use super::settings::RoomSettings;
+use crate::messaging::discord;
 use crate::messaging::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
 use crate::messaging::messages::*;
 use crate::messaging::render::{RenderCx, Rendered};
-use serenity::all::{
-    ButtonStyle, ChannelId, CreateActionRow, CreateButton, CreateComponent, CreateEmbed,
-    Permissions, RoleId, UserId,
-};
-use std::borrow::Cow;
+use crack_model::{Button, ButtonStyle, Card, Field, Mention, RoleRef, RoomRef, Row, UserRef};
+use crack_types::discord::{channel_id, ToRef};
+use serenity::all::{ChannelId, Permissions};
 
 /// Why a room action was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,11 +74,11 @@ pub enum RoomRefusal {
 /// What the panel is drawn from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PanelView {
-    pub room: ChannelId,
+    pub room: RoomRef,
     /// The room's current channel name, for the title.
     pub name: String,
-    pub owner: UserId,
-    pub helpers: Vec<UserId>,
+    pub owner: UserRef,
+    pub helpers: Vec<UserRef>,
     pub locked: bool,
     pub chat_locked: bool,
     /// 0 means no limit.
@@ -89,23 +88,23 @@ pub struct PanelView {
 /// A one-line confirmation of something done.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RoomDone {
-    Kicked(UserId),
-    LetIn(UserId),
-    Muted(UserId),
-    Unmuted(UserId),
+    Kicked(UserRef),
+    LetIn(UserRef),
+    Muted(UserRef),
+    Unmuted(UserRef),
     Locked,
     Unlocked,
     ChatLocked,
     ChatUnlocked,
     LimitSet(u8),
     Renamed(String),
-    Transferred(UserId),
-    HelperAdded(UserId),
-    HelperRemoved(UserId),
-    AllowedUser(UserId),
-    AllowedRole(RoleId),
-    RoleBlocked(RoleId),
-    RoleUnblocked(RoleId),
+    Transferred(UserRef),
+    HelperAdded(UserRef),
+    HelperRemoved(UserRef),
+    AllowedUser(UserRef),
+    AllowedRole(RoleRef),
+    RoleBlocked(RoleRef),
+    RoleUnblocked(RoleRef),
     Claimed,
     PanelPosted,
 }
@@ -121,14 +120,82 @@ pub enum RoomCard {
     Refused(RoomRefusal),
     /// `/rooms status`. `findings` is `None` when the cache could not answer.
     Status {
-        settings: RoomSettings,
-        findings: Option<Vec<Finding>>,
+        settings: RoomStatusView,
+        findings: Option<Vec<FindingView>>,
         dashboard: Option<String>,
     },
     /// Rooms turned on or off.
     Switched {
         on: bool,
     },
+}
+
+/// The settings `/rooms status` shows, with the hub as a ref.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoomStatusView {
+    pub enabled: bool,
+    pub hub: Option<RoomRef>,
+    pub name_template: String,
+    /// 0 means no limit.
+    pub default_limit: u8,
+    pub empty_grace_secs: u16,
+}
+
+impl From<&RoomSettings> for RoomStatusView {
+    fn from(s: &RoomSettings) -> Self {
+        Self {
+            enabled: s.enabled,
+            hub: s.hub.map(|h| h.to_ref()),
+            name_template: s.name_template.clone(),
+            default_limit: s.default_limit,
+            empty_grace_secs: s.empty_grace_secs,
+        }
+    }
+}
+
+/// Where a finding applies, with channels as refs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WhereView {
+    Category(RoomRef),
+    Hub(RoomRef),
+    Server,
+}
+
+impl From<Where> for WhereView {
+    fn from(at: Where) -> Self {
+        match at {
+            Where::Category(c) => Self::Category(c.to_ref()),
+            Where::Hub(h) => Self::Hub(h.to_ref()),
+            Where::Server => Self::Server,
+        }
+    }
+}
+
+/// A preflight finding with its permissions as names, so the card holds no
+/// serenity type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FindingView {
+    Missing { at: WhereView, perms: Vec<String> },
+    Optional { at: WhereView, perms: Vec<String> },
+    LockMayFail { perms: Vec<String> },
+}
+
+impl From<&Finding> for FindingView {
+    fn from(f: &Finding) -> Self {
+        match f {
+            Finding::Missing { at, perms } => Self::Missing {
+                at: (*at).into(),
+                perms: permission_names(*perms),
+            },
+            Finding::Optional { at, perms } => Self::Optional {
+                at: (*at).into(),
+                perms: permission_names(*perms),
+            },
+            Finding::LockMayFail { perms } => Self::LockMayFail {
+                perms: permission_names(*perms),
+            },
+        }
+    }
 }
 
 impl From<RoomCard> for crate::messaging::message::CrackedMessage {
@@ -158,31 +225,35 @@ impl std::fmt::Display for RoomCard {
 pub fn render_card(card: &RoomCard, _cx: &RenderCx) -> Rendered {
     match card {
         RoomCard::Panel(view) => panel(view),
-        RoomCard::Guide => Rendered::embed(
-            CreateEmbed::new()
-                .title(ROOM_GUIDE_TITLE)
-                .description(clip(&guide_text(), DESCRIPTION_MAX)),
-        ),
+        RoomCard::Guide => embed_card(Card {
+            title: Some(ROOM_GUIDE_TITLE.to_string()),
+            description: Some(clip(&guide_text(), DESCRIPTION_MAX)),
+            ..Card::default()
+        }),
         RoomCard::Done(done) => Rendered::text(done_text(done)),
         RoomCard::Refused(refusal) => Rendered::text(refusal_text(*refusal)),
         RoomCard::Status {
             settings,
             findings,
             dashboard,
-        } => Rendered::embed(
-            CreateEmbed::new()
-                .title(ROOM_STATUS_TITLE)
-                .description(clip(
-                    &status_text(settings, findings.as_deref(), dashboard.as_deref()),
-                    DESCRIPTION_MAX,
-                )),
-        ),
+        } => embed_card(Card {
+            title: Some(ROOM_STATUS_TITLE.to_string()),
+            description: Some(clip(
+                &status_text(settings, findings.as_deref(), dashboard.as_deref()),
+                DESCRIPTION_MAX,
+            )),
+            ..Card::default()
+        }),
         RoomCard::Switched { on } => Rendered::text(if *on {
             ROOM_SWITCHED_ON
         } else {
             ROOM_SWITCHED_OFF
         }),
     }
+}
+
+fn embed_card(card: Card) -> Rendered {
+    Rendered::embed(discord::embed(&card))
 }
 
 /// Every control, one line each, then the two facts worth knowing.
@@ -223,8 +294,16 @@ fn guide_text() -> String {
     out
 }
 
-fn mention(user: UserId) -> String {
-    format!("<@{user}>")
+fn mention(user: &UserRef) -> String {
+    Mention::User(user.clone()).to_string()
+}
+
+fn room_mention(room: &RoomRef) -> String {
+    Mention::Room(room.clone()).to_string()
+}
+
+fn role_mention(role: &RoleRef) -> String {
+    Mention::Role(role.clone()).to_string()
 }
 
 fn panel(view: &PanelView) -> Rendered {
@@ -235,7 +314,7 @@ fn panel(view: &PanelView) -> Rendered {
             &view
                 .helpers
                 .iter()
-                .map(|h| mention(*h))
+                .map(mention)
                 .collect::<Vec<_>>()
                 .join(" "),
             FIELD_MAX,
@@ -259,30 +338,35 @@ fn panel(view: &PanelView) -> Rendered {
     } else {
         format!("{} {ROOM_LIMIT_PEOPLE}", view.limit)
     };
-    let embed = CreateEmbed::new()
-        .title(clip(
+    let field = |name: &str, value: String| Field {
+        name: name.to_string(),
+        value,
+        inline: true,
+    };
+    let embed = Card {
+        title: Some(clip(
             &format!("{ROOM_PANEL_TITLE_PREFIX} {}", view.name),
             EMBED_TITLE_MAX,
-        ))
-        .description(clip(&reference_text(), DESCRIPTION_MAX))
-        .field(ROOM_FIELD_OWNER, mention(view.owner), true)
-        .field(ROOM_FIELD_HELPERS, helpers, true)
-        .field(ROOM_FIELD_ACCESS, access, true)
-        .field(ROOM_FIELD_LIMIT, limit, true);
-    Rendered::embed(embed).with_components(panel_rows(view))
+        )),
+        description: Some(clip(&reference_text(), DESCRIPTION_MAX)),
+        fields: vec![
+            field(ROOM_FIELD_OWNER, mention(&view.owner)),
+            field(ROOM_FIELD_HELPERS, helpers),
+            field(ROOM_FIELD_ACCESS, access),
+            field(ROOM_FIELD_LIMIT, limit),
+        ],
+        ..Card::default()
+    };
+    embed_card(embed).with_components(discord::action_rows(&panel_rows(view)))
 }
 
-fn panel_rows(view: &PanelView) -> Vec<CreateComponent<'static>> {
-    let b = |kind, label: &'static str, style| {
-        CreateButton::new(
-            ButtonId {
-                kind,
-                room: view.room,
-            }
-            .custom_id(),
-        )
-        .label(label)
-        .style(style)
+fn panel_rows(view: &PanelView) -> Vec<Row> {
+    let b = |kind: RoomButton, label: &'static str, style| Button {
+        id: kind.custom_id_for(&view.room),
+        label: Some(label.to_string()),
+        emoji: None,
+        style,
+        disabled: false,
     };
     let (danger, primary, secondary) = (
         ButtonStyle::Danger,
@@ -299,23 +383,20 @@ fn panel_rows(view: &PanelView) -> Vec<CreateComponent<'static>> {
     } else {
         b(RoomButton::ChatLock, ROOM_BTN_CHAT_LOCK, secondary)
     };
-    let row = |buttons: Vec<CreateButton<'static>>| {
-        CreateComponent::ActionRow(CreateActionRow::Buttons(Cow::Owned(buttons)))
-    };
     vec![
-        row(vec![
+        Row::Buttons(vec![
             b(RoomButton::Kick, ROOM_BTN_KICK, danger),
             b(RoomButton::Mute, ROOM_BTN_MUTE, secondary),
             b(RoomButton::Unmute, ROOM_BTN_UNMUTE, secondary),
             b(RoomButton::LetIn, ROOM_BTN_LET_IN, secondary),
         ]),
-        row(vec![
+        Row::Buttons(vec![
             lock,
             chat,
             b(RoomButton::Limit, ROOM_BTN_LIMIT, secondary),
             b(RoomButton::Rename, ROOM_BTN_RENAME, secondary),
         ]),
-        row(vec![
+        Row::Buttons(vec![
             b(RoomButton::Transfer, ROOM_BTN_TRANSFER, secondary),
             b(RoomButton::Helpers, ROOM_BTN_HELPERS, secondary),
             b(RoomButton::WhoCanJoin, ROOM_BTN_WHO_CAN_JOIN, secondary),
@@ -327,10 +408,10 @@ fn panel_rows(view: &PanelView) -> Vec<CreateComponent<'static>> {
 
 fn done_text(done: &RoomDone) -> String {
     match done {
-        RoomDone::Kicked(u) => format!("🚫 {ROOM_DONE_KICKED} {}.", mention(*u)),
-        RoomDone::LetIn(u) => format!("↩️ {ROOM_DONE_LET_IN} {}.", mention(*u)),
-        RoomDone::Muted(u) => format!("🔇 {ROOM_DONE_MUTED} {}.", mention(*u)),
-        RoomDone::Unmuted(u) => format!("🔊 {ROOM_DONE_UNMUTED} {}.", mention(*u)),
+        RoomDone::Kicked(u) => format!("🚫 {ROOM_DONE_KICKED} {}.", mention(u)),
+        RoomDone::LetIn(u) => format!("↩️ {ROOM_DONE_LET_IN} {}.", mention(u)),
+        RoomDone::Muted(u) => format!("🔇 {ROOM_DONE_MUTED} {}.", mention(u)),
+        RoomDone::Unmuted(u) => format!("🔊 {ROOM_DONE_UNMUTED} {}.", mention(u)),
         RoomDone::Locked => ROOM_DONE_LOCKED.to_string(),
         RoomDone::Unlocked => ROOM_DONE_UNLOCKED.to_string(),
         RoomDone::ChatLocked => ROOM_DONE_CHAT_LOCKED.to_string(),
@@ -338,13 +419,13 @@ fn done_text(done: &RoomDone) -> String {
         RoomDone::LimitSet(0) => ROOM_DONE_LIMIT_CLEARED.to_string(),
         RoomDone::LimitSet(n) => format!("{ROOM_DONE_LIMIT_SET} {n}."),
         RoomDone::Renamed(name) => format!("{ROOM_DONE_RENAMED} **{}**.", escape(name)),
-        RoomDone::Transferred(u) => format!("{ROOM_DONE_TRANSFERRED} {}.", mention(*u)),
-        RoomDone::HelperAdded(u) => format!("{ROOM_DONE_HELPER_ADDED} {}", mention(*u)),
-        RoomDone::HelperRemoved(u) => format!("{ROOM_DONE_HELPER_REMOVED} {}", mention(*u)),
-        RoomDone::AllowedUser(u) => format!("{ROOM_DONE_ALLOWED_USER} {}", mention(*u)),
-        RoomDone::AllowedRole(r) => format!("{ROOM_DONE_ALLOWED_ROLE} <@&{r}>"),
-        RoomDone::RoleBlocked(r) => format!("{ROOM_DONE_ROLE_BLOCKED} <@&{r}>"),
-        RoomDone::RoleUnblocked(r) => format!("{ROOM_DONE_ROLE_UNBLOCKED} <@&{r}>"),
+        RoomDone::Transferred(u) => format!("{ROOM_DONE_TRANSFERRED} {}.", mention(u)),
+        RoomDone::HelperAdded(u) => format!("{ROOM_DONE_HELPER_ADDED} {}", mention(u)),
+        RoomDone::HelperRemoved(u) => format!("{ROOM_DONE_HELPER_REMOVED} {}", mention(u)),
+        RoomDone::AllowedUser(u) => format!("{ROOM_DONE_ALLOWED_USER} {}", mention(u)),
+        RoomDone::AllowedRole(r) => format!("{ROOM_DONE_ALLOWED_ROLE} {}", role_mention(r)),
+        RoomDone::RoleBlocked(r) => format!("{ROOM_DONE_ROLE_BLOCKED} {}", role_mention(r)),
+        RoomDone::RoleUnblocked(r) => format!("{ROOM_DONE_ROLE_UNBLOCKED} {}", role_mention(r)),
         RoomDone::Claimed => ROOM_DONE_CLAIMED.to_string(),
         RoomDone::PanelPosted => ROOM_DONE_PANEL_POSTED.to_string(),
     }
@@ -382,26 +463,31 @@ fn refusal_text(refusal: RoomRefusal) -> String {
     }
 }
 
-pub fn perm_names(perms: Permissions, bold: bool) -> String {
+fn permission_names(perms: Permissions) -> Vec<String> {
     perms
         .get_permission_names()
         .iter()
-        .map(|n| {
-            if bold {
-                format!("**{n}**")
-            } else {
-                (*n).to_string()
-            }
-        })
+        .map(|n| (*n).to_string())
+        .collect()
+}
+
+fn names_text(names: &[String], bold: bool) -> String {
+    names
+        .iter()
+        .map(|n| if bold { format!("**{n}**") } else { n.clone() })
         .collect::<Vec<_>>()
         .join(", ")
 }
 
-fn where_text(at: Where, name_of: &impl Fn(ChannelId) -> String) -> String {
+pub fn perm_names(perms: Permissions, bold: bool) -> String {
+    names_text(&permission_names(perms), bold)
+}
+
+fn where_text(at: &WhereView, name_of: &impl Fn(&RoomRef) -> String) -> String {
     match at {
-        Where::Category(c) => format!("{ROOM_AT_CATEGORY} {}", name_of(c)),
-        Where::Hub(h) => format!("{ROOM_AT_HUB} {}", name_of(h)),
-        Where::Server => ROOM_AT_SERVER.to_string(),
+        WhereView::Category(c) => format!("{ROOM_AT_CATEGORY} {}", name_of(c)),
+        WhereView::Hub(h) => format!("{ROOM_AT_HUB} {}", name_of(h)),
+        WhereView::Server => ROOM_AT_SERVER.to_string(),
     }
 }
 
@@ -413,30 +499,43 @@ pub fn finding_text(
     name_of: impl Fn(ChannelId) -> String,
     bold: bool,
 ) -> String {
+    finding_line(
+        &FindingView::from(finding),
+        // A ref made from a `ChannelId` always converts back.
+        &|r| name_of(channel_id(r).expect("a ref made from a ChannelId converts back")),
+        bold,
+    )
+}
+
+fn finding_line(
+    finding: &FindingView,
+    name_of: &impl Fn(&RoomRef) -> String,
+    bold: bool,
+) -> String {
     match finding {
-        Finding::Missing { at, perms } => {
+        FindingView::Missing { at, perms } => {
             format!(
                 "{ROOM_FINDING_MISSING} {} {}",
-                perm_names(*perms, bold),
-                where_text(*at, &name_of)
+                names_text(perms, bold),
+                where_text(at, name_of)
             )
         },
-        Finding::Optional { at, perms } => {
+        FindingView::Optional { at, perms } => {
             format!(
                 "{ROOM_FINDING_OPTIONAL} {} {}",
-                perm_names(*perms, bold),
-                where_text(*at, &name_of)
+                names_text(perms, bold),
+                where_text(at, name_of)
             )
         },
-        Finding::LockMayFail { perms } => {
-            format!("{ROOM_FINDING_LOCK} {}.", perm_names(*perms, bold))
+        FindingView::LockMayFail { perms } => {
+            format!("{ROOM_FINDING_LOCK} {}.", names_text(perms, bold))
         },
     }
 }
 
 fn status_text(
-    settings: &RoomSettings,
-    findings: Option<&[Finding]>,
+    settings: &RoomStatusView,
+    findings: Option<&[FindingView]>,
     dashboard: Option<&str>,
 ) -> String {
     let mut lines = vec![if settings.enabled {
@@ -444,8 +543,8 @@ fn status_text(
     } else {
         ROOM_STATUS_DISABLED.to_string()
     }];
-    lines.push(match settings.hub {
-        Some(hub) => format!("{ROOM_STATUS_HUB} <#{hub}>"),
+    lines.push(match &settings.hub {
+        Some(hub) => format!("{ROOM_STATUS_HUB} {}", room_mention(hub)),
         None => ROOM_STATUS_NO_HUB.to_string(),
     });
     lines.push(format!(
@@ -466,10 +565,7 @@ fn status_text(
         None if settings.hub.is_none() => lines.push(ROOM_STATUS_NO_HUB_YET.to_string()),
         None => lines.push(ROOM_STATUS_UNKNOWN.to_string()),
         Some([]) => lines.push(ROOM_STATUS_READY.to_string()),
-        Some(list) => lines.extend(
-            list.iter()
-                .map(|f| finding_text(f, |c| format!("<#{c}>"), true)),
-        ),
+        Some(list) => lines.extend(list.iter().map(|f| finding_line(f, &room_mention, true))),
     }
     if let Some(url) = dashboard {
         lines.push(String::new());
@@ -482,16 +578,17 @@ fn status_text(
 mod tests {
     use super::*;
     use crate::messaging::render::Mentions;
-    use serenity::all::GuildId;
+    use crate::rooms::ids::ButtonId;
+    use serenity::all::{GuildId, RoleId, UserId};
 
     const ROOM: ChannelId = ChannelId::new(555);
 
     fn view() -> PanelView {
         PanelView {
-            room: ROOM,
+            room: ROOM.to_ref(),
             name: "Ann's room".into(),
-            owner: UserId::new(7),
-            helpers: vec![UserId::new(8), UserId::new(9)],
+            owner: UserId::new(7).to_ref(),
+            helpers: vec![UserId::new(8).to_ref(), UserId::new(9).to_ref()],
             locked: false,
             chat_locked: false,
             limit: 0,
@@ -533,6 +630,176 @@ mod tests {
             .to_owned()
     }
 
+    /// Everything a render sends, as exact bytes.
+    fn sent(r: &Rendered) -> String {
+        format!(
+            "{:?}|{}|{}|{}|{:?}",
+            r.content,
+            serde_json::to_string(&r.embed).unwrap(),
+            serde_json::to_string(&r.embeds_extra).unwrap(),
+            serde_json::to_string(&r.components).unwrap(),
+            r.mentions
+        )
+    }
+
+    fn pin_cases() -> Vec<(&'static str, RoomCard)> {
+        let u = |n| UserId::new(n).to_ref();
+        let findings = vec![
+            Finding::Missing {
+                at: Where::Category(ChannelId::new(20)),
+                perms: Permissions::MOVE_MEMBERS | Permissions::CONNECT,
+            },
+            Finding::Missing {
+                at: Where::Hub(ChannelId::new(10)),
+                perms: Permissions::CONNECT,
+            },
+            Finding::Optional {
+                at: Where::Server,
+                perms: Permissions::MANAGE_CHANNELS,
+            },
+            Finding::LockMayFail {
+                perms: Permissions::MANAGE_MESSAGES,
+            },
+        ];
+        let status =
+            |settings: RoomSettings, findings: Option<Vec<Finding>>, dashboard| RoomCard::Status {
+                settings: (&settings).into(),
+                findings: findings.map(|f| f.iter().map(Into::into).collect()),
+                dashboard,
+            };
+        let on = RoomSettings {
+            enabled: true,
+            hub: Some(ChannelId::new(10)),
+            name_template: "{name}'s *room*".into(),
+            default_limit: 4,
+            empty_grace_secs: 60,
+            ..RoomSettings::off(GuildId::new(1))
+        };
+        vec![
+            ("panel_open", RoomCard::Panel(view())),
+            (
+                "panel_shut",
+                RoomCard::Panel(PanelView {
+                    locked: true,
+                    chat_locked: true,
+                    limit: 5,
+                    ..view()
+                }),
+            ),
+            (
+                "panel_lock_only",
+                RoomCard::Panel(PanelView {
+                    locked: true,
+                    ..view()
+                }),
+            ),
+            (
+                "panel_chat_lock_only",
+                RoomCard::Panel(PanelView {
+                    chat_locked: true,
+                    ..view()
+                }),
+            ),
+            (
+                "panel_no_helpers",
+                RoomCard::Panel(PanelView {
+                    helpers: vec![],
+                    name: "@everyone".into(),
+                    ..view()
+                }),
+            ),
+            (
+                "panel_many_helpers",
+                RoomCard::Panel(PanelView {
+                    helpers: (1..=80).map(|i| u(1_000_000_000_000_000 + i)).collect(),
+                    name: "n".repeat(300),
+                    ..view()
+                }),
+            ),
+            ("guide", RoomCard::Guide),
+            (
+                "status_findings",
+                status(
+                    on.clone(),
+                    Some(findings),
+                    Some("https://dash.example/g/1".into()),
+                ),
+            ),
+            ("status_ready", status(on.clone(), Some(vec![]), None)),
+            ("status_unknown", status(on, None, None)),
+            (
+                "status_off",
+                status(RoomSettings::off(GuildId::new(1)), None, None),
+            ),
+            ("done_kicked", RoomCard::Done(RoomDone::Kicked(u(7)))),
+            ("done_let_in", RoomCard::Done(RoomDone::LetIn(u(7)))),
+            ("done_muted", RoomCard::Done(RoomDone::Muted(u(7)))),
+            ("done_unmuted", RoomCard::Done(RoomDone::Unmuted(u(7)))),
+            ("done_locked", RoomCard::Done(RoomDone::Locked)),
+            ("done_unlocked", RoomCard::Done(RoomDone::Unlocked)),
+            ("done_chat_locked", RoomCard::Done(RoomDone::ChatLocked)),
+            ("done_chat_unlocked", RoomCard::Done(RoomDone::ChatUnlocked)),
+            ("done_limit_set", RoomCard::Done(RoomDone::LimitSet(6))),
+            ("done_limit_cleared", RoomCard::Done(RoomDone::LimitSet(0))),
+            (
+                "done_renamed",
+                RoomCard::Done(RoomDone::Renamed("@everyone *x*".into())),
+            ),
+            (
+                "done_transferred",
+                RoomCard::Done(RoomDone::Transferred(u(7))),
+            ),
+            (
+                "done_helper_added",
+                RoomCard::Done(RoomDone::HelperAdded(u(7))),
+            ),
+            (
+                "done_helper_removed",
+                RoomCard::Done(RoomDone::HelperRemoved(u(7))),
+            ),
+            (
+                "done_allowed_user",
+                RoomCard::Done(RoomDone::AllowedUser(u(7))),
+            ),
+            (
+                "done_allowed_role",
+                RoomCard::Done(RoomDone::AllowedRole(RoleId::new(9).to_ref())),
+            ),
+            (
+                "done_role_blocked",
+                RoomCard::Done(RoomDone::RoleBlocked(RoleId::new(9).to_ref())),
+            ),
+            (
+                "done_role_unblocked",
+                RoomCard::Done(RoomDone::RoleUnblocked(RoleId::new(9).to_ref())),
+            ),
+            ("done_claimed", RoomCard::Done(RoomDone::Claimed)),
+            ("done_panel_posted", RoomCard::Done(RoomDone::PanelPosted)),
+            (
+                "refused",
+                RoomCard::Refused(RoomRefusal::RenameLimited { wait_secs: 42 }),
+            ),
+            ("switched_on", RoomCard::Switched { on: true }),
+            ("switched_off", RoomCard::Switched { on: false }),
+        ]
+    }
+
+    #[test]
+    fn room_cards_render_as_before() {
+        let cases = pin_cases();
+        if std::env::var_os("PIN_PRINT").is_some() {
+            for (name, card) in &cases {
+                println!("PIN    ({name:?}, r##\"{}\"##),", sent(&render(card)));
+            }
+            return;
+        }
+        assert_eq!(cases.len(), EXPECTED.len());
+        for ((name, card), (expected_name, expected)) in cases.iter().zip(EXPECTED) {
+            assert_eq!(name, expected_name);
+            assert_eq!(&sent(&render(card)), expected, "{name}");
+        }
+    }
+
     #[test]
     fn panel_has_three_rows_and_every_button_targets_this_room() {
         let r = render(&RoomCard::Panel(view()));
@@ -565,7 +832,7 @@ mod tests {
     fn panel_buttons_fit_discords_limits_in_every_lock_state() {
         for (locked, chat_locked) in [(false, false), (true, false), (false, true), (true, true)] {
             let r = render(&RoomCard::Panel(PanelView {
-                room: ChannelId::new(u64::MAX - 1),
+                room: ChannelId::new(u64::MAX - 1).to_ref(),
                 locked,
                 chat_locked,
                 ..view()
@@ -676,11 +943,12 @@ mod tests {
 
     fn status(findings: Option<Vec<Finding>>) -> String {
         description(&render(&RoomCard::Status {
-            settings: RoomSettings {
+            settings: (&RoomSettings {
                 hub: Some(ChannelId::new(10)),
                 ..RoomSettings::off(GuildId::new(1))
-            },
-            findings,
+            })
+                .into(),
+            findings: findings.map(|f| f.iter().map(Into::into).collect()),
             dashboard: Some("https://dash.example/g/1".into()),
         }))
     }
@@ -736,7 +1004,7 @@ mod tests {
     #[test]
     fn status_without_a_hub_says_so_instead_of_blaming_permissions() {
         let d = description(&render(&RoomCard::Status {
-            settings: RoomSettings::off(GuildId::new(1)),
+            settings: (&RoomSettings::off(GuildId::new(1))).into(),
             findings: None,
             dashboard: None,
         }));
@@ -814,7 +1082,7 @@ mod tests {
 
     #[test]
     fn done_cards_and_the_guide_render() {
-        let done = render(&RoomCard::Done(RoomDone::Kicked(UserId::new(7))));
+        let done = render(&RoomCard::Done(RoomDone::Kicked(UserId::new(7).to_ref())));
         assert_eq!(done.content.as_deref(), Some("🚫 Kicked <@7>."));
         let named = render(&RoomCard::Done(RoomDone::Renamed("@everyone".into())));
         assert!(named.content.unwrap().contains("\\@everyone"));
@@ -830,4 +1098,141 @@ mod tests {
         );
         assert!(render(&RoomCard::Switched { on: true }).content.is_some());
     }
+
+    /// Captured at e9a778fb, before the cards went neutral.
+    const EXPECTED: &[(&str, &str)] = &[
+        (
+            "panel_open",
+            r##"None|{"title":"🔊 Ann's room","type":"rich","description":"**What the buttons do**\n**Kick** · `/room kick` — disconnect someone and keep them out; asks for a reason.\n**Mute** · `/room mute` — stop someone from speaking here; the reason is optional.\n**Unmute** · `/room unmute` — let a muted person speak again.\n**Let back in** · `/room letin` — lift a kick so the person can rejoin.\n**Lock / Unlock** · `/room lock` · `/room unlock` — close the room to newcomers, or open it again.\n**Lock chat / Unlock chat** · `/room chatlock` · `/room chatunlock` — stop or allow typing in this room's chat.\n**Limit** · `/room limit` — cap how many people fit (0 means no limit).\n**Rename** · `/room rename` — change the room's name.\n**Transfer** · `/room transfer` — hand the room to someone else in it.\n**Helpers** · `/room helper add` · `/room helper remove` — let people run these controls with you.\n**Who can join** · `/room allow` · `/room block` · `/room unblock` — let a person or role in, or keep a role out.\n**Claim** · `/room claim` — take over a room whose owner has left.\n**Panel** · `/room panel` — post this panel again.\n**Help** — a private, longer guide.\n\nThe owner and helpers — and server moderators — can use these controls. If the owner has left, anyone in the room can claim it.\nThis room is deleted when everyone leaves.\nDeafen isn't available: Discord can't deafen someone in just one channel.","fields":[{"name":"Owner","value":"<@7>","inline":true},{"name":"Helpers","value":"<@8> <@9>","inline":true},{"name":"Locked / chat","value":"🔓 Open · 💬 Chat open","inline":true},{"name":"Limit","value":"No limit","inline":true}]}|[]|[{"type":1,"components":[{"style":4,"type":2,"custom_id":"room:kick:555","label":"🚫 Kick","disabled":false},{"style":2,"type":2,"custom_id":"room:mute:555","label":"🔇 Mute","disabled":false},{"style":2,"type":2,"custom_id":"room:unmute:555","label":"🔊 Unmute","disabled":false},{"style":2,"type":2,"custom_id":"room:let-in:555","label":"↩️ Let back in","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:lock:555","label":"🔒 Lock","disabled":false},{"style":2,"type":2,"custom_id":"room:chat-lock:555","label":"🤐 Lock chat","disabled":false},{"style":2,"type":2,"custom_id":"room:limit:555","label":"👥 Limit","disabled":false},{"style":2,"type":2,"custom_id":"room:rename:555","label":"✏️ Rename","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:transfer:555","label":"🔑 Transfer","disabled":false},{"style":2,"type":2,"custom_id":"room:helpers:555","label":"🛡️ Helpers","disabled":false},{"style":2,"type":2,"custom_id":"room:who:555","label":"🚪 Who can join","disabled":false},{"style":2,"type":2,"custom_id":"room:claim:555","label":"👑 Claim","disabled":false},{"style":1,"type":2,"custom_id":"room:help:555","label":"❓ Help","disabled":false}]}]|None"##,
+        ),
+        (
+            "panel_shut",
+            r##"None|{"title":"🔊 Ann's room","type":"rich","description":"**What the buttons do**\n**Kick** · `/room kick` — disconnect someone and keep them out; asks for a reason.\n**Mute** · `/room mute` — stop someone from speaking here; the reason is optional.\n**Unmute** · `/room unmute` — let a muted person speak again.\n**Let back in** · `/room letin` — lift a kick so the person can rejoin.\n**Lock / Unlock** · `/room lock` · `/room unlock` — close the room to newcomers, or open it again.\n**Lock chat / Unlock chat** · `/room chatlock` · `/room chatunlock` — stop or allow typing in this room's chat.\n**Limit** · `/room limit` — cap how many people fit (0 means no limit).\n**Rename** · `/room rename` — change the room's name.\n**Transfer** · `/room transfer` — hand the room to someone else in it.\n**Helpers** · `/room helper add` · `/room helper remove` — let people run these controls with you.\n**Who can join** · `/room allow` · `/room block` · `/room unblock` — let a person or role in, or keep a role out.\n**Claim** · `/room claim` — take over a room whose owner has left.\n**Panel** · `/room panel` — post this panel again.\n**Help** — a private, longer guide.\n\nThe owner and helpers — and server moderators — can use these controls. If the owner has left, anyone in the room can claim it.\nThis room is deleted when everyone leaves.\nDeafen isn't available: Discord can't deafen someone in just one channel.","fields":[{"name":"Owner","value":"<@7>","inline":true},{"name":"Helpers","value":"<@8> <@9>","inline":true},{"name":"Locked / chat","value":"🔒 Locked · 🤐 Chat locked","inline":true},{"name":"Limit","value":"5 people","inline":true}]}|[]|[{"type":1,"components":[{"style":4,"type":2,"custom_id":"room:kick:555","label":"🚫 Kick","disabled":false},{"style":2,"type":2,"custom_id":"room:mute:555","label":"🔇 Mute","disabled":false},{"style":2,"type":2,"custom_id":"room:unmute:555","label":"🔊 Unmute","disabled":false},{"style":2,"type":2,"custom_id":"room:let-in:555","label":"↩️ Let back in","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:unlock:555","label":"🔓 Unlock","disabled":false},{"style":2,"type":2,"custom_id":"room:chat-unlock:555","label":"💬 Unlock chat","disabled":false},{"style":2,"type":2,"custom_id":"room:limit:555","label":"👥 Limit","disabled":false},{"style":2,"type":2,"custom_id":"room:rename:555","label":"✏️ Rename","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:transfer:555","label":"🔑 Transfer","disabled":false},{"style":2,"type":2,"custom_id":"room:helpers:555","label":"🛡️ Helpers","disabled":false},{"style":2,"type":2,"custom_id":"room:who:555","label":"🚪 Who can join","disabled":false},{"style":2,"type":2,"custom_id":"room:claim:555","label":"👑 Claim","disabled":false},{"style":1,"type":2,"custom_id":"room:help:555","label":"❓ Help","disabled":false}]}]|None"##,
+        ),
+        (
+            "panel_lock_only",
+            r##"None|{"title":"🔊 Ann's room","type":"rich","description":"**What the buttons do**\n**Kick** · `/room kick` — disconnect someone and keep them out; asks for a reason.\n**Mute** · `/room mute` — stop someone from speaking here; the reason is optional.\n**Unmute** · `/room unmute` — let a muted person speak again.\n**Let back in** · `/room letin` — lift a kick so the person can rejoin.\n**Lock / Unlock** · `/room lock` · `/room unlock` — close the room to newcomers, or open it again.\n**Lock chat / Unlock chat** · `/room chatlock` · `/room chatunlock` — stop or allow typing in this room's chat.\n**Limit** · `/room limit` — cap how many people fit (0 means no limit).\n**Rename** · `/room rename` — change the room's name.\n**Transfer** · `/room transfer` — hand the room to someone else in it.\n**Helpers** · `/room helper add` · `/room helper remove` — let people run these controls with you.\n**Who can join** · `/room allow` · `/room block` · `/room unblock` — let a person or role in, or keep a role out.\n**Claim** · `/room claim` — take over a room whose owner has left.\n**Panel** · `/room panel` — post this panel again.\n**Help** — a private, longer guide.\n\nThe owner and helpers — and server moderators — can use these controls. If the owner has left, anyone in the room can claim it.\nThis room is deleted when everyone leaves.\nDeafen isn't available: Discord can't deafen someone in just one channel.","fields":[{"name":"Owner","value":"<@7>","inline":true},{"name":"Helpers","value":"<@8> <@9>","inline":true},{"name":"Locked / chat","value":"🔒 Locked · 💬 Chat open","inline":true},{"name":"Limit","value":"No limit","inline":true}]}|[]|[{"type":1,"components":[{"style":4,"type":2,"custom_id":"room:kick:555","label":"🚫 Kick","disabled":false},{"style":2,"type":2,"custom_id":"room:mute:555","label":"🔇 Mute","disabled":false},{"style":2,"type":2,"custom_id":"room:unmute:555","label":"🔊 Unmute","disabled":false},{"style":2,"type":2,"custom_id":"room:let-in:555","label":"↩️ Let back in","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:unlock:555","label":"🔓 Unlock","disabled":false},{"style":2,"type":2,"custom_id":"room:chat-lock:555","label":"🤐 Lock chat","disabled":false},{"style":2,"type":2,"custom_id":"room:limit:555","label":"👥 Limit","disabled":false},{"style":2,"type":2,"custom_id":"room:rename:555","label":"✏️ Rename","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:transfer:555","label":"🔑 Transfer","disabled":false},{"style":2,"type":2,"custom_id":"room:helpers:555","label":"🛡️ Helpers","disabled":false},{"style":2,"type":2,"custom_id":"room:who:555","label":"🚪 Who can join","disabled":false},{"style":2,"type":2,"custom_id":"room:claim:555","label":"👑 Claim","disabled":false},{"style":1,"type":2,"custom_id":"room:help:555","label":"❓ Help","disabled":false}]}]|None"##,
+        ),
+        (
+            "panel_chat_lock_only",
+            r##"None|{"title":"🔊 Ann's room","type":"rich","description":"**What the buttons do**\n**Kick** · `/room kick` — disconnect someone and keep them out; asks for a reason.\n**Mute** · `/room mute` — stop someone from speaking here; the reason is optional.\n**Unmute** · `/room unmute` — let a muted person speak again.\n**Let back in** · `/room letin` — lift a kick so the person can rejoin.\n**Lock / Unlock** · `/room lock` · `/room unlock` — close the room to newcomers, or open it again.\n**Lock chat / Unlock chat** · `/room chatlock` · `/room chatunlock` — stop or allow typing in this room's chat.\n**Limit** · `/room limit` — cap how many people fit (0 means no limit).\n**Rename** · `/room rename` — change the room's name.\n**Transfer** · `/room transfer` — hand the room to someone else in it.\n**Helpers** · `/room helper add` · `/room helper remove` — let people run these controls with you.\n**Who can join** · `/room allow` · `/room block` · `/room unblock` — let a person or role in, or keep a role out.\n**Claim** · `/room claim` — take over a room whose owner has left.\n**Panel** · `/room panel` — post this panel again.\n**Help** — a private, longer guide.\n\nThe owner and helpers — and server moderators — can use these controls. If the owner has left, anyone in the room can claim it.\nThis room is deleted when everyone leaves.\nDeafen isn't available: Discord can't deafen someone in just one channel.","fields":[{"name":"Owner","value":"<@7>","inline":true},{"name":"Helpers","value":"<@8> <@9>","inline":true},{"name":"Locked / chat","value":"🔓 Open · 🤐 Chat locked","inline":true},{"name":"Limit","value":"No limit","inline":true}]}|[]|[{"type":1,"components":[{"style":4,"type":2,"custom_id":"room:kick:555","label":"🚫 Kick","disabled":false},{"style":2,"type":2,"custom_id":"room:mute:555","label":"🔇 Mute","disabled":false},{"style":2,"type":2,"custom_id":"room:unmute:555","label":"🔊 Unmute","disabled":false},{"style":2,"type":2,"custom_id":"room:let-in:555","label":"↩️ Let back in","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:lock:555","label":"🔒 Lock","disabled":false},{"style":2,"type":2,"custom_id":"room:chat-unlock:555","label":"💬 Unlock chat","disabled":false},{"style":2,"type":2,"custom_id":"room:limit:555","label":"👥 Limit","disabled":false},{"style":2,"type":2,"custom_id":"room:rename:555","label":"✏️ Rename","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:transfer:555","label":"🔑 Transfer","disabled":false},{"style":2,"type":2,"custom_id":"room:helpers:555","label":"🛡️ Helpers","disabled":false},{"style":2,"type":2,"custom_id":"room:who:555","label":"🚪 Who can join","disabled":false},{"style":2,"type":2,"custom_id":"room:claim:555","label":"👑 Claim","disabled":false},{"style":1,"type":2,"custom_id":"room:help:555","label":"❓ Help","disabled":false}]}]|None"##,
+        ),
+        (
+            "panel_no_helpers",
+            r##"None|{"title":"🔊 @everyone","type":"rich","description":"**What the buttons do**\n**Kick** · `/room kick` — disconnect someone and keep them out; asks for a reason.\n**Mute** · `/room mute` — stop someone from speaking here; the reason is optional.\n**Unmute** · `/room unmute` — let a muted person speak again.\n**Let back in** · `/room letin` — lift a kick so the person can rejoin.\n**Lock / Unlock** · `/room lock` · `/room unlock` — close the room to newcomers, or open it again.\n**Lock chat / Unlock chat** · `/room chatlock` · `/room chatunlock` — stop or allow typing in this room's chat.\n**Limit** · `/room limit` — cap how many people fit (0 means no limit).\n**Rename** · `/room rename` — change the room's name.\n**Transfer** · `/room transfer` — hand the room to someone else in it.\n**Helpers** · `/room helper add` · `/room helper remove` — let people run these controls with you.\n**Who can join** · `/room allow` · `/room block` · `/room unblock` — let a person or role in, or keep a role out.\n**Claim** · `/room claim` — take over a room whose owner has left.\n**Panel** · `/room panel` — post this panel again.\n**Help** — a private, longer guide.\n\nThe owner and helpers — and server moderators — can use these controls. If the owner has left, anyone in the room can claim it.\nThis room is deleted when everyone leaves.\nDeafen isn't available: Discord can't deafen someone in just one channel.","fields":[{"name":"Owner","value":"<@7>","inline":true},{"name":"Helpers","value":"None","inline":true},{"name":"Locked / chat","value":"🔓 Open · 💬 Chat open","inline":true},{"name":"Limit","value":"No limit","inline":true}]}|[]|[{"type":1,"components":[{"style":4,"type":2,"custom_id":"room:kick:555","label":"🚫 Kick","disabled":false},{"style":2,"type":2,"custom_id":"room:mute:555","label":"🔇 Mute","disabled":false},{"style":2,"type":2,"custom_id":"room:unmute:555","label":"🔊 Unmute","disabled":false},{"style":2,"type":2,"custom_id":"room:let-in:555","label":"↩️ Let back in","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:lock:555","label":"🔒 Lock","disabled":false},{"style":2,"type":2,"custom_id":"room:chat-lock:555","label":"🤐 Lock chat","disabled":false},{"style":2,"type":2,"custom_id":"room:limit:555","label":"👥 Limit","disabled":false},{"style":2,"type":2,"custom_id":"room:rename:555","label":"✏️ Rename","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:transfer:555","label":"🔑 Transfer","disabled":false},{"style":2,"type":2,"custom_id":"room:helpers:555","label":"🛡️ Helpers","disabled":false},{"style":2,"type":2,"custom_id":"room:who:555","label":"🚪 Who can join","disabled":false},{"style":2,"type":2,"custom_id":"room:claim:555","label":"👑 Claim","disabled":false},{"style":1,"type":2,"custom_id":"room:help:555","label":"❓ Help","disabled":false}]}]|None"##,
+        ),
+        (
+            "panel_many_helpers",
+            r##"None|{"title":"🔊 nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn…","type":"rich","description":"**What the buttons do**\n**Kick** · `/room kick` — disconnect someone and keep them out; asks for a reason.\n**Mute** · `/room mute` — stop someone from speaking here; the reason is optional.\n**Unmute** · `/room unmute` — let a muted person speak again.\n**Let back in** · `/room letin` — lift a kick so the person can rejoin.\n**Lock / Unlock** · `/room lock` · `/room unlock` — close the room to newcomers, or open it again.\n**Lock chat / Unlock chat** · `/room chatlock` · `/room chatunlock` — stop or allow typing in this room's chat.\n**Limit** · `/room limit` — cap how many people fit (0 means no limit).\n**Rename** · `/room rename` — change the room's name.\n**Transfer** · `/room transfer` — hand the room to someone else in it.\n**Helpers** · `/room helper add` · `/room helper remove` — let people run these controls with you.\n**Who can join** · `/room allow` · `/room block` · `/room unblock` — let a person or role in, or keep a role out.\n**Claim** · `/room claim` — take over a room whose owner has left.\n**Panel** · `/room panel` — post this panel again.\n**Help** — a private, longer guide.\n\nThe owner and helpers — and server moderators — can use these controls. If the owner has left, anyone in the room can claim it.\nThis room is deleted when everyone leaves.\nDeafen isn't available: Discord can't deafen someone in just one channel.","fields":[{"name":"Owner","value":"<@7>","inline":true},{"name":"Helpers","value":"<@1000000000000001> <@1000000000000002> <@1000000000000003> <@1000000000000004> <@1000000000000005> <@1000000000000006> <@1000000000000007> <@1000000000000008> <@1000000000000009> <@1000000000000010> <@1000000000000011> <@1000000000000012> <@1000000000000013> <@1000000000000014> <@1000000000000015> <@1000000000000016> <@1000000000000017> <@1000000000000018> <@1000000000000019> <@1000000000000020> <@1000000000000021> <@1000000000000022> <@1000000000000023> <@1000000000000024> <@1000000000000025> <@1000000000000026> <@1000000000000027> <@1000000000000028> <@1000000000000029> <@1000000000000030> <@1000000000000031> <@1000000000000032> <@1000000000000033> <@1000000000000034> <@1000000000000035> <@1000000000000036> <@1000000000000037> <@1000000000000038> <@1000000000000039> <@1000000000000040> <@1000000000000041> <@1000000000000042> <@1000000000000043> <@1000000000000044> <@1000000000000045> <@1000000000000046> <@1000000000000047> <@1000000000000048> <@1000000000000049> <@1000000000000050> <@1000000000000051> <@1…","inline":true},{"name":"Locked / chat","value":"🔓 Open · 💬 Chat open","inline":true},{"name":"Limit","value":"No limit","inline":true}]}|[]|[{"type":1,"components":[{"style":4,"type":2,"custom_id":"room:kick:555","label":"🚫 Kick","disabled":false},{"style":2,"type":2,"custom_id":"room:mute:555","label":"🔇 Mute","disabled":false},{"style":2,"type":2,"custom_id":"room:unmute:555","label":"🔊 Unmute","disabled":false},{"style":2,"type":2,"custom_id":"room:let-in:555","label":"↩️ Let back in","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:lock:555","label":"🔒 Lock","disabled":false},{"style":2,"type":2,"custom_id":"room:chat-lock:555","label":"🤐 Lock chat","disabled":false},{"style":2,"type":2,"custom_id":"room:limit:555","label":"👥 Limit","disabled":false},{"style":2,"type":2,"custom_id":"room:rename:555","label":"✏️ Rename","disabled":false}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"room:transfer:555","label":"🔑 Transfer","disabled":false},{"style":2,"type":2,"custom_id":"room:helpers:555","label":"🛡️ Helpers","disabled":false},{"style":2,"type":2,"custom_id":"room:who:555","label":"🚪 Who can join","disabled":false},{"style":2,"type":2,"custom_id":"room:claim:555","label":"👑 Claim","disabled":false},{"style":1,"type":2,"custom_id":"room:help:555","label":"❓ Help","disabled":false}]}]|None"##,
+        ),
+        (
+            "guide",
+            r##"None|{"title":"How rooms work","type":"rich","description":"Join the hub channel and CrackTunes makes you a voice room of your own. You own it, and you can share the controls with helpers. Every control is a button on the room's panel and a `/room` command; either works.\nRun `/room` commands from the room's voice channel or from its chat.\n\n**What the buttons do**\n**Kick** · `/room kick` — disconnect someone and keep them out; asks for a reason.\n**Mute** · `/room mute` — stop someone from speaking here; the reason is optional.\n**Unmute** · `/room unmute` — let a muted person speak again.\n**Let back in** · `/room letin` — lift a kick so the person can rejoin.\n**Lock / Unlock** · `/room lock` · `/room unlock` — close the room to newcomers, or open it again.\n**Lock chat / Unlock chat** · `/room chatlock` · `/room chatunlock` — stop or allow typing in this room's chat.\n**Limit** · `/room limit` — cap how many people fit (0 means no limit).\n**Rename** · `/room rename` — change the room's name.\n**Transfer** · `/room transfer` — hand the room to someone else in it.\n**Helpers** · `/room helper add` · `/room helper remove` — let people run these controls with you.\n**Who can join** · `/room allow` · `/room block` · `/room unblock` — let a person or role in, or keep a role out.\n**Claim** · `/room claim` — take over a room whose owner has left.\n**Panel** · `/room panel` — post this panel again.\n**Help** — a private, longer guide.\n\nThe owner and helpers — and server moderators — can use these controls. If the owner has left, anyone in the room can claim it.\nThis room is deleted when everyone leaves.\nDeafen isn't available: Discord can't deafen someone in just one channel."}|[]|[]|None"##,
+        ),
+        (
+            "status_findings",
+            r##"None|{"title":"Voice rooms","type":"rich","description":"Rooms are **on**.\nHub: <#10>\nName: {name}'s \\*room\\*\nDefault limit: 4\nEmpty-room grace: 60s\n\nGive CrackTunes **Connect**, **Move Members** on <#20>\nGive CrackTunes **Connect** on the hub <#10>\nOptional: give CrackTunes **Manage Channels** server-wide\nLocking a room may fail: CrackTunes lacks **Manage Messages**.\n\nDashboard settings: https://dash.example/g/1"}|[]|[]|None"##,
+        ),
+        (
+            "status_ready",
+            r##"None|{"title":"Voice rooms","type":"rich","description":"Rooms are **on**.\nHub: <#10>\nName: {name}'s \\*room\\*\nDefault limit: 4\nEmpty-room grace: 60s\n\nCrackTunes has everything it needs."}|[]|[]|None"##,
+        ),
+        (
+            "status_unknown",
+            r##"None|{"title":"Voice rooms","type":"rich","description":"Rooms are **on**.\nHub: <#10>\nName: {name}'s \\*room\\*\nDefault limit: 4\nEmpty-room grace: 60s\n\nCouldn't check permissions: CrackTunes may not be able to see the hub or its category — give it View Channel there — or it's still starting up."}|[]|[]|None"##,
+        ),
+        (
+            "status_off",
+            r##"None|{"title":"Voice rooms","type":"rich","description":"Rooms are **off**.\nHub: not set\nName: {name}'s room\nDefault limit: No limit\nEmpty-room grace: 30s\n\nNo hub set yet — run /rooms setup."}|[]|[]|None"##,
+        ),
+        (
+            "done_kicked",
+            r##"Some("🚫 Kicked <@7>.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_let_in",
+            r##"Some("↩\u{fe0f} Let back in <@7>.")|null|[]|[]|None"##,
+        ),
+        ("done_muted", r##"Some("🔇 Muted <@7>.")|null|[]|[]|None"##),
+        (
+            "done_unmuted",
+            r##"Some("🔊 Unmuted <@7>.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_locked",
+            r##"Some("🔒 Room locked. Nobody new can join.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_unlocked",
+            r##"Some("🔓 Room unlocked.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_chat_locked",
+            r##"Some("🤐 Chat locked.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_chat_unlocked",
+            r##"Some("💬 Chat unlocked.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_limit_set",
+            r##"Some("👥 Limit set to 6.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_limit_cleared",
+            r##"Some("👥 Limit removed.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_renamed",
+            r##"Some("✏\u{fe0f} Renamed to **\\@everyone \\*x\\***.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_transferred",
+            r##"Some("🔑 The room now belongs to <@7>.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_helper_added",
+            r##"Some("🛡\u{fe0f} Helper added: <@7>")|null|[]|[]|None"##,
+        ),
+        (
+            "done_helper_removed",
+            r##"Some("🛡\u{fe0f} Helper removed: <@7>")|null|[]|[]|None"##,
+        ),
+        (
+            "done_allowed_user",
+            r##"Some("🚪 Allowed in: <@7>")|null|[]|[]|None"##,
+        ),
+        (
+            "done_allowed_role",
+            r##"Some("🚪 Allowed in: <@&9>")|null|[]|[]|None"##,
+        ),
+        (
+            "done_role_blocked",
+            r##"Some("🚫 Kept out: <@&9>")|null|[]|[]|None"##,
+        ),
+        (
+            "done_role_unblocked",
+            r##"Some("🚪 No longer kept out: <@&9>")|null|[]|[]|None"##,
+        ),
+        (
+            "done_claimed",
+            r##"Some("👑 You now own this room.")|null|[]|[]|None"##,
+        ),
+        (
+            "done_panel_posted",
+            r##"Some("Panel posted.")|null|[]|[]|None"##,
+        ),
+        (
+            "refused",
+            r##"Some("Renaming is limited to twice every 10 minutes. Try again in 42s.")|null|[]|[]|None"##,
+        ),
+        (
+            "switched_on",
+            r##"Some("Voice rooms are on.")|null|[]|[]|None"##,
+        ),
+        (
+            "switched_off",
+            r##"Some("Voice rooms are off. Existing rooms stay until they empty.")|null|[]|[]|None"##,
+        ),
+    ];
 }

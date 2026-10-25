@@ -643,6 +643,7 @@ mod tests {
     use crate::modlog::test_support::{FakeAudit, FakeSink};
     use crate::modlog::{load_settings, save_settings};
     use crate::DataInner;
+    use crack_types::discord::ToRef;
     use serenity::all::ChannelId;
     use AuditKind::{Disconnect, Move};
 
@@ -717,17 +718,17 @@ mod tests {
 
     fn disc(t: UserId, by: Attribution) -> ModLogEvent {
         ModLogEvent::Disconnect {
-            target: t,
-            from: C1,
+            target: t.to_ref(),
+            from: C1.to_ref(),
             by,
         }
     }
 
     fn mov(t: UserId, to: ChannelId, by: Attribution) -> ModLogEvent {
         ModLogEvent::Move {
-            target: t,
-            from: C1,
-            to,
+            target: t.to_ref(),
+            from: C1.to_ref(),
+            to: to.to_ref(),
             by,
         }
     }

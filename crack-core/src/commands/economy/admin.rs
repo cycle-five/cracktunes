@@ -29,6 +29,7 @@ use crate::modlog::event::ModLogEvent;
 use crate::modlog::live::ChannelSink;
 use crate::{Context, Data, Error};
 use chrono::{Duration, Utc};
+use crack_types::discord::ToRef;
 use serenity::all::{GuildId, Permissions, User};
 use std::sync::Arc;
 
@@ -366,6 +367,8 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
 
 /// Make a member immune to pranks, for some hours or until lifted.
 #[poise::command(slash_command, guild_only)]
+// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+#[cfg_attr(test, mutants::skip)]
 pub async fn grant(
     ctx: Context<'_>,
     #[description = "Who"] member: User,
@@ -406,8 +409,8 @@ pub async fn grant(
                 ctx,
                 guild,
                 ModLogEvent::ImmunityGranted {
-                    by,
-                    target: member.id,
+                    by: by.to_ref(),
+                    target: member.id.to_ref(),
                     until,
                     reason,
                 },
@@ -423,6 +426,8 @@ pub async fn grant(
 
 /// Remove a member's moderator immunity.
 #[poise::command(slash_command, guild_only)]
+// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+#[cfg_attr(test, mutants::skip)]
 pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
@@ -437,8 +442,8 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
                 ctx,
                 guild,
                 ModLogEvent::ImmunityLifted {
-                    by: ctx.author().id,
-                    target: member.id,
+                    by: ctx.author().id.to_ref(),
+                    target: member.id.to_ref(),
                 },
             )
             .await;
@@ -452,6 +457,8 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
 
 /// End every prank running on a member, undone as if it had expired.
 #[poise::command(slash_command, guild_only)]
+// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+#[cfg_attr(test, mutants::skip)]
 pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Result<(), Error> {
     // Needs only the database: the lever for pranks still running after the
     // economy was turned off.
@@ -476,8 +483,8 @@ pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Re
                 ctx,
                 guild,
                 ModLogEvent::ShopCancelled {
-                    by: ctx.author().id,
-                    target: member.id,
+                    by: ctx.author().id.to_ref(),
+                    target: member.id.to_ref(),
                 },
             )
             .await;
@@ -490,6 +497,8 @@ pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Re
 
 /// Add or remove credits (negative removes). Needs Manage Server.
 #[poise::command(slash_command, guild_only)]
+// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+#[cfg_attr(test, mutants::skip)]
 pub async fn adjust(
     ctx: Context<'_>,
     #[description = "Who"] member: User,
@@ -530,8 +539,8 @@ pub async fn adjust(
                 ctx,
                 guild,
                 ModLogEvent::CreditsAdjusted {
-                    by,
-                    target: member.id,
+                    by: by.to_ref(),
+                    target: member.id.to_ref(),
                     amount,
                     reason,
                 },

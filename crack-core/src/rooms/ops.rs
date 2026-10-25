@@ -20,6 +20,7 @@ use crate::modlog::attribution::AuditKind;
 use crate::modlog::batch::ModLogSink;
 use crate::modlog::event::ModLogEvent;
 use crate::Data;
+use crack_types::discord::ToRef;
 use serenity::all::{ChannelId, GuildId, MessageId, RoleId, UserId};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -212,27 +213,27 @@ fn no_leave_coming(data: &Data, guild: GuildId, target: UserId) {
 fn mod_log_event(action: &RoomAction, room: ChannelId, actor: UserId) -> Option<ModLogEvent> {
     match action {
         RoomAction::Kick { target, reason } => Some(ModLogEvent::RoomKick {
-            target: *target,
-            room,
-            actor,
+            target: target.to_ref(),
+            room: room.to_ref(),
+            actor: actor.to_ref(),
             reason: reason.as_str().to_owned(),
         }),
         RoomAction::LetIn { target } => Some(ModLogEvent::RoomUnblock {
-            target: *target,
-            room,
-            actor,
+            target: target.to_ref(),
+            room: room.to_ref(),
+            actor: actor.to_ref(),
         }),
         RoomAction::Mute { target, reason } => Some(ModLogEvent::RoomMute {
-            target: *target,
-            room,
-            actor,
+            target: target.to_ref(),
+            room: room.to_ref(),
+            actor: actor.to_ref(),
             on: true,
             reason: reason.as_ref().map(|r| r.as_str().to_owned()),
         }),
         RoomAction::Unmute { target } => Some(ModLogEvent::RoomMute {
-            target: *target,
-            room,
-            actor,
+            target: target.to_ref(),
+            room: room.to_ref(),
+            actor: actor.to_ref(),
             on: false,
             reason: None,
         }),
@@ -332,10 +333,10 @@ pub async fn redraw_panel(cx: &RoomCx<'_>, room: &mut LiveRoom) -> bool {
 
 fn panel(room: &LiveRoom) -> Rendered {
     let view = PanelView {
-        room: room.channel,
+        room: room.channel.to_ref(),
         name: room.name.clone(),
-        owner: room.state.owner,
-        helpers: room.state.helpers.iter().copied().collect(),
+        owner: room.state.owner.to_ref(),
+        helpers: room.state.helpers.iter().map(ToRef::to_ref).collect(),
         locked: room.state.locked,
         chat_locked: room.state.chat_locked,
         limit: room.limit,
@@ -508,19 +509,19 @@ fn apply(s: &mut RoomState, action: &RoomAction, actor: UserId) -> RoomDone {
             s.blocked.insert(*target);
             s.helpers.remove(target);
             s.permitted_users.remove(target);
-            RoomDone::Kicked(*target)
+            RoomDone::Kicked(target.to_ref())
         },
         RoomAction::LetIn { target } => {
             s.blocked.remove(target);
-            RoomDone::LetIn(*target)
+            RoomDone::LetIn(target.to_ref())
         },
         RoomAction::Mute { target, .. } => {
             s.muted.insert(*target);
-            RoomDone::Muted(*target)
+            RoomDone::Muted(target.to_ref())
         },
         RoomAction::Unmute { target } => {
             s.muted.remove(target);
-            RoomDone::Unmuted(*target)
+            RoomDone::Unmuted(target.to_ref())
         },
         RoomAction::Lock => {
             s.locked = true;
@@ -544,31 +545,31 @@ fn apply(s: &mut RoomState, action: &RoomAction, actor: UserId) -> RoomDone {
         RoomAction::Transfer { target } => {
             s.helpers.remove(target);
             s.owner = *target;
-            RoomDone::Transferred(*target)
+            RoomDone::Transferred(target.to_ref())
         },
         RoomAction::HelperAdd { target } => {
             s.helpers.insert(*target);
-            RoomDone::HelperAdded(*target)
+            RoomDone::HelperAdded(target.to_ref())
         },
         RoomAction::HelperRemove { target } => {
             s.helpers.remove(target);
-            RoomDone::HelperRemoved(*target)
+            RoomDone::HelperRemoved(target.to_ref())
         },
         RoomAction::AllowUser { target } => {
             s.permitted_users.insert(*target);
-            RoomDone::AllowedUser(*target)
+            RoomDone::AllowedUser(target.to_ref())
         },
         RoomAction::AllowRole { role } => {
             s.permitted_roles.insert(*role);
-            RoomDone::AllowedRole(*role)
+            RoomDone::AllowedRole(role.to_ref())
         },
         RoomAction::BlockRole { role } => {
             s.blocked_roles.insert(*role);
-            RoomDone::RoleBlocked(*role)
+            RoomDone::RoleBlocked(role.to_ref())
         },
         RoomAction::UnblockRole { role } => {
             s.blocked_roles.remove(role);
-            RoomDone::RoleUnblocked(*role)
+            RoomDone::RoleUnblocked(role.to_ref())
         },
         RoomAction::Claim => {
             s.helpers.remove(&actor);
@@ -796,6 +797,20 @@ mod tests {
             renames: RenameWindow::default(),
             wrote_at: None,
         }
+    }
+
+    #[test]
+    fn the_panel_is_drawn_from_the_room() {
+        let r = panel(&live(vec![]));
+        let embed = serde_json::to_string(&r.embed).unwrap();
+        assert!(embed.contains("Saucey's room"), "{embed}");
+        assert!(embed.contains(&format!("<@{}>", OWNER.get())), "{embed}");
+        assert!(embed.contains(&format!("<@{}>", HELPER.get())), "{embed}");
+        let rows = serde_json::to_string(&r.components).unwrap();
+        assert!(
+            rows.contains(&format!("room:kick:{}", ROOM.get())),
+            "{rows}"
+        );
     }
 
     struct World {
@@ -1032,7 +1047,7 @@ mod tests {
         room.state.permitted_users.insert(TARGET);
         let w = World::new(room);
         let got = w.act(&facts(), OWNER, kick(TARGET)).await;
-        assert_eq!(got, Ok(RoomDone::Kicked(TARGET)));
+        assert_eq!(got, Ok(RoomDone::Kicked(TARGET.to_ref())));
         assert_eq!(
             w.discord.calls(),
             vec![
@@ -1058,16 +1073,16 @@ mod tests {
         w.enable_mod_log();
         assert_eq!(
             w.act(&facts(), MODERATOR, kick(TARGET)).await,
-            Ok(RoomDone::Kicked(TARGET))
+            Ok(RoomDone::Kicked(TARGET.to_ref()))
         );
         assert_eq!(
             w.log.posted(),
             vec![(
                 G,
                 ModLogEvent::RoomKick {
-                    target: TARGET,
-                    room: ROOM,
-                    actor: MODERATOR,
+                    target: TARGET.to_ref(),
+                    room: ROOM.to_ref(),
+                    actor: MODERATOR.to_ref(),
                     reason: "spamming".into(),
                 }
             )],
@@ -1089,7 +1104,7 @@ mod tests {
             .fail_next(CallKind::Move, DiscordError::MissingPermissions);
         assert_eq!(
             w.act(&facts(), OWNER, kick(TARGET)).await,
-            Ok(RoomDone::Kicked(TARGET))
+            Ok(RoomDone::Kicked(TARGET.to_ref()))
         );
         assert!(
             !w.data
@@ -1108,7 +1123,7 @@ mod tests {
             .fail_next(CallKind::Move, DiscordError::NotConnected);
         assert_eq!(
             w.act(&facts(), OWNER, kick(TARGET)).await,
-            Ok(RoomDone::Kicked(TARGET))
+            Ok(RoomDone::Kicked(TARGET.to_ref()))
         );
         assert_eq!(w.log.events().len(), 1, "logged once");
         assert!(
@@ -1171,7 +1186,7 @@ mod tests {
             w.discord.fail_next(CallKind::Move, err.clone());
             assert_eq!(
                 w.act(&facts(), OWNER, kick(TARGET)).await,
-                Ok(RoomDone::Kicked(TARGET))
+                Ok(RoomDone::Kicked(TARGET.to_ref()))
             );
             // An hour later OUTSIDE leaves on their own.
             tokio::time::sleep(Duration::from_secs(3600)).await;
@@ -1204,16 +1219,16 @@ mod tests {
             w.log.events(),
             vec![
                 ModLogEvent::RoomMute {
-                    target: TARGET,
-                    room: ROOM,
-                    actor: HELPER,
+                    target: TARGET.to_ref(),
+                    room: ROOM.to_ref(),
+                    actor: HELPER.to_ref(),
                     on: true,
                     reason: Some("too loud".into()),
                 },
                 ModLogEvent::RoomMute {
-                    target: TARGET,
-                    room: ROOM,
-                    actor: HELPER,
+                    target: TARGET.to_ref(),
+                    room: ROOM.to_ref(),
+                    actor: HELPER.to_ref(),
                     on: false,
                     reason: None,
                 },
@@ -1231,9 +1246,9 @@ mod tests {
         assert_eq!(
             w.log.events().last(),
             Some(&ModLogEvent::RoomUnblock {
-                target: TARGET,
-                room: ROOM,
-                actor: OWNER,
+                target: TARGET.to_ref(),
+                room: ROOM.to_ref(),
+                actor: OWNER.to_ref(),
             })
         );
         assert_eq!(w.log.events().len(), 2, "the kick, then the let-in");
@@ -1274,7 +1289,7 @@ mod tests {
             .fail_next(CallKind::Move, DiscordError::NotConnected);
         assert_eq!(
             w.act(&facts(), OWNER, kick(TARGET)).await,
-            Ok(RoomDone::Kicked(TARGET))
+            Ok(RoomDone::Kicked(TARGET.to_ref()))
         );
         assert_eq!(
             w.discord.calls(),
@@ -1292,7 +1307,7 @@ mod tests {
             .fail_next(CallKind::Move, DiscordError::MissingPermissions);
         assert_eq!(
             w.act(&facts(), OWNER, kick(TARGET)).await,
-            Ok(RoomDone::Kicked(TARGET))
+            Ok(RoomDone::Kicked(TARGET.to_ref()))
         );
         assert_eq!(
             w.discord.calls(),
@@ -1368,7 +1383,7 @@ mod tests {
         let got = w
             .act(&facts(), HELPER, RoomAction::LetIn { target: TARGET })
             .await;
-        assert_eq!(got, Ok(RoomDone::LetIn(TARGET)));
+        assert_eq!(got, Ok(RoomDone::LetIn(TARGET.to_ref())));
         assert_eq!(
             w.discord.calls()[2..],
             [Call::DeleteOverwrite(ROOM.get(), member(TARGET))]
@@ -1485,12 +1500,12 @@ mod tests {
         assert_eq!(
             w.act(&facts(), OWNER, RoomAction::AllowUser { target: OUTSIDE })
                 .await,
-            Ok(RoomDone::AllowedUser(OUTSIDE))
+            Ok(RoomDone::AllowedUser(OUTSIDE.to_ref()))
         );
         assert_eq!(
             w.act(&facts(), OWNER, RoomAction::AllowRole { role: friends })
                 .await,
-            Ok(RoomDone::AllowedRole(friends))
+            Ok(RoomDone::AllowedRole(friends.to_ref()))
         );
         assert_eq!(
             w.discord.calls(),
@@ -1645,7 +1660,7 @@ mod tests {
         assert_eq!(
             w.act(&facts(), OWNER, RoomAction::HelperRemove { target: HELPER })
                 .await,
-            Ok(RoomDone::HelperRemoved(HELPER))
+            Ok(RoomDone::HelperRemoved(HELPER.to_ref()))
         );
         assert!(w.room().await.state.helpers.is_empty());
         assert_eq!(
@@ -1727,7 +1742,7 @@ mod tests {
         let got = w
             .act(&facts(), OWNER, RoomAction::Transfer { target: TARGET })
             .await;
-        assert_eq!(got, Ok(RoomDone::Transferred(TARGET)));
+        assert_eq!(got, Ok(RoomDone::Transferred(TARGET.to_ref())));
         assert_eq!(
             w.discord.calls(),
             vec![
@@ -1809,7 +1824,7 @@ mod tests {
         assert_eq!(
             w.act(&f, OWNER, RoomAction::HelperAdd { target: TARGET })
                 .await,
-            Ok(RoomDone::HelperAdded(TARGET))
+            Ok(RoomDone::HelperAdded(TARGET.to_ref()))
         );
         assert!(w.room().await.state.helpers.contains(&TARGET));
     }
@@ -1836,7 +1851,7 @@ mod tests {
         assert_eq!(
             w.act(&f, OWNER, RoomAction::AllowRole { role: adult })
                 .await,
-            Ok(RoomDone::AllowedRole(adult))
+            Ok(RoomDone::AllowedRole(adult.to_ref()))
         );
     }
 
@@ -1937,7 +1952,7 @@ mod tests {
         assert_eq!(
             w.act(&f, OWNER, RoomAction::AllowUser { target: OUTSIDE })
                 .await,
-            Ok(RoomDone::AllowedUser(OUTSIDE))
+            Ok(RoomDone::AllowedUser(OUTSIDE.to_ref()))
         );
     }
 
@@ -2008,7 +2023,7 @@ mod tests {
         assert_eq!(
             w.act(&facts(), OWNER, RoomAction::Unmute { target: HELPER })
                 .await,
-            Ok(RoomDone::Unmuted(HELPER))
+            Ok(RoomDone::Unmuted(HELPER.to_ref()))
         );
     }
 
@@ -2021,13 +2036,13 @@ mod tests {
         };
         assert_eq!(
             w.act(&facts(), HELPER, mute).await,
-            Ok(RoomDone::Muted(TARGET))
+            Ok(RoomDone::Muted(TARGET.to_ref()))
         );
         assert!(w.room().await.state.muted.contains(&TARGET));
         assert_eq!(
             w.act(&facts(), HELPER, RoomAction::Unmute { target: TARGET })
                 .await,
-            Ok(RoomDone::Unmuted(TARGET))
+            Ok(RoomDone::Unmuted(TARGET.to_ref()))
         );
         assert!(w.room().await.state.muted.is_empty());
         assert_eq!(
@@ -2051,12 +2066,12 @@ mod tests {
         assert_eq!(
             w.act(&facts(), OWNER, RoomAction::BlockRole { role: blocked })
                 .await,
-            Ok(RoomDone::RoleBlocked(blocked))
+            Ok(RoomDone::RoleBlocked(blocked.to_ref()))
         );
         assert_eq!(
             w.act(&facts(), OWNER, RoomAction::UnblockRole { role: blocked })
                 .await,
-            Ok(RoomDone::RoleUnblocked(blocked))
+            Ok(RoomDone::RoleUnblocked(blocked.to_ref()))
         );
         assert_eq!(
             w.act(&facts(), OWNER, RoomAction::ChatUnlock).await,
@@ -2088,7 +2103,7 @@ mod tests {
         let w = World::new(live(vec![]));
         assert_eq!(
             w.act(&facts(), MODERATOR, kick(OWNER)).await,
-            Ok(RoomDone::Kicked(OWNER))
+            Ok(RoomDone::Kicked(OWNER.to_ref()))
         );
         assert_eq!(w.data.rooms.owned_by(G, OWNER), None);
         let mut f = facts();
@@ -2110,7 +2125,7 @@ mod tests {
         let w = World::new(live(vec![]));
         assert_eq!(
             w.act(&facts(), MODERATOR, kick(OWNER)).await,
-            Ok(RoomDone::Kicked(OWNER))
+            Ok(RoomDone::Kicked(OWNER.to_ref()))
         );
         assert_eq!(
             w.act(&facts(), OUTSIDE, RoomAction::Lock).await,
@@ -2299,7 +2314,7 @@ mod tests {
         assert_eq!(
             w.act(&f, OWNER, RoomAction::BlockRole { role: other })
                 .await,
-            Ok(RoomDone::RoleBlocked(other))
+            Ok(RoomDone::RoleBlocked(other.to_ref()))
         );
     }
 

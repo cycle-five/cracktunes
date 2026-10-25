@@ -19,6 +19,7 @@ use crate::messaging::transport::DiscordTransport;
 use crate::modlog::event::ModLogEvent;
 use crate::{Context, Error};
 use chrono::Utc;
+use crack_types::discord::ToRef;
 use serenity::all::{ChannelId, GenericChannelId, Member};
 
 /// Put credits on a member's head, or see the bounties that stand.
@@ -40,6 +41,8 @@ pub fn placed_reply_text(balance: i64, currency: &str, emoji: &str) -> String {
 
 /// Put credits on a member's head. Whoever next lands a prank on them collects.
 #[poise::command(slash_command, guild_only)]
+// live-Discord glue: a command over `Context`; only its mod-log event's ids became refs here, and the event's wording is pinned by `modlog_events_render_as_before`.
+#[cfg_attr(test, mutants::skip)]
 pub async fn place(
     ctx: Context<'_>,
     #[description = "Whose head"] member: Member,
@@ -137,8 +140,8 @@ pub async fn place(
         guild,
         ModLogEvent::ShopAction {
             action: ActionKind::Bounty,
-            buyer: placer_id,
-            target,
+            buyer: placer_id.to_ref(),
+            target: target.to_ref(),
             note,
             signed,
             until: Some(placed.until),

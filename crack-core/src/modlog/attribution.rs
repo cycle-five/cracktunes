@@ -2,6 +2,7 @@
 //! leaves and moves the bot saw. Pure. When it cannot tell, it says so
 //! ([`Attribution::OneOf`], [`ModLogEvent::DisconnectBatch`]) or says nothing.
 use super::event::{Actor, Attribution, ModLogEvent};
+use crack_types::discord::ToRef;
 use serenity::all::{ChannelId, UserId};
 use std::collections::{BTreeMap, HashMap};
 
@@ -83,14 +84,14 @@ impl Change {
     fn event(&self, by: Attribution) -> ModLogEvent {
         match self {
             Self::Left { target, from } => ModLogEvent::Disconnect {
-                target: *target,
-                from: *from,
+                target: target.to_ref(),
+                from: from.to_ref(),
                 by,
             },
             Self::Moved { target, from, to } => ModLogEvent::Move {
-                target: *target,
-                from: *from,
-                to: *to,
+                target: target.to_ref(),
+                from: from.to_ref(),
+                to: to.to_ref(),
                 by,
             },
         }
@@ -165,8 +166,22 @@ fn dedupe(rows: &[AuditRow]) -> Vec<&AuditRow> {
 /// M24, which never named them).
 struct Live<'a> {
     row: &'a AuditRow,
-    actor: Actor,
+    actor: Who,
     delta: u32,
+}
+
+/// An audit actor while attributing, ordered by account id. The event's own
+/// `Actor` holds a ref, which orders as text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct Who {
+    id: UserId,
+    bot: bool,
+}
+
+impl Who {
+    fn actor(self) -> Actor {
+        Actor::new(self.id, self.bot)
+    }
 }
 
 /// What a targeted row competes for: its target and kind, and for a move its
@@ -183,7 +198,7 @@ fn pair_key(r: &AuditRow, target: UserId) -> (UserId, AuditKind, Option<ChannelI
 /// changes count towards L but are never named.
 fn decide(
     changes: &[&Change],
-    units: &BTreeMap<Actor, u64>,
+    units: &BTreeMap<Who, u64>,
     batch_ok: bool,
     bot: UserId,
 ) -> Vec<ModLogEvent> {
@@ -199,7 +214,7 @@ fn decide(
         tracing::debug!("modlog: {d} audit units for {l} changes: not attributed");
         return Vec::new();
     }
-    let actors: Vec<Actor> = units.keys().copied().collect();
+    let actors: Vec<Actor> = units.keys().map(|w| w.actor()).collect();
     if d < l {
         if !batch_ok {
             tracing::debug!("modlog: {d} audit units for {l} moves: not attributed");
@@ -224,11 +239,11 @@ fn decide(
         return vec![ModLogEvent::DisconnectBatch {
             actors,
             count: u32::try_from(count).unwrap_or(u32::MAX),
-            among,
+            among: among.iter().map(ToRef::to_ref).collect(),
         }];
     }
     let by = || match actors.as_slice() {
-        [one] => Attribution::By(*one),
+        [one] => Attribution::By(one.clone()),
         _ => Attribution::OneOf(actors.clone()),
     };
     changes
@@ -287,7 +302,7 @@ pub fn attribute(
             // all the same (`advance`). Another bot's rows are candidates,
             // marked as a bot's.
             let id = r.actor.filter(|a| *a != bot)?;
-            let actor = Actor {
+            let actor = Who {
                 id,
                 bot: r.actor_is_bot,
             };
@@ -341,7 +356,7 @@ pub fn attribute(
                 paired[*i] = true;
                 let c = sorted_changes[*i];
                 if c.target() != bot {
-                    events.push(c.event(Attribution::By(l.actor)));
+                    events.push(c.event(Attribution::By(l.actor.actor())));
                 }
             },
             many => tracing::debug!(
@@ -359,7 +374,7 @@ pub fn attribute(
         .filter(|(i, c)| !paired[*i] && c.kind() == AuditKind::Disconnect)
         .map(|(_, c)| *c)
         .collect();
-    let mut units: BTreeMap<Actor, u64> = BTreeMap::new();
+    let mut units: BTreeMap<Who, u64> = BTreeMap::new();
     for l in &live {
         if l.row.target.is_none() && l.row.kind == AuditKind::Disconnect {
             let u = units.entry(l.actor).or_default();
@@ -376,7 +391,7 @@ pub fn attribute(
         }
     }
     for (dest, group) in &by_dest {
-        let mut units: BTreeMap<Actor, u64> = BTreeMap::new();
+        let mut units: BTreeMap<Who, u64> = BTreeMap::new();
         for l in &live {
             if l.row.target.is_none()
                 && l.row.kind == AuditKind::Move
@@ -456,17 +471,17 @@ mod tests {
 
     fn disc(t: UserId, by: Attribution) -> ModLogEvent {
         ModLogEvent::Disconnect {
-            target: t,
-            from: C1,
+            target: t.to_ref(),
+            from: C1.to_ref(),
             by,
         }
     }
 
     fn mov(t: UserId, to: ChannelId, by: Attribution) -> ModLogEvent {
         ModLogEvent::Move {
-            target: t,
-            from: C1,
-            to,
+            target: t.to_ref(),
+            from: C1.to_ref(),
+            to: to.to_ref(),
             by,
         }
     }
@@ -507,7 +522,7 @@ mod tests {
             vec![ModLogEvent::DisconnectBatch {
                 actors: vec![Actor::person(M1)],
                 count: 2,
-                among: vec![T1, T2, T3],
+                among: vec![T1.to_ref(), T2.to_ref(), T3.to_ref()],
             }]
         );
     }
@@ -669,9 +684,9 @@ mod tests {
         assert_eq!(
             out,
             vec![ModLogEvent::Move {
-                target: T1,
-                from: C3,
-                to: C2,
+                target: T1.to_ref(),
+                from: C3.to_ref(),
+                to: C2.to_ref(),
                 by: Attribution::By(Actor::person(M1)),
             }]
         );
@@ -722,7 +737,7 @@ mod tests {
             vec![ModLogEvent::DisconnectBatch {
                 actors: vec![Actor::person(M1)],
                 count: 1,
-                among: vec![T1, T2],
+                among: vec![T1.to_ref(), T2.to_ref()],
             }],
             "the bot is not among them, and one unit is its own"
         );
@@ -737,7 +752,7 @@ mod tests {
             vec![ModLogEvent::DisconnectBatch {
                 actors: vec![Actor::person(M1)],
                 count: 1,
-                among: vec![T1, T2],
+                among: vec![T1.to_ref(), T2.to_ref()],
             }]
         );
     }
@@ -778,7 +793,7 @@ mod tests {
                 ModLogEvent::DisconnectBatch {
                     actors: vec![Actor::person(M2)],
                     count: 1,
-                    among: vec![T2, T3],
+                    among: vec![T2.to_ref(), T3.to_ref()],
                 },
                 mov(T1, C2, Attribution::By(Actor::person(M1))),
             ]
@@ -829,7 +844,7 @@ mod tests {
             vec![ModLogEvent::DisconnectBatch {
                 actors: vec![Actor::person(M1)],
                 count: 1,
-                among: vec![T1, T2, T3],
+                among: vec![T1.to_ref(), T2.to_ref(), T3.to_ref()],
             }]
         );
     }
@@ -911,7 +926,7 @@ mod tests {
             vec![ModLogEvent::DisconnectBatch {
                 actors: vec![Actor::person(M1)],
                 count: 1,
-                among: vec![T1, T2],
+                among: vec![T1.to_ref(), T2.to_ref()],
             }],
             "one entry read twice is one unit, never By for both"
         );
@@ -948,20 +963,20 @@ mod tests {
         let other = Actor::bot(OTHER_BOT);
         let bot_dc = by_bot(dc(1, M1, 1));
         let out = attribute(&snaps, std::slice::from_ref(&bot_dc), &[left(T1)], BOT);
-        assert_eq!(out, vec![disc(T1, Attribution::By(other))]);
+        assert_eq!(out, vec![disc(T1, Attribution::By(other.clone()))]);
         let out = attribute(&snaps, &[by_bot(mv(2, M1, 1, C2))], &[moved(T1, C2)], BOT);
-        assert_eq!(out, vec![mov(T1, C2, Attribution::By(other))]);
+        assert_eq!(out, vec![mov(T1, C2, Attribution::By(other.clone()))]);
         let out = attribute(&snaps, &[targeted(bot_dc.clone(), T1)], &[left(T1)], BOT);
         assert_eq!(
             out,
-            vec![disc(T1, Attribution::By(other))],
+            vec![disc(T1, Attribution::By(other.clone()))],
             "paired exactly"
         );
         // A bot and a moderator with a unit each, and two leaves: the same
         // hedge as two moderators.
         let rows = [bot_dc, dc(3, M2, 1)];
         let out = attribute(&snaps, &rows, &[left(T1), left(T2)], BOT);
-        let both = Attribution::OneOf(vec![Actor::person(M2), other]);
+        let both = Attribution::OneOf(vec![Actor::person(M2), other.clone()]);
         assert_eq!(out, vec![disc(T1, both.clone()), disc(T2, both)]);
         // CrackTunes itself is a bot too, and is still never credited.
         let own = AuditRow {
