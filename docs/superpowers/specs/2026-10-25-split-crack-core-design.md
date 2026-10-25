@@ -1,6 +1,6 @@
 # Split crack-core
 
-Status: the direction and order were approved in chat by the owner on 2026-10-25. This document waits for the owner's review.
+Status: the owner approved the direction, the order and rule 6 in chat on 2026-10-25. This document waits for the owner's review.
 
 ## Intent
 
@@ -27,6 +27,7 @@ This arc serves the first quote: it cuts the crate apart along its features. It 
 | Why that order | The owner expects the most change in "the economy and the music. The music is the primary function of the bot … with Saucey's server the ecnomomy will be getting used, and probably also the logging." Music goes last because it's the riskiest move, not the least important |
 | "The logging" | Read as the **mod log** (Saucey's voice-room and moderation events), not the music queue's audit log. I stated this reading in chat and the owner did not correct it |
 | Database | Unchanged, as in the transpose arc |
+| Discord in feature crates | Allowed (serenity types), never poise, `Data` or `Context`. See rule 6. Owner: "I agree with your line, the economy would probably need to be an entirely different thing on another platform anyway, it's very specific to not just discord functions but also culture, so that's fine." |
 | Feature work during the split | Continues in parallel. I stated this as an assumption and the owner accepted the order without objecting. Each PR lands in a day or two and freezes no area |
 | Mutation testing | A tool, not a gate (owner, 2026-10-25; ct#639). No local mutants runs in tasks |
 
@@ -106,9 +107,11 @@ When this is done, crack-core is the Discord layer, about 25k non-test lines. A 
 
    The test schema is `crack-core/test_migrations/`, which 10 test modules load with `sqlx::migrate!("./test_migrations")`. That path is relative to each crate's manifest. My call: keep one copy, and have new crates point at it by relative path. No copies.
 5. **Features:** every new crate defines `mutation-testing` (`.cargo/mutants.toml` requires it of every member, even if empty), plus whichever of `db-tests` and `crack-coin` it needs. crack-core's features forward to them.
-6. **Discord (my call; the owner to confirm).** A feature crate may use serenity types where the feature's job is a Discord action: rooms' channels and permission overwrites, economy's mutes, nicknames and theme songs. Being Discord-free is **measured** with the topology tool, not required. Code that is already clean, such as the wallet, ledger and settings, should stay clean.
+6. **Discord (owner's decision, 2026-10-25).** A feature crate may use serenity types where the feature's job is a Discord action: rooms' channels and permission overwrites, economy's mutes, nicknames and theme songs. Being Discord-free is **measured** with the topology tool, not required. Code that is already clean, such as the wallet, ledger and settings, should stay clean.
 
-   This narrows what I said in chat ("one crate per feature … with no Discord"). The map shows about 80% of each feature's lines carry Discord in their signatures, much of it because the feature *is* a Discord action. Requiring Discord-free features would roughly triple the work and turn this arc into the transpose arc's later steps.
+   This narrows what I first said in chat ("one crate per feature … with no Discord"). The map shows about 80% of each feature's lines carry Discord in their signatures, much of it because the feature *is* a Discord action. Requiring Discord-free features would roughly triple the work and turn this arc into the transpose arc's later steps.
+
+   The owner agreed, and added that the economy is specific to Discord's culture as well as its functions: on another platform it "would probably need to be an entirely different thing anyway".
 7. **User-facing strings stay in one file** (the owner's convention, #537). They move to crack-common's `messages.rs`. The cost is that changing any string rebuilds every crate above crack-common. That's accepted.
 8. **No behaviour change.**
    - Rendered output stays byte-identical, and the existing byte pins prove it.
