@@ -1,0 +1,33 @@
+name: Mutants (opt-in)
+
+# Runs the PR mutants check (mutants-diff.yml) only on a pull request labelled
+# `mutants`. It is advisory: master's required checks are Build and Lint.
+#
+# 🔑 Why opt-in (owner's call, 2026-10-25): every crack-core mutant rebuilds
+# crack-core and runs its whole test binary, about 2 minutes each on CI. A big
+# crack-core PR (#636, 79 files) hit the 24-shard cap and took about 3.5 hours
+# and 18 runner-hours, holding 6 of the account's 20 concurrent jobs. Add the
+# label when a change's tests deserve the check, e.g. new business logic with
+# little else proving its tests can fail.
+#
+# 🔑 Adding the label starts a run; so does a push while it is on. Adding any
+# OTHER label does not: without that guard, every label change would cancel
+# and restart a run in progress (the concurrency group below).
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  group: mutants-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  mutants:
+    name: Mutants
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'mutants') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'mutants')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/mutants-diff.yml

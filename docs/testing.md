@@ -174,8 +174,9 @@ is *missed*.
 
 ### The diff check
 
-The gate mutation-tests only the Rust lines a change touched, and fails only
-on **new** misses. Run it after each task's commit:
+The check mutation-tests only the Rust lines a change touched, and fails only
+on **new** misses. It is a tool, not a gate (owner's call, 2026-10-25: see "In
+CI" for why). Run it when a change's tests most need proving:
 
 ```bash
 scripts/mutants_check.py --base <the commit the task started from>
@@ -192,10 +193,21 @@ scripts/mutants_check.py --help        # every option
 - It prints a summary (`--summary-md FILE` also appends it as Markdown) and
   exits 0 (no new misses), 1 (new misses) or 2 (anything else).
 
-🔑 **How the agent uses it:** after each task's commit, run
-`scripts/mutants_check.py --base <the commit the task started from>` in the
-background and give its summary to the task review. A PR's body carries the
-summary, in place of the old "mutation -> caught-by" table.
+🔑 **How the agent uses it (since 2026-10-25):** not on every task. It used to
+run after each task's commit, and on the neutral-messages PR (#636) a local
+run was going for 70% of the wall-clock. Implementers waiting on it also ran
+up token cost. Now:
+
+- **A reviewer lists, rather than runs.** `scripts/mutants.sh --list
+  --in-diff <diff>` takes seconds and shows which mutants a change brings in.
+  Read them against the tests to spot a likely gap; that is how #636's final
+  review found its last two.
+- **Run only what review names.** For a function review names, run a targeted
+  check: `scripts/mutants.sh -j 1 --in-diff <diff> -f <file> --re '<fn>'`.
+  `--re` alone doesn't filter "delete field" mutants; `--in-diff` with `-f`
+  scopes them to the touched lines.
+- **The full check** (`mutants_check.py`) is for a change whose logic has
+  little else proving its tests can fail.
 
 - **Exit 2 means the environment is broken, not that the tests are weak:**
   Postgres down after a run, "No space left on device" in the logs, the
@@ -279,13 +291,24 @@ always write the reason.
 
 ### In CI
 
-`mutants-diff.yml` runs the same check as the Mutants job on pull requests.
+`mutants-diff.yml` runs the same check as the Mutants job, **only on a pull
+request labelled `mutants`** (`mutants-pr.yml`).
 
-- It is skipped when a PR changes no `.rs` file.
-- 🔑 **`Mutants / Mutants verdict` is a required check on master** (since
-  2026-10-23). A skipped verdict (no Rust to mutate) counts as passing.
-  Master's protection also requires a branch to be up to date before it
-  merges, so a PR behind master is updated and its checks run again.
+- **Adding the label starts a run,** and each push while it is on starts
+  another.
+- **It is skipped** when a PR changes no `.rs` file.
+- 🔑 **It is advisory.** Master's required checks are `Build / Build (stable)`
+  and `Lint / Fmt and clippy (stable)`. From 2026-10-23 to 10-25, `Mutants /
+  Mutants verdict` was the required check, and it ran on every PR.
+  - **Why that changed:** each `crack-core` mutant rebuilds `crack-core` and
+    runs its whole test binary, about 2 minutes on CI. #636 (79 files) hit
+    the 24-shard cap and took about 3.5 hours and 18 runner-hours. Two weeks
+    of the per-task and per-PR runs cost about 20M tokens of implementer time
+    and 45 runner-hours, and found about 17 real test gaps.
+  - **When to reconsider:** after `crack-core` is split into smaller crates,
+    where a mutant costs seconds.
+- Master's protection requires a branch to be up to date before it merges,
+  so a PR behind master is updated and its checks run again.
 - Mutants are dealt out at 6 per shard, at most 24 shards, 6 running at once
   (the account's concurrent-job limit is shared by every repo).
 - 🔑 **The `Mutants verdict` job gives the verdict, not the shards.** A shard

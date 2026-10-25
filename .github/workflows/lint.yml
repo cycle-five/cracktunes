@@ -95,11 +95,11 @@ jobs:
         if: success() || failure()
         run: cargo clippy -p crack-core --features crack-coin --locked -- -D warnings
 
-  # 🔑 The mutants tooling is Python: scripts/mutants_check.py (the gate),
+  # 🔑 The mutants tooling is Python: scripts/mutants_check.py (the check),
   # scripts/check_waivers.py (every waiver carries a reason) and
   # scripts/sweep_target.py (the target sweep), with unittest tests beside
-  # them. The gate runs these scripts on every PR, so a broken one has to fail
-  # here, not pass or block PRs for the wrong reason. Standard library only, so
+  # them. The opt-in Mutants job runs these scripts, so a broken one has to fail
+  # here, not when someone finally labels a PR. Standard library only, so
   # the runner's own python3 is enough: no setup step, no Rust.
   scripts:
     name: Script tests
