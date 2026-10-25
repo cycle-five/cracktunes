@@ -27,6 +27,11 @@ on:
   # there was no way to start one short of pushing to master or waiting for the cron.
   workflow_dispatch:
 
+# 🪤 CMake 4 on ubuntu-26.04 refuses audiopus_sys's old
+# cmake_minimum_required; see build.yml.
+env:
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+
 jobs:
   rust-clippy-analyze:
     name: Run rust-clippy analyzing
