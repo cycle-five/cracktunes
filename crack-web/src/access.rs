@@ -4,6 +4,8 @@
 //! does it: the cache and HTTP lookups that build a `Presence` are thin
 //! glue, and every branch of the decision is tested without either.
 
+use crack_model::RoomRef;
+use crack_types::discord::ToRef;
 use dashmap::DashMap;
 use serenity::all::{Cache, ChannelId, GuildId, Http, Permissions, RoleId, UserId};
 use std::time::{Duration, Instant};
@@ -20,11 +22,11 @@ pub enum Membership {
 }
 
 /// Everything the access decision depends on.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Presence {
     pub membership: Membership,
-    pub user_channel: Option<ChannelId>,
-    pub bot_channel: Option<ChannelId>,
+    pub user_channel: Option<RoomRef>,
+    pub bot_channel: Option<RoomRef>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,7 +46,7 @@ pub fn decide(p: &Presence) -> Access {
     match p.membership {
         Membership::NotMember => Access::Hidden,
         Membership::Unknown => Access::Unavailable,
-        Membership::Member => match (p.user_channel, p.bot_channel) {
+        Membership::Member => match (&p.user_channel, &p.bot_channel) {
             (Some(user), Some(bot)) if user == bot => Access::Control,
             _ => Access::View,
         },
@@ -264,8 +266,8 @@ pub async fn presence(
     };
     Presence {
         membership,
-        user_channel: cached.user_channel,
-        bot_channel,
+        user_channel: cached.user_channel.map(|c| c.to_ref()),
+        bot_channel: bot_channel.map(|c| c.to_ref()),
     }
 }
 
@@ -282,8 +284,8 @@ mod test {
     fn p(membership: Membership, user: Option<ChannelId>, bot: Option<ChannelId>) -> Presence {
         Presence {
             membership,
-            user_channel: user,
-            bot_channel: bot,
+            user_channel: user.map(|c| c.to_ref()),
+            bot_channel: bot.map(|c| c.to_ref()),
         }
     }
 

@@ -16,7 +16,8 @@ use crate::{
     watch::ViewSource,
 };
 use axum::Router;
-use serenity::all::{ChannelId, GuildId, UserId};
+use crack_model::{CommunityRef, RoomRef, UserRef};
+use crack_types::discord::from_snowflake;
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst},
     Arc, Mutex,
@@ -25,33 +26,50 @@ use uuid::Uuid;
 
 pub const ORIGIN: &str = "https://dash.test";
 pub const JWT_SECRET: &str = "test-secret-test-secret-test-secret!";
-pub const BOT_CHANNEL: ChannelId = ChannelId::new(77);
+pub fn bot_channel() -> RoomRef {
+    room(77)
+}
+
+/// The Discord guild with snowflake `n`.
+pub fn guild(n: u64) -> CommunityRef {
+    from_snowflake(n).unwrap()
+}
+
+/// The Discord user with snowflake `n`.
+pub fn user(n: u64) -> UserRef {
+    from_snowflake(n).unwrap()
+}
+
+/// The Discord channel with snowflake `n`.
+pub fn room(n: u64) -> RoomRef {
+    from_snowflake(n).unwrap()
+}
 
 /// A search the routes made: (guild, query text, sources, since).
 pub type SearchCall = (
-    GuildId,
+    CommunityRef,
     String,
     SourceSet,
     Option<chrono::DateTime<chrono::Utc>>,
 );
 /// An add the routes asked for: (guild, user, name, track, at).
-pub type AddCall = (GuildId, UserId, String, SavedTrack, At);
+pub type AddCall = (CommunityRef, UserRef, String, SavedTrack, At);
 
 pub struct FakeBackend {
     pub membership: Mutex<Membership>,
-    pub user_channel: Mutex<Option<ChannelId>>,
+    pub user_channel: Mutex<Option<RoomRef>>,
     pub view: Mutex<QueueView>,
     pub move_result: Mutex<Result<usize, MoveRefused>>,
     /// What `view` becomes once a move succeeds; `None` leaves it as it was.
     pub view_after_move: Mutex<Option<QueueView>>,
     /// Every move the routes asked for: (guild, track, to).
-    pub moves: Mutex<Vec<(GuildId, Uuid, usize)>>,
+    pub moves: Mutex<Vec<(CommunityRef, Uuid, usize)>>,
     /// The user the last move was made for.
-    pub mover: Mutex<Option<UserId>>,
+    pub mover: Mutex<Option<UserRef>>,
     pub plan: Mutex<PlanView>,
     pub control_result: Mutex<Result<(), ControlRefused>>,
     /// Every control the routes asked for.
-    pub controls: Mutex<Vec<(GuildId, UserId, Control)>>,
+    pub controls: Mutex<Vec<(CommunityRef, UserRef, Control)>>,
     /// What `view` becomes once a control succeeds; `None` leaves it as it was.
     pub view_after_control: Mutex<Option<QueueView>>,
     /// How many times the routes read the plan.
@@ -83,23 +101,23 @@ pub struct FakeBackend {
     pub room_view: Mutex<RoomSettingsView>,
     pub save_result: Mutex<Result<(), SaveRefused>>,
     /// Every settings save the routes asked for: (guild, user, form).
-    pub saves: Mutex<Vec<(GuildId, UserId, RoomSettingsForm)>>,
+    pub saves: Mutex<Vec<(CommunityRef, UserRef, RoomSettingsForm)>>,
     /// What `mod_log_settings` answers.
     pub modlog_view: Mutex<ModLogSettingsView>,
     pub modlog_save_result: Mutex<Result<(), ModLogSaveRefused>>,
     /// Every mod log save the routes asked for: (guild, user, form).
-    pub modlog_saves: Mutex<Vec<(GuildId, UserId, ModLogSettingsForm)>>,
+    pub modlog_saves: Mutex<Vec<(CommunityRef, UserRef, ModLogSettingsForm)>>,
     /// What `economy_settings` answers.
     pub economy_view: Mutex<EconomySettingsView>,
     pub economy_save_result: Mutex<Result<(), EconomySaveRefused>>,
     /// Every economy save the routes asked for: (guild, user, form).
-    pub economy_saves: Mutex<Vec<(GuildId, UserId, EconomySettingsForm)>>,
+    pub economy_saves: Mutex<Vec<(CommunityRef, UserRef, EconomySettingsForm)>>,
 }
 
 impl FakeBackend {
     pub fn new(
         membership: Membership,
-        user_channel: Option<ChannelId>,
+        user_channel: Option<RoomRef>,
         view: QueueView,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -143,7 +161,9 @@ impl FakeBackend {
             modlog_save_result: Mutex::new(Ok(())),
             modlog_saves: Mutex::new(Vec::new()),
             economy_view: Mutex::new(EconomySettingsView::from_settings(
-                &crack_core::economy::settings::EconomySettings::off(GuildId::new(5)),
+                &crack_core::economy::settings::EconomySettings::off(serenity::all::GuildId::new(
+                    5,
+                )),
                 false,
             )),
             economy_save_result: Mutex::new(Ok(())),
@@ -155,15 +175,15 @@ impl FakeBackend {
             plan_calls: AtomicUsize::new(0),
             plan_hangs: AtomicBool::new(false),
             guilds: vec![GuildEntry {
-                id: GuildId::new(5),
+                id: guild(5),
                 name: "Five".into(),
                 channel: Some("Music".into()),
             }],
         })
     }
 
-    pub fn last_mover(&self) -> Option<UserId> {
-        *self.mover.lock().unwrap()
+    pub fn last_mover(&self) -> Option<UserRef> {
+        self.mover.lock().unwrap().clone()
     }
 
     pub fn control_count(&self) -> usize {
@@ -176,29 +196,29 @@ impl FakeBackend {
 }
 
 impl ViewSource for FakeBackend {
-    async fn view(&self, _g: GuildId) -> QueueView {
+    async fn view(&self, _g: CommunityRef) -> QueueView {
         self.view_calls.fetch_add(1, SeqCst);
         self.view.lock().unwrap().clone()
     }
 }
 
 impl Backend for FakeBackend {
-    async fn presence(&self, _g: GuildId, _u: UserId) -> Presence {
+    async fn presence(&self, _g: CommunityRef, _u: UserRef) -> Presence {
         self.presence_calls.fetch_add(1, SeqCst);
         if self.presence_hangs.load(SeqCst) {
             std::future::pending::<()>().await;
         }
         Presence {
             membership: *self.membership.lock().unwrap(),
-            user_channel: *self.user_channel.lock().unwrap(),
-            bot_channel: Some(BOT_CHANNEL),
+            user_channel: self.user_channel.lock().unwrap().clone(),
+            bot_channel: Some(bot_channel()),
         }
     }
 
     async fn move_track(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         id: Uuid,
         to: usize,
     ) -> Result<usize, MoveRefused> {
@@ -216,7 +236,12 @@ impl Backend for FakeBackend {
         result
     }
 
-    async fn control(&self, user: UserId, g: GuildId, c: Control) -> Result<(), ControlRefused> {
+    async fn control(
+        &self,
+        user: UserRef,
+        g: CommunityRef,
+        c: Control,
+    ) -> Result<(), ControlRefused> {
         self.controls.lock().unwrap().push((g, user, c));
         tokio::time::sleep(std::time::Duration::from_millis(1)).await;
         let result = *self.control_result.lock().unwrap();
@@ -228,7 +253,7 @@ impl Backend for FakeBackend {
         result
     }
 
-    async fn plan(&self, _g: GuildId) -> PlanView {
+    async fn plan(&self, _g: CommunityRef) -> PlanView {
         self.plan_calls.fetch_add(1, SeqCst);
         if self.plan_hangs.load(SeqCst) {
             std::future::pending::<()>().await;
@@ -236,15 +261,15 @@ impl Backend for FakeBackend {
         *self.plan.lock().unwrap()
     }
 
-    async fn guilds_for(&self, _u: UserId) -> Vec<GuildEntry> {
+    async fn guilds_for(&self, _u: UserRef) -> Vec<GuildEntry> {
         self.guilds.clone()
     }
 
-    fn guild_name(&self, _g: GuildId) -> Option<String> {
+    fn guild_name(&self, _g: CommunityRef) -> Option<String> {
         Some("Five".into())
     }
 
-    async fn history_access(&self, _g: GuildId, _u: UserId) -> crate::access::HistoryAccess {
+    async fn history_access(&self, _g: CommunityRef, _u: UserRef) -> crate::access::HistoryAccess {
         if self.history_access_hangs.load(SeqCst) {
             std::future::pending::<()>().await;
         }
@@ -253,7 +278,7 @@ impl Backend for FakeBackend {
 
     async fn history(
         &self,
-        _g: GuildId,
+        _g: CommunityRef,
         q: &crate::history::HistoryQuery,
     ) -> Result<crate::history::HistoryPage, crate::backend::HistoryError> {
         self.history_queries.lock().unwrap().push(q.clone());
@@ -262,7 +287,7 @@ impl Backend for FakeBackend {
 
     async fn search(
         &self,
-        g: GuildId,
+        g: CommunityRef,
         q: &Query,
         sources: SourceSet,
         since: Option<chrono::DateTime<chrono::Utc>>,
@@ -276,9 +301,9 @@ impl Backend for FakeBackend {
 
     async fn add(
         &self,
-        user: UserId,
+        user: UserRef,
         name: &str,
-        g: GuildId,
+        g: CommunityRef,
         track: SavedTrack,
         at: At,
     ) -> Result<(), AddRefused> {
@@ -296,14 +321,14 @@ impl Backend for FakeBackend {
         result
     }
 
-    async fn room_settings(&self, _g: GuildId) -> RoomSettingsView {
+    async fn room_settings(&self, _g: CommunityRef) -> RoomSettingsView {
         self.room_view.lock().unwrap().clone()
     }
 
     async fn save_room_settings(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         f: RoomSettingsForm,
     ) -> Result<RoomSettingsView, SaveRefused> {
         self.saves.lock().unwrap().push((g, user, f));
@@ -311,14 +336,14 @@ impl Backend for FakeBackend {
         Ok(self.room_view.lock().unwrap().clone())
     }
 
-    async fn mod_log_settings(&self, _g: GuildId) -> ModLogSettingsView {
+    async fn mod_log_settings(&self, _g: CommunityRef) -> ModLogSettingsView {
         self.modlog_view.lock().unwrap().clone()
     }
 
     async fn save_mod_log_settings(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         f: ModLogSettingsForm,
     ) -> Result<ModLogSettingsView, ModLogSaveRefused> {
         self.modlog_saves.lock().unwrap().push((g, user, f));
@@ -326,14 +351,14 @@ impl Backend for FakeBackend {
         Ok(self.modlog_view.lock().unwrap().clone())
     }
 
-    async fn economy_settings(&self, _g: GuildId) -> EconomySettingsView {
+    async fn economy_settings(&self, _g: CommunityRef) -> EconomySettingsView {
         self.economy_view.lock().unwrap().clone()
     }
 
     async fn save_economy_settings(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         f: EconomySettingsForm,
     ) -> Result<EconomySettingsView, EconomySaveRefused> {
         self.economy_saves.lock().unwrap().push((g, user, f));
@@ -405,5 +430,5 @@ pub fn playing() -> QueueView {
 
 /// A member in the bot's channel, with [`playing`] on.
 pub fn controller() -> Arc<FakeBackend> {
-    FakeBackend::new(Membership::Member, Some(BOT_CHANNEL), playing())
+    FakeBackend::new(Membership::Member, Some(bot_channel()), playing())
 }

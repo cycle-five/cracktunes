@@ -37,8 +37,8 @@ use crack_core::{
     },
     rooms::settings::{render_room_name, GRACE_CHOICES, ROOM_NAME_MAX},
 };
+use crack_model::CommunityRef;
 use serde::Serialize;
-use serenity::all::GuildId;
 
 /// Escape text for HTML element content and double-quoted attributes.
 pub fn esc(s: &str) -> String {
@@ -128,7 +128,7 @@ pub fn picker_page(username: &str, guilds: &[GuildEntry]) -> String {
             .map(|g| {
                 format!(
                     "<li><a href=\"/g/{id}\">{name}</a>{chan}</li>",
-                    id = g.id,
+                    id = g.id.raw().as_str(),
                     name = esc(&g.name),
                     chan = g
                         .channel
@@ -151,10 +151,11 @@ pub fn picker_page(username: &str, guilds: &[GuildEntry]) -> String {
 /// `history_link` is for managers (Manage Server).
 pub fn queue_page(
     guild_name: &str,
-    guild_id: GuildId,
+    guild_id: &CommunityRef,
     state: &PageState,
     history_link: bool,
 ) -> String {
+    let guild_id = guild_id.raw().as_str();
     let links = if history_link {
         format!(
             "<p class=\"links\"><a href=\"/g/{guild_id}/history\">History</a> · \
@@ -201,7 +202,8 @@ placeholder=\"Find a track\" aria-label=\"Find a track\">\
 
 /// `GET /g/{id}/history`: the first page inlined; `history.js` draws it,
 /// filters it, polls for new rows and loads older ones.
-pub fn history_page(guild_name: &str, guild_id: GuildId, page: &HistoryPage) -> String {
+pub fn history_page(guild_name: &str, guild_id: &CommunityRef, page: &HistoryPage) -> String {
+    let guild_id = guild_id.raw().as_str();
     const ACTIONS: [&str; 11] = [
         "add", "remove", "move", "skip", "clear", "shuffle", "stop", "pause", "resume", "leave",
         "repeat",
@@ -246,11 +248,12 @@ pub fn history_page(guild_name: &str, guild_id: GuildId, page: &HistoryPage) -> 
 /// values, and the permissions CrackTunes is missing. `settings.js` saves it.
 pub fn settings_page(
     guild_name: &str,
-    guild_id: GuildId,
+    guild_id: &CommunityRef,
     view: &RoomSettingsView,
     modlog: &ModLogSettingsView,
     economy: &EconomySettingsView,
 ) -> String {
+    let guild_id = guild_id.raw().as_str();
     let check = |on: bool| if on { " checked" } else { "" };
     let price_rows: String = economy
         .prices
@@ -569,6 +572,7 @@ pub fn message_page(title: &str, text: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::test_support::guild;
     use crate::view::{QueueView, TrackView};
     use crack_core::economy::settings::EconomySettings;
     use uuid::Uuid;
@@ -599,7 +603,7 @@ mod test {
         };
         let html = queue_page(
             "G",
-            GuildId::new(5),
+            &guild(5),
             &PageState {
                 view: &view,
                 can_control: false,
@@ -641,7 +645,7 @@ mod test {
         let html = picker_page(
             "<b>me</b>",
             &[GuildEntry {
-                id: GuildId::new(5),
+                id: guild(5),
                 name: "<i>G</i>".into(),
                 channel: Some("<u>c</u>".into()),
             }],
@@ -668,8 +672,10 @@ mod test {
             findings: None,
             visibility: None,
         };
-        let mut economy =
-            EconomySettingsView::from_settings(&EconomySettings::off(GuildId::new(5)), false);
+        let mut economy = EconomySettingsView::from_settings(
+            &EconomySettings::off(serenity::all::GuildId::new(5)),
+            false,
+        );
         let bounty = economy
             .prices
             .iter_mut()
@@ -677,7 +683,7 @@ mod test {
             .unwrap();
         assert_eq!(bounty.hint.as_deref(), Some("Minimum stake."));
         bounty.hint = Some("<b>Minimum</b> stake.".into());
-        let html = settings_page("G", GuildId::new(5), &rooms, &modlog, &economy);
+        let html = settings_page("G", &guild(5), &rooms, &modlog, &economy);
         assert!(
             html.contains(
                 "<td>Bounty<br><small class=\"e-hint\">&lt;b&gt;Minimum&lt;/b&gt; stake.</small></td>"
@@ -709,10 +715,10 @@ mod test {
             visibility: None,
         };
         let page = |on: bool| {
-            let mut s = EconomySettings::off(GuildId::new(5));
+            let mut s = EconomySettings::off(serenity::all::GuildId::new(5));
             s.config.voice_requires_camera = on;
             let economy = EconomySettingsView::from_settings(&s, false);
-            settings_page("G", GuildId::new(5), &rooms, &modlog, &economy)
+            settings_page("G", &guild(5), &rooms, &modlog, &economy)
         };
         let off = page(false);
         assert!(
@@ -746,10 +752,10 @@ mod test {
             visibility: None,
         };
         let page = |coin_build: bool, on: bool| {
-            let mut s = EconomySettings::off(GuildId::new(5));
+            let mut s = EconomySettings::off(serenity::all::GuildId::new(5));
             s.config.coin_withdrawals = on;
             let economy = EconomySettingsView::from_settings(&s, coin_build);
-            settings_page("G", GuildId::new(5), &rooms, &modlog, &economy)
+            settings_page("G", &guild(5), &rooms, &modlog, &economy)
         };
         let lean = page(false, true);
         assert!(!lean.contains("id=\"e-coin\""), "{lean}");
@@ -778,12 +784,67 @@ mod test {
             capped: true,
             ..HistoryPage::default()
         };
-        let html = history_page("S", GuildId::new(5), &capped);
+        let html = history_page("S", &guild(5), &capped);
         assert!(html.contains(&note), "{html}");
 
         let open = HistoryPage::default();
-        let html = history_page("S", GuildId::new(5), &open);
+        let html = history_page("S", &guild(5), &open);
         assert!(html.contains("<p id=\"premium-note\" hidden>"), "{html}");
+    }
+
+    /// The guild id is the bare snowflake wherever a page names it, never the
+    /// ref's `discord:5` key.
+    #[test]
+    fn the_pages_name_the_guild_by_its_bare_id() {
+        let view = QueueView::Idle;
+        let state = PageState {
+            view: &view,
+            can_control: false,
+            plan: crate::view::PlanView::Free,
+        };
+        let queue = queue_page("G", &guild(5), &state, true);
+        for needle in [
+            "data-guild=\"5\"",
+            "href=\"/g/5/history\"",
+            "href=\"/g/5/settings\"",
+        ] {
+            assert!(queue.contains(needle), "queue lacks {needle}: {queue}");
+        }
+        let history = history_page("S", &guild(5), &HistoryPage::default());
+        for needle in ["data-guild=\"5\"", "href=\"/g/5\""] {
+            assert!(
+                history.contains(needle),
+                "history lacks {needle}: {history}"
+            );
+        }
+        let economy = EconomySettingsView::from_settings(
+            &EconomySettings::off(serenity::all::GuildId::new(5)),
+            false,
+        );
+        let rooms = RoomSettingsView {
+            enabled: false,
+            hub: None,
+            name_template: String::new(),
+            default_limit: 0,
+            empty_grace_secs: 30,
+            voice_channels: Vec::new(),
+            findings: None,
+        };
+        let modlog = ModLogSettingsView {
+            enabled: false,
+            channel: None,
+            text_channels: Vec::new(),
+            findings: None,
+            visibility: None,
+        };
+        let settings = settings_page("S", &guild(5), &rooms, &modlog, &economy);
+        for needle in ["data-guild=\"5\"", "href=\"/g/5\""] {
+            assert!(
+                settings.contains(needle),
+                "settings lacks {needle}: {settings}"
+            );
+        }
+        assert!(!queue.contains("discord:") && !history.contains("discord:"));
     }
 
     #[test]
@@ -794,7 +855,7 @@ mod test {
             can_control: false,
             plan: crate::view::PlanView::Free,
         };
-        let html = queue_page("G", GuildId::new(5), &state, false);
+        let html = queue_page("G", &guild(5), &state, false);
         for needle in [
             "<form id=\"find\"",
             "<input type=\"search\" id=\"find-q\" name=\"q\" minlength=\"2\" maxlength=\"100\"",
@@ -817,7 +878,7 @@ mod test {
         let view = QueueView::Idle;
         let html = queue_page(
             "G",
-            GuildId::new(5),
+            &guild(5),
             &PageState {
                 view: &view,
                 can_control: false,

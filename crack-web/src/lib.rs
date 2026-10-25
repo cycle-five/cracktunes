@@ -41,6 +41,8 @@ use crack_core::{
     music::remote,
     owners, Data,
 };
+use crack_model::{CommunityRef, UserRef};
+use crack_types::discord::{guild_id, user_id, ToRef};
 use serenity::all::{Cache, ChannelId, ChannelType, GuildId, Http, Permissions, RoleId, UserId};
 use std::{
     collections::{HashMap, HashSet},
@@ -206,15 +208,60 @@ impl LiveBackend {
     }
 }
 
+/// The settings pages of a guild that is not a Discord snowflake: nothing is
+/// stored for it, so they read as a guild that never configured anything.
+/// Only the `off` defaults are read from the placeholder id.
+const NOT_A_GUILD: GuildId = GuildId::new(1);
+
+fn room_settings_off() -> RoomSettingsView {
+    let s = crack_core::rooms::settings::RoomSettings::off(NOT_A_GUILD);
+    RoomSettingsView {
+        enabled: s.enabled,
+        hub: None,
+        name_template: s.name_template,
+        default_limit: s.default_limit,
+        empty_grace_secs: s.empty_grace_secs,
+        voice_channels: Vec::new(),
+        findings: None,
+    }
+}
+
+fn mod_log_settings_off() -> ModLogSettingsView {
+    ModLogSettingsView {
+        enabled: false,
+        channel: None,
+        text_channels: Vec::new(),
+        findings: None,
+        visibility: None,
+    }
+}
+
+fn economy_settings_off() -> EconomySettingsView {
+    EconomySettingsView::from_settings(
+        &crack_core::economy::settings::EconomySettings::off(NOT_A_GUILD),
+        crack_core::COIN_BUILD,
+    )
+}
+
 impl ViewSource for LiveBackend {
-    async fn view(&self, g: GuildId) -> QueueView {
+    async fn view(&self, g: CommunityRef) -> QueueView {
+        let Ok(g) = guild_id(&g) else {
+            return QueueView::Hidden;
+        };
         let state = remote::queue_state(&self.deps.data, g).await;
         view_from_state(state, |u| self.member_name(g, u))
     }
 }
 
 impl Backend for LiveBackend {
-    async fn presence(&self, g: GuildId, u: UserId) -> Presence {
+    async fn presence(&self, g: CommunityRef, u: UserRef) -> Presence {
+        let (Ok(g), Ok(u)) = (guild_id(&g), user_id(&u)) else {
+            return Presence {
+                membership: Membership::NotMember,
+                user_channel: None,
+                bot_channel: None,
+            };
+        };
         let bot = remote::bot_channel(&self.deps.data, g).await;
         access::presence(
             &self.deps.cache,
@@ -230,11 +277,14 @@ impl Backend for LiveBackend {
 
     async fn move_track(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         id: Uuid,
         to: usize,
     ) -> Result<usize, MoveRefused> {
+        let (Ok(g), Ok(user)) = (guild_id(&g), user_id(&user)) else {
+            return Err(MoveRefused::NotPlaying);
+        };
         remote::move_by_id(
             self.deps.data.clone(),
             self.deps.http.clone(),
@@ -247,7 +297,15 @@ impl Backend for LiveBackend {
         .await
     }
 
-    async fn control(&self, user: UserId, g: GuildId, c: Control) -> Result<(), ControlRefused> {
+    async fn control(
+        &self,
+        user: UserRef,
+        g: CommunityRef,
+        c: Control,
+    ) -> Result<(), ControlRefused> {
+        let (Ok(g), Ok(user)) = (guild_id(&g), user_id(&user)) else {
+            return Err(ControlRefused::NotPlaying);
+        };
         // The echo line is already spawned in core.
         remote::control(
             self.deps.data.clone(),
@@ -262,11 +320,17 @@ impl Backend for LiveBackend {
         .map(|_| ())
     }
 
-    async fn plan(&self, g: GuildId) -> PlanView {
+    async fn plan(&self, g: CommunityRef) -> PlanView {
+        let Ok(g) = guild_id(&g) else {
+            return PlanView::Free;
+        };
         crate::view::plan_view(self.deps.data.get_premium(g).await)
     }
 
-    async fn guilds_for(&self, u: UserId) -> Vec<GuildEntry> {
+    async fn guilds_for(&self, u: UserRef) -> Vec<GuildEntry> {
+        let Ok(u) = user_id(&u) else {
+            return Vec::new();
+        };
         let mut out = Vec::new();
         for (g, channel) in remote::active_guilds(&self.deps.data).await {
             let p = access::presence(
@@ -293,7 +357,7 @@ impl Backend for LiveBackend {
                 None => continue,
             };
             out.push(GuildEntry {
-                id: g,
+                id: g.to_ref(),
                 name,
                 channel,
             });
@@ -301,16 +365,20 @@ impl Backend for LiveBackend {
         out
     }
 
-    fn guild_name(&self, g: GuildId) -> Option<String> {
+    fn guild_name(&self, g: CommunityRef) -> Option<String> {
+        let g = guild_id(&g).ok()?;
         self.deps.cache.guild(g).map(|guild| guild.name.to_string())
     }
 
-    async fn history_access(&self, g: GuildId, u: UserId) -> HistoryAccess {
+    async fn history_access(&self, g: CommunityRef, u: UserRef) -> HistoryAccess {
+        let (Ok(g), Ok(u)) = (guild_id(&g), user_id(&u)) else {
+            return HistoryAccess::Hidden;
+        };
         // Before any Discord call: an owner needs none.
         if self.is_owner(u).await {
             return access::decide_history(true, Membership::Unknown, None);
         }
-        let membership = self.presence(g, u).await.membership;
+        let membership = self.presence(g.to_ref(), u.to_ref()).await.membership;
         if membership != Membership::Member {
             return access::decide_history(false, membership, None);
         }
@@ -335,22 +403,28 @@ impl Backend for LiveBackend {
 
     async fn search(
         &self,
-        g: GuildId,
+        g: CommunityRef,
         q: &Query,
         sources: SourceSet,
         since: Option<DateTime<Utc>>,
     ) -> Vec<(Source, SourceResult)> {
+        let Ok(g) = guild_id(&g) else {
+            return Vec::new();
+        };
         crack_core::music::search::search(&self.deps.data, g, q, sources, since).await
     }
 
     async fn add(
         &self,
-        user: UserId,
+        user: UserRef,
         name: &str,
-        g: GuildId,
+        g: CommunityRef,
         track: SavedTrack,
         at: At,
     ) -> Result<(), AddRefused> {
+        let (Ok(g), Ok(user)) = (guild_id(&g), user_id(&user)) else {
+            return Err(AddRefused::NotPlaying);
+        };
         // The echo line is already spawned in core.
         remote::add(
             self.deps.data.clone(),
@@ -367,7 +441,10 @@ impl Backend for LiveBackend {
         .map(|_| ())
     }
 
-    async fn room_settings(&self, g: GuildId) -> RoomSettingsView {
+    async fn room_settings(&self, g: CommunityRef) -> RoomSettingsView {
+        let Ok(g) = guild_id(&g) else {
+            return room_settings_off();
+        };
         let s = self.deps.data.rooms.settings(g);
         let (voice_channels, findings) = self.rooms_cache_view(g, s.hub);
         RoomSettingsView {
@@ -383,10 +460,13 @@ impl Backend for LiveBackend {
 
     async fn save_room_settings(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         f: RoomSettingsForm,
     ) -> Result<RoomSettingsView, SaveRefused> {
+        let (Ok(g), Ok(user)) = (guild_id(&g), user_id(&user)) else {
+            return Err(SaveRefused::NotLoaded);
+        };
         use crack_core::rooms::{
             ops::{save_settings, SettingsSaveError},
             settings::RoomSettings,
@@ -414,10 +494,13 @@ impl Backend for LiveBackend {
                 SettingsSaveError::NotLoaded => SaveRefused::NotLoaded,
             })?;
         tracing::info!(guild = %g, user = %user, "dashboard saved room settings");
-        Ok(self.room_settings(g).await)
+        Ok(self.room_settings(g.to_ref()).await)
     }
 
-    async fn mod_log_settings(&self, g: GuildId) -> ModLogSettingsView {
+    async fn mod_log_settings(&self, g: CommunityRef) -> ModLogSettingsView {
+        let Ok(g) = guild_id(&g) else {
+            return mod_log_settings_off();
+        };
         use crack_core::{
             messaging::messages::{MODLOG_STATUS_VISIBLE_PREFIX, MODLOG_STATUS_VISIBLE_SUFFIX},
             modlog::preflight::{finding_text, for_guild},
@@ -474,10 +557,13 @@ impl Backend for LiveBackend {
 
     async fn save_mod_log_settings(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         f: ModLogSettingsForm,
     ) -> Result<ModLogSettingsView, ModLogSaveRefused> {
+        let (Ok(g), Ok(user)) = (guild_id(&g), user_id(&user)) else {
+            return Err(ModLogSaveRefused::NotLoaded);
+        };
         use crack_core::modlog::{
             live::after_save, save_settings, settings::ModLogSettings, ModLogSaveError,
         };
@@ -502,10 +588,13 @@ impl Backend for LiveBackend {
             })?;
         after_save(&self.deps.data, self.deps.http.clone(), g);
         tracing::info!(guild = %g, user = %user, "dashboard saved mod log settings");
-        Ok(self.mod_log_settings(g).await)
+        Ok(self.mod_log_settings(g.to_ref()).await)
     }
 
-    async fn economy_settings(&self, g: GuildId) -> EconomySettingsView {
+    async fn economy_settings(&self, g: CommunityRef) -> EconomySettingsView {
+        let Ok(g) = guild_id(&g) else {
+            return economy_settings_off();
+        };
         use crack_core::economy::preflight::bot_perms;
         let stored = self.deps.data.economy.settings(g);
         let mut view = EconomySettingsView::from_settings(&stored, crack_core::COIN_BUILD);
@@ -552,10 +641,13 @@ impl Backend for LiveBackend {
 
     async fn save_economy_settings(
         &self,
-        user: UserId,
-        g: GuildId,
+        user: UserRef,
+        g: CommunityRef,
         f: EconomySettingsForm,
     ) -> Result<EconomySettingsView, EconomySaveRefused> {
+        let (Ok(g), Ok(user)) = (guild_id(&g), user_id(&user)) else {
+            return Err(EconomySaveRefused::NotLoaded);
+        };
         use crack_core::economy::{save_settings, EconomySaveError};
         // From the stored settings, so a price this build does not know survives.
         let settings =
@@ -575,10 +667,17 @@ impl Backend for LiveBackend {
                 EconomySaveError::NotLoaded => EconomySaveRefused::NotLoaded,
             })?;
         tracing::info!(guild = %g, user = %user, "dashboard saved economy settings");
-        Ok(self.economy_settings(g).await)
+        Ok(self.economy_settings(g.to_ref()).await)
     }
 
-    async fn history(&self, g: GuildId, q: &HistoryQuery) -> Result<HistoryPage, HistoryError> {
+    async fn history(
+        &self,
+        g: CommunityRef,
+        q: &HistoryQuery,
+    ) -> Result<HistoryPage, HistoryError> {
+        let Ok(g) = guild_id(&g) else {
+            return Err(HistoryError::Failed);
+        };
         let Some(pool) = self.deps.data.database_pool.clone() else {
             return Err(HistoryError::NoDatabase);
         };
@@ -676,4 +775,25 @@ async fn serve(env: WebEnv, deps: WebDeps) -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(&env.bind).await?;
     tracing::info!("web dashboard on {} for {}", env.bind, env.public_origin);
     axum::serve(listener, routes::router(state)).await
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn a_guild_that_is_not_a_snowflake_reads_as_never_configured() {
+        let rooms = room_settings_off();
+        assert!(!rooms.enabled && rooms.hub.is_none() && rooms.findings.is_none());
+        assert_eq!(rooms.name_template, "{name}'s room");
+        assert_eq!(rooms.empty_grace_secs, 30);
+        assert!(rooms.voice_channels.is_empty());
+
+        let modlog = mod_log_settings_off();
+        assert!(!modlog.enabled && modlog.channel.is_none() && modlog.visibility.is_none());
+
+        let economy = economy_settings_off();
+        assert!(!economy.enabled);
+        assert_eq!(economy.coin_build, crack_core::COIN_BUILD);
+    }
 }
