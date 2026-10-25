@@ -13,18 +13,23 @@ use crate::messaging::messages::{
     GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN,
 };
 use crate::messaging::{
+    discord,
     format::{clip, escape, TrackLabel, DESCRIPTION_MAX, FIELD_MAX},
     message::CrackedMessage,
     render::{render, RenderCx, Rendered},
 };
-use ::serenity::{
-    all::{ButtonStyle, Colour, GuildId, Mentionable, UserId},
-    builder::{
-        CreateActionRow, CreateButton, CreateComponent, CreateEmbed, CreateSelectMenu,
-        CreateSelectMenuKind, CreateSelectMenuOption,
-    },
-};
-use std::borrow::Cow;
+use ::serenity::all::{GuildId, UserId};
+use crack_model::{Button, ButtonStyle, Card, Field, Mention, Row, Select, SelectOption};
+use crack_types::discord::ToRef;
+
+/// The colours `/gp` cards wear, as 0xRRGGBB.
+const FOOYOO: u32 = 0x11_CA_80;
+const BLURPLE: u32 = 0x72_89_DA;
+const DARKER_GREY: u32 = 0x54_6E_7A;
+const DARK_GREEN: u32 = 0x1F_8B_4C;
+const DARK_GOLD: u32 = 0xC2_7C_0E;
+const GOLD: u32 = 0xF1_C4_0F;
+const RED: u32 = 0xE7_4C_3C;
 
 /// A submitted song's title is third-party text; YouTube caps titles at 100,
 /// so a real one is never cut and only a pathological one is.
@@ -93,36 +98,37 @@ impl std::fmt::Display for GpCard {
 
 /// What a card looks like in Discord. Reached through `messaging::render`.
 pub fn render_card(card: &GpCard, _cx: &RenderCx) -> Rendered {
+    let embed = |card: &Card| Rendered::embed(discord::embed(card));
     match card {
-        GpCard::Rules => Rendered::embed(gp_rules_embed()),
-        GpCard::Status(status) => Rendered::embed(gp_status_embed(status)),
+        GpCard::Rules => embed(&gp_rules_embed()),
+        GpCard::Status(status) => embed(&gp_status_embed(status)),
         GpCard::Picker { text, picked, open } => {
-            let out = Rendered::embed(gp_pick_embed(text));
+            let out = embed(&gp_pick_embed(text));
             if *open {
-                out.with_components(gp_pick_components(picked))
+                out.with_components(discord::action_rows(&gp_pick_components(picked)))
             } else {
                 out
             }
         },
-        GpCard::Prompt(w) => Rendered::embed(gp_prompt_embed(w)),
-        GpCard::PromptClosed(c) => Rendered::embed(gp_prompt_closed_embed(c)),
+        GpCard::Prompt(w) => embed(&gp_prompt_embed(w)),
+        GpCard::PromptClosed(c) => embed(&gp_prompt_closed_embed(c)),
         GpCard::Song { start, guild } => {
-            Rendered::embed(gp_track_embed(start)).with_components(gp_components(
+            embed(&gp_track_embed(start)).with_components(discord::action_rows(&gp_components(
                 *guild,
                 start.round_idx,
                 start.track_idx,
                 &start.players,
                 start.guessable,
-            ))
+            )))
         },
-        GpCard::Reveal(res) => Rendered::embed(gp_reveal_embed(res)),
-        GpCard::RoundResults(r) => Rendered::embed(gp_round_results_embed(r)),
+        GpCard::Reveal(res) => embed(&gp_reveal_embed(res)),
+        GpCard::RoundResults(r) => embed(&gp_round_results_embed(r)),
         GpCard::Scoreboard {
             scores,
             title,
             lead,
         } => {
-            let out = Rendered::embed(gp_scoreboard_embed(scores, title));
+            let out = embed(&gp_scoreboard_embed(scores, title));
             match lead {
                 Some(lead) => out.with_content(*lead),
                 None => out,
@@ -215,73 +221,79 @@ pub fn gp_components(
     track_idx: usize,
     players: &[(UserId, String)],
     guessable: bool,
-) -> Vec<CreateComponent<'static>> {
+) -> Vec<Row> {
     let mut rows = Vec::with_capacity(2);
     if guessable {
-        let options: Vec<CreateSelectMenuOption<'static>> = players
+        let options = players
             .iter()
             .take(GP_MAX_PLAYERS)
-            .map(|(id, name)| CreateSelectMenuOption::new(name.clone(), id.to_string()))
+            .map(|(id, name)| SelectOption {
+                label: name.clone(),
+                value: id.to_string(),
+                default: false,
+            })
             .collect();
-        let menu = CreateSelectMenu::new(
-            gp_custom_id(GpComponent::Guess, guild_id, round_idx, track_idx),
-            CreateSelectMenuKind::String {
-                options: Cow::Owned(options),
-            },
-        )
-        .placeholder(GP_SELECT_PLACEHOLDER)
-        .min_values(1)
-        .max_values(1);
-        rows.push(CreateComponent::ActionRow(CreateActionRow::SelectMenu(
-            menu,
-        )));
+        rows.push(Row::Select(Select {
+            id: gp_custom_id(GpComponent::Guess, guild_id, round_idx, track_idx),
+            placeholder: Some(GP_SELECT_PLACEHOLDER.to_string()),
+            options,
+            min: Some(1),
+            max: Some(1),
+        }));
     }
-    let like = CreateButton::new(gp_custom_id(
-        GpComponent::Like,
-        guild_id,
-        round_idx,
-        track_idx,
-    ))
-    .emoji('👍')
-    .label(GP_LIKE_LABEL)
-    .style(ButtonStyle::Secondary);
-    rows.push(CreateComponent::ActionRow(CreateActionRow::Buttons(
-        Cow::Owned(vec![like]),
-    )));
+    rows.push(Row::Buttons(vec![Button {
+        id: gp_custom_id(GpComponent::Like, guild_id, round_idx, track_idx),
+        label: Some(GP_LIKE_LABEL.to_string()),
+        emoji: Some("👍".to_string()),
+        style: ButtonStyle::Secondary,
+        disabled: false,
+    }]));
     rows
 }
 
 /// `/gp start`'s category picker: a menu of every category with `picked`
 /// ticked, then Start -- greyed out until something is -- and Cancel.
-pub fn gp_pick_components(picked: &[GpCategory]) -> Vec<CreateComponent<'static>> {
-    let options: Vec<CreateSelectMenuOption<'static>> = GpCategory::CATEGORIES
+pub fn gp_pick_components(picked: &[GpCategory]) -> Vec<Row> {
+    let options = GpCategory::CATEGORIES
         .iter()
         .filter_map(|c| {
-            let key = c.key()?;
-            Some(
-                CreateSelectMenuOption::new(c.display(), key).default_selection(picked.contains(c)),
-            )
+            Some(SelectOption {
+                label: c.display().to_string(),
+                value: c.key()?.to_string(),
+                default: picked.contains(c),
+            })
         })
         .collect();
-    let menu = CreateSelectMenu::new(
-        GP_PICK_MENU_ID,
-        CreateSelectMenuKind::String {
-            options: Cow::Owned(options),
-        },
-    )
-    .placeholder(GP_PICK_PLACEHOLDER)
-    .min_values(1)
-    .max_values(GpCategory::CATEGORIES.len() as u8);
-    let start = CreateButton::new(GP_PICK_START_ID)
-        .label(GP_PICK_START)
-        .style(ButtonStyle::Success)
-        .disabled(picked.is_empty());
-    let cancel = CreateButton::new(GP_PICK_CANCEL_ID)
-        .label(GP_PICK_CANCEL)
-        .style(ButtonStyle::Secondary);
+    let menu = Select {
+        id: GP_PICK_MENU_ID.to_string(),
+        placeholder: Some(GP_PICK_PLACEHOLDER.to_string()),
+        options,
+        min: Some(1),
+        max: Some(GpCategory::CATEGORIES.len() as u8),
+    };
+    let button = |id: &str, label: &str, style, disabled| Button {
+        id: id.to_string(),
+        label: Some(label.to_string()),
+        emoji: None,
+        style,
+        disabled,
+    };
     vec![
-        CreateComponent::ActionRow(CreateActionRow::SelectMenu(menu)),
-        CreateComponent::ActionRow(CreateActionRow::Buttons(Cow::Owned(vec![start, cancel]))),
+        Row::Select(menu),
+        Row::Buttons(vec![
+            button(
+                GP_PICK_START_ID,
+                GP_PICK_START,
+                ButtonStyle::Success,
+                picked.is_empty(),
+            ),
+            button(
+                GP_PICK_CANCEL_ID,
+                GP_PICK_CANCEL,
+                ButtonStyle::Secondary,
+                false,
+            ),
+        ]),
     ]
 }
 
@@ -293,11 +305,26 @@ pub fn gp_picked<'a>(values: impl IntoIterator<Item = &'a str>) -> Vec<GpCategor
         .collect()
 }
 
-pub(in crate::commands::music::gp) fn gp_pick_embed(text: &str) -> CreateEmbed<'static> {
-    CreateEmbed::new()
-        .title(GP_PICK_TITLE)
-        .description(text.to_string())
-        .colour(Colour::FOOYOO)
+/// A user written into message text.
+fn mention(id: UserId) -> String {
+    Mention::User(id.to_ref()).to_string()
+}
+
+fn field(name: impl Into<String>, value: impl Into<String>, inline: bool) -> Field {
+    Field {
+        name: name.into(),
+        value: value.into(),
+        inline,
+    }
+}
+
+pub(in crate::commands::music::gp) fn gp_pick_embed(text: &str) -> Card {
+    Card {
+        title: Some(GP_PICK_TITLE.to_string()),
+        description: Some(text.to_string()),
+        colour: Some(FOOYOO),
+        ..Card::default()
+    }
 }
 
 fn scores_lines(scores: &[(UserId, u32)]) -> String {
@@ -307,7 +334,7 @@ fn scores_lines(scores: &[(UserId, u32)]) -> String {
     scores
         .iter()
         .enumerate()
-        .map(|(i, (id, pts))| format!("{}. {} — {pts}", i + 1, id.mention()))
+        .map(|(i, (id, pts))| format!("{}. {} — {pts}", i + 1, mention(*id)))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -329,12 +356,14 @@ fn song_title(
     )
 }
 
-pub fn gp_rules_embed() -> CreateEmbed<'static> {
-    CreateEmbed::new()
-        .title(GP_TITLE)
-        .description(GP_RULES_TEXT)
-        .field(GP_HOW_TO_TITLE, GP_HOW_TO, false)
-        .colour(Colour::FOOYOO)
+pub fn gp_rules_embed() -> Card {
+    Card {
+        title: Some(GP_TITLE.to_string()),
+        description: Some(GP_RULES_TEXT.to_string()),
+        fields: vec![field(GP_HOW_TO_TITLE, GP_HOW_TO, false)],
+        colour: Some(FOOYOO),
+        ..Card::default()
+    }
 }
 
 /// The prompt in bold, under its category when there is one to show.
@@ -345,32 +374,38 @@ fn prompt_text(prompt: &str, category: Option<GpCategory>) -> String {
     }
 }
 
-pub fn gp_prompt_embed(w: &GpWindowOpened) -> CreateEmbed<'static> {
-    CreateEmbed::new()
-        .title(round_title(w.round_idx, w.total_rounds))
-        .description(prompt_text(&w.prompt, w.category))
-        .field(GP_PROMPT_HOW_TO_TITLE, GP_PROMPT_HOW_TO, false)
-        .field(
-            GP_PROMPT_CLOSES_TITLE,
-            format!("<t:{}:R> {GP_PROMPT_CLOSES_EARLY}", w.closes_at),
-            false,
-        )
-        .colour(Colour::FOOYOO)
+pub fn gp_prompt_embed(w: &GpWindowOpened) -> Card {
+    Card {
+        title: Some(round_title(w.round_idx, w.total_rounds)),
+        description: Some(prompt_text(&w.prompt, w.category)),
+        fields: vec![
+            field(GP_PROMPT_HOW_TO_TITLE, GP_PROMPT_HOW_TO, false),
+            field(
+                GP_PROMPT_CLOSES_TITLE,
+                format!("<t:{}:R> {GP_PROMPT_CLOSES_EARLY}", w.closes_at),
+                false,
+            ),
+        ],
+        colour: Some(FOOYOO),
+        ..Card::default()
+    }
 }
 
-pub fn gp_prompt_closed_embed(c: &GpWindowClosed) -> CreateEmbed<'static> {
+pub fn gp_prompt_closed_embed(c: &GpWindowClosed) -> Card {
     let status = if c.count == 0 {
         GP_WINDOW_EMPTY.to_string()
     } else {
         format!("{GP_WINDOW_CLOSED} {} {GP_WINDOW_CLOSED_SONGS}", c.count)
     };
-    CreateEmbed::new()
-        .title(round_title(c.round_idx, c.total_rounds))
-        .description(clip(
+    Card {
+        title: Some(round_title(c.round_idx, c.total_rounds)),
+        description: Some(clip(
             &format!("{}\n\n{status}", prompt_text(&c.prompt, c.category)),
             DESCRIPTION_MAX,
-        ))
-        .colour(Colour::DARKER_GREY)
+        )),
+        colour: Some(DARKER_GREY),
+        ..Card::default()
+    }
 }
 
 pub fn gp_warning_text(w: &GpWindowWarning) -> String {
@@ -381,135 +416,130 @@ pub fn gp_warning_text(w: &GpWindowWarning) -> String {
 }
 
 /// The song message: prompt, title and what to do. Never the submitter.
-pub fn gp_track_embed(s: &GpTrackStart) -> CreateEmbed<'static> {
+pub fn gp_track_embed(s: &GpTrackStart) -> Card {
     let hint = if s.guessable {
         format!("{GP_ROUND_HINT}\n{GP_LIKE_HINT}")
     } else {
         GP_LIKE_HINT.to_string()
     };
-    CreateEmbed::new()
-        .title(song_title(
+    Card {
+        title: Some(song_title(
             s.round_idx,
             s.total_rounds,
             s.track_idx,
             s.total_tracks,
-        ))
-        .description(clip(
+        )),
+        description: Some(clip(
             &format!(
                 "*{}*\n\n{}\n\n{hint}",
                 s.prompt,
                 song_link(&s.track.get_title(), &s.track.get_url())
             ),
             DESCRIPTION_MAX,
-        ))
-        .colour(Colour::BLURPLE)
+        )),
+        colour: Some(BLURPLE),
+        ..Card::default()
+    }
 }
 
 /// The song message once the song has ended. Names the submitter and shows what
 /// they scored -- unless the game reveals at the end of the round, in which
 /// case it names nobody and shows no scores: only that the song is over, and
 /// its likes, which give nothing away.
-pub fn gp_reveal_embed(res: &GpTrackResult) -> CreateEmbed<'static> {
+pub fn gp_reveal_embed(res: &GpTrackResult) -> Card {
+    let title = song_title(
+        res.round_idx,
+        res.total_rounds,
+        res.track_idx,
+        res.total_tracks,
+    );
+    let link = song_link(&res.title, &res.url);
     if res.held {
-        let e = CreateEmbed::new()
-            .title(song_title(
-                res.round_idx,
-                res.total_rounds,
-                res.track_idx,
-                res.total_tracks,
-            ))
-            .description(clip(
-                &format!(
-                    "*{}*\n\n{}\n\n{GP_REVEAL_HELD}",
-                    res.prompt,
-                    song_link(&res.title, &res.url)
-                ),
-                DESCRIPTION_MAX,
-            ));
-        return if res.failed {
-            e.field(GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, false)
-                .colour(Colour::RED)
+        let description = clip(
+            &format!("*{}*\n\n{link}\n\n{GP_REVEAL_HELD}", res.prompt),
+            DESCRIPTION_MAX,
+        );
+        let (fields, colour) = if res.failed {
+            (
+                vec![field(GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, false)],
+                RED,
+            )
         } else {
-            e.field(GP_LIKES, res.likes.to_string(), true)
-                .colour(Colour::DARKER_GREY)
+            (
+                vec![field(GP_LIKES, res.likes.to_string(), true)],
+                DARKER_GREY,
+            )
+        };
+        return Card {
+            title: Some(title),
+            description: Some(description),
+            fields,
+            colour: Some(colour),
+            ..Card::default()
         };
     }
+    let description = clip(
+        &format!(
+            "*{}*\n\n{link}\n\n{GP_REVEAL} {}",
+            res.prompt,
+            mention(res.submitter)
+        ),
+        DESCRIPTION_MAX,
+    );
+    let scoreboard = field(
+        GP_SCOREBOARD,
+        clip(&scores_lines(&res.scores), FIELD_MAX),
+        false,
+    );
     if res.failed {
-        return CreateEmbed::new()
-            .title(song_title(
-                res.round_idx,
-                res.total_rounds,
-                res.track_idx,
-                res.total_tracks,
-            ))
-            .description(clip(
-                &format!(
-                    "*{}*\n\n{}\n\n{GP_REVEAL} {}",
-                    res.prompt,
-                    song_link(&res.title, &res.url),
-                    res.submitter.mention()
-                ),
-                DESCRIPTION_MAX,
-            ))
-            .field(GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, false)
-            .field(
-                GP_SCOREBOARD,
-                clip(&scores_lines(&res.scores), FIELD_MAX),
-                false,
-            )
-            .colour(Colour::RED);
+        return Card {
+            title: Some(title),
+            description: Some(description),
+            fields: vec![
+                field(GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, false),
+                scoreboard,
+            ],
+            colour: Some(RED),
+            ..Card::default()
+        };
     }
-    let mut e = CreateEmbed::new()
-        .title(song_title(
-            res.round_idx,
-            res.total_rounds,
-            res.track_idx,
-            res.total_tracks,
-        ))
-        .description(clip(
-            &format!(
-                "*{}*\n\n{}\n\n{GP_REVEAL} {}",
-                res.prompt,
-                song_link(&res.title, &res.url),
-                res.submitter.mention()
-            ),
-            DESCRIPTION_MAX,
-        ))
-        .colour(Colour::DARK_GREEN);
+    let mut fields = Vec::new();
     if res.guessable {
         let correct = if res.correct.is_empty() {
             GP_NOBODY_GUESSED.to_string()
         } else {
             res.correct
                 .iter()
-                .map(|id| id.mention().to_string())
+                .map(|id| mention(*id))
                 .collect::<Vec<_>>()
                 .join(", ")
         };
-        e = e.field(GP_GUESSED_RIGHT, clip(&correct, FIELD_MAX), false);
+        fields.push(field(GP_GUESSED_RIGHT, clip(&correct, FIELD_MAX), false));
         if res.fooled_everyone {
-            e = e.field(
-                GP_FOOLED_EVERYONE,
-                res.submitter.mention().to_string(),
-                false,
-            );
+            fields.push(field(GP_FOOLED_EVERYONE, mention(res.submitter), false));
         }
     }
     if res.played_full {
-        e = e.field(GP_FULL_SONG, GP_FULL_SONG_NOTE, false);
+        fields.push(field(GP_FULL_SONG, GP_FULL_SONG_NOTE, false));
     }
-    e.field(GP_LIKES, res.likes.to_string(), true).field(
-        GP_SCOREBOARD,
-        clip(&scores_lines(&res.scores), FIELD_MAX),
-        false,
-    )
+    fields.push(field(GP_LIKES, res.likes.to_string(), true));
+    fields.push(scoreboard);
+    Card {
+        title: Some(title),
+        description: Some(description),
+        fields,
+        colour: Some(DARK_GREEN),
+        ..Card::default()
+    }
 }
 
-pub fn gp_scoreboard_embed(scores: &[(UserId, u32)], title: &str) -> CreateEmbed<'static> {
-    CreateEmbed::new()
-        .title(title.to_string())
-        .description(clip(&scores_lines(scores), DESCRIPTION_MAX))
-        .colour(Colour::GOLD)
+pub fn gp_scoreboard_embed(scores: &[(UserId, u32)], title: &str) -> Card {
+    Card {
+        title: Some(title.to_string()),
+        description: Some(clip(&scores_lines(scores), DESCRIPTION_MAX)),
+        colour: Some(GOLD),
+        ..Card::default()
+    }
 }
 
 fn points_lines(points: &[(UserId, u32)]) -> String {
@@ -519,7 +549,7 @@ fn points_lines(points: &[(UserId, u32)]) -> String {
     points
         .iter()
         .enumerate()
-        .map(|(i, (id, pts))| format!("{}. {} — +{pts}", i + 1, id.mention()))
+        .map(|(i, (id, pts))| format!("{}. {} — +{pts}", i + 1, mention(*id)))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -531,7 +561,7 @@ fn song_result_line(i: usize, s: &GpSongResult, guessable: bool, names: bool) ->
         "{}. **{}** · {}",
         i + 1,
         song_name(&s.title),
-        s.submitter.mention()
+        mention(s.submitter)
     );
     if s.failed {
         line.push_str(&format!(" · {GP_TRACK_FAILED}"));
@@ -543,7 +573,7 @@ fn song_result_line(i: usize, s: &GpSongResult, guessable: bool, names: bool) ->
         } else if names {
             s.correct
                 .iter()
-                .map(|id| id.mention().to_string())
+                .map(|id| mention(*id))
                 .collect::<Vec<_>>()
                 .join(", ")
         } else {
@@ -567,7 +597,7 @@ fn song_result_line(i: usize, s: &GpSongResult, guessable: bool, names: bool) ->
 /// edit of a message somewhere up the channel, and after five songs nobody
 /// finds them; this is the one place the round's results are together. In a
 /// game that reveals at the end of the round it is also the reveal itself.
-pub fn gp_round_results_embed(r: &GpRoundResult) -> CreateEmbed<'static> {
+pub fn gp_round_results_embed(r: &GpRoundResult) -> Card {
     let lines = |names: bool| {
         let songs = r
             .songs
@@ -586,26 +616,30 @@ pub fn gp_round_results_embed(r: &GpRoundResult) -> CreateEmbed<'static> {
         description = lines(false);
     }
     description = clip(&description, DESCRIPTION_MAX);
-    CreateEmbed::new()
-        .title(format!(
+    Card {
+        title: Some(format!(
             "{} {GP_RESULTS_TITLE}",
             round_title(r.round_idx, r.total_rounds)
-        ))
-        .description(description)
-        .field(
-            GP_RESULTS_THIS_ROUND,
-            clip(&points_lines(&r.points), FIELD_MAX),
-            false,
-        )
-        .field(
-            GP_SCOREBOARD,
-            clip(&scores_lines(&r.scores), FIELD_MAX),
-            false,
-        )
-        .colour(Colour::DARK_GOLD)
+        )),
+        description: Some(description),
+        fields: vec![
+            field(
+                GP_RESULTS_THIS_ROUND,
+                clip(&points_lines(&r.points), FIELD_MAX),
+                false,
+            ),
+            field(
+                GP_SCOREBOARD,
+                clip(&scores_lines(&r.scores), FIELD_MAX),
+                false,
+            ),
+        ],
+        colour: Some(DARK_GOLD),
+        ..Card::default()
+    }
 }
 
-pub fn gp_status_embed(status: &GpStatus) -> CreateEmbed<'static> {
+pub fn gp_status_embed(status: &GpStatus) -> Card {
     let list = |names: &[String]| {
         if names.is_empty() {
             GP_NOBODY_YET.to_string()
@@ -629,18 +663,22 @@ pub fn gp_status_embed(status: &GpStatus) -> CreateEmbed<'static> {
             closes_at,
             submitted,
             scores,
-        } => CreateEmbed::new()
-            .title(format!("{GP_STATUS_SUBMITTING} {round}/{total}"))
-            .field(GP_STATUS_PROMPT, prompt.clone(), false)
-            .field("Host", host.mention().to_string(), true)
-            .field(GP_STATUS_CLOSES, format!("<t:{closes_at}:R>"), true)
-            .field(GP_STATUS_SUBMITTED, list(submitted), false)
-            .field(
-                GP_STATUS_SCORES,
-                clip(&scores_lines(scores), FIELD_MAX),
-                false,
-            )
-            .colour(Colour::FOOYOO),
+        } => Card {
+            title: Some(format!("{GP_STATUS_SUBMITTING} {round}/{total}")),
+            fields: vec![
+                field(GP_STATUS_PROMPT, prompt.clone(), false),
+                field("Host", mention(*host), true),
+                field(GP_STATUS_CLOSES, format!("<t:{closes_at}:R>"), true),
+                field(GP_STATUS_SUBMITTED, list(submitted), false),
+                field(
+                    GP_STATUS_SCORES,
+                    clip(&scores_lines(scores), FIELD_MAX),
+                    false,
+                ),
+            ],
+            colour: Some(FOOYOO),
+            ..Card::default()
+        },
         GpStatus::Playing {
             round,
             total,
@@ -650,18 +688,22 @@ pub fn gp_status_embed(status: &GpStatus) -> CreateEmbed<'static> {
             guessed,
             likes,
             scores,
-        } => CreateEmbed::new()
-            .title(format!(
+        } => Card {
+            title: Some(format!(
                 "{GP_STATUS_PLAYING} {round}/{total} · {GP_SONG_TITLE} {track}/{tracks}"
-            ))
-            .field(GP_STATUS_PROMPT, prompt.clone(), false)
-            .field(GP_STATUS_GUESSED, list(guessed), false)
-            .field(GP_STATUS_LIKES, likes.to_string(), true)
-            .field(
-                GP_STATUS_SCORES,
-                clip(&scores_lines(scores), FIELD_MAX),
-                false,
-            )
-            .colour(Colour::BLURPLE),
+            )),
+            fields: vec![
+                field(GP_STATUS_PROMPT, prompt.clone(), false),
+                field(GP_STATUS_GUESSED, list(guessed), false),
+                field(GP_STATUS_LIKES, likes.to_string(), true),
+                field(
+                    GP_STATUS_SCORES,
+                    clip(&scores_lines(scores), FIELD_MAX),
+                    false,
+                ),
+            ],
+            colour: Some(BLURPLE),
+            ..Card::default()
+        },
     }
 }

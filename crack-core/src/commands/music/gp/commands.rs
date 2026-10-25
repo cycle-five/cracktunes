@@ -212,6 +212,124 @@ async fn gp_pick_update(
 }
 
 /// Start a game in your voice channel: pick a category, rounds, and the submission timer.
+/// `/gp start`'s category dropdown. The first `#[name]` is what Discord shows;
+/// the others are what prefix commands can type (`!gp start nostalgia 5`). The
+/// domain's [`GpCategory`] knows nothing of poise; this is the command's copy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, poise::ChoiceParameter)]
+pub enum GpCategoryChoice {
+    /// First, so it tops the dropdown; also what `/gp start` plays when no
+    /// category is given. `mixed` is the name it had before.
+    #[name = "🎲 Random"]
+    #[name = "random"]
+    #[name = "mixed"]
+    Random,
+    #[name = "☑️ Pick several…"]
+    #[name = "pick"]
+    PickSeveral,
+    #[name = "🥹 Nostalgia"]
+    #[name = "nostalgia"]
+    Nostalgia,
+    #[name = "🔥 Slightly More Dangerous"]
+    #[name = "dangerous"]
+    Dangerous,
+    #[name = "🎶 The Really Good Game Prompts"]
+    #[name = "good_game"]
+    GoodGame,
+    #[name = "🚗 Car / Driving"]
+    #[name = "car"]
+    Car,
+    #[name = "🌿 Altered-State / Chill"]
+    #[name = "chill"]
+    Chill,
+    #[name = "😭 Emotional"]
+    #[name = "emotional"]
+    Emotional,
+    #[name = "🤢 Bad Music"]
+    #[name = "bad_music"]
+    BadMusic,
+    #[name = "🎧 Hyper-Specific"]
+    #[name = "hyper_specific"]
+    HyperSpecific,
+    #[name = "🖤 Weirdly Revealing"]
+    #[name = "revealing"]
+    Revealing,
+    #[name = "😂 Game Chaos"]
+    #[name = "chaos"]
+    Chaos,
+    #[name = "⚡ One-Worders"]
+    #[name = "one_worders"]
+    OneWorders,
+    #[name = "🎤 Social / Go-To"]
+    #[name = "social"]
+    Social,
+    #[name = "😈 Guilty Pleasures / Secret Taste"]
+    #[name = "guilty"]
+    Guilty,
+    #[name = "💋 Sex / Romance / Attraction"]
+    #[name = "romance"]
+    Romance,
+    #[name = "🥀 Emotional Damage"]
+    #[name = "damage"]
+    Damage,
+    #[name = "🕺 Chaotic / Funny"]
+    #[name = "funny"]
+    Funny,
+    #[name = "🧠 Personality Reveals"]
+    #[name = "personality"]
+    Personality,
+}
+
+impl From<GpCategoryChoice> for GpCategory {
+    fn from(choice: GpCategoryChoice) -> Self {
+        match choice {
+            GpCategoryChoice::Random => Self::Random,
+            GpCategoryChoice::PickSeveral => Self::PickSeveral,
+            GpCategoryChoice::Nostalgia => Self::Nostalgia,
+            GpCategoryChoice::Dangerous => Self::Dangerous,
+            GpCategoryChoice::GoodGame => Self::GoodGame,
+            GpCategoryChoice::Car => Self::Car,
+            GpCategoryChoice::Chill => Self::Chill,
+            GpCategoryChoice::Emotional => Self::Emotional,
+            GpCategoryChoice::BadMusic => Self::BadMusic,
+            GpCategoryChoice::HyperSpecific => Self::HyperSpecific,
+            GpCategoryChoice::Revealing => Self::Revealing,
+            GpCategoryChoice::Chaos => Self::Chaos,
+            GpCategoryChoice::OneWorders => Self::OneWorders,
+            GpCategoryChoice::Social => Self::Social,
+            GpCategoryChoice::Guilty => Self::Guilty,
+            GpCategoryChoice::Romance => Self::Romance,
+            GpCategoryChoice::Damage => Self::Damage,
+            GpCategoryChoice::Funny => Self::Funny,
+            GpCategoryChoice::Personality => Self::Personality,
+        }
+    }
+}
+
+/// `/gp start`'s reveal dropdown. The first `#[name]` is what Discord shows;
+/// the second is what a prefix command types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, poise::ChoiceParameter)]
+pub enum GpRevealChoice {
+    #[name = "🤐 At the end of the round"]
+    #[name = "round"]
+    Round,
+    #[name = "🎉 After each song"]
+    #[name = "song"]
+    Song,
+}
+
+impl From<GpRevealChoice> for GpReveal {
+    fn from(choice: GpRevealChoice) -> Self {
+        match choice {
+            GpRevealChoice::Round => Self::Round,
+            GpRevealChoice::Song => Self::Song,
+        }
+    }
+}
+
+// Live-Discord glue: it needs a poise Context (a voice channel, a picker the
+// host answers). Its parts are tested; the choice conversions by
+// `the_gp_choices_keep_their_names`.
+#[cfg_attr(test, mutants::skip)]
 #[allow(clippy::too_many_arguments)]
 #[poise::command(
     rename = "start",
@@ -224,7 +342,7 @@ async fn gp_pick_update(
 pub async fn gp_start(
     ctx: Context<'_>,
     #[description = "Prompt category: 🎲 Random (default), just one, or ☑️ Pick several."]
-    category: Option<GpCategory>,
+    category: Option<GpCategoryChoice>,
     #[description = "Number of rounds (default 5)."]
     #[min = 1]
     #[max = 20]
@@ -245,7 +363,7 @@ pub async fn gp_start(
     #[max = 300]
     clip_length: Option<u32>,
     #[description = "Name submitters only at the end of the round (default), or after each song."]
-    reveal: Option<GpReveal>,
+    reveal: Option<GpRevealChoice>,
     #[description = "Sum each round up in a results embed when it ends (default yes; always on with reveal:round)."]
     results: Option<bool>,
 ) -> Result<(), Error> {
@@ -255,13 +373,14 @@ pub async fn gp_start(
         return Err(CrackedError::GameAlreadyRunning.into());
     }
     ctx.author_vc().ok_or(CrackedError::NotConnected)?;
-    let categories = match GpCategories::from_choice(category.unwrap_or(GpCategory::Random)) {
-        Some(categories) => categories,
-        None => match gp_pick_categories(ctx).await? {
+    let categories =
+        match GpCategories::from_choice(category.map_or(GpCategory::Random, GpCategory::from)) {
             Some(categories) => categories,
-            None => return Ok(()),
-        },
-    };
+            None => match gp_pick_categories(ctx).await? {
+                Some(categories) => categories,
+                None => return Ok(()),
+            },
+        };
     // Looked up again: picking can take long enough to have left the channel.
     let vc = ctx.author_vc().ok_or(CrackedError::NotConnected)?;
     let host = ctx.author().id;
@@ -300,7 +419,7 @@ pub async fn gp_start(
                 .clamp(GP_MIN_CLIP_LENGTH_SECS, GP_MAX_CLIP_LENGTH_SECS),
         ),
     });
-    let reveal = reveal.unwrap_or_default();
+    let reveal = reveal.map(GpReveal::from).unwrap_or_default();
     let round_results = results.unwrap_or(true) || reveal == GpReveal::Round;
     let prompts = draw_prompts(&categories, rounds, &mut rand::rng());
 
