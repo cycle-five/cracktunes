@@ -1,7 +1,9 @@
 //! Delivery: replies through a [`ReplySink`], background posts through a
 //! [`Transport`], all rendered by [`render`]. Spec: the messaging-layer design.
+
 use crate::errors::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
+use crate::messaging::discord::ToDiscord;
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::messaging::status::{self, Phase};
@@ -86,6 +88,10 @@ async fn edit_poise<'ctx>(
 #[expect(
     clippy::disallowed_methods,
     reason = "messaging is where sends are made"
+)]
+#[expect(
+    clippy::disallowed_types,
+    reason = "clearing a reply's components takes an empty CreateComponent list"
 )]
 async fn retire_poise<'ctx>(
     ctx: crate::Context<'ctx>,
@@ -336,6 +342,16 @@ mod tests {
     use crate::{Data, DataInner};
     use std::sync::Arc;
 
+    fn button(id: &str) -> crack_model::Button {
+        crack_model::Button {
+            id: id.into(),
+            label: None,
+            emoji: None,
+            style: crack_model::ButtonStyle::Primary,
+            disabled: false,
+        }
+    }
+
     fn cx() -> RenderCx {
         RenderCx {
             now_unix: 0,
@@ -456,14 +472,17 @@ mod tests {
     #[tokio::test]
     async fn edit_rendered_message_edits_that_message_with_its_components() {
         let t = FakeTransport::default();
-        let out = Rendered::embed(serenity::all::CreateEmbed::new().description("page"))
-            .with_components(crate::messaging::interface::create_nav_btns(0, 2));
+        let out = Rendered::card(crack_model::Card {
+            description: Some("page".into()),
+            ..crack_model::Card::default()
+        })
+        .with_rows(crate::messaging::interface::create_nav_btns(0, 2));
         edit_rendered_message(&t, GenericChannelId::new(7), MessageId::new(42), out)
             .await
             .unwrap();
         assert_eq!(t.ops(), vec![Op::Edit(7, 42)]);
         let sent = t.sent.lock().unwrap();
-        assert_eq!(sent.last().map(|r| r.components.len()), Some(1));
+        assert_eq!(sent.last().map(|r| r.rows.len()), Some(1));
     }
 
     #[tokio::test]
@@ -549,7 +568,7 @@ mod tests {
         assert!(acknowledge(&p).await);
         answer_privately(
             &p,
-            &CrackedMessage::CrackedError(crate::errors::CrackedError::NothingPlaying),
+            &CrackedMessage::from(crate::errors::CrackedError::NothingPlaying),
             &cx(),
         )
         .await;
@@ -592,13 +611,9 @@ mod tests {
         let press = FakePress::default();
         let msg = CrackedMessage::Other("page".into());
         // `render` gives an `Other` no components; give it two rows to see them counted.
-        let out = render(&msg, &cx()).with_components(vec![
-            serenity::all::CreateComponent::ActionRow(serenity::all::CreateActionRow::Buttons(
-                std::borrow::Cow::Owned(vec![serenity::all::CreateButton::new("a")]),
-            )),
-            serenity::all::CreateComponent::ActionRow(serenity::all::CreateActionRow::Buttons(
-                std::borrow::Cow::Owned(vec![serenity::all::CreateButton::new("b")]),
-            )),
+        let out = render(&msg, &cx()).with_rows(vec![
+            crack_model::Row::Buttons(vec![button("a")]),
+            crack_model::Row::Buttons(vec![button("b")]),
         ]);
         press.update(out).await.unwrap();
         update(&press, &msg, &cx()).await.unwrap();

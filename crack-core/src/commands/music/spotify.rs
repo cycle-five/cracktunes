@@ -3,8 +3,8 @@ use crate::messaging::format::{duration_text, escape, http_url};
 use crate::messaging::{courier, message::CrackedMessage};
 use crate::sources::sleevenote::{self, MediaType};
 use crate::{Context, Error};
+use crack_model::{colour, Card, Field};
 use crack_sleevenote::{Album, Error as SleevenoteError, Playlist, Track};
-use serenity::all::{Color, CreateEmbed};
 
 /// How many tracks of a collection to list before saying "and N more".
 const PREVIEW_TRACKS: usize = 10;
@@ -66,31 +66,33 @@ pub async fn spotify_internal(ctx: Context<'_>, url: Option<String>) -> Result<(
 /// the client keeps those variants apart. The mapping itself lives with the
 /// resolver so that a lookup and a play report the same failure the same way
 /// -- they used to word the same diagnosis differently.
-fn error_embed(err: &SleevenoteError) -> CreateEmbed<'static> {
+fn error_embed(err: &SleevenoteError) -> Card {
     fail(sleevenote::user_message(err))
 }
 
-fn track_embed(track: Track) -> CreateEmbed<'static> {
-    let mut embed = CreateEmbed::default()
-        .title(track.name.clone())
-        .url(track.url.clone())
-        .description(artists(&track))
-        .color(Color::BLURPLE);
+fn track_embed(track: Track) -> Card {
+    let mut embed = Card {
+        title: Some(track.name.clone()),
+        url: Some(track.url.clone()),
+        description: Some(artists(&track)),
+        colour: Some(colour::BLURPLE),
+        ..Card::default()
+    };
 
     if let Some(album) = &track.album {
-        embed = embed.field("Album", escape(&album.name), true);
+        embed.fields.push(field("Album", escape(&album.name), true));
         // Only a web URL: an empty or relative one is left out.
         if let Some(image) = http_url(album.image.as_deref()) {
-            embed = embed.thumbnail(image.to_string(), None);
+            embed.thumbnail = Some(image.to_string());
         }
     }
     if let Some(length) = duration_text(track.duration()) {
-        embed = embed.field("Length", length, true);
+        embed.fields.push(field("Length", length, true));
     }
     embed
 }
 
-fn album_embed(album: Album) -> CreateEmbed<'static> {
+fn album_embed(album: Album) -> Card {
     // Read before the fields below are moved out of `album`.
     let shortfall = album.shortfall();
     let names = album
@@ -110,7 +112,7 @@ fn album_embed(album: Album) -> CreateEmbed<'static> {
     )
 }
 
-fn playlist_embed(playlist: Playlist) -> CreateEmbed<'static> {
+fn playlist_embed(playlist: Playlist) -> Card {
     // Read before the fields below are moved out of `playlist`.
     let shortfall = playlist.shortfall();
     collection_embed(
@@ -132,7 +134,7 @@ fn collection_embed(
     unresolved: u32,
     shortfall: Option<u64>,
     image: Option<String>,
-) -> CreateEmbed<'static> {
+) -> Card {
     let mut listing = tracks
         .iter()
         .take(PREVIEW_TRACKS)
@@ -148,29 +150,36 @@ fn collection_embed(
         listing.push_str("No playable tracks.");
     }
 
-    let mut embed = CreateEmbed::default()
-        .title(name)
-        .url(url)
-        .description(byline)
-        .field("Tracks", tracks.len().to_string(), true)
-        .color(Color::BLURPLE);
+    let mut embed = Card {
+        title: Some(name),
+        url: Some(url),
+        description: Some(byline),
+        fields: vec![field("Tracks", tracks.len().to_string(), true)],
+        colour: Some(colour::BLURPLE),
+        ..Card::default()
+    };
 
     // Surfaced rather than swallowed: a caller who sees only the track count
     // cannot tell a short collection from one we could only half resolve.
     // Local files land here, and there is nothing to play for them.
     if unresolved > 0 {
-        embed = embed.field("Unavailable", unresolved.to_string(), true);
+        embed
+            .fields
+            .push(field("Unavailable", unresolved.to_string(), true));
     }
     // A second, unrelated way to come up short: items Spotify declared that the
     // scrape never reached. "Unavailable" counts things we saw and could not
     // use; this counts things we never saw. A listing can have both, or either.
     if let Some(missing) = shortfall.filter(|n| *n > 0) {
-        embed = embed.field("Not recovered", missing.to_string(), true);
+        embed
+            .fields
+            .push(field("Not recovered", missing.to_string(), true));
     }
     if let Some(image) = http_url(image.as_deref()) {
-        embed = embed.thumbnail(image.to_string(), None);
+        embed.thumbnail = Some(image.to_string());
     }
-    embed.field("Listing", listing, false)
+    embed.fields.push(field("Listing", listing, false));
+    embed
 }
 
 fn artists(track: &Track) -> String {
@@ -187,14 +196,24 @@ fn artists(track: &Track) -> String {
     }
 }
 
-fn fail(msg: &str) -> CreateEmbed<'static> {
-    CreateEmbed::default()
-        .description(msg.to_string())
-        .color(Color::RED)
+fn fail(msg: &str) -> Card {
+    Card {
+        description: Some(msg.to_string()),
+        colour: Some(colour::RED),
+        ..Card::default()
+    }
 }
 
-async fn reply(ctx: Context<'_>, embed: CreateEmbed<'static>) -> Result<(), Error> {
-    courier::reply(ctx, CrackedMessage::CreateEmbed(Box::new(embed)))
+fn field(name: &str, value: String, inline: bool) -> Field {
+    Field {
+        name: name.to_string(),
+        value,
+        inline,
+    }
+}
+
+async fn reply(ctx: Context<'_>, embed: Card) -> Result<(), Error> {
+    courier::reply(ctx, CrackedMessage::Card(Box::new(embed)))
         .await
         .map(|_| ())
         .map_err(Into::into)
@@ -232,7 +251,7 @@ mod tests {
             None,
             None,
         );
-        let json = serde_json::to_string(&embed).unwrap();
+        let json = serde_json::to_string(&crate::messaging::discord::embed(&embed)).unwrap();
         assert!(
             json.contains(r"1. \\[click\\](https://evil.example) — \\@everyone"),
             "{json}"
@@ -248,13 +267,14 @@ mod tests {
             )
             .expect("album"),
         );
-        let json = serde_json::to_string(&track_embed(track)).unwrap();
+        let json =
+            serde_json::to_string(&crate::messaging::discord::embed(&track_embed(track))).unwrap();
         assert!(json.contains(r"\\@everyone"), "{json}");
         assert!(json.contains(r"\\_album\\_"), "{json}");
     }
 
-    fn thumbnail_of(embed: &CreateEmbed<'static>) -> Option<String> {
-        let json = serde_json::to_value(embed).unwrap();
+    fn thumbnail_of(embed: &Card) -> Option<String> {
+        let json = serde_json::to_value(crate::messaging::discord::embed(embed)).unwrap();
         json.get("thumbnail")
             .and_then(|t| t["url"].as_str())
             .map(str::to_owned)
@@ -304,7 +324,8 @@ mod tests {
         let length = |ms: Option<u64>| {
             let mut track = hostile_track();
             track.duration_ms = ms;
-            let json = serde_json::to_value(track_embed(track)).unwrap();
+            let json = serde_json::to_value(crate::messaging::discord::embed(&track_embed(track)))
+                .unwrap();
             json["fields"]
                 .as_array()
                 .and_then(|f| f.iter().find(|f| f["name"] == "Length"))
@@ -330,7 +351,37 @@ mod tests {
             declared_items: None,
             complete: true,
         };
-        let json = serde_json::to_string(&playlist_embed(playlist)).unwrap();
+        let json =
+            serde_json::to_string(&crate::messaging::discord::embed(&playlist_embed(playlist)))
+                .unwrap();
         assert!(json.contains(r"\\*bold\\*"), "{json}");
+    }
+
+    /// The whole embed, byte for byte: what Discord is sent.
+    #[test]
+    fn the_embeds_are_byte_stable() {
+        let mut track = hostile_track();
+        track.duration_ms = Some(192_000);
+        assert_eq!(
+            serde_json::to_string(&crate::messaging::discord::embed(&fail("boom"))).unwrap(),
+            r#"{"type":"rich","description":"boom","color":15158332}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&crate::messaging::discord::embed(&track_embed(track))).unwrap(),
+            r#"{"title":"[click](https://evil.example)","type":"rich","description":"\\@everyone","url":"https://open.spotify.com/track/t","color":7506394,"fields":[{"name":"Length","value":"3:12","inline":true}]}"#
+        );
+        let listing = collection_embed(
+            "Mix".into(),
+            "https://open.spotify.com/playlist/p".into(),
+            "owner".into(),
+            &[hostile_track()],
+            2,
+            Some(3),
+            Some("https://i.scdn.co/a.jpg".into()),
+        );
+        assert_eq!(
+            serde_json::to_string(&crate::messaging::discord::embed(&listing)).unwrap(),
+            r#"{"title":"Mix","type":"rich","description":"owner","url":"https://open.spotify.com/playlist/p","color":7506394,"thumbnail":{"url":"https://i.scdn.co/a.jpg","description":null},"fields":[{"name":"Tracks","value":"1","inline":true},{"name":"Unavailable","value":"2","inline":true},{"name":"Not recovered","value":"3","inline":true},{"name":"Listing","value":"1. \\[click\\](https://evil.example) — \\@everyone","inline":false}]}"#
+        );
     }
 }

@@ -1,6 +1,8 @@
 //! The wire to Discord for channel messages: send, edit, delete, and what the
 //! cache knows of a channel. Tests swap in `test_support::FakeTransport`.
+
 use crate::http_utils::is_unknown_message;
+use crate::messaging::discord::ToDiscord;
 use crate::messaging::render::Rendered;
 use serenity::all::{
     Cache, ComponentInteraction, CreateInteractionResponse, CreateModal, GenericChannelId, GuildId,
@@ -119,6 +121,10 @@ impl Transport for DiscordTransport {
         Ok(channel.delete_message(&self.http, id, None).await?)
     }
 
+    #[expect(
+        clippy::disallowed_types,
+        reason = "clearing a message's components takes an empty CreateComponent list"
+    )]
     async fn clear_components(
         &self,
         channel: GenericChannelId,

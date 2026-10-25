@@ -54,8 +54,8 @@ fn status_card(ctx: Context<'_>, guild: GuildId) -> RoomCard {
         .hub
         .and_then(|hub| preflight::for_guild(&ctx.serenity_context().cache, guild, hub));
     RoomCard::Status {
-        settings,
-        findings,
+        settings: (&settings).into(),
+        findings: findings.map(|f| f.iter().map(Into::into).collect()),
         dashboard: dashboard_link(std::env::var("WEB_PUBLIC_ORIGIN").ok().as_deref(), guild),
     }
 }

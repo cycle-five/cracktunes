@@ -538,7 +538,7 @@ pub async fn update_queue_messages(
             transport,
             message.channel_id,
             message.id,
-            Rendered::embed(embed).with_components(create_nav_btns(page_val, num_pages)),
+            Rendered::card(embed).with_rows(create_nav_btns(page_val, num_pages)),
         )
         .await;
 

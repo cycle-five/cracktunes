@@ -6,8 +6,7 @@ use crate::{
     poise_ext::ContextExt,
     Context, Error,
 };
-use poise::serenity_prelude as serenity;
-use serenity::Mentionable;
+use crack_types::discord::ToRef;
 
 /// Vote to skip the current track
 #[poise::command(
@@ -42,7 +41,7 @@ pub async fn voteskip(
             courier::reply(
                 ctx,
                 CrackedMessage::VoteSkip {
-                    mention: ctx.get_user_id().mention(),
+                    id: ctx.get_user_id().to_ref(),
                     missing: *missing,
                 },
             )

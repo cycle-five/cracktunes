@@ -23,6 +23,7 @@ use super::commands::refuse_gp;
 use super::playback::{gp_played, gp_played_at_end};
 use super::*;
 use crate::DataInner;
+use crack_types::discord::ToRef;
 use crack_types::AuxMetadata;
 use rand::{rngs::StdRng, SeedableRng};
 
@@ -256,7 +257,7 @@ fn a_game_of_several_categories_shows_each_rounds() {
         panic!("an empty round moves straight on");
     };
     assert_eq!(next.category, Some(GpCategory::Chill));
-    let v = serde_json::to_value(gp_prompt_embed(next)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_prompt_embed(&GpPromptView::from(next)))).unwrap();
     assert_eq!(v["description"], "🌿 Altered-State / Chill\n**p2**");
 
     // A game of one category said which when it started.
@@ -1222,7 +1223,7 @@ fn failed_reveal_embed_json() {
     data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
     let res = data.gp_fail_and_advance(G, 0, 0, NOW).unwrap();
 
-    let v = serde_json::to_value(gp_reveal_embed(&res)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_reveal_embed(&GpRevealView::from(&res)))).unwrap();
     let fields = v["fields"].as_array().unwrap();
     assert_eq!(fields.len(), 2, "failure note and scoreboard only");
     assert_eq!(fields[0]["name"], GP_TRACK_FAILED);
@@ -1820,7 +1821,7 @@ fn a_held_reveal_names_nobody_and_moves_no_visible_score() {
     };
     assert!(scores.iter().all(|(_, p)| *p == 0));
 
-    let v = serde_json::to_value(gp_reveal_embed(&res)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_reveal_embed(&GpRevealView::from(&res)))).unwrap();
     let desc = v["description"].as_str().unwrap();
     assert!(desc.contains(GP_REVEAL_HELD), "{desc}");
     assert!(!desc.contains("<@"), "must name nobody: {desc}");
@@ -1833,7 +1834,7 @@ fn a_held_reveal_names_nobody_and_moves_no_visible_score() {
     // A song that never played, held: says so, still names nobody.
     let res = data.gp_fail_and_advance(G, 0, 1, NOW).unwrap();
     assert!(res.held && res.failed);
-    let v = serde_json::to_value(gp_reveal_embed(&res)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_reveal_embed(&GpRevealView::from(&res)))).unwrap();
     assert!(!serde_json::to_string(&v).unwrap().contains("<@"));
     assert_eq!(v["fields"][0]["name"], GP_TRACK_FAILED);
 
@@ -1970,7 +1971,7 @@ fn round_results_embed_json() {
         points: vec![(B, 250), (C, 100), (A, 20)],
         scores: vec![(B, 400), (A, 300), (C, 100)],
     };
-    let v = serde_json::to_value(gp_round_results_embed(&r)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_round_results_embed(&GpRoundView::from(&r)))).unwrap();
     assert_eq!(
         v["title"],
         format!("{GP_ROUND_TITLE} 2/5 {GP_RESULTS_TITLE}")
@@ -2012,7 +2013,8 @@ fn round_results_embed_json() {
         points: vec![],
         ..r.clone()
     };
-    let v = serde_json::to_value(gp_round_results_embed(&solo)).unwrap();
+    let v =
+        serde_json::to_value(embed_of(gp_round_results_embed(&GpRoundView::from(&solo)))).unwrap();
     let desc = v["description"].as_str().unwrap();
     assert!(!desc.contains(GP_RESULTS_GUESSED_BY), "{desc}");
     assert!(desc.contains("**only** · <@100> · 👍 2"), "{desc}");
@@ -2034,7 +2036,8 @@ fn round_results_embed_json() {
             .collect(),
         ..r
     };
-    let v = serde_json::to_value(gp_round_results_embed(&big)).unwrap();
+    let v =
+        serde_json::to_value(embed_of(gp_round_results_embed(&GpRoundView::from(&big)))).unwrap();
     let desc = v["description"].as_str().unwrap();
     assert!(desc.chars().count() <= DESCRIPTION_MAX, "{}", desc.len());
     assert!(
@@ -2071,7 +2074,13 @@ fn custom_ids() {
 #[test]
 fn components_json() {
     let players = vec![(B, "bob".to_string()), (A, "alice".to_string())];
-    let rows = gp_components(G, 1, 2, &players, true);
+    let rows = rows_of(gp_components(
+        &G.to_ref(),
+        1,
+        2,
+        &user_players(&players),
+        true,
+    ));
     assert_eq!(rows.len(), 2);
     let v = serde_json::to_value(&rows).unwrap();
     let menu = &v[0]["components"][0];
@@ -2090,7 +2099,13 @@ fn components_json() {
     assert_eq!(button["style"], 2, "secondary");
 
     // Not guessable: only the like button.
-    let rows = gp_components(G, 0, 0, &players, false);
+    let rows = rows_of(gp_components(
+        &G.to_ref(),
+        0,
+        0,
+        &user_players(&players),
+        false,
+    ));
     assert_eq!(rows.len(), 1);
     let v = serde_json::to_value(&rows).unwrap();
     assert_eq!(v[0]["components"][0]["custom_id"], "gp:l:1:0:0");
@@ -2099,7 +2114,14 @@ fn components_json() {
     let many: Vec<(UserId, String)> = (1..=40u64)
         .map(|i| (UserId::new(i), format!("u{i}")))
         .collect();
-    let v = serde_json::to_value(gp_components(G, 0, 0, &many, true)).unwrap();
+    let v = serde_json::to_value(rows_of(gp_components(
+        &G.to_ref(),
+        0,
+        0,
+        &user_players(&many),
+        true,
+    )))
+    .unwrap();
     assert_eq!(
         v[0]["components"][0]["options"].as_array().unwrap().len(),
         GP_MAX_PLAYERS
@@ -2108,7 +2130,7 @@ fn components_json() {
 
 #[test]
 fn category_picker_json() {
-    let v = serde_json::to_value(gp_pick_components(&[])).unwrap();
+    let v = serde_json::to_value(rows_of(gp_pick_components(&[]))).unwrap();
     let menu = &v[0]["components"][0];
     assert_eq!(menu["custom_id"], GP_PICK_MENU_ID);
     for id in [GP_PICK_MENU_ID, GP_PICK_START_ID, GP_PICK_CANCEL_ID] {
@@ -2134,8 +2156,11 @@ fn category_picker_json() {
     );
     assert_eq!(buttons[1]["custom_id"], GP_PICK_CANCEL_ID);
 
-    let v =
-        serde_json::to_value(gp_pick_components(&[GpCategory::Car, GpCategory::Chill])).unwrap();
+    let v = serde_json::to_value(rows_of(gp_pick_components(&[
+        GpCategory::Car,
+        GpCategory::Chill,
+    ])))
+    .unwrap();
     let ticked: Vec<&str> = v[0]["components"][0]["options"]
         .as_array()
         .unwrap()
@@ -2164,7 +2189,7 @@ fn prompt_embeds_json() {
         generation: 4,
         text_channel: TC,
     };
-    let v = serde_json::to_value(gp_prompt_embed(&opened)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_prompt_embed(&GpPromptView::from(&opened)))).unwrap();
     assert_eq!(v["title"], format!("{GP_ROUND_TITLE} 2/3"));
     assert_eq!(v["description"], "**What song do you cry to?**");
     let fields = v["fields"].as_array().unwrap();
@@ -2185,14 +2210,20 @@ fn prompt_embeds_json() {
         text_channel: TC,
         next: GpNext::Finished(vec![]),
     };
-    let v = serde_json::to_value(gp_prompt_closed_embed(&closed)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_prompt_closed_embed(&GpClosedView::from(
+        &closed,
+    ))))
+    .unwrap();
     let desc = v["description"].as_str().unwrap();
     assert!(
         desc.contains(&format!("{GP_WINDOW_CLOSED} 4 {GP_WINDOW_CLOSED_SONGS}")),
         "{desc}"
     );
     let empty = GpWindowClosed { count: 0, ..closed };
-    let v = serde_json::to_value(gp_prompt_closed_embed(&empty)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_prompt_closed_embed(&GpClosedView::from(
+        &empty,
+    ))))
+    .unwrap();
     assert!(v["description"].as_str().unwrap().contains(GP_WINDOW_EMPTY));
 
     // With a category to show, it sits above the prompt, open and closed.
@@ -2200,7 +2231,7 @@ fn prompt_embeds_json() {
         category: Some(GpCategory::Car),
         ..opened
     };
-    let v = serde_json::to_value(gp_prompt_embed(&tagged)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_prompt_embed(&GpPromptView::from(&tagged)))).unwrap();
     assert_eq!(
         v["description"],
         "🚗 Car / Driving\n**What song do you cry to?**"
@@ -2209,7 +2240,10 @@ fn prompt_embeds_json() {
         category: Some(GpCategory::Car),
         ..empty
     };
-    let v = serde_json::to_value(gp_prompt_closed_embed(&tagged)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_prompt_closed_embed(&GpClosedView::from(
+        &tagged,
+    ))))
+    .unwrap();
     assert!(v["description"]
         .as_str()
         .unwrap()
@@ -2244,7 +2278,7 @@ fn track_embed_hides_submitter() {
         generation: 1,
         text_channel: TC,
     };
-    let v = serde_json::to_value(gp_track_embed(&start)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_track_embed(&GpSongView::from((&start, G))))).unwrap();
     assert_eq!(
         v["title"],
         format!("{GP_ROUND_TITLE} 1/2 · {GP_SONG_TITLE} 2/3")
@@ -2260,7 +2294,8 @@ fn track_embed_hides_submitter() {
         guessable: false,
         ..start
     };
-    let desc = serde_json::to_value(gp_track_embed(&solo)).unwrap()["description"]
+    let desc = serde_json::to_value(embed_of(gp_track_embed(&GpSongView::from((&solo, G)))))
+        .unwrap()["description"]
         .as_str()
         .unwrap()
         .to_string();
@@ -2292,7 +2327,7 @@ fn reveal_embed_json() {
         held: false,
         round: None,
     };
-    let v = serde_json::to_value(gp_reveal_embed(&res)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_reveal_embed(&GpRevealView::from(&res)))).unwrap();
     assert_eq!(
         v["title"],
         format!("{GP_ROUND_TITLE} 1/2 · {GP_SONG_TITLE} 1/2")
@@ -2322,7 +2357,7 @@ fn reveal_embed_json() {
         likes: 0,
         ..res.clone()
     };
-    let v = serde_json::to_value(gp_reveal_embed(&fooled)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_reveal_embed(&GpRevealView::from(&fooled)))).unwrap();
     let fields = v["fields"].as_array().unwrap();
     assert_eq!(fields.len(), 4);
     assert_eq!(fields[0]["value"], GP_NOBODY_GUESSED);
@@ -2335,7 +2370,7 @@ fn reveal_embed_json() {
         guessable: false,
         ..res
     };
-    let v = serde_json::to_value(gp_reveal_embed(&solo)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_reveal_embed(&GpRevealView::from(&solo)))).unwrap();
     let fields = v["fields"].as_array().unwrap();
     assert_eq!(fields.len(), 2);
     assert_eq!(fields[0]["name"], GP_LIKES);
@@ -2343,7 +2378,7 @@ fn reveal_embed_json() {
 
 #[test]
 fn scoreboard_and_status_embeds_json() {
-    let v = serde_json::to_value(gp_scoreboard_embed(&[], GP_GAME_OVER)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_scoreboard_embed(&[], GP_GAME_OVER))).unwrap();
     assert_eq!(v["title"], GP_GAME_OVER);
     assert_eq!(v["description"], "-");
 
@@ -2356,7 +2391,8 @@ fn scoreboard_and_status_embeds_json() {
         submitted: vec!["alice".into(), "bob".into()],
         scores: vec![(A, 0)],
     };
-    let v = serde_json::to_value(gp_status_embed(&submitting)).unwrap();
+    let v =
+        serde_json::to_value(embed_of(gp_status_embed(&GpStatusView::from(&submitting)))).unwrap();
     assert_eq!(v["title"], format!("{GP_STATUS_SUBMITTING} 1/5"));
     let fields = v["fields"].as_array().unwrap();
     assert_eq!(fields[0]["value"], "p");
@@ -2376,7 +2412,7 @@ fn scoreboard_and_status_embeds_json() {
         likes: 2,
         scores: vec![(A, 110)],
     };
-    let v = serde_json::to_value(gp_status_embed(&playing)).unwrap();
+    let v = serde_json::to_value(embed_of(gp_status_embed(&GpStatusView::from(&playing)))).unwrap();
     assert_eq!(
         v["title"],
         format!("{GP_STATUS_PLAYING} 2/3 · {GP_SONG_TITLE} 1/4")
@@ -2733,7 +2769,7 @@ fn a_refused_gp_command_is_logged_as_well_as_answered() {
 
     assert!(matches!(
         reply,
-        CrackedMessage::CrackedError(CrackedError::NoGuildId)
+        CrackedMessage::CrackedError(ref text) if *text == CrackedError::NoGuildId.to_string()
     ));
     let log = String::from_utf8(captured.0.lock().expect("log buffer").clone())
         .expect("the formatter writes UTF-8");
@@ -2759,7 +2795,7 @@ fn cx() -> RenderCx {
 }
 
 fn embed_json(r: &Rendered) -> serde_json::Value {
-    serde_json::to_value(r.embed.clone().expect("an embed")).unwrap()
+    serde_json::to_value(crate::messaging::discord::first_embed(r).expect("an embed")).unwrap()
 }
 
 fn description(r: &Rendered) -> String {
@@ -2824,7 +2860,7 @@ fn every_card_renders_through_the_one_renderer() {
     let r = render(&line, &cx());
     assert_eq!(r.content.as_deref(), Some("hello"));
     assert!(
-        r.embed.is_none(),
+        r.cards.is_empty(),
         "a line is plain text, as /gp sends it today"
     );
     assert_eq!(line.to_string(), "hello");
@@ -2835,46 +2871,55 @@ fn every_card_renders_through_the_one_renderer() {
     let rules = go(GpCard::Rules);
     assert_eq!(title_of(&rules), GP_TITLE);
 
-    let status = go(GpCard::Status(GpStatus::Submitting {
-        host: A,
-        round: 1,
-        total: 3,
-        prompt: "p".into(),
-        closes_at: NOW,
-        submitted: vec![],
-        scores: vec![],
-    }));
+    let status = go(GpCard::Status(
+        (&GpStatus::Submitting {
+            host: A,
+            round: 1,
+            total: 3,
+            prompt: "p".into(),
+            closes_at: NOW,
+            submitted: vec![],
+            scores: vec![],
+        })
+            .into(),
+    ));
     assert!(title_of(&status).starts_with(GP_STATUS_SUBMITTING));
 
-    let prompt = go(GpCard::Prompt(GpWindowOpened {
-        round_idx: 0,
-        total_rounds: 3,
-        prompt: "p".into(),
-        category: None,
-        closes_at: NOW,
-        timer_secs: 60,
-        generation: 1,
-        text_channel: TC,
-    }));
+    let prompt = go(GpCard::Prompt(
+        (&GpWindowOpened {
+            round_idx: 0,
+            total_rounds: 3,
+            prompt: "p".into(),
+            category: None,
+            closes_at: NOW,
+            timer_secs: 60,
+            generation: 1,
+            text_channel: TC,
+        })
+            .into(),
+    ));
     assert_eq!(title_of(&prompt), round);
-    assert!(prompt.components.is_empty());
+    assert!(prompt.rows.is_empty());
     assert!(!field_value(&prompt, GP_PROMPT_HOW_TO_TITLE).is_empty());
     assert!(!description(&prompt).contains(GP_WINDOW_EMPTY));
 
-    let closed = go(GpCard::PromptClosed(GpWindowClosed {
-        round_idx: 0,
-        total_rounds: 3,
-        prompt: "p".into(),
-        category: None,
-        prompt_message: None,
-        count: 0,
-        text_channel: TC,
-        next: GpNext::Finished(vec![]),
-    }));
+    let closed = go(GpCard::PromptClosed(
+        (&GpWindowClosed {
+            round_idx: 0,
+            total_rounds: 3,
+            prompt: "p".into(),
+            category: None,
+            prompt_message: None,
+            count: 0,
+            text_channel: TC,
+            next: GpNext::Finished(vec![]),
+        })
+            .into(),
+    ));
     assert_eq!(title_of(&closed), round);
     assert!(description(&closed).contains(GP_WINDOW_EMPTY));
 
-    let results = go(GpCard::RoundResults(round_result("Song")));
+    let results = go(GpCard::RoundResults((&round_result("Song")).into()));
     assert_eq!(title_of(&results), format!("{round} {GP_RESULTS_TITLE}"));
     assert!(title_of(&results).ends_with(GP_RESULTS_TITLE));
 }
@@ -2905,8 +2950,8 @@ fn status_names_are_escaped_and_the_prompt_is_not() {
         ]
     };
     let [submitting, playing] = status(vec!["*bob*".into()]);
-    let submitting = render(&GpCard::Status(submitting).into(), &cx());
-    let playing = render(&GpCard::Status(playing).into(), &cx());
+    let submitting = render(&GpCard::Status((&submitting).into()).into(), &cx());
+    let playing = render(&GpCard::Status((&playing).into()).into(), &cx());
     assert!(field_value(&submitting, GP_STATUS_SUBMITTED).contains("\\*bob\\*"));
     assert!(field_value(&playing, GP_STATUS_GUESSED).contains("\\*bob\\*"));
     for r in [&submitting, &playing] {
@@ -2917,7 +2962,7 @@ fn status_names_are_escaped_and_the_prompt_is_not() {
 #[test]
 fn the_results_line_caps_a_long_title() {
     let results = render(
-        &GpCard::RoundResults(round_result(&"a".repeat(300))).into(),
+        &GpCard::RoundResults((&round_result(&"a".repeat(300))).into()).into(),
         &cx(),
     );
     let d = description(&results);
@@ -2932,23 +2977,14 @@ fn the_results_line_caps_a_long_title() {
 fn a_song_carries_its_controls_and_a_reveal_carries_none() {
     let data = data();
     let start = playing_with_title(&data, "Song", GpReveal::Song);
-    let song = render_card(
-        &GpCard::Song {
-            start: start.clone(),
-            guild: G,
-        },
-        &cx(),
-    );
-    assert!(!song.components.is_empty(), "the 👍 row at least");
+    let song = render_card(&GpCard::Song((&start, G).into()), &cx());
+    assert!(!song.rows.is_empty(), "the 👍 row at least");
     let res = data
         .gp_reveal_and_advance(G, 0, 0, NOW)
         .expect("the song was playing");
-    let reveal = render_card(&GpCard::Reveal(res), &cx());
-    assert!(
-        reveal.components.is_empty(),
-        "the reveal takes the dropdown away"
-    );
-    assert!(reveal.embed.is_some());
+    let reveal = render_card(&GpCard::Reveal((&res).into()), &cx());
+    assert!(reveal.rows.is_empty(), "the reveal takes the dropdown away");
+    assert!(!reveal.cards.is_empty());
 }
 
 #[test]
@@ -2969,15 +3005,15 @@ fn the_picker_has_its_rows_only_while_open() {
         },
         &cx(),
     );
-    assert_eq!(open.components.len(), 2);
-    assert!(closed.components.is_empty());
+    assert_eq!(open.rows.len(), 2);
+    assert!(closed.rows.is_empty());
 }
 
 #[test]
 fn a_lost_games_scoreboard_leads_with_the_line() {
     let r = render_card(
         &GpCard::Scoreboard {
-            scores: vec![(A, 3)],
+            scores: user_refs(&[(A, 3)]),
             title: GP_SCOREBOARD,
             lead: Some(GP_LOST),
         },
@@ -2993,21 +3029,21 @@ fn a_title_with_markdown_shows_literally_everywhere() {
     let escaped = "\\*NSYNC\\_\\`x\\` \\@everyone";
     let data = data();
     let start = playing_with_title(&data, raw, GpReveal::Round);
-    let song = render_card(&GpCard::Song { start, guild: G }, &cx());
+    let song = render_card(&GpCard::Song((&start, G).into()), &cx());
     assert!(
         description(&song).contains(escaped),
         "song: {}",
         description(&song)
     );
     let res = data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
-    let reveal = render_card(&GpCard::Reveal(res.clone()), &cx());
+    let reveal = render_card(&GpCard::Reveal((&res).into()), &cx());
     assert!(
         description(&reveal).contains(escaped),
         "reveal: {}",
         description(&reveal)
     );
     let results = render_card(
-        &GpCard::RoundResults(res.round.expect("the round's last song posts results")),
+        &GpCard::RoundResults((&res.round.expect("the round's last song posts results")).into()),
         &cx(),
     );
     assert!(
@@ -3022,7 +3058,7 @@ fn a_long_title_is_capped_and_a_real_one_is_not() {
     let data = data();
     let long = "a".repeat(300);
     let start = playing_with_title(&data, &long, GpReveal::Song);
-    let d = description(&render_card(&GpCard::Song { start, guild: G }, &cx()));
+    let d = description(&render_card(&GpCard::Song((&start, G).into()), &cx()));
     // The test track's URL carries the title too, so look at the link text only.
     assert!(
         d.contains(&format!("[**{}…**]", "a".repeat(GP_TITLE_MAX))),
@@ -3033,6 +3069,376 @@ fn a_long_title_is_capped_and_a_real_one_is_not() {
     // YouTube's own limit, spelled out so lowering the cap fails here.
     let real = "b".repeat(100);
     let start = playing_with_title(&data, &real, GpReveal::Song);
-    let d = description(&render_card(&GpCard::Song { start, guild: G }, &cx()));
+    let d = description(&render_card(&GpCard::Song((&start, G).into()), &cx()));
     assert!(d.contains(&format!("[**{real}**]")), "{d}");
+}
+
+/// A neutral card as the embed Discord receives, for the JSON assertions.
+// Test helper: turns neutral output into the builders Discord receives, for JSON pins.
+#[allow(clippy::disallowed_types)]
+fn embed_of(card: crack_model::Card) -> ::serenity::builder::CreateEmbed<'static> {
+    crate::messaging::discord::embed(&card)
+}
+
+/// Neutral rows as the components Discord receives.
+// Test helper: turns neutral output into the builders Discord receives, for JSON pins.
+#[allow(clippy::disallowed_types)]
+fn rows_of(rows: Vec<crack_model::Row>) -> Vec<::serenity::builder::CreateComponent<'static>> {
+    crate::messaging::discord::action_rows(&rows)
+}
+
+/// A card as Discord receives it: content, embed and components, each as the
+/// JSON serenity writes.
+fn wire(r: &Rendered) -> (String, String, String) {
+    (
+        r.content.clone().unwrap_or_default(),
+        serde_json::to_string(&crate::messaging::discord::first_embed(r)).unwrap(),
+        serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap(),
+    )
+}
+
+/// Every gp card shape that carries a control or a field, pinned at the base
+/// (7c7ddd3b) before `/gp` moved onto neutral cards.
+#[test]
+fn gp_cards_render_as_before() {
+    let data = data();
+    let mut start = playing_with_title(&data, "Song", GpReveal::Song);
+    start.players = vec![(A, "alice".to_string()), (B, "bob".to_string())];
+    start.guessable = true;
+    let res = data
+        .gp_reveal_and_advance(G, 0, 0, NOW)
+        .expect("the song was playing");
+    let status = GpStatus::Playing {
+        round: 1,
+        total: 3,
+        track: 2,
+        tracks: 4,
+        prompt: "What song?".into(),
+        guessed: vec!["alice".into()],
+        likes: 2,
+        scores: vec![(A, 3)],
+    };
+    let cards = vec![
+        ("rules", GpCard::Rules),
+        ("status", GpCard::Status((&status).into())),
+        (
+            "picker",
+            GpCard::Picker {
+                text: "pick".into(),
+                picked: vec![GpCategory::Car, GpCategory::Chill],
+                open: true,
+            },
+        ),
+        (
+            "picker_empty",
+            GpCard::Picker {
+                text: "pick".into(),
+                picked: vec![],
+                open: true,
+            },
+        ),
+        ("song", GpCard::Song((&start, G).into())),
+        ("reveal", GpCard::Reveal((&res).into())),
+        (
+            "scoreboard",
+            GpCard::Scoreboard {
+                scores: user_refs(&[(A, 3)]),
+                title: GP_SCOREBOARD,
+                lead: Some(GP_LOST),
+            },
+        ),
+        ("line", GpCard::Line("hello".into())),
+    ];
+    // (name, content, embed, components), captured at the base (7c7ddd3b).
+    // The two picker entries differ from the base in one way, by controller
+    // ruling P3: an unpicked option no longer writes `"default":false`. Discord
+    // reads a missing `default` as false, so the picker behaves the same. Every
+    // other byte is the base's.
+    let expected: [(&str, &str, &str, &str); 8] = [
+        (
+            "rules",
+            r##""##,
+            r##"{"title":"🎭 What's Your Song?","type":"rich","description":"The host picks where the prompts come from: one category, several ticked from a menu, or 🎲 Random (the default), which takes each round's prompt from a different category. Each round the bot posts a prompt and everyone in the voice channel secretly submits a song for it. The songs then play one by one: guess whose is whose, and 👍 the ones you like. Submitters are revealed at the end of each round (or, with `reveal:song`, as each song ends), and every round ends with its results: each song, whose it was, who got it, and the scores.","color":1165952,"fields":[{"name":"How to play","value":"• `/gp start [category] [rounds] [timer] [reveal]` — start in your voice channel (default 5 rounds, 3 minutes to submit; `reveal:song` names each submitter as their song ends instead of at the end of the round; `results:false` skips the round-results embed)\n• `/gp submit <song>` — your song for the current prompt; only you see the reply; submitting again replaces it\n• The window closes on the timer, as soon as everyone in the voice channel is in, or when the host runs `/gp close`\n• While a song plays: pick who submitted it from the dropdown (you can change your pick until it ends) and tap 👍 if you like it\n• `/gp skip` — host ends the current song · `/gp voteskip` — a majority ends it, or pulls it outright if it is your own (votes are anonymous) · `/gp votefull` — a majority hears it in full · `/gp status` — where things stand · `/gp end` — abort\n• You need to be in the game's voice channel, and to have submitted a song, to guess, 👍 or vote\n\n**Scoring:** +100 for a correct guess · +100 if nobody guesses you · +10 for every 👍 your song gets · +50 if the room votes to hear your song in full. Up to 25 people per round.\n\nBy default each song plays as a 45-second clip starting 30 seconds in, so a round moves; `/gp start ... clips:false` plays them whole, and `clip_start`/`clip_length` tune the clip when clips are on.","inline":false}]}"##,
+            r##"[]"##,
+        ),
+        (
+            "status",
+            r##""##,
+            r##"{"title":"🎭 Round 1/3 · Song 2/4","type":"rich","color":7506394,"fields":[{"name":"Prompt","value":"What song?","inline":false},{"name":"Guessed this song","value":"alice","inline":false},{"name":"👍 Likes","value":"2","inline":true},{"name":"Scores","value":"1. <@100> — 3","inline":false}]}"##,
+            r##"[]"##,
+        ),
+        (
+            "picker",
+            r##""##,
+            r##"{"title":"☑️ Pick the categories","type":"rich","description":"pick","color":1165952}"##,
+            r##"[{"type":1,"components":[{"custom_id":"gppick:menu","placeholder":"Categories to draw prompts from","min_values":1,"max_values":17,"type":3,"options":[{"label":"🥹 Nostalgia","value":"nostalgia"},{"label":"🔥 Slightly More Dangerous","value":"dangerous"},{"label":"🎶 The Really Good Game Prompts","value":"good_game"},{"label":"🚗 Car / Driving","value":"car","default":true},{"label":"🌿 Altered-State / Chill","value":"chill","default":true},{"label":"😭 Emotional","value":"emotional"},{"label":"🤢 Bad Music","value":"bad_music"},{"label":"🎧 Hyper-Specific","value":"hyper_specific"},{"label":"🖤 Weirdly Revealing","value":"revealing"},{"label":"😂 Game Chaos","value":"chaos"},{"label":"⚡ One-Worders","value":"one_worders"},{"label":"🎤 Social / Go-To","value":"social"},{"label":"😈 Guilty Pleasures / Secret Taste","value":"guilty"},{"label":"💋 Sex / Romance / Attraction","value":"romance"},{"label":"🥀 Emotional Damage","value":"damage"},{"label":"🕺 Chaotic / Funny","value":"funny"},{"label":"🧠 Personality Reveals","value":"personality"}]}]},{"type":1,"components":[{"style":3,"type":2,"custom_id":"gppick:start","label":"Start","disabled":false},{"style":2,"type":2,"custom_id":"gppick:cancel","label":"Cancel","disabled":false}]}]"##,
+        ),
+        (
+            "picker_empty",
+            r##""##,
+            r##"{"title":"☑️ Pick the categories","type":"rich","description":"pick","color":1165952}"##,
+            r##"[{"type":1,"components":[{"custom_id":"gppick:menu","placeholder":"Categories to draw prompts from","min_values":1,"max_values":17,"type":3,"options":[{"label":"🥹 Nostalgia","value":"nostalgia"},{"label":"🔥 Slightly More Dangerous","value":"dangerous"},{"label":"🎶 The Really Good Game Prompts","value":"good_game"},{"label":"🚗 Car / Driving","value":"car"},{"label":"🌿 Altered-State / Chill","value":"chill"},{"label":"😭 Emotional","value":"emotional"},{"label":"🤢 Bad Music","value":"bad_music"},{"label":"🎧 Hyper-Specific","value":"hyper_specific"},{"label":"🖤 Weirdly Revealing","value":"revealing"},{"label":"😂 Game Chaos","value":"chaos"},{"label":"⚡ One-Worders","value":"one_worders"},{"label":"🎤 Social / Go-To","value":"social"},{"label":"😈 Guilty Pleasures / Secret Taste","value":"guilty"},{"label":"💋 Sex / Romance / Attraction","value":"romance"},{"label":"🥀 Emotional Damage","value":"damage"},{"label":"🕺 Chaotic / Funny","value":"funny"},{"label":"🧠 Personality Reveals","value":"personality"}]}]},{"type":1,"components":[{"style":3,"type":2,"custom_id":"gppick:start","label":"Start","disabled":true},{"style":2,"type":2,"custom_id":"gppick:cancel","label":"Cancel","disabled":false}]}]"##,
+        ),
+        (
+            "song",
+            r##""##,
+            r##"{"title":"🎭 Round 1/1 · Song 1/1","type":"rich","description":"*only*\n\n[**Song**](https://www.youtube.com/watch?v=Song)\n\nWhose song is this? Pick a name below — you can change your pick until it ends.\nTap 👍 if you like it (+10 to whoever submitted it).","color":7506394}"##,
+            r##"[{"type":1,"components":[{"custom_id":"gp:g:1:0:0","placeholder":"Whose song is this?","min_values":1,"max_values":1,"type":3,"options":[{"label":"alice","value":"100"},{"label":"bob","value":"200"}]}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"gp:l:1:0:0","label":"Like","emoji":{"name":"👍"},"disabled":false}]}]"##,
+        ),
+        (
+            "reveal",
+            r##""##,
+            r##"{"title":"🎭 Round 1/1 · Song 1/1","type":"rich","description":"*only*\n\n[**Song**](https://www.youtube.com/watch?v=Song)\n\n🎉 It was <@200>","color":2067276,"fields":[{"name":"👍 Likes","value":"0","inline":true},{"name":"🏆 Scoreboard","value":"1. <@100> — 0\n2. <@200> — 0","inline":false}]}"##,
+            r##"[]"##,
+        ),
+        (
+            "scoreboard",
+            r##"💤 A game was running when the bot went down and could not be picked up again. Here is the scoreboard as it stood."##,
+            r##"{"title":"🏆 Scoreboard","type":"rich","description":"1. <@100> — 3","color":15844367}"##,
+            r##"[]"##,
+        ),
+        ("line", r##"hello"##, r##"null"##, r##"[]"##),
+    ];
+    assert_eq!(cards.len(), expected.len());
+    for ((name, card), (pin, content, embed, components)) in cards.into_iter().zip(expected) {
+        assert_eq!(name, pin);
+        let (c, e, k) = wire(&render_card(&card, &cx()));
+        assert_eq!(c, content, "{name}: content");
+        assert_eq!(e, embed, "{name}: embed");
+        assert_eq!(k, components, "{name}: components");
+    }
+}
+
+/// What Discord shows and what a prefix command may type, for each variant of
+/// a `/gp` choice enum, in dropdown order.
+fn pin_choices<T, D>(table: &[(D, &str, &[&str])], to_domain: impl Fn(T) -> D)
+where
+    T: poise::ChoiceParameter,
+    D: PartialEq + std::fmt::Debug + Copy,
+{
+    let list = T::list();
+    assert_eq!(list.len(), table.len());
+    for (choice, (variant, shown, aliases)) in list.iter().zip(table) {
+        assert_eq!(&choice.name, shown, "{variant:?}: the dropdown name");
+        let parsed = |name: &str| T::from_name(name).map(&to_domain);
+        assert_eq!(parsed(shown), Some(*variant), "{shown}");
+        for alias in *aliases {
+            assert_eq!(parsed(alias), Some(*variant), "alias {alias}");
+        }
+    }
+}
+
+/// The dropdown mirrors the domain's categories: a category added to
+/// `GpCategory` but not to `GpCategoryChoice` would be missing from `/gp start`.
+#[test]
+fn the_category_dropdown_lists_every_category_by_its_label() {
+    use poise::ChoiceParameter;
+    let list = GpCategoryChoice::list();
+    // Every category, plus Random and Pick several.
+    assert_eq!(list.len(), GpCategory::CATEGORIES.len() + 2);
+    for choice in list.iter() {
+        let parsed = GpCategoryChoice::from_name(&choice.name).expect(&choice.name);
+        assert_eq!(GpCategory::from(parsed).label(), choice.name);
+    }
+}
+
+/// The names Discord and prefix commands know the `/gp start` choices by,
+/// captured at the base (7c7ddd3b) from the domain enums' own derive, and
+/// asserted now on the command's mirror enums.
+#[test]
+fn the_gp_choices_keep_their_names() {
+    use crate::commands::music::gp_prompts::GpCategory as C;
+    pin_choices::<GpCategoryChoice, GpCategory>(
+        &[
+            (C::Random, "🎲 Random", &["random", "mixed"]),
+            (C::PickSeveral, "☑️ Pick several…", &["pick"]),
+            (C::Nostalgia, "🥹 Nostalgia", &["nostalgia"]),
+            (C::Dangerous, "🔥 Slightly More Dangerous", &["dangerous"]),
+            (
+                C::GoodGame,
+                "🎶 The Really Good Game Prompts",
+                &["good_game"],
+            ),
+            (C::Car, "🚗 Car / Driving", &["car"]),
+            (C::Chill, "🌿 Altered-State / Chill", &["chill"]),
+            (C::Emotional, "😭 Emotional", &["emotional"]),
+            (C::BadMusic, "🤢 Bad Music", &["bad_music"]),
+            (C::HyperSpecific, "🎧 Hyper-Specific", &["hyper_specific"]),
+            (C::Revealing, "🖤 Weirdly Revealing", &["revealing"]),
+            (C::Chaos, "😂 Game Chaos", &["chaos"]),
+            (C::OneWorders, "⚡ One-Worders", &["one_worders"]),
+            (C::Social, "🎤 Social / Go-To", &["social"]),
+            (C::Guilty, "😈 Guilty Pleasures / Secret Taste", &["guilty"]),
+            (C::Romance, "💋 Sex / Romance / Attraction", &["romance"]),
+            (C::Damage, "🥀 Emotional Damage", &["damage"]),
+            (C::Funny, "🕺 Chaotic / Funny", &["funny"]),
+            (C::Personality, "🧠 Personality Reveals", &["personality"]),
+        ],
+        GpCategory::from,
+    );
+    pin_choices::<GpRevealChoice, GpReveal>(
+        &[
+            (GpReveal::Round, "🤐 At the end of the round", &["round"]),
+            (GpReveal::Song, "🎉 After each song", &["song"]),
+        ],
+        GpReveal::from,
+    );
+}
+
+/// Each reveal variant's title, description, fields and colour, and the
+/// prompt cards' colours -- the parts the JSON tests above do not reach.
+#[test]
+fn gp_cards_keep_their_titles_and_colours() {
+    let res = GpTrackResult {
+        round_idx: 0,
+        total_rounds: 2,
+        track_idx: 0,
+        total_tracks: 2,
+        prompt: "Cry song.".into(),
+        submitter: A,
+        title: "song".into(),
+        url: "https://example.invalid/song".into(),
+        correct: vec![],
+        fooled_everyone: false,
+        likes: 3,
+        played_full: false,
+        guessable: false,
+        scores: vec![(A, 30)],
+        message: None,
+        text_channel: TC,
+        next: GpNext::Finished(vec![]),
+        failed: false,
+        held: false,
+        round: None,
+    };
+    let title = format!("{GP_ROUND_TITLE} 1/2 · {GP_SONG_TITLE} 1/2");
+    let names = |c: &crack_model::Card| -> Vec<String> {
+        c.fields.iter().map(|f| f.name.clone()).collect()
+    };
+    let check = |res: &GpTrackResult, colour: u32, tail: &str, fields: &[&str]| {
+        let c = gp_reveal_embed(&GpRevealView::from(res));
+        assert_eq!(c.title.as_deref(), Some(title.as_str()));
+        let d = c.description.as_deref().unwrap();
+        assert!(d.starts_with("*Cry song.*\n\n[**song**]"), "{d}");
+        assert!(d.ends_with(tail), "{d}");
+        assert_eq!(names(&c), fields);
+        assert_eq!(c.colour, Some(colour));
+    };
+    let revealed = format!("{GP_REVEAL} <@100>");
+    check(&res, 0x1F_8B_4C, &revealed, &[GP_LIKES, GP_SCOREBOARD]);
+    let failed = GpTrackResult {
+        failed: true,
+        ..res.clone()
+    };
+    check(
+        &failed,
+        0xE7_4C_3C,
+        &revealed,
+        &[GP_TRACK_FAILED, GP_SCOREBOARD],
+    );
+    let held = GpTrackResult {
+        held: true,
+        ..res.clone()
+    };
+    check(&held, 0x54_6E_7A, GP_REVEAL_HELD, &[GP_LIKES]);
+    let held_failed = GpTrackResult {
+        held: true,
+        failed: true,
+        ..res
+    };
+    check(&held_failed, 0xE7_4C_3C, GP_REVEAL_HELD, &[GP_TRACK_FAILED]);
+
+    let opened = GpWindowOpened {
+        round_idx: 1,
+        total_rounds: 3,
+        prompt: "p".into(),
+        category: None,
+        closes_at: NOW,
+        timer_secs: TIMER,
+        generation: 4,
+        text_channel: TC,
+    };
+    assert_eq!(
+        gp_prompt_embed(&GpPromptView::from(&opened)).colour,
+        Some(0x11_CA_80)
+    );
+    let closed = GpWindowClosed {
+        round_idx: 1,
+        total_rounds: 3,
+        prompt: "p".into(),
+        category: None,
+        prompt_message: None,
+        count: 4,
+        text_channel: TC,
+        next: GpNext::Finished(vec![]),
+    };
+    assert_eq!(
+        gp_prompt_closed_embed(&GpClosedView::from(&closed)).colour,
+        Some(0x54_6E_7A)
+    );
+
+    assert_eq!(gp_scoreboard_embed(&[], "t").colour, Some(0xF1_C4_0F));
+    assert_eq!(
+        gp_round_results_embed(&GpRoundView::from(&round_result("t"))).colour,
+        Some(0xC2_7C_0E)
+    );
+    assert_eq!(gp_rules_embed().colour, Some(0x11_CA_80));
+    assert_eq!(gp_pick_embed("x").colour, Some(0x11_CA_80));
+    let submitting = GpStatus::Submitting {
+        host: A,
+        round: 1,
+        total: 3,
+        prompt: "p".into(),
+        closes_at: NOW,
+        submitted: vec![],
+        scores: vec![],
+    };
+    assert_eq!(
+        gp_status_embed(&GpStatusView::from(&submitting)).colour,
+        Some(0x11_CA_80)
+    );
+    let playing = GpStatus::Playing {
+        round: 1,
+        total: 3,
+        track: 1,
+        tracks: 2,
+        prompt: "p".into(),
+        guessed: vec![],
+        likes: 0,
+        scores: vec![],
+    };
+    assert_eq!(
+        gp_status_embed(&GpStatusView::from(&playing)).colour,
+        Some(0x72_89_DA)
+    );
+}
+
+/// Players as the refs a song view holds.
+fn user_players(players: &[(UserId, String)]) -> Vec<(crack_model::UserRef, String)> {
+    players
+        .iter()
+        .map(|(id, name)| (id.to_ref(), name.clone()))
+        .collect()
+}
+
+/// poise takes `/gp start`'s slash description from the fn's doc comment.
+#[test]
+fn gp_start_keeps_its_description() {
+    assert_eq!(
+        gp_start().description.as_deref(),
+        Some("Start a game in your voice channel: pick a category, rounds, and the submission timer.")
+    );
+}
+
+/// Parsing is case-insensitive and refuses a name no variant has.
+#[test]
+fn the_gp_category_choice_parses_as_before() {
+    use poise::ChoiceParameter;
+    let parse = |name: &str| GpCategoryChoice::from_name(name).map(GpCategory::from);
+    for name in ["🎲 Random", "random", "RANDOM", "mixed"] {
+        assert_eq!(parse(name), Some(GpCategory::Random), "{name}");
+    }
+    assert_eq!(parse("pick"), Some(GpCategory::PickSeveral));
+    assert_eq!(parse("NOSTALGIA"), Some(GpCategory::Nostalgia));
+    assert_eq!(parse("nope"), None);
 }

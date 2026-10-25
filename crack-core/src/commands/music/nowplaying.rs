@@ -126,6 +126,7 @@ pub async fn nowplaying_internal(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::messaging::discord::ToDiscord;
 
     fn titled(title: &str) -> AuxMetadata {
         AuxMetadata {
@@ -146,7 +147,7 @@ mod tests {
     fn the_pointer_is_plain_content_that_never_pings() {
         let text = pointer_text(&titled("@everyone <@&1> <@2>"), None);
         let reply = pointer_reply(text.clone());
-        assert!(reply.embed.is_none());
+        assert!(reply.cards.is_empty());
         assert_eq!(reply.content.as_deref(), Some(text.as_str()));
         let am = serde_json::to_value(reply.allowed_mentions()).unwrap();
         assert_eq!(am["parse"], serde_json::json!([]));

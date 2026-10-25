@@ -230,7 +230,7 @@ pub async fn gp_open_round(pb: &GpPlayback, opened: GpWindowOpened) -> Result<()
     if !pb.data.gp_is_active(guild_id) {
         return Ok(());
     }
-    let msg_id = match gp_send(pb, opened.text_channel, GpCard::Prompt(opened.clone())).await {
+    let msg_id = match gp_send(pb, opened.text_channel, GpCard::Prompt((&opened).into())).await {
         Ok(id) => id,
         Err(e) => {
             gp_abort(
@@ -309,7 +309,7 @@ pub async fn gp_after_close(pb: GpPlayback, closed: GpWindowClosed) -> Result<()
         &pb,
         closed.prompt_message,
         closed.text_channel,
-        GpCard::PromptClosed(closed.clone()),
+        GpCard::PromptClosed((&closed).into()),
     )
     .await;
     gp_follow(pb, closed.next, closed.text_channel, false).await
@@ -339,7 +339,7 @@ async fn gp_follow(
                 &*pb.transport,
                 text_channel,
                 &gp_rendered(GpCard::Scoreboard {
-                    scores,
+                    scores: user_refs(&scores),
                     title: GP_GAME_OVER,
                     lead: None,
                 }),
@@ -386,10 +386,7 @@ pub async fn gp_play_track(pb: &GpPlayback, start: GpTrackStart) -> Result<(), E
     let msg_id = match gp_send(
         pb,
         start.text_channel,
-        GpCard::Song {
-            start: start.clone(),
-            guild: guild_id,
-        },
+        GpCard::Song((&start, guild_id).into()),
     )
     .await
     {
@@ -640,7 +637,7 @@ pub async fn gp_advance_track(
         &pb,
         res.message,
         res.text_channel,
-        GpCard::Reveal(res.clone()),
+        GpCard::Reveal((&res).into()),
     )
     .await;
     // The round's last song: sum the round up at the bottom of the channel
@@ -650,7 +647,7 @@ pub async fn gp_advance_track(
     // written down again: the snapshot that ended the round went out before
     // this post, and a round left unmarked is posted by the next resume.
     if let Some(round) = &res.round {
-        let out = gp_rendered(GpCard::RoundResults(round.clone()));
+        let out = gp_rendered(GpCard::RoundResults(round.into()));
         match courier::post_message(&*pb.transport, res.text_channel, &out).await {
             Ok(_) => pb.data.gp_mark_results_posted(guild_id, round.round_idx),
             Err(e) => tracing::warn!(

@@ -6,76 +6,36 @@
 //! runs from `/app`, so a runtime read would silently miss there).
 
 use once_cell::sync::Lazy;
-use poise::ChoiceParameter;
 use rand::{seq::SliceRandom, Rng};
 use serde::Deserialize;
 
-/// What the host picks in `/gp start`'s category dropdown. The first `#[name]`
-/// is what Discord shows; the others are what prefix commands can type
-/// (`!gp start nostalgia 5`). The first two are not categories: Random is all
-/// of them, and Pick several is answered with a menu to tick some. A game
-/// holds the outcome as [`GpCategories`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ChoiceParameter)]
+/// What the host picks in `/gp start`'s category dropdown. The first two are
+/// not categories: Random is all of them, and Pick several is answered with a
+/// menu to tick some. A game holds the outcome as [`GpCategories`]. The
+/// command's own copy, with the names Discord and prefix commands know, is
+/// `GpCategoryChoice`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GpCategory {
     /// First, so it tops the dropdown; also what `/gp start` plays when no
     /// category is given. `mixed` is the name it had before.
-    #[name = "🎲 Random"]
-    #[name = "random"]
-    #[name = "mixed"]
     Random,
-    #[name = "☑️ Pick several…"]
-    #[name = "pick"]
     PickSeveral,
-    #[name = "🥹 Nostalgia"]
-    #[name = "nostalgia"]
     Nostalgia,
-    #[name = "🔥 Slightly More Dangerous"]
-    #[name = "dangerous"]
     Dangerous,
-    #[name = "🎶 The Really Good Game Prompts"]
-    #[name = "good_game"]
     GoodGame,
-    #[name = "🚗 Car / Driving"]
-    #[name = "car"]
     Car,
-    #[name = "🌿 Altered-State / Chill"]
-    #[name = "chill"]
     Chill,
-    #[name = "😭 Emotional"]
-    #[name = "emotional"]
     Emotional,
-    #[name = "🤢 Bad Music"]
-    #[name = "bad_music"]
     BadMusic,
-    #[name = "🎧 Hyper-Specific"]
-    #[name = "hyper_specific"]
     HyperSpecific,
-    #[name = "🖤 Weirdly Revealing"]
-    #[name = "revealing"]
     Revealing,
-    #[name = "😂 Game Chaos"]
-    #[name = "chaos"]
     Chaos,
-    #[name = "⚡ One-Worders"]
-    #[name = "one_worders"]
     OneWorders,
-    #[name = "🎤 Social / Go-To"]
-    #[name = "social"]
     Social,
-    #[name = "😈 Guilty Pleasures / Secret Taste"]
-    #[name = "guilty"]
     Guilty,
-    #[name = "💋 Sex / Romance / Attraction"]
-    #[name = "romance"]
     Romance,
-    #[name = "🥀 Emotional Damage"]
-    #[name = "damage"]
     Damage,
-    #[name = "🕺 Chaotic / Funny"]
-    #[name = "funny"]
     Funny,
-    #[name = "🧠 Personality Reveals"]
-    #[name = "personality"]
     Personality,
 }
 
@@ -132,7 +92,32 @@ impl GpCategory {
 
     /// The display name (with emoji), as Discord shows it.
     pub fn display(self) -> &'static str {
-        self.name()
+        self.label()
+    }
+
+    /// The name Discord shows for this choice, emoji included.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Random => "🎲 Random",
+            Self::PickSeveral => "☑️ Pick several…",
+            Self::Nostalgia => "🥹 Nostalgia",
+            Self::Dangerous => "🔥 Slightly More Dangerous",
+            Self::GoodGame => "🎶 The Really Good Game Prompts",
+            Self::Car => "🚗 Car / Driving",
+            Self::Chill => "🌿 Altered-State / Chill",
+            Self::Emotional => "😭 Emotional",
+            Self::BadMusic => "🤢 Bad Music",
+            Self::HyperSpecific => "🎧 Hyper-Specific",
+            Self::Revealing => "🖤 Weirdly Revealing",
+            Self::Chaos => "😂 Game Chaos",
+            Self::OneWorders => "⚡ One-Worders",
+            Self::Social => "🎤 Social / Go-To",
+            Self::Guilty => "😈 Guilty Pleasures / Secret Taste",
+            Self::Romance => "💋 Sex / Romance / Attraction",
+            Self::Damage => "🥀 Emotional Damage",
+            Self::Funny => "🕺 Chaotic / Funny",
+            Self::Personality => "🧠 Personality Reveals",
+        }
     }
 
     /// Every prompt this category holds; none for Random and Pick several.
@@ -381,39 +366,24 @@ mod test {
         let distinct: HashSet<&str> = every.iter().copied().collect();
         assert_eq!(distinct.len(), every.len(), "a prompt is in two categories");
 
-        // Every JSON category is a choice, after Random and Pick several; names
-        // match what Discord shows.
-        let choices = GpCategory::list();
-        assert_eq!(choices.len(), cats.len() + 2, "enum and JSON disagree");
-        assert!(choices.len() <= 25, "Discord caps choices at 25");
-        assert_eq!(choices[0].name, "🎲 Random", "Random tops the dropdown");
-        assert_eq!(choices[1].name, "☑️ Pick several…");
+        // Every JSON category is a dropdown entry, after Random and Pick
+        // several; names match what Discord shows.
+        let labels: Vec<&str> = [GpCategory::Random, GpCategory::PickSeveral]
+            .iter()
+            .chain(&GpCategory::CATEGORIES)
+            .map(GpCategory::label)
+            .collect();
+        assert_eq!(labels.len(), cats.len() + 2, "enum and JSON disagree");
+        assert!(labels.len() <= 25, "Discord caps choices at 25");
+        assert_eq!(labels[0], "🎲 Random", "Random tops the dropdown");
+        assert_eq!(labels[1], "☑️ Pick several…");
         assert_eq!(GpCategory::CATEGORIES.len(), cats.len());
-        for (c, choice) in cats.iter().zip(&choices[2..]) {
-            assert_eq!(choice.name, c.name, "dropdown order follows the JSON");
-            let parsed = GpCategory::from_name(&choice.name).expect("from_name(display)");
+        for (c, label) in cats.iter().zip(&labels[2..]) {
+            assert_eq!(*label, c.name, "dropdown order follows the JSON");
+            let parsed = GpCategory::from_key(&c.key).expect("from_key");
             assert_eq!(parsed.key(), Some(c.key.as_str()));
-            assert_eq!(GpCategory::from_key(&c.key), Some(parsed));
-            assert_eq!(
-                GpCategory::from_name(&c.key),
-                Some(parsed),
-                "alias {}",
-                c.key
-            );
+            assert_eq!(parsed.label(), c.name);
         }
-        for name in ["🎲 Random", "random", "RANDOM", "mixed"] {
-            assert_eq!(
-                GpCategory::from_name(name),
-                Some(GpCategory::Random),
-                "{name}"
-            );
-        }
-        assert_eq!(GpCategory::from_name("pick"), Some(GpCategory::PickSeveral));
-        assert_eq!(
-            GpCategory::from_name("NOSTALGIA"),
-            Some(GpCategory::Nostalgia)
-        );
-        assert_eq!(GpCategory::from_name("nope"), None);
         assert_eq!(GpCategory::Random.key(), None);
         assert_eq!(GpCategory::PickSeveral.key(), None);
         assert_eq!(GpCategory::from_key("mixed"), None);

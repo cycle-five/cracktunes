@@ -1,3 +1,4 @@
+use crack_types::discord::ToRef;
 use poise::serenity_prelude::{Colour, Permissions};
 use serenity::all::{Attachment, CreateAttachment, GuildId, Role};
 use serenity::builder::EditRole;
@@ -57,8 +58,8 @@ pub async fn create(
     send_reply(
         &ctx,
         CrackedMessage::RoleCreated {
-            role_name: role.name,
-            role_id: role.id,
+            role_name: role.name.to_string(),
+            role_id: role.id.to_ref(),
         },
         true,
     )

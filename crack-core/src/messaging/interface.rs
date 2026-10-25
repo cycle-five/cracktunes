@@ -1,6 +1,7 @@
 use crate::errors::CrackedError;
 use crate::http_utils::SendMessageParams;
 use crate::messaging::cards::NowPlayingCard;
+use crate::messaging::discord;
 use crate::messaging::format::{
     duration_text, http_url, Progress, TrackLabel, FIELD_MAX, INLINE_TITLE_MAX,
 };
@@ -22,23 +23,20 @@ use crate::{
     utils::{get_requesting_user, get_track_handle_metadata},
     Context as CrackContext, Error,
 };
+use crack_model::{Author, Button, ButtonStyle, Card, Field, Footer, Mention, Row, UserRef};
+use crack_types::discord::ToRef;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;
 use poise::ReplyHandle;
-use serenity::all::EmbedField;
 use serenity::all::GuildId;
 use serenity::small_fixed_array::FixedString;
 use serenity::{
-    all::{ButtonStyle, CreateEmbed, CreateMessage, Message},
     all::{CacheHttp, GenericChannelId, Mentionable, UserId},
-    builder::{
-        CreateActionRow, CreateButton, CreateComponent, CreateEmbedAuthor, CreateEmbedFooter,
-    },
+    all::{CreateMessage, Message},
 };
 use songbird::input::AuxMetadata;
 use songbird::tracks::{LoopState, PlayMode, TrackHandle, TrackState};
-use std::borrow::Cow;
 use std::time::Duration;
 
 //###########################################################################//
@@ -51,38 +49,70 @@ use std::time::Duration;
 
 /// Create and sends an log message as an embed.
 /// FIXME: The avatar_url won't always be available. How do we best handle this?
-pub async fn build_log_embed<'a>(
-    title: &'a str,
-    description: &'a str,
-    avatar_url: &'a str,
-) -> Result<CreateEmbed<'a>, CrackedError> {
+pub async fn build_log_embed(
+    title: &str,
+    description: &str,
+    avatar_url: &str,
+) -> Result<Card, CrackedError> {
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let footer = CreateEmbedFooter::new(now_time_str);
-    Ok(CreateEmbed::default()
-        .title(title)
-        .description(description)
-        .thumbnail(avatar_url, None)
-        .footer(footer))
+    Ok(log_card(title, description, avatar_url, now_time_str))
+}
+
+/// [`build_log_embed`] at a given time.
+fn log_card(title: &str, description: &str, avatar_url: &str, now_time_str: String) -> Card {
+    Card {
+        title: Some(title.to_owned()),
+        description: Some(description.to_owned()),
+        thumbnail: Some(avatar_url.to_owned()),
+        footer: Some(Footer {
+            text: now_time_str,
+            icon_url: None,
+        }),
+        ..Card::default()
+    }
 }
 
 /// Build a log embed with(out?) a thumbnail.
-pub async fn build_log_embed_thumb<'a>(
-    guild_name: &'a str,
-    title: &'a str,
-    id: &'a str,
-    description: &'a str,
-    avatar_url: &'a str,
-) -> CrackedResult<CreateEmbed<'a>> {
+pub async fn build_log_embed_thumb(
+    guild_name: &str,
+    title: &str,
+    id: &str,
+    description: &str,
+    avatar_url: &str,
+) -> CrackedResult<Card> {
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let footer_str = format!("{} | {} | {}", guild_name, id, now_time_str);
-    let footer = CreateEmbedFooter::new(footer_str);
-    let author = CreateEmbedAuthor::new(title).icon_url(avatar_url);
-    Ok(CreateEmbed::default()
-        .author(author)
-        // .title(title)
-        .description(description)
-        // .thumbnail(avatar_url)
-        .footer(footer))
+    Ok(log_thumb_card(
+        guild_name,
+        title,
+        id,
+        description,
+        avatar_url,
+        &now_time_str,
+    ))
+}
+
+/// [`build_log_embed_thumb`] at a given time.
+fn log_thumb_card(
+    guild_name: &str,
+    title: &str,
+    id: &str,
+    description: &str,
+    avatar_url: &str,
+    now_time_str: &str,
+) -> Card {
+    Card {
+        author: Some(Author {
+            name: title.to_owned(),
+            url: None,
+            icon_url: Some(avatar_url.to_owned()),
+        }),
+        description: Some(description.to_owned()),
+        footer: Some(Footer {
+            text: format!("{} | {} | {}", guild_name, id, now_time_str),
+            icon_url: None,
+        }),
+        ..Card::default()
+    }
 }
 
 /// Send a log message as a embed with a thumbnail. An event-log send, not
@@ -97,10 +127,13 @@ pub async fn send_log_embed_thumb(
     description: &str,
     avatar_url: &str,
 ) -> Result<Message, Error> {
-    let embed = build_log_embed_thumb(guild_name, title, id, description, avatar_url).await?;
+    let card = build_log_embed_thumb(guild_name, title, id, description, avatar_url).await?;
 
     channel
-        .send_message(cache_http.http(), CreateMessage::new().embed(embed))
+        .send_message(
+            cache_http.http(),
+            CreateMessage::new().embed(discord::embed(&card)),
+        )
         .await
         .map_err(Into::into)
 }
@@ -108,10 +141,10 @@ pub async fn send_log_embed_thumb(
 // ------ Queue Display / Interaction ------ //
 
 /// Converts a user id to a string, with special handling for autoplay.
-pub fn requesting_user_to_string(user_id: UserId) -> String {
-    match user_id.get() {
-        1 => "(auto)".to_string(),
-        _ => user_id.mention().to_string(),
+pub fn requesting_user_to_string(user: &UserRef) -> String {
+    match user.raw().as_str() {
+        "1" => "(auto)".to_string(),
+        _ => Mention::User(user.clone()).to_string(),
     }
 }
 
@@ -168,7 +201,7 @@ impl QueueEntry {
             "{}. {} • {}\n",
             self.number,
             track_text(&label),
-            requesting_user_to_string(self.requester),
+            requesting_user_to_string(&self.requester.to_ref()),
         )
     }
 }
@@ -222,7 +255,7 @@ fn track_text(label: &TrackLabel) -> String {
 }
 
 /// Creates a queue embed.
-pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEmbed<'static> {
+pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> Card {
     let (description, thumbnail) = if let Some(first) = tracks.first() {
         let metadata = get_track_handle_metadata(first).await.unwrap_or_default();
         // Only a web URL: an empty or relative one is left out, not logged.
@@ -238,20 +271,32 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
         (QUEUE_NOTHING_IS_PLAYING.to_string(), None)
     };
 
-    let mut embed = CreateEmbed::default();
-    if let Some(t) = thumbnail {
-        embed = embed.thumbnail(t.to_string(), None);
+    Card {
+        thumbnail: thumbnail.map(|t| t.to_string()),
+        fields: vec![
+            Field {
+                name: QUEUE_NOW_PLAYING.to_owned(),
+                value: description,
+                inline: false,
+            },
+            Field {
+                name: QUEUE_UP_NEXT.to_owned(),
+                value: create_queue_page(tracks, page).await,
+                inline: false,
+            },
+        ],
+        footer: Some(Footer {
+            text: format!(
+                "{} {} {} {}",
+                QUEUE_PAGE,
+                page + 1,
+                QUEUE_PAGE_OF,
+                calculate_num_pages(tracks),
+            ),
+            icon_url: None,
+        }),
+        ..Card::default()
     }
-    embed
-        .field(QUEUE_NOW_PLAYING, Cow::Owned(description), false)
-        .field(QUEUE_UP_NEXT, create_queue_page(tracks, page).await, false)
-        .footer(CreateEmbedFooter::new(format!(
-            "{} {} {} {}",
-            QUEUE_PAGE,
-            page + 1,
-            QUEUE_PAGE_OF,
-            calculate_num_pages(tracks),
-        )))
 }
 
 // ------ NOW PLAYING ------ //
@@ -262,7 +307,7 @@ pub async fn create_queue_embed(tracks: &[TrackHandle], page: usize) -> CreateEm
 /// `get_info` (`(false, false)` when it does not answer).
 async fn read_card(track: &TrackHandle) -> (NowPlayingCard, (bool, bool)) {
     let metadata = get_track_handle_metadata(track).await.unwrap_or_default();
-    let requester = get_requesting_user(track).await.ok();
+    let requester = get_requesting_user(track).await.ok().map(|u| u.to_ref());
     let label = TrackLabel::from_metadata(&metadata);
     let info = tokio::time::timeout(crate::music::ops::TRACK_INFO_TIMEOUT, track.get_info())
         .await
@@ -295,7 +340,7 @@ pub async fn now_playing_card(track: &TrackHandle) -> NowPlayingCard {
 pub async fn now_playing_status_card(track: &TrackHandle, guild: GuildId) -> NowPlayingCard {
     let (mut card, (paused, looping)) = read_card(track).await;
     card.controls = Some(crate::messaging::buttons::Controls {
-        guild,
+        guild: guild.to_ref(),
         track: track.uuid(),
         paused,
         looping,
@@ -335,15 +380,17 @@ fn on_repeat(loops: LoopState) -> bool {
 // ---------------------- Lyrics ---------------------------- //
 
 /// Creates a lyrics embed for the given track.
-pub async fn create_lyrics_embed_old(
-    track: String,
-    artists: String,
-    lyric: String,
-) -> CreateEmbed<'static> {
-    CreateEmbed::default()
-        .author(CreateEmbedAuthor::new(artists))
-        .title(track)
-        .description(lyric)
+pub async fn create_lyrics_embed_old(track: String, artists: String, lyric: String) -> Card {
+    Card {
+        title: Some(track),
+        description: Some(lyric),
+        author: Some(Author {
+            name: artists,
+            url: None,
+            icon_url: None,
+        }),
+        ..Card::default()
+    }
 }
 /// The author line of a lyrics embed, cut to the 255 bytes a
 /// `FixedString<u8>` holds, on a character boundary. lyric_finder can credit a
@@ -385,27 +432,25 @@ pub async fn create_lyrics_embed(
 // ---------------------- Navigation Buttons ---------------------------- //
 
 /// Builds a single navigation button for the queue.
-pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> CreateButton<'_> {
-    CreateButton::new(label.to_string().to_ascii_lowercase())
-        .label(label)
-        .style(ButtonStyle::Primary)
-        .disabled(is_disabled)
-        .to_owned()
+pub fn create_single_nav_btn(label: &str, is_disabled: bool) -> Button {
+    Button {
+        id: label.to_ascii_lowercase(),
+        label: Some(label.to_owned()),
+        emoji: None,
+        style: ButtonStyle::Primary,
+        disabled: is_disabled,
+    }
 }
 
 /// Builds the four navigation buttons for the queue.
-pub fn create_nav_btns<'att>(page: usize, num_pages: usize) -> Vec<CreateComponent<'att>> {
+pub fn create_nav_btns(page: usize, num_pages: usize) -> Vec<Row> {
     let (cant_left, cant_right) = (page < 1, page >= num_pages - 1);
-    // serenity's components-v2 rework wraps every top level component in
-    // `CreateComponent`; an action row is now one variant of that enum.
-    vec![CreateComponent::ActionRow(CreateActionRow::Buttons(
-        Cow::Owned(vec![
-            create_single_nav_btn("<<", cant_left),
-            create_single_nav_btn("<", cant_left),
-            create_single_nav_btn(">", cant_right),
-            create_single_nav_btn(">>", cant_right),
-        ]),
-    ))]
+    vec![Row::Buttons(vec![
+        create_single_nav_btn("<<", cant_left),
+        create_single_nav_btn("<", cant_left),
+        create_single_nav_btn(">", cant_right),
+        create_single_nav_btn(">>", cant_right),
+    ])]
 }
 
 // -------- Search Results -------- //
@@ -413,33 +458,47 @@ pub fn create_nav_btns<'att>(page: usize, num_pages: usize) -> Vec<CreateCompone
 /// The search results reply: a line of text, then one embed per hit, in
 /// order.
 #[must_use]
-pub fn create_search_results_reply(results: Vec<CreateEmbed<'static>>) -> Rendered {
-    let mut results = results.into_iter();
-    let mut out = Rendered::text("Search results:");
-    out.embed = results.next();
-    out.embeds_extra = results.collect();
-    out
+pub fn create_search_results_reply(results: Vec<Card>) -> Rendered {
+    Rendered::text("Search results:").with_cards(results)
 }
+/// The card for a query that could not be parsed.
+fn search_failed_card() -> Card {
+    Card {
+        description: Some(format!(
+            "{}",
+            CrackedError::Other("Something went wrong while parsing your query!")
+        )),
+        footer: Some(Footer {
+            text: "Search failed!".to_owned(),
+            icon_url: None,
+        }),
+        ..Card::default()
+    }
+}
+
+/// The card for a search with no query.
+fn no_query_card() -> Card {
+    Card {
+        description: Some(format!("{}", CrackedError::Other("No query provided!"))),
+        footer: Some(Footer {
+            text: "No query provided!".to_owned(),
+            icon_url: None,
+        }),
+        ..Card::default()
+    }
+}
+
 /// Sends a message to the user indicating that the search failed.
 pub async fn send_search_failed(ctx: &CrackContext<'_>) -> Result<(), CrackedError> {
     let _guild_id = ctx.guild_id().unwrap();
-    let embed = CreateEmbed::default()
-        .description(format!(
-            "{}",
-            CrackedError::Other("Something went wrong while parsing your query!")
-        ))
-        .footer(CreateEmbedFooter::new("Search failed!"));
-    let _msg = send_embed_response_poise(*ctx, embed).await?;
+    let _msg = send_embed_response_poise(*ctx, search_failed_card()).await?;
     //ctx.data().add_msg_to_cache(guild_id, msg).await;
     Ok(())
 }
 
 /// Sends a message to the user indicating that no query was provided.
 pub async fn send_no_query_provided(ctx: &CrackContext<'_>) -> Result<(), CrackedError> {
-    let embed = CreateEmbed::default()
-        .description(format!("{}", CrackedError::Other("No query provided!")))
-        .footer(CreateEmbedFooter::new("No query provided!"));
-    send_embed_response_poise(*ctx, embed).await?;
+    send_embed_response_poise(*ctx, no_query_card()).await?;
     Ok(())
 }
 
@@ -455,9 +514,16 @@ pub async fn send_search_message_as<'ctx>(
     ctx: &'ctx CrackContext<'_>,
     ephemeral: bool,
 ) -> CrackedResult<ReplyHandle<'ctx>> {
-    let embed = CreateEmbed::default().description(format!("{}", CrackedMessage::Search));
-    let msg = crate::utils::send_embed_response_poise_as(*ctx, embed, ephemeral).await?;
+    let msg = crate::utils::send_embed_response_poise_as(*ctx, searching_card(), ephemeral).await?;
     Ok(msg)
+}
+
+/// The "searching…" notice.
+fn searching_card() -> Card {
+    Card {
+        description: Some(format!("{}", CrackedMessage::Search)),
+        ..Card::default()
+    }
 }
 
 /// Send the search results to the user.
@@ -476,16 +542,34 @@ pub async fn create_search_response<'ctx>(
 
     let now_time_str = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let fields = build_embed_fields(res).await;
-    let author = CreateEmbedAuthor::new(name);
-    let title = format!("Search results for: {}", query);
-    let footer = CreateEmbedFooter::new(format!("{} * {} * {}", user_id, guild_id, now_time_str));
-    let embed = CreateEmbed::new()
-        .author(author)
-        .title(title)
-        .footer(footer)
-        .fields(fields.into_iter().map(|f| (f.name, f.value, f.inline)));
+    let card = search_response_card(&name, &query, user_id, guild_id, &now_time_str, fields);
 
-    send_embed_response_poise(*ctx, embed).await
+    send_embed_response_poise(*ctx, card).await
+}
+
+/// The search results listing: the asker, the query, one field per hit.
+fn search_response_card(
+    name: &str,
+    query: &str,
+    user_id: UserId,
+    guild_id: GuildId,
+    now_time_str: &str,
+    fields: Vec<Field>,
+) -> Card {
+    Card {
+        title: Some(format!("Search results for: {}", query)),
+        author: Some(Author {
+            name: name.to_owned(),
+            url: None,
+            icon_url: None,
+        }),
+        fields,
+        footer: Some(Footer {
+            text: format!("{} * {} * {}", user_id, guild_id, now_time_str),
+            icon_url: None,
+        }),
+        ..Card::default()
+    }
 }
 
 // ---------------------- Joining Channel ---------------------------- //
@@ -497,7 +581,7 @@ pub async fn send_joining_channel<'ctx>(
     channel_id: GenericChannelId,
 ) -> Result<ReplyHandle<'ctx>, Error> {
     let msg = CrackedMessage::Summon {
-        mention: channel_id.mention(),
+        room: channel_id.to_ref(),
     };
     let params = SendMessageParams::new(msg).with_channel(channel_id);
 
@@ -508,7 +592,7 @@ pub async fn send_joining_channel<'ctx>(
 
 /// One field per search hit: `[title]`, then `(link) - 3:45`. The length
 /// reads as in every music message, and is left out when unknown.
-async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
+async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<Field> {
     tracing::warn!("num elems: {:?}", elems.len());
     let mut fields = vec![];
     for elem in elems.into_iter() {
@@ -518,21 +602,30 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<EmbedField> {
             Some(length) => format!("({link}) - {length}"),
             None => format!("({link})"),
         };
-        fields.push(EmbedField::new(format!("[{}]", title), value, true));
+        fields.push(Field {
+            name: format!("[{}]", title),
+            value,
+            inline: true,
+        });
     }
     fields
 }
 
 #[cfg(test)]
 mod test {
+    use super::discord;
+    use crate::messaging::discord::ToDiscord;
     /// Every hit is in the one reply, in order, under its line of text.
     #[test]
     fn search_results_are_one_reply_with_every_hit_in_order() {
-        use serenity::all::CreateEmbed;
+        let titled = |t: &str| super::Card {
+            title: Some(t.to_owned()),
+            ..super::Card::default()
+        };
         let out = super::create_search_results_reply(vec![
-            CreateEmbed::new().title("(1)[a]"),
-            CreateEmbed::new().title("(2)[b]"),
-            CreateEmbed::new().title("(3)[c]"),
+            titled("(1)[a]"),
+            titled("(2)[b]"),
+            titled("(3)[c]"),
         ]);
         assert_eq!(out.content.as_deref(), Some("Search results:"));
         let v = serde_json::to_value(out.to_message()).unwrap();
@@ -569,6 +662,7 @@ mod test {
     async fn the_status_card_of_a_stalled_driver_has_default_controls() {
         use super::now_playing_status_card;
         use crate::messaging::buttons::Controls;
+        use crack_types::discord::ToRef;
         use std::time::Duration;
         let (_data, call, ids, _rx) = crate::music::ops::test_support::queue_of(1).await;
         let handle = call.lock().await.queue().current_queue()[0].clone();
@@ -582,7 +676,7 @@ mod test {
         assert_eq!(
             card.controls,
             Some(Controls {
-                guild,
+                guild: guild.to_ref(),
                 track: ids[0],
                 paused: false,
                 looping: false
@@ -790,7 +884,7 @@ mod test {
 
         let embed = super::create_queue_embed(&tracks, 0).await;
 
-        let wire = serde_json::to_string(&embed).unwrap();
+        let wire = serde_json::to_string(&super::discord::embed(&embed)).unwrap();
         assert!(wire.contains("**(untitled)**"), "{wire}");
         assert!(!wire.contains("00:00"), "{wire}");
     }
@@ -860,7 +954,10 @@ mod test {
             super::create_queue_page(&tracks, 0).await,
             "1. **Next** • <@9>\n"
         );
-        let embed = serde_json::to_value(super::create_queue_embed(&tracks, 0).await).unwrap();
+        let embed = serde_json::to_value(super::discord::embed(
+            &super::create_queue_embed(&tracks, 0).await,
+        ))
+        .unwrap();
         assert_eq!(embed["fields"][0]["value"], "**Playing**");
     }
 
@@ -884,7 +981,10 @@ mod test {
                 ..Default::default()
             };
             let (_call, tracks) = queue_with(vec![(metadata, None)]).await;
-            let embed = serde_json::to_value(super::create_queue_embed(&tracks, 0).await).unwrap();
+            let embed = serde_json::to_value(super::discord::embed(
+                &super::create_queue_embed(&tracks, 0).await,
+            ))
+            .unwrap();
             assert_eq!(
                 embed.get("thumbnail").and_then(|t| t["url"].as_str()),
                 want,
@@ -914,10 +1014,14 @@ mod test {
     #[test]
     fn test_requesting_user_to_string() {
         use super::requesting_user_to_string;
+        use crack_types::discord::ToRef;
         use serenity::model::id::UserId;
 
-        assert_eq!(requesting_user_to_string(UserId::new(1)), "(auto)");
-        assert_eq!(requesting_user_to_string(UserId::new(2)), "<@2>");
+        assert_eq!(
+            requesting_user_to_string(&UserId::new(1).to_ref()),
+            "(auto)"
+        );
+        assert_eq!(requesting_user_to_string(&UserId::new(2).to_ref()), "<@2>");
     }
 
     /// 🪤 Measured on production v0.11.0: lyric_finder credited a song to
@@ -950,9 +1054,176 @@ mod test {
         let embed = super::build_log_embed(title, description, avatar_url).await;
         assert!(embed.is_ok());
         let embed = embed.unwrap();
-        // Previously this exercised the unstable `std::fmt::FormattingOptions`
-        // API; the plain `Debug` impl gives the same coverage on stable.
-        let formatted_output = format!("{embed:?}");
-        assert!(!formatted_output.is_empty());
+        assert_eq!(embed.title.as_deref(), Some(title));
+        assert_eq!(embed.description.as_deref(), Some(description));
+        assert_eq!(embed.thumbnail.as_deref(), Some(avatar_url));
+        // `YYYY-MM-DD HH:MM:SS`
+        assert_eq!(embed.footer.map(|f| f.text.len()), Some(19));
+    }
+
+    #[tokio::test]
+    async fn test_build_log_embed_thumb() {
+        let card =
+            super::build_log_embed_thumb("guild", "title", "42", "description", "avatar_url")
+                .await
+                .unwrap();
+        let author = card.author.unwrap();
+        assert_eq!(author.name, "title");
+        assert_eq!(author.icon_url.as_deref(), Some("avatar_url"));
+        assert_eq!(card.description.as_deref(), Some("description"));
+        let footer = card.footer.unwrap().text;
+        let stamp = footer.strip_prefix("guild | 42 | ").expect(&footer);
+        // `YYYY-MM-DD HH:MM:SS`
+        assert_eq!(stamp.len(), 19, "{footer}");
+    }
+
+    fn wire<T: serde::Serialize>(t: &T) -> String {
+        serde_json::to_string(t).unwrap()
+    }
+
+    #[tokio::test]
+    async fn the_queue_card_renders_as_before() {
+        let entry = |t: &str, thumb: Option<&str>, requester| {
+            (
+                songbird::input::AuxMetadata {
+                    title: Some(t.into()),
+                    thumbnail: thumb.map(str::to_owned),
+                    source_url: Some("https://youtu.be/x".into()),
+                    duration: Some(std::time::Duration::from_secs(225)),
+                    ..Default::default()
+                },
+                requester,
+            )
+        };
+        let (_call, tracks) = queue_with(vec![
+            entry("Playing", Some("https://i.ytimg.com/a.jpg"), None),
+            entry("Next", None, Some(9)),
+            entry("Third", None, Some(9)),
+        ])
+        .await;
+        assert_eq!(
+            wire(&discord::embed(
+                &super::create_queue_embed(&tracks, 0).await
+            )),
+            r#"{"type":"rich","footer":{"text":"Page 1 of 1","icon_url":null},"thumbnail":{"url":"https://i.ytimg.com/a.jpg","description":null},"fields":[{"name":"🔊 Now playing","value":"[**Playing**](https://youtu.be/x) • 3:45","inline":false},{"name":"⌛ Up next","value":"1. [**Next**](https://youtu.be/x) • 3:45 • <@9>\n2. [**Third**](https://youtu.be/x) • 3:45 • <@9>\n","inline":false}]}"#
+        );
+        let (_empty_call, empty) = queue_with(vec![]).await;
+        assert_eq!(
+            wire(&discord::embed(&super::create_queue_embed(&empty, 0).await)),
+            r#"{"type":"rich","footer":{"text":"Page 1 of 1","icon_url":null},"fields":[{"name":"🔊 Now playing","value":"Nothing is playing!","inline":false},{"name":"⌛ Up next","value":"There's no songs up next!","inline":false}]}"#
+        );
+    }
+
+    #[test]
+    fn the_nav_buttons_render_as_before() {
+        let nav = |page, pages| wire(&discord::action_rows(&super::create_nav_btns(page, pages)));
+        assert_eq!(
+            nav(0, 3),
+            r#"[{"type":1,"components":[{"style":1,"type":2,"custom_id":"<<","label":"<<","disabled":true},{"style":1,"type":2,"custom_id":"<","label":"<","disabled":true},{"style":1,"type":2,"custom_id":">","label":">","disabled":false},{"style":1,"type":2,"custom_id":">>","label":">>","disabled":false}]}]"#
+        );
+        assert_eq!(
+            nav(1, 3),
+            r#"[{"type":1,"components":[{"style":1,"type":2,"custom_id":"<<","label":"<<","disabled":false},{"style":1,"type":2,"custom_id":"<","label":"<","disabled":false},{"style":1,"type":2,"custom_id":">","label":">","disabled":false},{"style":1,"type":2,"custom_id":">>","label":">>","disabled":false}]}]"#
+        );
+        assert_eq!(
+            nav(2, 3),
+            r#"[{"type":1,"components":[{"style":1,"type":2,"custom_id":"<<","label":"<<","disabled":false},{"style":1,"type":2,"custom_id":"<","label":"<","disabled":false},{"style":1,"type":2,"custom_id":">","label":">","disabled":true},{"style":1,"type":2,"custom_id":">>","label":">>","disabled":true}]}]"#
+        );
+        assert_eq!(
+            nav(0, 1),
+            r#"[{"type":1,"components":[{"style":1,"type":2,"custom_id":"<<","label":"<<","disabled":true},{"style":1,"type":2,"custom_id":"<","label":"<","disabled":true},{"style":1,"type":2,"custom_id":">","label":">","disabled":true},{"style":1,"type":2,"custom_id":">>","label":">>","disabled":true}]}]"#
+        );
+    }
+
+    #[test]
+    fn the_search_results_reply_renders_as_before() {
+        let titled = |t: &str| super::Card {
+            title: Some(t.to_owned()),
+            ..super::Card::default()
+        };
+        let out = super::create_search_results_reply(vec![
+            titled("(1)[a]"),
+            titled("(2)[b]"),
+            titled("(3)[c]"),
+        ]);
+        assert_eq!(
+            wire(&out.to_message()),
+            r#"{"content":"Search results:","tts":false,"embeds":[{"title":"(1)[a]","type":"rich"},{"title":"(2)[b]","type":"rich"},{"title":"(3)[c]","type":"rich"}],"allowed_mentions":{"parse":[],"users":[],"roles":[]},"components":[],"sticker_ids":[],"attachments":[],"enforce_nonce":false}"#
+        );
+    }
+
+    #[test]
+    fn the_log_cards_render_as_before() {
+        let now = "2026-01-02 03:04:05".to_owned();
+        assert_eq!(
+            wire(&discord::embed(&super::log_thumb_card(
+                "G",
+                "Title",
+                "42",
+                "desc",
+                "https://a/b.png",
+                &now
+            ))),
+            r#"{"type":"rich","description":"desc","footer":{"text":"G | 42 | 2026-01-02 03:04:05","icon_url":null},"author":{"name":"Title","url":null,"icon_url":"https://a/b.png"}}"#
+        );
+        assert_eq!(
+            wire(&discord::embed(&super::log_card(
+                "T",
+                "D",
+                "https://a/b.png",
+                now
+            ))),
+            r#"{"title":"T","type":"rich","description":"D","footer":{"text":"2026-01-02 03:04:05","icon_url":null},"thumbnail":{"url":"https://a/b.png","description":null}}"#
+        );
+    }
+
+    #[test]
+    fn the_search_notices_render_as_before() {
+        assert_eq!(
+            wire(&discord::embed(&super::search_failed_card())),
+            r#"{"type":"rich","description":"Something went wrong while parsing your query!","footer":{"text":"Search failed!","icon_url":null}}"#
+        );
+        assert_eq!(
+            wire(&discord::embed(&super::no_query_card())),
+            r#"{"type":"rich","description":"No query provided!","footer":{"text":"No query provided!","icon_url":null}}"#
+        );
+        assert_eq!(
+            wire(&discord::embed(&super::searching_card())),
+            r#"{"type":"rich","description":"🔎 Searching..."}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn the_search_response_card_renders_as_before() {
+        let hit = |secs: Option<u64>| songbird::input::AuxMetadata {
+            title: Some("Song".into()),
+            source_url: Some("https://youtu.be/x".into()),
+            duration: secs.map(std::time::Duration::from_secs),
+            ..Default::default()
+        };
+        let fields = super::build_embed_fields(vec![hit(Some(225)), hit(None)]).await;
+        let card = super::search_response_card(
+            "<@3>",
+            "q",
+            serenity::all::UserId::new(3),
+            serenity::all::GuildId::new(4),
+            "2026-01-02 03:04:05",
+            fields,
+        );
+        assert_eq!(
+            wire(&discord::embed(&card)),
+            r#"{"title":"Search results for: q","type":"rich","footer":{"text":"3 * 4 * 2026-01-02 03:04:05","icon_url":null},"author":{"name":"<@3>","url":null,"icon_url":null},"fields":[{"name":"[Song]","value":"(https://youtu.be/x) - 3:45","inline":true},{"name":"[Song]","value":"(https://youtu.be/x)","inline":true}]}"#
+        );
+    }
+
+    #[tokio::test]
+    async fn the_old_lyrics_card_renders_as_before() {
+        assert_eq!(
+            wire(&discord::embed(
+                &super::create_lyrics_embed_old("Track".into(), "Artist".into(), "la la".into())
+                    .await
+            )),
+            r#"{"title":"Track","type":"rich","description":"la la","author":{"name":"Artist","url":null,"icon_url":null}}"#
+        );
     }
 }

@@ -1,3 +1,4 @@
+use crack_types::discord::ToRef;
 use serenity::all::GuildId;
 use serenity::model::id::RoleId;
 
@@ -30,7 +31,7 @@ pub async fn get_auto_role(
         .await
         .map_or_else(
             || ctx.send_reply(CrackedMessage::NoAutoRole, true),
-            |role_id| ctx.send_reply(CrackedMessage::AutoRole(role_id), true),
+            |role_id| ctx.send_reply(CrackedMessage::AutoRole(role_id.to_ref()), true),
         )
         .await
         .map(|_| ())

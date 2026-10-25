@@ -1,8 +1,9 @@
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::{poise_ext::PoiseContextExt, CommandResult, Context};
+use crack_types::discord::ToRef;
 use poise::serenity_prelude as serenity;
-use serenity::{Mentionable, User, UserId};
+use serenity::{User, UserId};
 
 /// Unban a user from the guild.
 #[poise::command(
@@ -41,14 +42,13 @@ pub async fn unban_by_user_id(
 pub async fn unban_internal(ctx: Context<'_>, user_id: UserId) -> CommandResult {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     // let guild = guild_id.to_partial_guild(&ctx).await?;
-    let user = user_id.to_user(&ctx).await?;
-    let mention = user.mention();
+    // Fails for an id Discord does not know, before anything is attempted.
+    user_id.to_user(&ctx).await?;
     let msg = if let Err(e) = guild_id.unban(ctx.http(), user_id, None).await {
         CrackedMessage::Other(format!("Failed to unban user: {}", e))
     } else {
         CrackedMessage::UserUnbanned {
-            id: user_id,
-            mention,
+            id: user_id.to_ref(),
         }
     };
 

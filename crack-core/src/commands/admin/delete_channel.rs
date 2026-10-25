@@ -1,3 +1,4 @@
+use crack_types::discord::ToRef;
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
@@ -40,7 +41,7 @@ pub async fn delete_channel(
                     send_reply(
                         &ctx,
                         CrackedMessage::ChannelDeleted {
-                            channel_id,
+                            channel_id: channel_id.to_ref(),
                             channel_name: channel_name.clone(),
                         },
                         true,

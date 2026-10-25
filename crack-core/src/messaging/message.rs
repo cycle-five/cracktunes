@@ -1,11 +1,8 @@
 use std::{borrow::Cow, fmt::Display};
 
-use ::serenity::{builder::CreateEmbed, small_fixed_array::FixedString};
+use crack_model::{colour, Card, Mention, RoleRef, RoomRef, UserRef};
 #[cfg(feature = "crack-osint")]
 use crack_osint::virustotal::VirusTotalApiResponse;
-use poise::serenity_prelude as serenity;
-use serenity::{Mention, Mentionable, UserId};
-use songbird::error::ControlError;
 use std::time::Duration;
 
 use crate::{
@@ -29,28 +26,28 @@ pub enum CrackedMessage {
     AutopauseOn,
     AutoplayOff,
     AutoplayOn,
-    AutoRole(serenity::RoleId),
+    AutoRole(RoleRef),
     BugNone(String),
     CategoryCreated {
-        channel_id: serenity::GenericChannelId,
+        channel_id: RoomRef,
         channel_name: String,
     },
     CountryName(String),
     Coinflip(bool),
     ChannelSizeSet {
-        id: serenity::GenericChannelId,
+        id: RoomRef,
         name: String,
         size: u32,
     },
     ChannelDeleted {
-        channel_id: serenity::GenericChannelId,
+        channel_id: RoomRef,
         channel_name: String,
     },
     Clear,
     Clean(i32),
-    CrackedError(CrackedError),
+    CrackedError(String),
     CrackedRed(String),
-    CreateEmbed(Box<CreateEmbed<'static>>),
+    Card(Box<Card>),
     CommandFound(String),
     DiceRoll {
         dice: u32,
@@ -59,7 +56,6 @@ pub enum CrackedMessage {
     },
     DomainInfo(String),
     Error,
-    ErrorHttp(serenity::http::HttpError),
     GrabbedNotice,
     InvalidIP(String),
     InviteLink,
@@ -95,12 +91,12 @@ pub enum CrackedMessage {
     RemoveMultiple,
     Resume,
     RoleCreated {
-        role_id: serenity::RoleId,
-        role_name: FixedString,
+        role_id: RoleRef,
+        role_name: String,
     },
     RoleDeleted {
-        role_id: serenity::RoleId,
-        role_name: FixedString,
+        role_id: RoleRef,
+        role_name: String,
     },
     RoleNotFound,
     #[cfg(feature = "crack-osint")]
@@ -117,7 +113,7 @@ pub enum CrackedMessage {
     },
     SeekFail {
         timestamp: Cow<'static, String>,
-        error: ControlError,
+        error: String,
     },
     Shuffle,
     Skip,
@@ -149,62 +145,52 @@ pub enum CrackedMessage {
         missing: u64,
     },
     Summon {
-        mention: Mention,
+        room: RoomRef,
     },
     /// `/summon` into the channel the bot is already in. Deliberately not
     /// [`Self::Summon`]: that one says "Joining", which would be a claim about
     /// something that did not happen.
     AlreadyHere {
-        mention: Mention,
+        room: RoomRef,
     },
     TextChannelCreated {
-        channel_id: serenity::GenericChannelId,
-        channel_name: FixedString<u16>,
+        channel_id: RoomRef,
+        channel_name: String,
     },
     Uptime {
         mention: String,
         seconds: u64,
     },
     UserTimeout {
-        id: UserId,
-        mention: Mention,
-        timeout_until: FixedString,
+        id: UserRef,
+        timeout_until: String,
     },
     UserKicked {
-        mention: Mention,
-        id: UserId,
+        id: UserRef,
     },
     UserBanned {
-        mention: Mention,
-        id: UserId,
+        id: UserRef,
     },
     UserUnbanned {
-        mention: Mention,
-        id: UserId,
+        id: UserRef,
     },
     UserMuted {
-        mention: Mention,
-        id: UserId,
+        id: UserRef,
     },
     UserUnmuted {
-        mention: Mention,
-        id: UserId,
+        id: UserRef,
     },
     UserDeafened {
-        mention: Mention,
-        id: UserId,
+        id: UserRef,
     },
     UserDeafenedFail {
-        mention: Mention,
-        id: UserId,
+        id: UserRef,
     },
     UserUndeafened {
-        mention: Mention,
-        id: UserId,
+        id: UserRef,
     },
     UserUndeafenedFail {
-        mention: Mention,
-        id: UserId,
+        id: UserRef,
     },
     Version {
         current: String,
@@ -213,7 +199,7 @@ pub enum CrackedMessage {
     VoteTopggVoted,
     VoteTopggNotVoted,
     VoteSkip {
-        mention: Mention,
+        id: UserRef,
         missing: usize,
     },
     VoiceChannelCreated {
@@ -311,6 +297,16 @@ impl CrackedMessage {
         crate::messaging::render::Style::Embed
     }
 
+    /// The embed colour, 0xRRGGBB.
+    #[must_use]
+    pub fn colour(&self) -> u32 {
+        match self {
+            Self::Error | Self::CrackedError(_) | Self::CrackedRed(_) => colour::RED,
+            Self::Other(_) => colour::GOLD,
+            _ => colour::BLUE,
+        }
+    }
+
     fn discriminant(&self) -> u8 {
         unsafe { *(self as *const Self as *const u8) }
     }
@@ -322,12 +318,19 @@ impl PartialEq for CrackedMessage {
     }
 }
 
+/// A user's mention and raw id, the two ways the moderation lines name them.
+fn user_parts(id: &UserRef) -> (Mention, &str) {
+    (Mention::User(id.clone()), id.raw().as_str())
+}
+
 impl Display for CrackedMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::AutoplayOff => f.write_str(AUTOPLAY_OFF),
             Self::AutoplayOn => f.write_str(AUTOPLAY_ON),
-            Self::AutoRole(role_id) => f.write_str(&format!("{} {}", AUTO_ROLE, role_id.mention())),
+            Self::AutoRole(role_id) => {
+                f.write_str(&format!("{} {}", AUTO_ROLE, Mention::Role(role_id.clone())))
+            },
             Self::BugNone(variable) => f.write_str(&format!("{} {} {}", BUG, variable, BUG_END)),
             Self::InvalidIP(ip) => f.write_str(&format!("{} {}", ip, FAIL_INVALID_IP)),
             Self::InviteLink => f.write_str(&format!(
@@ -342,19 +345,25 @@ impl Display for CrackedMessage {
             Self::Coinflip(heads) => f.write_str(&format!("{} {}", COINFLIP, heads)),
             Self::Clear => f.write_str(CLEARED),
             Self::Clean(n) => f.write_str(&format!("{} {}!", CLEANED, n)),
-            Self::ChannelSizeSet { id, name, size } => {
-                f.write_str(&format!("{} {} {} {}", CHANNEL_SIZE_SET, name, id, size))
-            },
+            Self::ChannelSizeSet { id, name, size } => f.write_str(&format!(
+                "{} {} {} {}",
+                CHANNEL_SIZE_SET,
+                name,
+                id.raw().as_str(),
+                size
+            )),
             Self::ChannelDeleted {
                 channel_id,
                 channel_name,
             } => f.write_str(&format!(
                 "{} {} {}",
-                CHANNEL_DELETED, channel_id, channel_name
+                CHANNEL_DELETED,
+                channel_id.raw().as_str(),
+                channel_name
             )),
-            Self::CrackedError(err) => f.write_str(&format!("{}", err)),
+            Self::CrackedError(err) => f.write_str(err),
             Self::CrackedRed(s) => f.write_str(s),
-            Self::CreateEmbed(embed) => f.write_str(&format!("{:#?}", embed)),
+            Self::Card(card) => f.write_str(&format!("{:#?}", card)),
             Self::CommandFound(s) => f.write_str(s),
             Self::DomainInfo(info) => f.write_str(info),
             Self::DiceRoll {
@@ -363,7 +372,6 @@ impl Display for CrackedMessage {
                 results,
             } => f.write_str(crate::DICE_ROLL!(dice, sides, results)),
             Self::Error => f.write_str(ERROR),
-            Self::ErrorHttp(err) => f.write_str(&format!("{}", err)),
             Self::GrabbedNotice => f.write_str(GRABBED_NOTICE),
             Self::Leaving => f.write_str(LEAVING),
             Self::LoopDisable => f.write_str(LOOP_DISABLED),
@@ -414,12 +422,18 @@ impl Display for CrackedMessage {
 
             Self::RemoveMultiple => f.write_str(REMOVED_QUEUE_MULTIPLE),
             Self::Resume => f.write_str(RESUMED),
-            Self::RoleCreated { role_id, role_name } => {
-                f.write_str(&format!("{} {} {}", ROLE_CREATED, role_id, role_name))
-            },
-            Self::RoleDeleted { role_id, role_name } => {
-                f.write_str(&format!("{} {} {}", ROLE_DELETED, role_id, role_name))
-            },
+            Self::RoleCreated { role_id, role_name } => f.write_str(&format!(
+                "{} {} {}",
+                ROLE_CREATED,
+                role_id.raw().as_str(),
+                role_name
+            )),
+            Self::RoleDeleted { role_id, role_name } => f.write_str(&format!(
+                "{} {} {}",
+                ROLE_DELETED,
+                role_id.raw().as_str(),
+                role_name
+            )),
             Self::RoleNotFound => f.write_str(ROLE_NOT_FOUND),
             Self::Shuffle => f.write_str(SHUFFLED_SUCCESS),
             Self::Stop => f.write_str(STOPPED),
@@ -428,9 +442,13 @@ impl Display for CrackedMessage {
                     .replace("{group}", group)
                     .replace("{subcommand}", subcommand),
             ),
-            Self::VoteSkip { mention, missing } => f.write_str(&format!(
+            Self::VoteSkip { id, missing } => f.write_str(&format!(
                 "{}{} {} {} {}",
-                SKIP_VOTE_EMOJI, mention, SKIP_VOTE_USER, missing, SKIP_VOTE_MISSING
+                SKIP_VOTE_EMOJI,
+                Mention::User(id.clone()),
+                SKIP_VOTE_USER,
+                missing,
+                SKIP_VOTE_MISSING
             )),
             Self::SocialMediaResponse { response } => f.write_str(response),
             Self::SongMoved { at, to } => f.write_str(&format!(
@@ -460,55 +478,80 @@ impl Display for CrackedMessage {
             },
             Self::Echo(line) => f.write_str(&line.line()),
             Self::Queued(card) => f.write_str(card.author),
-            Self::Summon { mention } => f.write_str(&format!("{} **{}**!", JOINING, mention)),
-            Self::AlreadyHere { mention } => {
-                f.write_str(&format!("{} **{}**!", ALREADY_HERE, mention))
+            Self::Summon { room } => {
+                f.write_str(&format!("{} **{}**!", JOINING, Mention::Room(room.clone())))
             },
+            Self::AlreadyHere { room } => f.write_str(&format!(
+                "{} **{}**!",
+                ALREADY_HERE,
+                Mention::Room(room.clone())
+            )),
             Self::TextChannelCreated {
                 channel_id,
                 channel_name,
             } => f.write_str(&format!(
                 "{} {} {}",
-                TEXT_CHANNEL_CREATED, channel_id, channel_name
+                TEXT_CHANNEL_CREATED,
+                channel_id.raw().as_str(),
+                channel_name
             )),
             Self::CategoryCreated {
                 channel_id,
                 channel_name,
             } => f.write_str(&format!(
                 "{} {} {}",
-                CATEGORY_CREATED, channel_id, channel_name
+                CATEGORY_CREATED,
+                channel_id.raw().as_str(),
+                channel_name
             )),
             Self::Uptime { mention, seconds } => f.write_str(&format!(
                 "**{}**\n {}",
                 mention,
                 duration_to_string(Duration::from_secs(*seconds)),
             )),
-            Self::UserTimeout {
-                mention,
-                id,
-                timeout_until,
-            } => f.write_str(&format!(
-                "{TIMEOUT}\n{mention} ({id})\n{UNTIL}: {timeout_until}"
-            )),
-            Self::UserKicked { mention, id } => f.write_str(&format!("{KICKED}\n{mention} ({id})")),
-            Self::UserBanned { mention, id } => f.write_str(&format!("{BANNED}\n{mention} ({id})")),
-            Self::UserUnbanned { mention, id } => {
+            Self::UserTimeout { id, timeout_until } => {
+                let mention = Mention::User(id.clone());
+                let id = id.raw().as_str();
+                f.write_str(&format!(
+                    "{TIMEOUT}\n{mention} ({id})\n{UNTIL}: {timeout_until}"
+                ))
+            },
+            Self::UserKicked { id } => {
+                let (mention, id) = user_parts(id);
+                f.write_str(&format!("{KICKED}\n{mention} ({id})"))
+            },
+            Self::UserBanned { id } => {
+                let (mention, id) = user_parts(id);
+                f.write_str(&format!("{BANNED}\n{mention} ({id})"))
+            },
+            Self::UserUnbanned { id } => {
+                let (mention, id) = user_parts(id);
                 f.write_str(&format!("{UNBANNED}\n{mention} ({id})"))
             },
-            Self::UserUndeafened { mention, id } => {
+            Self::UserUndeafened { id } => {
+                let (mention, id) = user_parts(id);
                 f.write_str(&format!("{} {} {}", UNDEAFENED, mention, id))
             },
-            Self::UserDeafened { mention, id } => {
+            Self::UserDeafened { id } => {
+                let (mention, id) = user_parts(id);
                 f.write_str(&format!("{DEAFENED}\n{mention}({id})"))
             },
-            Self::UserDeafenedFail { mention, id } => {
+            Self::UserDeafenedFail { id } => {
+                let (mention, id) = user_parts(id);
                 f.write_str(&format!("{DEAFENED_FAIL}\n{mention} ({id})"))
             },
-            Self::UserUndeafenedFail { mention, id } => {
+            Self::UserUndeafenedFail { id } => {
+                let (mention, id) = user_parts(id);
                 f.write_str(&format!("{UNDEAFENED_FAIL}\n{mention} ({id})"))
             },
-            Self::UserMuted { mention, id } => f.write_str(&format!("{MUTED}\n{mention} {id}")),
-            Self::UserUnmuted { mention, id } => f.write_str(&format!("{UNMUTED}\n{mention} {id}")),
+            Self::UserMuted { id } => {
+                let (mention, id) = user_parts(id);
+                f.write_str(&format!("{MUTED}\n{mention} {id}"))
+            },
+            Self::UserUnmuted { id } => {
+                let (mention, id) = user_parts(id);
+                f.write_str(&format!("{UNMUTED}\n{mention} {id}"))
+            },
             Self::Version { current, hash } => f.write_str(&format!(
                 "{} [{}]({}/tag/v{})\n{}({}/latest)\n{}({}tree/{})",
                 VERSION,
@@ -660,65 +703,15 @@ impl From<CrackedMessage> for String {
     }
 }
 
-impl From<CrackedMessage> for CreateEmbed<'_> {
-    fn from(message: CrackedMessage) -> Self {
-        CreateEmbed::default().description(message.to_string())
-    }
-}
-
 impl From<CrackedError> for CrackedMessage {
     fn from(error: CrackedError) -> Self {
-        Self::CrackedError(error)
-    }
-}
-
-impl From<serenity::http::HttpError> for CrackedMessage {
-    fn from(error: serenity::http::HttpError) -> Self {
-        Self::ErrorHttp(error)
+        Self::CrackedError(error.to_string())
     }
 }
 
 impl Default for CrackedMessage {
     fn default() -> Self {
         Self::Other("(default)".to_string())
-    }
-}
-
-use serenity::Colour;
-impl From<CrackedMessage> for Colour {
-    fn from(message: CrackedMessage) -> Colour {
-        match message {
-            CrackedMessage::Error => Colour::RED,
-            CrackedMessage::ErrorHttp(_) => Colour::RED,
-            CrackedMessage::CrackedError(_) => Colour::RED,
-            CrackedMessage::CrackedRed(_) => Colour::RED,
-            CrackedMessage::Other(_) => Colour::GOLD,
-            _ => Colour::BLUE,
-        }
-    }
-}
-
-impl From<&CrackedMessage> for Colour {
-    fn from(message: &CrackedMessage) -> Colour {
-        match message {
-            CrackedMessage::Error => Colour::RED,
-            CrackedMessage::ErrorHttp(_) => Colour::RED,
-            CrackedMessage::CrackedError(_) => Colour::RED,
-            CrackedMessage::CrackedRed(_) => Colour::RED,
-            CrackedMessage::Other(_) => Colour::GOLD,
-            _ => Colour::BLUE,
-        }
-    }
-}
-
-/// Convert a [`CrackedMessage`] into a [`CreateEmbed`].
-impl<'a, 'b> From<&'a CrackedMessage> for Option<CreateEmbed<'b>> {
-    fn from(message: &'a CrackedMessage) -> Option<CreateEmbed<'b>> {
-        // Why did I do this?
-        match message {
-            CrackedMessage::CreateEmbed(embed) => Some(*embed.clone()),
-            msg => Some(CreateEmbed::default().description(msg.to_string())),
-        }
     }
 }
 
@@ -731,6 +724,7 @@ impl From<CrackedMessage> for crate::CrackedHowResult<CrackedMessage> {
 #[cfg(test)]
 mod test {
     use super::CrackedMessage;
+    use crack_types::discord::ToRef;
     use poise::serenity_prelude as serenity;
 
     #[test]
@@ -968,27 +962,27 @@ mod test {
         assert_eq!(message, CrackedMessage::Clean(1));
 
         let message = CrackedMessage::ChannelSizeSet {
-            id: serenity::GenericChannelId::default(),
+            id: serenity::GenericChannelId::default().to_ref(),
             name: "test".to_string(),
             size: 1,
         };
         assert_eq!(
             message,
             CrackedMessage::ChannelSizeSet {
-                id: serenity::GenericChannelId::default(),
+                id: serenity::GenericChannelId::default().to_ref(),
                 name: "test".to_string(),
                 size: 1
             }
         );
 
         let message = CrackedMessage::ChannelDeleted {
-            channel_id: serenity::GenericChannelId::default(),
+            channel_id: serenity::GenericChannelId::default().to_ref(),
             channel_name: "test".to_string(),
         };
         assert_eq!(
             message,
             CrackedMessage::ChannelDeleted {
-                channel_id: serenity::GenericChannelId::default(),
+                channel_id: serenity::GenericChannelId::default().to_ref(),
                 channel_name: "test".to_string()
             }
         );
@@ -1030,31 +1024,124 @@ mod test {
         assert_ne!(
             message,
             CrackedMessage::ChannelSizeSet {
-                id: serenity::GenericChannelId::default(),
+                id: serenity::GenericChannelId::default().to_ref(),
                 name: "test".to_string(),
                 size: 1,
             }
         );
 
         let message = CrackedMessage::ChannelSizeSet {
-            id: serenity::GenericChannelId::default(),
+            id: serenity::GenericChannelId::default().to_ref(),
             name: "test".to_string(),
             size: 1,
         };
         assert_ne!(message, CrackedMessage::Clean(1));
 
         let message = CrackedMessage::ChannelDeleted {
-            channel_id: serenity::GenericChannelId::default(),
+            channel_id: serenity::GenericChannelId::default().to_ref(),
             channel_name: "test".to_string(),
         };
         assert_ne!(
             message,
             CrackedMessage::ChannelSizeSet {
-                id: serenity::GenericChannelId::default(),
+                id: serenity::GenericChannelId::default().to_ref(),
                 name: "test".to_string(),
                 size: 1,
             }
         );
+    }
+
+    #[test]
+    fn every_changed_variant_displays_as_before() {
+        let user = serenity::UserId::new(123).to_ref();
+        let role = serenity::RoleId::new(9).to_ref();
+        let chan = serenity::GenericChannelId::new(7).to_ref();
+        let cases: Vec<(CrackedMessage, &str)> = vec![
+            (CrackedMessage::AutoRole(role.clone()), "Auto Role <@&9>"),
+            (
+                CrackedMessage::CategoryCreated { channel_id: chan.clone(), channel_name: "cat".into() },
+                "📝 Created category! 7 cat",
+            ),
+            (
+                CrackedMessage::ChannelSizeSet { id: chan.clone(), name: "vc".into(), size: 4 },
+                "🗑\u{fe0f}\u{2002}Channel size set! vc 7 4",
+            ),
+            (
+                CrackedMessage::ChannelDeleted { channel_id: chan.clone(), channel_name: "old".into() },
+                "🗑\u{fe0f}\u{2002}Deleted channel! 7 old",
+            ),
+            (
+                CrackedMessage::from(crate::errors::CrackedError::NotConnected),
+                "⚠\u{fe0f} I'm not connected to any voice channel!",
+            ),
+            (
+                CrackedMessage::RoleCreated { role_id: role.clone(), role_name: "dj".to_string() },
+                "📝 Created role! 9 dj",
+            ),
+            (
+                CrackedMessage::RoleDeleted { role_id: role.clone(), role_name: "dj".to_string() },
+                "🗑\u{fe0f} Deleted role! 9 dj",
+            ),
+            (
+                CrackedMessage::SeekFail {
+                    timestamp: std::borrow::Cow::Owned("1:30".to_string()),
+                    error: "failed to operate on track (handle): track ended".to_string(),
+                },
+                "❌⏩ Failed to seek to **1:30**!\nfailed to operate on track (handle): track ended",
+            ),
+            (CrackedMessage::Summon { room: chan.clone() }, "Joining **<#7>**!"),
+            (CrackedMessage::AlreadyHere { room: chan.clone() }, "Already in **<#7>**!"),
+            (
+                CrackedMessage::TextChannelCreated { channel_id: chan.clone(), channel_name: "txt".to_string() },
+                "📝 Created text channel! 7 txt",
+            ),
+            (
+                CrackedMessage::UserTimeout { id: user.clone(), timeout_until: "tomorrow".to_string() },
+                "⏱\u{fe0f} User Timed Out!\n<@123> (123)\nUntil: tomorrow",
+            ),
+            (CrackedMessage::UserKicked { id: user.clone() }, "Kicked\n<@123> (123)"),
+            (CrackedMessage::UserBanned { id: user.clone() }, "Banned\n<@123> (123)"),
+            (CrackedMessage::UserUnbanned { id: user.clone() }, "Unbanned\n<@123> (123)"),
+            (CrackedMessage::UserMuted { id: user.clone() }, "Muted\n<@123> 123"),
+            (CrackedMessage::UserUnmuted { id: user.clone() }, "Unmuted\n<@123> 123"),
+            (CrackedMessage::UserDeafened { id: user.clone() }, "User deafened.\n<@123>(123)"),
+            (
+                CrackedMessage::UserDeafenedFail { id: user.clone() },
+                "User failed to be deafened.\n<@123> (123)",
+            ),
+            (CrackedMessage::UserUndeafened { id: user.clone() }, "Undeafened <@123> 123"),
+            (
+                CrackedMessage::UserUndeafenedFail { id: user.clone() },
+                "User failed to be undeafened.\n<@123> (123)",
+            ),
+            (
+                CrackedMessage::VoteSkip { id: user.clone(), missing: 2 },
+                "🗳<@123> has voted to skip! 2 more vote(s) needed to skip!",
+            ),
+        ];
+        for (msg, expected) in cases {
+            assert_eq!(msg.to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn a_cracked_error_becomes_its_text() {
+        let msg = CrackedMessage::from(crate::errors::CrackedError::NotConnected);
+        assert!(matches!(
+            &msg,
+            CrackedMessage::CrackedError(text) if text == "⚠\u{fe0f} I'm not connected to any voice channel!"
+        ));
+    }
+
+    #[test]
+    fn colours_are_unchanged() {
+        let red = 15_158_332;
+        let err = || crate::errors::CrackedError::NotConnected;
+        assert_eq!(CrackedMessage::Error.colour(), red);
+        assert_eq!(CrackedMessage::from(err()).colour(), red);
+        assert_eq!(CrackedMessage::CrackedRed("x".into()).colour(), red);
+        assert_eq!(CrackedMessage::Other("x".into()).colour(), 15_844_367);
+        assert_eq!(CrackedMessage::Pong.colour(), 3_447_003);
     }
 
     #[test]

@@ -3,7 +3,7 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
-use poise::serenity_prelude::Mentionable;
+use crack_types::discord::ToRef;
 use serenity::all::User;
 
 /// Ban a user from the server.
@@ -29,7 +29,6 @@ pub async fn ban(
     #[description = "Number of day to delete messages of the user."] dmd: Option<u32>,
     #[description = "Reason for the ban."] reason: Option<String>,
 ) -> Result<(), Error> {
-    let mention = user.mention();
     let id = user.id;
     let dmd = dmd.unwrap_or(0);
     let reason = reason.unwrap_or("No reason provided".to_string());
@@ -44,7 +43,7 @@ pub async fn ban(
         .await?;
     } else {
         // Send success message
-        send_reply(&ctx, CrackedMessage::UserBanned { mention, id }, true).await?;
+        send_reply(&ctx, CrackedMessage::UserBanned { id: id.to_ref() }, true).await?;
     }
     Ok(())
 }

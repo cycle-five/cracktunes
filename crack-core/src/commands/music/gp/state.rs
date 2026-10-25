@@ -251,10 +251,9 @@ pub enum GpPhase {
     Finished,
 }
 
-/// When the room learns whose song was whose. The first `#[name]` is what
-/// Discord shows in the `/gp start` dropdown; the second is what a prefix
-/// command types.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, poise::ChoiceParameter)]
+/// When the room learns whose song was whose. The command's own copy, with the
+/// names Discord and prefix commands know, is `GpRevealChoice`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GpReveal {
     /// Nothing is named until the round's last song has played: the reveal is
     /// the round-results embed. The default. With every song revealed as it
@@ -262,13 +261,9 @@ pub enum GpReveal {
     /// in, so by the final one the room knows by elimination -- and with three
     /// players the second is a coin flip. Holding the names keeps every song a
     /// guess.
-    #[name = "🤐 At the end of the round"]
-    #[name = "round"]
     #[default]
     Round,
     /// The submitter is named when their song ends, as the game originally did.
-    #[name = "🎉 After each song"]
-    #[name = "song"]
     Song,
 }
 

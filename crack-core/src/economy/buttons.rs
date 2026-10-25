@@ -22,12 +22,12 @@ use crate::messaging::messages::{
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::{DiscordModalPress, DiscordPress, Press};
 use crate::{Data, Error};
+use crack_model::{Button, ButtonStyle, Row};
 use serenity::all::{
-    ButtonStyle, ChannelId, ComponentInteraction, CreateActionRow, CreateButton, CreateComponent,
-    CreateInputText, CreateLabel, CreateModal, CreateModalComponent, GuildId, InputTextStyle,
-    LabelComponent, ModalComponent, ModalInteraction, UserId,
+    ChannelId, ComponentInteraction, CreateInputText, CreateLabel, CreateModal,
+    CreateModalComponent, GuildId, InputTextStyle, LabelComponent, ModalComponent,
+    ModalInteraction, UserId,
 };
-use std::borrow::Cow;
 
 /// Every economy button's custom id starts with this.
 pub const BUTTON_PREFIX: &str = "econ:";
@@ -89,24 +89,18 @@ pub fn carries_buttons(kind: ActionKind, outcome: BuyOutcome) -> bool {
 }
 
 /// The row of buttons under a card.
-pub fn card_buttons(action: i64) -> Vec<CreateComponent<'static>> {
-    let button = |b: EconButton, label: &'static str, style| {
-        CreateButton::new(b.custom_id()).label(label).style(style)
+pub fn card_buttons(action: i64) -> Vec<Row> {
+    let button = |b: EconButton, label: &'static str| Button {
+        id: b.custom_id(),
+        label: Some(label.to_owned()),
+        emoji: None,
+        style: ButtonStyle::Secondary,
+        disabled: false,
     };
-    vec![CreateComponent::ActionRow(CreateActionRow::Buttons(
-        Cow::Owned(vec![
-            button(
-                EconButton::Back { action },
-                ECONOMY_BUTTON_RENAME_BACK,
-                ButtonStyle::Secondary,
-            ),
-            button(
-                EconButton::Reveal { action },
-                ECONOMY_BUTTON_REVEAL,
-                ButtonStyle::Secondary,
-            ),
-        ]),
-    ))]
+    vec![Row::Buttons(vec![
+        button(EconButton::Back { action }, ECONOMY_BUTTON_RENAME_BACK),
+        button(EconButton::Reveal { action }, ECONOMY_BUTTON_REVEAL),
+    ])]
 }
 
 /// Why a press is refused before anything else is looked at.
@@ -411,6 +405,7 @@ pub async fn handle_submit(data: &Data, ctx: &serenity::all::Context, i: &ModalI
 mod tests {
     use super::*;
     use crate::economy::settings::EconomySettings;
+    use crate::messaging::discord;
     use crate::messaging::test_support::{FakePress, PressOp};
     use crate::DataInner;
     use serenity::all::ModalInteractionData;
@@ -532,8 +527,16 @@ mod tests {
     }
 
     #[test]
+    fn the_card_row_renders_as_before() {
+        assert_eq!(
+            serde_json::to_string(&discord::action_rows(&card_buttons(12))).unwrap(),
+            r#"[{"type":1,"components":[{"style":2,"type":2,"custom_id":"econ:back:12","label":"Rename them back","disabled":false},{"style":2,"type":2,"custom_id":"econ:reveal:12","label":"Reveal","disabled":false}]}]"#
+        );
+    }
+
+    #[test]
     fn the_card_row_names_its_action() {
-        let row = serde_json::to_value(card_buttons(12)).unwrap();
+        let row = serde_json::to_value(discord::action_rows(&card_buttons(12))).unwrap();
         let buttons = &row[0]["components"];
         assert_eq!(buttons.as_array().map(Vec::len), Some(2));
         assert_eq!(buttons[0]["custom_id"], "econ:back:12");
