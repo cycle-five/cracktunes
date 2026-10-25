@@ -457,7 +457,9 @@ mod tests {
     async fn edit_rendered_message_edits_that_message_with_its_components() {
         let t = FakeTransport::default();
         let out = Rendered::embed(serenity::all::CreateEmbed::new().description("page"))
-            .with_components(crate::messaging::interface::create_nav_btns(0, 2));
+            .with_components(crate::messaging::discord::action_rows(
+                &crate::messaging::interface::create_nav_btns(0, 2),
+            ));
         edit_rendered_message(&t, GenericChannelId::new(7), MessageId::new(42), out)
             .await
             .unwrap();

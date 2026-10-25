@@ -1,9 +1,9 @@
 use crate::{
     commands::{cmd_check_music, sub_help as help},
     errors::CrackedError,
+    messaging::courier,
     messaging::format::{clip, http_url, TrackLabel, EMBED_TITLE_MAX},
     messaging::interface::create_search_results_reply,
-    messaging::{courier, discord},
     Context, Error,
 };
 use crack_model::Card;
@@ -48,7 +48,7 @@ async fn do_yt_search_internal(
         .into_iter()
         .enumerate()
         .skip(1)
-        .map(|(i, hit)| discord::embed(&search_result_card(i, &hit)))
+        .map(|(i, hit)| search_result_card(i, &hit))
         .collect::<Vec<_>>();
     for (i, embed) in embeds.iter().enumerate() {
         tracing::warn!("i: {}, embed: {:?}", i, embed);
@@ -74,6 +74,7 @@ fn search_result_card(i: usize, hit: &AuxMetadata) -> Card {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::messaging::discord;
 
     fn hit(title: Option<&str>, url: &str) -> AuxMetadata {
         AuxMetadata {

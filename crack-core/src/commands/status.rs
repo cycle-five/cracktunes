@@ -4,6 +4,7 @@
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::plan::Plan;
 use crate::messaging::courier;
+use crate::messaging::discord;
 use crate::messaging::format::{cap, escape, INLINE_TITLE_MAX};
 use crate::messaging::messages::{
     STATUS_AUTOPAUSE, STATUS_AUTOPLAY, STATUS_BOT, STATUS_FREE, STATUS_GAME, STATUS_IDLE,
@@ -14,8 +15,9 @@ use crate::messaging::messages::{
 use crate::messaging::render::Rendered;
 use crate::music::remote::{self, QueueState};
 use crate::{Context, Error};
+use crack_model::{Card, Field};
 use poise::serenity_prelude as serenity;
-use serenity::{ChannelId, CreateEmbed, Mentionable, UserId};
+use serenity::{ChannelId, Mentionable, UserId};
 use std::time::{Duration, SystemTime};
 
 /// Show this server's plan, the bot, what's playing, and the settings in effect.
@@ -55,13 +57,25 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
         autopause: data.get_autopause(guild_id).await,
         autoplay: data.get_autoplay(guild_id).await,
     };
-    let embed = compose_status(&facts)
-        .into_iter()
-        .fold(CreateEmbed::default().title(STATUS_TITLE), |e, s| {
-            e.field(s.name, s.value, false)
-        });
-    courier::reply_rendered(ctx, Rendered::embed(embed), true).await?;
+    let card = status_card(compose_status(&facts));
+    courier::reply_rendered(ctx, Rendered::embed(discord::embed(&card)), true).await?;
     Ok(())
+}
+
+/// The `/status` answer: one field per section, under the title.
+fn status_card(sections: Vec<StatusSection>) -> Card {
+    Card {
+        title: Some(STATUS_TITLE.to_owned()),
+        fields: sections
+            .into_iter()
+            .map(|s| Field {
+                name: s.name.to_owned(),
+                value: s.value,
+                inline: false,
+            })
+            .collect(),
+        ..Card::default()
+    }
 }
 
 /// What is playing in this server, as `/status` may tell it.
@@ -230,6 +244,29 @@ mod test {
             autopause: true,
             autoplay: false,
         }
+    }
+
+    #[test]
+    fn the_status_card_renders_as_before() {
+        let f = StatusFacts {
+            bot: UserId::new(5),
+            version: "1.2.3",
+            uptime: Duration::from_secs(3700),
+            ..facts(
+                Plan::Free,
+                Playback::Playing {
+                    channel: ChannelId::new(7),
+                    title: Some("Song".into()),
+                    duration: Some(Duration::from_secs(225)),
+                    more: 2,
+                },
+            )
+        };
+        let wire = serde_json::to_string(&discord::embed(&status_card(compose_status(&f))));
+        assert_eq!(
+            wire.unwrap(),
+            r#"{"title":"📊 Status","type":"rich","fields":[{"name":"Server","value":"Free: queue history goes back 24 hours.","inline":false},{"name":"Bot","value":"<@5> v1.2.3, up 1 h 1 min","inline":false},{"name":"Playback","value":"In <#7>, playing **Song** (3:45). 2 more in the queue.","inline":false},{"name":"Settings","value":"Idle timeout: 10 min\nVolume: 50%\nAutopause: on\nAutoplay: off","inline":false}]}"#
+        );
     }
 
     fn section(f: &StatusFacts, name: &str) -> String {

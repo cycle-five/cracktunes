@@ -345,8 +345,11 @@ mod tests {
     /// A page flip carries the new embed and the nav buttons, and pings nobody.
     #[test]
     fn an_interaction_update_carries_the_embed_and_the_buttons() {
-        let r = Rendered::embed(CreateEmbed::new().title("Page 2"))
-            .with_components(crate::messaging::interface::create_nav_btns(1, 3));
+        let r = Rendered::embed(CreateEmbed::new().title("Page 2")).with_components(
+            crate::messaging::discord::action_rows(&crate::messaging::interface::create_nav_btns(
+                1, 3,
+            )),
+        );
         let v = serde_json::to_value(r.to_interaction_message()).unwrap();
         assert_eq!(v["embeds"][0]["title"], "Page 2");
         assert_eq!(v["components"].as_array().map(Vec::len), Some(1));

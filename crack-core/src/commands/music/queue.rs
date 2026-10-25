@@ -1,3 +1,4 @@
+use crate::messaging::discord;
 use crate::{
     commands::cmd_check_music,
     errors::CrackedError,
@@ -70,8 +71,8 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     let num_pages = calculate_num_pages(&tracks);
     tracing::info!("num_pages: {}", num_pages);
 
-    let first = Rendered::embed(create_queue_embed(&tracks, 0).await)
-        .with_components(create_nav_btns(0, num_pages));
+    let first = Rendered::embed(discord::embed(&create_queue_embed(&tracks, 0).await))
+        .with_components(discord::action_rows(&create_nav_btns(0, num_pages)));
     let message = courier::reply_rendered(ctx, first, false)
         .await?
         .into_message()
@@ -127,8 +128,8 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
             *page_wlock
         };
 
-        let flipped = Rendered::embed(create_queue_embed(&tracks, page_num).await)
-            .with_components(create_nav_btns(page_num, num_pages));
+        let flipped = Rendered::embed(discord::embed(&create_queue_embed(&tracks, page_num).await))
+            .with_components(discord::action_rows(&create_nav_btns(page_num, num_pages)));
         #[expect(
             clippy::disallowed_methods,
             reason = "component responses move in PR 2"

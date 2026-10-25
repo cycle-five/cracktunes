@@ -11,6 +11,7 @@ use crate::{
     errors::{verify, CrackedError},
     Context, Error,
 };
+use crack_model::Card;
 use poise::ReplyHandle;
 use rusty_ytdl::{search::YouTube, RequestOptions};
 use serenity::all::CacheHttp;
@@ -72,7 +73,13 @@ async fn fill_metadata_reply(
         .join("\n");
 
     let crack_msg = CrackedMessage::Other(str);
-    match crate::utils::edit_embed_response2(ctx, crack_msg.into(), search_msg.clone(), None).await
+    match crate::utils::edit_embed_response2(
+        ctx,
+        description_card(crack_msg.to_string()),
+        search_msg.clone(),
+        None,
+    )
+    .await
     {
         Ok(_) => {},
         Err(e) => {
@@ -100,4 +107,24 @@ pub async fn get_metadata(ctx: Context<'_>, query_or_url: String) -> Result<(), 
         fill_metadata_reply(ctx, &query_or_url, &search_msg).await,
     )
     .await
+}
+
+/// A card that is only its description.
+fn description_card(description: String) -> Card {
+    Card {
+        description: Some(description),
+        ..Card::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messaging::discord;
+
+    #[test]
+    fn the_metadata_reply_renders_as_a_bare_description() {
+        let wire = serde_json::to_string(&discord::embed(&description_card("a\nb".into())));
+        assert_eq!(wire.unwrap(), r#"{"type":"rich","description":"a\nb"}"#);
+    }
 }

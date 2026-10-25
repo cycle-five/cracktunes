@@ -1,6 +1,7 @@
 use crate::db::{MetadataMsg, PlayLog};
 use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings};
 use crate::messaging::courier;
+use crate::messaging::discord;
 use crate::messaging::render::{render, RenderCx, Rendered};
 use crate::music::TrackReadyData;
 use crate::{
@@ -9,11 +10,12 @@ use crate::{
     MessageOrReplyHandle,
 };
 use core::panic;
+use crack_model::Card;
 use crack_testing::ResolvedTrack;
 use crack_types::NewAuxMetadata;
 use poise::serenity_prelude as serenity;
 use poise::ReplyHandle;
-use serenity::all::{CreateEmbed, GenericChannelId, GuildId, Message, UserId};
+use serenity::all::{GenericChannelId, GuildId, Message, UserId};
 use songbird::input::AuxMetadata;
 use songbird::tracks::{PlayMode, TrackQueue};
 use songbird::Call;
@@ -357,12 +359,12 @@ impl<'ctx> ContextExt<'ctx> for crate::Context<'ctx> {
 /// Plain text is plain: it used to be wrapped in ANSI colour codes, which
 /// Discord shows as literal escape characters outside a code block.
 #[must_use]
-pub fn rendered_from_params(params: &SendMessageParams<'_>) -> Rendered {
+pub fn rendered_from_params(params: &SendMessageParams) -> Rendered {
     if !params.as_embed {
         return Rendered::text(params.msg.to_string());
     }
     let out = match &params.embed {
-        Some(embed) => Rendered::embed(embed.clone().into_owned()),
+        Some(card) => Rendered::embed(discord::embed(card)),
         None => {
             let mut out = render(&params.msg, &RenderCx::now());
             // A colour other than the default is the caller's choice.
@@ -415,15 +417,15 @@ pub trait PoiseContextExt<'ctx> {
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, Error>>;
     fn send_message_owned(
         self,
-        params: SendMessageParams<'ctx>,
+        params: SendMessageParams,
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
     fn send_message(
         &'ctx self,
-        params: SendMessageParams<'ctx>,
+        params: SendMessageParams,
     ) -> impl Future<Output = Result<ReplyHandle<'ctx>, CrackedError>>;
     fn send_embed_response(
         &'ctx self,
-        embed: CreateEmbed<'ctx>,
+        card: Card,
     ) -> impl Future<Output = CrackedResult<ReplyHandle<'ctx>>>;
 }
 
@@ -480,7 +482,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     /// Base, very generic send message function.
     async fn send_message_owned(
         self,
-        params: SendMessageParams<'ctx>,
+        params: SendMessageParams,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
         // `/clean` learns of this message from the gateway, not from here: see
         // `guild::cache::remember_bot_message`.
@@ -490,19 +492,16 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
     /// Base, very generic send message function.
     async fn send_message(
         &'ctx self,
-        params: SendMessageParams<'ctx>,
+        params: SendMessageParams,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
         courier::reply_rendered(*self, rendered_from_params(&params), params.ephemeral).await
     }
 
-    async fn send_embed_response(
-        &'ctx self,
-        embed: CreateEmbed<'ctx>,
-    ) -> CrackedResult<ReplyHandle<'ctx>> {
+    async fn send_embed_response(&'ctx self, card: Card) -> CrackedResult<ReplyHandle<'ctx>> {
         let is_ephemeral = false;
         let params = SendMessageParams::default()
             .with_ephemeral(is_ephemeral)
-            .with_embed(Some(embed));
+            .with_embed(Some(card));
 
         self.send_message(params).await
     }
@@ -654,7 +653,7 @@ mod tests {
     use super::*;
     use crate::messaging::render::description;
 
-    fn params(msg: &str) -> SendMessageParams<'static> {
+    fn params(msg: &str) -> SendMessageParams {
         SendMessageParams::new(CrackedMessage::Other(msg.into()))
     }
 
@@ -679,7 +678,10 @@ mod tests {
 
     #[test]
     fn a_given_embed_is_sent_as_it_is() {
-        let p = params("ignored").with_embed(Some(CreateEmbed::new().description("mine")));
+        let p = params("ignored").with_embed(Some(Card {
+            description: Some("mine".into()),
+            ..Card::default()
+        }));
         let out = rendered_from_params(&p);
         assert_eq!(description(&out).as_deref(), Some("mine"));
     }
@@ -690,7 +692,10 @@ mod tests {
     fn a_given_embed_does_not_take_the_params_colour() {
         let p = params("ignored")
             .with_color(serenity::Colour::RED)
-            .with_embed(Some(CreateEmbed::new().description("mine")));
+            .with_embed(Some(Card {
+                description: Some("mine".into()),
+                ..Card::default()
+            }));
         let out = rendered_from_params(&p);
         let v = serde_json::to_value(out.embed.unwrap()).unwrap();
         assert_eq!(v["description"], "mine");

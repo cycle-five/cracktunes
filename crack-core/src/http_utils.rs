@@ -10,9 +10,7 @@ use crate::music::NewQueryType;
 use crate::serenity::Color;
 use crate::CrackedResult;
 use crack_model::Card;
-use serenity::all::{
-    CacheHttp, CreateEmbed, CreateMessage, GenericChannelId, GuildId, Message, UserId,
-};
+use serenity::all::{CacheHttp, CreateMessage, GenericChannelId, GuildId, Message, UserId};
 use serenity::small_fixed_array::FixedString;
 
 /// Whether Discord refused a request because the message is already gone
@@ -30,17 +28,17 @@ pub fn is_unknown_message(err: &serenity::Error) -> bool {
 
 #[derive(Debug)]
 /// Parameter structure for functions that send messages to a channel.
-pub struct SendMessageParams<'a> {
+pub struct SendMessageParams {
     pub channel: GenericChannelId,
     pub as_embed: bool,
     pub ephemeral: bool,
     pub color: Color,
     pub msg: CrackedMessage,
-    pub embed: Option<CreateEmbed<'a>>,
+    pub embed: Option<Card>,
 }
 
 /// Implement [`PartialEq`] for [`SendMessageParams`].
-impl PartialEq for SendMessageParams<'_> {
+impl PartialEq for SendMessageParams {
     fn eq(&self, other: &Self) -> bool {
         self.channel == other.channel
             && self.as_embed == other.as_embed
@@ -52,7 +50,7 @@ impl PartialEq for SendMessageParams<'_> {
 }
 
 /// Default implementation for [`SendMessageParams`].
-impl Default for SendMessageParams<'_> {
+impl Default for SendMessageParams {
     fn default() -> Self {
         SendMessageParams {
             channel: GenericChannelId::new(1),
@@ -67,7 +65,7 @@ impl Default for SendMessageParams<'_> {
 
 /// Builder methods for [`SendMessageParams`].
 // TODO: Do we want to use this pattern or the mutable one here?
-impl<'a> SendMessageParams<'a> {
+impl SendMessageParams {
     pub fn new(msg: CrackedMessage) -> Self {
         Self {
             msg,
@@ -95,7 +93,7 @@ impl<'a> SendMessageParams<'a> {
         Self { channel, ..self }
     }
 
-    pub fn with_embed(self, embed: Option<CreateEmbed<'a>>) -> Self {
+    pub fn with_embed(self, embed: Option<Card>) -> Self {
         Self { embed, ..self }
     }
 }
@@ -156,7 +154,7 @@ impl<T: CacheHttp> CacheHttpExt for T {
 
     /// Sends a message to a channel. Only `/osint` uses it.
     #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    async fn send_channel_message(&self, params: SendMessageParams<'_>) -> CrackedResult<Message> {
+    async fn send_channel_message(&self, params: SendMessageParams) -> CrackedResult<Message> {
         let channel = params.channel;
         let msg = channel_message(format!("{}", params.msg), params.as_embed);
         channel

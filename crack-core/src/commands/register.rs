@@ -5,10 +5,11 @@
 #![expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
 
 use super::registration::CommandRegistration;
+use crate::messaging::discord;
 use crate::messaging::messages::REGISTER_OWNER_ONLY;
+use crack_model::{Button, ButtonStyle, Row};
 use poise::serenity_prelude as serenity;
 use serenity::CollectComponentInteractions;
-use std::borrow::Cow;
 
 /// Collects all commands into a [`Vec<serenity::CreateCommand>`] builder, which can be used
 /// to register the commands on Discord
@@ -95,18 +96,26 @@ impl RegisterButton {
         .find(|b| b.custom_id() == id)
     }
 
-    pub fn button(self) -> serenity::CreateButton<'static> {
+    pub fn button(self) -> Button {
         let (label, style, emoji) = match self {
-            Self::RegisterGuild => ("Register in guild", serenity::ButtonStyle::Primary, '📋'),
-            Self::UnregisterGuild => ("Delete in guild", serenity::ButtonStyle::Danger, '🗑'),
-            Self::RegisterGlobal => ("Register globally", serenity::ButtonStyle::Primary, '📋'),
-            Self::UnregisterGlobal => ("Unregister globally", serenity::ButtonStyle::Danger, '🗑'),
+            Self::RegisterGuild => ("Register in guild", ButtonStyle::Primary, "📋"),
+            Self::UnregisterGuild => ("Delete in guild", ButtonStyle::Danger, "🗑"),
+            Self::RegisterGlobal => ("Register globally", ButtonStyle::Primary, "📋"),
+            Self::UnregisterGlobal => ("Unregister globally", ButtonStyle::Danger, "🗑"),
         };
-        serenity::CreateButton::new(self.custom_id())
-            .label(label)
-            .style(style)
-            .emoji(emoji)
+        Button {
+            id: self.custom_id().to_owned(),
+            label: Some(label.to_owned()),
+            emoji: Some(emoji.to_owned()),
+            style,
+            disabled: false,
+        }
     }
+}
+
+/// The one row `/register` shows its buttons in.
+fn button_rows(offered: &[RegisterButton]) -> Vec<Row> {
+    vec![Row::Buttons(offered.iter().map(|b| b.button()).collect())]
 }
 
 /// The buttons `/register` offers. The bot owner gets all four. In `Manual`
@@ -186,14 +195,9 @@ pub async fn register_application_commands_buttons_cracked<U: Sync + Send + 'sta
         return Ok(());
     }
 
-    let buttons: Vec<_> = offered.iter().map(|b| b.button()).collect();
-    let components = serenity::CreateComponent::ActionRow(serenity::CreateActionRow::Buttons(
-        Cow::Owned(buttons),
-    ));
-
     let builder = poise::CreateReply::default()
         .content("Choose what to do with the commands:")
-        .components(vec![components]);
+        .components(discord::action_rows(&button_rows(&offered)));
 
     let reply = ctx.send(builder).await?;
 
@@ -313,6 +317,20 @@ mod test {
             vec![RegisterGuild, UnregisterGuild]
         );
         assert_eq!(offered_buttons(Global, false), vec![]);
+    }
+
+    #[test]
+    fn the_register_buttons_render_as_before() {
+        let row = discord::action_rows(&button_rows(&[
+            RegisterGuild,
+            UnregisterGuild,
+            RegisterGlobal,
+            UnregisterGlobal,
+        ]));
+        assert_eq!(
+            serde_json::to_string(&row).unwrap(),
+            r#"[{"type":1,"components":[{"style":1,"type":2,"custom_id":"register.guild","label":"Register in guild","emoji":{"name":"📋"},"disabled":false},{"style":4,"type":2,"custom_id":"unregister.guild","label":"Delete in guild","emoji":{"name":"🗑"},"disabled":false},{"style":1,"type":2,"custom_id":"register.global","label":"Register globally","emoji":{"name":"📋"},"disabled":false},{"style":4,"type":2,"custom_id":"unregister.global","label":"Unregister globally","emoji":{"name":"🗑"},"disabled":false}]}]"#
+        );
     }
 
     #[test]

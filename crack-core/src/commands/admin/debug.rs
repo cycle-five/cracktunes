@@ -3,7 +3,7 @@ use crate::guild::settings::GuildSettingsMap;
 use crate::utils::send_embed_response_poise;
 use crate::Context;
 use crate::Error;
-use serenity::builder::CreateEmbed;
+use crack_model::Card;
 use songbird::tracks::TrackQueue;
 
 /// Print some debug info.
@@ -35,9 +35,8 @@ pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
     let call = match manager.get(guild.id) {
         Some(call) => call,
         None => {
-            let embed =
-                CreateEmbed::default().description(format!("{}", CrackedError::NotConnected));
-            send_embed_response_poise(ctx, embed).await?;
+            let card = note_card(format!("{}", CrackedError::NotConnected));
+            send_embed_response_poise(ctx, card).await?;
             return Ok(());
         },
     };
@@ -47,13 +46,21 @@ pub async fn debugold(ctx: Context<'_>) -> Result<(), Error> {
     let queue_str = queue_to_str(queue);
     // let global_handlers = get_global_handlers(ctx);
 
-    let embed = CreateEmbed::default().description(format!(
+    let card = note_card(format!(
         "data: {}old_data_str{}\nqueue: {}",
         data_str, old_data_str, queue_str
     ));
-    send_embed_response_poise(ctx, embed).await?;
+    send_embed_response_poise(ctx, card).await?;
 
     Ok(())
+}
+
+/// A card that is only its description.
+fn note_card(description: String) -> Card {
+    Card {
+        description: Some(description),
+        ..Card::default()
+    }
 }
 
 /// Simple helper to convert a `[TrackQueue]' to a `[String]`.
@@ -65,4 +72,19 @@ pub fn queue_to_str(queue: &TrackQueue) -> String {
     }
 
     buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messaging::discord;
+
+    #[test]
+    fn the_debug_note_renders_as_before() {
+        let wire = serde_json::to_string(&discord::embed(&note_card("hello there".into())));
+        assert_eq!(
+            wire.unwrap(),
+            r#"{"type":"rich","description":"hello there"}"#
+        );
+    }
 }

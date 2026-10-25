@@ -23,7 +23,7 @@ use crate::{
 use ::serenity::small_fixed_array::FixedString;
 use ::serenity::{
     all::{CacheHttp, ComponentInteractionDataKind, GenericChannelId, GuildId, Interaction},
-    builder::{CreateEmbed, CreateInteractionResponse, CreateInteractionResponseMessage},
+    builder::{CreateInteractionResponse, CreateInteractionResponseMessage},
     futures::StreamExt,
     model::channel::Message,
 };
@@ -280,18 +280,18 @@ async fn clear_menu_keeping(
 /// Sends a reply response with an embed.
 pub async fn send_embed_response_poise<'ctx>(
     ctx: CrackContext<'ctx>,
-    embed: CreateEmbed<'ctx>,
+    card: Card,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-    send_embed_response_poise_as(ctx, embed, false).await
+    send_embed_response_poise_as(ctx, card, false).await
 }
 
 /// [`send_embed_response_poise`], ephemeral when `ephemeral` is set.
 pub async fn send_embed_response_poise_as<'ctx>(
     ctx: CrackContext<'ctx>,
-    embed: CreateEmbed<'ctx>,
+    card: Card,
     ephemeral: bool,
 ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-    courier::reply_rendered(ctx, Rendered::embed(embed.into_owned()), ephemeral).await
+    courier::reply_rendered(ctx, Rendered::embed(discord::embed(&card)), ephemeral).await
 }
 
 /// Edit the message `msg` points to.
@@ -314,11 +314,11 @@ pub async fn send_embed_response_poise_as<'ctx>(
 /// for a slash command costs an extra GET after the edit.
 pub async fn edit_embed_response2(
     ctx: CrackContext<'_>,
-    embed: CreateEmbed<'_>,
+    card: Card,
     msg: ReplyHandle<'_>,
     content: Option<String>,
 ) -> Result<(), Error> {
-    let mut out = Rendered::embed(embed.into_owned());
+    let mut out = Rendered::embed(discord::embed(&card));
     if let Some(content) = content {
         out = out.with_content(content);
     }
@@ -555,7 +555,7 @@ pub async fn create_paged_embed(
                     0,
                     num_pages,
                 )))
-                .with_components(create_nav_btns(0, num_pages)),
+                .with_components(discord::action_rows(&create_nav_btns(0, num_pages))),
                 style.ephemeral,
             )
             .await?
@@ -592,7 +592,10 @@ pub async fn create_paged_embed(
                 *page_wlock,
                 num_pages,
             )))
-            .with_components(create_nav_btns(*page_wlock, num_pages));
+            .with_components(discord::action_rows(&create_nav_btns(
+                *page_wlock,
+                num_pages,
+            )));
             #[expect(
                 clippy::disallowed_methods,
                 reason = "component responses move in PR 2"
@@ -859,13 +862,7 @@ mod test {
         assert_eq!(t.ops(), vec![Op::Delete(7, 42)]);
     }
 
-    use ::serenity::{
-        all::Button,
-        builder::{CreateActionRow, CreateComponent},
-    };
-
     use crate::messaging::interface::create_single_nav_btn;
-    use crack_types::to_fixed;
 
     use super::*;
     use crack_types::get_human_readable_timestamp;
@@ -968,33 +965,17 @@ mod test {
 
     #[test]
     fn test_build_single_nav_btn() {
-        let creat_btn = create_single_nav_btn("<<", true);
-        let s = serde_json::to_string_pretty(&creat_btn).unwrap();
-        println!("s: {}", s);
-        let btn = serde_json::from_str::<Button>(&s).unwrap();
+        let btn = create_single_nav_btn("<<", true);
 
-        assert_eq!(btn.label, Some(to_fixed("<<" as &str)));
+        assert_eq!(btn.label.as_deref(), Some("<<"));
         assert!(btn.disabled);
     }
 
     #[test]
     fn test_build_nav_btns() {
         let nav_btns_vev = create_nav_btns(0, 1);
-        if let CreateComponent::ActionRow(CreateActionRow::Buttons(nav_btns)) = &nav_btns_vev[0] {
-            let mut btns = Vec::new();
-            for btn in nav_btns.iter() {
-                let s = serde_json::to_string_pretty(&btn).unwrap();
-                println!("s: {}", s);
-                let btn = serde_json::from_str::<Button>(&s).unwrap();
-                btns.push(btn);
-            }
-            let s = serde_json::to_string_pretty(&nav_btns).unwrap();
-            println!("s: {}", s);
-            let btns = serde_json::from_str::<Vec<Button>>(&s).unwrap();
-
+        if let Row::Buttons(btns) = &nav_btns_vev[0] {
             assert_eq!(btns.len(), 4);
-            let btn = &btns[0];
-            assert_eq!(btns[0], btn.clone());
         } else {
             panic!("create_nav_btns did not return an action row of buttons");
         }
