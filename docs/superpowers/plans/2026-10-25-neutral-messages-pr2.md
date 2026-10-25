@@ -4,7 +4,7 @@
 
 **Goal:** `CrackedMessage`, its boxed payloads, `render` and `Rendered` hold no Discord type, and serenity's builders appear only in one Discord conversion module and the transports that send, with every message's Discord output byte-identical.
 
-**Architecture:** New neutral output types (`Rendered`, `Card`, `Row`, `Control`, `Mentions`, `Mention`) go into `crack-model`. A conversion module, `crack-core/src/messaging/discord.rs`, turns them into serenity builders.
+**Architecture:** New neutral output types (`Rendered`, `Card`, `Row`, `Button`, `Select`, `Mentions`, `Mention`) go into `crack-model`. A conversion module, `crack-core/src/messaging/discord.rs`, turns them into serenity builders.
 - Renderers and hand-built builder sites move to `Card`/`Row` one family at a time (Tasks 4–8). Each wraps its output back into today's Discord-typed `Rendered`, so every task ships with its own byte pins.
 - Task 9 then swaps `Rendered` for the neutral one, moves the `to_*` methods into the conversion module, removes the wrappers, and locks the boundary with clippy's `disallowed-types`.
 
@@ -46,7 +46,7 @@
 
 ## Calls this plan makes against the spec's sketch (from the inventory)
 
-- **No `Control::Link`, `PickUsers` or `PickRoles`.**
+- **No link button and no user or role picker** (no `Link`, `PickUsers` or `PickRoles`).
   - The code builds no link button (`CreateButton::new_link` has 0 uses).
   - The only user and role pickers sit inside the voice-room modals (`rooms/interact.rs` `pick_user`/`pick_role`). Modals stay Discord (spec: input, not output).
   - Following the spec's own rule ("a superset of what cracktunes sends today, and nothing more"), they are left out.
@@ -93,8 +93,9 @@
     - `pub struct Field { pub name: String, pub value: String, pub inline: bool }`;
     - `pub struct Footer { pub text: String, pub icon_url: Option<String> }`.
   - **Controls:**
-    - `pub struct Row(pub Vec<Control>)`;
-    - `pub enum Control { Button { id: String, label: Option<String>, emoji: Option<String>, style: ButtonStyle, disabled: bool }, Select { id: String, placeholder: Option<String>, options: Vec<SelectOption>, min: Option<u8>, max: Option<u8> } }`;
+    - `pub enum Row { Buttons(Vec<Button>), Select(Select) }`. A row holds buttons or one select, never both; Discord rejects a mixed row, and the type makes it unrepresentable (ruling P2);
+    - `pub struct Button { pub id: String, pub label: Option<String>, pub emoji: Option<String>, pub style: ButtonStyle, pub disabled: bool }`;
+    - `pub struct Select { pub id: String, pub placeholder: Option<String>, pub options: Vec<SelectOption>, pub min: Option<u8>, pub max: Option<u8> }`;
     - `pub enum ButtonStyle { Primary, Secondary, Success, Danger }`;
     - `pub struct SelectOption { pub label: String, pub value: String, pub default: bool }`.
   - **Mentions:**
@@ -133,7 +134,7 @@
   - `every_card_field_converts_like_the_builder`: title, url, description, author (name, url, icon_url), several fields (inline and not), thumbnail, footer (with and without an icon), timestamp, colour, and an all-`None` card.
   - `every_control_converts_like_the_builder`:
     - a button in each style, with and without label, emoji and `disabled`;
-    - a select with placeholder, min, max, and an option with `default_selection(true)`;
+    - a select with placeholder, min, max, and an option with `default_selection(true)`. An option with `default: false` emits no `default` key (ruling P3: the search and guess menus omit it today, and Discord reads a missing key as false);
     - two rows in order.
   - `a_custom_id_reaches_discord_verbatim`: an id with `:` and digits survives byte for byte.
   - `mentions_none_allows_nobody` and `mentions_users_allows_users`: the JSON matches the two `CreateAllowedMentions` values `render.rs` builds today.
