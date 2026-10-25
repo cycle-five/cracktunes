@@ -732,6 +732,24 @@ mod test {
         assert_eq!(stored, Some(guild_id.to_ref()));
     }
 
+    /// A guild with no settings yet gets its own, not a default guild's, and
+    /// the first toggle on it reports the value it was created with.
+    #[tokio::test]
+    async fn toggle_autopause_creates_settings_for_the_guild_then_flips() {
+        let data = crate::Data::default();
+        let guild_id = GuildId::new(77);
+        assert!(!data.toggle_autopause(guild_id).await);
+        assert!(data.toggle_autopause(guild_id).await);
+        assert!(!data.toggle_autopause(guild_id).await);
+        let stored = data
+            .guild_settings_map
+            .read()
+            .await
+            .get(&guild_id)
+            .map(|s| s.guild_id.clone());
+        assert_eq!(stored, Some(guild_id.to_ref()));
+    }
+
     #[tokio::test]
     async fn ephemeral_replies_follow_the_guild_setting() {
         let data = crate::Data::default();
