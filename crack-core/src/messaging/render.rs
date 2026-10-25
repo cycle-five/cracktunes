@@ -2,8 +2,9 @@
 //!
 //! `render` is pure and total: every message renders, nothing here touches
 //! the network, and it is the only sender-facing way to turn a message into
-//! output; `messaging::discord` converts that to Discord builders. Titles, links, durations and limits come from
-//! [`super::format`]; nothing else formats them.
+//! output; `messaging::discord` converts that to Discord builders. Titles,
+//! links, durations and limits come from [`super::format`]; nothing else
+//! formats them.
 use crate::messaging::format::{clip, DESCRIPTION_MAX};
 use crate::messaging::message::CrackedMessage;
 use std::time::{SystemTime, UNIX_EPOCH};
