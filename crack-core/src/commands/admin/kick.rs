@@ -1,4 +1,5 @@
 //#![feature(const_random)] // This is a nightly feature
+use crack_types::discord::ToRef;
 use crate::errors::CrackedError;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::message::CrackedMessage;
@@ -22,7 +23,6 @@ pub async fn kick(
     ctx: Context<'_>,
     #[description = "User to kick."] user: User,
 ) -> Result<(), Error> {
-    let mention = user.mention();
     let id = user.id;
     let guild_id = ctx.guild_id().ok_or(CrackedError::GuildOnly)?;
     let as_embed = ctx.data().get_reply_with_embed(guild_id).await;
@@ -36,7 +36,7 @@ pub async fn kick(
         .await?;
     } else {
         // Send success message
-        send_reply(&ctx, CrackedMessage::UserKicked { id, mention }, as_embed).await?;
+        send_reply(&ctx, CrackedMessage::UserKicked { id: id.to_ref() }, as_embed).await?;
     }
     Ok(())
 }

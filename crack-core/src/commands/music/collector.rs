@@ -2,11 +2,20 @@ use crate::messaging::courier;
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
 use crate::{Context, Error};
-use ::serenity::builder::{
-    CreateActionRow, CreateButton, CreateComponent, CreateInteractionResponse,
-    CreateInteractionResponseMessage,
-};
+use ::serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
+use crack_model::{Button, ButtonStyle, Row};
 use poise::serenity_prelude as serenity;
+
+/// The boop button: its custom id is the command's invocation id.
+fn boop_button(id: String) -> Vec<Row> {
+    vec![Row::Buttons(vec![Button {
+        id,
+        label: Some("Boop me!".to_owned()),
+        emoji: None,
+        style: ButtonStyle::Primary,
+        disabled: false,
+    }])]
+}
 
 /// Boop the bot!
 /// TODO: get this working
@@ -16,14 +25,10 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
 
     let id_str = format!("{}", uuid_boop);
 
-    let button = vec![CreateComponent::ActionRow(CreateActionRow::buttons(
-        Cow::Owned(vec![CreateButton::new(id_str)
-            .style(serenity::ButtonStyle::Primary)
-            .label("Boop me!")]),
-    ))];
+    let button = boop_button(id_str);
     courier::reply_rendered(
         ctx,
-        Rendered::text("I want some boops!").with_components(button.clone()),
+        Rendered::text("I want some boops!").with_rows(button.clone()),
         false,
     )
     .await?;
@@ -44,7 +49,7 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
             &DiscordTransport::of(ctx.serenity_context()),
             mci.message.channel_id,
             mci.message.id,
-            Rendered::text(format!("Boop count: {}", boop_count)).with_components(button.clone()),
+            Rendered::text(format!("Boop count: {}", boop_count)).with_rows(button.clone()),
         )
         .await
         {
@@ -63,4 +68,17 @@ pub async fn boop(ctx: Context<'_>) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messaging::discord;
+    #[test]
+    fn boop_button_renders_as_before() {
+        assert_eq!(
+            serde_json::to_string(&discord::action_rows(&boop_button("42".to_string()))).unwrap(),
+            r#"[{"type":1,"components":[{"style":1,"type":2,"custom_id":"42","label":"Boop me!","disabled":false}]}]"#
+        );
+    }
 }

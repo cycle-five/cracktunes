@@ -12,7 +12,7 @@ use crate::messaging::messages::{
 use crate::messaging::render::RenderCx;
 use crate::messaging::render::Rendered;
 use crate::Data;
-use serenity::all::{Cache, CreateEmbed, GenericChannelId, GuildId, Http, MessageId, MessageLink};
+use serenity::all::{Cache, GenericChannelId, GuildId, Http, MessageId, MessageLink};
 use songbird::Call;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -403,10 +403,12 @@ pub async fn show_finished(
 }
 
 /// The "Finished" status.
-pub fn finished_embed() -> CreateEmbed<'static> {
-    CreateEmbed::new()
-        .title(STATUS_FINISHED_TITLE)
-        .description(STATUS_FINISHED_DESCRIPTION)
+pub fn finished_card() -> crack_model::Card {
+    crack_model::Card {
+        title: Some(STATUS_FINISHED_TITLE.to_owned()),
+        description: Some(STATUS_FINISHED_DESCRIPTION.to_owned()),
+        ..crack_model::Card::default()
+    }
 }
 
 /// `/nowplaying`'s one-line reply: a jump link when the status exists
@@ -463,7 +465,10 @@ mod tests {
     }
 
     fn embed() -> Rendered {
-        Rendered::embed(CreateEmbed::new().title("status"))
+        Rendered::card(crack_model::Card {
+            title: Some("status".into()),
+            ..crack_model::Card::default()
+        })
     }
 
     // ---- placement ----
@@ -1022,7 +1027,9 @@ mod tests {
             assert!(shown.is_some());
             assert_eq!(t.ops(), vec![Op::Send(10)]);
             let sent = t.sent.lock().unwrap();
-            let row = serde_json::to_value(&sent[0].components[0]).unwrap();
+            let row =
+                serde_json::to_value(&crate::messaging::discord::action_rows(&sent[0].rows)[0])
+                    .unwrap();
             assert_eq!(row["components"][0]["custom_id"], "np:pause:1");
         })
         .await
@@ -1053,8 +1060,8 @@ mod tests {
                 .await
                 .is_some());
             let sent = t.sent.lock().unwrap();
-            assert!(sent[0].components.is_empty());
-            assert!(sent[0].embed.is_some(), "still the now-playing card");
+            assert!(sent[0].rows.is_empty());
+            assert!(!sent[0].cards.is_empty(), "still the now-playing card");
         })
         .await
         .expect("get_info is bounded, so the render finishes");
@@ -1120,7 +1127,9 @@ mod tests {
             buttons_switched(&data, &t, GUILD, true, Some(&call)).await;
             assert_eq!(t.ops(), vec![Op::Send(10)]);
             let sent = t.sent.lock().unwrap();
-            let row = serde_json::to_value(&sent[0].components[0]).unwrap();
+            let row =
+                serde_json::to_value(&crate::messaging::discord::action_rows(&sent[0].rows)[0])
+                    .unwrap();
             assert_eq!(row["components"][0]["custom_id"], "np:pause:1");
         })
         .await

@@ -4,6 +4,7 @@
 //! `room:<kind>:<channel>` for a button, `roomm:<kind>:<channel>` for the modal
 //! it opens. A panel on an old message still works after a restart, and a press
 //! names the room it was drawn for.
+use crack_model::RoomRef;
 use serenity::all::ChannelId;
 
 /// Every room button's custom id starts with this.
@@ -107,6 +108,13 @@ impl RoomButton {
     fn from_slug(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.slug() == s)
     }
+
+    /// The custom id of this button on `room`'s panel; the same text as
+    /// [`ButtonId::custom_id`], for a room that is still a ref.
+    #[must_use]
+    pub fn custom_id_for(self, room: &RoomRef) -> String {
+        format!("{ROOM_PREFIX}{}:{}", self.slug(), room.raw().as_str())
+    }
 }
 
 impl RoomModal {
@@ -203,6 +211,14 @@ mod tests {
             assert_eq!(ButtonId::parse(&id), Some(b), "{id}");
             assert!(id.starts_with(ROOM_PREFIX) && id.ends_with(":123456789012345678"));
             assert!(seen.insert(id), "two kinds share an id");
+        }
+        // The ref spelling is the same text.
+        let room = crack_types::discord::ToRef::to_ref(&ROOM);
+        for kind in RoomButton::ALL {
+            assert_eq!(
+                kind.custom_id_for(&room),
+                ButtonId { kind, room: ROOM }.custom_id()
+            );
         }
         // The wire spelling is a contract with panels already posted.
         let slugs: Vec<_> = RoomButton::ALL

@@ -1,7 +1,7 @@
 //! Where serenity's id types and platform-neutral refs meet.
 //!
 //! Everything that turns a stored or configured id into a serenity id goes
-//! through here, because serenity's `new` panics on `0` and `u64::MAX`.
+//! through here, because serenity's `new` panics on `u64::MAX`, and a snowflake is never `0`.
 
 use crack_model::{Kind, Platform, Ref, RoomRef};
 use serenity::all::{ChannelId, GenericChannelId, GuildId, MessageId, RoleId, UserId};

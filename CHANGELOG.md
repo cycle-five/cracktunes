@@ -558,6 +558,11 @@
   v0.36.2 is out of the rollback window.
 - **The dashboard backend speaks refs.** A dashboard URL with the guild id
   `18446744073709551615` now answers 404 instead of panicking.
+- **Messages are platform-neutral.** `CrackedMessage` and every card it carries
+  hold refs and plain text, and rendering produces `crack_model::Card`/`Row`
+  instead of serenity builders. `messaging::discord` is the one place that turns
+  them into Discord messages, and clippy keeps it that way. What the bot sends
+  is unchanged.
 
 ## TODO:
 

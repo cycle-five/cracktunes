@@ -2,9 +2,11 @@
 use crate::economy::settings::ActionKind;
 use crate::messaging::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
 use crate::messaging::messages::*;
-use crate::messaging::render::{Mentions, RenderCx, Rendered};
+use crate::messaging::render::{RenderCx, Rendered};
 use chrono::{DateTime, Utc};
-use serenity::all::{ChannelId, CreateEmbed, CreateEmbedFooter, Timestamp, UserId};
+use crack_model::{Card, Field, Footer, Mention, RoomRef, UserRef};
+use crack_types::discord::ToRef;
+use serenity::all::UserId;
 
 /// How many members a batch names before "and N more".
 const BATCH_NAMES_MAX: usize = 10;
@@ -14,19 +16,26 @@ const BATCH_NAMES_MAX: usize = 10;
 /// moderator's and marked as a bot's (owner's call, 2026-10-18): the action
 /// still happened, and the mark says where to look next. There is no
 /// `From<UserId>`: every producer states the flag.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Actor {
-    pub id: UserId,
+    pub id: UserRef,
     pub bot: bool,
 }
 
 impl Actor {
-    pub const fn person(id: UserId) -> Self {
-        Self { id, bot: false }
+    pub fn new(id: UserId, bot: bool) -> Self {
+        Self {
+            id: id.to_ref(),
+            bot,
+        }
     }
 
-    pub const fn bot(id: UserId) -> Self {
-        Self { id, bot: true }
+    pub fn person(id: UserId) -> Self {
+        Self::new(id, false)
+    }
+
+    pub fn bot(id: UserId) -> Self {
+        Self::new(id, true)
     }
 }
 
@@ -41,64 +50,64 @@ pub enum Attribution {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModLogEvent {
     ServerMute {
-        target: UserId,
+        target: UserRef,
         actor: Actor,
         on: bool,
         reason: Option<String>,
     },
     ServerDeafen {
-        target: UserId,
+        target: UserRef,
         actor: Actor,
         on: bool,
         reason: Option<String>,
     },
     Disconnect {
-        target: UserId,
-        from: ChannelId,
+        target: UserRef,
+        from: RoomRef,
         by: Attribution,
     },
     Move {
-        target: UserId,
-        from: ChannelId,
-        to: ChannelId,
+        target: UserRef,
+        from: RoomRef,
+        to: RoomRef,
         by: Attribution,
     },
     DisconnectBatch {
         actors: Vec<Actor>,
         count: u32,
-        among: Vec<UserId>,
+        among: Vec<UserRef>,
     },
     RoomKick {
-        target: UserId,
-        room: ChannelId,
-        actor: UserId,
+        target: UserRef,
+        room: RoomRef,
+        actor: UserRef,
         reason: String,
     },
     RoomUnblock {
-        target: UserId,
-        room: ChannelId,
-        actor: UserId,
+        target: UserRef,
+        room: RoomRef,
+        actor: UserRef,
     },
     RoomMute {
-        target: UserId,
-        room: ChannelId,
-        actor: UserId,
+        target: UserRef,
+        room: RoomRef,
+        actor: UserRef,
         on: bool,
         reason: Option<String>,
     },
     ImmunityGranted {
-        by: UserId,
-        target: UserId,
+        by: UserRef,
+        target: UserRef,
         until: Option<DateTime<Utc>>,
         reason: Option<String>,
     },
     ImmunityLifted {
-        by: UserId,
-        target: UserId,
+        by: UserRef,
+        target: UserRef,
     },
     CreditsAdjusted {
-        by: UserId,
-        target: UserId,
+        by: UserRef,
+        target: UserRef,
         amount: i64,
         reason: String,
     },
@@ -106,27 +115,27 @@ pub enum ModLogEvent {
     /// here, signed or not (owner ruling): moderators see who did it.
     ShopAction {
         action: ActionKind,
-        buyer: UserId,
-        target: UserId,
+        buyer: UserRef,
+        target: UserRef,
         note: Option<String>,
         signed: bool,
         until: Option<DateTime<Utc>>,
         /// Whose mirror bounced the prank onto the buyer.
-        mirrored_from: Option<UserId>,
+        mirrored_from: Option<UserRef>,
     },
     /// The pranks running on `target` were ended early: by `target`'s own
     /// cleanse (`by == target`) or a moderator's `/economy cancel`.
     ShopCancelled {
-        by: UserId,
-        target: UserId,
+        by: UserRef,
+        target: UserRef,
     },
     /// A crowdfund was opened (with the starter's own first pledge). The
     /// starter is always named here, signed or not, as a shop purchase's
     /// buyer is; `signed` says whether the public card named them too.
     CrowdfundStarted {
         action: ActionKind,
-        starter: UserId,
-        target: UserId,
+        starter: UserRef,
+        target: UserRef,
         note: Option<String>,
         signed: bool,
     },
@@ -134,8 +143,8 @@ pub enum ModLogEvent {
     /// the starter first, then each pledger once in pledge order.
     CrowdfundExecuted {
         action: ActionKind,
-        target: UserId,
-        contributors: Vec<UserId>,
+        target: UserRef,
+        contributors: Vec<UserRef>,
         until: Option<DateTime<Utc>>,
     },
 }
@@ -170,34 +179,34 @@ impl From<ModLogEvent> for crate::messaging::message::CrackedMessage {
     }
 }
 
-fn user(u: UserId) -> String {
-    format!("<@{u}>")
+fn user(u: &UserRef) -> String {
+    Mention::User(u.clone()).to_string()
 }
 
-fn channel(c: ChannelId) -> String {
-    format!("<#{c}>")
+fn channel(c: &RoomRef) -> String {
+    Mention::Room(c.clone()).to_string()
 }
 
-fn users(list: &[UserId]) -> String {
-    list.iter().map(|u| user(*u)).collect::<Vec<_>>().join(", ")
+fn users(list: &[UserRef]) -> String {
+    list.iter().map(user).collect::<Vec<_>>().join(", ")
 }
 
 /// An audit actor's mention, marked when the account is a bot.
-fn who(a: Actor) -> String {
+fn who(a: &Actor) -> String {
     if a.bot {
-        format!("{} {MODLOG_BOT_MARK}", user(a.id))
+        format!("{} {MODLOG_BOT_MARK}", user(&a.id))
     } else {
-        user(a.id)
+        user(&a.id)
     }
 }
 
 fn whos(list: &[Actor]) -> String {
-    list.iter().map(|a| who(*a)).collect::<Vec<_>>().join(", ")
+    list.iter().map(who).collect::<Vec<_>>().join(", ")
 }
 
 fn by(a: &Attribution) -> String {
     match a {
-        Attribution::By(a) => format!("{MODLOG_BY} {}", who(*a)),
+        Attribution::By(a) => format!("{MODLOG_BY} {}", who(a)),
         Attribution::OneOf(l) => format!("{MODLOG_BY_ONE_OF} {}", whos(l)),
     }
 }
@@ -235,9 +244,9 @@ fn parts(e: &ModLogEvent) -> Parts {
             title: toggle(*on, MODLOG_TITLE_MUTE, MODLOG_TITLE_UNMUTE),
             description: format!(
                 "{} {} {}",
-                who(*actor),
+                who(actor),
                 toggle(*on, MODLOG_MUTED, MODLOG_UNMUTED),
-                user(*target),
+                user(target),
             ),
             reason: reason.clone(),
             audit: false,
@@ -251,9 +260,9 @@ fn parts(e: &ModLogEvent) -> Parts {
             title: toggle(*on, MODLOG_TITLE_DEAFEN, MODLOG_TITLE_UNDEAFEN),
             description: format!(
                 "{} {} {}",
-                who(*actor),
+                who(actor),
                 toggle(*on, MODLOG_DEAFENED, MODLOG_UNDEAFENED),
-                user(*target),
+                user(target),
             ),
             reason: reason.clone(),
             audit: false,
@@ -266,12 +275,7 @@ fn parts(e: &ModLogEvent) -> Parts {
             audit: true,
             ..plain(
                 MODLOG_TITLE_DISCONNECT,
-                format!(
-                    "{} {MODLOG_FROM} {} {}",
-                    user(*target),
-                    channel(*from),
-                    by(a)
-                ),
+                format!("{} {MODLOG_FROM} {} {}", user(target), channel(from), by(a)),
             )
         },
         ModLogEvent::Move {
@@ -285,9 +289,9 @@ fn parts(e: &ModLogEvent) -> Parts {
                 MODLOG_TITLE_MOVE,
                 format!(
                     "{} {MODLOG_FROM} {} {MODLOG_TO} {} {}",
-                    user(*target),
-                    channel(*from),
-                    channel(*to),
+                    user(target),
+                    channel(from),
+                    channel(to),
                     by(a)
                 ),
             )
@@ -328,9 +332,9 @@ fn parts(e: &ModLogEvent) -> Parts {
                 MODLOG_TITLE_ROOM_KICK,
                 format!(
                     "{} {MODLOG_KICKED} {} {MODLOG_FROM} {}",
-                    user(*actor),
-                    user(*target),
-                    channel(*room)
+                    user(actor),
+                    user(target),
+                    channel(room)
                 ),
             )
         },
@@ -342,9 +346,9 @@ fn parts(e: &ModLogEvent) -> Parts {
             MODLOG_TITLE_ROOM_UNBLOCK,
             format!(
                 "{} {MODLOG_LET_BACK_IN} {} {MODLOG_IN} {}",
-                user(*actor),
-                user(*target),
-                channel(*room)
+                user(actor),
+                user(target),
+                channel(room)
             ),
         ),
         ModLogEvent::RoomMute {
@@ -359,10 +363,10 @@ fn parts(e: &ModLogEvent) -> Parts {
                 toggle(*on, MODLOG_TITLE_ROOM_MUTE, MODLOG_TITLE_ROOM_UNMUTE),
                 format!(
                     "{} {} {} {MODLOG_IN} {}",
-                    user(*actor),
+                    user(actor),
                     toggle(*on, MODLOG_MUTED, MODLOG_UNMUTED),
-                    user(*target),
-                    channel(*room)
+                    user(target),
+                    channel(room)
                 ),
             )
         },
@@ -382,19 +386,15 @@ fn parts(e: &ModLogEvent) -> Parts {
                     MODLOG_TITLE_IMMUNITY_GRANTED,
                     format!(
                         "{} {MODLOG_GRANTED_IMMUNITY_TO} {} {until}",
-                        user(*by),
-                        user(*target)
+                        user(by),
+                        user(target)
                     ),
                 )
             }
         },
         ModLogEvent::ImmunityLifted { by, target } => plain(
             MODLOG_TITLE_IMMUNITY_LIFTED,
-            format!(
-                "{} {MODLOG_LIFTED_IMMUNITY_OF} {}",
-                user(*by),
-                user(*target)
-            ),
+            format!("{} {MODLOG_LIFTED_IMMUNITY_OF} {}", user(by), user(target)),
         ),
         ModLogEvent::CreditsAdjusted {
             by,
@@ -413,8 +413,8 @@ fn parts(e: &ModLogEvent) -> Parts {
                     MODLOG_TITLE_CREDITS_ADJUSTED,
                     format!(
                         "{} {MODLOG_ADJUSTED_CREDITS_OF} {} {MODLOG_BY} {signed}",
-                        user(*by),
-                        user(*target)
+                        user(by),
+                        user(target)
                     ),
                 )
             }
@@ -430,9 +430,9 @@ fn parts(e: &ModLogEvent) -> Parts {
         } => {
             let mut d = format!(
                 "{} {MODLOG_SHOP_USED} {} {MODLOG_SHOP_ON} {}",
-                user(*buyer),
+                user(buyer),
                 action.label(),
-                user(*target)
+                user(target)
             );
             if let Some(t) = until {
                 d.push_str(&format!(" {MODLOG_UNTIL} <t:{}:f>", t.timestamp()));
@@ -440,7 +440,7 @@ fn parts(e: &ModLogEvent) -> Parts {
             if let Some(owner) = mirrored_from {
                 d.push_str(&format!(
                     " {MODLOG_SHOP_BOUNCED_PREFIX} {}{MODLOG_SHOP_BOUNCED_SUFFIX}",
-                    user(*owner)
+                    user(owner)
                 ));
             }
             d.push_str(&format!(
@@ -454,7 +454,7 @@ fn parts(e: &ModLogEvent) -> Parts {
         },
         ModLogEvent::ShopCancelled { by, target } => plain(
             MODLOG_TITLE_SHOP_CANCELLED,
-            format!("{} {MODLOG_SHOP_CLEANSED} {}", user(*by), user(*target)),
+            format!("{} {MODLOG_SHOP_CLEANSED} {}", user(by), user(target)),
         ),
         ModLogEvent::CrowdfundStarted {
             action,
@@ -468,9 +468,9 @@ fn parts(e: &ModLogEvent) -> Parts {
                 MODLOG_TITLE_CROWDFUND_STARTED,
                 format!(
                     "{} {MODLOG_CROWDFUND_STARTED} {} {MODLOG_SHOP_ON} {} ({})",
-                    user(*starter),
+                    user(starter),
                     action.label(),
-                    user(*target),
+                    user(target),
                     toggle(*signed, MODLOG_SHOP_SIGNED, MODLOG_SHOP_ANONYMOUS)
                 ),
             )
@@ -483,7 +483,7 @@ fn parts(e: &ModLogEvent) -> Parts {
         } => {
             // The action and the target first, so a long list of
             // contributors can only ever clip its own tail.
-            let mut d = format!("{} {MODLOG_SHOP_ON} {}", action.label(), user(*target));
+            let mut d = format!("{} {MODLOG_SHOP_ON} {}", action.label(), user(target));
             if let Some(t) = until {
                 d.push_str(&format!(" {MODLOG_UNTIL} <t:{}:f>", t.timestamp()));
             }
@@ -501,32 +501,55 @@ fn parts(e: &ModLogEvent) -> Parts {
 #[must_use]
 pub fn render(e: &ModLogEvent, cx: &RenderCx) -> Rendered {
     let p = parts(e);
-    let mut embed = CreateEmbed::new()
-        .title(clip(p.title, EMBED_TITLE_MAX))
-        .description(clip(&p.description, DESCRIPTION_MAX));
+    let mut card = Card {
+        title: Some(clip(p.title, EMBED_TITLE_MAX)),
+        description: Some(clip(&p.description, DESCRIPTION_MAX)),
+        ..Card::default()
+    };
     if let Some(reason) = p.reason.as_deref().filter(|r| !r.trim().is_empty()) {
-        embed = embed.field(MODLOG_REASON_FIELD, clip(&escape(reason), FIELD_MAX), false);
+        card.fields.push(Field {
+            name: MODLOG_REASON_FIELD.to_string(),
+            value: clip(&escape(reason), FIELD_MAX),
+            inline: false,
+        });
     }
     if p.audit {
-        embed = embed.footer(CreateEmbedFooter::new(MODLOG_AUDIT_FOOTER));
+        card.footer = Some(Footer {
+            text: MODLOG_AUDIT_FOOTER.to_string(),
+            icon_url: None,
+        });
     }
-    if let Ok(ts) = Timestamp::from_unix_timestamp(cx.now_unix) {
-        embed = embed.timestamp(ts);
-    }
-    Rendered {
-        mentions: Mentions::None,
-        ..Rendered::embed(embed)
-    }
+    card.timestamp = Some(cx.now_unix);
+    // `Mentions::default()` pings nobody; the tests pin it.
+    Rendered::card(card)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::messaging::render::Mentions;
 
     const T: UserId = UserId::new(11);
     const A: UserId = UserId::new(22);
-    const R: ChannelId = ChannelId::new(333);
-    const R2: ChannelId = ChannelId::new(444);
+    const R: serenity::all::ChannelId = serenity::all::ChannelId::new(333);
+    const R2: serenity::all::ChannelId = serenity::all::ChannelId::new(444);
+    const R_USER: UserId = UserId::new(555);
+
+    fn t() -> UserRef {
+        T.to_ref()
+    }
+
+    fn a() -> UserRef {
+        A.to_ref()
+    }
+
+    fn r() -> RoomRef {
+        R.to_ref()
+    }
+
+    fn r2() -> RoomRef {
+        R2.to_ref()
+    }
 
     fn cx() -> RenderCx {
         RenderCx {
@@ -536,48 +559,48 @@ mod tests {
     }
 
     fn json(r: &Rendered) -> serde_json::Value {
-        serde_json::to_value(r.embed.as_ref().unwrap()).unwrap()
+        serde_json::to_value(crate::messaging::discord::first_embed(r).unwrap()).unwrap()
     }
 
-    fn ids(n: u64) -> Vec<UserId> {
-        (1..=n).map(|i| UserId::new(1000 + i)).collect()
+    fn ids(n: u64) -> Vec<UserRef> {
+        (1..=n).map(|i| UserId::new(1000 + i).to_ref()).collect()
     }
 
     fn all() -> Vec<ModLogEvent> {
         vec![
             ModLogEvent::ServerMute {
-                target: T,
+                target: t(),
                 actor: Actor::person(A),
                 on: true,
                 reason: Some("loud".into()),
             },
             ModLogEvent::ServerMute {
-                target: T,
+                target: t(),
                 actor: Actor::person(A),
                 on: false,
                 reason: None,
             },
             ModLogEvent::ServerDeafen {
-                target: T,
+                target: t(),
                 actor: Actor::person(A),
                 on: true,
                 reason: None,
             },
             ModLogEvent::ServerDeafen {
-                target: T,
+                target: t(),
                 actor: Actor::person(A),
                 on: false,
                 reason: None,
             },
             ModLogEvent::Disconnect {
-                target: T,
-                from: R,
+                target: t(),
+                from: r(),
                 by: Attribution::By(Actor::person(A)),
             },
             ModLogEvent::Move {
-                target: T,
-                from: R,
-                to: R2,
+                target: t(),
+                from: r(),
+                to: r2(),
                 by: Attribution::OneOf(vec![Actor::person(A), Actor::person(T)]),
             },
             ModLogEvent::DisconnectBatch {
@@ -586,67 +609,166 @@ mod tests {
                 among: ids(3),
             },
             ModLogEvent::RoomKick {
-                target: T,
-                room: R,
-                actor: A,
+                target: t(),
+                room: r(),
+                actor: a(),
                 reason: "spam".into(),
             },
             ModLogEvent::RoomUnblock {
-                target: T,
-                room: R,
-                actor: A,
+                target: t(),
+                room: r(),
+                actor: a(),
             },
             ModLogEvent::RoomMute {
-                target: T,
-                room: R,
-                actor: A,
+                target: t(),
+                room: r(),
+                actor: a(),
                 on: true,
                 reason: None,
             },
             ModLogEvent::RoomMute {
-                target: T,
-                room: R,
-                actor: A,
+                target: t(),
+                room: r(),
+                actor: a(),
                 on: false,
                 reason: None,
             },
             ModLogEvent::ImmunityGranted {
-                by: A,
-                target: T,
+                by: a(),
+                target: t(),
                 until: None,
                 reason: None,
             },
-            ModLogEvent::ImmunityLifted { by: A, target: T },
+            ModLogEvent::ImmunityLifted {
+                by: a(),
+                target: t(),
+            },
             ModLogEvent::CreditsAdjusted {
-                by: A,
-                target: T,
+                by: a(),
+                target: t(),
                 amount: 5,
                 reason: "x".into(),
             },
             ModLogEvent::ShopAction {
                 action: ActionKind::Rename,
-                buyer: A,
-                target: T,
+                buyer: a(),
+                target: t(),
                 note: Some("hi".into()),
                 signed: false,
                 until: None,
                 mirrored_from: None,
             },
-            ModLogEvent::ShopCancelled { by: A, target: T },
+            ModLogEvent::ShopCancelled {
+                by: a(),
+                target: t(),
+            },
             ModLogEvent::CrowdfundStarted {
                 action: ActionKind::Mute,
-                starter: A,
-                target: T,
+                starter: a(),
+                target: t(),
                 note: None,
                 signed: false,
             },
             ModLogEvent::CrowdfundExecuted {
                 action: ActionKind::Mute,
-                target: T,
-                contributors: vec![A, T],
+                target: t(),
+                contributors: vec![a(), t()],
                 until: None,
             },
         ]
+    }
+
+    /// Everything a render sends, as exact bytes.
+    fn sent(r: &Rendered) -> String {
+        format!(
+            "{:?}|{}|{}|{}|{:?}",
+            r.content,
+            serde_json::to_string(&crate::messaging::discord::first_embed(r)).unwrap(),
+            serde_json::to_string(&crate::messaging::discord::extra_embeds(r)).unwrap(),
+            serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap(),
+            r.mentions
+        )
+    }
+
+    fn pin_cases() -> Vec<ModLogEvent> {
+        let until = DateTime::<Utc>::from_timestamp(1_700_003_600, 0);
+        let mut out = all();
+        out.extend([
+            ModLogEvent::ServerMute {
+                target: t(),
+                actor: Actor::bot(A),
+                on: true,
+                reason: Some("  ".into()),
+            },
+            ModLogEvent::Disconnect {
+                target: t(),
+                from: r(),
+                by: Attribution::By(Actor::bot(A)),
+            },
+            ModLogEvent::DisconnectBatch {
+                actors: vec![Actor::person(A), Actor::bot(T)],
+                count: 14,
+                among: ids(14),
+            },
+            ModLogEvent::RoomKick {
+                target: t(),
+                room: r(),
+                actor: a(),
+                reason: "@everyone *x*".into(),
+            },
+            ModLogEvent::RoomMute {
+                target: t(),
+                room: r(),
+                actor: a(),
+                on: true,
+                reason: Some("shh".into()),
+            },
+            ModLogEvent::ImmunityGranted {
+                by: a(),
+                target: t(),
+                until,
+                reason: Some("ok".into()),
+            },
+            ModLogEvent::CreditsAdjusted {
+                by: a(),
+                target: t(),
+                amount: -5,
+                reason: "x".into(),
+            },
+            ModLogEvent::ShopAction {
+                action: ActionKind::Mute,
+                buyer: a(),
+                target: t(),
+                note: None,
+                signed: true,
+                until,
+                mirrored_from: Some(R_USER.to_ref()),
+            },
+            ModLogEvent::CrowdfundStarted {
+                action: ActionKind::Mute,
+                starter: a(),
+                target: t(),
+                note: Some("n".into()),
+                signed: true,
+            },
+            ModLogEvent::CrowdfundExecuted {
+                action: ActionKind::Mute,
+                target: t(),
+                contributors: vec![a(), t()],
+                until,
+            },
+        ]);
+        out
+    }
+
+    #[test]
+    fn modlog_events_render_as_before() {
+        let cases = pin_cases();
+        assert_eq!(cases.len(), EXPECTED.len());
+        for (e, expected) in cases.iter().zip(EXPECTED) {
+            let actual = sent(&render(e, &cx()));
+            assert_eq!(&actual, expected, "{e:?}: {actual}");
+        }
     }
 
     #[test]
@@ -655,7 +777,7 @@ mod tests {
         for e in all() {
             let r = render(&e, &cx());
             assert_eq!(r.mentions, Mentions::None, "{e:?}");
-            assert!(r.embeds_extra.is_empty() && r.content.is_none(), "{e:?}");
+            assert!(r.cards.len() <= 1 && r.content.is_none(), "{e:?}");
             let j = json(&r);
             let title = j["title"].as_str().unwrap().to_owned();
             assert!(!title.is_empty());
@@ -675,7 +797,10 @@ mod tests {
     fn ended_pranks_read_the_same_for_a_cleanse_and_a_cancel() {
         for by in [A, T] {
             let j = json(&render(
-                &ModLogEvent::ShopCancelled { by, target: T },
+                &ModLogEvent::ShopCancelled {
+                    by: by.to_ref(),
+                    target: t(),
+                },
                 &cx(),
             ));
             assert_eq!(j["title"], "🧼 Shop pranks ended");
@@ -694,32 +819,32 @@ mod tests {
         let marked = format!("<@22> {MODLOG_BOT_MARK}");
         for e in [
             ModLogEvent::ServerMute {
-                target: T,
-                actor: bot,
+                target: t(),
+                actor: bot.clone(),
                 on: true,
                 reason: None,
             },
             ModLogEvent::ServerDeafen {
-                target: T,
-                actor: bot,
+                target: t(),
+                actor: bot.clone(),
                 on: false,
                 reason: None,
             },
             ModLogEvent::Disconnect {
-                target: T,
-                from: R,
-                by: Attribution::By(bot),
+                target: t(),
+                from: r(),
+                by: Attribution::By(bot.clone()),
             },
             ModLogEvent::Move {
-                target: T,
-                from: R,
-                to: R2,
-                by: Attribution::OneOf(vec![Actor::person(UserId::new(5)), bot]),
+                target: t(),
+                from: r(),
+                to: r2(),
+                by: Attribution::OneOf(vec![Actor::person(UserId::new(5)), bot.clone()]),
             },
             ModLogEvent::DisconnectBatch {
-                actors: vec![bot],
+                actors: vec![bot.clone()],
                 count: 1,
-                among: vec![T],
+                among: vec![t()],
             },
         ] {
             let j = json(&render(&e, &cx()));
@@ -727,7 +852,7 @@ mod tests {
             assert!(d.contains(&marked), "{e}: {d}");
         }
         let person = ModLogEvent::ServerMute {
-            target: T,
+            target: t(),
             actor: Actor::person(A),
             on: true,
             reason: None,
@@ -741,8 +866,8 @@ mod tests {
         let until = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
         let e = ModLogEvent::ShopAction {
             action: ActionKind::Rename,
-            buyer: A,
-            target: T,
+            buyer: a(),
+            target: t(),
             note: Some("gg".into()),
             signed: false,
             until: Some(until),
@@ -756,12 +881,12 @@ mod tests {
         assert_eq!(j["fields"][0]["value"], "gg");
         let bounced = ModLogEvent::ShopAction {
             action: ActionKind::Rename,
-            buyer: A,
-            target: T,
+            buyer: a(),
+            target: t(),
             note: None,
             signed: true,
             until: None,
-            mirrored_from: Some(T),
+            mirrored_from: Some(t()),
         };
         let j = json(&render(&bounced, &cx()));
         assert_eq!(
@@ -774,8 +899,8 @@ mod tests {
     fn crowdfund_started_names_the_starter() {
         let e = ModLogEvent::CrowdfundStarted {
             action: ActionKind::Rename,
-            starter: A,
-            target: T,
+            starter: a(),
+            target: t(),
             note: Some("gg".into()),
             signed: true,
         };
@@ -792,8 +917,8 @@ mod tests {
         // named, marked as anonymous on the public card.
         let bare = ModLogEvent::CrowdfundStarted {
             action: ActionKind::Mute,
-            starter: A,
-            target: T,
+            starter: a(),
+            target: t(),
             note: None,
             signed: false,
         };
@@ -811,8 +936,8 @@ mod tests {
         let c = UserId::new(33);
         let e = ModLogEvent::CrowdfundExecuted {
             action: ActionKind::Rename,
-            target: T,
-            contributors: vec![A, c, UserId::new(44)],
+            target: t(),
+            contributors: vec![a(), c.to_ref(), UserId::new(44).to_ref()],
             until: Some(until),
         };
         let j = json(&render(&e, &cx()));
@@ -829,9 +954,9 @@ mod tests {
     fn room_kick_shows_actor_target_room_and_reason() {
         let r = render(
             &ModLogEvent::RoomKick {
-                target: T,
-                room: R,
-                actor: A,
+                target: t(),
+                room: r(),
+                actor: a(),
                 reason: "spam".into(),
             },
             &cx(),
@@ -848,8 +973,8 @@ mod tests {
     fn one_of_lists_every_candidate() {
         let r = render(
             &ModLogEvent::Disconnect {
-                target: T,
-                from: R,
+                target: t(),
+                from: r(),
                 by: Attribution::OneOf(vec![
                     Actor::person(UserId::new(5)),
                     Actor::person(UserId::new(6)),
@@ -924,9 +1049,9 @@ mod tests {
     fn reason_is_escaped_and_capped() {
         let r = render(
             &ModLogEvent::RoomKick {
-                target: T,
-                room: R,
-                actor: A,
+                target: t(),
+                room: r(),
+                actor: a(),
                 reason: "@everyone **hi**".into(),
             },
             &cx(),
@@ -935,7 +1060,7 @@ mod tests {
         assert_eq!(v, "\\@everyone \\*\\*hi\\*\\*");
         let long = render(
             &ModLogEvent::ServerMute {
-                target: T,
+                target: t(),
                 actor: Actor::person(A),
                 on: true,
                 reason: Some("x".repeat(2000)),
@@ -964,8 +1089,8 @@ mod tests {
         let until = chrono::DateTime::from_timestamp(1_700_100_000, 0).unwrap();
         let finite = render(
             &ModLogEvent::ImmunityGranted {
-                by: A,
-                target: T,
+                by: a(),
+                target: t(),
                 until: Some(until),
                 reason: Some("raid cleanup".into()),
             },
@@ -981,8 +1106,8 @@ mod tests {
         );
         let open = render(
             &ModLogEvent::ImmunityGranted {
-                by: A,
-                target: T,
+                by: a(),
+                target: t(),
                 until: None,
                 reason: None,
             },
@@ -1000,7 +1125,13 @@ mod tests {
 
     #[test]
     fn immunity_lifted_shows_mod_and_target() {
-        let r = render(&ModLogEvent::ImmunityLifted { by: A, target: T }, &cx());
+        let r = render(
+            &ModLogEvent::ImmunityLifted {
+                by: a(),
+                target: t(),
+            },
+            &cx(),
+        );
         assert_eq!(
             fields(&r),
             (
@@ -1015,8 +1146,8 @@ mod tests {
     fn credits_adjusted_shows_signed_amount_and_reason() {
         let up = render(
             &ModLogEvent::CreditsAdjusted {
-                by: A,
-                target: T,
+                by: a(),
+                target: t(),
                 amount: 150,
                 reason: "event prize".into(),
             },
@@ -1032,8 +1163,8 @@ mod tests {
         );
         let down = render(
             &ModLogEvent::CreditsAdjusted {
-                by: A,
-                target: T,
+                by: a(),
+                target: t(),
                 amount: -200,
                 reason: "mistake".into(),
             },
@@ -1065,4 +1196,36 @@ mod tests {
             ]
         );
     }
+
+    /// Captured at e9a778fb, before the events went neutral.
+    const EXPECTED: &[&str] = &[
+        r##"None|{"title":"🔇 Server muted","type":"rich","description":"<@22> muted <@11>","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"loud","inline":false}]}|[]|[]|None"##,
+        r##"None|{"title":"🔈 Server unmuted","type":"rich","description":"<@22> unmuted <@11>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🙉 Server deafened","type":"rich","description":"<@22> deafened <@11>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"👂 Server undeafened","type":"rich","description":"<@22> undeafened <@11>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"⏏️ Disconnected","type":"rich","description":"<@11> from <#333> by <@22>","timestamp":"2023-11-14T22:13:20Z","footer":{"text":"Matched from Discord's audit log by timing","icon_url":null}}|[]|[]|None"##,
+        r##"None|{"title":"↪️ Moved","type":"rich","description":"<@11> from <#333> to <#444> by one of <@22>, <@11>","timestamp":"2023-11-14T22:13:20Z","footer":{"text":"Matched from Discord's audit log by timing","icon_url":null}}|[]|[]|None"##,
+        r##"None|{"title":"🗂️ Disconnected several","type":"rich","description":"<@22> disconnected 2 of: <@1001>, <@1002>, <@1003>","timestamp":"2023-11-14T22:13:20Z","footer":{"text":"Matched from Discord's audit log by timing","icon_url":null}}|[]|[]|None"##,
+        r##"None|{"title":"👢 Kicked from a room","type":"rich","description":"<@22> kicked <@11> from <#333>","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"spam","inline":false}]}|[]|[]|None"##,
+        r##"None|{"title":"✅ Let back into a room","type":"rich","description":"<@22> let back in <@11> in <#333>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🤐 Muted in a room","type":"rich","description":"<@22> muted <@11> in <#333>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🗣️ Unmuted in a room","type":"rich","description":"<@22> unmuted <@11> in <#333>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🛡️ Immunity granted","type":"rich","description":"<@22> granted immunity to <@11> until lifted","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🛡️ Immunity lifted","type":"rich","description":"<@22> lifted the immunity of <@11>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🪙 Credits adjusted","type":"rich","description":"<@22> adjusted the credits of <@11> by +5","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"x","inline":false}]}|[]|[]|None"##,
+        r##"None|{"title":"🛍️ Shop action","type":"rich","description":"<@22> used Rename on <@11> (anonymous)","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"hi","inline":false}]}|[]|[]|None"##,
+        r##"None|{"title":"🧼 Shop pranks ended","type":"rich","description":"<@22> ended the pranks on <@11>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🎉 Crowdfund started","type":"rich","description":"<@22> started a crowdfund for Mute on <@11> (anonymous)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🎉 Crowdfund executed","type":"rich","description":"Mute on <@11> (crowdfunded by <@22>, <@11>)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🔇 Server muted","type":"rich","description":"<@22> (bot) muted <@11>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"⏏️ Disconnected","type":"rich","description":"<@11> from <#333> by <@22> (bot)","timestamp":"2023-11-14T22:13:20Z","footer":{"text":"Matched from Discord's audit log by timing","icon_url":null}}|[]|[]|None"##,
+        r##"None|{"title":"🗂️ Disconnected several","type":"rich","description":"One or more of <@22>, <@11> (bot) disconnected 14 of: <@1001>, <@1002>, <@1003>, <@1004>, <@1005>, <@1006>, <@1007>, <@1008>, <@1009>, <@1010> and 4 more","timestamp":"2023-11-14T22:13:20Z","footer":{"text":"Matched from Discord's audit log by timing","icon_url":null}}|[]|[]|None"##,
+        r##"None|{"title":"👢 Kicked from a room","type":"rich","description":"<@22> kicked <@11> from <#333>","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"\\@everyone \\*x\\*","inline":false}]}|[]|[]|None"##,
+        r##"None|{"title":"🤐 Muted in a room","type":"rich","description":"<@22> muted <@11> in <#333>","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"shh","inline":false}]}|[]|[]|None"##,
+        r##"None|{"title":"🛡️ Immunity granted","type":"rich","description":"<@22> granted immunity to <@11> until <t:1700003600:f>","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"ok","inline":false}]}|[]|[]|None"##,
+        r##"None|{"title":"🪙 Credits adjusted","type":"rich","description":"<@22> adjusted the credits of <@11> by −5","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"x","inline":false}]}|[]|[]|None"##,
+        r##"None|{"title":"🛍️ Shop action","type":"rich","description":"<@22> used Mute on <@11> until <t:1700003600:f> (bounced by <@555>'s mirror) (signed)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🎉 Crowdfund started","type":"rich","description":"<@22> started a crowdfund for Mute on <@11> (signed)","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"n","inline":false}]}|[]|[]|None"##,
+        r##"None|{"title":"🎉 Crowdfund executed","type":"rich","description":"Mute on <@11> until <t:1700003600:f> (crowdfunded by <@22>, <@11>)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+    ];
 }

@@ -42,6 +42,7 @@ use crate::messaging::transport::DiscordTransport;
 use crate::modlog::event::ModLogEvent;
 use crate::{Context, Data, Error};
 use chrono::{DateTime, Utc};
+use crack_types::discord::ToRef;
 use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
 use serenity::all::{ChannelId, GenericChannelId, GuildId, Member, UserId};
 use std::borrow::Cow;
@@ -223,12 +224,12 @@ pub fn shop_event(
     };
     Some(ModLogEvent::ShopAction {
         action: kind,
-        buyer,
-        target,
+        buyer: buyer.to_ref(),
+        target: target.to_ref(),
         note,
         signed,
         until,
-        mirrored_from,
+        mirrored_from: mirrored_from.map(|m| m.to_ref()),
     })
 }
 
@@ -441,7 +442,7 @@ pub(crate) async fn run_prank(
     }
     let mut rendered = Rendered::text(card);
     if carries_buttons(kind, bought.outcome) {
-        rendered = rendered.with_components(card_buttons(bought.action_id));
+        rendered = rendered.with_rows(card_buttons(bought.action_id));
     }
     let transport = DiscordTransport::of(ctx);
     if let Err(err) =
@@ -621,6 +622,8 @@ pub fn theme_reply_text(balance: i64, currency: &str, emoji: &str) -> String {
 
 /// Have a song play for someone the next time they join voice.
 #[poise::command(slash_command, guild_only)]
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build.
+#[cfg_attr(test, mutants::skip)]
 pub async fn theme(
     ctx: Context<'_>,
     #[description = "Who"] member: Member,
@@ -703,8 +706,8 @@ pub async fn theme(
         guild,
         ModLogEvent::ShopAction {
             action: ActionKind::Theme,
-            buyer: buyer_id,
-            target,
+            buyer: buyer_id.to_ref(),
+            target: target.to_ref(),
             note,
             signed,
             until: bought.until,
@@ -775,6 +778,8 @@ enum PaidPlay {
 /// 🔑 No defer before the play (ruling P6): `/play` chooses its reply's
 /// visibility, so every check up to the charge reads only the cache and the
 /// database.
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build; the keep-or-refund decision is the pure `play_settlement`, tested apart.
+#[cfg_attr(test, mutants::skip)]
 async fn paid_play(
     ctx: Context<'_>,
     which: PaidPlay,
@@ -964,8 +969,8 @@ async fn paid_play(
             guild,
             ModLogEvent::ShopAction {
                 action: ActionKind::Dedicate,
-                buyer: buyer_id,
-                target,
+                buyer: buyer_id.to_ref(),
+                target: target.to_ref(),
                 note,
                 signed,
                 until: None,
@@ -1095,8 +1100,8 @@ pub async fn cleanse_command(ctx: Context<'_>) -> Result<(), Error> {
                 ctx,
                 guild,
                 ModLogEvent::ShopCancelled {
-                    by: buyer.id,
-                    target: buyer.id,
+                    by: buyer.id.to_ref(),
+                    target: buyer.id.to_ref(),
                 },
             )
             .await;
@@ -1548,7 +1553,10 @@ mod tests {
         else {
             panic!("a landed prank is logged");
         };
-        assert_eq!((buyer, target, mirrored_from), (b, t, None));
+        assert_eq!(
+            (buyer, target, mirrored_from),
+            (b.to_ref(), t.to_ref(), None)
+        );
         // A bounce changed the buyer, and names whose mirror sent it back.
         let Some(ModLogEvent::ShopAction {
             target,
@@ -1558,7 +1566,7 @@ mod tests {
         else {
             panic!("a bounce is logged");
         };
-        assert_eq!((target, mirrored_from), (b, Some(t)));
+        assert_eq!((target, mirrored_from), (b.to_ref(), Some(t.to_ref())));
         // A blocked one changed nobody.
         assert_eq!(log(BuyOutcome::Blocked), None);
     }

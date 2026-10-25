@@ -16,6 +16,7 @@ use crate::messaging::render::RenderCx;
 use crate::messaging::transport::{DiscordTransport, Transport};
 use crate::rooms::lifecycle::{classify, VoiceChange};
 use crate::Data;
+use crack_types::discord::ToRef;
 use futures::future::BoxFuture;
 use serenity::all::{AuditLogEntry, ChannelId, Context, GuildId, Http, UserId, VoiceState};
 use serenity::async_trait;
@@ -85,10 +86,7 @@ fn events_of(entry: &AuditLogEntry, bot: UserId, actor_is_bot: bool) -> Vec<ModL
     {
         return Vec::new();
     }
-    let actor = Actor {
-        id: actor,
-        bot: actor_is_bot,
-    };
+    let actor = Actor::new(actor, actor_is_bot);
     let reason = entry.reason.as_deref().map(str::to_owned);
     entry
         .changes
@@ -104,15 +102,15 @@ fn events_of(entry: &AuditLogEntry, bot: UserId, actor_is_bot: bool) -> Vec<ModL
             let reason = reason.clone();
             Some(if mute {
                 ModLogEvent::ServerMute {
-                    target,
-                    actor,
+                    target: target.to_ref(),
+                    actor: actor.clone(),
                     on,
                     reason,
                 }
             } else {
                 ModLogEvent::ServerDeafen {
-                    target,
-                    actor,
+                    target: target.to_ref(),
+                    actor: actor.clone(),
                     on,
                     reason,
                 }
@@ -423,7 +421,7 @@ mod tests {
 
     fn mute(on: bool, reason: Option<&str>) -> ModLogEvent {
         ModLogEvent::ServerMute {
-            target: T,
+            target: T.to_ref(),
             actor: Actor::person(MOD),
             on,
             reason: reason.map(str::to_owned),
@@ -472,7 +470,7 @@ mod tests {
         let [(_, ModLogEvent::ServerMute { actor, reason, .. })] = other.as_slice() else {
             panic!("{other:?}");
         };
-        assert_eq!(actor.id, BOT);
+        assert_eq!(actor.id, BOT.to_ref());
         assert_eq!(reason.as_deref(), Some("an admin command"));
         // A moderator quoting the prefix is not the shop.
         let spoof = member_update(MUTE_ON, Some("CrackTunes shop: mute"));
@@ -488,7 +486,7 @@ mod tests {
             vec![(
                 G,
                 ModLogEvent::ServerDeafen {
-                    target: T,
+                    target: T.to_ref(),
                     actor: Actor::person(MOD),
                     on: false,
                     reason: None,
@@ -509,7 +507,7 @@ mod tests {
                 (
                     G,
                     ModLogEvent::ServerDeafen {
-                        target: T,
+                        target: T.to_ref(),
                         actor: Actor::person(MOD),
                         on: false,
                         reason: Some("r".into()),
@@ -611,7 +609,7 @@ mod tests {
             vec![(
                 G,
                 ModLogEvent::ServerDeafen {
-                    target: BOT,
+                    target: BOT.to_ref(),
                     actor: Actor::person(MOD),
                     on: true,
                     reason: None,
@@ -624,7 +622,7 @@ mod tests {
             vec![(
                 G,
                 ModLogEvent::ServerMute {
-                    target: T,
+                    target: T.to_ref(),
                     actor: Actor::person(BOT),
                     on: true,
                     reason: None,
@@ -806,7 +804,7 @@ mod tests {
         sink.post(
             G,
             ModLogEvent::ServerDeafen {
-                target: T,
+                target: T.to_ref(),
                 actor: Actor::person(MOD),
                 on: true,
                 reason: None,

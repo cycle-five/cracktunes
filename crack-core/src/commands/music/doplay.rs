@@ -27,10 +27,8 @@ use crate::{
     Context, Data, Error,
 };
 use ::serenity::all::CreateAutocompleteResponse;
-use ::serenity::{
-    all::{CommandInteraction, Message},
-    builder::{CreateEmbed, CreateEmbedFooter},
-};
+use ::serenity::all::{CommandInteraction, Message};
+use crack_model::{Card, Footer};
 use crack_types::QueryType;
 use crack_types::{search_result_to_aux_metadata, Mode, NewAuxMetadata};
 use poise::{serenity_prelude as serenity, ReplyHandle};
@@ -381,6 +379,18 @@ async fn queued(
     }))
 }
 
+/// The reply to an interactive search over an empty queue.
+fn empty_queue_card() -> Card {
+    Card {
+        description: Some("No tracks in queue!".to_string()),
+        footer: Some(Footer {
+            text: "No tracks in queue!".to_string(),
+            icon_url: None,
+        }),
+        ..Card::default()
+    }
+}
+
 /// What the play reply says: the track queued and when it plays, the
 /// playlist queued (in words, never its variant name), or what is playing.
 pub async fn build_play_message(
@@ -435,11 +445,7 @@ pub async fn build_play_message(
         },
         Ordering::Less => {
             tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
-            CrackedMessage::CreateEmbed(Box::new(
-                CreateEmbed::default()
-                    .description("No tracks in queue!")
-                    .footer(CreateEmbedFooter::new("No tracks in queue!")),
-            ))
+            CrackedMessage::Card(Box::new(empty_queue_card()))
         },
     }
 }
@@ -464,9 +470,13 @@ pub async fn build_play_reply(
 /// `out` with the permission note added where [`NoticeDelivery`] says.
 fn with_notice(mut out: Rendered, notice: Option<NoticeDelivery>) -> Rendered {
     match notice {
-        Some(NoticeDelivery::Field(note)) => match out.embed.take() {
-            Some(embed) => {
-                out.embed = Some(embed.field("⚠️ Limited permissions", note, false));
+        Some(NoticeDelivery::Field(note)) => match out.cards.first_mut() {
+            Some(card) => {
+                card.fields.push(crack_model::Field {
+                    name: "⚠️ Limited permissions".into(),
+                    value: note,
+                    inline: false,
+                });
                 out
             },
             // Every play reply is an embed; were one not, the note still rides.
@@ -732,7 +742,7 @@ async fn play_body(
             return Ok(PlayOutcome::NothingQueued);
         }
         // An error, so red, as every rendered error is.
-        courier::reply(ctx, CrackedMessage::CrackedError(CrackedError::NoQuery)).await?;
+        courier::reply(ctx, CrackedMessage::from(CrackedError::NoQuery)).await?;
         return Ok(PlayOutcome::NothingQueued);
     }
 
@@ -1232,6 +1242,7 @@ mod degraded_perms_notice_tests {
 #[cfg(test)]
 mod degraded_notice_wiring_tests {
     use super::*;
+    use crate::messaging::discord::ToDiscord;
     use crate::music::perms::{TextKind, TextPerms, TEXT_REQUIRED};
     use poise::serenity_prelude::all::{GenericChannelId, Permissions};
 
@@ -1257,10 +1268,11 @@ mod degraded_notice_wiring_tests {
         // `CreateEmbed` is a third-party builder with no accessors, so its
         // own `Serialize` is the only way to read one back. An opaque
         // payload whose shape we do not own is exactly what `Value` is for.
-        let rendered =
-            serde_json::to_value(out.embed.as_ref().expect("the play reply is an embed"))
-                .expect("CreateEmbed serialises")
-                .to_string();
+        let rendered = serde_json::to_value(
+            crate::messaging::discord::first_embed(&out).expect("the play reply is an embed"),
+        )
+        .expect("CreateEmbed serialises")
+        .to_string();
         (rendered, out.content)
     }
 
@@ -1421,7 +1433,10 @@ mod time_until_play_tests {
                 None,
             )
             .await;
-            let v = serde_json::to_value(out.embed.expect("the play reply is an embed")).unwrap();
+            let v = serde_json::to_value(
+                crate::messaging::discord::first_embed(&out).expect("the play reply is an embed"),
+            )
+            .unwrap();
             assert_eq!(v["author"]["name"], PLAY_QUEUE);
             assert_eq!(v["title"], "t1");
             v["footer"]["text"].as_str().map(str::to_owned)
@@ -1619,6 +1634,18 @@ mod tests {
         assert_eq!(
             queued_outcome(&ids(&[1]), &ids(&[1, 2, 3, 4])),
             PlayOutcome::Queued
+        );
+    }
+}
+
+#[cfg(test)]
+mod pins {
+    #[test]
+    fn the_empty_queue_embed_is_byte_stable() {
+        assert_eq!(
+            serde_json::to_string(&crate::messaging::discord::embed(&super::empty_queue_card()))
+                .unwrap(),
+            r#"{"type":"rich","description":"No tracks in queue!","footer":{"text":"No tracks in queue!","icon_url":null}}"#
         );
     }
 }

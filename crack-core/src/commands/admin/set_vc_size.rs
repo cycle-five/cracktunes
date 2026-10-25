@@ -1,3 +1,4 @@
+use crack_types::discord::ToRef;
 use std::sync::Arc;
 
 use crate::errors::CrackedError;
@@ -64,6 +65,10 @@ pub async fn set_vc_size_internal(
             e.into(),
         ))
     } else {
-        Ok(CrackedMessage::ChannelSizeSet { name, id, size })
+        Ok(CrackedMessage::ChannelSizeSet {
+            name,
+            id: id.to_ref(),
+            size,
+        })
     }
 }

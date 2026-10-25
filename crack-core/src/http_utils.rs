@@ -4,13 +4,13 @@ use std::future::Future;
 
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
+use crate::messaging::discord;
 use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
 use crate::music::NewQueryType;
 use crate::serenity::Color;
 use crate::CrackedResult;
-use serenity::all::{
-    CacheHttp, CreateEmbed, CreateMessage, GenericChannelId, GuildId, Message, UserId,
-};
+use crack_model::Card;
+use serenity::all::{CacheHttp, CreateMessage, GenericChannelId, GuildId, Message, UserId};
 use serenity::small_fixed_array::FixedString;
 
 /// Whether Discord refused a request because the message is already gone
@@ -28,17 +28,17 @@ pub fn is_unknown_message(err: &serenity::Error) -> bool {
 
 #[derive(Debug)]
 /// Parameter structure for functions that send messages to a channel.
-pub struct SendMessageParams<'a> {
+pub struct SendMessageParams {
     pub channel: GenericChannelId,
     pub as_embed: bool,
     pub ephemeral: bool,
     pub color: Color,
     pub msg: CrackedMessage,
-    pub embed: Option<CreateEmbed<'a>>,
+    pub embed: Option<Card>,
 }
 
 /// Implement [`PartialEq`] for [`SendMessageParams`].
-impl PartialEq for SendMessageParams<'_> {
+impl PartialEq for SendMessageParams {
     fn eq(&self, other: &Self) -> bool {
         self.channel == other.channel
             && self.as_embed == other.as_embed
@@ -50,7 +50,7 @@ impl PartialEq for SendMessageParams<'_> {
 }
 
 /// Default implementation for [`SendMessageParams`].
-impl Default for SendMessageParams<'_> {
+impl Default for SendMessageParams {
     fn default() -> Self {
         SendMessageParams {
             channel: GenericChannelId::new(1),
@@ -65,7 +65,7 @@ impl Default for SendMessageParams<'_> {
 
 /// Builder methods for [`SendMessageParams`].
 // TODO: Do we want to use this pattern or the mutable one here?
-impl<'a> SendMessageParams<'a> {
+impl SendMessageParams {
     pub fn new(msg: CrackedMessage) -> Self {
         Self {
             msg,
@@ -93,8 +93,22 @@ impl<'a> SendMessageParams<'a> {
         Self { channel, ..self }
     }
 
-    pub fn with_embed(self, embed: Option<CreateEmbed<'a>>) -> Self {
+    pub fn with_embed(self, embed: Option<Card>) -> Self {
         Self { embed, ..self }
+    }
+}
+
+/// A channel message of `content`: the text itself, or the one embed that
+/// holds it.
+fn channel_message(content: String, as_embed: bool) -> CreateMessage<'static> {
+    if as_embed {
+        let card = Card {
+            description: Some(content),
+            ..Card::default()
+        };
+        CreateMessage::new().add_embed(discord::embed(&card))
+    } else {
+        CreateMessage::new().content(content)
     }
 }
 
@@ -140,15 +154,9 @@ impl<T: CacheHttp> CacheHttpExt for T {
 
     /// Sends a message to a channel. Only `/osint` uses it.
     #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
-    async fn send_channel_message(&self, params: SendMessageParams<'_>) -> CrackedResult<Message> {
+    async fn send_channel_message(&self, params: SendMessageParams) -> CrackedResult<Message> {
         let channel = params.channel;
-        let content = format!("{}", params.msg);
-        let msg = if params.as_embed {
-            let embed = CreateEmbed::default().description(content);
-            CreateMessage::new().add_embed(embed)
-        } else {
-            CreateMessage::new().content(content)
-        };
+        let msg = channel_message(format!("{}", params.msg), params.as_embed);
         channel
             .send_message(self.http(), msg)
             .await
@@ -393,5 +401,18 @@ mod test {
             CrackedMessage::Other("Hello, world!".to_string())
         );
         assert!(params.embed.is_none());
+    }
+
+    #[test]
+    fn channel_message_renders_as_before() {
+        use super::channel_message;
+        assert_eq!(
+            serde_json::to_string(&channel_message("hi *there*".into(), true)).unwrap(),
+            r#"{"tts":false,"embeds":[{"type":"rich","description":"hi *there*"}],"sticker_ids":[],"attachments":[],"enforce_nonce":false}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&channel_message("hi *there*".into(), false)).unwrap(),
+            r#"{"content":"hi *there*","tts":false,"embeds":[],"sticker_ids":[],"attachments":[],"enforce_nonce":false}"#
+        );
     }
 }

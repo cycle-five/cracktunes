@@ -32,6 +32,7 @@ use crate::messaging::transport::DiscordTransport;
 use crate::modlog::event::ModLogEvent;
 use crate::{Context, Data, Error};
 use chrono::Utc;
+use crack_types::discord::ToRef;
 use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
 use serenity::all::{ChannelId, GenericChannelId, GuildId, Member, UserId};
 use std::borrow::Cow;
@@ -319,8 +320,8 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 guild,
                 ModLogEvent::CrowdfundExecuted {
                     action: kind,
-                    target,
-                    contributors: done.contributors,
+                    target: target.to_ref(),
+                    contributors: done.contributors.iter().map(ToRef::to_ref).collect(),
                     until: done.until,
                 },
             )
@@ -383,6 +384,8 @@ async fn post(
 
 /// Start a crowdfund for a prank against a member.
 #[poise::command(slash_command, guild_only)]
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build.
+#[cfg_attr(test, mutants::skip)]
 pub async fn start(
     ctx: Context<'_>,
     #[description = "The prank"] action: FundKind,
@@ -478,8 +481,8 @@ pub async fn start(
         guild,
         ModLogEvent::CrowdfundStarted {
             action: kind,
-            starter: starter_id,
-            target,
+            starter: starter_id.to_ref(),
+            target: target.to_ref(),
             note: log_note,
             signed,
         },

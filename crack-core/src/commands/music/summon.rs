@@ -7,6 +7,7 @@ use crate::{
     Context, Error,
 };
 use ::serenity::all::{Channel, ChannelId, GenericChannelId, Mentionable};
+use crack_types::discord::ToRef;
 use songbird::Call;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -100,7 +101,7 @@ pub async fn summon_internal(
                     courier::reply(
                         ctx,
                         CrackedMessage::AlreadyHere {
-                            mention: channel_id.mention(),
+                            room: channel_id.to_ref(),
                         },
                     )
                     .await?;

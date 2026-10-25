@@ -3,8 +3,8 @@ use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::Context;
 use crate::Error;
+use crack_types::discord::ToRef;
 use serenity::all::GuildId;
-use serenity::all::Mentionable;
 use serenity::builder::EditMember;
 
 /// Deafen a user.
@@ -53,7 +53,6 @@ pub async fn deafen_internal(
     user: serenity::model::user::User,
     deafen: bool,
 ) -> Result<CrackedMessage, Error> {
-    let mention = user.clone().mention();
     let id = user.clone().id;
     let msg = if let Err(e) = guild_id
         .edit_member(
@@ -64,17 +63,17 @@ pub async fn deafen_internal(
         .await
     {
         let msg = if deafen {
-            CrackedMessage::UserDeafenedFail { mention, id }
+            CrackedMessage::UserDeafenedFail { id: id.to_ref() }
         } else {
-            CrackedMessage::UserUndeafenedFail { mention, id }
+            CrackedMessage::UserUndeafenedFail { id: id.to_ref() }
         };
         tracing::error!("{msg}\n{e}");
         msg
     } else {
         let msg = if deafen {
-            CrackedMessage::UserDeafened { mention, id }
+            CrackedMessage::UserDeafened { id: id.to_ref() }
         } else {
-            CrackedMessage::UserUndeafened { mention, id }
+            CrackedMessage::UserUndeafened { id: id.to_ref() }
         };
         tracing::info!("{msg}");
         msg

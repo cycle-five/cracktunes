@@ -1,6 +1,7 @@
 use crate::commands::registration::{
     refresh_guilds, sync_global, CommandRegistration, LiveCommandsDiscord,
 };
+use crate::messaging::discord;
 use crate::{
     // commands::queue_aux_metadata,
     commands::music::gp::{handle_gp_component, GP_CUSTOM_ID_PREFIX},
@@ -12,11 +13,9 @@ use crate::{
     BotConfig,
     Data,
 };
-use ::serenity::{
-    builder::{CreateEmbed, CreateMessage},
-    gateway::ActivityData,
-};
+use ::serenity::{builder::CreateMessage, gateway::ActivityData};
 use colored::Colorize;
+use crack_model::{Card, Field};
 use crack_types::discord::ToRef;
 // use dashmap;
 use poise::serenity_prelude::{self as serenity, Member, Mentionable};
@@ -799,24 +798,11 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
         let message = GenericChannelId::new(chan_id)
             .send_message(
                 ctx.http(),
-                CreateMessage::new().embed({
-                    CreateEmbed::new()
-                        .title("System Resource Load")
-                        .field(
-                            "CPU Load Average",
-                            format!("{:.2}%", cpu_load.one * 10.0),
-                            false,
-                        )
-                        .field(
-                            "Memory Usage",
-                            format!(
-                                "{:.2} MB Free out of {:.2} MB",
-                                mem_use.free as f32 / 1000.0,
-                                mem_use.total as f32 / 1000.0
-                            ),
-                            false,
-                        )
-                }),
+                CreateMessage::new().embed(discord::embed(&system_load_card(
+                    cpu_load.one,
+                    mem_use.free,
+                    mem_use.total,
+                ))),
             )
             .await;
         if let Err(why) = message {
@@ -824,6 +810,30 @@ async fn log_system_load(ctx: Arc<SerenityContext>, config: Arc<BotConfig>) {
         };
     } else {
         tracing::error!("No system log channel set");
+    }
+}
+
+/// The system-load report: CPU load average and memory, in KB as `sys_info` counts.
+fn system_load_card(cpu_one: f64, mem_free: u64, mem_total: u64) -> Card {
+    Card {
+        title: Some("System Resource Load".to_owned()),
+        fields: vec![
+            Field {
+                name: "CPU Load Average".to_owned(),
+                value: format!("{:.2}%", cpu_one * 10.0),
+                inline: false,
+            },
+            Field {
+                name: "Memory Usage".to_owned(),
+                value: format!(
+                    "{:.2} MB Free out of {:.2} MB",
+                    mem_free as f32 / 1000.0,
+                    mem_total as f32 / 1000.0
+                ),
+                inline: false,
+            },
+        ],
+        ..Card::default()
     }
 }
 
@@ -1058,6 +1068,20 @@ mod provenance_wiring_tests {
             "with_provenance must be on the Ok arm of get_or_create, so a failed \
              load keeps the Fallback default: {}",
             marks[0]
+        );
+    }
+}
+
+#[cfg(test)]
+mod system_load_tests {
+    use super::*;
+
+    #[test]
+    fn the_system_load_card_renders_as_before() {
+        let wire = serde_json::to_string(&discord::embed(&system_load_card(0.5, 1500, 8000)));
+        assert_eq!(
+            wire.unwrap(),
+            r#"{"title":"System Resource Load","type":"rich","fields":[{"name":"CPU Load Average","value":"5.00%","inline":false},{"name":"Memory Usage","value":"1.50 MB Free out of 8.00 MB","inline":false}]}"#
         );
     }
 }

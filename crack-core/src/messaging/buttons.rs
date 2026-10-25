@@ -19,12 +19,9 @@ use crate::messaging::render::RenderCx;
 use crate::messaging::transport::{DiscordPress, Press};
 use crate::music::remote::{self, Control, ControlRefused, Echo};
 use crate::Data;
-use serenity::all::{
-    ButtonStyle, ComponentInteraction, CreateActionRow, CreateButton, CreateComponent,
-    GenericChannelId, GuildId, Member, ReactionType, UserId,
-};
-use serenity::small_fixed_array::FixedString;
-use std::borrow::Cow;
+use crack_model::{Button, ButtonStyle, CommunityRef, Row};
+use crack_types::discord::guild_id;
+use serenity::all::{ComponentInteraction, GenericChannelId, GuildId, Member, UserId};
 use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -143,68 +140,79 @@ impl NowPlayingButton {
 }
 
 /// What the status message's buttons are drawn from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Controls {
-    pub guild: GuildId,
+    pub guild: CommunityRef,
     /// The playing track, for Skip.
     pub track: Uuid,
     pub paused: bool,
     pub looping: bool,
 }
 
-/// The one action row: Pause or Resume, Skip, Repeat (green while on), Shuffle.
-pub fn now_playing_row(c: &Controls) -> CreateComponent<'static> {
-    let guild = c.guild;
-    let play = if c.paused {
-        button(
-            NowPlayingButton::Resume { guild },
-            NP_BUTTON_RESUME,
-            ButtonStyle::Secondary,
-        )
-    } else {
-        button(
-            NowPlayingButton::Pause { guild },
-            NP_BUTTON_PAUSE,
-            ButtonStyle::Secondary,
-        )
-    };
-    let repeat = if c.looping {
-        button(
-            NowPlayingButton::RepeatOff { guild },
-            NP_BUTTON_REPEAT,
-            ButtonStyle::Success,
-        )
-    } else {
-        button(
-            NowPlayingButton::RepeatOn { guild },
-            NP_BUTTON_REPEAT,
-            ButtonStyle::Secondary,
-        )
-    };
-    CreateComponent::ActionRow(CreateActionRow::Buttons(Cow::Owned(vec![
-        play,
-        button(
-            NowPlayingButton::Skip {
-                guild,
-                track: c.track,
-            },
-            NP_BUTTON_SKIP,
-            ButtonStyle::Secondary,
-        ),
-        repeat,
-        button(
-            NowPlayingButton::Shuffle { guild },
-            NP_BUTTON_SHUFFLE,
-            ButtonStyle::Secondary,
-        ),
-    ])))
+impl Controls {
+    /// The one row: Pause or Resume, Skip, Repeat (green while on), Shuffle.
+    /// A guild that is not a Discord snowflake has no buttons: their ids
+    /// name a Discord server.
+    #[must_use]
+    pub fn rows(&self) -> Vec<Row> {
+        let Ok(guild) = guild_id(&self.guild) else {
+            return Vec::new();
+        };
+        let play = if self.paused {
+            button(
+                NowPlayingButton::Resume { guild },
+                NP_BUTTON_RESUME,
+                ButtonStyle::Secondary,
+            )
+        } else {
+            button(
+                NowPlayingButton::Pause { guild },
+                NP_BUTTON_PAUSE,
+                ButtonStyle::Secondary,
+            )
+        };
+        let repeat = if self.looping {
+            button(
+                NowPlayingButton::RepeatOff { guild },
+                NP_BUTTON_REPEAT,
+                ButtonStyle::Success,
+            )
+        } else {
+            button(
+                NowPlayingButton::RepeatOn { guild },
+                NP_BUTTON_REPEAT,
+                ButtonStyle::Secondary,
+            )
+        };
+        vec![Row::Buttons(vec![
+            play,
+            button(
+                NowPlayingButton::Skip {
+                    guild,
+                    track: self.track,
+                },
+                NP_BUTTON_SKIP,
+                ButtonStyle::Secondary,
+            ),
+            repeat,
+            button(
+                NowPlayingButton::Shuffle { guild },
+                NP_BUTTON_SHUFFLE,
+                ButtonStyle::Secondary,
+            ),
+        ])]
+    }
 }
 
 /// A button that is only its symbol: no text label (#588).
-fn button(b: NowPlayingButton, emoji: &'static str, style: ButtonStyle) -> CreateButton<'static> {
-    CreateButton::new(b.custom_id())
-        .emoji(ReactionType::Unicode(FixedString::from_static_trunc(emoji)))
-        .style(style)
+fn button(b: NowPlayingButton, emoji: &'static str, style: ButtonStyle) -> Button {
+    Button {
+        id: b.custom_id(),
+        label: None,
+        emoji: Some(emoji.to_owned()),
+        style,
+        disabled: false,
+    }
 }
 
 /// Who pressed, and where: the parts of the interaction `respond` reads.
@@ -305,7 +313,7 @@ pub(crate) async fn respond<F, Fut>(
     )
     .await
     {
-        courier::answer_privately(press, &CrackedMessage::CrackedError(err), &cx).await;
+        courier::answer_privately(press, &CrackedMessage::from(err), &cx).await;
         return;
     }
     if let Err(refused) = run(guild, who.user, Via::Button, button.control()).await {
@@ -316,14 +324,10 @@ pub(crate) async fn respond<F, Fut>(
 /// A refused control, in the words the slash commands use.
 fn refusal(r: ControlRefused) -> CrackedMessage {
     match r {
-        ControlRefused::NotPlaying => CrackedMessage::CrackedError(CrackedError::NothingPlaying),
-        ControlRefused::GameInProgress => {
-            CrackedMessage::CrackedError(CrackedError::GameInProgress)
-        },
+        ControlRefused::NotPlaying => CrackedMessage::from(CrackedError::NothingPlaying),
+        ControlRefused::GameInProgress => CrackedMessage::from(CrackedError::GameInProgress),
         // Only a Skip drawn for an earlier track gets here from a button.
-        ControlRefused::Conflict => {
-            CrackedMessage::CrackedError(CrackedError::Other(OP_TRACK_STALE))
-        },
+        ControlRefused::Conflict => CrackedMessage::from(CrackedError::Other(OP_TRACK_STALE)),
         ControlRefused::Failed => CrackedMessage::Error,
     }
 }
@@ -331,6 +335,7 @@ fn refusal(r: ControlRefused) -> CrackedMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crack_types::discord::ToRef;
 
     const G: GuildId = GuildId::new(123456789012345678);
     fn uuid() -> Uuid {
@@ -430,7 +435,7 @@ mod tests {
     }
 
     fn row_json(c: &Controls) -> serde_json::Value {
-        serde_json::to_value(now_playing_row(c)).unwrap()
+        serde_json::to_value(&crate::messaging::discord::action_rows(&c.rows())[0]).unwrap()
     }
     /// Each button's `(custom_id, emoji, style)`. A button has no text label
     /// (#588): a labelled row wrapped unevenly on narrow screens.
@@ -454,7 +459,7 @@ mod tests {
     #[test]
     fn a_playing_track_shows_pause_and_repeat_off() {
         let c = Controls {
-            guild: G,
+            guild: G.to_ref(),
             track: uuid(),
             paused: false,
             looping: false,
@@ -478,7 +483,7 @@ mod tests {
     #[test]
     fn a_paused_track_on_repeat_shows_resume_and_repeat_on() {
         let c = Controls {
-            guild: G,
+            guild: G.to_ref(),
             track: uuid(),
             paused: true,
             looping: true,
@@ -792,5 +797,17 @@ mod tests {
             .await;
             assert_eq!(ops, vec![PressOp::Acknowledge], "at +{ms}ms");
         }
+    }
+
+    /// The ids name a Discord server: a guild that is no snowflake has none.
+    #[test]
+    fn a_guild_that_is_no_snowflake_has_no_buttons() {
+        let c = Controls {
+            guild: crack_model::CommunityRef::new(crack_model::Platform::Discord, "0").unwrap(),
+            track: uuid(),
+            paused: false,
+            looping: false,
+        };
+        assert!(c.rows().is_empty());
     }
 }

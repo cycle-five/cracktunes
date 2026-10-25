@@ -7,8 +7,9 @@ use crate::messaging::render::Rendered;
 use crate::music::perms::JoinPermit;
 use crate::CrackedError;
 use crate::{Context, Data, Error};
+use crack_types::discord::ToRef;
 // use crack_testing::ReplyHandleWrapper;
-use poise::serenity_prelude::{Context as SerenityContext, Mentionable};
+use poise::serenity_prelude::Context as SerenityContext;
 use serenity::all::{ChannelId, GenericChannelId, GuildId};
 use songbird::{error::JoinError, Call, Event, TrackEvent};
 use std::{
@@ -313,7 +314,7 @@ async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
     let Err(embed_err) = courier::reply(
         ctx,
         CrackedMessage::Summon {
-            mention: channel_id.mention(),
+            room: channel_id.to_ref(),
         },
     )
     .await
@@ -324,7 +325,7 @@ async fn announce_join(ctx: Context<'_>, channel_id: ChannelId) {
     // Content, not an embed: it is what survives a denied `EMBED_LINKS`.
     let plain = Rendered::text(
         CrackedMessage::Summon {
-            mention: channel_id.mention(),
+            room: channel_id.to_ref(),
         }
         .to_string(),
     );
