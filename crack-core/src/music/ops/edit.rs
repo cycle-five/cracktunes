@@ -14,7 +14,7 @@ use crate::{
     },
     utils::get_track_handle_metadata,
 };
-use serenity::all::CreateEmbed;
+use crack_model::{Card, Field};
 
 /// What a remove took out: the first track (and its thumbnail, for the
 /// embed) and how many went. No songbird types: crack-web reads this.
@@ -54,16 +54,20 @@ impl Cleared {
 
 /// The single-track `/remove` embed; never panics on missing metadata. The
 /// thumbnail is set only from a web URL: an empty or relative one is left out.
-pub fn removed_embed(first: &TrackSummary, thumbnail: Option<&str>) -> CreateEmbed<'static> {
+pub fn removed_embed(first: &TrackSummary, thumbnail: Option<&str>) -> Card {
     let value = TrackLabel::from_ref(&TrackRef {
         title: first.title.clone(),
         url: first.url.clone(),
     })
     .linked(INLINE_TITLE_MAX);
-    let embed = CreateEmbed::default().field(REMOVED_QUEUE, value, false);
-    match http_url(thumbnail) {
-        Some(t) => embed.thumbnail(t.to_string(), None),
-        None => embed,
+    Card {
+        fields: vec![Field {
+            name: REMOVED_QUEUE.to_string(),
+            value,
+            inline: false,
+        }],
+        thumbnail: http_url(thumbnail).map(|t| t.to_string()),
+        ..Card::default()
     }
 }
 
@@ -307,6 +311,33 @@ mod test {
     }
 
     #[test]
+    fn the_removed_embed_is_byte_stable() {
+        let first = TrackSummary {
+            id: uuid::Uuid::nil(),
+            title: Some("t".into()),
+            artist: None,
+            url: Some("https://x.test/a".into()),
+            duration: None,
+            requester: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&crate::messaging::discord::embed(&removed_embed(
+                &first,
+                Some("https://i.ytimg.com/a.jpg")
+            )))
+            .unwrap(),
+            r#"{"type":"rich","thumbnail":{"url":"https://i.ytimg.com/a.jpg","description":null},"fields":[{"name":"❌ Removed from queue","value":"[**t**](https://x.test/a)","inline":false}]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&crate::messaging::discord::embed(&removed_embed(
+                &first, None
+            )))
+            .unwrap(),
+            r#"{"type":"rich","fields":[{"name":"❌ Removed from queue","value":"[**t**](https://x.test/a)","inline":false}]}"#
+        );
+    }
+
+    #[test]
     fn the_removed_embed_survives_missing_metadata() {
         let blank = TrackSummary {
             id: uuid::Uuid::nil(),
@@ -328,7 +359,10 @@ mod test {
             duration: None,
             requester: None,
         };
-        let json = serde_json::to_value(removed_embed(&first, None)).unwrap();
+        let json = serde_json::to_value(crate::messaging::discord::embed(&removed_embed(
+            &first, None,
+        )))
+        .unwrap();
         json["fields"][0]["value"].as_str().unwrap().to_owned()
     }
 
@@ -351,7 +385,10 @@ mod test {
             (Some("/vi/x/hq.jpg"), None),
             (None, None),
         ] {
-            let json = serde_json::to_value(removed_embed(&first, thumbnail)).unwrap();
+            let json = serde_json::to_value(crate::messaging::discord::embed(&removed_embed(
+                &first, thumbnail,
+            )))
+            .unwrap();
             assert_eq!(
                 json.get("thumbnail").and_then(|t| t["url"].as_str()),
                 want,

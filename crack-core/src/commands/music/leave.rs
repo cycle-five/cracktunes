@@ -39,11 +39,7 @@ pub async fn leave_internal(ctx: Context<'_>) -> Result<(), Error> {
         },
         // Not being in a call is a reply, not an error.
         Err(OpRefused::NotConnected) => {
-            let _ = courier::reply(
-                ctx,
-                CrackedMessage::CrackedError(CrackedError::NotConnected),
-            )
-            .await?;
+            let _ = courier::reply(ctx, CrackedMessage::from(CrackedError::NotConnected)).await?;
         },
         Err(refused) => return Err(CrackedError::from(refused).into()),
     }

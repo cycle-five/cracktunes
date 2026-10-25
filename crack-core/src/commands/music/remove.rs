@@ -44,7 +44,7 @@ pub async fn remove_internal(
     let removed = done.outcome();
     if removed.count == 1 {
         let embed = removed_embed(&removed.first, removed.thumbnail.as_deref());
-        courier::reply(ctx, CrackedMessage::CreateEmbed(Box::new(embed))).await?;
+        courier::reply(ctx, CrackedMessage::Card(Box::new(embed))).await?;
     } else {
         courier::reply(ctx, CrackedMessage::RemoveMultiple).await?;
     }

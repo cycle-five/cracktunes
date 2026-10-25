@@ -213,7 +213,7 @@ pub enum Style {
 #[must_use]
 pub fn render(msg: &CrackedMessage, cx: &RenderCx) -> Rendered {
     match msg {
-        CrackedMessage::CreateEmbed(embed) => Rendered::embed(*embed.clone()),
+        CrackedMessage::Card(card) => Rendered::embed(super::discord::embed(card)),
         CrackedMessage::NowPlayingCard(card) => super::cards::now_playing(card, cx),
         CrackedMessage::Finished => super::cards::finished(),
         CrackedMessage::Queued(card) => super::cards::queued(card, cx),
@@ -234,7 +234,7 @@ pub fn render(msg: &CrackedMessage, cx: &RenderCx) -> Rendered {
                 Style::Embed => Rendered::embed(
                     CreateEmbed::new()
                         .description(clip(&text, DESCRIPTION_MAX))
-                        .colour(Colour::from(other)),
+                        .colour(Colour::new(other.colour())),
                 ),
             }
         },

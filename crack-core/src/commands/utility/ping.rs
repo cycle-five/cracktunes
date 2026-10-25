@@ -22,7 +22,7 @@ pub async fn ping_internal(ctx: Context<'_>) -> Result<(), Error> {
     let edited = CreateReply::default().embed(
         CreateEmbed::default()
             .description(msg_str)
-            .color(Color::from(CrackedMessage::Pong)),
+            .color(Color::new(CrackedMessage::Pong.colour())),
     );
     msg.edit(ctx, edited).await.map_err(Error::from)
 }

@@ -305,7 +305,7 @@ pub(crate) async fn respond<F, Fut>(
     )
     .await
     {
-        courier::answer_privately(press, &CrackedMessage::CrackedError(err), &cx).await;
+        courier::answer_privately(press, &CrackedMessage::from(err), &cx).await;
         return;
     }
     if let Err(refused) = run(guild, who.user, Via::Button, button.control()).await {
@@ -316,14 +316,10 @@ pub(crate) async fn respond<F, Fut>(
 /// A refused control, in the words the slash commands use.
 fn refusal(r: ControlRefused) -> CrackedMessage {
     match r {
-        ControlRefused::NotPlaying => CrackedMessage::CrackedError(CrackedError::NothingPlaying),
-        ControlRefused::GameInProgress => {
-            CrackedMessage::CrackedError(CrackedError::GameInProgress)
-        },
+        ControlRefused::NotPlaying => CrackedMessage::from(CrackedError::NothingPlaying),
+        ControlRefused::GameInProgress => CrackedMessage::from(CrackedError::GameInProgress),
         // Only a Skip drawn for an earlier track gets here from a button.
-        ControlRefused::Conflict => {
-            CrackedMessage::CrackedError(CrackedError::Other(OP_TRACK_STALE))
-        },
+        ControlRefused::Conflict => CrackedMessage::from(CrackedError::Other(OP_TRACK_STALE)),
         ControlRefused::Failed => CrackedMessage::Error,
     }
 }

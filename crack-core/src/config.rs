@@ -48,7 +48,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
         poise::FrameworkError::Command { error, ctx, .. } => {
             let myerr = CrackedError::Poise(error);
             check_reply(
-                courier::reply(ctx, CrackedMessage::CrackedError(myerr))
+                courier::reply(ctx, CrackedMessage::from(myerr))
                     .await
                     .map_err(Into::into),
             );
@@ -78,7 +78,7 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
             match reply {
                 Some(err) => {
                     check_reply(
-                        courier::reply(ctx, CrackedMessage::CrackedError(err))
+                        courier::reply(ctx, CrackedMessage::from(err))
                             .await
                             .map_err(Into::into),
                     );

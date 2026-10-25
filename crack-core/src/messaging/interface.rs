@@ -22,6 +22,7 @@ use crate::{
     utils::{get_requesting_user, get_track_handle_metadata},
     Context as CrackContext, Error,
 };
+use crack_types::discord::ToRef;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
 use lyric_finder::LyricResult;
@@ -497,7 +498,7 @@ pub async fn send_joining_channel<'ctx>(
     channel_id: GenericChannelId,
 ) -> Result<ReplyHandle<'ctx>, Error> {
     let msg = CrackedMessage::Summon {
-        mention: channel_id.mention(),
+        room: channel_id.to_ref(),
     };
     let params = SendMessageParams::new(msg).with_channel(channel_id);
 

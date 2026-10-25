@@ -13,13 +13,22 @@ use crate::{
     utils::{calculate_num_pages, forget_queue_message},
     Context, Error,
 };
-use ::serenity::builder::{CreateEmbed, CreateInteractionResponse};
+use ::serenity::builder::CreateInteractionResponse;
 use ::serenity::futures::StreamExt;
+use crack_model::Card;
 use songbird::{Event, TrackEvent};
 use std::{cmp::min, ops::Add, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 
 const EMBED_TIMEOUT: u64 = 3600;
+
+/// What an expired queue message is edited to say.
+fn expired_card() -> Card {
+    Card {
+        description: Some(QUEUE_EXPIRED.to_string()),
+        ..Card::default()
+    }
+}
 
 /// Display the current queue.
 #[poise::command(
@@ -132,8 +141,7 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     }
 
     let transport = DiscordTransport::of(ctx.serenity_context());
-    let expired =
-        CrackedMessage::CreateEmbed(Box::new(CreateEmbed::default().description(QUEUE_EXPIRED)));
+    let expired = CrackedMessage::Card(Box::new(expired_card()));
     if let Err(err) =
         courier::edit_message(&transport, message.channel_id, message.id, &expired).await
     {
@@ -143,4 +151,16 @@ pub async fn queue_internal(ctx: Context<'_>) -> Result<(), Error> {
     forget_queue_message(data, &message, guild_id)
         .await
         .map_err(Into::into)
+}
+
+#[cfg(test)]
+mod pins {
+    use super::*;
+    #[test]
+    fn the_expired_embed_is_byte_stable() {
+        assert_eq!(
+            serde_json::to_string(&crate::messaging::discord::embed(&expired_card())).unwrap(),
+            r#"{"type":"rich","description":"This command has expired.\nPlease feel free to reinvoke it!"}"#
+        );
+    }
 }

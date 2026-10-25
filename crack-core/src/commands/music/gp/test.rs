@@ -2733,7 +2733,7 @@ fn a_refused_gp_command_is_logged_as_well_as_answered() {
 
     assert!(matches!(
         reply,
-        CrackedMessage::CrackedError(CrackedError::NoGuildId)
+        CrackedMessage::CrackedError(ref text) if *text == CrackedError::NoGuildId.to_string()
     ));
     let log = String::from_utf8(captured.0.lock().expect("log buffer").clone())
         .expect("the formatter writes UTF-8");

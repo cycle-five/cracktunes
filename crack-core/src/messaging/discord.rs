@@ -137,6 +137,13 @@ pub fn allowed_mentions(m: Mentions) -> CreateAllowedMentions<'static> {
     }
 }
 
+/// A message as a bare description embed, for the edit paths that take one.
+impl From<crate::messaging::message::CrackedMessage> for CreateEmbed<'_> {
+    fn from(message: crate::messaging::message::CrackedMessage) -> Self {
+        CreateEmbed::default().description(message.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,6 +151,15 @@ mod tests {
 
     fn json<T: serde::Serialize>(v: &T) -> String {
         serde_json::to_string(v).unwrap()
+    }
+
+    #[test]
+    fn a_message_is_an_embed_of_its_text() {
+        let embed = CreateEmbed::from(crate::messaging::message::CrackedMessage::Pong);
+        assert_eq!(
+            json(&embed),
+            json(&CreateEmbed::default().description("Pong"))
+        );
     }
 
     #[test]

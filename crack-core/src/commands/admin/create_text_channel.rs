@@ -1,3 +1,4 @@
+use crack_types::discord::ToRef;
 use serenity::builder::CreateChannel;
 
 use crate::errors::CrackedError;
@@ -43,8 +44,8 @@ pub async fn create_text_channel(
             send_reply(
                 &ctx,
                 CrackedMessage::TextChannelCreated {
-                    channel_name: channel.name,
-                    channel_id: channel.id,
+                    channel_name: channel.name.to_string(),
+                    channel_id: channel.id.to_ref(),
                 },
                 true,
             )
@@ -90,8 +91,8 @@ pub async fn create_category(
             send_reply(
                 &ctx,
                 CrackedMessage::TextChannelCreated {
-                    channel_name: channel.name,
-                    channel_id: channel.id,
+                    channel_name: channel.name.to_string(),
+                    channel_id: channel.id.to_ref(),
                 },
                 true,
             )

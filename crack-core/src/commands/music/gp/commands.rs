@@ -406,7 +406,7 @@ pub(in crate::commands::music::gp) fn refuse_gp(
     err: CrackedError,
 ) -> CrackedMessage {
     tracing::warn!(command, %user_id, ?guild_id, error = %err, "gp: command refused");
-    CrackedMessage::CrackedError(err)
+    CrackedMessage::from(err)
 }
 
 /// Resolve a Spotify link for `/gp submit`, which takes exactly one song.

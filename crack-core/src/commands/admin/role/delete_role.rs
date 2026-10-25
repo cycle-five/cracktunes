@@ -1,3 +1,4 @@
+use crack_types::discord::ToRef;
 use poise::ReplyHandle;
 use serenity::all::{Role, RoleId};
 use std::borrow::Cow;
@@ -61,7 +62,10 @@ pub async fn delete_role_by_id_helper(
     let role_name = role.name;
     send_reply_owned(
         ctx,
-        CrackedMessage::RoleDeleted { role_id, role_name },
+        CrackedMessage::RoleDeleted {
+            role_id: role_id.to_ref(),
+            role_name: role_name.to_string(),
+        },
         true,
     )
     .await

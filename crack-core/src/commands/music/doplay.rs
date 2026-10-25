@@ -27,10 +27,8 @@ use crate::{
     Context, Data, Error,
 };
 use ::serenity::all::CreateAutocompleteResponse;
-use ::serenity::{
-    all::{CommandInteraction, Message},
-    builder::{CreateEmbed, CreateEmbedFooter},
-};
+use ::serenity::all::{CommandInteraction, Message};
+use crack_model::{Card, Footer};
 use crack_types::QueryType;
 use crack_types::{search_result_to_aux_metadata, Mode, NewAuxMetadata};
 use poise::{serenity_prelude as serenity, ReplyHandle};
@@ -381,6 +379,18 @@ async fn queued(
     }))
 }
 
+/// The reply to an interactive search over an empty queue.
+fn empty_queue_card() -> Card {
+    Card {
+        description: Some("No tracks in queue!".to_string()),
+        footer: Some(Footer {
+            text: "No tracks in queue!".to_string(),
+            icon_url: None,
+        }),
+        ..Card::default()
+    }
+}
+
 /// What the play reply says: the track queued and when it plays, the
 /// playlist queued (in words, never its variant name), or what is playing.
 pub async fn build_play_message(
@@ -435,11 +445,7 @@ pub async fn build_play_message(
         },
         Ordering::Less => {
             tracing::warn!("No tracks in queue, this only happens when an interactive search is done with an empty queue.");
-            CrackedMessage::CreateEmbed(Box::new(
-                CreateEmbed::default()
-                    .description("No tracks in queue!")
-                    .footer(CreateEmbedFooter::new("No tracks in queue!")),
-            ))
+            CrackedMessage::Card(Box::new(empty_queue_card()))
         },
     }
 }
@@ -732,7 +738,7 @@ async fn play_body(
             return Ok(PlayOutcome::NothingQueued);
         }
         // An error, so red, as every rendered error is.
-        courier::reply(ctx, CrackedMessage::CrackedError(CrackedError::NoQuery)).await?;
+        courier::reply(ctx, CrackedMessage::from(CrackedError::NoQuery)).await?;
         return Ok(PlayOutcome::NothingQueued);
     }
 
@@ -1619,6 +1625,18 @@ mod tests {
         assert_eq!(
             queued_outcome(&ids(&[1]), &ids(&[1, 2, 3, 4])),
             PlayOutcome::Queued
+        );
+    }
+}
+
+#[cfg(test)]
+mod pins {
+    #[test]
+    fn the_empty_queue_embed_is_byte_stable() {
+        assert_eq!(
+            serde_json::to_string(&crate::messaging::discord::embed(&super::empty_queue_card()))
+                .unwrap(),
+            r#"{"type":"rich","description":"No tracks in queue!","footer":{"text":"No tracks in queue!","icon_url":null}}"#
         );
     }
 }

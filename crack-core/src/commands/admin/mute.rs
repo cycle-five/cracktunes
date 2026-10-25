@@ -3,12 +3,13 @@ use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
 use crate::{Context, Error};
+use crack_types::discord::ToRef;
 
 use extract_map::ExtractMap;
 use poise::serenity_prelude as serenity;
 use serenity::model::id::{ChannelId, GuildId, UserId};
 use serenity::model::{user::User, voice::VoiceState};
-use serenity::{CacheHttp, EditMember, Mentionable};
+use serenity::{CacheHttp, EditMember};
 
 /// Mute a user.
 #[poise::command(
@@ -102,7 +103,6 @@ pub async fn mute_internal(
     guild_id: GuildId,
     mute: bool,
 ) -> Result<CrackedMessage, Error> {
-    let mention = user.mention();
     let id = user.id;
     if let Err(e) = guild_id
         .edit_member(
@@ -115,7 +115,7 @@ pub async fn mute_internal(
         Ok(CrackedMessage::Other(format!("Failed to mute user: {}", e)))
     } else {
         // Send success message
-        Ok(CrackedMessage::UserMuted { mention, id })
+        Ok(CrackedMessage::UserMuted { id: id.to_ref() })
     }
 }
 
@@ -139,7 +139,6 @@ pub async fn unmute(
 /// impl for other internal use.
 pub async fn unmute_impl(ctx: Context<'_>, user: User) -> Result<(), Error> {
     let id = user.id;
-    let mention = user.mention();
     let guild_id = ctx
         .guild_id()
         .ok_or(CrackedError::Other("Guild ID not found"))?;
@@ -156,7 +155,7 @@ pub async fn unmute_impl(ctx: Context<'_>, user: User) -> Result<(), Error> {
         .await
     } else {
         // Send success message
-        send_reply(&ctx, CrackedMessage::UserUnmuted { id, mention }, true).await
+        send_reply(&ctx, CrackedMessage::UserUnmuted { id: id.to_ref() }, true).await
     }?;
     Ok(())
 }

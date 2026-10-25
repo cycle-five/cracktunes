@@ -1,3 +1,4 @@
+use crack_types::discord::ToRef;
 use crate::errors::CrackedError;
 use crate::messaging::message::CrackedMessage;
 use crate::utils::send_reply;
@@ -31,7 +32,6 @@ pub async fn timeout(
     }
     // Debugging print the params
     let id = user.id;
-    let mention = user.mention();
 
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
 
@@ -68,8 +68,7 @@ pub async fn timeout(
     } else {
         // Send success message
         let msg = CrackedMessage::UserTimeout {
-            id,
-            mention,
+            id: id.to_ref(),
             timeout_until: timeout_until.clone(),
         };
         tracing::info!("User timed out: {}", msg);

@@ -549,7 +549,7 @@ mod tests {
         assert!(acknowledge(&p).await);
         answer_privately(
             &p,
-            &CrackedMessage::CrackedError(crate::errors::CrackedError::NothingPlaying),
+            &CrackedMessage::from(crate::errors::CrackedError::NothingPlaying),
             &cx(),
         )
         .await;

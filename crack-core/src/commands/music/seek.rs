@@ -48,7 +48,7 @@ pub async fn seek_internal(ctx: Context<'_>, seek_time: String) -> Result<(), Er
         },
         Err(OpRefused::SeekFailed(e)) => CrackedMessage::SeekFail {
             timestamp: Cow::Owned(timestamp_str.to_owned()),
-            error: e,
+            error: e.to_string(),
         },
         // /seek has always worded this its own way, not as NothingPlaying.
         Err(OpRefused::NothingPlaying) => {

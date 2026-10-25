@@ -448,7 +448,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         message: CrackedMessage,
         as_embed: bool,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-        let color = serenity::Colour::from(&message);
+        let color = serenity::Colour::new(message.colour());
         let params = SendMessageParams::new(message)
             .with_color(color)
             .with_as_embed(as_embed);
@@ -462,7 +462,7 @@ impl<'ctx> PoiseContextExt<'ctx> for crate::Context<'ctx> {
         message: CrackedMessage,
         as_embed: bool,
     ) -> Result<ReplyHandle<'ctx>, CrackedError> {
-        let color = serenity::Colour::from(&message);
+        let color = serenity::Colour::new(message.colour());
         let params = SendMessageParams::new(message)
             .with_color(color)
             .with_as_embed(as_embed);
