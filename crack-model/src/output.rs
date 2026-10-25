@@ -89,27 +89,32 @@ pub struct Footer {
     pub icon_url: Option<String>,
 }
 
-/// A row of controls.
+/// A row of controls: buttons, or one select, never both.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Row(pub Vec<Control>);
+pub enum Row {
+    Buttons(Vec<Button>),
+    Select(Select),
+}
 
+/// A button, identified by its custom id.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Control {
-    Button {
-        id: String,
-        label: Option<String>,
-        /// A unicode emoji.
-        emoji: Option<String>,
-        style: ButtonStyle,
-        disabled: bool,
-    },
-    Select {
-        id: String,
-        placeholder: Option<String>,
-        options: Vec<SelectOption>,
-        min: Option<u8>,
-        max: Option<u8>,
-    },
+pub struct Button {
+    pub id: String,
+    pub label: Option<String>,
+    /// A unicode emoji.
+    pub emoji: Option<String>,
+    pub style: ButtonStyle,
+    pub disabled: bool,
+}
+
+/// A menu of string options, identified by its custom id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Select {
+    pub id: String,
+    pub placeholder: Option<String>,
+    pub options: Vec<SelectOption>,
+    pub min: Option<u8>,
+    pub max: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,7 +196,7 @@ mod tests {
 
     #[test]
     fn the_builders_set_content_and_rows() {
-        let row = Row(vec![Control::Button {
+        let row = Row::Buttons(vec![Button {
             id: "go".to_string(),
             label: Some("Go".to_string()),
             emoji: None,
