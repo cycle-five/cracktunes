@@ -610,6 +610,16 @@
   - crack-testing drops a poise dependency it never used.
 
   Nothing the bot does changed.
+- **Step 4b-2: the music player is its own crate, `crack-music`.**
+  - What moved: the player (ops, the queue's primitives, the lease, autoplay's
+    buffer, audit, search, the dashboard controls), its sources and its tables.
+  - What stays in crack-core: the glue built on poise or the status message,
+    meaning the `/play` query modes, the logged queue entry points, resume and
+    the `Surface` implementation.
+  - crack-core re-exports the old paths.
+  - `cargo test -p crack-music` builds no crack-core.
+
+  Nothing the bot does changed.
 
 ## TODO:
 
