@@ -8,8 +8,9 @@ use super::preflight::{self, BotPerms};
 use super::settings::{clown_name, ActionKind, ActionPrice, EconomyConfig};
 use super::target::{check_target, TargetFacts, TargetOutcome};
 use super::wallet::{ActionPayload, ActionState, MoveError};
-use crate::economy::EconomyData;
-use crate::messaging::messages::{
+use crate::EconomyData;
+use chrono::{DateTime, Utc};
+use crack_common::messages::{
     ECONOMY_ALREADY_DEAFENED, ECONOMY_ALREADY_IMMUNE, ECONOMY_ALREADY_MUTED,
     ECONOMY_ALREADY_REVEALED, ECONOMY_ALREADY_RUNNING_PREFIX, ECONOMY_ALREADY_THERE,
     ECONOMY_BAD_LINK, ECONOMY_BOUNTY_TOO_SMALL_PREFIX, ECONOMY_BUYER_NOT_IN_VOICE,
@@ -25,7 +26,6 @@ use crate::messaging::messages::{
     ECONOMY_TARGET_IS_BOT, ECONOMY_TARGET_IS_SELF, ECONOMY_TARGET_NOT_IN_VOICE,
     ECONOMY_TARGET_OPTED_OUT, ECONOMY_UNAVAILABLE_PREFIX, ECONOMY_UNAVAILABLE_SUFFIX,
 };
-use chrono::{DateTime, Utc};
 use serenity::all::{ChannelId, GuildId, Permissions, UserId};
 
 /// Everything [`check_purchase`] needs, read up front.
@@ -964,15 +964,15 @@ pub async fn reveal(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::economy::discord::EconDiscordError;
-    use crate::economy::immunity::Protection;
-    use crate::economy::settings::EconomySettings;
+    use crate::discord::EconDiscordError;
+    use crate::immunity::Protection;
+    use crate::settings::EconomySettings;
     use sqlx::PgPool;
 
     const G: GuildId = GuildId::new(1);
     const U: UserId = UserId::new(10);
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     fn ok() -> PurchaseFacts {
         PurchaseFacts {
@@ -1138,7 +1138,7 @@ mod tests {
             database_pool: Some(pool.clone()),
             ..Default::default()
         };
-        assert!(crate::economy::load_settings(&data, G).await);
+        assert!(crate::load_settings(&data, G).await);
         data
     }
 
@@ -1166,7 +1166,7 @@ mod tests {
         assert_eq!(bought.until, now + chrono::Duration::hours(24));
         assert_eq!(bought.balance, 300);
         assert_eq!(
-            crate::economy::protection(&data, G, U, now).await.unwrap(),
+            crate::protection(&data, G, U, now).await.unwrap(),
             Some(Protection::Until(now + chrono::Duration::hours(24)))
         );
         assert_eq!(crate::db::economy::balance(&pool, G, U).await.unwrap(), 300);
@@ -1274,7 +1274,7 @@ mod tests {
         granting_a_finished_action_grants_nothing,
         |pool: PgPool| async {
             use crate::db::economy as db;
-            use crate::economy::wallet::ActionPayload;
+            use crate::wallet::ActionPayload;
             let data = shop_data(&pool, 500).await;
             let payload = ActionPayload::Immunity { hours: 24 };
             let charged = db::charge_for_action(
@@ -1343,7 +1343,7 @@ mod tests {
     // ---- buying a prank ----
 
     use crate::db::economy as db;
-    use crate::economy::discord::fake::{Call, CallKind, FakeEconomyDiscord};
+    use crate::discord::fake::{Call, CallKind, FakeEconomyDiscord};
 
     const VICTIM: UserId = UserId::new(20);
     const VC: ChannelId = ChannelId::new(5);
@@ -2387,7 +2387,7 @@ mod tests {
     db_test!(
         a_failed_undo_in_a_cleanse_is_retried_by_the_next_sweep_and_ends_cleansed,
         |pool: PgPool| async {
-            use crate::economy::discord::fake::CallKind;
+            use crate::discord::fake::CallKind;
             let data = shop_data(&pool, 500).await;
             fund(&pool, VICTIM, 100).await;
             let fake = FakeEconomyDiscord::default();
@@ -2415,7 +2415,7 @@ mod tests {
                 1
             );
             // The next sweep retries the undo and ends it as cleansed.
-            crate::economy::effects::sweep(&data, &fake, t0(), &|_| true).await;
+            crate::effects::sweep(&data, &fake, t0(), &|_| true).await;
             assert_eq!(
                 state_and_reason(&pool, mute.action_id).await,
                 ("ended".to_string(), Some("cleansed".to_string()))

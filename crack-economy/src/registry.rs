@@ -1,6 +1,6 @@
-//! The economy's in-memory state, on `Data`: per-server settings, which
-//! servers' stored settings have been read, who is opted out, and which
-//! walk-on themes are playing.
+//! The economy's in-memory state, held by the bot's shared data: per-server
+//! settings, which servers' stored settings have been read, who is opted out,
+//! and which walk-on themes are playing.
 
 use super::earn::cooldown_allows;
 use super::lock::{jail_decision, JailMove};

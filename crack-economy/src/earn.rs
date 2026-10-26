@@ -7,7 +7,7 @@
 
 use super::registry::EconomyRegistry;
 use crate::db::economy::{credit_earnings, EarnRow};
-use crate::economy::EconomyData;
+use crate::EconomyData;
 use serenity::all::{Cache, ChannelId, GuildId, Message, UserId, VoiceState};
 use serenity::async_trait;
 use sqlx::PgPool;
@@ -236,7 +236,7 @@ pub fn start(data: EconomyData, cache: Arc<Cache>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::economy::settings::EconomySettings;
+    use crate::settings::EconomySettings;
     use std::sync::Mutex;
 
     fn u(n: u64) -> UserId {

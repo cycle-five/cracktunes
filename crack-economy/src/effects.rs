@@ -9,7 +9,7 @@ use super::discord::{EconDiscordError, EconomyDiscord, LiveEconomyDiscord};
 use super::settings::ActionKind;
 use super::wallet::{ActionPayload, ActionState};
 use crate::db::economy::{self, ActionRow};
-use crate::economy::EconomyData;
+use crate::EconomyData;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
 use std::future::Future;
@@ -711,8 +711,8 @@ pub fn start_sweeper(data: EconomyData, http: Arc<Http>, cache: Arc<Cache>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::economy::discord::fake::{Call, CallKind, FakeEconomyDiscord};
-    use crate::economy::settings::EconomySettings;
+    use crate::discord::fake::{Call, CallKind, FakeEconomyDiscord};
+    use crate::settings::EconomySettings;
     use sqlx::{types::Json, PgPool};
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -721,7 +721,7 @@ mod tests {
     const U: UserId = UserId::new(10);
     const BUYER: UserId = UserId::new(20);
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     fn t0() -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).unwrap()
@@ -2073,9 +2073,9 @@ mod tests {
         expires: DateTime<Utc>,
     ) -> i64 {
         let ledger = if kind == ActionKind::Bounty {
-            crate::economy::wallet::LedgerKind::BountyPlaced
+            crate::wallet::LedgerKind::BountyPlaced
         } else {
-            crate::economy::wallet::LedgerKind::Purchase
+            crate::wallet::LedgerKind::Purchase
         };
         crate::db::economy::charge_active(
             pool,

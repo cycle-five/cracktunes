@@ -713,7 +713,7 @@ mod tests {
         );
         // And the words say so.
         assert_eq!(
-            crate::economy::shop::refusal_text(&Refusal::CantTell, "c"),
+            crate::shop::refusal_text(&Refusal::CantTell, "c"),
             "CrackTunes can't see that member right now. Try again in a moment."
         );
     }

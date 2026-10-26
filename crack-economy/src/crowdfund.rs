@@ -12,12 +12,12 @@ use super::shop::{
 use super::target::{check_target, check_target_with, TargetFacts, VoiceStep};
 use super::wallet::{ActionPayload, MoveError};
 use crate::db::economy::{self as db, ActionRow, FundError, OpenedFund, Pledged};
-use crate::economy::EconomyData;
-use crate::messaging::messages::{
+use crate::EconomyData;
+use chrono::{DateTime, Duration, Utc};
+use crack_common::messages::{
     ECONOMY_FUND_WHY_DB, ECONOMY_FUND_WHY_LEFT, ECONOMY_FUND_WHY_NOT_IN_VOICE,
     ECONOMY_FUND_WHY_OTHER, ECONOMY_FUND_WHY_PERMISSIONS,
 };
-use chrono::{DateTime, Duration, Utc};
 use serenity::all::{GuildId, UserId};
 
 /// How long a fund has to fill before the sweeper refunds it.
@@ -468,10 +468,10 @@ pub fn not_landed_reason(why: &NotLanded, currency: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::economy::discord::fake::{Call, CallKind, FakeEconomyDiscord};
-    use crate::economy::effects::sweep;
-    use crate::economy::immunity::Protection;
-    use crate::economy::settings::EconomySettings;
+    use crate::discord::fake::{Call, CallKind, FakeEconomyDiscord};
+    use crate::effects::sweep;
+    use crate::immunity::Protection;
+    use crate::settings::EconomySettings;
     use sqlx::PgPool;
 
     const G: GuildId = GuildId::new(1);
@@ -481,7 +481,7 @@ mod tests {
     const T: UserId = UserId::new(20);
     const VC: serenity::all::ChannelId = serenity::all::ChannelId::new(5);
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     /// The moment this test run starts, on the real clock: the database
     /// judges a fund's liveness by its own, so a fixed date goes stale.
@@ -683,7 +683,7 @@ mod tests {
             database_pool: Some(pool.clone()),
             ..Default::default()
         };
-        assert!(crate::economy::load_settings(&data, G).await);
+        assert!(crate::load_settings(&data, G).await);
         data
     }
 
@@ -773,7 +773,7 @@ mod tests {
             let id = opened.action_id;
             // Still funding: its payload keeps the name and no restore yet.
             let row = row_of(&pool, id).await;
-            assert_eq!(row.state, crate::economy::wallet::ActionState::Funding);
+            assert_eq!(row.state, crate::wallet::ActionState::Funding);
             assert_eq!(row.expires_at, Some(t0() + Duration::hours(24)));
             assert_eq!(
                 row.payload,
@@ -805,7 +805,7 @@ mod tests {
             assert_eq!(done.signers, vec![A, C]);
             // The row is active, ends in a day, and remembers the old name.
             let row = row_of(&pool, id).await;
-            assert_eq!(row.state, crate::economy::wallet::ActionState::Active);
+            assert_eq!(row.state, crate::wallet::ActionState::Active);
             assert_eq!(row.expires_at, Some(t0() + Duration::hours(24)));
             assert_eq!(
                 row.payload,
@@ -831,7 +831,7 @@ mod tests {
             );
             assert_eq!(
                 row_of(&pool, id).await.state,
-                crate::economy::wallet::ActionState::Ended
+                crate::wallet::ActionState::Ended
             );
         }
     );
@@ -848,7 +848,7 @@ mod tests {
             2
         );
         let row = row_of(pool, id).await;
-        assert_eq!(row.state, crate::economy::wallet::ActionState::Failed);
+        assert_eq!(row.state, crate::wallet::ActionState::Failed);
         let why: Option<String> =
             sqlx::query_scalar("SELECT end_reason FROM economy_actions WHERE id = $1")
                 .bind(id)
@@ -997,7 +997,7 @@ mod tests {
             fund_wallet(&pool, A, 100).await;
             fund_wallet(&pool, B, 100).await;
             // Someone's rename is running with an older name to restore.
-            let running = crate::economy::wallet::ActionPayload::Rename {
+            let running = crate::wallet::ActionPayload::Rename {
                 name: "Old".into(),
                 restore: Some("Way back".into()),
             };
@@ -1267,7 +1267,7 @@ mod tests {
             )
             .await
             .unwrap();
-            assert!(crate::economy::load_settings(&other, GuildId::new(2)).await);
+            assert!(crate::load_settings(&other, GuildId::new(2)).await);
             assert_eq!(
                 pledge(&other, elsewhere).await,
                 Err(BuyError::Refused(Refusal::FundClosed))
@@ -1347,7 +1347,7 @@ mod tests {
             let id = opened.action_id;
             assert_eq!(
                 row_of(&pool, id).await.state,
-                crate::economy::wallet::ActionState::Funding
+                crate::wallet::ActionState::Funding
             );
             // A cannot top it up.
             assert_eq!(

@@ -4,7 +4,7 @@
 #![recursion_limit = "256"]
 
 #[cfg(feature = "crack-coin")]
-pub mod coin;
+pub use crack_economy::coin;
 pub mod commands;
 pub mod config;
 pub mod connection;

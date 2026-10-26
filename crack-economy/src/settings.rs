@@ -3,7 +3,7 @@
 //! field this build does not know is kept, so a config written by another
 //! release survives a load and save.
 
-use crate::messaging::messages::{
+use crack_common::messages::{
     ECONOMY_CLOWN_SUFFIX, ECONOMY_HINT_BOUNTY, ECONOMY_HINT_CROWDFUND, ECONOMY_HINT_JUMP,
     ECONOMY_LABEL_BOUNTY, ECONOMY_LABEL_CLEANSE, ECONOMY_LABEL_CLOWN, ECONOMY_LABEL_CROWDFUND,
     ECONOMY_LABEL_DEAFEN, ECONOMY_LABEL_DEDICATE, ECONOMY_LABEL_DRAG, ECONOMY_LABEL_IMMUNITY,

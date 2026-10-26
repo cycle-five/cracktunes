@@ -36,9 +36,9 @@ The same run with the database tests, as CI does it:
 
 ```bash
 cargo nextest run --profile ci --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin
 cargo test --doc --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin
 ```
 
 The dev profile is tuned for rebuilds: `debug = "line-tables-only"` for the
@@ -75,12 +75,14 @@ docker run -d --name crack-pg -p 5432:5432 \
   -e POSTGRES_PASSWORD=mysecretpassword postgres:16
 
 cargo nextest run --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin
 ```
 
-`DATABASE_URL` defaults to `postgresql://postgres:mysecretpassword@localhost:5432/postgres`,
-set by a `#[ctor]` in `crack-core/src/db/user.rs` when nothing else has set
-it; export your own to point elsewhere.
+`DATABASE_URL` defaults to `postgresql://postgres:mysecretpassword@localhost:5432/postgres`.
+`crack-test-db`'s runner applies that default itself, for every crate, when
+nothing else has set it (`crack-core`'s `#[ctor]` in `src/db/user.rs` remains
+for crack-core tests that read the variable directly). Export your own to
+point elsewhere.
 
 CI provisions postgres and passes those features, so the database tests do run
 on every push. The gate is about the default local experience, not coverage.
@@ -155,7 +157,7 @@ cargo install cargo-llvm-cov --version 0.9.1 --locked
 cargo install cargo-nextest --version 0.9.149 --locked
 rustup component add llvm-tools-preview
 cargo llvm-cov nextest --profile ci --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests \
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin \
   --lcov --output-path lcov.info
 ```
 

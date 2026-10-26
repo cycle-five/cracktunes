@@ -9,8 +9,8 @@ pub mod registry;
 pub mod resolve;
 pub mod sweep;
 
-use crate::economy::effects::spawn_one_shot;
-use crate::economy::EconomyData;
+use crate::effects::spawn_one_shot;
+use crate::EconomyData;
 use chain::{CoinChain, LiveChain, OpenError};
 use config::{CoinConfig, CoinOff};
 use registry::CoinState;

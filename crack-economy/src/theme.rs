@@ -11,7 +11,7 @@ use super::shop::{
 use super::target::{check_target, TargetFacts};
 use super::wallet::{ActionPayload, ActionState, LedgerKind, MoveError};
 use crate::db::economy::{self as db, ActionRow};
-use crate::economy::EconomyData;
+use crate::EconomyData;
 use chrono::{DateTime, Duration as Days, Utc};
 use serenity::all::{ChannelId, GuildId, UserId};
 use std::future::Future;
@@ -420,7 +420,7 @@ pub async fn claim_theme(
         .filter(|r| r.state == ActionState::Active && r.expires_at.is_some_and(|end| end > now))
         .collect();
     let oldest = waiting.first()?.clone();
-    let protection = match crate::economy::protection(data, guild, user, now).await {
+    let protection = match crate::protection(data, guild, user, now).await {
         Ok(p) => p,
         Err(err) => {
             tracing::warn!("economy: reading the protection of {user} in {guild} failed: {err}");
@@ -444,7 +444,7 @@ pub async fn claim_theme(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::economy::settings::{ActionPrice, EconomySettings};
+    use crate::settings::{ActionPrice, EconomySettings};
     use sqlx::PgPool;
     use std::sync::Arc;
 
@@ -452,7 +452,7 @@ mod tests {
     const A: UserId = UserId::new(10);
     const T: UserId = UserId::new(20);
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     const LINK: &str = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
 
@@ -607,7 +607,7 @@ mod tests {
         };
         assert!(check_theme(&purchase(), LINK, &odd).is_ok());
         assert_eq!(
-            crate::economy::shop::refusal_text(&Refusal::BadLink, "credits"),
+            crate::shop::refusal_text(&Refusal::BadLink, "credits"),
             "That link can't be played. Use an http(s) link to a song or video."
         );
     }
@@ -635,7 +635,7 @@ mod tests {
             database_pool: Some(pool.clone()),
             ..Default::default()
         };
-        assert!(crate::economy::load_settings(&data, G).await);
+        assert!(crate::load_settings(&data, G).await);
         data
     }
 
@@ -689,7 +689,7 @@ mod tests {
         };
         assert_eq!(r.id, bought.action_id);
         assert_eq!((r.buyer, r.target), (A, Some(T)));
-        assert_eq!(r.state, crate::economy::wallet::ActionState::Active);
+        assert_eq!(r.state, crate::wallet::ActionState::Active);
         assert_eq!(
             r.expires_at.map(|e| e.timestamp_micros()),
             Some(until.timestamp_micros())

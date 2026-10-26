@@ -9,7 +9,7 @@ use super::effects::MemberView;
 use super::settings::ActionKind;
 use super::wallet::{ActionPayload, ActionState};
 use crate::db::economy::{self, ActionRow};
-use crate::economy::EconomyData;
+use crate::EconomyData;
 use chrono::{DateTime, Utc};
 use serenity::all::{AuditLogEntry, Cache, ChannelId, GuildId, Http, UserId};
 use serenity::model::guild::audit_log::{Action, Change, MemberAction};
@@ -351,9 +351,9 @@ pub fn spawn_jail_recheck(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::economy::discord::fake::{Call, CallKind, FakeEconomyDiscord};
-    use crate::economy::discord::EconDiscordError;
-    use crate::economy::effects::sweep;
+    use crate::discord::fake::{Call, CallKind, FakeEconomyDiscord};
+    use crate::discord::EconDiscordError;
+    use crate::effects::sweep;
     use chrono::{DateTime, Duration as ChronoDuration, Utc};
     use sqlx::{types::Json, PgPool};
 
@@ -365,7 +365,7 @@ mod tests {
     const JAIL: ChannelId = ChannelId::new(7);
     const ELSEWHERE: ChannelId = ChannelId::new(8);
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     fn t0() -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).unwrap()
@@ -777,8 +777,8 @@ mod tests {
         fn nick(&self, _g: GuildId, _u: UserId) -> Option<Option<String>> {
             None
         }
-        fn voice(&self, _g: GuildId, _u: UserId) -> Option<crate::economy::effects::VoiceFacts> {
-            Some(crate::economy::effects::VoiceFacts {
+        fn voice(&self, _g: GuildId, _u: UserId) -> Option<crate::effects::VoiceFacts> {
+            Some(crate::effects::VoiceFacts {
                 channel: self.0,
                 mute: false,
                 deaf: false,
