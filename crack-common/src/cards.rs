@@ -361,4 +361,99 @@ mod tests {
         let out = now_playing(&c, &RenderCx::default());
         assert_eq!(out.cards[0].fields[1].value, ">>> (auto)");
     }
+
+    const VANITY: &str = "[vote](https://top.gg/bot/1115229568006103122/vote) • [invite](https://discord.com/oauth2/authorize?client_id=1115229568006103122&permissions=551940115520&scope=bot+applications.commands)";
+
+    #[test]
+    fn the_footer_names_the_host_without_www() {
+        assert_eq!(
+            build_footer_info("https://www.youtube.com/watch?v=x"),
+            (
+                "Streaming via youtube.com".to_owned(),
+                "https://www.google.com/s2/favicons?domain=youtube.com".to_owned(),
+                VANITY.to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn an_unparseable_url_streams_via_unknown() {
+        assert_eq!(
+            build_footer_info("not a url"),
+            (
+                "Streaming via unknown".to_owned(),
+                "https://www.google.com/s2/favicons?domain=unknown".to_owned(),
+                VANITY.to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn the_finished_card_has_its_title_and_description() {
+        assert_eq!(
+            finished_card(),
+            crack_model::Card {
+                title: Some("⏹️ Finished".to_owned()),
+                description: Some("Nothing is playing. Use /play to start again.".to_owned()),
+                ..crack_model::Card::default()
+            }
+        );
+        assert_eq!(finished().cards, vec![finished_card()]);
+    }
+
+    fn queued_card(url: Option<&str>, secs: Option<u64>, wait: Option<u64>) -> QueuedCard {
+        QueuedCard {
+            author: "Added to queue",
+            label: TrackLabel {
+                title: Some("Waterloo".into()),
+                url: url.map(str::to_owned),
+                duration: secs.map(Duration::from_secs),
+            },
+            thumbnail: url.map(|_| "https://i.ytimg.com/t.jpg".to_owned()),
+            wait: wait.map(Duration::from_secs),
+        }
+    }
+
+    #[test]
+    fn a_queued_track_shows_link_thumbnail_length_and_wait() {
+        let out = queued(
+            &queued_card(Some("https://youtu.be/x"), Some(273), Some(60)),
+            &RenderCx::default(),
+        );
+        assert_eq!(
+            out.cards,
+            vec![Card {
+                title: Some("Waterloo".to_owned()),
+                url: Some("https://youtu.be/x".to_owned()),
+                author: Some(Author {
+                    name: "Added to queue".to_owned(),
+                    url: None,
+                    icon_url: None,
+                }),
+                thumbnail: Some("https://i.ytimg.com/t.jpg".to_owned()),
+                footer: Some(Footer {
+                    text: "Track duration: 4:33\nEstimated time until play: 1:00".to_owned(),
+                    icon_url: None,
+                }),
+                ..Card::default()
+            }]
+        );
+    }
+
+    #[test]
+    fn a_queued_track_without_link_length_or_wait_has_no_footer() {
+        let out = queued(&queued_card(None, None, None), &RenderCx::default());
+        assert_eq!(
+            out.cards,
+            vec![Card {
+                title: Some("Waterloo".to_owned()),
+                author: Some(Author {
+                    name: "Added to queue".to_owned(),
+                    url: None,
+                    icon_url: None,
+                }),
+                ..Card::default()
+            }]
+        );
+    }
 }

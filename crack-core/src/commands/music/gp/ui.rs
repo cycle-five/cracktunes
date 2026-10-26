@@ -322,7 +322,8 @@ impl From<GpCard> for CrackedMessage {
     }
 }
 
-/// For logs: a line is its text, everything else its kind.
+/// A line is its text, everything else its kind. `Started`'s text is the
+/// user-visible embed description (`render_card` uses it), not just a log line.
 impl std::fmt::Display for GpCard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let kind = match self {

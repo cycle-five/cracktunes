@@ -335,4 +335,15 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn duration_to_string_pads_hours_minutes_and_seconds() {
+        assert_eq!(duration_to_string(Duration::ZERO), "00:00:00");
+        assert_eq!(duration_to_string(Duration::from_secs(273)), "00:04:33");
+        assert_eq!(duration_to_string(Duration::from_secs(3725)), "01:02:05");
+        assert_eq!(
+            duration_to_string(Duration::from_secs(360_000)),
+            "100:00:00"
+        );
+    }
 }

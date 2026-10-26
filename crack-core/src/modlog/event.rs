@@ -524,6 +524,12 @@ pub fn render(e: &ModLogEvent, cx: &RenderCx) -> Rendered {
     Rendered::card(card)
 }
 
+impl crate::messaging::render::Payload for ModLogEvent {
+    fn render(&self, cx: &RenderCx) -> Rendered {
+        render(self, cx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1228,10 +1234,4 @@ mod tests {
         r##"None|{"title":"🎉 Crowdfund started","type":"rich","description":"<@22> started a crowdfund for Mute on <@11> (signed)","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"n","inline":false}]}|[]|[]|None"##,
         r##"None|{"title":"🎉 Crowdfund executed","type":"rich","description":"Mute on <@11> until <t:1700003600:f> (crowdfunded by <@22>, <@11>)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
     ];
-}
-
-impl crate::messaging::render::Payload for ModLogEvent {
-    fn render(&self, cx: &RenderCx) -> Rendered {
-        render(self, cx)
-    }
 }

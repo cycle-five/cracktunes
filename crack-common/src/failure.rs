@@ -185,4 +185,13 @@ mod tests {
             );
         }
     }
+
+    /// Past the listed tracks the rest are counted: `+N more`.
+    #[test]
+    fn past_the_cap_the_rest_are_counted() {
+        assert_eq!(
+            render_text(&[failed("A", FailReason::Open)], 2),
+            "⚠️ Couldn't play 3 tracks:\n• **A**: couldn't open the stream\n+2 more"
+        );
+    }
 }
