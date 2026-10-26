@@ -61,7 +61,7 @@ REPO = os.path.dirname(SCRIPTS)
 MUTANTS_SH = os.path.join(SCRIPTS, "mutants.sh")
 SWEEP_PY = os.path.join(SCRIPTS, "sweep_target.py")
 # The database the tests use when DATABASE_URL is unset: the #[ctor] default
-# in crack-core/src/db/user.rs.
+# in crack-music/src/db/user.rs.
 TEST_DATABASE_URL = "postgresql://postgres:mysecretpassword@localhost:5432/postgres"
 LISTS = ("missed", "caught", "unviable", "timeout")
 # cargo-mutants exit codes that are results: all caught, some missed, some
@@ -447,7 +447,7 @@ class Tools:
     def database_ready(self) -> bool:
         """False only if pg_isready exists and cannot reach the database the
         tests use: DATABASE_URL, or the tests' own default when it is unset
-        (TEST_DATABASE_URL in crack-core/src/db/user.rs), as it is locally."""
+        (TEST_DATABASE_URL in crack-music/src/db/user.rs), as it is locally."""
         if shutil.which("pg_isready") is None:
             if not self._said_no_pg_isready:
                 print("mutants_check: no pg_isready, so the Postgres guard is skipped")

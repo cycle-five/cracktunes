@@ -108,16 +108,16 @@ disallowed-methods = [
     # (spec 2026-10-04): it takes the lease, makes the call, records the audit
     # row. These are its primitives. /gp (the game owner) and autopause (the bot)
     # are the only other callers, each with a reasoned #[expect].
-    { path = "crack_core::music::queue::pause_queue", reason = "orchestrate through music::ops" },
-    { path = "crack_core::music::queue::resume_queue", reason = "orchestrate through music::ops" },
-    { path = "crack_core::music::queue::remove_at", reason = "orchestrate through music::ops" },
-    { path = "crack_core::music::queue::stop_queue", reason = "orchestrate through music::ops" },
-    { path = "crack_core::music::queue::clear_from", reason = "orchestrate through music::ops" },
-    { path = "crack_core::music::queue::drain_after_current", reason = "orchestrate through music::ops" },
-    { path = "crack_core::music::queue::shuffle_behind_current", reason = "orchestrate through music::ops" },
-    { path = "crack_core::music::queue::move_track", reason = "orchestrate through music::ops" },
-    { path = "crack_core::music::queue::move_track_by_id", reason = "orchestrate through music::ops" },
-    { path = "crack_core::music::queue::force_skip_top_track", reason = "orchestrate through music::ops" },
+    { path = "crack_music::music::queue::pause_queue", reason = "orchestrate through music::ops" },
+    { path = "crack_music::music::queue::resume_queue", reason = "orchestrate through music::ops" },
+    { path = "crack_music::music::queue::remove_at", reason = "orchestrate through music::ops" },
+    { path = "crack_music::music::queue::stop_queue", reason = "orchestrate through music::ops" },
+    { path = "crack_music::music::queue::clear_from", reason = "orchestrate through music::ops" },
+    { path = "crack_music::music::queue::drain_after_current", reason = "orchestrate through music::ops" },
+    { path = "crack_music::music::queue::shuffle_behind_current", reason = "orchestrate through music::ops" },
+    { path = "crack_music::music::queue::move_track", reason = "orchestrate through music::ops" },
+    { path = "crack_music::music::queue::move_track_by_id", reason = "orchestrate through music::ops" },
+    { path = "crack_music::music::queue::force_skip_top_track", reason = "orchestrate through music::ops" },
     # 🔒 Every music-facing message is rendered by `messaging::render` and
     # delivered by `messaging::courier` (spec 2026-10-07): replies through a
     # `ReplySink`, channel posts and edits through a `Transport`. That is where

@@ -1078,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "crack-common"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "anyhow",
  "audiopus",
@@ -1102,7 +1102,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1117,6 +1117,7 @@ dependencies = [
  "crack-economy",
  "crack-guild",
  "crack-model",
+ "crack-music",
  "crack-musicreco",
  "crack-osint",
  "crack-rooms",
@@ -1166,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "crack-economy"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1190,7 +1191,7 @@ dependencies = [
 
 [[package]]
 name = "crack-guild"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "chrono",
  "crack-common",
@@ -1211,7 +1212,7 @@ dependencies = [
 
 [[package]]
 name = "crack-model"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1219,8 +1220,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "crack-music"
+version = "0.44.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "colored",
+ "crack-common",
+ "crack-guild",
+ "crack-model",
+ "crack-musicreco",
+ "crack-sleevenote",
+ "crack-test-db",
+ "crack-test-macros",
+ "crack-testing",
+ "crack-types",
+ "ctor",
+ "dashmap 6.2.1",
+ "futures",
+ "itertools 0.15.0",
+ "lazy_static",
+ "once_cell",
+ "rand 0.10.3",
+ "regex",
+ "reqwest 0.12.28",
+ "rspotify",
+ "rusty_ytdl",
+ "serde",
+ "serde_json",
+ "serenity",
+ "songbird",
+ "sqlx 0.9.0",
+ "symphonia",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "crack-musicreco"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "async-trait",
  "reqwest 0.12.28",
@@ -1247,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "crack-rooms"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "chrono",
  "crack-common",
@@ -1270,7 +1311,7 @@ dependencies = [
 
 [[package]]
 name = "crack-sleevenote"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -1283,7 +1324,7 @@ dependencies = [
 
 [[package]]
 name = "crack-test-db"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "crack-common",
  "crack-test-macros",
@@ -1294,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "crack-test-macros"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1303,7 +1344,7 @@ dependencies = [
 
 [[package]]
 name = "crack-testing"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1325,7 +1366,7 @@ dependencies = [
 
 [[package]]
 name = "crack-types"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "crack-model",
  "humantime",
@@ -1346,7 +1387,7 @@ dependencies = [
 
 [[package]]
 name = "crack-voting"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "chrono",
  "dbl-rs",
@@ -1361,7 +1402,7 @@ dependencies = [
 
 [[package]]
 name = "crack-web"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "axum",
  "catacombs",
@@ -1386,7 +1427,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.43.0"
+version = "0.44.0"
 dependencies = [
  "config-file",
  "crack-core",

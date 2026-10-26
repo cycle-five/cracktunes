@@ -1,0 +1,407 @@
+use once_cell::sync::Lazy;
+use reqwest::Client;
+use std::future::Future;
+
+use crate::music::NewQueryType;
+use crack_common::discord;
+use crack_common::errors::CrackedError;
+use crack_common::CrackedResult;
+use crack_common::{message::CrackedMessage, messages::UNKNOWN};
+use crack_guild::settings::GuildSettings;
+use crack_model::Card;
+use serenity::all::Color;
+use serenity::all::{CacheHttp, CreateMessage, GenericChannelId, GuildId, Message, UserId};
+use serenity::small_fixed_array::FixedString;
+
+pub use crack_common::transport::is_unknown_message;
+
+#[derive(Debug)]
+/// Parameter structure for functions that send messages to a channel.
+pub struct SendMessageParams {
+    pub channel: GenericChannelId,
+    pub as_embed: bool,
+    pub ephemeral: bool,
+    pub color: Color,
+    pub msg: CrackedMessage,
+    pub embed: Option<Card>,
+}
+
+/// Implement [`PartialEq`] for [`SendMessageParams`].
+impl PartialEq for SendMessageParams {
+    fn eq(&self, other: &Self) -> bool {
+        self.channel == other.channel
+            && self.as_embed == other.as_embed
+            && self.ephemeral == other.ephemeral
+            && self.color == other.color
+            && self.msg == other.msg
+        // Note: We don't compare `embed` here
+    }
+}
+
+/// Default implementation for [`SendMessageParams`].
+impl Default for SendMessageParams {
+    fn default() -> Self {
+        SendMessageParams {
+            channel: GenericChannelId::new(1),
+            as_embed: true,
+            ephemeral: false,
+            color: Color::BLUE,
+            msg: CrackedMessage::Other(String::new()),
+            embed: None,
+        }
+    }
+}
+
+/// Builder methods for [`SendMessageParams`].
+// TODO: Do we want to use this pattern or the mutable one here?
+impl SendMessageParams {
+    pub fn new(msg: CrackedMessage) -> Self {
+        Self {
+            msg,
+            ..Default::default()
+        }
+    }
+
+    pub fn with_as_embed(self, as_embed: bool) -> Self {
+        Self { as_embed, ..self }
+    }
+
+    pub fn with_ephemeral(self, ephemeral: bool) -> Self {
+        Self { ephemeral, ..self }
+    }
+
+    pub fn with_color(self, color: Color) -> Self {
+        Self { color, ..self }
+    }
+
+    pub fn with_msg(self, msg: CrackedMessage) -> Self {
+        Self { msg, ..self }
+    }
+
+    pub fn with_channel(self, channel: GenericChannelId) -> Self {
+        Self { channel, ..self }
+    }
+
+    pub fn with_embed(self, embed: Option<Card>) -> Self {
+        Self { embed, ..self }
+    }
+}
+
+/// A channel message of `content`: the text itself, or the one embed that
+/// holds it.
+fn channel_message(content: String, as_embed: bool) -> CreateMessage<'static> {
+    if as_embed {
+        let card = Card {
+            description: Some(content),
+            ..Card::default()
+        };
+        CreateMessage::new().add_embed(discord::embed(&card))
+    } else {
+        CreateMessage::new().content(content)
+    }
+}
+
+/// Extension trait for CacheHttp to add some utility functions.
+pub trait CacheHttpExt {
+    fn get_bot_id(&self) -> impl Future<Output = CrackedResult<UserId>> + Send;
+    fn user_id_to_username_or_default(
+        &self,
+        user_id: UserId,
+    ) -> impl Future<Output = String> + Send;
+    fn channel_id_to_guild_name(
+        &self,
+        channel_id: GenericChannelId,
+        guild_id: GuildId,
+    ) -> impl Future<Output = CrackedResult<FixedString>> + Send;
+    fn send_channel_message(
+        &self,
+        params: SendMessageParams,
+    ) -> impl Future<Output = CrackedResult<Message>> + Send;
+    fn guild_name_from_guild_id(
+        &self,
+        guild_id: GuildId,
+    ) -> impl Future<Output = CrackedResult<FixedString>> + Send;
+}
+
+/// Implement the CacheHttpExt trait for any type that implements CacheHttp.
+impl<T: CacheHttp> CacheHttpExt for T {
+    async fn get_bot_id(&self) -> CrackedResult<UserId> {
+        get_bot_id(self).await
+    }
+
+    async fn user_id_to_username_or_default(&self, user_id: UserId) -> String {
+        cache_to_username_or_default(self, user_id).await
+    }
+
+    async fn channel_id_to_guild_name(
+        &self,
+        channel_id: GenericChannelId,
+        guild_id: GuildId,
+    ) -> CrackedResult<FixedString> {
+        get_guild_name(self, channel_id, guild_id).await
+    }
+
+    /// Sends a message to a channel. Only `/osint` uses it.
+    #[expect(clippy::disallowed_methods, reason = "messaging arc: not migrated yet")]
+    async fn send_channel_message(&self, params: SendMessageParams) -> CrackedResult<Message> {
+        let channel = params.channel;
+        let msg = channel_message(format!("{}", params.msg), params.as_embed);
+        channel
+            .send_message(self.http(), msg)
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn guild_name_from_guild_id(
+        &self,
+        guild_id: GuildId,
+    ) -> Result<FixedString, CrackedError> {
+        guild_name_from_guild_id(self, guild_id).await
+    }
+}
+
+/// This is a hack to get around the fact that we can't use async in statics. Is it?
+static CLIENT: Lazy<Client> = Lazy::new(|| {
+    println!("Creating a new reqwest client...");
+    reqwest::ClientBuilder::new()
+        .use_rustls_tls()
+        .cookie_store(true)
+        .build()
+        .expect("Failed to build reqwest client")
+});
+
+// /// This is a hack to get around the fact that we can't use async in statics. Is it?
+// static CLIENT_OLD: Lazy<reqwest_old::Client> = Lazy::new(|| {
+//     println!("Creating a new (old) reqwest client...");
+//     reqwest_old::ClientBuilder::new()
+//         .use_rustls_tls()
+//         .cookie_store(true)
+//         .build()
+//         .expect("Failed to build reqwest client")
+// });
+
+/// Build a reqwest client with rustls.
+pub fn build_client() -> Client {
+    reqwest::ClientBuilder::new()
+        .use_rustls_tls()
+        .cookie_store(true)
+        .build()
+        .expect("Failed to build reqwest client")
+}
+
+/// Get a reference to the lazy, static, global reqwest client.
+pub fn get_client() -> &'static Client {
+    &CLIENT
+}
+
+/// Get a reference to an old version client.
+pub fn get_client_old() -> &'static reqwest::Client {
+    &CLIENT
+}
+
+/// Build the static, global reqwest client eagerly, so a TLS or builder
+/// failure shows at boot instead of on the first request. Makes no request:
+/// startup must not depend on any third-party host being reachable (#554).
+pub fn init_http_client() {
+    once_cell::sync::Lazy::force(&CLIENT);
+}
+
+/// Get the bot's user ID.
+pub async fn get_bot_id(cache_http: impl CacheHttp) -> Result<UserId, CrackedError> {
+    let tune_titan_id = UserId::new(1124707756750934159);
+    let rusty_bot_id = UserId::new(1111844110597374042);
+    let cracktunes_id = UserId::new(1115229568006103122);
+    let bot_id = match cache_http.cache() {
+        Some(cache) => cache.current_user().id,
+        None => {
+            tracing::warn!("cache_http.cache() returned None");
+            return Err(CrackedError::Other("cache_http.cache() returned None"));
+        },
+    };
+
+    // If the bot is tune titan or rusty bot, return cracktunes ID
+    if bot_id == tune_titan_id || bot_id == rusty_bot_id {
+        Ok(cracktunes_id)
+    } else {
+        Ok(bot_id)
+    }
+}
+
+/// Get the username of a user from their user ID, returns "Unknown" if an error occurs.
+pub async fn cache_to_username_or_default(cache_http: impl CacheHttp, user_id: UserId) -> String {
+    match user_id.to_user(cache_http).await {
+        Ok(x) => x.name.to_string(),
+        Err(_) => {
+            tracing::warn!("cache.user returned None");
+            UNKNOWN.to_string()
+        },
+    }
+}
+
+/// Parse a URL string into a URL object.
+pub async fn parse_url(url: &str) -> Result<url::Url, CrackedError> {
+    url::Url::parse(url).map_err(Into::into)
+}
+
+/// Gets the final URL after following all redirects.
+pub async fn resolve_final_url(url: &str) -> Result<String, CrackedError> {
+    // FIXME: This is definitely not efficient, we want ot reuse this client.
+    // Make a GET request, which will follow redirects by default
+
+    let client = get_client();
+    let response = client.get(url).send().await?;
+
+    // Extract the final URL after following all redirects
+    let final_url = response.url().clone();
+
+    Ok(final_url.into())
+}
+
+/// Gets the guild_name for a channel_id.
+pub async fn get_guild_name(
+    cache_http: &impl CacheHttp,
+    channel_id: GenericChannelId,
+    guild_id: GuildId,
+) -> Result<FixedString, CrackedError> {
+    channel_id
+        .to_channel(cache_http, Some(guild_id))
+        .await?
+        .guild()
+        .map(|x| x.base.guild_id)
+        .ok_or(CrackedError::NoGuildForChannelId(channel_id))?
+        .to_partial_guild(cache_http)
+        .await
+        .map(|x| x.name)
+        .map_err(Into::into)
+}
+
+// Get the guild name from the guild id and an http client.
+pub async fn guild_name_from_guild_id(
+    cache_http: impl CacheHttp,
+    guild_id: GuildId,
+) -> Result<FixedString, CrackedError> {
+    guild_id
+        .to_partial_guild(cache_http)
+        .await
+        .map(|x| x.name)
+        .map_err(Into::into)
+}
+
+/// Check if the domain that we're playing from is banned.
+// FIXME: This is borked.
+pub fn check_banned_domains(
+    _guild_settings: &GuildSettings,
+    query_type: Option<NewQueryType>,
+) -> CrackedResult<Option<NewQueryType>> {
+    Ok(query_type)
+    // if let Some(NewQueryType(QueryType::Keywords(_))) = query_type {
+    //     if !guild_settings.allow_all_domains.unwrap_or(true)
+    //         && (guild_settings.banned_domains.contains("youtube.com")
+    //             || (guild_settings.banned_domains.is_empty()
+    //                 && !guild_settings.allowed_domains.contains("youtube.com")))
+    //     {
+    //         Err(CrackedError::Other("youtube.com is banned"))
+    //     } else {
+    //         Ok(query_type)
+    //     }
+    // } else {
+    //     Ok(query_type)
+    // }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::http_utils::resolve_final_url;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// Serve `/start` as a 302 to `/final`, and anything else as a 200.
+    /// Returns the server's base URL.
+    async fn redirecting_server() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let base = format!("http://{}", listener.local_addr().expect("local_addr"));
+        let location = format!("{base}/final");
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut stream, _)) = listener.accept().await else {
+                    return;
+                };
+                // 🪤 Read to the end of the request head, not once: a single
+                // read is not guaranteed to deliver it all, and that it does
+                // over loopback is a property of the test machine, not TCP.
+                let mut head = Vec::new();
+                let mut buf = [0u8; 1024];
+                while !head.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match stream.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => head.extend_from_slice(&buf[..n]),
+                    }
+                }
+                let reply = if head.starts_with(b"GET /start ") {
+                    format!(
+                        "HTTP/1.1 302 Found\r\nLocation: {location}\r\n\
+                         Content-Length: 0\r\nConnection: close\r\n\r\n"
+                    )
+                } else {
+                    "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned()
+                };
+                let _ = stream.write_all(reply.as_bytes()).await;
+            }
+        });
+        base
+    }
+
+    /// #523. `resolve_final_url` reports where a link lands, not where it
+    /// started -- which is all a short link like `spotify.link` is. Against a
+    /// loopback server, because asserting on a live redirect service tests that
+    /// service, and fails whenever the network or its output changes.
+    #[tokio::test]
+    async fn resolve_final_url_reports_where_a_redirect_lands() {
+        let base = redirecting_server().await;
+
+        let landed = resolve_final_url(&format!("{base}/start"))
+            .await
+            .expect("a loopback redirect resolves");
+
+        assert_eq!(landed, format!("{base}/final"));
+    }
+
+    #[test]
+    fn test_build_send_message_params() {
+        use crate::http_utils::SendMessageParams;
+        use crack_common::message::CrackedMessage;
+        use serenity::all::{Colour, GenericChannelId};
+
+        let channel_id = GenericChannelId::new(1);
+        let msg = CrackedMessage::Other("Hello, world!".to_string());
+        let params = SendMessageParams::new(msg)
+            .with_as_embed(true)
+            .with_ephemeral(false)
+            .with_color(Colour::BLUE)
+            .with_channel(channel_id)
+            .with_embed(None);
+
+        assert_eq!(params.channel, channel_id);
+        assert!(params.as_embed);
+        assert!(!params.ephemeral);
+        assert_eq!(params.color, Colour::BLUE);
+        assert_eq!(
+            params.msg,
+            CrackedMessage::Other("Hello, world!".to_string())
+        );
+        assert!(params.embed.is_none());
+    }
+
+    #[test]
+    fn channel_message_renders_as_before() {
+        use super::channel_message;
+        assert_eq!(
+            serde_json::to_string(&channel_message("hi *there*".into(), true)).unwrap(),
+            r#"{"tts":false,"embeds":[{"type":"rich","description":"hi *there*"}],"sticker_ids":[],"attachments":[],"enforce_nonce":false}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&channel_message("hi *there*".into(), false)).unwrap(),
+            r#"{"content":"hi *there*","tts":false,"embeds":[],"sticker_ids":[],"attachments":[],"enforce_nonce":false}"#
+        );
+    }
+}

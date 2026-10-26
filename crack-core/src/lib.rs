@@ -12,7 +12,6 @@ pub mod db;
 pub use crack_common::errors;
 pub mod guild;
 pub mod handlers;
-pub mod http_utils;
 #[macro_use]
 pub mod macros;
 pub mod economy;
@@ -22,8 +21,8 @@ pub mod metrics;
 pub mod music;
 pub mod owners;
 pub mod poise_ext;
+pub use crack_music::{http_utils, sources};
 pub use crack_rooms::{modlog, rooms};
-pub mod sources;
 #[cfg(test)]
 pub mod test;
 #[cfg(test)]
