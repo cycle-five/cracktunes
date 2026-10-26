@@ -384,7 +384,7 @@ mod test {
 
     #[tokio::test]
     async fn search_runs_only_what_was_asked_and_answers_in_order() {
-        let data = crate::Data::default().music_data(); // no call, no pool
+        let data = crate::music::ops::test_support::test_music_data(); // no call, no pool
         let q = Query::new("abba").unwrap();
         let out = search(
             &data,

@@ -97,7 +97,7 @@ mod test {
 
     #[tokio::test]
     async fn no_pool_is_no_database() {
-        let data = crate::Data::default().music_data();
+        let data = crate::music::ops::test_support::test_music_data();
         let q = Query::new("abba").unwrap();
         assert_eq!(
             search_history(&data, serenity::all::GuildId::new(1), &q, None).await,

@@ -55,18 +55,18 @@ pub async fn disconnect(
 mod test {
     use super::*;
     use crate::music::audit::{Action, Actor, BotReason};
-    use crate::{Data, DataInner};
+    use crate::music::{ops::test_support::test_music_data, MusicData};
     use std::sync::Arc;
 
     const G: GuildId = GuildId::new(5);
 
-    fn data_with_audit() -> (Data, tokio::sync::mpsc::Receiver<AuditEvent>) {
+    fn data_with_audit() -> (MusicData, tokio::sync::mpsc::Receiver<AuditEvent>) {
         let (tx, rx) = tokio::sync::mpsc::channel(8);
         (
-            Data(Arc::new(DataInner {
+            MusicData {
                 audit_tx: Some(tx),
-                ..Default::default()
-            })),
+                ..test_music_data()
+            },
             rx,
         )
     }
@@ -79,7 +79,7 @@ mod test {
     }
 
     /// Register a `Call` on `manager` without connecting, with `n` offline tracks.
-    async fn register(data: &Data, manager: &songbird::Songbird, n: usize) {
+    async fn register(data: &MusicData, manager: &songbird::Songbird, n: usize) {
         let call = manager.get_or_insert(G);
         let guard = data
             .lock_queue(
@@ -107,14 +107,9 @@ mod test {
         let manager = manager();
         register(&data, &manager, 2).await;
         while rx.try_recv().is_ok() {}
-        disconnect(
-            &data.music_data(),
-            &manager,
-            G,
-            Actor::bot(BotReason::IdleTimeout),
-        )
-        .await
-        .expect("an unconnected Call leaves Ok");
+        disconnect(&data, &manager, G, Actor::bot(BotReason::IdleTimeout))
+            .await
+            .expect("an unconnected Call leaves Ok");
         let e = rx.try_recv().expect("recorded");
         assert_eq!(e.action, Action::Leave { discarded: 2 });
         assert_eq!(e.actor, Actor::bot(BotReason::IdleTimeout));
@@ -126,13 +121,7 @@ mod test {
         let manager = manager();
         // A registered but empty Call, so the `discarded > 0` check is what is tested.
         let _ = manager.get_or_insert(G);
-        let _ = disconnect(
-            &data.music_data(),
-            &manager,
-            G,
-            Actor::bot(BotReason::Kicked),
-        )
-        .await;
+        let _ = disconnect(&data, &manager, G, Actor::bot(BotReason::Kicked)).await;
         assert!(rx.try_recv().is_err());
     }
 
@@ -150,12 +139,7 @@ mod test {
             .unwrap();
         let _ = tokio::time::timeout(
             std::time::Duration::from_millis(200),
-            disconnect(
-                &data.music_data(),
-                &manager,
-                G,
-                Actor::bot(BotReason::Kicked),
-            ),
+            disconnect(&data, &manager, G, Actor::bot(BotReason::Kicked)),
         )
         .await
         .expect("disconnect must not take the queue lease");

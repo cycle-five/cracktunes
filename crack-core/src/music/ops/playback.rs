@@ -358,39 +358,46 @@ mod test {
     async fn volume_reports_the_real_old_value() {
         use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings};
         let (data, _, _, _) = queue_of(0).await;
-        data.guild_settings_map.write().await.insert(
+        data.guild.guild_settings_map.write().await.insert(
             GUILD,
             GuildSettings::new(crack_types::discord::ToRef::to_ref(&GUILD), None, None),
         );
-        data.set_volume(GUILD, 0.3).await;
-        let old = data.set_volume(GUILD, 0.7).await;
+        data.guild.set_volume(GUILD, 0.3).await;
+        let old = data.guild.set_volume(GUILD, 0.7).await;
         assert_eq!(old, 0.3);
-        assert_eq!(data.get_volume(GUILD).await.0, 0.7);
+        assert_eq!(data.guild.get_volume(GUILD).await.0, 0.7);
     }
 
     #[tokio::test]
     async fn setting_volume_never_creates_settings() {
         use crate::guild::{operations::GuildSettingsOperations, settings::DEFAULT_VOLUME_LEVEL};
         let (data, _, _, _) = queue_of(0).await;
-        assert_eq!(data.set_volume(GUILD, 0.7).await, DEFAULT_VOLUME_LEVEL);
-        assert!(data.guild_settings_map.read().await.get(&GUILD).is_none());
+        assert_eq!(
+            data.guild.set_volume(GUILD, 0.7).await,
+            DEFAULT_VOLUME_LEVEL
+        );
+        assert!(data
+            .guild
+            .guild_settings_map
+            .read()
+            .await
+            .get(&GUILD)
+            .is_none());
     }
 
     #[tokio::test]
     async fn volume_op_returns_old_and_new_as_fractions() {
         use crate::guild::{operations::GuildSettingsOperations, settings::GuildSettings};
         let (data, call, _, mut rx) = queue_of(1).await;
-        data.guild_settings_map.write().await.insert(
+        data.guild.guild_settings_map.write().await.insert(
             GUILD,
             GuildSettings::new(crack_types::discord::ToRef::to_ref(&GUILD), None, None),
         );
-        data.set_volume(GUILD, 0.3).await;
-        let done = volume_on(&call, &data.music_data(), GUILD, 70)
-            .await
-            .unwrap();
+        data.guild.set_volume(GUILD, 0.3).await;
+        let done = volume_on(&call, &data, GUILD, 70).await.unwrap();
         assert_eq!(*done.settle(), Settle::Nothing);
         assert_eq!(*done.outcome(), VolumeSet { old: 0.3, new: 0.7 });
-        assert_eq!(data.get_volume(GUILD).await.0, 0.7);
+        assert_eq!(data.guild.get_volume(GUILD).await.0, 0.7);
         assert!(recorded(&mut rx).is_empty());
     }
 

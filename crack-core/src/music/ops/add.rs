@@ -153,12 +153,14 @@ mod test {
 
     async fn requester_of(call: &Arc<Mutex<Call>>, at: usize) -> UserId {
         let h = call.lock().await.queue().current_queue()[at].clone();
-        crate::utils::get_requesting_user(&h).await.unwrap()
+        crate::music::track_data::get_requesting_user(&h)
+            .await
+            .unwrap()
     }
 
     async fn url_of(call: &Arc<Mutex<Call>>, at: usize) -> Option<String> {
         let h = call.lock().await.queue().current_queue()[at].clone();
-        crate::utils::get_track_handle_metadata(&h)
+        crate::music::track_data::get_track_handle_metadata(&h)
             .await
             .ok()?
             .source_url
@@ -269,11 +271,11 @@ mod test {
 
     #[tokio::test]
     async fn add_refuses_during_a_game() {
-        let d = crate::Data(Arc::new(crate::DataInner::default()));
+        let d = super::super::test_support::test_music_data();
         d.claim_playback(GUILD, crate::music::PlaybackOwner::Game)
             .unwrap();
         let cx = OpCx {
-            data: d.music_data(),
+            data: d,
             ..super::super::test_support::cx_without_call()
         };
         assert!(matches!(
@@ -308,7 +310,10 @@ mod test {
         use crack_musicreco::{Playable, Recommendation};
         let (tx, mut log) = tokio::sync::mpsc::channel(4);
         let (data, call, _ids, _rx) = queue_of(1).await;
-        let data = crate::Data(Arc::new(data.with_db_channel(tx)));
+        let data = MusicData {
+            db_channel: Some(tx),
+            ..data
+        };
         let pick = Recommendation {
             artist: "A".into(),
             title: "stale".into(),
@@ -325,7 +330,7 @@ mod test {
             .is_some());
         let g = guard(&data).await;
         let cx = OpCx {
-            data: data.music_data(),
+            data: data.clone(),
             ..super::super::test_support::cx_without_call()
         };
         let done = add_with(

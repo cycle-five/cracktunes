@@ -227,12 +227,12 @@ pub(crate) async fn begin(cx: &OpCx) -> Result<(QueueGuard, Arc<Mutex<Call>>), O
 mod test {
     use super::test_support::{cx_without_call, GUILD as G};
     use super::*;
-    use crate::{music::PlaybackOwner, Data, DataInner};
+    use crate::music::{ops::test_support::test_music_data, MusicData, PlaybackOwner};
     use serenity::all::UserId;
 
-    fn cx(data: Data) -> OpCx {
+    fn cx(data: MusicData) -> OpCx {
         OpCx {
-            data: data.music_data(),
+            data,
             ..cx_without_call()
         }
     }
@@ -262,7 +262,7 @@ mod test {
 
     #[tokio::test]
     async fn a_game_refuses_before_the_call_is_looked_up() {
-        let d = Data(Arc::new(DataInner::default()));
+        let d = test_music_data();
         d.claim_playback(G, PlaybackOwner::Game).unwrap();
         assert!(matches!(
             begin(&cx(d)).await,
@@ -272,7 +272,7 @@ mod test {
 
     #[tokio::test]
     async fn no_call_is_not_connected() {
-        let d = Data(Arc::new(DataInner::default()));
+        let d = test_music_data();
         assert!(matches!(begin(&cx(d)).await, Err(OpRefused::NotConnected)));
     }
 

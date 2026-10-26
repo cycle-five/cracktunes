@@ -1,5 +1,5 @@
+use crate::music::track_data::MUSIC_SEARCH_SUFFIX;
 use crate::sources::youtube::search_query_to_source_and_metadata;
-use crate::utils::MUSIC_SEARCH_SUFFIX;
 use crate::{
     errors::CrackedError,
     http_utils,

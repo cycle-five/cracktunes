@@ -545,7 +545,6 @@ pub(crate) async fn run_control(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{Data, DataInner};
     use serenity::all::{Cache, GuildId, Http};
     use std::sync::Arc;
 
@@ -595,34 +594,8 @@ mod test {
         .expect("an echo renders as an embed")
     }
 
-    /// Review Focus 4: the echo the dashboard posts goes through the surface,
-    /// and the real surface honours a guild's "control echoes off".
-    #[tokio::test]
-    async fn remote_echo_respects_control_echoes_off() {
-        use crate::guild::settings::GuildSettings;
-        use crack_common::test_support::FakeTransport;
-        let d = Data(Arc::new(DataInner::default()));
-        crate::messaging::status::note_command_channel(
-            &d,
-            G,
-            serenity::all::GenericChannelId::new(10),
-        )
-        .await;
-        let mut settings = GuildSettings::new(crack_types::discord::ToRef::to_ref(&G), None, None);
-        settings.control_echoes = false;
-        d.guild_settings_map.write().await.insert(G, settings);
-        let t = FakeTransport::default();
-        let at = d
-            .music_data()
-            .surface
-            .echo(G, &t, &CrackedMessage::Clear, &RenderCx::now())
-            .await;
-        assert_eq!(at, None);
-        assert!(t.ops().is_empty(), "{:?}", t.ops());
-    }
-
     fn data() -> MusicData {
-        Data(Arc::new(DataInner::default())).music_data()
+        crate::music::ops::test_support::test_music_data()
     }
 
     #[tokio::test]

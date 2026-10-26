@@ -1,7 +1,7 @@
 //! Skips: what plays changes, so they settle `NowPlaying`.
 use super::*;
 use crate::messaging::format::TrackLabel;
-use crate::utils::get_track_handle_metadata;
+use crate::music::track_data::get_track_handle_metadata;
 use crate::{
     connection::get_voice_channel_for_user,
     messaging::message::CrackedMessage,
@@ -295,14 +295,11 @@ mod test {
 
     #[tokio::test]
     async fn votes_count_distinct_voters_against_the_threshold() {
-        let data = crate::Data(Arc::new(crate::DataInner::default()));
+        let data = super::test_support::test_music_data();
         let (a, b) = (UserId::new(5), UserId::new(6));
-        assert_eq!(cast_vote(&data.music_data(), GUILD, a, 2).await, Err(1));
-        assert_eq!(cast_vote(&data.music_data(), GUILD, a, 2).await, Err(1));
-        assert_eq!(cast_vote(&data.music_data(), GUILD, b, 2).await, Ok(()));
-        assert_eq!(
-            cast_vote(&data.music_data(), GuildId::new(2), a, 0).await,
-            Ok(())
-        );
+        assert_eq!(cast_vote(&data, GUILD, a, 2).await, Err(1));
+        assert_eq!(cast_vote(&data, GUILD, a, 2).await, Err(1));
+        assert_eq!(cast_vote(&data, GUILD, b, 2).await, Ok(()));
+        assert_eq!(cast_vote(&data, GuildId::new(2), a, 0).await, Ok(()));
     }
 }

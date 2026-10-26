@@ -232,14 +232,13 @@ impl crate::music::MusicData {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{Data, DataInner};
-    use std::sync::Arc;
+    use crate::music::{ops::test_support::test_music_data, MusicData};
 
     const G: GuildId = GuildId::new(1);
     const H: GuildId = GuildId::new(2);
 
-    fn data() -> Data {
-        Data(Arc::new(DataInner::default()))
+    fn data() -> MusicData {
+        test_music_data()
     }
 
     #[test]
@@ -391,10 +390,10 @@ mod test {
     async fn a_guard_records_as_its_actor_into_the_audit_channel() {
         use crate::music::audit::{Action, Actor, BotReason};
         let (tx, mut rx) = tokio::sync::mpsc::channel(4);
-        let d = Data(Arc::new(DataInner {
+        let d = MusicData {
             audit_tx: Some(tx),
-            ..Default::default()
-        }));
+            ..test_music_data()
+        };
         let guard = d
             .lock_queue(G, PlaybackOwner::Free, Actor::bot(BotReason::Autopause))
             .await

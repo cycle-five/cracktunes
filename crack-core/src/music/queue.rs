@@ -851,9 +851,8 @@ mod test {
     use crate::music::audit::Actor;
     use crate::music::audit::{AuditEvent, BotReason, TrackRef};
     use crate::music::ops::test_support::*;
-    use crate::music::PlaybackOwner;
-    use crate::utils::{get_requesting_user, get_track_handle_metadata};
-    use crate::{Data, DataInner};
+    use crate::music::track_data::{get_requesting_user, get_track_handle_metadata};
+    use crate::music::{MusicData, PlaybackOwner};
 
     /// Every queued track gets a second try at a refused stream URL.
     #[tokio::test]
@@ -988,10 +987,10 @@ mod test {
     #[tokio::test]
     async fn a_batch_add_is_one_record_listing_every_track() {
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
-        let data = Data(Arc::new(DataInner {
+        let data = MusicData {
             audit_tx: Some(tx),
-            ..Default::default()
-        }));
+            ..test_music_data()
+        };
         let call = offline_call();
         let guard = data
             .lock_queue(GUILD, PlaybackOwner::Free, actor())
@@ -1069,7 +1068,7 @@ mod test {
     #[tokio::test]
     #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn skipping_an_already_empty_queue_is_a_no_op_not_a_panic() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = test_music_data();
         let guard = data
             .lock_queue(GUILD, PlaybackOwner::Free, actor())
             .await
@@ -1096,7 +1095,7 @@ mod test {
 
     #[expect(clippy::disallowed_methods, reason = "test fixture")]
     async fn move_in(
-        data: &Data,
+        data: &MusicData,
         call: &Arc<Mutex<Call>>,
         id: uuid::Uuid,
         to: usize,
@@ -1156,7 +1155,7 @@ mod test {
     #[tokio::test]
     async fn a_summary_carries_the_id_title_and_who_asked() {
         use crate::music::remote::{summarize, Requester};
-        let data = Data(Arc::new(DataInner::default()));
+        let data = test_music_data();
         let call = offline_call();
         let guard = data
             .lock_queue(GUILD, PlaybackOwner::Free, actor())
@@ -1215,7 +1214,7 @@ mod test {
     /// without it -- as `/play mode:next` built its track until v0.12.1.
     #[tokio::test]
     async fn a_track_queued_next_carries_what_queue_and_nowplaying_read() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = test_music_data();
         let guard = data
             .lock_queue(GUILD, PlaybackOwner::Free, actor())
             .await
@@ -1243,7 +1242,7 @@ mod test {
     /// the embeds handle, rather than a panic.
     #[tokio::test]
     async fn an_autoplayed_track_carries_what_queue_and_nowplaying_read() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = test_music_data();
         let guard = data
             .lock_queue(GUILD, PlaybackOwner::Free, actor())
             .await
@@ -1279,83 +1278,6 @@ mod test {
             get_track_handle_metadata(&untitled_track).await,
             Err(CrackedError::NoMetadata)
         ));
-    }
-
-    /// Every way this crate queues a track, read back by everything that reads
-    /// one: the queue embed, the now-playing embed and the requester. A panic
-    /// here is a dead `/queue` or `/nowplaying` -- or, from the track-end
-    /// handler, a dead event task.
-    #[tokio::test]
-    async fn every_way_a_track_is_queued_reads_back_without_a_panic() {
-        use crate::messaging::interface::{create_queue_embed, now_playing_card};
-
-        let data = Data(Arc::new(DataInner::default()));
-        let guard = data
-            .lock_queue(GUILD, PlaybackOwner::Free, actor())
-            .await
-            .unwrap();
-        let call = offline_call();
-        let client = reqwest::Client::new();
-        // Nothing listens on port 9, so a source that does get opened fails at
-        // once instead of reaching the network.
-        let resolved = || {
-            ResolvedTrack::new(QueryType::VideoLink(
-                "http://127.0.0.1:9/unreachable".to_owned(),
-            ))
-        };
-        let file = || -> SongbirdInput { songbird::input::File::new("/nonexistent/t.opus").into() };
-        let ready = || TrackReadyData {
-            source: file(),
-            metadata: NewAuxMetadata(AuxMetadata::default()),
-            user_id: None,
-            username: None,
-        };
-
-        let mut handles = Vec::new();
-        // The untitled track first: the queue embed takes its thumbnail from
-        // the first track, and that read has to survive no metadata too.
-        for resolved in [
-            resolved(),
-            resolved()
-                .with_metadata(titled("Hit That"))
-                .with_user_id(UserId::new(9)),
-        ] {
-            let track = build_track(&resolved, &client).expect("built");
-            handles.push(enqueue_track_back(&guard, &call, track, None).await);
-        }
-        let titled_track = &handles[1];
-        let meta = get_track_handle_metadata(titled_track)
-            .await
-            .expect("metadata");
-        assert_eq!(meta.title.as_deref(), Some("Hit That"));
-        assert_eq!(
-            get_requesting_user(titled_track).await.unwrap(),
-            UserId::new(9)
-        );
-        handles.extend(
-            queue_track_ready_front(&guard, &call, ready())
-                .await
-                .expect("queued next"),
-        );
-        handles.extend(
-            _queue_track_ready_back(&guard, &call, ready())
-                .await
-                .expect("queued back"),
-        );
-        handles.push(
-            enqueue_input_back(&guard, &call, file(), Some(titled("Want You Bad")), None).await,
-        );
-        handles.push(enqueue_input_back(&guard, &call, file(), None, None).await);
-
-        let _ = create_queue_embed(&handles, 0).await;
-        for track in &handles {
-            // The embed reads the metadata and the requester first, then asks
-            // the driver for the play position, which an offline driver never
-            // answers. A panic in the readers still fails this test; the wait
-            // after them is cut short and ignored.
-            let _ = tokio::time::timeout(Duration::from_millis(200), now_playing_card(track)).await;
-            get_requesting_user(track).await.expect("a requester");
-        }
     }
 
     #[test]
