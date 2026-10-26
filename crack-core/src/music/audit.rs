@@ -77,19 +77,7 @@ pub struct Actor {
 }
 
 impl Actor {
-    /// The member running this command, in the channel they ran it from.
-    #[must_use]
-    pub fn from_ctx(ctx: &crate::Context<'_>) -> Self {
-        let is_prefix = matches!(ctx, poise::Context::Prefix(_));
-        Self::for_command(
-            ctx.author().id,
-            is_prefix,
-            ctx.command().qualified_name.clone(),
-            Some(ctx.channel_id()),
-        )
-    }
-
-    /// A command, spelled out. `from_ctx` is the usual way in.
+    /// A command, spelled out. `ActorFromCtx::from_ctx` is the usual way in.
     #[must_use]
     pub fn for_command(
         user: UserId,
@@ -266,7 +254,7 @@ pub struct AuditEvent {
 /// a title rather than the queue waiting.
 #[must_use]
 pub fn track_ref(track: &TrackHandle) -> TrackRef {
-    let data = crate::utils::track_data(track);
+    let data = crate::music::track_data::track_data(track);
     let (title, url) = match data.aux_metadata.try_read() {
         Ok(meta) => (
             meta.as_ref().and_then(|m| m.title.clone()),

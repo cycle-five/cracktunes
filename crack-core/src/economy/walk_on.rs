@@ -366,7 +366,7 @@ async fn leave_if_idle(data: &Data, guild: GuildId, call: &Arc<Mutex<Call>>, joi
         return;
     }
     if let Err(err) = crate::music::disconnect::disconnect(
-        data,
+        &data.music_data(),
         &data.songbird,
         guild,
         Actor::bot(BotReason::Theme),

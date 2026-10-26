@@ -3,14 +3,14 @@
 
 use super::{Hit, HitDetail, Query, SavedTrack, SourceResult, HITS_PER_SOURCE};
 use crate::db::play_history::{search_play_log, HistoryTrack};
-use crate::Data;
+use crate::music::MusicData;
 use chrono::{DateTime, Utc};
 use serenity::all::GuildId;
 use std::time::Duration;
 
 /// History hits for `q` in `guild` since `since` (`None`: all of it).
 pub(crate) async fn search_history(
-    data: &Data,
+    data: &MusicData,
     guild: GuildId,
     q: &Query,
     since: Option<DateTime<Utc>>,
@@ -97,7 +97,7 @@ mod test {
 
     #[tokio::test]
     async fn no_pool_is_no_database() {
-        let data = crate::Data::default();
+        let data = crate::music::ops::test_support::test_music_data();
         let q = Query::new("abba").unwrap();
         assert_eq!(
             search_history(&data, serenity::all::GuildId::new(1), &q, None).await,

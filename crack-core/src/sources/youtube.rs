@@ -3,7 +3,7 @@ use crate::http_utils;
 use crate::music::query::NewQueryType;
 use crack_types::QueryType;
 
-use crate::utils::MUSIC_SEARCH_SUFFIX;
+use crate::music::track_data::MUSIC_SEARCH_SUFFIX;
 use crack_types::metadata::search_result_to_aux_metadata;
 use crack_types::NewAuxMetadata;
 use crack_types::{or_ask_ytdlp, ytdl_for_url};

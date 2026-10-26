@@ -1007,9 +1007,10 @@ mod tests {
     /// carries the Pause button for track guild 1.
     #[tokio::test]
     async fn the_now_playing_status_carries_the_button_row() {
-        use crate::music::ops::test_support::queue_of;
+        use crate::music::ops::test_support::queue_on;
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
-            let (data, call, _ids, _rx) = queue_of(1).await;
+            let data = crate::Data::default();
+            let (call, _ids) = queue_on(&data.music_data(), 1).await;
             note_command_channel(&data, GUILD, ch(10)).await;
             let t = FakeTransport::default();
 
@@ -1040,9 +1041,10 @@ mod tests {
     /// A server that turned the buttons off gets the card without them.
     #[tokio::test]
     async fn the_now_playing_status_has_no_buttons_when_the_server_turned_them_off() {
-        use crate::music::ops::test_support::queue_of;
+        use crate::music::ops::test_support::queue_on;
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
-            let (data, call, _ids, _rx) = queue_of(1).await;
+            let data = crate::Data::default();
+            let (call, _ids) = queue_on(&data.music_data(), 1).await;
             buttons_off(&data).await;
             note_command_channel(&data, GUILD, ch(10)).await;
             let t = FakeTransport::default();
@@ -1110,9 +1112,10 @@ mod tests {
     /// On re-renders the status with its buttons.
     #[tokio::test]
     async fn on_with_a_song_playing_shows_the_status_with_its_buttons() {
-        use crate::music::ops::test_support::queue_of;
+        use crate::music::ops::test_support::queue_on;
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
-            let (data, call, _ids, _rx) = queue_of(1).await;
+            let data = crate::Data::default();
+            let (call, _ids) = queue_on(&data.music_data(), 1).await;
             note_command_channel(&data, GUILD, ch(10)).await;
             let t = FakeTransport::default();
             buttons_switched(&data, &t, GUILD, true, Some(&call)).await;

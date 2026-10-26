@@ -608,6 +608,18 @@ async fn build_embed_fields(elems: Vec<AuxMetadata>) -> Vec<Field> {
 
 #[cfg(test)]
 mod test {
+    use super::{create_queue_embed, now_playing_card};
+    use crate::music::audit::{Actor, BotReason};
+    use crate::music::ops::test_support::*;
+    use crate::music::queue::*;
+    use crate::music::track_data::{get_requesting_user, get_track_handle_metadata};
+    use crate::music::PlaybackOwner;
+    use crack_testing::ResolvedTrack;
+    use crack_types::{NewAuxMetadata, QueryType};
+    use serenity::all::UserId;
+    use songbird::input::{AuxMetadata, Input as SongbirdInput};
+    use std::time::Duration;
+
     use super::discord;
     use crate::messaging::discord::ToDiscord;
     /// Every hit is in the one reply, in order, under its line of text.
@@ -1221,5 +1233,80 @@ mod test {
             )),
             r#"{"title":"Track","type":"rich","description":"la la","author":{"name":"Artist","url":null,"icon_url":null}}"#
         );
+    }
+
+    /// Every way this crate queues a track, read back by everything that reads
+    /// one: the queue embed, the now-playing embed and the requester. A panic
+    /// here is a dead `/queue` or `/nowplaying` -- or, from the track-end
+    /// handler, a dead event task.
+    #[tokio::test]
+    async fn every_way_a_track_is_queued_reads_back_without_a_panic() {
+        let data = test_music_data();
+        let guard = data
+            .lock_queue(GUILD, PlaybackOwner::Free, Actor::bot(BotReason::Autopause))
+            .await
+            .unwrap();
+        let call = offline_call();
+        let client = reqwest::Client::new();
+        // Nothing listens on port 9, so a source that does get opened fails at
+        // once instead of reaching the network.
+        let resolved = || {
+            ResolvedTrack::new(QueryType::VideoLink(
+                "http://127.0.0.1:9/unreachable".to_owned(),
+            ))
+        };
+        let file = || -> SongbirdInput { songbird::input::File::new("/nonexistent/t.opus").into() };
+        let ready = || TrackReadyData {
+            source: file(),
+            metadata: NewAuxMetadata(AuxMetadata::default()),
+            user_id: None,
+            username: None,
+        };
+
+        let mut handles = Vec::new();
+        // The untitled track first: the queue embed takes its thumbnail from
+        // the first track, and that read has to survive no metadata too.
+        for resolved in [
+            resolved(),
+            resolved()
+                .with_metadata(titled("Hit That"))
+                .with_user_id(UserId::new(9)),
+        ] {
+            let track = build_track(&resolved, &client).expect("built");
+            handles.push(enqueue_track_back(&guard, &call, track, None).await);
+        }
+        let titled_track = &handles[1];
+        let meta = get_track_handle_metadata(titled_track)
+            .await
+            .expect("metadata");
+        assert_eq!(meta.title.as_deref(), Some("Hit That"));
+        assert_eq!(
+            get_requesting_user(titled_track).await.unwrap(),
+            UserId::new(9)
+        );
+        handles.extend(
+            queue_track_ready_front(&guard, &call, ready())
+                .await
+                .expect("queued next"),
+        );
+        handles.extend(
+            _queue_track_ready_back(&guard, &call, ready())
+                .await
+                .expect("queued back"),
+        );
+        handles.push(
+            enqueue_input_back(&guard, &call, file(), Some(titled("Want You Bad")), None).await,
+        );
+        handles.push(enqueue_input_back(&guard, &call, file(), None, None).await);
+
+        let _ = create_queue_embed(&handles, 0).await;
+        for track in &handles {
+            // The embed reads the metadata and the requester first, then asks
+            // the driver for the play position, which an offline driver never
+            // answers. A panic in the readers still fails this test; the wait
+            // after them is cut short and ignored.
+            let _ = tokio::time::timeout(Duration::from_millis(200), now_playing_card(track)).await;
+            get_requesting_user(track).await.expect("a requester");
+        }
     }
 }

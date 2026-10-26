@@ -528,7 +528,7 @@ impl SerenityHandler {
         // `manager.get` guard that used to stand in for this test is gone --
         // it asked songbird the same question twice.
         if let Err(e) = crate::music::disconnect::disconnect(
-            &self.data,
+            &self.data.music_data(),
             &manager,
             guild_id,
             crate::music::audit::Actor::bot(crate::music::audit::BotReason::Kicked),

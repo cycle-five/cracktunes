@@ -26,7 +26,7 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
     let data = ctx.data();
     // Read before any await: the cache guard is not `Send`.
     let bot = ctx.cache().current_user().id;
-    let playback = match remote::queue_state(&data, guild_id).await {
+    let playback = match remote::queue_state(&data.music_data(), guild_id).await {
         QueueState::Idle => Playback::Idle,
         QueueState::Hidden => Playback::Game,
         QueueState::Playing {

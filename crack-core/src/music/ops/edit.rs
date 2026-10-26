@@ -7,12 +7,12 @@ use crate::{
         message::CrackedMessage,
         messages::REMOVED_QUEUE,
     },
+    music::track_data::get_track_handle_metadata,
     music::{
         audit::TrackRef,
         queue::{clear_from, remove_at, shuffle_behind_current},
         remote::{summary_of, MoveRefused, TrackSummary},
     },
-    utils::get_track_handle_metadata,
 };
 use crack_model::{Card, Field};
 
@@ -322,7 +322,7 @@ mod test {
             requester: None,
         };
         assert_eq!(
-            serde_json::to_string(&crate::messaging::discord::embed(&removed_embed(
+            serde_json::to_string(&crack_common::discord::embed(&removed_embed(
                 &first,
                 Some("https://i.ytimg.com/a.jpg")
             )))
@@ -330,10 +330,8 @@ mod test {
             r#"{"type":"rich","thumbnail":{"url":"https://i.ytimg.com/a.jpg","description":null},"fields":[{"name":"❌ Removed from queue","value":"[**t**](https://x.test/a)","inline":false}]}"#
         );
         assert_eq!(
-            serde_json::to_string(&crate::messaging::discord::embed(&removed_embed(
-                &first, None
-            )))
-            .unwrap(),
+            serde_json::to_string(&crack_common::discord::embed(&removed_embed(&first, None)))
+                .unwrap(),
             r#"{"type":"rich","fields":[{"name":"❌ Removed from queue","value":"[**t**](https://x.test/a)","inline":false}]}"#
         );
     }
@@ -360,10 +358,8 @@ mod test {
             duration: None,
             requester: None,
         };
-        let json = serde_json::to_value(crate::messaging::discord::embed(&removed_embed(
-            &first, None,
-        )))
-        .unwrap();
+        let json = serde_json::to_value(crack_common::discord::embed(&removed_embed(&first, None)))
+            .unwrap();
         json["fields"][0]["value"].as_str().unwrap().to_owned()
     }
 
@@ -386,7 +382,7 @@ mod test {
             (Some("/vi/x/hq.jpg"), None),
             (None, None),
         ] {
-            let json = serde_json::to_value(crate::messaging::discord::embed(&removed_embed(
+            let json = serde_json::to_value(crack_common::discord::embed(&removed_embed(
                 &first, thumbnail,
             )))
             .unwrap();

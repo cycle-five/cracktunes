@@ -596,6 +596,20 @@
   `cargo test -p crack-guild` builds no crack-core. Nothing the bot does
   changed. Step 4 is now three parts: guild settings, then the player, then
   `/gp`.
+- **Step 4b-1: the music player's seams.** Still inside crack-core:
+  - The code that will move to `crack-music` stops naming `Data`, poise's
+    `Context` and crack-core's Discord layer.
+  - It takes a `MusicData` handle instead. `Data` delegates the lease and
+    autoplay methods to it.
+  - Settling an op (refreshing the queue and now-playing messages) and the
+    dashboard's echoes go through a small `Surface` trait that crack-core
+    implements.
+  - poise's constructors and the `/play` query modes are crack-core extension
+    traits.
+  - `queue.rs`'s logged entry points live in their own file.
+  - crack-testing drops a poise dependency it never used.
+
+  Nothing the bot does changed.
 
 ## TODO:
 

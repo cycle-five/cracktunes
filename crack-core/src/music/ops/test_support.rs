@@ -1,13 +1,14 @@
 //! Offline queues for op tests: tracks queue on a `Call::standalone`, nothing plays.
-use super::OpCx;
+use super::{OpCx, Settle};
+use crate::messaging::{message::CrackedMessage, render::RenderCx, transport::Transport};
 use crate::music::{
     audit::{Action, Actor, AuditEvent, BotReason},
     queue::enqueue_input_back,
     PlaybackOwner,
 };
-use crate::{Data, DataInner};
-use serenity::all::{Cache, GuildId, Http, UserId};
-use songbird::{input::AuxMetadata, Call};
+use crate::music::{surface::Surface, MusicData};
+use serenity::all::{Cache, GenericChannelId, GuildId, Http, MessageId, UserId};
+use songbird::{input::AuxMetadata, Call, Songbird};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 
@@ -60,46 +61,71 @@ pub fn titled(title: &str) -> AuxMetadata {
     }
 }
 
+/// A `MusicData` built without `Data`, each field the way `DataInner::default()`
+/// builds it, over a [`RecordingSurface`]. Adjust it with struct-update syntax.
+pub fn test_music_data() -> MusicData {
+    MusicData {
+        database_pool: None,
+        songbird: Songbird::serenity(),
+        ct_client: crack_testing::CrackTrackClient::default(),
+        http_client: crate::http_utils::get_client().clone(),
+        audit_tx: None,
+        db_channel: None,
+        autoplay_buffer: Arc::default(),
+        guild_cache_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        playback_owners: Arc::default(),
+        queue_locks: Arc::default(),
+        guild: crate::guild::operations::GuildData::default(),
+        surface: Arc::new(RecordingSurface::default()),
+    }
+}
+
+/// `n` tracks titled t0..t(n-1) queued on `data`'s guild 1 and a new offline
+/// call, with their ids.
+pub async fn queue_on(data: &MusicData, n: usize) -> (Arc<Mutex<Call>>, Vec<uuid::Uuid>) {
+    let call = offline_call();
+    let mut ids = Vec::new();
+    let guard = data
+        .lock_queue(GUILD, PlaybackOwner::Free, Actor::bot(BotReason::Autopause))
+        .await
+        .unwrap();
+    for i in 0..n {
+        let h = enqueue_input_back(
+            &guard,
+            &call,
+            songbird::input::File::new(format!("/nonexistent/{i}.opus")).into(),
+            Some(titled(&format!("t{i}"))),
+            None,
+        )
+        .await;
+        ids.push(h.uuid());
+    }
+    drop(guard);
+    (call, ids)
+}
+
 /// `n` tracks titled t0..t(n-1) on an offline call, with the audit channel
 /// drained of the adds.
 pub async fn queue_of(
     n: usize,
 ) -> (
-    Data,
+    MusicData,
     Arc<Mutex<Call>>,
     Vec<uuid::Uuid>,
     mpsc::Receiver<AuditEvent>,
 ) {
     let (tx, mut rx) = mpsc::channel(256);
-    let data = Data(Arc::new(DataInner {
+    let data = MusicData {
         audit_tx: Some(tx),
-        ..Default::default()
-    }));
-    let call = offline_call();
-    let mut ids = Vec::new();
-    {
-        let guard = data
-            .lock_queue(GUILD, PlaybackOwner::Free, Actor::bot(BotReason::Autopause))
-            .await
-            .unwrap();
-        for i in 0..n {
-            let h = enqueue_input_back(
-                &guard,
-                &call,
-                songbird::input::File::new(format!("/nonexistent/{i}.opus")).into(),
-                Some(titled(&format!("t{i}"))),
-                None,
-            )
-            .await;
-            ids.push(h.uuid());
-        }
-    }
+        ..test_music_data()
+    };
+    let (call, ids) = queue_on(&data, n).await;
     while rx.try_recv().is_ok() {}
     (data, call, ids, rx)
 }
 
 /// A guard for `data`, acting as a member through the dashboard.
-pub async fn guard(data: &Data) -> crate::music::QueueGuard {
+pub async fn guard(data: &MusicData) -> crate::music::QueueGuard {
     data.lock_queue(
         GUILD,
         PlaybackOwner::Free,
@@ -129,13 +155,59 @@ pub async fn ids_of(call: &Arc<Mutex<Call>>) -> Vec<uuid::Uuid> {
         .collect()
 }
 
-/// An `OpCx` over a default `Data` with no call registered.
+/// An `OpCx` over a default `MusicData` with no call registered.
 pub fn cx_without_call() -> OpCx {
     OpCx {
-        data: Arc::new(Data(Arc::new(DataInner::default()))),
+        data: test_music_data(),
         http: Arc::new(Http::new(crack_types::get_valid_token())),
         cache: Arc::new(Cache::default()),
         guild_id: GUILD,
         actor: Actor::web(UserId::new(9), "test"),
+    }
+}
+
+/// One settle the recording surface was asked for.
+pub type RecordedSettle = (Settle, GuildId, Option<(GenericChannelId, MessageId)>);
+
+/// A [`Surface`] that records what it is asked and renders and sends nothing.
+/// `echo` records the message's `Debug` text and returns `None`.
+#[derive(Default)]
+pub struct RecordingSurface {
+    pub settles: std::sync::Mutex<Vec<RecordedSettle>>,
+    pub echoes: std::sync::Mutex<Vec<String>>,
+}
+
+#[serenity::async_trait]
+impl Surface for RecordingSurface {
+    async fn settle(
+        &self,
+        settle: Settle,
+        cx: &OpCx,
+        _call: Option<&Arc<Mutex<Call>>>,
+        anchor: Option<(GenericChannelId, MessageId)>,
+    ) {
+        self.settles
+            .lock()
+            .unwrap()
+            .push((settle, cx.guild_id, anchor));
+    }
+
+    async fn echo(
+        &self,
+        _guild: GuildId,
+        _transport: &dyn Transport,
+        msg: &CrackedMessage,
+        _cx: &RenderCx,
+    ) -> Option<(GenericChannelId, MessageId)> {
+        self.echoes.lock().unwrap().push(format!("{msg:?}"));
+        None
+    }
+}
+
+/// A default `MusicData` whose surface is `surface`.
+pub fn music_data_recording(surface: Arc<RecordingSurface>) -> MusicData {
+    MusicData {
+        surface,
+        ..test_music_data()
     }
 }

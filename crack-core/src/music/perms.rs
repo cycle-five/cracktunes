@@ -11,7 +11,6 @@
 //!   all, so refusing to play because we cannot post the now-playing message
 //!   would be strictly worse for the user than playing silently.
 
-use poise::serenity_prelude as serenity;
 use serenity::all::{Cache, ChannelId, GenericChannelId, GuildId, Permissions, ThreadId, UserId};
 
 use crate::errors::{CrackedError, PermScope};

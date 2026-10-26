@@ -18,19 +18,13 @@ pub(crate) mod test_support;
 
 use crate::messaging::transport::DiscordTransport;
 use crate::{
-    commands::music_utils::connected_call,
-    handlers::track_end::update_queue_messages,
-    messaging::{
-        courier,
-        message::CrackedMessage,
-        messages::{
-            FAIL_LOOP, FAIL_PAUSE, FAIL_SEEK_OP, FAIL_SEEK_TIMED_OUT, FAIL_SKIP, OP_TRACK_ABSENT,
-            OP_TRACK_PLAYING, OP_TRACK_STALE,
-        },
-        status,
+    messaging::messages::{
+        FAIL_LOOP, FAIL_PAUSE, FAIL_SEEK_OP, FAIL_SEEK_TIMED_OUT, FAIL_SKIP, OP_TRACK_ABSENT,
+        OP_TRACK_PLAYING, OP_TRACK_STALE,
     },
-    music::{audit::Actor, PlaybackOwner, QueueGuard},
-    CrackedError, Data,
+    music::connected::connected_call,
+    music::{audit::Actor, MusicData, PlaybackOwner, QueueGuard},
+    CrackedError,
 };
 use serenity::all::{Cache, GenericChannelId, GuildId, Http, MessageId};
 use songbird::Call;
@@ -40,7 +34,7 @@ use tokio::sync::Mutex;
 /// Who is acting, and where.
 #[derive(Clone)]
 pub struct OpCx {
-    pub data: Arc<Data>,
+    pub data: MusicData,
     pub http: Arc<Http>,
     pub cache: Arc<Cache>,
     pub guild_id: GuildId,
@@ -48,23 +42,11 @@ pub struct OpCx {
 }
 
 impl OpCx {
-    fn transport(&self) -> DiscordTransport {
+    pub fn transport(&self) -> DiscordTransport {
         DiscordTransport {
             http: self.http.clone(),
             cache: self.cache.clone(),
         }
-    }
-
-    /// The member running this command.
-    pub fn from_ctx(ctx: &crate::Context<'_>) -> Result<OpCx, CrackedError> {
-        let sc = ctx.serenity_context();
-        Ok(OpCx {
-            data: ctx.data(),
-            http: sc.http.clone(),
-            cache: sc.cache.clone(),
-            guild_id: ctx.guild_id().ok_or(CrackedError::NoGuildId)?,
-            actor: Actor::from_ctx(ctx),
-        })
     }
 }
 
@@ -162,31 +144,7 @@ impl Settle {
         call: Option<&Arc<Mutex<Call>>>,
         anchor: Option<(GenericChannelId, MessageId)>,
     ) {
-        match (self, call) {
-            (Settle::QueueMessages, Some(call)) => {
-                let queue = call.lock().await.queue().current_queue();
-                update_queue_messages(&cx.transport(), cx.data.clone(), &queue, cx.guild_id).await;
-            },
-            (Settle::NowPlaying, Some(call)) => {
-                let playing = call.lock().await.queue().current().is_some();
-                if playing {
-                    status::show_now_playing_after(
-                        &cx.data,
-                        cx.http.clone(),
-                        cx.cache.clone(),
-                        cx.guild_id,
-                        call,
-                        anchor,
-                    )
-                    .await;
-                }
-            },
-            (Settle::Finished, _) => {
-                status::show_finished(&cx.data, cx.http.clone(), cx.cache.clone(), cx.guild_id)
-                    .await;
-            },
-            _ => {},
-        }
+        cx.data.surface.settle(self, cx, call, anchor).await;
     }
 
     pub async fn now(self, cx: &OpCx, call: Option<&Arc<Mutex<Call>>>) {
@@ -216,25 +174,6 @@ impl<T> Done<T> {
     pub async fn settle_after(self, cx: &OpCx, anchor: Option<(GenericChannelId, MessageId)>) -> T {
         self.settle.after(cx, self.call.as_ref(), anchor).await;
         self.outcome
-    }
-
-    /// Reply to the command with `msg`, then settle below that reply, so a
-    /// re-rendered status lands under the command's answer, as `/skip`'s
-    /// does. A failed reply still settles (with no floor) before its error is
-    /// returned: the op happened either way.
-    pub async fn reply_then_settle(
-        self,
-        ctx: crate::Context<'_>,
-        cx: &OpCx,
-        msg: CrackedMessage,
-    ) -> Result<T, CrackedError> {
-        let reply = courier::reply(ctx, msg).await;
-        let anchor = match &reply {
-            Ok(handle) => courier::locate(ctx, handle).await,
-            Err(_) => None,
-        };
-        let outcome = self.settle_after(cx, anchor).await;
-        reply.map(|_| outcome)
     }
 
     /// The outcome, for a surface that renders its reply before it settles.
@@ -288,19 +227,42 @@ pub(crate) async fn begin(cx: &OpCx) -> Result<(QueueGuard, Arc<Mutex<Call>>), O
 mod test {
     use super::test_support::{cx_without_call, GUILD as G};
     use super::*;
-    use crate::{music::PlaybackOwner, Data, DataInner};
+    use crate::music::{ops::test_support::test_music_data, MusicData, PlaybackOwner};
     use serenity::all::UserId;
 
-    fn cx(data: Data) -> OpCx {
+    fn cx(data: MusicData) -> OpCx {
         OpCx {
-            data: Arc::new(data),
+            data,
             ..cx_without_call()
         }
     }
 
     #[tokio::test]
+    async fn settle_goes_through_the_surface() {
+        use super::test_support::{music_data_recording, RecordingSurface};
+        let surface = Arc::new(RecordingSurface::default());
+        let cx = OpCx {
+            data: music_data_recording(surface.clone()),
+            ..cx_without_call()
+        };
+        let call = super::test_support::offline_call();
+        let anchor = (GenericChannelId::new(5), MessageId::new(6));
+        Settle::NowPlaying
+            .after(&cx, Some(&call), Some(anchor))
+            .await;
+        Settle::Finished.now(&cx, None).await;
+        assert_eq!(
+            *surface.settles.lock().unwrap(),
+            vec![
+                (Settle::NowPlaying, G, Some(anchor)),
+                (Settle::Finished, G, None)
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn a_game_refuses_before_the_call_is_looked_up() {
-        let d = Data(Arc::new(DataInner::default()));
+        let d = test_music_data();
         d.claim_playback(G, PlaybackOwner::Game).unwrap();
         assert!(matches!(
             begin(&cx(d)).await,
@@ -310,7 +272,7 @@ mod test {
 
     #[tokio::test]
     async fn no_call_is_not_connected() {
-        let d = Data(Arc::new(DataInner::default()));
+        let d = test_music_data();
         assert!(matches!(begin(&cx(d)).await, Err(OpRefused::NotConnected)));
     }
 

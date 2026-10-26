@@ -3,7 +3,7 @@
 //! the discard is recorded like any other queue change. See `music::audit`.
 
 use crate::music::audit::{emit, Action, Actor, AuditEvent};
-use crate::Data;
+use crate::music::MusicData;
 use serenity::all::{ChannelId, GuildId};
 use songbird::Songbird;
 
@@ -15,7 +15,7 @@ use songbird::Songbird;
     reason = "the one audited caller of `Songbird::get` and `Songbird::remove`; see clippy.toml"
 )]
 pub async fn disconnect(
-    data: &Data,
+    data: &MusicData,
     manager: &Songbird,
     guild_id: GuildId,
     actor: Actor,
@@ -55,18 +55,18 @@ pub async fn disconnect(
 mod test {
     use super::*;
     use crate::music::audit::{Action, Actor, BotReason};
-    use crate::{Data, DataInner};
+    use crate::music::{ops::test_support::test_music_data, MusicData};
     use std::sync::Arc;
 
     const G: GuildId = GuildId::new(5);
 
-    fn data_with_audit() -> (Data, tokio::sync::mpsc::Receiver<AuditEvent>) {
+    fn data_with_audit() -> (MusicData, tokio::sync::mpsc::Receiver<AuditEvent>) {
         let (tx, rx) = tokio::sync::mpsc::channel(8);
         (
-            Data(Arc::new(DataInner {
+            MusicData {
                 audit_tx: Some(tx),
-                ..Default::default()
-            })),
+                ..test_music_data()
+            },
             rx,
         )
     }
@@ -79,7 +79,7 @@ mod test {
     }
 
     /// Register a `Call` on `manager` without connecting, with `n` offline tracks.
-    async fn register(data: &Data, manager: &songbird::Songbird, n: usize) {
+    async fn register(data: &MusicData, manager: &songbird::Songbird, n: usize) {
         let call = manager.get_or_insert(G);
         let guard = data
             .lock_queue(

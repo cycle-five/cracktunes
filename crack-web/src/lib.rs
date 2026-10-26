@@ -248,7 +248,7 @@ impl ViewSource for LiveBackend {
         let Ok(g) = guild_id(&g) else {
             return QueueView::Hidden;
         };
-        let state = remote::queue_state(&self.deps.data, g).await;
+        let state = remote::queue_state(&self.deps.data.music_data(), g).await;
         view_from_state(state, |u| self.member_name(g, u))
     }
 }
@@ -262,7 +262,7 @@ impl Backend for LiveBackend {
                 bot_channel: None,
             };
         };
-        let bot = remote::bot_channel(&self.deps.data, g).await;
+        let bot = remote::bot_channel(&self.deps.data.music_data(), g).await;
         access::presence(
             &self.deps.cache,
             &self.deps.http,
@@ -286,7 +286,7 @@ impl Backend for LiveBackend {
             return Err(MoveRefused::NotPlaying);
         };
         remote::move_by_id(
-            self.deps.data.clone(),
+            self.deps.data.music_data(),
             self.deps.http.clone(),
             self.deps.cache.clone(),
             g,
@@ -310,7 +310,7 @@ impl Backend for LiveBackend {
         };
         // The echo line is already spawned in core.
         remote::control(
-            self.deps.data.clone(),
+            self.deps.data.music_data(),
             self.deps.http.clone(),
             self.deps.cache.clone(),
             g,
@@ -334,7 +334,7 @@ impl Backend for LiveBackend {
             return Vec::new();
         };
         let mut out = Vec::new();
-        for (g, channel) in remote::active_guilds(&self.deps.data).await {
+        for (g, channel) in remote::active_guilds(&self.deps.data.music_data()).await {
             let p = access::presence(
                 &self.deps.cache,
                 &self.deps.http,
@@ -415,7 +415,7 @@ impl Backend for LiveBackend {
         let Ok(g) = guild_id(&g) else {
             return Vec::new();
         };
-        crack_core::music::search::search(&self.deps.data, g, q, sources, since).await
+        crack_core::music::search::search(&self.deps.data.music_data(), g, q, sources, since).await
     }
 
     // Live Discord glue: the cache and HTTP calls cannot be driven in a test.
@@ -433,7 +433,7 @@ impl Backend for LiveBackend {
         };
         // The echo line is already spawned in core.
         remote::add(
-            self.deps.data.clone(),
+            self.deps.data.music_data(),
             self.deps.http.clone(),
             self.deps.cache.clone(),
             g,

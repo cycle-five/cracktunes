@@ -101,7 +101,7 @@ impl AutoplayBuffer {
     }
 }
 
-impl crate::Data {
+impl crate::music::MusicData {
     /// Get the current autoplay settings.
     pub async fn get_autoplay(&self, guild_id: GuildId) -> bool {
         self.guild_cache_map
@@ -492,10 +492,10 @@ mod tests {
                 ..Default::default()
             },
         );
-        let data = std::sync::Arc::new(crate::Data(std::sync::Arc::new(crate::DataInner {
+        let data = crate::music::MusicData {
             guild_cache_map: std::sync::Arc::new(tokio::sync::Mutex::new(guild_cache_map)),
-            ..Default::default()
-        })));
+            ..crate::music::ops::test_support::test_music_data()
+        };
 
         assert!(!data.get_autoplay(guild_id).await);
     }
@@ -504,7 +504,7 @@ mod tests {
     /// must work in a guild with no cache entry yet.
     #[tokio::test]
     async fn autoplay_is_off_by_default_and_the_setter_works_without_a_cache_entry() {
-        let data = crate::Data::default();
+        let data = crate::music::ops::test_support::test_music_data();
         let guild_id = GuildId::new(1);
         assert!(!data.get_autoplay(guild_id).await, "off by default");
         data.set_autoplay(guild_id, true).await;
@@ -533,7 +533,7 @@ mod tests {
             isrc: None,
             source: "test".into(),
         };
-        let data = crate::Data::default();
+        let data = crate::music::ops::test_support::test_music_data();
         let guild_id = GuildId::new(1);
         let first = data
             .autoplay_buffer
