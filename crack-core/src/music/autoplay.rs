@@ -101,6 +101,37 @@ impl AutoplayBuffer {
     }
 }
 
+impl crate::Data {
+    /// Get the current autoplay settings.
+    pub async fn get_autoplay(&self, guild_id: GuildId) -> bool {
+        self.guild_cache_map
+            .lock()
+            .await
+            .get(&guild_id)
+            .map(|settings| settings.autoplay)
+            // Off by default, and session-only (Ruling 48).
+            .unwrap_or(false)
+    }
+
+    /// Turn autoplay on or off for this guild, for this session.
+    ///
+    /// 🪤 This was `and_modify` alone. A guild only got a cache entry from
+    /// `/queue` or `/voteskip`, so everywhere else this was a silent no-op:
+    /// `/autoplay` answered and nothing changed. Turning autoplay off also
+    /// drops the guild's buffered recommendations.
+    pub async fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) {
+        self.guild_cache_map
+            .lock()
+            .await
+            .entry(guild_id)
+            .or_default()
+            .autoplay = autoplay;
+        if !autoplay {
+            self.autoplay_buffer.clear(guild_id);
+        }
+    }
+}
+
 /// The query a recommendation plays through: a YouTube Mix or musicatlas result
 /// is a video to play directly; a Deezer result is a search.
 #[must_use]
@@ -448,5 +479,82 @@ mod tests {
             let reco = build_musicreco(Some(unreachable_pool()), key).expect("built");
             assert_eq!(reco.recommender_names(), ["youtube-mix", "deezer"]);
         }
+    }
+
+    #[tokio::test]
+    async fn test_get_set_autoplay() {
+        let mut guild_cache_map = HashMap::new();
+        let guild_id = GuildId::new(1);
+        guild_cache_map.insert(
+            guild_id,
+            crate::guild::cache::GuildCache {
+                autoplay: false,
+                ..Default::default()
+            },
+        );
+        let data = std::sync::Arc::new(crate::Data(std::sync::Arc::new(crate::DataInner {
+            guild_cache_map: std::sync::Arc::new(tokio::sync::Mutex::new(guild_cache_map)),
+            ..Default::default()
+        })));
+
+        assert!(!data.get_autoplay(guild_id).await);
+    }
+
+    /// Ruling 48: autoplay is off by default and session-only, and the setter
+    /// must work in a guild with no cache entry yet.
+    #[tokio::test]
+    async fn autoplay_is_off_by_default_and_the_setter_works_without_a_cache_entry() {
+        let data = crate::Data::default();
+        let guild_id = GuildId::new(1);
+        assert!(!data.get_autoplay(guild_id).await, "off by default");
+        data.set_autoplay(guild_id, true).await;
+        assert!(
+            data.get_autoplay(guild_id).await,
+            "turning it on must stick"
+        );
+        data.set_autoplay(guild_id, false).await;
+        assert!(
+            !data.get_autoplay(guild_id).await,
+            "and so must turning it off"
+        );
+    }
+
+    /// A guild that turns autoplay off does not keep its buffered
+    /// recommendations for the next time it is turned on.
+    #[tokio::test]
+    async fn turning_autoplay_off_drops_the_buffer() {
+        use crack_musicreco::{Playable, Recommendation};
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let rec = |t: &str| Recommendation {
+            artist: "A".into(),
+            title: t.into(),
+            playable: Playable::SearchQuery(t.into()),
+            isrc: None,
+            source: "test".into(),
+        };
+        let data = crate::Data::default();
+        let guild_id = GuildId::new(1);
+        let first = data
+            .autoplay_buffer
+            .next(guild_id, || async { vec![rec("one"), rec("two")] })
+            .await;
+        assert_eq!(first.map(|r| r.title), Some("one".to_owned()));
+
+        data.set_autoplay(guild_id, false).await;
+
+        let refills = AtomicUsize::new(0);
+        let next = data
+            .autoplay_buffer
+            .next(guild_id, || async {
+                refills.fetch_add(1, Ordering::SeqCst);
+                Vec::new()
+            })
+            .await;
+        assert!(
+            next.is_none(),
+            "\"two\" must not survive autoplay being turned off"
+        );
+        assert_eq!(refills.load(Ordering::SeqCst), 1);
     }
 }

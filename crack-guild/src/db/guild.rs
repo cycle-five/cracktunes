@@ -1,12 +1,10 @@
 use crate::{
-    errors::CrackedError,
-    guild::{
-        permissions::{GenericPermissionSettings, GenericPermissionSettingsReadWCommand},
-        settings::{GuildSettings, WelcomeSettings},
-    },
-    CrackedResult, Error as SerenityError,
+    permissions::{GenericPermissionSettings, GenericPermissionSettingsReadWCommand},
+    settings::{GuildSettings, WelcomeSettings},
 };
 use chrono::NaiveDateTime;
+use crack_common::errors::{CrackedError, Error as SerenityError};
+use crack_common::CrackedResult;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -110,9 +108,9 @@ impl GuildEntity {
     pub async fn write_log_settings(
         pool: &PgPool,
         guild_id: i64,
-        settings: &crate::guild::settings::LogSettings,
-    ) -> Result<(), crate::CrackedError> {
-        use crate::guild::settings::column_opt;
+        settings: &crate::settings::LogSettings,
+    ) -> Result<(), crack_common::errors::CrackedError> {
+        use crate::settings::column_opt;
         sqlx::query!(
             r#"
             INSERT INTO log_settings (guild_id, all_log_channel, raw_event_log_channel, server_log_channel, member_log_channel, join_leave_log_channel, voice_log_channel)
@@ -137,9 +135,9 @@ impl GuildEntity {
     pub async fn write_welcome_settings(
         pool: &PgPool,
         guild_id: i64,
-        settings: &crate::guild::settings::WelcomeSettings,
-    ) -> Result<(), crate::CrackedError> {
-        use crate::guild::settings::column_opt;
+        settings: &crate::settings::WelcomeSettings,
+    ) -> Result<(), crack_common::errors::CrackedError> {
+        use crate::settings::column_opt;
         sqlx::query!(
             r#"
             INSERT INTO welcome_settings (guild_id, auto_role, channel_id, message)
@@ -182,14 +180,14 @@ impl GuildEntity {
     /// Write the settings for a guild to the database.
     pub async fn write_settings(
         pool: &PgPool,
-        settings: &crate::guild::settings::GuildSettings,
+        settings: &crate::settings::GuildSettings,
     ) -> Result<(), CrackedError> {
         let ignored_channels = settings
             .ignored_channels
             .iter()
-            .map(crate::guild::settings::column_i64)
+            .map(crate::settings::column_i64)
             .collect::<Result<Vec<i64>, _>>()?;
-        let guild_id = crate::guild::settings::column_i64(&settings.guild_id)?;
+        let guild_id = crate::settings::column_i64(&settings.guild_id)?;
         let to_write = settings.guild_name.clone();
         sqlx::query!(
             r#"
@@ -235,7 +233,7 @@ impl GuildEntity {
     pub async fn get_log_settings(
         pool: &PgPool,
         id: i64,
-    ) -> Result<Option<crate::guild::settings::LogSettings>, sqlx::Error> {
+    ) -> Result<Option<crate::settings::LogSettings>, sqlx::Error> {
         let settings_read = sqlx::query_as!(
             LogSettingsRead,
             r#"
@@ -246,7 +244,7 @@ impl GuildEntity {
         )
         .fetch_optional(pool)
         .await?;
-        Ok(settings_read.map(crate::guild::settings::LogSettings::from))
+        Ok(settings_read.map(crate::settings::LogSettings::from))
     }
 
     /// Get the welcome settings for a guild from the database.
@@ -452,7 +450,7 @@ mod test {
     use sqlx::PgPool;
     use std::collections::HashSet;
 
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
@@ -530,7 +528,7 @@ mod test {
         assert!(welcome_settings.is_none());
         assert!(log_settings.is_none());
 
-        let welcome_settings_new = crate::guild::settings::WelcomeSettings {
+        let welcome_settings_new = crate::settings::WelcomeSettings {
             auto_role: Some(RoleId::new(123).to_ref()),
             channel_id: Some(GenericChannelId::new(123).to_ref()),
             message: Some("test".to_string()),
@@ -626,7 +624,7 @@ mod test {
 
         let guild_id = guild.id;
 
-        let log_settings = crate::guild::settings::LogSettings {
+        let log_settings = crate::settings::LogSettings {
             all_log_channel: Some(GenericChannelId::new(123).to_ref()),
             raw_event_log_channel: Some(GenericChannelId::new(123).to_ref()),
             server_log_channel: Some(GenericChannelId::new(123).to_ref()),
@@ -649,7 +647,7 @@ mod test {
 mod ephemeral_replies_db_tests {
     use super::*;
 
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     /// The setting only matters if it survives a restart.
     #[crack_test_macros::db_test(migrator = "MIGRATOR")]
@@ -678,7 +676,7 @@ mod ephemeral_replies_db_tests {
 mod control_echoes_db_tests {
     use super::*;
 
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     /// Off must survive a restart, and a new guild starts on.
     #[crack_test_macros::db_test(migrator = "MIGRATOR")]
@@ -707,7 +705,7 @@ mod control_echoes_db_tests {
 mod now_playing_buttons_db_tests {
     use super::*;
 
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     /// Off must survive a restart, and a new guild starts on.
     #[crack_test_macros::db_test(migrator = "MIGRATOR")]

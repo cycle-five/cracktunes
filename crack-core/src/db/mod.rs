@@ -1,7 +1,7 @@
 pub use crack_economy::db::economy;
 pub use crack_rooms::db::{modlog, rooms};
 pub mod gp;
-pub mod guild;
+pub use crack_guild::db::guild;
 pub mod metadata;
 pub mod musicreco;
 pub mod play_history;

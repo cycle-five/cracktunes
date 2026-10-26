@@ -4,11 +4,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgPool};
 use std::collections::HashSet;
 
-use crate::{
-    errors::CrackedError,
-    guild::settings::{column_i64, ref_from_column, stored_ref},
-    Error,
-};
+use crate::settings::{column_i64, ref_from_column, stored_ref};
+use crack_common::errors::{CrackedError, Error};
 
 /// Type alias for a HashSet of strings.
 type HashSetString = HashSet<String>;
@@ -476,7 +473,7 @@ mod tests {
         GenericChannelId::new(n).to_ref()
     }
 
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     // #[test]
     // fn test_is_command_allowed() {

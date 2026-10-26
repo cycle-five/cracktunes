@@ -1,0 +1,37 @@
+[package]
+name = "crack-guild"
+version.workspace = true
+edition = "2021"
+authors = ["Cycle Five <cycle.five@proton.me>"]
+publish = true
+license = "MIT"
+description = "Guild settings, the per-guild cache and their queries for Crack Tunes."
+keywords = ["music", "bot", "crack", "tunes", "guild"]
+homepage = "https://cracktun.es/"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = ".."
+
+[features]
+# Tests that need a live postgres at DATABASE_URL: see docs/testing.md.
+db-tests = []
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = ["db-tests"]
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+dashmap = "6"
+lazy_static = "1.5"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+typemap_rev = "0.4"
+crack-common = { path = "../crack-common" }
+crack-model = { path = "../crack-model" }
+crack-types = { path = "../crack-types" }
+tracing = { workspace = true }
+sqlx = { workspace = true }
+serenity = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+crack-test-macros = { path = "../crack-test-macros" }
+crack-test-db = { path = "../crack-test-db" }

@@ -76,9 +76,10 @@ The table shows the pattern. **Each `db/<feature>.rs` belongs to its feature**, 
 cracktunes (the binary, in crack-cli/)
   └─ crack-core          the Discord layer: poise commands, event handlers, Data,
        │                 message delivery (courier, transport, buttons), glue
-       ├─ crack-music    step 4 (outline only)
+       ├─ crack-music    steps 4b–4c: the player, then /gp
        ├─ crack-rooms    step 3: voice rooms + mod log + their queries
        ├─ crack-economy  step 2: economy + coin glue + their queries
+       ├─ crack-guild    step 4a: guild settings, the per-guild cache, their queries
        └─ crack-common   step 1: errors, user-facing strings, neutral messages and rendering
             └─ crack-model   neutral ids and output types (exists)
 ```
@@ -199,24 +200,70 @@ That's about 10k non-test lines. db's 219 wrong-way references become internal.
 
 **Done when:** the same checks as step 2 pass for crack-rooms.
 
-### Step 4: music (outline only; gets its own short design pass when step 3 lands)
+### Step 4: music, in three PRs (design pass of 2026-10-26)
 
-**Scope:**
-- `music/` (6.1k lines), `sources/` (1.1k) and `http_utils.rs`;
-- the music tables' queries: `db/gp.rs`, `queue_audit`, `play_log`, `play_history`, `queue_snapshot`, `playlist`, `metadata`, `musicreco` and `track_reaction`, about 2.3k lines;
-- the /gp game logic now under `commands/music/gp`.
+After step 3 the map showed music is far more tangled than rooms were. It reads guild settings (volume, autoplay, echoes) through methods on `Data`, reaches into the floating status message and /gp's state, and part of it is built on poise's `Context`. Guild settings, which every feature reads, turned out clean: no poise and almost no `Data`. So step 4 became three PRs. I proposed this order in chat and the owner approved it on 2026-10-26: "Yes, thank you, go ahead and continue on in this manner." It moves guild settings out of "Later, unscheduled".
 
-**Likely shape:** two PRs, first the player (sources, query, queue, audit), then /gp.
+- **4a: crack-guild.** Guild settings, the per-guild session cache and their queries. Small, low-risk, and it unblocks music. Detailed below.
+- **4b: crack-music, the player.** `music/`, `sources/`, `http_utils.rs` and the player's tables (`queue_audit`, `play_log`, `play_history`, `queue_snapshot`, `playlist`, `metadata`, `musicreco`, `track_reaction`). It gets its own design section when 4a lands, because the knots below decide its shape.
+- **4c: /gp.** `commands/music/gp`'s game logic and `db/gp.rs`, after 4b.
 
-**Known references:** `music` → `commands` (10) and `music` → `handlers` (6), listed in the table above. Music reads 11 `DataInner` fields.
+songbird lives in 4b's crate, so the Matrix-seam rule applies there: no new state in songbird's queue or track handles.
 
-songbird lives here, so the Matrix-seam rule applies: no new state in songbird's queue or track handles.
+#### 4a: crack-guild
 
-**Why a separate pass:** music is the biggest and riskiest move, and the map will look different after steps 1–3.
+**Moves** (about 2.6k non-test lines and about 100 tests):
+- `guild/settings.rs`, `guild/permissions.rs`, `guild/plan.rs`;
+- `guild/cache.rs`: `GuildCache` is per-guild session state that both music (autoplay, skip votes, queue messages) and `/clean` (the bot's recent messages) use, so it goes below both;
+- `guild/operations.rs`: the `GuildSettingsOperations` trait, its implementation and `get_guilds`;
+- `db/guild.rs`.
+
+**References the movable files make into crack-core:** only `errors`, `CrackedResult` and `CrackedMessage` (all in crack-common now), the `Error` alias (crack-common has the same one), and each other. `cache.rs` names `poise::serenity_prelude`, which becomes plain serenity.
+
+**The handle.** `GuildData { database_pool: Option<PgPool>, guild_settings_map: Arc<RwLock<HashMap<GuildId, GuildSettings>>>, bot_prefix: String }`, built by `Data::guild_data()`, as steps 2 and 3 did:
+- `database_pool` and `guild_settings_map` keep `DataInner`'s names, so the trait's bodies move word for word. `guild_settings_map` is already an `Arc`, so the handle shares the map the commands read.
+- `bot_prefix` replaces `self.bot_settings.get_prefix()`, the trait's only other read of `Data` (four sites). `BotConfig` is crack-core's and doesn't move; the prefix it returns never changes after boot, so reading it once when the handle is built gives the same value. `GuildData::default()` uses `DEFAULT_PREFIX`, which already lives in `guild/settings.rs`, so it matches `Data::default()`.
+
+**The trait stays, and `Data` keeps implementing it.** My call:
+- crack-guild implements `GuildSettingsOperations` for `GuildData`.
+- crack-core's `impl GuildSettingsOperations for Data` becomes one-line delegations to `self.guild_data()`.
+- So the 73 call sites in about 40 files, crack-web's included, don't change.
+
+The alternative, changing each call to `data.guild_data().get_volume(..)`, spreads the PR across every settings command and conflicts with parallel work. The delegations cost about 130 lines in crack-core, and a crack-core test pins that the getters and setters reach the shared map.
+
+**Autoplay's switch leaves the trait.** `get_autoplay` and `set_autoplay` don't read guild settings. They read `guild_cache_map`, and `set_autoplay` also clears the music recommender's `autoplay_buffer`. They are the session-only switch (Ruling 48), not the stored `autoplay` setting, which `get_autoplay_setting` and `set_autoplay_setting` keep in the trait.
+
+They become inherent `impl Data` methods in crack-core's `music/autoplay.rs`, next to `AutoplayBuffer`, with the same bodies and their three tests, and they move with the player in 4b. All their callers are music code and keep calling `data.get_autoplay(..)`. Only imports that become unused change. So `GuildData` doesn't need `guild_cache_map` or anything from music.
+
+**Stays in crack-core:**
+- the `Data` delegations and `Data::guild_data()`;
+- the source-scanning test `every_command_that_saves_settings_also_guards_first`, which reads crack-core's `commands/`;
+- the settings commands, `config.rs`'s boot load, and the event handlers;
+- the empty, unreferenced `guild/cam_rules.rs`. Deleting it is not this PR's job.
+
+**Tests move with the code.** The trait's tests construct a `GuildData` instead of a `DataInner`, and their assertions stay the same. The database tests load `../crack-core/test_migrations`, as crack-rooms' do.
+
+**Shims, as before:**
+- crack-core's `guild` module re-exports `crack_guild::{cache, permissions, plan, settings}`;
+- `guild::operations` re-exports crack-guild's and holds the `Data` implementation;
+- `db/mod.rs` has `pub use crack_guild::db::guild;`.
+
+**Dependencies:** crack-guild depends on crack-common, crack-model, crack-types and serenity. It doesn't depend on crack-economy or crack-rooms. 4b's crack-music will depend on it.
+
+**Done when:** the same checks as step 3 pass for crack-guild, plus the boundary step in `lint.yml`, and v0.42.0 is on TuneTitan.
+
+#### 4b's knots, recorded for its design section
+
+- **`Data` coupling:** about 12 `DataInner` fields; `OpCx { data: Arc<Data> }` in `music/ops`; `remote.rs` holds `Arc<Data>`; `impl Data` in `music/lease.rs`; `gp_is_active` and `gp_start`; `status_slot`.
+- **poise:** `QueryContext` holds poise's `Context`, and `queue.rs` uses `poise_ext::ContextExt`.
+- **Upward references:**
+  - `commands::music_utils` (`connected_call`, `join_permitted`, `set_global_handlers_with`), `gp_persist::vc_members` and `gp_prompts`;
+  - `handlers::track_end::update_queue_messages`;
+  - `messaging::status`, and the courier's `post`, `Destination`, `locate` and `reply`;
+  - several `utils` helpers, `db::worker_pool::MetadataMsg`, `connection::get_voice_channel_for_user` and `BotConfig::get_playlist_limit`.
 
 ### Later, unscheduled
 
-- Guild settings: `guild/` plus `db/guild.rs`, which every feature reads.
 - Renaming crack-core to crack-discord.
 - crack-web depending on the feature crates instead of crack-core.
 

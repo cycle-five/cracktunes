@@ -587,6 +587,15 @@
   crack-core as `ToPoiseReply`. crack-core re-exports the old paths.
   `cargo test -p crack-rooms` builds no crack-core. Nothing the bot does
   changed.
+- **Step 4a: guild settings are their own crate, `crack-guild`.** Guild
+  settings, permissions, the plan, the per-guild session cache and their
+  queries left crack-core. The settings trait is implemented for a `GuildData`
+  handle (the pool, the settings map and the bot's prefix), and `Data` keeps it
+  by delegating, so no caller changed. Autoplay's session switch, which is
+  music state, stays with the music code. crack-core re-exports the old paths.
+  `cargo test -p crack-guild` builds no crack-core. Nothing the bot does
+  changed. Step 4 is now three parts: guild settings, then the player, then
+  `/gp`.
 
 ## TODO:
 

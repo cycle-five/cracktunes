@@ -1,10 +1,9 @@
-use self::serenity::model::{
+use chrono::{DateTime, Utc};
+use dashmap::DashMap;
+use serenity::model::{
     channel::Message,
     id::{GuildId, MessageId, UserId},
 };
-use chrono::{DateTime, Utc};
-use dashmap::DashMap;
-use poise::serenity_prelude as serenity;
 use std::collections::BTreeMap;
 use std::{
     collections::{HashMap, HashSet},

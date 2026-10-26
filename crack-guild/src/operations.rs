@@ -1,9 +1,11 @@
-use crate::{errors::CrackedError, Data, GuildSettings};
+use crate::settings::GuildSettings;
+use crack_common::errors::CrackedError;
 use crack_types::discord::{from_snowflake, generic_channel_id, snowflake, ToRef};
 use serenity::all::{Context as SerenityContext, GenericChannelId, GuildId};
-use std::{future::Future, sync::Arc};
+use std::{collections::HashMap, future::Future, sync::Arc};
+use tokio::sync::RwLock;
 
-use super::settings::{Provenance, DEFAULT_VOLUME_LEVEL};
+use crate::settings::{Provenance, DEFAULT_PREFIX, DEFAULT_VOLUME_LEVEL};
 
 pub trait GuildSettingsOperations {
     fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
@@ -49,8 +51,6 @@ pub trait GuildSettingsOperations {
     fn toggle_autopause(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn get_auto_role(&self, guild_id: GuildId) -> impl Future<Output = Option<u64>>;
     fn set_auto_role(&self, guild_id: GuildId, auto_role: u64) -> impl Future<Output = ()>;
-    fn get_autoplay(&self, guild_id: GuildId) -> impl Future<Output = bool>;
-    fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
     fn set_autoplay_setting(&self, guild_id: GuildId, autoplay: bool) -> impl Future<Output = ()>;
     fn get_autoplay_setting(&self, guild_id: GuildId) -> impl Future<Output = bool>;
     fn get_volume(&self, guild_id: GuildId) -> impl Future<Output = (f32, f32)>;
@@ -76,8 +76,26 @@ pub trait GuildSettingsOperations {
     ) -> impl Future<Output = Result<bool, CrackedError>>;
 }
 
+/// The guild settings' state, as a handle that does not name `Data`.
+#[derive(Debug, Clone)]
+pub struct GuildData {
+    pub database_pool: Option<sqlx::PgPool>,
+    pub guild_settings_map: Arc<RwLock<HashMap<GuildId, GuildSettings>>>,
+    pub bot_prefix: String,
+}
+
+impl Default for GuildData {
+    fn default() -> Self {
+        Self {
+            database_pool: None,
+            guild_settings_map: Arc::new(RwLock::new(HashMap::new())),
+            bot_prefix: DEFAULT_PREFIX.to_string(),
+        }
+    }
+}
+
 /// Implementation of the guild settings operations.
-impl GuildSettingsOperations for Data {
+impl GuildSettingsOperations for GuildData {
     /// Get the guild settings for a guild, creating them if they don't exist.
     async fn get_or_create_guild_settings(
         &self,
@@ -141,7 +159,7 @@ impl GuildSettingsOperations for Data {
     /// upsert, so mutating those defaults and saving them replaces the guild's
     /// stored row wholesale -- the same unrecoverable loss the shutdown
     /// handler's `is_persistable()` guard prevents, reached through a
-    /// different door. See [`crate::guild::settings::Provenance`].
+    /// different door. See [`crate::settings::Provenance`].
     ///
     /// 🪤 **The guard belongs here, not inside `save()`.** `save()` itself
     /// calls `get_or_create`, so a blanket `is_persistable()` check in there
@@ -182,7 +200,7 @@ impl GuildSettingsOperations for Data {
             .get(&guild_id)
             .map(|s| s.guild_name.clone())
             .unwrap_or_default();
-        let prefix = self.bot_settings.get_prefix();
+        let prefix = self.bot_prefix.clone();
 
         // 🪤 Returning Err here is the point: the caller must NOT fall through to
         // `save()`. If the row cannot be read, whatever is in memory is still
@@ -360,17 +378,6 @@ impl GuildSettingsOperations for Data {
             });
     }
 
-    /// Get the current autoplay settings.
-    async fn get_autoplay(&self, guild_id: GuildId) -> bool {
-        self.guild_cache_map
-            .lock()
-            .await
-            .get(&guild_id)
-            .map(|settings| settings.autoplay)
-            // Off by default, and session-only (Ruling 48).
-            .unwrap_or(false)
-    }
-
     async fn set_autoplay_setting(&self, guild_id: GuildId, autoplay: bool) {
         self.guild_settings_map
             .write()
@@ -388,24 +395,6 @@ impl GuildSettingsOperations for Data {
             .get(&guild_id)
             .map(|e| e.autoplay)
             .unwrap_or(true)
-    }
-
-    /// Turn autoplay on or off for this guild, for this session.
-    ///
-    /// 🪤 This was `and_modify` alone. A guild only got a cache entry from
-    /// `/queue` or `/voteskip`, so everywhere else this was a silent no-op:
-    /// `/autoplay` answered and nothing changed. Turning autoplay off also
-    /// drops the guild's buffered recommendations.
-    async fn set_autoplay(&self, guild_id: GuildId, autoplay: bool) {
-        self.guild_cache_map
-            .lock()
-            .await
-            .entry(guild_id)
-            .or_default()
-            .autoplay = autoplay;
-        if !autoplay {
-            self.autoplay_buffer.clear(guild_id);
-        }
     }
 
     /// Get the current autoplay settings.
@@ -477,11 +466,8 @@ impl GuildSettingsOperations for Data {
                 settings.toggle_ephemeral_replies();
             })
             .or_insert_with(|| {
-                let mut settings = GuildSettings::new(
-                    guild_id.to_ref(),
-                    Some(&self.bot_settings.get_prefix()),
-                    None,
-                );
+                let mut settings =
+                    GuildSettings::new(guild_id.to_ref(), Some(&self.bot_prefix), None);
                 settings.toggle_ephemeral_replies();
                 settings
             })
@@ -517,11 +503,8 @@ impl GuildSettingsOperations for Data {
                 settings.toggle_control_echoes();
             })
             .or_insert_with(|| {
-                let mut settings = GuildSettings::new(
-                    guild_id.to_ref(),
-                    Some(&self.bot_settings.get_prefix()),
-                    None,
-                );
+                let mut settings =
+                    GuildSettings::new(guild_id.to_ref(), Some(&self.bot_prefix), None);
                 settings.toggle_control_echoes();
                 settings
             })
@@ -558,11 +541,8 @@ impl GuildSettingsOperations for Data {
                 settings.toggle_now_playing_buttons();
             })
             .or_insert_with(|| {
-                let mut settings = GuildSettings::new(
-                    guild_id.to_ref(),
-                    Some(&self.bot_settings.get_prefix()),
-                    None,
-                );
+                let mut settings =
+                    GuildSettings::new(guild_id.to_ref(), Some(&self.bot_prefix), None);
                 settings.toggle_now_playing_buttons();
                 settings
             })
@@ -588,11 +568,8 @@ pub async fn get_guilds(ctx: Arc<SerenityContext>) -> Vec<GuildId> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::guild::cache::GuildCache;
-    use crate::{Data, DataInner};
     use serenity::model::id::{GenericChannelId, RoleId};
     use std::collections::HashMap;
-    use tokio::sync::{Mutex, RwLock};
 
     #[tokio::test]
     async fn test_get_guild_settings() {
@@ -600,16 +577,16 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
+            crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
         );
-        let data = Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        }));
+        };
 
         assert_eq!(
             data.get_guild_settings(guild_id).await,
-            Some(crate::GuildSettings::new(
+            Some(crate::settings::GuildSettings::new(
                 guild_id.to_ref(),
                 Some("r!"),
                 None
@@ -621,17 +598,17 @@ mod test {
     async fn test_get_or_create_guild_settings() {
         let guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
-        let data = Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        }));
+        };
 
         assert_eq!(
             data.get_or_create_guild_settings(guild_id, None, None)
                 .await,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 guild_id: guild_id.to_ref(),
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             }
         );
     }
@@ -644,16 +621,19 @@ mod test {
     /// defaults' empty name and blanked the stored one.
     #[tokio::test]
     async fn get_or_create_keeps_the_settings_a_guild_already_has() {
-        use crate::guild::settings::Provenance;
+        use crate::settings::Provenance;
         let guild_id = GuildId::new(1);
-        let loaded =
-            crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), Some("KYSCORD".to_string()))
-                .with_premium(true)
-                .with_provenance(Provenance::Database);
-        let data = Data(Arc::new(DataInner {
+        let loaded = crate::settings::GuildSettings::new(
+            guild_id.to_ref(),
+            Some("r!"),
+            Some("KYSCORD".to_string()),
+        )
+        .with_premium(true)
+        .with_provenance(Provenance::Database);
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(HashMap::from([(guild_id, loaded.clone())]))),
             ..Default::default()
-        }));
+        };
 
         let got = data
             .get_or_create_guild_settings(guild_id, None, None)
@@ -678,22 +658,22 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
+            crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
         );
-        let data = Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        }));
+        };
 
         data.set_guild_settings(
             guild_id,
-            crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
+            crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
         )
         .await;
 
         assert_eq!(
             data.get_guild_settings(guild_id).await,
-            Some(crate::GuildSettings::new(
+            Some(crate::settings::GuildSettings::new(
                 guild_id.to_ref(),
                 Some("r!"),
                 None
@@ -706,7 +686,7 @@ mod test {
     /// skipped; the flip, and the guild it lands on, are what this pins.
     #[tokio::test]
     async fn toggling_ephemeral_replies_flips_it_and_reports_the_new_value() {
-        let data = crate::Data::default();
+        let data = GuildData::default();
         let guild_id = GuildId::new(123);
 
         assert!(data
@@ -736,7 +716,7 @@ mod test {
     /// the first toggle on it reports the value it was created with.
     #[tokio::test]
     async fn toggle_autopause_creates_settings_for_the_guild_then_flips() {
-        let data = crate::Data::default();
+        let data = GuildData::default();
         let guild_id = GuildId::new(77);
         assert!(!data.toggle_autopause(guild_id).await);
         assert!(data.toggle_autopause(guild_id).await);
@@ -752,7 +732,7 @@ mod test {
 
     #[tokio::test]
     async fn ephemeral_replies_follow_the_guild_setting() {
-        let data = crate::Data::default();
+        let data = GuildData::default();
         let guild_id = GuildId::new(123);
         assert!(
             !data.get_ephemeral_replies(guild_id).await,
@@ -783,13 +763,13 @@ mod test {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let channel_id = GenericChannelId::new(2);
-        let mut settings = crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
+        let mut settings = crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
         settings.set_music_channel(channel_id.to_ref());
         guild_settings_map.insert(guild_id, settings);
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         assert_eq!(data.get_music_channel(guild_id).await, Some(channel_id));
     }
@@ -799,13 +779,13 @@ mod test {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let channel_id = GenericChannelId::new(2);
-        let mut settings = crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
+        let mut settings = crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
         settings.set_music_channel(channel_id.to_ref());
         guild_settings_map.insert(guild_id, settings);
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         data.set_music_channel(guild_id, GenericChannelId::new(3))
             .await;
@@ -822,15 +802,15 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 timeout: 5,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         assert_eq!(data.get_timeout(guild_id).await, Some(5));
     }
@@ -841,15 +821,15 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 timeout: 5,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         data.set_timeout(guild_id, 10).await;
 
@@ -862,15 +842,15 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 premium: true,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         assert_eq!(data.get_premium(guild_id).await, Some(true));
     }
@@ -881,15 +861,15 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 premium: true,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         data.set_premium(guild_id, false).await;
 
@@ -902,15 +882,15 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 prefix: "!".to_string(),
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         assert_eq!(data.get_prefix(guild_id).await, Some("!".to_string()));
     }
@@ -921,15 +901,15 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 prefix: "!".to_string(),
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         data.set_prefix(guild_id, "?".to_string()).await;
 
@@ -942,15 +922,15 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 prefix: "!".to_string(),
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         data.add_prefix(guild_id, "?".to_string()).await;
 
@@ -967,15 +947,15 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 autopause: true,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         assert!(data.get_autopause(guild_id).await);
     }
@@ -986,15 +966,15 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 autopause: true,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         data.set_autopause(guild_id, false).await;
 
@@ -1006,13 +986,13 @@ mod test {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let auto_role = 123;
-        let mut settings = crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
+        let mut settings = crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
         settings.set_auto_role(Some(RoleId::new(auto_role).to_ref()));
         guild_settings_map.insert(guild_id, settings);
-        let data = Arc::new(Data(Arc::new(DataInner {
+        let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
             ..Default::default()
-        })));
+        };
 
         assert_eq!(data.get_auto_role(guild_id).await, Some(auto_role));
     }
@@ -1020,7 +1000,7 @@ mod test {
     #[tokio::test]
     async fn set_auto_role_stores_a_snowflake_and_ignores_garbage() {
         let guild_id = GuildId::new(1);
-        let data = Data::default();
+        let data = GuildData::default();
         data.guild_settings_map
             .write()
             .await
@@ -1034,89 +1014,12 @@ mod test {
         assert_eq!(data.get_auto_role(guild_id).await, Some(456));
     }
 
-    #[tokio::test]
-    async fn test_get_set_autoplay() {
-        let mut guild_cache_map = HashMap::new();
-        let guild_id = GuildId::new(1);
-        guild_cache_map.insert(
-            guild_id,
-            GuildCache {
-                autoplay: false,
-                ..Default::default()
-            },
-        );
-        let data = Arc::new(Data(Arc::new(DataInner {
-            guild_cache_map: Arc::new(Mutex::new(guild_cache_map)),
-            ..Default::default()
-        })));
-
-        assert!(!data.get_autoplay(guild_id).await);
-    }
-
-    /// Ruling 48: autoplay is off by default and session-only, and the setter
-    /// must work in a guild with no cache entry yet.
-    #[tokio::test]
-    async fn autoplay_is_off_by_default_and_the_setter_works_without_a_cache_entry() {
-        let data = Data::default();
-        let guild_id = GuildId::new(1);
-        assert!(!data.get_autoplay(guild_id).await, "off by default");
-        data.set_autoplay(guild_id, true).await;
-        assert!(
-            data.get_autoplay(guild_id).await,
-            "turning it on must stick"
-        );
-        data.set_autoplay(guild_id, false).await;
-        assert!(
-            !data.get_autoplay(guild_id).await,
-            "and so must turning it off"
-        );
-    }
-
-    /// A guild that turns autoplay off does not keep its buffered
-    /// recommendations for the next time it is turned on.
-    #[tokio::test]
-    async fn turning_autoplay_off_drops_the_buffer() {
-        use crack_musicreco::{Playable, Recommendation};
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        let rec = |t: &str| Recommendation {
-            artist: "A".into(),
-            title: t.into(),
-            playable: Playable::SearchQuery(t.into()),
-            isrc: None,
-            source: "test".into(),
-        };
-        let data = Data::default();
-        let guild_id = GuildId::new(1);
-        let first = data
-            .autoplay_buffer
-            .next(guild_id, || async { vec![rec("one"), rec("two")] })
-            .await;
-        assert_eq!(first.map(|r| r.title), Some("one".to_owned()));
-
-        data.set_autoplay(guild_id, false).await;
-
-        let refills = AtomicUsize::new(0);
-        let next = data
-            .autoplay_buffer
-            .next(guild_id, || async {
-                refills.fetch_add(1, Ordering::SeqCst);
-                Vec::new()
-            })
-            .await;
-        assert!(
-            next.is_none(),
-            "\"two\" must not survive autoplay being turned off"
-        );
-        assert_eq!(refills.load(Ordering::SeqCst), 1);
-    }
-
     /// With no pool there is nothing to overwrite and no write to guard, so the
     /// helper must succeed and leave the map exactly as it found it. This is
     /// production's configuration today, so it is the case that must not break.
     #[tokio::test]
     async fn ensure_settings_loaded_is_a_noop_without_a_pool() {
-        use crate::guild::settings::Provenance;
+        use crate::settings::Provenance;
 
         let guild_id = GuildId::new(1);
         let mut map = HashMap::new();
@@ -1124,7 +1027,10 @@ mod test {
             guild_id,
             GuildSettings::new(guild_id.to_ref(), Some("!"), None),
         );
-        let data = Data::default().with_guild_settings_map(Arc::new(RwLock::new(map)));
+        let data = GuildData {
+            guild_settings_map: Arc::new(RwLock::new(map)),
+            ..Default::default()
+        };
 
         assert!(
             data.database_pool.is_none(),
@@ -1153,7 +1059,7 @@ mod test {
     #[tokio::test]
     async fn ensure_settings_loaded_does_not_invent_an_entry_without_a_pool() {
         let guild_id = GuildId::new(42);
-        let data = Data::default().with_guild_settings_map(Arc::new(RwLock::new(HashMap::new())));
+        let data = GuildData::default();
 
         data.ensure_settings_loaded(guild_id)
             .await
@@ -1165,67 +1071,15 @@ mod test {
         );
     }
 
-    /// 🔑 The regression this whole change exists to prevent: a NEW command that
-    /// writes guild settings back but forgets the guard.
-    ///
-    /// Every command file that calls `GuildSettings::save` must also call
-    /// `ensure_settings_loaded`. Reading the tree is the only way to assert
-    /// this -- there is no type that forces it, and the failure is silent.
-    #[test]
-    fn every_command_that_saves_settings_also_guards_first() {
-        use std::path::Path;
-
-        fn walk(dir: &Path, out: &mut Vec<(String, String)>) {
-            for entry in std::fs::read_dir(dir).expect("readable") {
-                let path = entry.expect("entry").path();
-                if path.is_dir() {
-                    walk(&path, out);
-                } else if path.extension().is_some_and(|e| e == "rs") {
-                    let src = std::fs::read_to_string(&path).expect("readable");
-                    out.push((path.display().to_string(), src));
-                }
-            }
-        }
-
-        let mut files = Vec::new();
-        walk(Path::new("src/commands"), &mut files);
-        assert!(!files.is_empty(), "found no command sources to scan");
-
-        let mut unguarded = Vec::new();
-        for (path, src) in &files {
-            // The bug needs BOTH halves: read the in-memory settings map, then
-            // write it back. A file that saves some other type (GpSaved,
-            // WelcomeSettings) never touches `guild_settings_map` and so cannot
-            // be this bug -- requiring both keeps the scan precise instead of
-            // maintaining a list of filenames to skip.
-            let saves = src
-                .lines()
-                .filter(|l| !l.trim_start().starts_with("//"))
-                .any(|l| l.contains(".save(&pool)") || l.contains(".save(&pg_pool)"));
-            let reads_the_map =
-                src.contains("guild_settings_map") || src.contains("get_guild_settings");
-            if saves && reads_the_map && !src.contains("ensure_settings_loaded") {
-                unguarded.push(path.clone());
-            }
-        }
-
-        assert!(
-            unguarded.is_empty(),
-            "these command files write guild settings back without first calling \
-             ensure_settings_loaded, which lets a guild whose load failed overwrite \
-             its stored row with defaults: {unguarded:#?}"
-        );
-    }
-
     #[tokio::test]
     async fn control_echoes_are_on_for_a_guild_with_no_settings() {
-        let data = crate::Data::default();
+        let data = GuildData::default();
         assert!(data.get_control_echoes(GuildId::new(123)).await);
     }
 
     #[tokio::test]
     async fn control_echoes_follow_the_guild_setting() {
-        let data = crate::Data::default();
+        let data = GuildData::default();
         let guild_id = GuildId::new(123);
         let mut settings = GuildSettings::new(guild_id.to_ref(), None, None);
         settings.control_echoes = false;
@@ -1238,7 +1092,7 @@ mod test {
 
     #[tokio::test]
     async fn toggling_control_echoes_flips_it_and_reports_the_new_value() {
-        let data = crate::Data::default();
+        let data = GuildData::default();
         let guild_id = GuildId::new(123);
         assert!(!data.toggle_control_echoes(guild_id).await.unwrap());
         assert!(!data.get_control_echoes(guild_id).await);
@@ -1248,13 +1102,13 @@ mod test {
 
     #[tokio::test]
     async fn now_playing_buttons_are_on_for_a_guild_with_no_settings() {
-        let data = crate::Data::default();
+        let data = GuildData::default();
         assert!(data.get_now_playing_buttons(GuildId::new(123)).await);
     }
 
     #[tokio::test]
     async fn now_playing_buttons_follow_the_guild_setting() {
-        let data = crate::Data::default();
+        let data = GuildData::default();
         let guild_id = GuildId::new(123);
         let mut settings = GuildSettings::new(guild_id.to_ref(), None, None);
         settings.now_playing_buttons = false;
@@ -1267,7 +1121,7 @@ mod test {
 
     #[tokio::test]
     async fn toggling_now_playing_buttons_flips_it_and_reports_the_new_value() {
-        let data = crate::Data::default();
+        let data = GuildData::default();
         let guild_id = GuildId::new(123);
         assert!(!data.toggle_now_playing_buttons(guild_id).await.unwrap());
         assert!(!data.get_now_playing_buttons(guild_id).await);
