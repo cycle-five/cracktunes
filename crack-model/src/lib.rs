@@ -2,8 +2,8 @@
 
 pub mod ids;
 pub use ids::{
-    Community, CommunityRef, Kind, Message, Platform, RawId, Ref, RefError, Role, RoleRef, Room,
-    RoomRef, User, UserRef,
+    Community, CommunityRef, Kind, Message, Platform, Ref, Role, RoleRef, Room, RoomRef, User,
+    UserRef,
 };
 
 pub mod output;

@@ -8,13 +8,15 @@ pub mod metadata;
 pub use fallback::or_ask_ytdlp;
 pub use http::{
     canonical_youtube_playlist_url, is_public_http_url, parse_url, ytdl_for_url, ytdl_search,
-    ytdl_url, NotAYtdlUrl, Site, YtdlSearchFailed,
+    ytdl_url, NotAYtdlUrl, Site,
 };
 pub use metadata::{
-    search_result_to_aux_metadata, video_details_to_aux_metadata, video_info_to_aux_metadata,
-    AuxMetadata, Duration, FullTrack, NewAuxMetadata, SearchResult, VideoDetails, VideoInfo,
-    YoutubeDl,
+    search_result_to_aux_metadata, video_info_to_aux_metadata, AuxMetadata, Duration, FullTrack,
+    NewAuxMetadata, SearchResult, YoutubeDl,
 };
+// Names only this crate's tests reach, through `use super::*`.
+#[cfg(test)]
+use metadata::{video_details_to_aux_metadata, VideoInfo};
 #[cfg(feature = "poise")]
 pub mod reply_handle;
 pub mod saved_track;

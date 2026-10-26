@@ -18,16 +18,17 @@
 
 | Lint | Kind | Catches | Can't catch |
 |---|---|---|---|
-| `clippy::wildcard_imports` | pedantic | `use x::*` (not `use super::*` in test modules, not preludes) | `pub use x::*` and `pub(crate) use x::*` re-exports, even with `warn-on-all-wildcard-imports` |
+| `clippy::wildcard_imports` | pedantic | `use x::*` in non-test code only (clippy skips test crates and `#[cfg(test)]` code; `enum_glob_use` likewise), not preludes | `pub use x::*` and `pub(crate) use x::*` re-exports, even with `warn-on-all-wildcard-imports` |
 | `ambiguous_glob_reexports` | rustc, warn by default | two glob re-exports exporting the same name | a lone glob re-export |
 | `hidden_glob_reexports` | rustc, warn by default | a private item shadowing a public glob re-export | — |
+| `unnameable_types` | rustc, allow by default | a `pub` type callers can reach but cannot name, e.g. one whose only re-exporting module was narrowed to an explicit list | — |
 
 So the gate holds plain globs, and the two rustc lints make any re-export glob that does remain fail loudly rather than silently. Re-export globs themselves are converted once (Tasks 2–3), and review keeps them out afterwards. No source-scan test polices them: the owner's rule is enforce with types and lints, not source scans.
 
 ## Global Constraints
 
 - **No behaviour change.** Only `use`/`pub use` lines, lint attributes, manifests, CI and test-code fixes change. Production function bodies don't change, except for a clippy fix in production code. Report each one with its lint.
-- **A re-export list names exactly what callers use.** Remove the glob, then compile `--workspace --all-targets --all-features`, and add only the names the compiler asks for. Re-exporting a module by name (`pub use crack_music::music::remote;`) is explicit and fine.
+- **A re-export list names what callers use, plus what `unnameable_types` asks for.** Remove the glob, then compile `--workspace --all-targets --all-features`, and add the names the compiler asks for (errors, then `unnameable_types` warnings). A name only a crate's own tests reach goes in a private `#[cfg(test)] use`, not the `pub use` list. Re-exporting a module by name (`pub use crack_music::music::remote;`) is explicit and fine.
 - **No new `#[allow]`.** Fix the code. If a fix would change behaviour, use `#[expect(clippy::…, reason = "…")]` and report it. `scripts/check_waivers.py` must stay green.
 - **Memory cap on every local cargo or clippy run:** `systemd-run --user --scope --quiet -p MemoryMax=12G -p MemorySwapMax=0 -p OOMPolicy=continue --`, written out; zsh won't word-split a variable. Use `SQLX_OFFLINE=true`.
 - **Verification** (from `/home/lothrop/projects/cracktunes-split`):
@@ -58,7 +59,9 @@ So the gate holds plain globs, and the two rustc lints make any re-export glob t
   [workspace.lints.rust]
   ambiguous_glob_reexports = "deny"
   hidden_glob_reexports = "deny"
+  unnameable_types = "warn"
   ```
+  `unnameable_types` is `warn`, which `-D warnings` makes an error. The one intentional case, crack-model's `ids::sealed::Sealed`, carries a reasoned `#[expect]`. A comment beside `[workspace.lints.clippy]` records that the import lints don't fire in test code.
   Every one of the 17 members' `Cargo.toml` gains `[lints]` / `workspace = true`.
   - Why the table: CI's flags today (`-D clippy::all --allow clippy::needless_return`) live only in `lint.yml`, so a local `cargo clippy` is a different check. In the table, every `cargo clippy` is the CI check.
 - **CI** (`.github/workflows/lint.yml`, "Run clippy"): `cargo clippy --all --all-targets -- -D warnings`. The `-D clippy::all --allow clippy::needless_return` flags go, since the table has them. `-D warnings` stays: it turns every warn-level lint into an error. The crack-coin clippy steps gain `--all-targets` too. Any doc that quotes the old command is updated.
@@ -67,7 +70,7 @@ So the gate holds plain globs, and the two rustc lints make any re-export glob t
 
 ## Review Focus
 
-1. **The gate really gates.** A plain `use x::*` added anywhere must fail CI. Pinned by Task 1's check: add one temporarily, see `cargo clippy --all --all-targets -- -D warnings` fail, remove it.
+1. **The gate really gates.** A plain `use x::*` added in non-test code must fail CI (the import lints never see test code; review keeps globs out of tests). Pinned by Task 1's check: add one temporarily, see `cargo clippy --all --all-targets -- -D warnings` fail, remove it.
 2. **Local clippy equals CI clippy.** A member missing `[lints] workspace = true` silently escapes the table. Pinned by Task 1's member count: 17 of 17.
 3. **Re-export lists add nothing callers didn't use.** A list padded with unused names re-creates the glob's problem. Checked in review against the compiler-driven rule.
 4. **crack-web and crack-cli still compile.** They reach crack-core's re-exports. Checked by the workspace build.
@@ -100,7 +103,7 @@ So the gate holds plain globs, and the two rustc lints make any re-export glob t
 **Files:** every `crack-core/src/**/*.rs` with a `pub use …::*;` or `pub(crate) use …::*;` line: about 95 lines, the most in `commands/music/mod.rs` (32), `db/mod.rs`, `commands/utility/mod.rs`, `commands/settings/{set,get}/mod.rs`, `commands/mod.rs`, `music/mod.rs`, `commands/music/gp/mod.rs`, `commands/admin/**/mod.rs`, `guild/mod.rs`, `economy/mod.rs`, `messaging/{courier,discord,test_support}.rs` and `metrics.rs`.
 
 - [ ] **Step 1:** For each file, replace each glob re-export with an explicit `pub use x::{…};`, compiler-driven as the Global Constraints say. A shim of a feature crate (`pub use crack_music::music::*;` and the like) lists the modules and items crack-core, crack-web and crack-cli use.
-- [ ] **Step 2:** `grep -rnE '^\s*pub(\([a-z]+\))? use .*::\*;' crack-core/src` prints nothing.
+- [ ] **Step 2:** `grep -rnE '^\s*pub(\([a-z]+\))? use .*::\*;' crack-core/src` prints nothing. Files outside the module tree (`commands/settings/**`, `commands/admin/role/**`) are excluded: no build compiles them, and their globs stay until the owner decides whether to delete those modules.
 - [ ] **Step 3:** Run the suite, the doctests and every lint command. All green, counts unchanged.
 - [ ] **Step 4: Commit:** `refactor(core): crack-core's glob re-exports become explicit lists`
 
@@ -109,6 +112,6 @@ So the gate holds plain globs, and the two rustc lints make any re-export glob t
 **Files:** the remaining `pub use …::*;` lines in `crack-types/src/lib.rs` (5), `crack-music/src/music/{ops/mod,mod}.rs` and `crack-music/src/db/mod.rs`, `crack-gp/src/{gp/mod,db/mod}.rs`, `crack-guild/src/db/mod.rs`, `crack-testing/src/lib.rs`, `crack-model/src/lib.rs`, `crack-test-db/src/lib.rs`, and any others the grep finds.
 
 - [ ] **Step 1:** Replace each, compiler-driven. Where a crate's own root re-export is its public API (e.g. `crack-model`'s `lib.rs`), list everything its dependents use.
-- [ ] **Step 2:** `grep -rnE '^\s*pub(\([a-z]+\))? use .*::\*;' --include='*.rs' crack-*` prints nothing, workspace-wide.
+- [ ] **Step 2:** `grep -rnE '^\s*pub(\([a-z]+\))? use .*::\*;' --include='*.rs' crack-*` prints nothing, workspace-wide, except the uncompiled files `commands/settings/**` and `commands/admin/role/**` (see Task 2 Step 2).
 - [ ] **Step 3:** Run the suite, the doctests and every lint command. All green, counts unchanged.
 - [ ] **Step 4: Commit:** `refactor: the remaining glob re-exports become explicit lists`

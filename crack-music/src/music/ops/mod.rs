@@ -7,18 +7,20 @@ mod add;
 pub use add::{add, Added, At};
 mod edit;
 pub(crate) use edit::shuffle_on;
-pub use edit::{clear, move_track, remove, remove_on, removed_embed, shuffle};
+pub use edit::{
+    clear, move_track, remove, remove_on, removed_embed, shuffle, Cleared, Moved, Removed, Shuffled,
+};
 mod end;
-pub use end::{leave, stop};
+pub use end::{leave, stop, Left, Stopped};
 mod playback;
 pub(crate) use playback::resume_on;
 pub use playback::{
-    pause, pause_on, repeat, repeat_on, resume, seek, volume, volume_now, VolumeSet, SEEK_TIMEOUT,
-    TRACK_INFO_TIMEOUT,
+    pause, pause_on, repeat, repeat_on, resume, seek, volume, volume_now, Paused, Repeat, Resumed,
+    Sought, VolumeNow, VolumeSet, SEEK_TIMEOUT, TRACK_INFO_TIMEOUT,
 };
 mod skip;
 pub(crate) use skip::skip_on;
-pub use skip::{skip, voteskip, Vote};
+pub use skip::{skip, voteskip, Skipped, Vote};
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 

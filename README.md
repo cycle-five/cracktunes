@@ -177,7 +177,7 @@ postgres running, use the `cargo llvm-cov nextest` command in `docs/testing.md`.
 ## Linting
 
 ```shell
-cargo +nightly clippy --profile=release --all-features --workspace -- -D warnings -D clippy:all
+cargo clippy --all --all-targets -- -D warnings
 ```
 
 ## Build

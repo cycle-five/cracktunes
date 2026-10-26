@@ -12,7 +12,7 @@ mod commands;
 mod data_impl;
 mod playback;
 
-pub use commands::gp;
+pub use commands::{gp, GpCategoryChoice, GpRevealChoice};
 pub use crack_gp::gp::{
     gp_post, now, GpCard, GpClip, GpData, GpGame, GpPhase, GpPlayed, GpReveal, GpSubmitOutcome,
     GpTrackStart, GpWindowOpened, GP_BLOCKED_COMMANDS, GP_CUSTOM_ID_PREFIX, GP_DEAD_LINK,

@@ -51,6 +51,10 @@ pub trait Kind: sealed::Sealed + 'static {
 }
 
 mod sealed {
+    #[expect(
+        unnameable_types,
+        reason = "sealed-trait pattern: unnameable on purpose"
+    )]
     pub trait Sealed {}
 }
 
