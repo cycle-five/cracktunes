@@ -8,6 +8,7 @@ pub mod crowdfund;
 pub mod discord;
 pub mod earn;
 pub mod effects;
+pub mod facts;
 pub mod gamble;
 pub mod immunity;
 pub mod lock;
@@ -17,6 +18,7 @@ pub mod settings;
 pub mod shop;
 pub mod target;
 pub mod theme;
+pub mod walk_on;
 pub mod wallet;
 
 use chrono::{DateTime, Utc};

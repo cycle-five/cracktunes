@@ -177,7 +177,7 @@ pub fn refusal_text(r: &Refusal, currency: &str) -> String {
         Refusal::MirrorAlreadyUp => ECONOMY_MIRROR_ALREADY_UP.to_string(),
         Refusal::Unavailable { missing } => format!(
             "{ECONOMY_UNAVAILABLE_PREFIX} {} {ECONOMY_UNAVAILABLE_SUFFIX}",
-            crate::rooms::card::perm_names(*missing, true)
+            crack_common::perms::perm_names(*missing, true)
         ),
         Refusal::NothingToCleanse => ECONOMY_NOTHING_TO_CLEANSE.to_string(),
         Refusal::NothingToReveal => ECONOMY_NOTHING_TO_REVEAL.to_string(),

@@ -183,11 +183,6 @@ mod tests {
     }
 
     #[test]
-    fn coin_build_is_true_here() {
-        assert!(crate::COIN_BUILD);
-    }
-
-    #[test]
     fn open_errors_map_to_refusals_or_unreachable() {
         use crack_coin::Error;
         assert!(matches!(

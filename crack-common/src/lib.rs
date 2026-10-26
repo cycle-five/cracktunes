@@ -8,6 +8,7 @@ pub mod failure;
 pub mod format;
 pub mod message;
 pub mod messages;
+pub mod perms;
 pub mod render;
 
 pub type CrackedResult<T> = std::result::Result<T, errors::CrackedError>;

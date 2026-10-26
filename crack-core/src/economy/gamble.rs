@@ -10,7 +10,7 @@ use crate::messaging::messages::{
 use rand::{Rng, RngExt};
 
 /// A side of the coin.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, poise::ChoiceParameter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoinSide {
     Heads,
     Tails,

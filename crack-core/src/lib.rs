@@ -780,6 +780,12 @@ mod lib_test {
     use super::*;
     use serde_json::json;
 
+    #[cfg(feature = "crack-coin")]
+    #[test]
+    fn coin_build_is_true_here() {
+        assert!(crate::COIN_BUILD);
+    }
+
     /// Test the creation of a default EventLog
     #[tokio::test]
     async fn test_event_log_default() {

@@ -12,12 +12,12 @@ use crate::economy::crowdfund::{
     NotLanded, PledgeRequest, LIST_MAX_FUNDS,
 };
 use crate::economy::discord::{EconDiscordError, LiveEconomyDiscord};
+use crate::economy::facts::{gather_facts, Subject};
 use crate::economy::preflight;
 use crate::economy::settings::{
     validate_nick, validate_note, ActionKind, EconomyConfig, NickError,
 };
 use crate::economy::shop::{buy_error_text, preflight_refusal, BuyOutcome};
-use crate::economy::target::{gather_facts, Subject};
 use crate::messaging::courier;
 use crate::messaging::format::CONTENT_MAX;
 use crate::messaging::messages::{

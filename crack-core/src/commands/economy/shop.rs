@@ -10,6 +10,7 @@ use crate::economy::cards::{
     card_channel, card_destination, card_text, dedication_card_text, jump_card_text,
 };
 use crate::economy::discord::LiveEconomyDiscord;
+use crate::economy::facts::{gather_facts, Subject};
 use crate::economy::preflight::{self, report_for, ActionPreflight};
 use crate::economy::settings::{
     validate_nick, validate_note, ActionKind, EconomySettings, NickError, NoteError,
@@ -20,7 +21,7 @@ use crate::economy::shop::{
 };
 use crate::economy::shop::{cant_afford, check_purchase, PurchaseFacts};
 use crate::economy::target::check_target;
-use crate::economy::target::{gather_facts, voice_of, Subject};
+use crate::economy::target::voice_of;
 use crate::economy::theme::{buy_theme, parse_start, StartError, ThemeRequest};
 use crate::economy::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::courier;

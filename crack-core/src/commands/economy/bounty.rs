@@ -6,9 +6,9 @@ use crate::db::economy as db;
 use crate::economy::bounty::{
     bounty_card_channel, bounty_card_text, bounty_list_text, place as place_bounty, BountyRequest,
 };
+use crate::economy::facts::{gather_facts, Subject};
 use crate::economy::settings::{validate_note, ActionKind};
 use crate::economy::shop::buy_error_text;
-use crate::economy::target::{gather_facts, Subject};
 use crate::messaging::courier;
 use crate::messaging::messages::{
     ECONOMY_BOUNTY_PLACED, ECONOMY_CANT_TELL, ECONOMY_READ_FAILED, ECONOMY_SHOP_BOT_BUYER,
