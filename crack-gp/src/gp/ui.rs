@@ -493,6 +493,13 @@ impl GpComponent {
     }
 }
 
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "only a test builds a custom id from a GuildId; the game uses custom_id_for"
+    )
+)]
 pub fn gp_custom_id(
     kind: GpComponent,
     guild_id: GuildId,

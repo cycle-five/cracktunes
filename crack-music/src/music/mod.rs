@@ -9,6 +9,7 @@ pub mod lease;
 pub mod ops;
 pub mod perms;
 pub mod query;
+pub(crate) use query::NewQueryType;
 pub mod queue;
 pub mod remote;
 pub mod search;
@@ -16,7 +17,6 @@ pub mod surface;
 pub mod track_data;
 
 pub use lease::{PlaybackOwner, QueueGuard};
-pub(crate) use query::*;
 
 /// The music player's state, without `Data`: the pool, songbird, the lease
 /// maps and the rest the player reads. `Data::music_data` builds one; the maps

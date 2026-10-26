@@ -4,15 +4,21 @@
 //! Spec: docs/superpowers/specs/2026-10-04-ops-layer-and-dashboard-controls-design.md
 
 mod add;
+pub use add::{add, Added, At};
 mod edit;
+pub(crate) use edit::shuffle_on;
+pub use edit::{clear, move_track, remove, remove_on, removed_embed, shuffle};
 mod end;
+pub use end::{leave, stop};
 mod playback;
+pub(crate) use playback::resume_on;
+pub use playback::{
+    pause, pause_on, repeat, repeat_on, resume, seek, volume, volume_now, VolumeSet, SEEK_TIMEOUT,
+    TRACK_INFO_TIMEOUT,
+};
 mod skip;
-pub use add::*;
-pub use edit::*;
-pub use end::*;
-pub use playback::*;
-pub use skip::*;
+pub(crate) use skip::skip_on;
+pub use skip::{skip, voteskip, Vote};
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 

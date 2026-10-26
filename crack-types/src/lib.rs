@@ -3,17 +3,22 @@
 // ------------------------------------------------------------------
 pub mod discord;
 pub mod fallback;
-pub use fallback::*;
 pub mod http;
-pub use http::*;
 pub mod metadata;
-pub use metadata::*;
+pub use fallback::or_ask_ytdlp;
+pub use http::{
+    canonical_youtube_playlist_url, is_public_http_url, parse_url, ytdl_for_url, ytdl_search,
+    ytdl_url, NotAYtdlUrl, Site, YtdlSearchFailed,
+};
+pub use metadata::{
+    search_result_to_aux_metadata, video_details_to_aux_metadata, video_info_to_aux_metadata,
+    AuxMetadata, Duration, FullTrack, NewAuxMetadata, SearchResult, VideoDetails, VideoInfo,
+    YoutubeDl,
+};
 #[cfg(feature = "poise")]
 pub mod reply_handle;
-#[cfg(feature = "poise")]
-pub use reply_handle::*;
 pub mod saved_track;
-pub use saved_track::*;
+pub use saved_track::SavedTrack;
 
 use rspotify::model::SimplifiedAlbum;
 use rspotify::model::SimplifiedArtist;
