@@ -231,17 +231,63 @@ These crack-core files are the glue. They stay, and only they may name `Data`, p
 - [ ] **Step 3:** Run the suite, the doctests and the lint. All green; the count rises by one.
 - [ ] **Step 4: Commit:** `refactor(music): poise's constructors and the query modes become crack-core extension traits; queue.rs's logged entry points split out`
 
-### Task 4: The helpers move under `music/`; crack-testing drops poise; the cut is proved
+### Task 4: The helpers move under `music/`; the last poise names leave the moving set
+
+*(Amended during execution, 2026-10-26: a pre-Task-4 run of the cut grep found what the original Task 4 didn't foresee. The test fixtures moved to a new Task 5.)*
 
 **Files:**
 - Create: `crack-core/src/music/track_data.rs`, `crack-core/src/music/connected.rs`
-- Modify: `crack-core/src/utils.rs`, `crack-core/src/commands/music_utils.rs`, `crack-core/src/connection.rs` (each re-exports what left), `crack-core/src/music/mod.rs`, `crack-testing/Cargo.toml`, `Cargo.lock`
-- Modify any file in the moving set the grep below names
+- Modify:
+  - `crack-core/src/utils.rs`, `crack-core/src/commands/music_utils.rs` and `crack-core/src/connection.rs`, each re-exporting what left;
+  - `crack-core/src/music/mod.rs`, `crack-core/src/music/audit_view.rs` and `crack-core/src/commands/music/auditlog.rs`;
+  - the moving files that import `poise::serenity_prelude` or `poise::futures_util`: `music/lease.rs`, `music/mod.rs`, `music/perms.rs` and `db/play_log.rs`;
+  - `music/remote.rs` (the `DiscordTransport` import), `crack-testing/Cargo.toml` and `Cargo.lock`.
 
 **Interfaces:**
 - Produces: the helpers in "Calls" at their new paths, still reachable at the old ones.
 
-- [ ] **Step 1:** Move the helpers, add the re-exports, and drop crack-testing's poise. `cargo check --workspace --all-features` compiles, and `cargo tree -p crack-testing -e normal --prefix none | grep -E '^poise '` prints nothing.
+**Rulings for this task:**
+- **`ActionChoice` and `SourceChoice`** (`music/audit_view.rs`, ~255-345) derive `poise::ChoiceParameter`, and only the `/auditlog` command uses them. They move into `crack-core/src/commands/music/auditlog.rs` with their two `impl` blocks and their tests (`audit_view.rs`'s tests that name them, ~810-901). auditlog.rs's import changes to match.
+  - Why: once they are in crack-music, crack-core can't implement poise's trait for them, because the orphan rule forbids it.
+- **`poise::serenity_prelude`** becomes `serenity` (the `serenity` crate or `::serenity::all`, as crack-core's other files do). **`poise::futures_util::StreamExt`** becomes `futures::StreamExt`; add `futures` to nothing new if crack-core already depends on it, otherwise say so.
+- **`remote.rs`'s `crate::messaging::status::DiscordTransport`** becomes `crate::messaging::transport::DiscordTransport` (crack-common's, re-exported).
+
+- [ ] **Step 1:** Move the helpers and add the re-exports, move the two choice enums, rewrite the poise imports, and drop crack-testing's poise. Checks:
+  - `cargo check --workspace --all-features` compiles;
+  - `cargo tree -p crack-testing -e normal --prefix none | grep -E '^poise '` prints nothing;
+  - `grep -n 'poise' <the moving set's non-test code>` prints only comments.
+- [ ] **Step 2:** Run the suite, the doctests and the lint. All green, counts conserved (the choice enums' tests move, they don't disappear).
+- [ ] **Step 3: Commit:** `refactor(music): the player's helpers move under music/; /auditlog's choice enums move to the command; the moving set stops naming poise`
+
+### Task 5: The moving set's tests stop building `Data`; the cut is proved
+
+**Files:**
+- Modify:
+  - `crack-core/src/music/ops/test_support.rs`;
+  - the tests in `music/{disconnect,lease,autoplay,queue,remote}.rs`, `music/ops/{mod,add,skip}.rs` and `music/search/{mod,history,youtube}.rs`;
+  - `crack-core/src/music/core_surface.rs` and `music/data_impl.rs`, which receive tests that must stay in crack-core.
+
+**Interfaces:**
+- Produces: in `music/ops/test_support.rs` (test-only), `pub fn test_music_data() -> MusicData`. It builds every field without `Data`:
+  - each field the way `DataInner::default()` builds the same field;
+  - `guild: GuildData::default()`;
+  - `surface: Arc::new(RecordingSurface::default())`.
+  
+  Tests adjust it with struct-update syntax (`MusicData { audit_tx: Some(tx), ..test_music_data() }`).
+
+**Rulings for this task:**
+- **Tests in the moving set that build `Data`/`DataInner` only to reach music state** switch to `test_music_data()`, keeping the same assertions.
+  - Where a test called a `Data` delegation (`claim_playback`, `lock_queue`, `get_autoplay`…), it calls the same method on the `MusicData`.
+  - Where it set a guild setting through `Data`, it sets it through `music.guild`.
+- **Tests that assert what crack-core's `CoreSurface` rendered or sent** move to crack-core glue test modules with the same names, keeping `Data`:
+  - status or queue-message renders after a settle;
+  - an echo landing below the status message;
+  - anything using `messaging::{status, interface}`, e.g. `queue.rs`'s test near line 1290 and `remote.rs`'s near 604.
+  
+  Put each in `music/core_surface.rs`'s tests (settle/echo rendering) or `music/queue_logged.rs`'s tests (queue embeds), and say which.
+- A test may not be deleted. If one can't be converted or moved, report it.
+
+- [ ] **Step 1:** Add `test_music_data()`, convert or move each test as above.
 - [ ] **Step 2: Verify the cut.** Over the moving set, this prints nothing, tests included. Run it from `crack-core/src`:
   ```
   grep -nP 'crate::(Data|DataInner|Context|commands|handlers|poise_ext|config|BotConfig|utils|connection|owners|metrics|economy|coin|rooms|modlog)\b|crate::guild::data_impl|crate::db::gp\b|crate::music::(context|resume|data_impl|core_surface|from_ctx|query_modes|queue_logged)\b|crate::messaging::(status|interface|buttons|placeholder|track_failed|pins)\b|courier::(post\b|Destination|reply\b|locate|ReplySink|PoiseReplies)|\bpoise\b|\bData\b|DataInner' \
@@ -250,6 +296,6 @@ These crack-core files are the glue. They stay, and only they may name `Data`, p
   ```
   - A match in a plain comment is fine (say so in the report). An intra-doc link (`` [`Data`] ``) is not: reword it.
   - `music/mod.rs` is in the list because `MusicData` lives there. Its `mod` lines for the glue files and its `pub use context::QueryContext;` are expected: 4b-2 splits it. The grep's `crate::` patterns don't match them.
-  - A match the plan didn't foresee is a reference to cut: move the helper under `music/` with a re-export, or report it if it needs a design call.
-- [ ] **Step 3:** Run the suite, the doctests and the lint. All green, counts conserved.
-- [ ] **Step 4: Commit:** `refactor(music): the player's helpers move under music/; crack-testing drops its unused poise; the cut is complete`
+  - A match this plan didn't foresee is a reference to cut. Report it if it needs a design call.
+- [ ] **Step 3:** Run the suite, the doctests and the lint. All green, counts conserved (tests move, none disappear).
+- [ ] **Step 4: Commit:** `test(music): the player's tests build a MusicData, not Data; the cut is complete`
