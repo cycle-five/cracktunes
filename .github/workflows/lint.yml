@@ -139,6 +139,17 @@ jobs:
             exit 1
           fi
 
+      # crack-gp holds the /gp game, its saved form, its prompts and its table: it
+      # may use crack-gp, serenity and songbird, never poise or crack-core.
+      - name: crack-gp depends on no poise, crack-core, crack-economy or crack-rooms
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-gp -e normal --prefix none)
+          if echo "$tree" | grep -E '^(poise|crack-core|crack-economy|crack-rooms) '; then
+            echo "crack-gp must not depend on poise, crack-core, crack-economy or crack-rooms" >&2
+            exit 1
+          fi
+
       # crack-test-db is test tooling shared by the crates' db tests: no poise,
       # no crack-core (crack-core depends on it, not the other way round).
       - name: crack-test-db depends on no poise or crack-core
@@ -187,6 +198,16 @@ jobs:
           tree=$(cargo tree -p crack-music -e normal,dev --prefix none)
           if echo "$tree" | grep -E '^crack-core '; then
             echo "crack-music must not depend on crack-core, even in tests" >&2
+            exit 1
+          fi
+
+      # Dev-dependencies count too: `cargo test -p crack-gp` must not build crack-core.
+      - name: crack-gp has no crack-core dev-dependency
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-gp -e normal,dev --prefix none)
+          if echo "$tree" | grep -E '^crack-core '; then
+            echo "crack-gp must not depend on crack-core, even in tests" >&2
             exit 1
           fi
 
