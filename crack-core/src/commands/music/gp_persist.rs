@@ -49,8 +49,8 @@
 
 use super::gp::{
     gp_after_close, gp_play_track, gp_post, gp_rendered, gp_spawn_window_timer_secs, now,
-    user_refs, GpCard, GpClip, GpGame, GpPhase, GpPlayback, GpPlayed, GpReveal, GpRound, GpTrack,
-    GP_RESUME_WINDOW_SECS,
+    user_refs, GpCard, GpClip, GpData, GpGame, GpPhase, GpPlayback, GpPlayed, GpReveal, GpRound,
+    GpTrack, GP_RESUME_WINDOW_SECS,
 };
 use super::gp_prompts::{GpCategories, GpCategory};
 use crate::commands::music_utils::set_global_handlers_with;
@@ -144,7 +144,7 @@ pub async fn run_gp_writer(mut rx: mpsc::UnboundedReceiver<GpPersist>, pool: PgP
     }
 }
 
-impl Data {
+impl GpData {
     fn gp_persist_send(&self, msg: GpPersist) {
         if let Some(tx) = &self.gp_persist {
             if tx.send(msg).is_err() {

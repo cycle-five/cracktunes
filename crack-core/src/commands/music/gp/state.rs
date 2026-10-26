@@ -3,13 +3,14 @@ use crate::{
     db::GpOutcome,
     errors::CrackedError,
     music::PlaybackOwner,
-    CrackedResult, Data,
+    CrackedResult,
 };
 use ::serenity::all::{ChannelId, GenericChannelId, GuildId, MessageId, UserId};
 use crack_testing::ResolvedTrack;
 use rand::{seq::SliceRandom, Rng};
 use std::{
     collections::{HashMap, HashSet},
+    sync::Arc,
     time::Duration,
 };
 
@@ -1000,7 +1001,40 @@ pub enum GpStatus {
 }
 
 // ------------------------------------------------------------------
-// State helpers on Data
+// The game's state, as a handle
+// ------------------------------------------------------------------
+
+/// The game's state, as a handle that does not name `Data`. The games map is
+/// shared (same `Arc`), not copied, and `music` shares the playback lease.
+#[derive(Clone)]
+pub struct GpData {
+    pub gp_games: Arc<dashmap::DashMap<GuildId, GpGame>>,
+    pub gp_persist:
+        Option<tokio::sync::mpsc::UnboundedSender<crate::commands::music::gp_persist::GpPersist>>,
+    pub music: crate::music::MusicData,
+}
+
+impl std::fmt::Debug for GpData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GpData")
+            .field("games", &self.gp_games.len())
+            .field("persisting", &self.gp_persist.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+impl GpData {
+    fn claim_playback(&self, guild_id: GuildId, owner: PlaybackOwner) -> Result<(), CrackedError> {
+        self.music.claim_playback(guild_id, owner)
+    }
+
+    fn release_playback(&self, guild_id: GuildId) {
+        self.music.release_playback(guild_id);
+    }
+}
+
+// ------------------------------------------------------------------
+// State helpers on GpData
 // ------------------------------------------------------------------
 
 // Every helper below is synchronous: it takes the `gp_games` entry, mutates
@@ -1008,7 +1042,7 @@ pub enum GpStatus {
 // Never hold a `DashMap` ref across an await -- the track end handler runs on
 // songbird's event task and then takes the call lock, so an entry held there
 // is a deadlock waiting to happen.
-impl Data {
+impl GpData {
     /// Create the game and open round 0's window.
     #[allow(clippy::too_many_arguments)]
     pub fn gp_start(
@@ -1589,7 +1623,7 @@ impl Data {
     /// to -- wins that race every time, and the `End` still reaches the global
     /// [`TrackEndHandler`] with no game to find, which is exactly the autoplay bug
     /// this was meant to fix. Collection belongs to whoever handles that `End`;
-    /// [`Data::gp_remove_if_parked`] is how they do it. Moving out of `Playing` and
+    /// [`GpData::gp_remove_if_parked`] is how they do it. Moving out of `Playing` and
     /// bumping the generation is what stops the game's *own* handlers and timers
     /// acting on the same event.
     ///

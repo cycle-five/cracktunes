@@ -9,6 +9,7 @@
 //! the game -- see [`gp_persist`](super::gp_persist).
 
 mod commands;
+mod data_impl;
 mod playback;
 mod state;
 mod ui;

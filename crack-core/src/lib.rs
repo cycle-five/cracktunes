@@ -373,7 +373,7 @@ pub struct DataInner {
     pub guild_command_msg_queue: dashmap::DashMap<GuildId, Vec<MessageOrReplyHandle>>,
     pub guild_cnt_map: dashmap::DashMap<GuildId, u64>,
     /// Guilty pleasure games, one per guild. See `commands::music::gp`.
-    pub gp_games: dashmap::DashMap<GuildId, commands::music::gp::GpGame>,
+    pub gp_games: Arc<dashmap::DashMap<GuildId, commands::music::gp::GpGame>>,
     /// Where `gp_games` are written down, when there is a database. `None` runs
     /// the game in memory only. See `commands::music::gp_persist`.
     pub gp_persist:
@@ -649,6 +649,16 @@ impl Data {
             database_pool: self.database_pool.clone(),
             guild_settings_map: self.guild_settings_map.clone(),
             bot_prefix: self.bot_settings.get_prefix(),
+        }
+    }
+
+    /// The /gp game's state, as a handle that does not name `Data`. The games
+    /// map is shared (same `Arc`), not copied, and so is the playback lease.
+    pub fn gp_data(&self) -> commands::music::gp::GpData {
+        commands::music::gp::GpData {
+            gp_games: self.gp_games.clone(),
+            gp_persist: self.gp_persist.clone(),
+            music: self.music_data(),
         }
     }
 
@@ -969,6 +979,45 @@ msg_on_dc:     false
             music.playback_owner(guild),
             crate::music::PlaybackOwner::Game
         );
+    }
+
+    #[tokio::test]
+    async fn gp_data_shares_the_games_map_and_the_lease() {
+        use crate::commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt};
+        use crate::music::PlaybackOwner;
+        let data = Data::default();
+        let gp = data.gp_data();
+        assert!(Arc::ptr_eq(&gp.gp_games, &data.gp_games));
+        assert!(Arc::ptr_eq(
+            &gp.music.playback_owners,
+            &data.playback_owners
+        ));
+
+        let guild = serenity::GuildId::new(9);
+        data.gp_start(
+            guild,
+            serenity::UserId::new(100),
+            "alice".into(),
+            serenity::ChannelId::new(10),
+            serenity::GenericChannelId::new(20),
+            GpCategories::new([GpCategory::Nostalgia]).expect("Nostalgia has prompts"),
+            vec![GpPrompt {
+                category: GpCategory::Nostalgia,
+                text: "p1".into(),
+            }],
+            120,
+            None,
+            crate::commands::music::GpReveal::default(),
+            true,
+            1_700_000_000,
+        )
+        .expect("a game starts");
+        assert!(data.gp_data().gp_is_active(guild));
+        assert_eq!(data.playback_owner(guild), PlaybackOwner::Game);
+
+        data.gp_remove(guild);
+        assert!(!data.gp_data().gp_is_active(guild));
+        assert_eq!(data.playback_owner(guild), PlaybackOwner::Free);
     }
 }
 
