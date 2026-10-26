@@ -395,9 +395,9 @@ pub struct DataInner {
     /// tracks, which is what keeps musicatlas inside its daily budget.
     pub autoplay_buffer: Arc<crate::music::autoplay::AutoplayBuffer>,
     /// The live voice rooms; see `rooms::registry`.
-    pub rooms: crate::rooms::registry::RoomRegistry,
+    pub rooms: Arc<crate::rooms::registry::RoomRegistry>,
     /// The mod log's settings; see `modlog::registry`.
-    pub modlog: crate::modlog::registry::ModLogRegistry,
+    pub modlog: Arc<crate::modlog::registry::ModLogRegistry>,
     /// Per-server credits settings; see `economy::registry`.
     pub economy: Arc<crate::economy::registry::EconomyRegistry>,
 }
@@ -631,6 +631,17 @@ impl Data {
         }
     }
 
+    /// The three fields the voice rooms and the mod log read, as a handle
+    /// that does not name `Data`. The registries are shared (same `Arc`s),
+    /// not copied.
+    pub fn rooms_data(&self) -> crate::rooms::RoomsData {
+        crate::rooms::RoomsData {
+            database_pool: self.database_pool.clone(),
+            rooms: self.rooms.clone(),
+            modlog: self.modlog.clone(),
+        }
+    }
+
     /// Insert a guild into the guild settings map.
     pub async fn insert_guild(
         &self,
@@ -857,6 +868,19 @@ msg_on_dc:     false
         assert!(handle.database_pool.is_some());
         assert!(Arc::ptr_eq(&handle.economy, &data.economy));
         assert!(Data::default().economy_data().database_pool.is_none());
+    }
+
+    #[tokio::test]
+    async fn rooms_data_carries_the_pool_and_shares_the_registries() {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/unused")
+            .unwrap();
+        let data = Data(Arc::new(DataInner::default().with_database_pool(pool)));
+        let handle = data.rooms_data();
+        assert!(handle.database_pool.is_some());
+        assert!(Arc::ptr_eq(&handle.rooms, &data.rooms));
+        assert!(Arc::ptr_eq(&handle.modlog, &data.modlog));
+        assert!(Data::default().rooms_data().database_pool.is_none());
     }
 }
 

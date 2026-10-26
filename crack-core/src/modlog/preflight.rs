@@ -7,7 +7,7 @@
 use crate::messaging::messages::*;
 use crate::music::perms::roles_resolvable;
 use crate::rooms::card::perm_names;
-use crate::Data;
+use crate::rooms::RoomsData;
 use serenity::all::{Cache, ChannelId, GuildId, Permissions};
 
 /// What the bot needs server-wide: the audit log is not a channel thing.
@@ -63,7 +63,7 @@ pub fn preflight(
 /// member or one of its roles not cached), rather than guessing from an
 /// under-reported bitset. A configured channel the cached server does not
 /// have is reported as missing everything there.
-pub fn for_guild(cache: &Cache, data: &Data, guild: GuildId) -> Option<Vec<ModLogFinding>> {
+pub fn for_guild(cache: &Cache, data: &RoomsData, guild: GuildId) -> Option<Vec<ModLogFinding>> {
     let bot_id = cache.current_user().id;
     let g = cache.guild(guild)?;
     let bot = g.members.get(&bot_id)?;

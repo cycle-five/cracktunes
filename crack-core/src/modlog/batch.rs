@@ -34,7 +34,7 @@ use super::attribution::{advance, attribute, AuditKind, AuditRow, Change};
 use super::audit::{AuditError, AuditSource};
 use super::event::ModLogEvent;
 use super::registry::{next_fetch, GuildBatch, ModLogRegistry};
-use crate::Data;
+use crate::rooms::RoomsData;
 use serenity::all::{GuildId, UserId};
 use serenity::async_trait;
 use std::sync::Arc;
@@ -105,7 +105,7 @@ fn target_of(c: &Change) -> UserId {
 /// the bot made itself ([`super::registry::ModLogRegistry::expect_disconnect`];
 /// only a leave consumes that, never a move: M16).
 pub fn record_change(
-    data: &Data,
+    data: &RoomsData,
     audit: Arc<dyn AuditSource>,
     sink: Arc<dyn ModLogSink>,
     guild: GuildId,
@@ -141,7 +141,7 @@ pub fn record_change(
 
 /// Arm the server's debounce for `deadline`, replacing any armed one.
 fn arm(
-    data: &Data,
+    data: &RoomsData,
     audit: Arc<dyn AuditSource>,
     sink: Arc<dyn ModLogSink>,
     guild: GuildId,
@@ -404,7 +404,7 @@ fn absorb(b: &mut GuildBatch, f: &Fetched, now: Instant) {
 /// The debounced fire: attribute the pending changes and post the events.
 /// Does nothing while another fetch for the server runs.
 pub async fn flush(
-    data: &Data,
+    data: &RoomsData,
     audit: &dyn AuditSource,
     sink: &dyn ModLogSink,
     guild: GuildId,
@@ -414,7 +414,7 @@ pub async fn flush(
 }
 
 async fn flush_once(
-    data: &Data,
+    data: &RoomsData,
     audit: &dyn AuditSource,
     sink: &dyn ModLogSink,
     guild: GuildId,
@@ -572,7 +572,7 @@ fn seedable(b: &GuildBatch, now: Instant) -> bool {
 /// called (M28a; see the module docs). Pending changes that arrived before
 /// their kind's window ([`SKEW`] before its fetch) are dropped: the seed
 /// took in their units.
-pub async fn seed(data: &Data, audit: &dyn AuditSource, guild: GuildId) {
+pub async fn seed(data: &RoomsData, audit: &dyn AuditSource, guild: GuildId) {
     let reg = &data.modlog;
     let not_seeded = || {
         tracing::debug!(
@@ -642,7 +642,6 @@ mod tests {
     use crate::modlog::settings::ModLogSettings;
     use crate::modlog::test_support::{FakeAudit, FakeSink};
     use crate::modlog::{load_settings, save_settings};
-    use crate::DataInner;
     use crack_types::discord::ToRef;
     use serenity::all::ChannelId;
     use AuditKind::{Disconnect, Move};
@@ -755,7 +754,7 @@ mod tests {
     }
 
     struct W {
-        data: Data,
+        data: RoomsData,
         audit: Arc<FakeAudit>,
         sink: Arc<FakeSink>,
     }
@@ -763,7 +762,7 @@ mod tests {
     impl W {
         /// The mod log off.
         fn off() -> Self {
-            Self::with(Data(Arc::new(DataInner::default())))
+            Self::with(RoomsData::default())
         }
 
         /// The mod log on (set straight into the registry: enabling through
@@ -774,7 +773,7 @@ mod tests {
             w
         }
 
-        fn with(data: Data) -> Self {
+        fn with(data: RoomsData) -> Self {
             Self {
                 data,
                 audit: Arc::default(),
@@ -985,10 +984,10 @@ mod tests {
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     async fn a_settings_save_lifts_the_suspension_once_a_minute(pool: sqlx::PgPool) {
-        let w = W::with(Data(Arc::new(DataInner {
+        let w = W::with(RoomsData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        })));
+        });
         assert!(load_settings(&w.data, G).await);
         // On straight into the registry, so the saves below are the first.
         w.data.modlog.set_settings(on());
@@ -1219,10 +1218,10 @@ mod tests {
         crate::db::modlog::save_settings(&pool, &stored)
             .await
             .unwrap();
-        let w = W::with(Data(Arc::new(DataInner {
+        let w = W::with(RoomsData {
             database_pool: Some(pool),
             ..Default::default()
-        })));
+        });
         w.data.modlog.set_settings(on());
         w.change(left(T1));
         assert!(w.data.modlog.has_state(G));

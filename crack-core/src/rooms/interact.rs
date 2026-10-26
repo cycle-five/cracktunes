@@ -137,7 +137,7 @@ impl Live {
                 guild,
             },
             log: ChannelSink {
-                data: data.clone(),
+                data: data.rooms_data(),
                 transport: Arc::new(DiscordTransport::of(ctx)),
             },
         }

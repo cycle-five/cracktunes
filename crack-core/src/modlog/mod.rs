@@ -12,7 +12,7 @@ pub mod settings;
 #[cfg(test)]
 pub mod test_support;
 
-use crate::Data;
+use crate::rooms::RoomsData;
 use serenity::all::GuildId;
 use settings::{ModLogSettings, ModLogSettingsError};
 
@@ -31,7 +31,7 @@ pub enum ModLogSaveError {
 /// Read a server's stored settings into the registry and record that they
 /// were read (absent counts). Without a database there is nothing to read.
 /// False when the database read failed.
-pub async fn load_settings(data: &Data, g: GuildId) -> bool {
+pub async fn load_settings(data: &RoomsData, g: GuildId) -> bool {
     let Some(pool) = data.database_pool.as_ref() else {
         return true;
     };
@@ -53,7 +53,7 @@ pub async fn load_settings(data: &Data, g: GuildId) -> bool {
 /// The one way a server's mod log settings change. Validates, writes the
 /// database (when there is one), then the registry, so memory never runs
 /// ahead of what a restart would load.
-pub async fn save_settings(data: &Data, s: ModLogSettings) -> Result<(), ModLogSaveError> {
+pub async fn save_settings(data: &RoomsData, s: ModLogSettings) -> Result<(), ModLogSaveError> {
     if data.database_pool.is_some() && !data.modlog.loaded(s.guild) {
         return Err(ModLogSaveError::NotLoaded);
     }
@@ -80,9 +80,7 @@ pub async fn save_settings(data: &Data, s: ModLogSettings) -> Result<(), ModLogS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DataInner;
     use serenity::all::ChannelId;
-    use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
 
@@ -98,7 +96,7 @@ mod tests {
 
     #[tokio::test]
     async fn save_refuses_invalid_and_leaves_registry() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = RoomsData::default();
         let before = data.modlog.settings(G);
         assert_eq!(
             save_settings(&data, on()).await,
@@ -110,7 +108,7 @@ mod tests {
 
     #[tokio::test]
     async fn disabling_without_a_pool_is_allowed() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = RoomsData::default();
         let off = ModLogSettings {
             channel: Some(ChannelId::new(7)),
             ..ModLogSettings::off(G)
@@ -133,10 +131,10 @@ mod tests {
         crate::db::modlog::save_settings(&pool, &stored)
             .await
             .unwrap();
-        let data = Data(Arc::new(DataInner {
+        let data = RoomsData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
+        };
         assert_eq!(
             save_settings(&data, on()).await,
             Err(ModLogSaveError::NotLoaded)

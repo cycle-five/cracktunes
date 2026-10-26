@@ -1150,12 +1150,12 @@ mod tests {
             w.enable_mod_log();
             let audit = Arc::new(FakeAudit::default());
             let sink = Arc::new(FakeSink::default());
-            seed(&w.data, audit.as_ref(), G).await;
+            seed(&w.data.rooms_data(), audit.as_ref(), G).await;
             let leave = {
                 let (data, audit, sink) = (w.data.clone(), audit.clone(), sink.clone());
                 move |target: UserId| {
                     record_change(
-                        &data,
+                        &data.rooms_data(),
                         audit.clone(),
                         sink.clone(),
                         G,

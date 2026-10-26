@@ -537,7 +537,7 @@ impl Backend for LiveBackend {
         };
         let findings = s
             .channel
-            .and_then(|_| for_guild(&self.deps.cache, &self.deps.data, g))
+            .and_then(|_| for_guild(&self.deps.cache, &self.deps.data.rooms_data(), g))
             .map(|found| {
                 found
                     .iter()
@@ -585,14 +585,14 @@ impl Backend for LiveBackend {
             enabled: f.enabled,
             channel,
         };
-        save_settings(&self.deps.data, settings)
+        save_settings(&self.deps.data.rooms_data(), settings)
             .await
             .map_err(|e| match e {
                 ModLogSaveError::Invalid(e) => ModLogSaveRefused::Invalid(e),
                 ModLogSaveError::Db => ModLogSaveRefused::Failed,
                 ModLogSaveError::NotLoaded => ModLogSaveRefused::NotLoaded,
             })?;
-        after_save(&self.deps.data, self.deps.http.clone(), g);
+        after_save(&self.deps.data.rooms_data(), self.deps.http.clone(), g);
         tracing::info!(guild = %g, user = %user, "dashboard saved mod log settings");
         Ok(self.mod_log_settings(g.to_ref()).await)
     }

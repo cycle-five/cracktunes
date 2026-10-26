@@ -78,7 +78,11 @@ pub(crate) fn status_text(
 
 fn current_status(ctx: Context<'_>, guild: GuildId) -> String {
     let settings = ctx.data().modlog.settings(guild);
-    let findings = preflight::for_guild(&ctx.serenity_context().cache, &ctx.data(), guild);
+    let findings = preflight::for_guild(
+        &ctx.serenity_context().cache,
+        &ctx.data().rooms_data(),
+        guild,
+    );
     status_text(
         &settings,
         findings.as_deref(),
@@ -97,10 +101,10 @@ async fn save_and_say(
     guild: GuildId,
     settings: ModLogSettings,
 ) -> Result<(), Error> {
-    match save_settings(&ctx.data(), settings).await {
+    match save_settings(&ctx.data().rooms_data(), settings).await {
         Ok(()) => {
             crate::modlog::live::after_save(
-                &ctx.data(),
+                &ctx.data().rooms_data(),
                 ctx.serenity_context().http.clone(),
                 guild,
             );
