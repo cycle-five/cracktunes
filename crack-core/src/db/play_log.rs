@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 
-use poise::futures_util::StreamExt;
-use poise::serenity_prelude as serenity;
+use futures::StreamExt;
+use serenity::all as serenity;
 use sqlx::types::chrono::NaiveDateTime;
 use sqlx::{Error, PgPool};
 

@@ -3,6 +3,7 @@ pub mod audit_view;
 pub mod autoplay;
 #[cfg(test)]
 mod autoplay_probe;
+pub mod connected;
 pub mod context;
 pub mod core_surface;
 mod data_impl;
@@ -19,6 +20,7 @@ pub mod remote;
 pub mod resume;
 pub mod search;
 pub mod surface;
+pub mod track_data;
 
 pub use context::QueryContext;
 pub use lease::{PlaybackOwner, QueueGuard};
@@ -39,16 +41,13 @@ pub struct MusicData {
     pub autoplay_buffer: std::sync::Arc<autoplay::AutoplayBuffer>,
     pub guild_cache_map: std::sync::Arc<
         tokio::sync::Mutex<
-            std::collections::HashMap<
-                poise::serenity_prelude::GuildId,
-                crate::guild::cache::GuildCache,
-            >,
+            std::collections::HashMap<serenity::all::GuildId, crate::guild::cache::GuildCache>,
         >,
     >,
     pub playback_owners:
-        std::sync::Arc<dashmap::DashMap<poise::serenity_prelude::GuildId, lease::PlaybackOwner>>,
+        std::sync::Arc<dashmap::DashMap<serenity::all::GuildId, lease::PlaybackOwner>>,
     pub queue_locks: std::sync::Arc<
-        dashmap::DashMap<poise::serenity_prelude::GuildId, std::sync::Arc<tokio::sync::Mutex<()>>>,
+        dashmap::DashMap<serenity::all::GuildId, std::sync::Arc<tokio::sync::Mutex<()>>>,
     >,
     pub guild: crate::guild::operations::GuildData,
     pub surface: std::sync::Arc<dyn surface::Surface>,

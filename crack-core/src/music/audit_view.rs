@@ -4,7 +4,7 @@
 use crate::messaging::messages::{
     AUDITLOG_GP_HIDDEN, AUDITLOG_TRUNCATED, PATREON_URL, PREMIUM_HISTORY,
 };
-use crate::music::audit::{Action, Source, TrackRef};
+use crate::music::audit::{Action, TrackRef};
 use chrono::{DateTime, Duration, Utc};
 
 /// The most entries one `/auditlog` reply shows.
@@ -249,97 +249,6 @@ pub fn compose_auditlog(
     }
     lines.extend(rows.iter().map(audit_line));
     AuditlogReply::Lines(lines)
-}
-
-/// The `action` option's choices: exactly the names the recorder writes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, poise::ChoiceParameter)]
-pub enum ActionChoice {
-    Add,
-    Remove,
-    Move,
-    Skip,
-    Clear,
-    Shuffle,
-    Stop,
-    Pause,
-    Resume,
-    Repeat,
-    Leave,
-}
-
-impl ActionChoice {
-    /// The stored `action` value this choice filters on.
-    #[must_use]
-    pub fn name(self) -> &'static str {
-        match self {
-            ActionChoice::Add => "add",
-            ActionChoice::Remove => "remove",
-            ActionChoice::Move => "move",
-            ActionChoice::Skip => "skip",
-            ActionChoice::Clear => "clear",
-            ActionChoice::Shuffle => "shuffle",
-            ActionChoice::Stop => "stop",
-            ActionChoice::Pause => "pause",
-            ActionChoice::Resume => "resume",
-            ActionChoice::Repeat => "repeat",
-            ActionChoice::Leave => "leave",
-        }
-    }
-
-    /// The choice whose stored name is `s` (lowercase, as recorded).
-    #[must_use]
-    pub fn from_name(s: &str) -> Option<ActionChoice> {
-        Some(match s {
-            "add" => ActionChoice::Add,
-            "remove" => ActionChoice::Remove,
-            "move" => ActionChoice::Move,
-            "skip" => ActionChoice::Skip,
-            "clear" => ActionChoice::Clear,
-            "shuffle" => ActionChoice::Shuffle,
-            "stop" => ActionChoice::Stop,
-            "pause" => ActionChoice::Pause,
-            "resume" => ActionChoice::Resume,
-            "repeat" => ActionChoice::Repeat,
-            "leave" => ActionChoice::Leave,
-            _ => return None,
-        })
-    }
-}
-
-/// The `source` option's choices.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, poise::ChoiceParameter)]
-pub enum SourceChoice {
-    Slash,
-    Prefix,
-    Web,
-    Button,
-    Bot,
-}
-
-impl SourceChoice {
-    #[must_use]
-    pub fn source(self) -> Source {
-        match self {
-            SourceChoice::Slash => Source::Slash,
-            SourceChoice::Prefix => Source::Prefix,
-            SourceChoice::Web => Source::Web,
-            SourceChoice::Button => Source::Button,
-            SourceChoice::Bot => Source::Bot,
-        }
-    }
-
-    /// The choice whose stored spelling is `s`: `slash`, `prefix`, `web`, `button`, `bot`.
-    #[must_use]
-    pub fn from_name(s: &str) -> Option<SourceChoice> {
-        Some(match s {
-            "slash" => SourceChoice::Slash,
-            "prefix" => SourceChoice::Prefix,
-            "web" => SourceChoice::Web,
-            "button" => SourceChoice::Button,
-            "bot" => SourceChoice::Bot,
-            _ => return None,
-        })
-    }
 }
 
 #[cfg(test)]
@@ -761,46 +670,6 @@ mod test {
     }
 
     #[test]
-    fn action_choices_match_action_names() {
-        let tr = t("a");
-        let pairs = [
-            (
-                ActionChoice::Add,
-                Action::Add {
-                    tracks: vec![],
-                    at: crate::music::audit::AddAt::Back,
-                },
-            ),
-            (
-                ActionChoice::Remove,
-                Action::Remove {
-                    track: tr.clone(),
-                    index: 0,
-                },
-            ),
-            (
-                ActionChoice::Move,
-                Action::Move {
-                    track: tr.clone(),
-                    from: 0,
-                    to: 1,
-                },
-            ),
-            (ActionChoice::Skip, Action::Skip { track: None }),
-            (ActionChoice::Clear, Action::Clear { removed: 0 }),
-            (ActionChoice::Shuffle, Action::Shuffle { count: 0 }),
-            (ActionChoice::Stop, Action::Stop { removed: 0 }),
-            (ActionChoice::Pause, Action::Pause),
-            (ActionChoice::Resume, Action::Resume),
-            (ActionChoice::Repeat, Action::Repeat { on: true }),
-            (ActionChoice::Leave, Action::Leave { discarded: 0 }),
-        ];
-        for (c, a) in pairs {
-            assert_eq!(c.name(), a.name());
-        }
-    }
-
-    #[test]
     fn a_button_row_reads_button() {
         let r = row(
             "button",
@@ -809,23 +678,6 @@ mod test {
             Action::Skip { track: None },
         );
         assert_eq!(how_text(&r), "button");
-        assert_eq!(
-            SourceChoice::from_name("button"),
-            Some(SourceChoice::Button)
-        );
-    }
-
-    #[test]
-    fn source_choices_match_source_names() {
-        for (c, s) in [
-            (SourceChoice::Slash, Source::Slash),
-            (SourceChoice::Prefix, Source::Prefix),
-            (SourceChoice::Web, Source::Web),
-            (SourceChoice::Button, Source::Button),
-            (SourceChoice::Bot, Source::Bot),
-        ] {
-            assert_eq!(c.source(), s);
-        }
     }
 
     #[test]
@@ -874,45 +726,5 @@ mod test {
     fn repeat_is_described_and_filterable() {
         assert_eq!(what_text(&Action::Repeat { on: true }), "repeat on");
         assert_eq!(what_text(&Action::Repeat { on: false }), "repeat off");
-        assert_eq!(
-            ActionChoice::from_name("repeat"),
-            Some(ActionChoice::Repeat)
-        );
-        assert_eq!(ActionChoice::Repeat.name(), "repeat");
-    }
-
-    #[test]
-    fn choices_round_trip_through_their_names() {
-        for c in [
-            ActionChoice::Add,
-            ActionChoice::Remove,
-            ActionChoice::Move,
-            ActionChoice::Skip,
-            ActionChoice::Clear,
-            ActionChoice::Shuffle,
-            ActionChoice::Stop,
-            ActionChoice::Pause,
-            ActionChoice::Resume,
-            ActionChoice::Repeat,
-            ActionChoice::Leave,
-        ] {
-            assert_eq!(ActionChoice::from_name(c.name()), Some(c));
-        }
-        assert_eq!(ActionChoice::from_name("dance"), None);
-        assert_eq!(
-            ActionChoice::from_name("Move"),
-            None,
-            "stored names are lowercase"
-        );
-        for c in [
-            SourceChoice::Slash,
-            SourceChoice::Prefix,
-            SourceChoice::Web,
-            SourceChoice::Button,
-            SourceChoice::Bot,
-        ] {
-            assert_eq!(SourceChoice::from_name(c.source().as_str()), Some(c));
-        }
-        assert_eq!(SourceChoice::from_name("email"), None);
     }
 }

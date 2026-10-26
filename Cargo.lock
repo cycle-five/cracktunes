@@ -1311,7 +1311,6 @@ dependencies = [
  "dashmap 6.2.1",
  "futures",
  "once_cell",
- "poise",
  "rand 0.10.3",
  "reqwest 0.12.28",
  "rspotify",

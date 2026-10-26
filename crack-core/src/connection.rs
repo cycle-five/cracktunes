@@ -35,16 +35,7 @@ pub fn check_voice_connections(guild: &Guild, user_id: &UserId, bot_id: &UserId)
     }
 }
 
-/// Get the voice channel a user is in within a guild.
-/// # Errors
-/// * If the user is not in a voice channel in the guild.
-pub fn get_voice_channel_for_user(guild: &Guild, user_id: &UserId) -> Result<ChannelId, Error> {
-    guild
-        .voice_states
-        .get(user_id)
-        .and_then(|voice_state| voice_state.channel_id)
-        .ok_or(CrackedError::NotConnected.into())
-}
+pub use crate::music::connected::get_voice_channel_for_user;
 
 /// Get the voice channel a user is in within a guild, return a different error than normal
 /// for the summoning case.

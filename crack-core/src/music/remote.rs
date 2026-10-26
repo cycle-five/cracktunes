@@ -8,7 +8,7 @@
 use crate::messaging::cards::{EchoLine, Via};
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::RenderCx;
-use crate::messaging::status::DiscordTransport;
+use crate::messaging::transport::DiscordTransport;
 use crate::music::{audit::Actor, ops, MusicData, PlaybackOwner, QueueGuard};
 use crate::{
     commands::music_utils::connected_call,

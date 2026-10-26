@@ -77,7 +77,7 @@
 
 use crate::errors::CrackedError;
 use dashmap::mapref::entry::Entry;
-use poise::serenity_prelude::GuildId;
+use serenity::all::GuildId;
 use std::sync::Arc;
 use tokio::sync::{Mutex, OwnedMutexGuard};
 

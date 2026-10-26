@@ -2,9 +2,10 @@
 //! one becomes the other. Pure, apart from the name memo's clock.
 //! Spec: docs/superpowers/specs/2026-10-02-dashboard-history-design.md
 
+use crack_core::commands::music::auditlog::{ActionChoice, SourceChoice};
 use crack_core::db::queue_audit::{AuditCursor, AuditPageRow};
 use crack_core::music::audit_view::{
-    hidden_by_game, how_text, older_than_floor, parse_since, what_text, ActionChoice, SourceChoice,
+    hidden_by_game, how_text, older_than_floor, parse_since, what_text,
 };
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
