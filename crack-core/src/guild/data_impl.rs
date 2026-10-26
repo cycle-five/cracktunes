@@ -276,8 +276,13 @@ mod test {
         data.set_volume(guild_id, 0.5).await;
         assert_eq!(handle.get_volume(guild_id).await.0, 0.5);
         // 🪤 Reports the stored value and writes nothing, as it always has.
-        assert!(!data.set_reply_with_embed(guild_id, true).await);
-        assert!(!handle.get_reply_with_embed(guild_id).await);
+        // The stored value is `true` and the argument `false`, so a stub that
+        // returns `false` fails here, and so does one that writes the argument.
+        let mut embedded = handle.get_guild_settings(guild_id).await.expect("stored");
+        embedded.reply_with_embed = true;
+        handle.set_guild_settings(guild_id, embedded).await;
+        assert!(data.set_reply_with_embed(guild_id, false).await);
+        assert!(handle.get_reply_with_embed(guild_id).await);
         data.ensure_settings_loaded(guild_id)
             .await
             .expect("no pool, nothing to load");
@@ -287,6 +292,20 @@ mod test {
         assert!(handle.get_control_echoes(guild_id).await);
         assert!(data.toggle_now_playing_buttons(guild_id).await.unwrap());
         assert!(handle.get_now_playing_buttons(guild_id).await);
+    }
+
+    /// The guard fails closed: with a pool that cannot connect and no persisted
+    /// settings, `Data` must report the load error rather than `Ok(())`.
+    #[tokio::test]
+    async fn data_ensure_settings_loaded_fails_closed_without_a_reachable_pool() {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .acquire_timeout(std::time::Duration::from_millis(200))
+            .connect_lazy("postgres://127.0.0.1:1/x")
+            .expect("lazy pool");
+        let data = Data(std::sync::Arc::new(
+            crate::DataInner::default().with_database_pool(pool),
+        ));
+        assert!(data.ensure_settings_loaded(GuildId::new(7)).await.is_err());
     }
 
     /// 🔑 The regression this whole change exists to prevent: a NEW command that

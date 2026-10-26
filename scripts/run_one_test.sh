@@ -1,7 +1,6 @@
 cargo test \
-	--package crack-core \
-	--lib \
-	--features crack-osint --features crack-bf \
+	--package crack-guild \
+	--features db-tests \
 	-- db::guild::test::test_update_prefix \
 	--exact \
 	--show-output

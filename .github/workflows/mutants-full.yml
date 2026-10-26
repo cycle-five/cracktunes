@@ -9,7 +9,7 @@ name: Mutants (module pass)
 # Dispatch it with a file glob (several globs: separate them with commas):
 #
 #   gh workflow run mutants-full.yml -f files='crack-economy/src/**'
-#   gh workflow run mutants-full.yml -f files='crack-core/src/db/**,crack-core/src/guild/**' -f shards=12
+#   gh workflow run mutants-full.yml -f files='crack-guild/src/**,crack-core/src/db/**' -f shards=12
 #
 # Each glob becomes its own `-f` for cargo-mutants. `files` is required: with
 # no glob the run is the whole tree, which is about 35 hours, so the plan job
