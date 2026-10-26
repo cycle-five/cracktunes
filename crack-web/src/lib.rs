@@ -492,7 +492,7 @@ impl Backend for LiveBackend {
             default_limit: f.default_limit,
             empty_grace_secs: f.empty_grace_secs,
         };
-        save_settings(&self.deps.data, settings)
+        save_settings(&self.deps.data.rooms_data(), settings)
             .await
             .map_err(|e| match e {
                 SettingsSaveError::Invalid(e) => SaveRefused::Invalid(e),

@@ -24,6 +24,7 @@ use super::ids::{field, ButtonId, ModalId, RoomButton, RoomModal};
 use super::ops::{act, target_standing, user_target, validate, RoomCx};
 use super::settings::ROOM_NAME_MAX;
 use super::state::RoomState;
+use super::RoomsData;
 use crate::messaging::courier;
 use crate::messaging::format::clip;
 use crate::messaging::message::CrackedMessage;
@@ -42,7 +43,6 @@ use crate::messaging::messages::{
 use crate::messaging::render::RenderCx;
 use crate::messaging::transport::{DiscordModalPress, DiscordPress, DiscordTransport, Press};
 use crate::modlog::live::ChannelSink;
-use crate::Data;
 // Modal select menus are Discord input, not neutral output (spec: modals stay Discord).
 #[expect(
     clippy::disallowed_types,
@@ -125,7 +125,7 @@ pub(crate) struct Live {
 }
 
 impl Live {
-    pub(crate) fn of(ctx: &serenity::all::Context, data: &Data, guild: GuildId) -> Self {
+    pub(crate) fn of(ctx: &serenity::all::Context, data: &RoomsData, guild: GuildId) -> Self {
         Self {
             discord: LiveRoomsDiscord {
                 http: ctx.http.clone(),
@@ -137,13 +137,13 @@ impl Live {
                 guild,
             },
             log: ChannelSink {
-                data: data.rooms_data(),
+                data: data.clone(),
                 transport: Arc::new(DiscordTransport::of(ctx)),
             },
         }
     }
 
-    pub(crate) fn cx<'a>(&'a self, data: &'a Data) -> RoomCx<'a> {
+    pub(crate) fn cx<'a>(&'a self, data: &'a RoomsData) -> RoomCx<'a> {
         RoomCx {
             data,
             discord: &self.discord,
@@ -154,7 +154,11 @@ impl Live {
 }
 
 /// A press on a `room:` button.
-pub async fn handle_press(data: &Data, ctx: &serenity::all::Context, i: &ComponentInteraction) {
+pub async fn handle_press(
+    data: &RoomsData,
+    ctx: &serenity::all::Context,
+    i: &ComponentInteraction,
+) {
     let press = DiscordPress {
         http: &ctx.http,
         interaction: i,
@@ -182,7 +186,7 @@ pub async fn handle_press(data: &Data, ctx: &serenity::all::Context, i: &Compone
 }
 
 /// A submit of a `roomm:` modal.
-pub async fn handle_submit(data: &Data, ctx: &serenity::all::Context, i: &ModalInteraction) {
+pub async fn handle_submit(data: &RoomsData, ctx: &serenity::all::Context, i: &ModalInteraction) {
     let press = DiscordModalPress {
         http: &ctx.http,
         interaction: i,
@@ -768,7 +772,7 @@ pub(crate) async fn respond_submit(
 
 /// A copy of the room's state, if it is registered in `guild`. The room's
 /// lock is held only to copy it.
-async fn room_state(data: &Data, room: ChannelId, guild: GuildId) -> Option<RoomState> {
+async fn room_state(data: &RoomsData, room: ChannelId, guild: GuildId) -> Option<RoomState> {
     let handle = data.rooms.get(room)?;
     let live = handle.lock().await;
     (live.guild == guild).then(|| live.state.clone())
@@ -820,7 +824,6 @@ mod tests {
     use crate::rooms::registry::{LiveRoom, RenameWindow};
     use crate::rooms::state::{OverwriteTarget, StoredOverwrite};
     use crate::rooms::test_support::{Call, FakeRoomsDiscord};
-    use crate::DataInner;
     use serde_json::Value;
     use serenity::all::{MessageId, ModalInteractionData, Permissions};
     use std::sync::Mutex;
@@ -933,7 +936,7 @@ mod tests {
     }
 
     struct World {
-        data: Data,
+        data: RoomsData,
         discord: FakeRoomsDiscord,
         transport: FakeTransport,
         press: Arc<FakePress>,
@@ -942,9 +945,7 @@ mod tests {
 
     impl World {
         fn new(room: LiveRoom) -> Self {
-            let data = Data(Arc::new(DataInner {
-                ..Default::default()
-            }));
+            let data = RoomsData::default();
             data.rooms.insert(room);
             let press = Arc::new(FakePress::default());
             Self {

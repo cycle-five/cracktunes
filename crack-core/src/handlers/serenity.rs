@@ -135,7 +135,13 @@ impl EventHandler for SerenityHandler {
                 }
                 // Then voice rooms: the handler below returns early for
                 // anyone but the bot.
-                crate::rooms::lifecycle::on_voice_state(&self.data, ctx, old.as_ref(), new).await;
+                crate::rooms::lifecycle::on_voice_state(
+                    &self.data.rooms_data(),
+                    ctx,
+                    old.as_ref(),
+                    new,
+                )
+                .await;
                 self.on_voice_state_update(ctx.clone(), old.clone(), new.clone())
                     .await;
             },
@@ -163,7 +169,8 @@ impl EventHandler for SerenityHandler {
             },
             // A voice room deleted by hand drops its row and its timer.
             FullEvent::ChannelDelete { channel, .. } => {
-                crate::rooms::lifecycle::on_channel_delete(&self.data, channel.id).await;
+                crate::rooms::lifecycle::on_channel_delete(&self.data.rooms_data(), channel.id)
+                    .await;
             },
             FullEvent::CacheReady { guilds } => {
                 self.on_cache_ready(ctx.clone(), guilds.clone()).await;
@@ -196,7 +203,7 @@ impl EventHandler for SerenityHandler {
                 .custom_id
                 .starts_with(crate::rooms::ids::ROOM_PREFIX) =>
             {
-                crate::rooms::interact::handle_press(&self.data, ctx, mci).await;
+                crate::rooms::interact::handle_press(&self.data.rooms_data(), ctx, mci).await;
             },
             FullEvent::InteractionCreate {
                 interaction: Interaction::Modal(mi),
@@ -205,7 +212,7 @@ impl EventHandler for SerenityHandler {
                 .custom_id
                 .starts_with(crate::rooms::ids::ROOM_MODAL_PREFIX) =>
             {
-                crate::rooms::interact::handle_submit(&self.data, ctx, mi).await;
+                crate::rooms::interact::handle_submit(&self.data.rooms_data(), ctx, mi).await;
             },
             // Prank card buttons (`econ:`), and the modal Rename them back
             // opens (`econm:`). Neither prefix starts with the other.
@@ -613,7 +620,8 @@ impl SerenityHandler {
         // rooms stay off. A failed read leaves rooms off and room settings
         // unsaveable for the server until a read succeeds: reconcile below
         // tries again, then once more a minute later.
-        if let Err(err) = crate::rooms::ops::load_settings(&self.data, guild.id).await {
+        if let Err(err) = crate::rooms::ops::load_settings(&self.data.rooms_data(), guild.id).await
+        {
             tracing::warn!(
                 "rooms: loading the room settings of {} failed: {err}",
                 guild.id
@@ -677,7 +685,7 @@ impl SerenityHandler {
         crate::music::resume::queue_resume_guild(&self.data, &ctx, &guild).await;
         // Voice rooms: drop rows for vanished channels, sweep empty rooms,
         // give the hub's occupants rooms. Runs on every reconnect too.
-        crate::rooms::lifecycle::reconcile_guild(&self.data, &ctx, &guild).await;
+        crate::rooms::lifecycle::reconcile_guild(&self.data.rooms_data(), &ctx, &guild).await;
     }
 
     // We use the cache_ready event just in case some cache operation is required in whatever use

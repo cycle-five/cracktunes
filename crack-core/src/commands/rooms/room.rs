@@ -74,9 +74,10 @@ async fn perform(
             .await
             .ok_or(RoomRefusal::DiscordFailed)?;
     }
-    let live = Live::of(sctx, &data, guild);
+    let rooms = data.rooms_data();
+    let live = Live::of(sctx, &rooms, guild);
     act(
-        &live.cx(&data),
+        &live.cx(&rooms),
         &facts,
         room,
         invoker,

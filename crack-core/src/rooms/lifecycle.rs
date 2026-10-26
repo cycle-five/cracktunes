@@ -11,11 +11,11 @@ use super::overwrites::{diff, room_overwrites, OverwriteChange};
 use super::registry::{LiveRoom, RenameWindow};
 use super::settings::{render_room_name, RoomSettings};
 use super::state::{RoomState, StoredOverwrite};
+use super::RoomsData;
 use crate::db::rooms::StoredRoom;
 use crate::messaging::messages::ROOM_NAME_FALLBACK;
 use crate::messaging::transport::DiscordTransport;
 use crate::modlog::batch::NoopSink;
-use crate::Data;
 use dashmap::DashSet;
 use serenity::all::{Cache, ChannelId, Context, Guild, GuildId, Timestamp, UserId, VoiceState};
 use std::collections::{HashMap, HashSet};
@@ -311,7 +311,7 @@ pub async fn hub_join(
 /// lets go of it, under the room's lock (as [`RoomRegistry::remove`] does).
 ///
 /// [`RoomRegistry::remove`]: super::registry::RoomRegistry::remove
-async fn kicked_from(data: &Data, guild: GuildId, user: UserId, room: ChannelId) -> bool {
+async fn kicked_from(data: &RoomsData, guild: GuildId, user: UserId, room: ChannelId) -> bool {
     let Some(handle) = data.rooms.get(room) else {
         return false;
     };
@@ -427,7 +427,7 @@ fn refused(guild: GuildId, what: &str, err: DiscordError, otherwise: &'static st
 
 /// A room whose setup failed: out of the registry under its lock (handed
 /// over by the caller), then its channel and row deleted.
-async fn abandon(data: &Data, sweep: &Sweep, live: MutexGuard<'_, LiveRoom>) {
+async fn abandon(data: &RoomsData, sweep: &Sweep, live: MutexGuard<'_, LiveRoom>) {
     let room = live.channel;
     data.rooms.remove(room);
     drop(live);
@@ -438,7 +438,7 @@ async fn abandon(data: &Data, sweep: &Sweep, live: MutexGuard<'_, LiveRoom>) {
 /// in it. A refusal is retried every [`DELETE_RETRY`], up to
 /// [`DELETE_ATTEMPTS`] in all, in a task of its own: a join must not cancel
 /// the deletion of a room that was never set up.
-async fn discard(data: &Data, sweep: &Sweep, room: ChannelId) {
+async fn discard(data: &RoomsData, sweep: &Sweep, room: ChannelId) {
     if destroy(data, &*sweep.discord, room, 1).await {
         return;
     }
@@ -458,7 +458,12 @@ async fn discard(data: &Data, sweep: &Sweep, room: ChannelId) {
 }
 
 /// One try at deleting a channel, then its row. Whether it is gone.
-async fn destroy(data: &Data, discord: &dyn RoomsDiscord, room: ChannelId, attempt: u32) -> bool {
+async fn destroy(
+    data: &RoomsData,
+    discord: &dyn RoomsDiscord,
+    room: ChannelId,
+    attempt: u32,
+) -> bool {
     match discord.delete_channel(room).await {
         Ok(()) | Err(DiscordError::UnknownChannel) => {
             drop_row(data, room).await;
@@ -488,7 +493,7 @@ fn give_up_or_retry(room: ChannelId, attempt: u32, err: &DiscordError) {
 
 /// If no human is in `room`, delete it after `grace`, unless one joins first.
 pub fn schedule_if_empty(
-    data: &Data,
+    data: &RoomsData,
     discord: Arc<dyn RoomsDiscord>,
     occupancy: Arc<dyn Occupancy>,
     guild: GuildId,
@@ -509,7 +514,7 @@ pub fn schedule_if_empty(
 /// Arm the room's pending deletion: attempt number `attempt`, after `wait`.
 /// A join to the room aborts it.
 fn arm_deletion(
-    data: &Data,
+    data: &RoomsData,
     sweep: &Sweep,
     guild: GuildId,
     room: ChannelId,
@@ -541,11 +546,17 @@ fn arm_deletion(
 /// channel already gone counts as deleted. Any other failure keeps it all
 /// and retries ([`DELETE_RETRY`], [`DELETE_ATTEMPTS`] in all), then leaves
 /// it to the next reconcile. Works on a room the registry does not hold too.
-pub async fn delete_room(data: &Data, sweep: &Sweep, guild: GuildId, room: ChannelId) {
+pub async fn delete_room(data: &RoomsData, sweep: &Sweep, guild: GuildId, room: ChannelId) {
     delete_attempt(data, sweep, guild, room, 1).await;
 }
 
-async fn delete_attempt(data: &Data, sweep: &Sweep, guild: GuildId, room: ChannelId, attempt: u32) {
+async fn delete_attempt(
+    data: &RoomsData,
+    sweep: &Sweep,
+    guild: GuildId,
+    room: ChannelId,
+    attempt: u32,
+) {
     let handle = data.rooms.get(room);
     // `RoomRegistry::remove` is called under the room's lock.
     let _held = match &handle {
@@ -572,14 +583,14 @@ async fn delete_attempt(data: &Data, sweep: &Sweep, guild: GuildId, room: Channe
 }
 
 /// A channel was deleted, by anyone. A room's registry entry, timer and row go.
-pub async fn on_channel_delete(data: &Data, channel: ChannelId) {
+pub async fn on_channel_delete(data: &RoomsData, channel: ChannelId) {
     if data.rooms.get(channel).is_some() {
         forget(data, channel).await;
     }
 }
 
 /// Forget a room whose channel is gone: registry, owner, timer, row.
-async fn forget(data: &Data, room: ChannelId) {
+async fn forget(data: &RoomsData, room: ChannelId) {
     if let Some(handle) = data.rooms.get(room) {
         let _held = handle.lock().await;
         data.rooms.remove(room);
@@ -587,7 +598,7 @@ async fn forget(data: &Data, room: ChannelId) {
     drop_row(data, room).await;
 }
 
-async fn drop_row(data: &Data, room: ChannelId) {
+async fn drop_row(data: &RoomsData, room: ChannelId) {
     let Some(pool) = data.database_pool.as_ref() else {
         return;
     };
@@ -601,7 +612,7 @@ fn grace_of(settings: &RoomSettings) -> Duration {
 }
 
 /// Sweep `room` if it is empty, after `grace`.
-fn sweep_after(data: &Data, sweep: &Sweep, guild: GuildId, room: ChannelId, grace: Duration) {
+fn sweep_after(data: &RoomsData, sweep: &Sweep, guild: GuildId, room: ChannelId, grace: Duration) {
     schedule_if_empty(
         data,
         sweep.discord.clone(),
@@ -617,7 +628,7 @@ fn sweep_after(data: &Data, sweep: &Sweep, guild: GuildId, room: ChannelId, grac
 /// for a human, a room joined is no longer. The channel a human joined, for
 /// the hub check; `None` for a bot.
 pub fn room_voice_change(
-    data: &Data,
+    data: &RoomsData,
     sweep: &Sweep,
     guild: GuildId,
     change: VoiceChange,
@@ -643,7 +654,13 @@ pub fn room_voice_change(
 /// the move's voice update arrived saw no leave, so it is swept, given at
 /// least [`SETTLE`] for that update to land and cancel it. A failed move into
 /// their own room left it as empty as it was.
-fn after_hub_join(data: &Data, sweep: &Sweep, guild: GuildId, user: UserId, outcome: HubOutcome) {
+fn after_hub_join(
+    data: &RoomsData,
+    sweep: &Sweep,
+    guild: GuildId,
+    user: UserId,
+    outcome: HubOutcome,
+) {
     let grace = grace_of(&data.rooms.settings(guild));
     match outcome {
         HubOutcome::Created(room) => sweep_after(data, sweep, guild, room, grace.max(SETTLE)),
@@ -829,7 +846,7 @@ impl Sweep {
 
 /// Every voice state update, before the bot-only handler.
 pub async fn on_voice_state(
-    data: &Data,
+    data: &RoomsData,
     ctx: &Context,
     old: Option<&VoiceState>,
     new: &VoiceState,
@@ -872,7 +889,7 @@ fn is_bot(cache: &Cache, guild: GuildId, vs: &VoiceState) -> bool {
 
 /// A hub join with what the cache says now.
 async fn hub_join_live(
-    data: &Data,
+    data: &RoomsData,
     ctx: &Context,
     sweep: &Sweep,
     guild: GuildId,
@@ -910,7 +927,7 @@ async fn hub_join_live(
 /// Spec 1.3 step 2: wait out the cooldown, then go again if they are still
 /// in the hub.
 fn recheck_after(
-    data: Data,
+    data: RoomsData,
     ctx: Context,
     sweep: Sweep,
     guild: GuildId,
@@ -945,7 +962,7 @@ fn voice_channel_of(cache: &Cache, guild: GuildId, user: UserId) -> Option<Chann
 /// room settings (unread at `GuildCreate`), cannot be read, it is tried once
 /// more a minute later. Rows read without the settings are reconciled at
 /// once: their empty rooms are swept, and only the hub waits.
-pub async fn reconcile_guild(data: &Data, ctx: &Context, guild: &Guild) {
+pub async fn reconcile_guild(data: &RoomsData, ctx: &Context, guild: &Guild) {
     let id = guild.id;
     if reconcile_what_reads(data, ctx, id).await {
         return;
@@ -965,7 +982,7 @@ pub async fn reconcile_guild(data: &Data, ctx: &Context, guild: &Guild) {
 
 /// Read the server's rows (and its settings, if unread) and reconcile the
 /// rows read. Whether both reads succeeded.
-async fn reconcile_what_reads(data: &Data, ctx: &Context, guild: GuildId) -> bool {
+async fn reconcile_what_reads(data: &RoomsData, ctx: &Context, guild: GuildId) -> bool {
     match load_rooms(data, guild).await {
         Ok(stored) => {
             reconcile_with(data, ctx, guild, stored).await;
@@ -985,7 +1002,7 @@ const RECONCILE_RETRY: Duration = Duration::from_secs(60);
 /// The server's stored rooms, and first its settings if `GuildCreate` could
 /// not read them. The rows do not wait on the settings: a failed settings
 /// read is logged, and [`settings_read`] says so afterwards.
-async fn load_rooms(data: &Data, guild: GuildId) -> sqlx::Result<Vec<StoredRoom>> {
+async fn load_rooms(data: &RoomsData, guild: GuildId) -> sqlx::Result<Vec<StoredRoom>> {
     let Some(pool) = data.database_pool.as_ref() else {
         return Ok(Vec::new());
     };
@@ -1002,7 +1019,7 @@ async fn load_rooms(data: &Data, guild: GuildId) -> sqlx::Result<Vec<StoredRoom>
 
 /// Whether the server's room settings have been read, or there is no
 /// database to read them from.
-fn settings_read(data: &Data, guild: GuildId) -> bool {
+fn settings_read(data: &RoomsData, guild: GuildId) -> bool {
     data.database_pool.is_none() || data.rooms.settings_loaded(guild)
 }
 
@@ -1013,7 +1030,7 @@ fn settings_read(data: &Data, guild: GuildId) -> bool {
 /// query that read them, which a server that turned rooms off with rooms
 /// still live needs anyway.
 fn nothing_to_reconcile(
-    data: &Data,
+    data: &RoomsData,
     guild: GuildId,
     settings: &RoomSettings,
     stored: &[StoredRoom],
@@ -1021,7 +1038,7 @@ fn nothing_to_reconcile(
     !settings.enabled && stored.is_empty() && data.rooms.count_in(guild) == 0
 }
 
-async fn reconcile_with(data: &Data, ctx: &Context, guild: GuildId, stored: Vec<StoredRoom>) {
+async fn reconcile_with(data: &RoomsData, ctx: &Context, guild: GuildId, stored: Vec<StoredRoom>) {
     let settings = data.rooms.settings(guild);
     if nothing_to_reconcile(data, guild, &settings, &stored) {
         return;
@@ -1086,7 +1103,6 @@ mod tests {
     use crate::rooms::registry::NEW_ROOM_COOLDOWN;
     use crate::rooms::state::OverwriteTarget;
     use crate::rooms::test_support::{Call, CallKind, FakeRoomsDiscord};
-    use crate::DataInner;
     use serenity::all::{GuildChannel, MessageId, Permissions, RoleId};
     use serenity::nonmax::NonMaxU16;
     use serenity::small_fixed_array::{FixedArray, FixedString};
@@ -1212,7 +1228,7 @@ mod tests {
     }
 
     struct World {
-        data: Data,
+        data: RoomsData,
         discord: Arc<FakeRoomsDiscord>,
         transport: FakeTransport,
         occupancy: Arc<FakeOccupancy>,
@@ -1229,10 +1245,10 @@ mod tests {
         }
 
         fn build(discord: FakeRoomsDiscord, pool: Option<sqlx::PgPool>) -> Self {
-            let data = Data(Arc::new(DataInner {
+            let data = RoomsData {
                 database_pool: pool,
                 ..Default::default()
-            }));
+            };
             data.rooms.set_settings(settings());
             Self {
                 data,
@@ -1647,7 +1663,7 @@ mod tests {
     /// in flight.
     struct Probe {
         inner: Arc<FakeRoomsDiscord>,
-        data: Data,
+        data: RoomsData,
         seen: Mutex<Vec<(bool, bool)>>,
     }
 
@@ -2229,7 +2245,7 @@ mod tests {
     /// Most servers never use rooms: their GuildCreate reads no facts.
     #[test]
     fn a_server_without_rooms_has_nothing_to_reconcile() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = RoomsData::default();
         let off = RoomSettings::off(G);
         assert!(nothing_to_reconcile(&data, G, &off, &[]));
         assert!(
@@ -2589,10 +2605,10 @@ mod tests {
             };
             crate::db::rooms::save_settings(&pool, &saved).await?;
             insert_room(&pool, &stored(ROOM, JOINER)).await?;
-            let data = Data(Arc::new(DataInner {
+            let data = RoomsData {
                 database_pool: Some(pool.clone()),
                 ..Default::default()
-            }));
+            };
             assert_eq!(load_rooms(&data, G).await?, vec![stored(ROOM, JOINER)]);
             assert!(data.rooms.settings_loaded(G));
             assert_eq!(data.rooms.settings(G), saved);
@@ -2614,10 +2630,10 @@ mod tests {
             sqlx::query("ALTER TABLE room_settings RENAME TO room_settings_away")
                 .execute(&pool)
                 .await?;
-            let data = Data(Arc::new(DataInner {
+            let data = RoomsData {
                 database_pool: Some(pool.clone()),
                 ..Default::default()
-            }));
+            };
             assert_eq!(load_rooms(&data, G).await?, vec![stored(ROOM, JOINER)]);
             assert!(!data.rooms.settings_loaded(G));
             assert!(!settings_read(&data, G), "so the retry comes");
@@ -2628,7 +2644,7 @@ mod tests {
             assert_eq!(load_rooms(&data, G).await?, vec![stored(ROOM, JOINER)]);
             assert!(settings_read(&data, G));
             // Without a database there are no settings to read.
-            assert!(settings_read(&Data::default(), G));
+            assert!(settings_read(&RoomsData::default(), G));
             Ok(())
         }
 
