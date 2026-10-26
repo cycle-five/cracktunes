@@ -97,8 +97,9 @@ impl EventHandler for SerenityHandler {
                         let discord = crate::economy::discord::LiveEconomyDiscord {
                             http: ctx.http.clone(),
                         };
+                        let economy = self.data.economy_data();
                         let moved = crate::economy::lock::on_voice_move(
-                            &self.data,
+                            &economy,
                             &discord,
                             guild,
                             new.user_id,
@@ -110,7 +111,7 @@ impl EventHandler for SerenityHandler {
                             // Out again inside the rate limit: one re-check
                             // at its end, so moving twice doesn't escape.
                             Ok(Some(at)) => crate::economy::lock::spawn_jail_recheck(
-                                self.data.clone(),
+                                economy,
                                 ctx.http.clone(),
                                 ctx.cache.clone(),
                                 guild,
@@ -144,9 +145,9 @@ impl EventHandler for SerenityHandler {
                 let discord = crate::economy::discord::LiveEconomyDiscord {
                     http: ctx.http.clone(),
                 };
-                let audit = crate::economy::lock::on_audit_entry(
-                    &self.data, &discord, *guild_id, entry, bot,
-                );
+                let economy = self.data.economy_data();
+                let audit =
+                    crate::economy::lock::on_audit_entry(&economy, &discord, *guild_id, entry, bot);
                 if tokio::time::timeout(std::time::Duration::from_secs(5), audit)
                     .await
                     .is_err()

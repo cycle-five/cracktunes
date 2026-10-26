@@ -295,7 +295,7 @@ pub(crate) async fn respond_press(
                 return refuse_after(press, text).await;
             }
             let cfg = data.economy.settings(guild).config;
-            match reveal(data, guild, presser, Some(action)).await {
+            match reveal(&data.economy_data(), guild, presser, Some(action)).await {
                 Ok(done) => {
                     refuse_after(
                         press,

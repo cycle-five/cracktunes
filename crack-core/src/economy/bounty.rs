@@ -691,16 +691,6 @@ mod tests {
         assert_eq!(stakes.iter().map(|s| s.amount).sum::<i64>(), 170);
     });
 
-    /// `shop::buy` still takes `Data` until Task 2 converts it; the bridge
-    /// shares the pool and the registry. Delete it with that conversion.
-    fn as_data(e: &EconomyData) -> crate::Data {
-        crate::Data(std::sync::Arc::new(crate::DataInner {
-            database_pool: e.database_pool.clone(),
-            economy: e.economy.clone(),
-            ..Default::default()
-        }))
-    }
-
     async fn mirror_for(pool: &PgPool, data: &EconomyData, owner: UserId) {
         fund(pool, owner, 150).await;
         let r = BuyRequest {
@@ -714,7 +704,7 @@ mod tests {
             now: t0(),
         };
         buy(
-            &as_data(data),
+            data,
             &FakeEconomyDiscord::default(),
             clean(),
             clean(),
@@ -754,7 +744,7 @@ mod tests {
                 ..clean()
             };
             let bought = buy(
-                &as_data(&data),
+                &data,
                 &FakeEconomyDiscord::default(),
                 clean(),
                 me,
@@ -812,7 +802,7 @@ mod tests {
             ..clean()
         };
         let bought = buy(
-            &as_data(&data),
+            &data,
             &FakeEconomyDiscord::default(),
             mirrored,
             me,

@@ -13,6 +13,7 @@ use super::target::{check_target, voice_of, TargetFacts};
 use super::wallet::{ActionPayload, ActionState, LedgerKind, MoveError};
 use crate::commands::music_utils::{connected_call, join_permitted, set_global_handlers_with};
 use crate::db::economy::{self as db, ActionRow};
+use crate::economy::EconomyData;
 use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::{courier, render::Rendered, status::DiscordTransport};
 use crate::music::audit::{Actor, BotReason};
@@ -125,7 +126,7 @@ pub struct ThemeRequest {
 /// `active` until [`THEME_DAYS`] from now. `facts` describes the target. The
 /// caller validates the note and posts the mod log event.
 pub async fn buy_theme(
-    data: &Data,
+    data: &EconomyData,
     facts: TargetFacts,
     req: ThemeRequest,
 ) -> Result<Bought, BuyError> {
@@ -422,7 +423,7 @@ where
 ///   for them is refunded to its buyer, and `None` returned.
 /// - A read that fails plays nothing and refunds nothing.
 pub async fn claim_theme(
-    data: &Data,
+    data: &EconomyData,
     guild: GuildId,
     user: UserId,
     now: DateTime<Utc>,
@@ -443,8 +444,7 @@ pub async fn claim_theme(
         .filter(|r| r.state == ActionState::Active && r.expires_at.is_some_and(|end| end > now))
         .collect();
     let oldest = waiting.first()?.clone();
-    let protection = match crate::economy::protection(&data.economy_data(), guild, user, now).await
-    {
+    let protection = match crate::economy::protection(data, guild, user, now).await {
         Ok(p) => p,
         Err(err) => {
             tracing::warn!("economy: reading the protection of {user} in {guild} failed: {err}");
@@ -526,7 +526,7 @@ async fn play_on_join(
     user: UserId,
     channel: ChannelId,
 ) {
-    let Some(row) = claim_theme(data, guild, user, Utc::now()).await else {
+    let Some(row) = claim_theme(&data.economy_data(), guild, user, Utc::now()).await else {
         return;
     };
     // The reads took a moment: they may have left or moved since.
@@ -836,7 +836,6 @@ impl EventHandler for ClipSignal {
 mod tests {
     use super::*;
     use crate::economy::settings::{ActionPrice, EconomySettings};
-    use crate::DataInner;
     use sqlx::PgPool;
 
     const G: GuildId = GuildId::new(1);
@@ -1016,17 +1015,17 @@ mod tests {
         };
     }
 
-    async fn themed_data(pool: &PgPool) -> Data {
+    async fn themed_data(pool: &PgPool) -> EconomyData {
         let s = EconomySettings {
             enabled: true,
             ..EconomySettings::off(G)
         };
         db::save_settings(pool, &s).await.unwrap();
-        let data = Data(Arc::new(DataInner {
+        let data = EconomyData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
-        assert!(crate::economy::load_settings(&data.economy_data(), G).await);
+        };
+        assert!(crate::economy::load_settings(&data, G).await);
         data
     }
 
@@ -1551,7 +1550,7 @@ mod tests {
     }
 
     /// A theme from A on `target`, bought at `now`, through the shop.
-    async fn theme_on(data: &Data, target: UserId, now: DateTime<Utc>) -> i64 {
+    async fn theme_on(data: &EconomyData, target: UserId, now: DateTime<Utc>) -> i64 {
         buy_theme(
             data,
             clean(),

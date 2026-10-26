@@ -373,7 +373,7 @@ pub(crate) async fn run_prank(
         http: ctx.http.clone(),
     };
     let bought = match buy(
-        data,
+        &data.economy_data(),
         &discord,
         facts.clone(),
         buyer_facts.clone(),
@@ -675,7 +675,7 @@ pub async fn theme(
         Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
     };
     let bought = match buy_theme(
-        &data,
+        &data.economy_data(),
         facts,
         ThemeRequest {
             guild,
@@ -1056,7 +1056,7 @@ pub async fn immunity(ctx: Context<'_>) -> Result<(), Error> {
         return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
     }
     let cfg = ctx.data().economy.settings(guild).config;
-    match buy_immunity(&ctx.data(), guild, buyer.id, Utc::now()).await {
+    match buy_immunity(&ctx.data().economy_data(), guild, buyer.id, Utc::now()).await {
         Ok(bought) => {
             say(ctx, immune_card_text(buyer.id, bought.until), false).await?;
             say(
@@ -1083,7 +1083,15 @@ pub async fn cleanse_command(ctx: Context<'_>) -> Result<(), Error> {
         return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
     }
     let cfg = ctx.data().economy.settings(guild).config;
-    match cleanse(&ctx.data(), &live(ctx), guild, buyer.id, Utc::now()).await {
+    match cleanse(
+        &ctx.data().economy_data(),
+        &live(ctx),
+        guild,
+        buyer.id,
+        Utc::now(),
+    )
+    .await
+    {
         Ok(done) => {
             let replied = say(
                 ctx,
@@ -1123,17 +1131,21 @@ async fn reveal_autocomplete<'a>(
         return CreateAutocompleteResponse::new();
     }
     let now = Utc::now();
-    let choices: Vec<AutocompleteChoice<'a>> =
-        reveal_choices(&ctx.data(), guild, ctx.interaction.user.id, 10)
-            .await
-            .into_iter()
-            .filter_map(|c| {
-                Some(AutocompleteChoice::new(
-                    Cow::Owned(reveal_label(c.row.kind, now, c.bought_at)),
-                    u64::try_from(c.row.id).ok()?,
-                ))
-            })
-            .collect();
+    let choices: Vec<AutocompleteChoice<'a>> = reveal_choices(
+        &ctx.data().economy_data(),
+        guild,
+        ctx.interaction.user.id,
+        10,
+    )
+    .await
+    .into_iter()
+    .filter_map(|c| {
+        Some(AutocompleteChoice::new(
+            Cow::Owned(reveal_label(c.row.kind, now, c.bought_at)),
+            u64::try_from(c.row.id).ok()?,
+        ))
+    })
+    .collect();
     CreateAutocompleteResponse::new().set_choices(Cow::Owned(choices))
 }
 
@@ -1155,7 +1167,7 @@ pub async fn reveal_command(
         return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
     }
     let cfg = ctx.data().economy.settings(guild).config;
-    match reveal(&ctx.data(), guild, presser.id, action).await {
+    match reveal(&ctx.data().economy_data(), guild, presser.id, action).await {
         Ok(done) => {
             let replied = say(
                 ctx,

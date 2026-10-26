@@ -9,7 +9,7 @@ use super::effects::MemberView;
 use super::settings::ActionKind;
 use super::wallet::{ActionPayload, ActionState};
 use crate::db::economy::{self, ActionRow};
-use crate::Data;
+use crate::economy::EconomyData;
 use chrono::{DateTime, Utc};
 use serenity::all::{AuditLogEntry, Cache, ChannelId, GuildId, Http, UserId};
 use serenity::model::guild::audit_log::{Action, Change, MemberAction};
@@ -82,7 +82,7 @@ fn member_changes(entry: &AuditLogEntry) -> Option<(UserId, UserId, Vec<MemberCh
 const NAME_KINDS: [ActionKind; 3] = [ActionKind::Rename, ActionKind::Clown, ActionKind::Lock];
 
 async fn running(
-    data: &Data,
+    data: &EconomyData,
     guild: GuildId,
     target: UserId,
     kinds: &[ActionKind],
@@ -104,7 +104,7 @@ async fn running(
 }
 
 /// Ends rows with a reason and restores nothing.
-async fn end_without_restore(data: &Data, rows: &[ActionRow], reason: &str) {
+async fn end_without_restore(data: &EconomyData, rows: &[ActionRow], reason: &str) {
     let Some(pool) = data.database_pool.as_ref() else {
         return;
     };
@@ -131,7 +131,7 @@ async fn end_without_restore(data: &Data, rows: &[ActionRow], reason: &str) {
 ///
 /// Nothing is restored for an override.
 pub async fn on_audit_entry(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     guild: GuildId,
     entry: &AuditLogEntry,
@@ -162,7 +162,7 @@ pub async fn on_audit_entry(
 }
 
 async fn on_nick_change(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     guild: GuildId,
     executor: UserId,
@@ -261,7 +261,7 @@ pub fn jail_decision(
 /// it with [`spawn_jail_recheck`]). A disconnect is allowed. If the move fails
 /// the row is left as it is.
 pub async fn on_voice_move(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     guild: GuildId,
     user: UserId,
@@ -303,7 +303,7 @@ pub async fn on_voice_move(
 /// jailed, out of the jail, through the rate limit). Returns when to look
 /// again, if the limit says so.
 pub async fn jail_recheck(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     view: &dyn MemberView,
     guild: GuildId,
@@ -319,7 +319,7 @@ pub async fn jail_recheck(
 /// Run the one re-check for a jailed member who moved out inside the rate
 /// limit: sleep until `at`, then [`jail_recheck`] (again, if it asks).
 pub fn spawn_jail_recheck(
-    data: Data,
+    data: EconomyData,
     http: Arc<Http>,
     cache: Arc<Cache>,
     guild: GuildId,
@@ -354,10 +354,8 @@ mod tests {
     use crate::economy::discord::fake::{Call, CallKind, FakeEconomyDiscord};
     use crate::economy::discord::EconDiscordError;
     use crate::economy::effects::sweep;
-    use crate::DataInner;
     use chrono::{DateTime, Duration as ChronoDuration, Utc};
     use sqlx::{types::Json, PgPool};
-    use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
     const U: UserId = UserId::new(10);
@@ -373,11 +371,11 @@ mod tests {
         DateTime::from_timestamp(1_800_000_000, 0).unwrap()
     }
 
-    fn data_with(pool: &PgPool) -> Data {
-        Data(Arc::new(DataInner {
+    fn data_with(pool: &PgPool) -> EconomyData {
+        EconomyData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }))
+        }
     }
 
     async fn seed(pool: &PgPool, kind: ActionKind, payload: &ActionPayload, state: &str) -> i64 {
@@ -564,7 +562,7 @@ mod tests {
             ("ended".into(), Some("escaped".into()))
         );
         // The sweeper has nothing left to restore over their new name.
-        sweep(&data.economy_data(), &fake, t0(), &|_| true).await;
+        sweep(&data, &fake, t0(), &|_| true).await;
         assert_eq!(fake.calls(), vec![]);
     });
 
@@ -581,7 +579,7 @@ mod tests {
             );
         }
         // Both were due; the sweeper restores nothing for them.
-        sweep(&data.economy_data(), &fake, t0(), &|_| true).await;
+        sweep(&data, &fake, t0(), &|_| true).await;
         assert_eq!(fake.calls(), vec![]);
     });
 
@@ -609,7 +607,7 @@ mod tests {
             state_of(&pool, deaf).await,
             ("ended".into(), Some("overridden".into()))
         );
-        sweep(&data.economy_data(), &fake, t0(), &|_| true).await;
+        sweep(&data, &fake, t0(), &|_| true).await;
         assert_eq!(fake.calls(), vec![], "nothing is put back over a mod");
     });
 
