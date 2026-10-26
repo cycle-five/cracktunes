@@ -13,10 +13,7 @@ use crate::{
     messaging::{
         interface::create_nav_btns,
         message::CrackedMessage,
-        messages::{
-            INVITE_LINK_TEXT_SHORT, INVITE_URL, PLAYLISTS, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY,
-            QUEUE_PAGE, QUEUE_PAGE_OF, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
-        },
+        messages::{PLAYLISTS, PLAYLIST_EMPTY, PLAYLIST_LIST_EMPTY, QUEUE_PAGE, QUEUE_PAGE_OF},
     },
     Context as CrackContext, CrackedError, CrackedResult, Data, Error,
 };
@@ -47,7 +44,6 @@ use std::{
     time::Duration,
 };
 use tokio::sync::RwLock;
-use url::Url;
 
 pub const EMBED_PAGE_SIZE: usize = 6;
 // This term gets appended to search queries in the default mode to try to find the album version of a song.
@@ -697,33 +693,8 @@ pub fn build_pages(string: &str, chunk_size: usize, fenced: bool) -> Vec<String>
     }
 }
 
-/// Build the strings used for the footer of an embed from a given url.
-pub fn build_footer_info(url: &str) -> (String, String, String) {
-    let vanity = format!(
-        "[{}]({}) • [{}]({})",
-        VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL, INVITE_LINK_TEXT_SHORT, INVITE_URL,
-    );
-    let url_data = match Url::parse(url) {
-        Ok(url_data) => url_data,
-        Err(_) => {
-            return (
-                "Streaming via unknown".to_string(),
-                "https://www.google.com/s2/favicons?domain=unknown".to_string(),
-                vanity,
-            )
-        },
-    };
-    let domain = url_data.host_str().unwrap();
-
-    // remove www prefix because it looks ugly
-    let domain = domain.replace("www.", "");
-
-    (
-        format!("Streaming via {}", domain),
-        format!("https://www.google.com/s2/favicons?domain={}", domain),
-        vanity,
-    )
-}
+pub use crate::messaging::cards::build_footer_info;
+pub use crate::messaging::format::duration_to_string;
 
 use serenity::prelude::SerenityError;
 
@@ -772,16 +743,6 @@ pub fn interaction_to_guild_id(interaction: &Interaction) -> Option<GuildId> {
         Interaction::Ping(_) => None,
         _ => None,
     }
-}
-
-/// Convert a duration to a string.
-pub fn duration_to_string(duration: Duration) -> String {
-    let mut secs = duration.as_secs();
-    let hours = secs / 3600;
-    secs %= 3600;
-    let minutes = secs / 60;
-    secs %= 60;
-    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
 }
 
 #[cfg(test)]

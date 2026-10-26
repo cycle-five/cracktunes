@@ -23,7 +23,7 @@ use crate::{
     utils::{get_requesting_user, get_track_handle_metadata},
     Context as CrackContext, Error,
 };
-use crack_model::{Author, Button, ButtonStyle, Card, Field, Footer, Mention, Row, UserRef};
+use crack_model::{Author, Button, ButtonStyle, Card, Field, Footer, Row};
 use crack_types::discord::ToRef;
 /// Contains functions for creating embeds and other messages which are used
 /// to communicate with the user.
@@ -140,13 +140,7 @@ pub async fn send_log_embed_thumb(
 
 // ------ Queue Display / Interaction ------ //
 
-/// Converts a user id to a string, with special handling for autoplay.
-pub fn requesting_user_to_string(user: &UserRef) -> String {
-    match user.raw().as_str() {
-        "1" => "(auto)".to_string(),
-        _ => Mention::User(user.clone()).to_string(),
-    }
-}
+pub use crate::messaging::cards::requesting_user_to_string;
 
 /// Creates a page of the queue's "Up next": the tracks after the one playing.
 async fn create_queue_page(tracks: &[TrackHandle], page: usize) -> String {
@@ -321,7 +315,7 @@ async fn read_card(track: &TrackHandle) -> (NowPlayingCard, (bool, bool)) {
             thumbnail: metadata.thumbnail,
             requester,
             progress,
-            controls: None,
+            rows: Vec::new(),
         },
         flags,
     )
@@ -339,12 +333,13 @@ pub async fn now_playing_card(track: &TrackHandle) -> NowPlayingCard {
 /// driver that does not answer, they show their defaults (Pause, repeat off).
 pub async fn now_playing_status_card(track: &TrackHandle, guild: GuildId) -> NowPlayingCard {
     let (mut card, (paused, looping)) = read_card(track).await;
-    card.controls = Some(crate::messaging::buttons::Controls {
+    card.rows = crate::messaging::buttons::Controls {
         guild: guild.to_ref(),
         track: track.uuid(),
         paused,
         looping,
-    });
+    }
+    .rows();
     card
 }
 
@@ -674,13 +669,14 @@ mod test {
         .await
         .expect("now_playing_status_card outlived its bound");
         assert_eq!(
-            card.controls,
-            Some(Controls {
+            card.rows,
+            Controls {
                 guild: guild.to_ref(),
                 track: ids[0],
                 paused: false,
                 looping: false
-            })
+            }
+            .rows()
         );
     }
 
@@ -693,7 +689,7 @@ mod test {
         let card = tokio::time::timeout(Duration::from_secs(5), now_playing_card(&handle))
             .await
             .expect("bounded");
-        assert_eq!(card.controls, None);
+        assert_eq!(card.rows, Vec::new());
     }
 
     fn state(

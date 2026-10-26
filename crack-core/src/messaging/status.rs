@@ -6,9 +6,7 @@ use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::courier::{post, Destination};
 use crate::messaging::interface::now_playing_status_card;
 use crate::messaging::message::CrackedMessage;
-use crate::messaging::messages::{
-    NOW_PLAYING_POINTER, STATUS_FINISHED_DESCRIPTION, STATUS_FINISHED_TITLE,
-};
+use crate::messaging::messages::NOW_PLAYING_POINTER;
 use crate::messaging::render::RenderCx;
 use crate::messaging::render::Rendered;
 use crate::Data;
@@ -321,7 +319,7 @@ pub(crate) async fn show_now_playing_on(
     let mut card = now_playing_status_card(&track, guild).await;
     // A server can turn the buttons off (`/buttons`).
     if !data.get_now_playing_buttons(guild).await {
-        card.controls = None;
+        card.rows = Vec::new();
     }
     let msg = CrackedMessage::NowPlayingCard(Box::new(card));
     post(
@@ -402,14 +400,7 @@ pub async fn show_finished(
     })
 }
 
-/// The "Finished" status.
-pub fn finished_card() -> crack_model::Card {
-    crack_model::Card {
-        title: Some(STATUS_FINISHED_TITLE.to_owned()),
-        description: Some(STATUS_FINISHED_DESCRIPTION.to_owned()),
-        ..crack_model::Card::default()
-    }
-}
+pub use crate::messaging::cards::finished_card;
 
 /// `/nowplaying`'s one-line reply: a jump link when the status exists
 /// elsewhere, or an arrow when it is about to land directly below.

@@ -167,6 +167,18 @@ pub struct TrackRef {
     pub url: Option<String>,
 }
 
+impl TrackRef {
+    /// The label a message shows for this track (its duration is not logged).
+    #[must_use]
+    pub fn label(&self) -> crate::messaging::format::TrackLabel {
+        crate::messaging::format::TrackLabel {
+            title: self.title.clone(),
+            url: self.url.clone(),
+            duration: None,
+        }
+    }
+}
+
 /// Where an add put its tracks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -289,6 +301,23 @@ pub fn emit(tx: Option<&mpsc::Sender<AuditEvent>>, event: AuditEvent) {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn a_label_reads_an_audit_ref() {
+        use crate::messaging::format::TrackLabel;
+        let r = TrackRef {
+            title: Some("R".into()),
+            url: None,
+        };
+        assert_eq!(
+            r.label(),
+            TrackLabel {
+                title: Some("R".into()),
+                url: None,
+                duration: None,
+            }
+        );
+    }
 
     /// `as_str` is what the database stores; serde is what the wire says. They
     /// are written twice, so this is what keeps them one spelling.

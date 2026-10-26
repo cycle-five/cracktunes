@@ -4,15 +4,14 @@ use crate::messaging::format::{
     clip, duration_text, http_url, progress_text, Progress, TrackLabel, AUTHOR_MAX,
     EMBED_TITLE_MAX, FIELD_MAX, INLINE_TITLE_MAX,
 };
-use crate::messaging::interface::requesting_user_to_string;
 use crate::messaging::messages::{
     ECHO_ADDED, ECHO_ADDED_NEXT, ECHO_FROM_DASHBOARD, ECHO_PAUSED, ECHO_REMOVED, ECHO_REPEAT_OFF,
-    ECHO_REPEAT_ON, ECHO_RESUMED, ECHO_SHUFFLED, ECHO_SKIPPED, PROGRESS, QUEUE_NOW_PLAYING,
-    REQUESTED_BY, TRACK_DURATION, TRACK_TIME_TO_PLAY,
+    ECHO_REPEAT_ON, ECHO_RESUMED, ECHO_SHUFFLED, ECHO_SKIPPED, INVITE_LINK_TEXT_SHORT, INVITE_URL,
+    PROGRESS, QUEUE_NOW_PLAYING, REQUESTED_BY, STATUS_FINISHED_DESCRIPTION, STATUS_FINISHED_TITLE,
+    TRACK_DURATION, TRACK_TIME_TO_PLAY, VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL,
 };
 use crate::messaging::render::{RenderCx, Rendered};
-use crate::utils::build_footer_info;
-use crack_model::{Author, Card, Field, Footer, UserRef};
+use crack_model::{Author, Card, Field, Footer, Mention, Row, UserRef};
 use std::time::Duration;
 
 /// The now-playing card.
@@ -22,8 +21,8 @@ pub struct NowPlayingCard {
     pub thumbnail: Option<String>,
     pub requester: Option<UserRef>,
     pub progress: Progress,
-    /// The buttons: only the status message has them, never a reply or a DM.
-    pub controls: Option<crate::messaging::buttons::Controls>,
+    /// The buttons: only the status message has rows, never a reply or a DM.
+    pub rows: Vec<Row>,
 }
 
 /// A track or list added to the queue.
@@ -159,15 +158,61 @@ pub fn now_playing(card: &NowPlayingCard, cx: &RenderCx) -> Rendered {
     }
     out.thumbnail = http_url(card.thumbnail.as_deref()).map(|t| t.to_string());
     let rendered = Rendered::card(out);
-    match &card.controls {
-        Some(c) => rendered.with_rows(c.rows()),
-        None => rendered,
+    if card.rows.is_empty() {
+        rendered
+    } else {
+        rendered.with_rows(card.rows.clone())
+    }
+}
+
+/// Converts a user id to a string, with special handling for autoplay.
+pub fn requesting_user_to_string(user: &UserRef) -> String {
+    match user.raw().as_str() {
+        "1" => "(auto)".to_string(),
+        _ => Mention::User(user.clone()).to_string(),
+    }
+}
+
+/// Build the strings used for the footer of an embed from a given url.
+pub fn build_footer_info(url: &str) -> (String, String, String) {
+    let vanity = format!(
+        "[{}]({}) • [{}]({})",
+        VOTE_TOPGG_LINK_TEXT_SHORT, VOTE_TOPGG_URL, INVITE_LINK_TEXT_SHORT, INVITE_URL,
+    );
+    let url_data = match url::Url::parse(url) {
+        Ok(url_data) => url_data,
+        Err(_) => {
+            return (
+                "Streaming via unknown".to_string(),
+                "https://www.google.com/s2/favicons?domain=unknown".to_string(),
+                vanity,
+            )
+        },
+    };
+    let domain = url_data.host_str().unwrap();
+
+    // remove www prefix because it looks ugly
+    let domain = domain.replace("www.", "");
+
+    (
+        format!("Streaming via {}", domain),
+        format!("https://www.google.com/s2/favicons?domain={}", domain),
+        vanity,
+    )
+}
+
+/// The "Finished" status.
+pub fn finished_card() -> crack_model::Card {
+    crack_model::Card {
+        title: Some(STATUS_FINISHED_TITLE.to_owned()),
+        description: Some(STATUS_FINISHED_DESCRIPTION.to_owned()),
+        ..crack_model::Card::default()
     }
 }
 
 #[must_use]
 pub fn finished() -> Rendered {
-    Rendered::card(crate::messaging::status::finished_card())
+    Rendered::card(finished_card())
 }
 
 /// The card for a track added to the queue. Its length and its wait are each
@@ -238,7 +283,7 @@ mod tests {
                 position: Duration::from_secs(73),
                 duration: Some(Duration::from_secs(273)),
             },
-            controls: None,
+            rows: Vec::new(),
         }
     }
 
@@ -508,17 +553,38 @@ mod tests {
         use crate::messaging::buttons::Controls;
         let mut c = card(None, None);
         assert!(now_playing(&c, &RenderCx::default()).rows.is_empty());
-        c.controls = Some(Controls {
+        c.rows = Controls {
             guild: serenity::all::GuildId::new(1).to_ref(),
             track: uuid::Uuid::nil(),
             paused: false,
             looping: false,
-        });
+        }
+        .rows();
         let r = now_playing(&c, &RenderCx::default());
         assert_eq!(r.rows.len(), 1);
         let row =
             serde_json::to_value(&crate::messaging::discord::action_rows(&r.rows)[0]).unwrap();
         assert_eq!(row["components"][0]["custom_id"], "np:pause:1");
+    }
+
+    /// The ids name a Discord server: a guild that is no snowflake has none.
+    #[test]
+    fn a_non_snowflake_guild_gets_no_buttons() {
+        use crate::messaging::buttons::Controls;
+        let mut c = card(None, None);
+        c.rows = Controls {
+            guild: crack_model::CommunityRef::new(crack_model::Platform::Discord, "0").unwrap(),
+            track: uuid::Uuid::nil(),
+            paused: false,
+            looping: false,
+        }
+        .rows();
+        let with = now_playing(&c, &RenderCx::default());
+        assert!(with.rows.is_empty());
+        c.rows = Vec::new();
+        let without = now_playing(&c, &RenderCx::default());
+        assert_eq!(with.cards, without.cards);
+        assert_eq!(with.rows, without.rows);
     }
 
     /// "None on Finished": the edit to Finished clears the row.
@@ -560,12 +626,13 @@ mod tests {
             Some("https://www.youtube.com/watch?v=x"),
             Some("https://i.ytimg.com/a.jpg"),
         );
-        playing.controls = Some(Controls {
+        playing.rows = Controls {
             guild: serenity::all::GuildId::new(7).to_ref(),
             track: uuid::Uuid::nil(),
             paused: false,
             looping: true,
-        });
+        }
+        .rows();
         pin(&now_playing(&playing, &cx), "{\"title\":\"OH SHIT I'M FEELING IT\",\"type\":\"rich\",\"description\":\"[vote](https://top.gg/bot/1115229568006103122/vote) • [invite](https://discord.com/oauth2/authorize?client_id=1115229568006103122&permissions=551940115520&scope=bot+applications.commands)\",\"url\":\"https://www.youtube.com/watch?v=x\",\"footer\":{\"text\":\"Streaming via youtube.com\",\"icon_url\":\"https://www.google.com/s2/favicons?domain=youtube.com\"},\"thumbnail\":{\"url\":\"https://i.ytimg.com/a.jpg\",\"description\":null},\"author\":{\"name\":\"🔊 Now playing\",\"url\":null,\"icon_url\":null},\"fields\":[{\"name\":\"Progress\",\"value\":\">>> 4:33 · ends <t:1000200:R>\",\"inline\":true},{\"name\":\"Requested by\",\"value\":\">>> <@42>\",\"inline\":true}]}",
             "[{\"type\":1,\"components\":[{\"style\":2,\"type\":2,\"custom_id\":\"np:pause:7\",\"emoji\":{\"name\":\"⏸\u{fe0f}\"},\"disabled\":false},{\"style\":2,\"type\":2,\"custom_id\":\"np:skip:7:00000000-0000-0000-0000-000000000000\",\"emoji\":{\"name\":\"⏭\u{fe0f}\"},\"disabled\":false},{\"style\":3,\"type\":2,\"custom_id\":\"np:repeat-off:7\",\"emoji\":{\"name\":\"🔁\"},\"disabled\":false},{\"style\":2,\"type\":2,\"custom_id\":\"np:shuffle:7\",\"emoji\":{\"name\":\"🔀\"},\"disabled\":false}]}]");
 

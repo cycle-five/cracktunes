@@ -8,7 +8,6 @@ use crate::messaging::messages::{
     PROGRESS_ENDS, PROGRESS_ON_REPEAT, PROGRESS_PAUSED, PROGRESS_PAUSED_AT, PROGRESS_REPEATING,
     PROGRESS_STARTED, TRACK_UNTITLED,
 };
-use crate::music::audit::TrackRef;
 use songbird::input::AuxMetadata;
 use std::time::Duration;
 use url::Url;
@@ -38,15 +37,6 @@ impl TrackLabel {
             title: meta.title.clone(),
             url: meta.source_url.clone(),
             duration: meta.duration,
-        }
-    }
-
-    #[must_use]
-    pub fn from_ref(track: &TrackRef) -> Self {
-        Self {
-            title: track.title.clone(),
-            url: track.url.clone(),
-            duration: None,
         }
     }
 
@@ -195,6 +185,16 @@ pub fn progress_text(p: &Progress, now_unix: i64) -> String {
     }
 }
 
+/// Convert a duration to a string.
+pub fn duration_to_string(duration: Duration) -> String {
+    let mut secs = duration.as_secs();
+    let hours = secs / 3600;
+    secs %= 3600;
+    let minutes = secs / 60;
+    secs %= 60;
+    format!("{:02}:{:02}:{:02}", hours, minutes, secs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn a_label_reads_metadata_and_audit_refs() {
+    fn a_label_reads_metadata() {
         let meta = AuxMetadata {
             title: Some("T".into()),
             source_url: Some("https://x.y/z".into()),
@@ -334,10 +334,5 @@ mod tests {
                 duration: Some(Duration::from_secs(9)),
             }
         );
-        let r = TrackRef {
-            title: Some("R".into()),
-            url: None,
-        };
-        assert_eq!(TrackLabel::from_ref(&r), label(Some("R"), None));
     }
 }

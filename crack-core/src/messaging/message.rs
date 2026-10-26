@@ -9,11 +9,10 @@ use crate::{
     errors::CrackedError,
     messaging::{
         cards::{EchoLine, NowPlayingCard, QueuedCard},
-        format::{TrackLabel, INLINE_TITLE_MAX},
+        failure,
+        format::{duration_to_string, TrackLabel, INLINE_TITLE_MAX},
         messages::*,
-        track_failed,
     },
-    utils::duration_to_string,
 };
 
 pub const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
@@ -259,7 +258,7 @@ pub enum CrackedMessage {
     NowPlayingCard(Box<NowPlayingCard>),
     Finished,
     TrackFailed {
-        listed: Vec<track_failed::Failure>,
+        listed: Vec<failure::Failure>,
         more: usize,
     },
     Echo(Box<EchoLine>),
@@ -464,9 +463,7 @@ impl Display for CrackedMessage {
             )),
             Self::NowPlayingCard(_) => f.write_str(QUEUE_NOW_PLAYING),
             Self::Finished => f.write_str(STATUS_FINISHED_TITLE),
-            Self::TrackFailed { listed, more } => {
-                f.write_str(&crate::messaging::track_failed::render_text(listed, *more))
-            },
+            Self::TrackFailed { listed, more } => f.write_str(&failure::render_text(listed, *more)),
             Self::Echo(line) => f.write_str(&line.line()),
             Self::Queued(card) => f.write_str(card.author),
             Self::Summon { room } => {
