@@ -1,7 +1,6 @@
 //! Ops that end playback: stop everything, or leave voice.
 use super::*;
 use crate::{
-    guild::operations::GuildSettingsOperations,
     messaging::message::CrackedMessage,
     music::{disconnect::disconnect, queue::stop_queue},
 };

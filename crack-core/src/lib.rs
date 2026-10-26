@@ -641,6 +641,17 @@ impl Data {
         }
     }
 
+    /// The guild settings' state, as a handle that does not name `Data`. The
+    /// map is shared (same `Arc`), not copied, and the prefix is the bot's
+    /// configured one.
+    pub fn guild_data(&self) -> crate::guild::operations::GuildData {
+        crate::guild::operations::GuildData {
+            database_pool: self.database_pool.clone(),
+            guild_settings_map: self.guild_settings_map.clone(),
+            bot_prefix: self.bot_settings.get_prefix(),
+        }
+    }
+
     /// Insert a guild into the guild settings map.
     pub async fn insert_guild(
         &self,
@@ -880,6 +891,35 @@ msg_on_dc:     false
         assert!(Arc::ptr_eq(&handle.rooms, &data.rooms));
         assert!(Arc::ptr_eq(&handle.modlog, &data.modlog));
         assert!(Data::default().rooms_data().database_pool.is_none());
+    }
+
+    #[tokio::test]
+    async fn guild_data_carries_the_pool_shares_the_map_and_takes_the_bot_prefix() {
+        use crate::guild::operations::GuildData;
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/unused")
+            .unwrap();
+        let data = Data(Arc::new(DataInner::default().with_database_pool(pool)));
+        let handle = data.guild_data();
+        assert!(handle.database_pool.is_some());
+        assert!(Arc::ptr_eq(
+            &handle.guild_settings_map,
+            &data.guild_settings_map
+        ));
+        assert!(Data::default().guild_data().database_pool.is_none());
+        assert_eq!(
+            Data::default().guild_data().bot_prefix,
+            GuildData::default().bot_prefix
+        );
+
+        let custom = Data(Arc::new(DataInner {
+            bot_settings: BotConfig {
+                prefix: Some("x!".to_string()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }));
+        assert_eq!(custom.guild_data().bot_prefix, "x!");
     }
 }
 

@@ -1,5 +1,4 @@
 use crate::commands::cmd_check_music;
-use crate::guild::operations::GuildSettingsOperations;
 use crate::messaging::courier;
 use crate::{messaging::message::CrackedMessage, Context, CrackedError, Error};
 
