@@ -570,6 +570,14 @@
   mod log) render through a `Payload` trait, and `/gp start`'s notice is a
   `GpCard`. What the bot sends is unchanged. Design:
   `docs/superpowers/specs/2026-10-25-split-crack-core-design.md`.
+- **Step 2 of 4: the economy is its own crate, `crack-economy`.** The economy,
+  CrackCoin's glue and their queries left crack-core; its functions take an
+  `EconomyData` handle (the pool and the economy's registry) instead of `Data`.
+  crack-core keeps the Discord glue (shop buttons, walk-on theme playback,
+  target facts) and re-exports the old paths. `cargo test -p crack-economy`
+  builds no crack-core. The template-database test runner is its own crate,
+  `crack-test-db`. Nothing the bot does changed; `/coinflip`'s choices are
+  pinned.
 
 ## TODO:
 

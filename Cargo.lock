@@ -1078,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "crack-common"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "audiopus",
@@ -1100,7 +1100,7 @@ dependencies = [
 
 [[package]]
 name = "crack-core"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1162,7 +1162,7 @@ dependencies = [
 
 [[package]]
 name = "crack-economy"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1186,7 +1186,7 @@ dependencies = [
 
 [[package]]
 name = "crack-model"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1195,7 +1195,7 @@ dependencies = [
 
 [[package]]
 name = "crack-musicreco"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "async-trait",
  "reqwest 0.12.28",
@@ -1222,7 +1222,7 @@ dependencies = [
 
 [[package]]
 name = "crack-sleevenote"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde",
@@ -1235,7 +1235,7 @@ dependencies = [
 
 [[package]]
 name = "crack-test-db"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "crack-common",
  "crack-test-macros",
@@ -1246,7 +1246,7 @@ dependencies = [
 
 [[package]]
 name = "crack-test-macros"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1255,7 +1255,7 @@ dependencies = [
 
 [[package]]
 name = "crack-testing"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1278,7 +1278,7 @@ dependencies = [
 
 [[package]]
 name = "crack-types"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "crack-model",
  "humantime",
@@ -1299,7 +1299,7 @@ dependencies = [
 
 [[package]]
 name = "crack-voting"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "chrono",
  "dbl-rs",
@@ -1314,7 +1314,7 @@ dependencies = [
 
 [[package]]
 name = "crack-web"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "axum",
  "catacombs",
@@ -1339,7 +1339,7 @@ dependencies = [
 
 [[package]]
 name = "cracktunes"
-version = "0.39.0"
+version = "0.40.0"
 dependencies = [
  "config-file",
  "crack-core",
