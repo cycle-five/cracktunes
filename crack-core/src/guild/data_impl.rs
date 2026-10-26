@@ -213,6 +213,37 @@ mod test {
             stored
         );
 
+        // The six bool getters, told apart one at a time: with only one field
+        // true, a getter wired to any other field reads false.
+        type Field = fn(&mut GuildSettings) -> &mut bool;
+        let fields: [(&str, Field); 6] = [
+            ("autopause", |s| &mut s.autopause),
+            ("autoplay", |s| &mut s.autoplay),
+            ("reply_with_embed", |s| &mut s.reply_with_embed),
+            ("ephemeral_replies", |s| &mut s.ephemeral_replies),
+            ("control_echoes", |s| &mut s.control_echoes),
+            ("now_playing_buttons", |s| &mut s.now_playing_buttons),
+        ];
+        let lone = GuildId::new(6);
+        for (name, field) in fields {
+            let mut only = GuildSettings::new(lone.to_ref(), Some("z!"), None);
+            for (_, other) in fields {
+                *other(&mut only) = false;
+            }
+            *field(&mut only) = true;
+            handle.set_guild_settings(lone, only).await;
+            let got = [
+                data.get_autopause(lone).await,
+                data.get_autoplay_setting(lone).await,
+                data.get_reply_with_embed(lone).await,
+                data.get_ephemeral_replies(lone).await,
+                data.get_control_echoes(lone).await,
+                data.get_now_playing_buttons(lone).await,
+            ];
+            let expected = fields.map(|(n, _)| n == name);
+            assert_eq!(got, expected, "only {name} is true");
+        }
+
         // Setters and toggles, read back through the handle.
         let other = GenericChannelId::new(88);
         data.set_music_channel(guild_id, other).await;
