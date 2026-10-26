@@ -2,9 +2,10 @@
 //! sends, edits and gives up on. The game's rules are tested in `test.rs`.
 use super::commands::gp_spawn_park_backstop;
 use super::playback::{gp_after_close, gp_answer_component, gp_spawn_window_timer_secs};
-use super::test::{
+use super::test::rng;
+use super::test_glue::{
     data, game, game_started_at, game_with, game_with_reveal, game_with_settings,
-    playing_with_title, rng, submit, A, B, G, NOW, TC,
+    playing_with_title, submit, A, B, G, NOW, TC,
 };
 use super::*;
 use crate::commands::music::gp_persist::{
@@ -347,7 +348,7 @@ async fn the_end_backstop_collects_its_own_game_and_only_that() {
     );
 
     // A game parked after another `/gp end`'s backstop was spawned.
-    let data = super::test::data();
+    let data = super::test_glue::data();
     game_with(&data, &["first"]);
     let first = data.gp_park_for_end(G, A, false).unwrap();
     gp_spawn_park_backstop(data.clone(), G, first.started_at);

@@ -501,11 +501,9 @@ pub struct GpGame {
     /// closed early (host, or everyone submitted) leaves no stale fire behind.
     pub generation: u64,
     /// Set by `/gp end`. The game is finished but deliberately still in the map:
-    /// `stop()` has queued an `End` the global [`TrackEndHandler`] must see a game
+    /// `stop()` has queued an `End` the global `TrackEndHandler` must see a game
     /// for, or it treats it as an ordinary track ending and starts autoplay.
     /// Whoever handles that `End` removes the game.
-    ///
-    /// [`TrackEndHandler`]: crate::handlers::TrackEndHandler
     pub parked_for_end: bool,
     /// Everyone who has submitted, guessed or liked, with the display name we saw.
     pub players: HashMap<UserId, String>,
@@ -1621,13 +1619,11 @@ impl GpData {
     /// remove. `TrackHandle::stop()` only queues a message for the driver task, so
     /// the `End` it causes arrives later; removing on the next line -- as this used
     /// to -- wins that race every time, and the `End` still reaches the global
-    /// [`TrackEndHandler`] with no game to find, which is exactly the autoplay bug
+    /// `TrackEndHandler` with no game to find, which is exactly the autoplay bug
     /// this was meant to fix. Collection belongs to whoever handles that `End`;
     /// [`GpData::gp_remove_if_parked`] is how they do it. Moving out of `Playing` and
     /// bumping the generation is what stops the game's *own* handlers and timers
     /// acting on the same event.
-    ///
-    /// [`TrackEndHandler`]: crate::handlers::TrackEndHandler
     pub fn gp_park_for_end(
         &self,
         guild_id: GuildId,

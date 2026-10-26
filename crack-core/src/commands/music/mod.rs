@@ -13,6 +13,7 @@ pub mod get_metadata;
 pub mod gp;
 pub mod gp_persist;
 pub mod gp_prompts;
+pub mod gp_resume;
 pub mod grab;
 pub mod leave;
 pub mod lyrics;

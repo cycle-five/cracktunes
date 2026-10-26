@@ -23,3 +23,5 @@ pub use ui::*;
 mod test;
 #[cfg(test)]
 mod test_delivery;
+#[cfg(test)]
+mod test_glue;
