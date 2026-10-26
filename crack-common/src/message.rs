@@ -6,14 +6,11 @@ use crack_osint::virustotal::VirusTotalApiResponse;
 use std::time::Duration;
 
 use crate::{
+    cards::{EchoLine, NowPlayingCard, QueuedCard},
     errors::CrackedError,
-    messaging::{
-        cards::{EchoLine, NowPlayingCard, QueuedCard},
-        format::{TrackLabel, INLINE_TITLE_MAX},
-        messages::*,
-        track_failed,
-    },
-    utils::duration_to_string,
+    failure,
+    format::{duration_to_string, TrackLabel, INLINE_TITLE_MAX},
+    messages::*,
 };
 
 pub const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
@@ -221,15 +218,6 @@ pub enum CrackedMessage {
         submitted: usize,
         of: usize,
     },
-    GpStarted {
-        category: String,
-        rounds: usize,
-        timer_secs: u64,
-        clip: Option<crate::commands::music::gp::GpClip>,
-        reveal: crate::commands::music::gp::GpReveal,
-        round_results: bool,
-        cleared_queue: bool,
-    },
     GpRoundSkipped,
     GpEnded {
         by: String,
@@ -268,7 +256,7 @@ pub enum CrackedMessage {
     NowPlayingCard(Box<NowPlayingCard>),
     Finished,
     TrackFailed {
-        listed: Vec<track_failed::Failure>,
+        listed: Vec<failure::Failure>,
         more: usize,
     },
     Echo(Box<EchoLine>),
@@ -277,15 +265,15 @@ pub enum CrackedMessage {
     ControlEchoesOff,
     ButtonOutOfDate,
     /// Every `/gp` message, rendered by `gp::render_card`.
-    Gp(Box<crate::commands::music::gp::GpCard>),
+    Gp(Box<dyn crate::render::Payload>),
     NowPlayingButtonsDisabled,
     NowPlayingButtonsOn,
     NowPlayingButtonsOff,
     QueueResumed,
     /// Every voice-room message, rendered by `rooms::card::render_card`.
-    Room(Box<crate::rooms::card::RoomCard>),
+    Room(Box<dyn crate::render::Payload>),
     /// A mod log entry, rendered by `modlog::event::render`.
-    ModLog(Box<crate::modlog::event::ModLogEvent>),
+    ModLog(Box<dyn crate::render::Payload>),
 }
 
 impl CrackedMessage {
@@ -293,8 +281,8 @@ impl CrackedMessage {
     /// embed today: `Pong`, `Version` and `Prefixes` are all sent as embeds
     /// at their call sites. `Text` is for Task 9's text replies.
     #[must_use]
-    pub fn style(&self) -> crate::messaging::render::Style {
-        crate::messaging::render::Style::Embed
+    pub fn style(&self) -> crate::render::Style {
+        crate::render::Style::Embed
     }
 
     /// The embed colour, 0xRRGGBB.
@@ -473,9 +461,7 @@ impl Display for CrackedMessage {
             )),
             Self::NowPlayingCard(_) => f.write_str(QUEUE_NOW_PLAYING),
             Self::Finished => f.write_str(STATUS_FINISHED_TITLE),
-            Self::TrackFailed { listed, more } => {
-                f.write_str(&crate::messaging::track_failed::render_text(listed, *more))
-            },
+            Self::TrackFailed { listed, more } => f.write_str(&failure::render_text(listed, *more)),
             Self::Echo(line) => f.write_str(&line.line()),
             Self::Queued(card) => f.write_str(card.author),
             Self::Summon { room } => {
@@ -597,49 +583,6 @@ impl Display for CrackedMessage {
                     ))
                 }
             },
-            Self::GpStarted {
-                category,
-                rounds,
-                timer_secs,
-                clip,
-                reveal,
-                round_results,
-                cleared_queue,
-            } => f.write_str(&format!(
-                "{} {} {} {} — {} {}{}{}{}{}",
-                GP_STARTED,
-                rounds,
-                GP_STARTED_ROUNDS,
-                category,
-                crate::utils::duration_to_string(std::time::Duration::from_secs(*timer_secs)),
-                GP_STARTED_TIMER,
-                match clip {
-                    Some(c) => format!(
-                        " {} {} {} {}",
-                        GP_STARTED_CLIP,
-                        duration_to_string(c.length),
-                        GP_STARTED_CLIP_FROM,
-                        duration_to_string(c.start)
-                    ),
-                    None => String::new(),
-                },
-                match reveal {
-                    crate::commands::music::gp::GpReveal::Song => {
-                        format!(" {}", GP_STARTED_REVEAL_SONG)
-                    },
-                    crate::commands::music::gp::GpReveal::Round => String::new(),
-                },
-                if *round_results {
-                    String::new()
-                } else {
-                    format!(" {}", GP_STARTED_NO_RESULTS)
-                },
-                if *cleared_queue {
-                    format!(" {}", GP_QUEUE_CLEARED)
-                } else {
-                    String::new()
-                }
-            )),
             Self::GpRoundSkipped => f.write_str(GP_ROUND_SKIPPED),
             Self::GpEnded { by } => f.write_str(&format!("{} {}", GP_ENDED_BY, by)),
             Self::GpWindowClosed { count } => f.write_str(&format!(
@@ -669,22 +612,16 @@ impl Display for CrackedMessage {
             Self::GpVoteFullCarried => f.write_str(GP_VOTEFULL_CARRIED),
             Self::GpVoteFullPassed => f.write_str(GP_VOTEFULL_PASSED),
             Self::GpVoteFullAlready => f.write_str(GP_VOTEFULL_ALREADY),
-            Self::EphemeralRepliesOn => {
-                f.write_str(crate::messaging::messages::EPHEMERAL_REPLIES_ON)
-            },
-            Self::EphemeralRepliesOff => {
-                f.write_str(crate::messaging::messages::EPHEMERAL_REPLIES_OFF)
-            },
-            Self::ControlEchoesOn => f.write_str(crate::messaging::messages::CONTROL_ECHOES_ON),
-            Self::ControlEchoesOff => f.write_str(crate::messaging::messages::CONTROL_ECHOES_OFF),
-            Self::ButtonOutOfDate => f.write_str(crate::messaging::messages::BUTTON_OUT_OF_DATE),
+            Self::EphemeralRepliesOn => f.write_str(crate::messages::EPHEMERAL_REPLIES_ON),
+            Self::EphemeralRepliesOff => f.write_str(crate::messages::EPHEMERAL_REPLIES_OFF),
+            Self::ControlEchoesOn => f.write_str(crate::messages::CONTROL_ECHOES_ON),
+            Self::ControlEchoesOff => f.write_str(crate::messages::CONTROL_ECHOES_OFF),
+            Self::ButtonOutOfDate => f.write_str(crate::messages::BUTTON_OUT_OF_DATE),
             Self::Gp(card) => write!(f, "{card}"),
-            Self::NowPlayingButtonsDisabled => {
-                f.write_str(crate::messaging::messages::NP_BUTTONS_DISABLED)
-            },
-            Self::NowPlayingButtonsOn => f.write_str(crate::messaging::messages::NP_BUTTONS_ON),
-            Self::NowPlayingButtonsOff => f.write_str(crate::messaging::messages::NP_BUTTONS_OFF),
-            Self::QueueResumed => f.write_str(crate::messaging::messages::QUEUE_RESUMED),
+            Self::NowPlayingButtonsDisabled => f.write_str(crate::messages::NP_BUTTONS_DISABLED),
+            Self::NowPlayingButtonsOn => f.write_str(crate::messages::NP_BUTTONS_ON),
+            Self::NowPlayingButtonsOff => f.write_str(crate::messages::NP_BUTTONS_OFF),
+            Self::QueueResumed => f.write_str(crate::messages::QUEUE_RESUMED),
             Self::Room(card) => write!(f, "{card}"),
             Self::ModLog(event) => write!(f, "{event}"),
         }
@@ -725,18 +662,18 @@ impl From<CrackedMessage> for crate::CrackedHowResult<CrackedMessage> {
 mod test {
     use super::CrackedMessage;
     use crack_types::discord::ToRef;
-    use poise::serenity_prelude as serenity;
+    use serenity::all as serenity;
 
     #[test]
     fn premium_thanks_displays_the_thanks() {
-        use crate::messaging::messages::PREMIUM_THANKS;
+        use crate::messages::PREMIUM_THANKS;
 
         assert_eq!(CrackedMessage::PremiumThanks.to_string(), PREMIUM_THANKS);
     }
 
     #[test]
     fn ephemeral_replies_messages_say_what_changed() {
-        use crate::messaging::messages::{EPHEMERAL_REPLIES_OFF, EPHEMERAL_REPLIES_ON};
+        use crate::messages::{EPHEMERAL_REPLIES_OFF, EPHEMERAL_REPLIES_ON};
 
         assert_eq!(
             CrackedMessage::EphemeralRepliesOn.to_string(),
@@ -792,9 +729,8 @@ mod test {
 
     #[test]
     fn test_gp_messages_display() {
-        use crate::messaging::messages::{
-            GP_CLOSED_BY_HOST, GP_ENDED_BY, GP_QUEUE_CLEARED, GP_ROUND_SKIPPED, GP_STARTED,
-            GP_STARTED_NO_RESULTS, GP_STARTED_REVEAL_SONG, GP_SUBMITTED, GP_SUBMITTED_REPLACED,
+        use crate::messages::{
+            GP_CLOSED_BY_HOST, GP_ENDED_BY, GP_ROUND_SKIPPED, GP_SUBMITTED, GP_SUBMITTED_REPLACED,
             GP_VOTEFULL_CARRIED, GP_VOTEFULL_ROOM, GP_VOTEFULL_ROOM_NEEDED, GP_VOTESKIP_CARRIED,
             GP_VOTESKIP_PULLED, GP_VOTESKIP_ROOM, GP_VOTESKIP_ROOM_NEEDED, GP_WINDOW_CLOSED_SONGS,
         };
@@ -818,58 +754,6 @@ mod test {
         let s = msg.to_string();
         assert!(s.starts_with(GP_SUBMITTED_REPLACED), "{s}");
         assert!(s.ends_with("(1 in)"), "{s}");
-
-        let msg = CrackedMessage::GpStarted {
-            category: "🥹 Nostalgia".into(),
-            rounds: 5,
-            timer_secs: 180,
-            clip: None,
-            reveal: crate::commands::music::gp::GpReveal::Song,
-            round_results: true,
-            cleared_queue: false,
-        };
-        let s = msg.to_string();
-        assert!(s.starts_with(&format!("{} 5", GP_STARTED)), "{s}");
-        assert!(s.contains("🥹 Nostalgia"), "{s}");
-        assert!(!s.contains(GP_QUEUE_CLEARED), "{s}");
-        let msg = CrackedMessage::GpStarted {
-            category: "🎲 Random".into(),
-            rounds: 3,
-            timer_secs: 60,
-            clip: None,
-            reveal: crate::commands::music::gp::GpReveal::Round,
-            round_results: true,
-            cleared_queue: true,
-        };
-        assert!(msg.to_string().ends_with(&format!(" {}", GP_QUEUE_CLEARED)));
-        let s = msg.to_string();
-        assert!(
-            !s.contains(GP_STARTED_REVEAL_SONG),
-            "the default says nothing: {s}"
-        );
-        let msg = CrackedMessage::GpStarted {
-            category: "🎲 Random".into(),
-            rounds: 3,
-            timer_secs: 60,
-            clip: None,
-            reveal: crate::commands::music::gp::GpReveal::Song,
-            round_results: true,
-            cleared_queue: false,
-        };
-        let s = msg.to_string();
-        assert!(s.ends_with(GP_STARTED_REVEAL_SONG), "{s}");
-        assert!(!s.contains(GP_STARTED_NO_RESULTS), "{s}");
-        let msg = CrackedMessage::GpStarted {
-            category: "🎲 Random".into(),
-            rounds: 3,
-            timer_secs: 60,
-            clip: None,
-            reveal: crate::commands::music::gp::GpReveal::Song,
-            round_results: false,
-            cleared_queue: false,
-        };
-        let s = msg.to_string();
-        assert!(s.ends_with(GP_STARTED_NO_RESULTS), "{s}");
 
         // A vote answers the voter and the room separately; only the voter's
         // line carries the count so far, and the room's names nobody.

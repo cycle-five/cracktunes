@@ -524,6 +524,12 @@ pub fn render(e: &ModLogEvent, cx: &RenderCx) -> Rendered {
     Rendered::card(card)
 }
 
+impl crate::messaging::render::Payload for ModLogEvent {
+    fn render(&self, cx: &RenderCx) -> Rendered {
+        render(self, cx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     messaging::{
-        format::{http_url, TrackLabel, INLINE_TITLE_MAX},
+        format::{http_url, INLINE_TITLE_MAX},
         message::CrackedMessage,
         messages::REMOVED_QUEUE,
     },
@@ -55,10 +55,11 @@ impl Cleared {
 /// The single-track `/remove` embed; never panics on missing metadata. The
 /// thumbnail is set only from a web URL: an empty or relative one is left out.
 pub fn removed_embed(first: &TrackSummary, thumbnail: Option<&str>) -> Card {
-    let value = TrackLabel::from_ref(&TrackRef {
+    let value = TrackRef {
         title: first.title.clone(),
         url: first.url.clone(),
-    })
+    }
+    .label()
     .linked(INLINE_TITLE_MAX);
     Card {
         fields: vec![Field {

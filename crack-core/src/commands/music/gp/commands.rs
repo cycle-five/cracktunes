@@ -471,7 +471,7 @@ pub async fn gp_start(
     drop(guard);
 
     ctx.send_reply(
-        CrackedMessage::GpStarted {
+        GpCard::Started {
             category: categories.display(),
             rounds: opened.total_rounds,
             timer_secs,
@@ -479,7 +479,8 @@ pub async fn gp_start(
             reveal,
             round_results,
             cleared_queue,
-        },
+        }
+        .into(),
         true,
     )
     .await?;

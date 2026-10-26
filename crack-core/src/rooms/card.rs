@@ -581,6 +581,12 @@ fn status_text(
     lines.join("\n")
 }
 
+impl crate::messaging::render::Payload for RoomCard {
+    fn render(&self, cx: &RenderCx) -> Rendered {
+        render_card(self, cx)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

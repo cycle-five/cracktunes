@@ -20,11 +20,12 @@ repository = "https://github.com/cycle-five/cracktunes"
 workspace = ".."
 
 [features]
+poise = ["dep:poise"]
 # The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
-mutation-testing = []
+mutation-testing = ["poise"]
 
 [dependencies]
-poise = { workspace = true }
+poise = { workspace = true, optional = true }
 songbird = { workspace = true }
 serenity = { workspace = true }
 tokio = { workspace = true }

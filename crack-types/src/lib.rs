@@ -8,7 +8,9 @@ pub mod http;
 pub use http::*;
 pub mod metadata;
 pub use metadata::*;
+#[cfg(feature = "poise")]
 pub mod reply_handle;
+#[cfg(feature = "poise")]
 pub use reply_handle::*;
 pub mod saved_track;
 pub use saved_track::*;
