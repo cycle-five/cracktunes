@@ -157,8 +157,8 @@
   #[test]
   fn coin_call_choices_are_unchanged() {
       let names: Vec<String> = <CoinCall as poise::ChoiceParameter>::list()
-          .into_iter()
-          .map(|c| c.name)
+          .iter()
+          .map(|c| c.name.to_string())
           .collect();
       assert_eq!(names, ["Heads", "Tails"]);
   }
