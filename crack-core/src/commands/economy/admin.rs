@@ -741,7 +741,7 @@ mod tests {
             text.ends_with(&format!("…and {} older not shown.", 10 - shown)),
             "{text}"
         );
-        assert!(shown >= 1 && shown < 10, "{shown}");
+        assert!((1..10).contains(&shown), "{shown}");
         // A head longer than any message is cut, never sent too long.
         let huge = status_report_text(&"B".repeat(3000), &report, None, None);
         assert!(units(&huge) <= 2000);

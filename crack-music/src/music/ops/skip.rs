@@ -1,5 +1,5 @@
 //! Skips: what plays changes, so they settle `NowPlaying`.
-use super::*;
+use super::{begin, Arc, Call, Done, Failure, Mutex, OpCx, OpRefused, QueueGuard, Settle};
 use crate::music::track_data::get_track_handle_metadata;
 use crate::{
     music::connected::get_voice_channel_for_user,
@@ -295,7 +295,7 @@ mod test {
 
     #[tokio::test]
     async fn votes_count_distinct_voters_against_the_threshold() {
-        let data = super::test_support::test_music_data();
+        let data = crate::music::ops::test_support::test_music_data();
         let (a, b) = (UserId::new(5), UserId::new(6));
         assert_eq!(cast_vote(&data, GUILD, a, 2).await, Err(1));
         assert_eq!(cast_vote(&data, GUILD, a, 2).await, Err(1));

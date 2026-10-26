@@ -1,7 +1,9 @@
 //! Add one track the member chose (a dashboard search hit) to the end of the
 //! queue or to play next. The one op that queues; it closes the gap the ops
 //! layer left. Spec §2.
-use super::*;
+use super::{
+    begin, Arc, Call, CrackedError, Done, GuildId, Mutex, OpCx, OpRefused, QueueGuard, Settle,
+};
 use crate::{
     db::worker_pool::MetadataMsg,
     music::queue::{enqueue_resolved_track_next, enqueue_resolved_tracks_back},
@@ -140,6 +142,7 @@ mod test {
     use super::super::test_support::{guard, ids_of, queue_of, recorded, GUILD};
     use super::*;
     use crate::music::audit::{Action, AddAt};
+    use crate::music::MusicData;
     use serenity::all::UserId;
 
     fn song(n: u32) -> SavedTrack {

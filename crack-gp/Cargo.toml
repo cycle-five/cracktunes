@@ -45,3 +45,6 @@ crack-common = { path = "../crack-common", features = ["test-support"] }
 # The player's fixtures (music::ops::test_support).
 crack-music = { path = "../crack-music", features = ["test-support"] }
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

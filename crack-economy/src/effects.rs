@@ -1590,14 +1590,15 @@ mod tests {
             let old = t0() - mins(10);
             let mut ids = HashMap::new();
             let mut view = FakeView::default();
-            let cases: [(
-                &str,
+            type Case = (
+                &'static str,
                 ActionKind,
                 ActionPayload,
                 u64,
                 Option<VoiceFacts>,
                 bool,
-            ); 12] = [
+            );
+            let cases: [Case; 12] = [
                 (
                     "mute_yes",
                     ActionKind::Mute,

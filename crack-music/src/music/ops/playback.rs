@@ -1,7 +1,10 @@
 //! Playback ops. Pause, resume, seek and repeat change what the now-playing
 //! status shows (its progress line), so they settle `NowPlaying` (ruling R9);
 //! volume is shown nowhere, and settles `Nothing`.
-use super::*;
+use super::{
+    begin, connected_call, Arc, Call, Done, Failure, GuildId, MusicData, Mutex, OpCx, OpRefused,
+    QueueGuard, Settle,
+};
 use crate::music::{
     audit::Action,
     queue::{pause_queue, resume_queue},

@@ -940,16 +940,14 @@ mod tests {
     }
 
     /// A settle that takes `after` seconds, recording that it was started.
-    fn settle_after(
+    async fn settle_after(
         after: u64,
         outcome: Settled,
         started: Arc<std::sync::atomic::AtomicBool>,
-    ) -> impl Future<Output = Settled> {
-        async move {
-            started.store(true, std::sync::atomic::Ordering::SeqCst);
-            tokio::time::sleep(secs(after)).await;
-            outcome
-        }
+    ) -> Settled {
+        started.store(true, std::sync::atomic::Ordering::SeqCst);
+        tokio::time::sleep(secs(after)).await;
+        outcome
     }
 
     /// Runs `run_clip` from now, and says when `stop` was called (from now).

@@ -1,6 +1,6 @@
 //! Queue edits: remove, shuffle, move, clear. Each changes what the queue
 //! messages show, so each settles `QueueMessages`.
-use super::*;
+use super::{begin, Arc, Call, Done, Mutex, OpCx, OpRefused, QueueGuard, Settle, Target};
 use crate::music::track_data::get_track_handle_metadata;
 use crate::music::{
     audit::TrackRef,

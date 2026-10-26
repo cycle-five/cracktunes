@@ -152,3 +152,6 @@ sqlx = { version = "0.9.0", features = [
   "migrate",
   "json",
 ] }
+
+[lints]
+workspace = true

@@ -59,9 +59,11 @@ jobs:
         if: matrix.rust-version == 'nightly'
         run: cargo fmt --all -- --check
 
+      # The lint levels live in the root Cargo.toml's [workspace.lints], which
+      # every member inherits, so a local `cargo clippy` is this same check.
       - name: Run clippy
         if: success() || failure()
-        run: cargo clippy --all -- -D clippy::all -D warnings --allow clippy::needless_return
+        run: cargo clippy --all --all-targets -- -D warnings
 
       # crack-model is the platform-neutral layer: nothing it depends on may
       # be a chat-platform, runtime-networking or database crate.
@@ -230,12 +232,12 @@ jobs:
       # featureless clippy above never lints it.
       - name: Clippy the crack-coin glue
         if: success() || failure()
-        run: cargo clippy -p crack-core --features crack-coin --locked -- -D warnings
+        run: cargo clippy -p crack-core --features crack-coin --all-targets --locked -- -D warnings
 
       # crack-economy's own CrackCoin glue (`coin`) is gated the same way.
       - name: Clippy the crack-economy crack-coin glue
         if: success() || failure()
-        run: cargo clippy -p crack-economy --features crack-coin --locked -- -D warnings
+        run: cargo clippy -p crack-economy --features crack-coin --all-targets --locked -- -D warnings
 
   # 🔑 The mutants tooling is Python: scripts/mutants_check.py (the check),
   # scripts/check_waivers.py (every waiver carries a reason) and

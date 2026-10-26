@@ -3,7 +3,10 @@
 //! guild's settings through the command's context.
 
 use super::{
-    query::*,
+    query::{
+        play_all_plan, spotify_query, unresolved_spotify_link, NewQueryType, PlayAll, Queries,
+        ResolvedQuery,
+    },
     queue::{
         queue_keyword_list_back, queue_query_list_offset, queue_resolved_list_back,
         queue_track_back, queue_track_front,

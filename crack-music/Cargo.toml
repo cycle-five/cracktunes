@@ -67,3 +67,6 @@ crack-test-macros = { path = "../crack-test-macros" }
 crack-test-db = { path = "../crack-test-db" }
 crack-common = { path = "../crack-common", features = ["test-support"] }
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

@@ -126,8 +126,8 @@ mod test {
 
         let has_voted = check_and_record_vote(&pool, user_id, username, bot_id).await;
 
-        if has_voted.is_ok() {
-            assert!(!has_voted.unwrap());
+        if let Ok(voted) = &has_voted {
+            assert!(!*voted);
         } else {
             println!("{:?}", has_voted)
         }

@@ -276,8 +276,10 @@ mod tests {
 
     #[test]
     fn preflight_says_ready_or_what_is_missing_per_prank() {
-        let mut c = EconomyConfig::default();
-        c.jail_channel_id = Some(ChannelId::new(111));
+        let c = EconomyConfig {
+            jail_channel_id: Some(ChannelId::new(111)),
+            ..Default::default()
+        };
         let (all, _) = economy_preflight(&c, Some(&all_perms()), |ch| format!("#{ch}"));
         let kinds: Vec<_> = all.iter().map(|a| a.kind.as_str()).collect();
         assert_eq!(
@@ -332,8 +334,10 @@ mod tests {
 
     #[test]
     fn preflight_checks_the_announce_channel_for_cards() {
-        let mut c = EconomyConfig::default();
-        c.announce_channel_id = Some(ChannelId::new(222));
+        let c = EconomyConfig {
+            announce_channel_id: Some(ChannelId::new(222)),
+            ..Default::default()
+        };
         let mut p = all_perms();
         p.in_channel.insert(
             ChannelId::new(222),

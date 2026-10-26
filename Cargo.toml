@@ -35,6 +35,16 @@ edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
 
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+needless_return = "allow"
+wildcard_imports = "deny"
+enum_glob_use = "deny"
+
+[workspace.lints.rust]
+ambiguous_glob_reexports = "deny"
+hidden_glob_reexports = "deny"
+
 [workspace.dependencies.typesize]
 version = "0.1.6"
 features = [
