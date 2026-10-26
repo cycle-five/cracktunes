@@ -563,6 +563,13 @@
   instead of serenity builders. `messaging::discord` is the one place that turns
   them into Discord messages, and clippy keeps it that way. What the bot sends
   is unchanged.
+- **crack-core is splitting into crates (step 1 of 4).** `CrackedError`, the
+  user-facing strings, `CrackedMessage` and its neutral rendering moved to a new
+  crate, `crack-common`, which depends on neither poise nor crack-core; crack-core
+  re-exports them at their old paths. Feature messages (`/gp`, voice rooms, the
+  mod log) render through a `Payload` trait, and `/gp start`'s notice is a
+  `GpCard`. What the bot sends is unchanged. Design:
+  `docs/superpowers/specs/2026-10-25-split-crack-core-design.md`.
 
 ## TODO:
 
