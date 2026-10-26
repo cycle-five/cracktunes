@@ -116,7 +116,7 @@ pub(crate) fn skip_threshold(in_channel: usize) -> usize {
 
 /// Count `voter`; `Err(missing)` while the votes fall short of `threshold`.
 pub(crate) async fn cast_vote(
-    data: &crate::Data,
+    data: &crate::music::MusicData,
     guild_id: GuildId,
     voter: UserId,
     threshold: usize,
@@ -297,9 +297,12 @@ mod test {
     async fn votes_count_distinct_voters_against_the_threshold() {
         let data = crate::Data(Arc::new(crate::DataInner::default()));
         let (a, b) = (UserId::new(5), UserId::new(6));
-        assert_eq!(cast_vote(&data, GUILD, a, 2).await, Err(1));
-        assert_eq!(cast_vote(&data, GUILD, a, 2).await, Err(1));
-        assert_eq!(cast_vote(&data, GUILD, b, 2).await, Ok(()));
-        assert_eq!(cast_vote(&data, GuildId::new(2), a, 0).await, Ok(()));
+        assert_eq!(cast_vote(&data.music_data(), GUILD, a, 2).await, Err(1));
+        assert_eq!(cast_vote(&data.music_data(), GUILD, a, 2).await, Err(1));
+        assert_eq!(cast_vote(&data.music_data(), GUILD, b, 2).await, Ok(()));
+        assert_eq!(
+            cast_vote(&data.music_data(), GuildId::new(2), a, 0).await,
+            Ok(())
+        );
     }
 }

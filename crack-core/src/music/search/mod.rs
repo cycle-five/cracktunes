@@ -184,7 +184,7 @@ pub(crate) async fn gather(jobs: Vec<Job<'_>>) -> Vec<(Source, SourceResult)> {
 /// its own bound; the answer is in [`Source`] order, one entry per source
 /// asked. `history_since` is the plan's window (`None`: all of it).
 pub async fn search(
-    data: &crate::Data,
+    data: &crate::music::MusicData,
     guild: serenity::all::GuildId,
     query: &Query,
     sources: SourceSet,
@@ -384,7 +384,7 @@ mod test {
 
     #[tokio::test]
     async fn search_runs_only_what_was_asked_and_answers_in_order() {
-        let data = crate::Data::default(); // no call, no pool
+        let data = crate::Data::default().music_data(); // no call, no pool
         let q = Query::new("abba").unwrap();
         let out = search(
             &data,

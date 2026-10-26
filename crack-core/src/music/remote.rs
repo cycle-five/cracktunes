@@ -6,15 +6,13 @@
 //! types below.
 
 use crate::messaging::cards::{EchoLine, Via};
-use crate::messaging::courier::{self, Destination};
 use crate::messaging::message::CrackedMessage;
 use crate::messaging::render::RenderCx;
 use crate::messaging::status::DiscordTransport;
-use crate::music::{audit::Actor, ops, PlaybackOwner, QueueGuard};
+use crate::music::{audit::Actor, ops, MusicData, PlaybackOwner, QueueGuard};
 use crate::{
     commands::music_utils::connected_call,
     utils::{get_requesting_user, get_track_handle_metadata},
-    Data,
 };
 use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
 use songbird::{
@@ -65,7 +63,7 @@ pub enum QueueState {
 }
 
 /// The queue in `guild_id`. A game hides it before the call is even looked up.
-pub async fn queue_state(data: &Data, guild_id: GuildId) -> QueueState {
+pub async fn queue_state(data: &MusicData, guild_id: GuildId) -> QueueState {
     unless_a_game(data, guild_id, async {
         match connected_call(&data.songbird, guild_id, None).await {
             Some(call) => state_of_call(&call).await,
@@ -79,7 +77,7 @@ pub async fn queue_state(data: &Data, guild_id: GuildId) -> QueueState {
 /// ends: a game that claims and enqueues mid-read must not have its first
 /// title published.
 async fn unless_a_game(
-    data: &Data,
+    data: &MusicData,
     guild_id: GuildId,
     read: impl Future<Output = QueueState>,
 ) -> QueueState {
@@ -167,14 +165,14 @@ pub(crate) async fn summary_of(handle: &TrackHandle, meta: AuxMetadata) -> Track
 }
 
 /// The voice channel the bot is connected to in `guild_id`, if any.
-pub async fn bot_channel(data: &Data, guild_id: GuildId) -> Option<ChannelId> {
+pub async fn bot_channel(data: &MusicData, guild_id: GuildId) -> Option<ChannelId> {
     let call = connected_call(&data.songbird, guild_id, None).await?;
     let channel = call.lock().await.current_channel()?;
     Some(ChannelId::new(channel.get()))
 }
 
 /// Every guild with a connected call, and the channel it is in.
-pub async fn active_guilds(data: &Data) -> Vec<(GuildId, ChannelId)> {
+pub async fn active_guilds(data: &MusicData) -> Vec<(GuildId, ChannelId)> {
     let calls: Vec<_> = data.songbird.iter().collect();
     let mut out = Vec::new();
     for (guild_id, call) in calls {
@@ -207,7 +205,7 @@ pub enum MoveRefused {
 /// limit, and the move is done whether or not they have caught up. Posts no
 /// reply: a drag is silent in the channel (owner's decision).
 pub async fn move_by_id(
-    data: Arc<Data>,
+    data: MusicData,
     http: Arc<Http>,
     cache: Arc<Cache>,
     guild_id: GuildId,
@@ -330,7 +328,7 @@ pub(crate) async fn flags_before(call: &Arc<Mutex<Call>>) -> Option<(bool, bool)
 /// the background. The settle is anchored after the echo, so after a skip,
 /// pause, resume or repeat the now-playing message is re-rendered below it.
 pub async fn control(
-    data: Arc<Data>,
+    data: MusicData,
     http: Arc<Http>,
     cache: Arc<Cache>,
     guild_id: GuildId,
@@ -380,14 +378,15 @@ pub async fn control(
                     user: user.to_ref(),
                     via,
                 };
-                courier::post(
-                    &cx.data,
-                    &transport,
-                    Destination::Echo(guild_id),
-                    &CrackedMessage::Echo(Box::new(line)),
-                    &RenderCx::now(),
-                )
-                .await
+                cx.data
+                    .surface
+                    .echo(
+                        guild_id,
+                        &transport,
+                        &CrackedMessage::Echo(Box::new(line)),
+                        &RenderCx::now(),
+                    )
+                    .await
             },
             None => None,
         };
@@ -439,7 +438,7 @@ pub(crate) fn add_echo(added: &ops::Added, at: At) -> Echo {
     reason = "mirrors control(): the surface hands over its whole context"
 )]
 pub async fn add(
-    data: Arc<Data>,
+    data: MusicData,
     http: Arc<Http>,
     cache: Arc<Cache>,
     guild_id: GuildId,
@@ -473,14 +472,16 @@ pub async fn add(
             user: user.to_ref(),
             via,
         };
-        let anchor = courier::post(
-            &cx.data,
-            &transport,
-            Destination::Echo(guild_id),
-            &CrackedMessage::Echo(Box::new(line)),
-            &RenderCx::now(),
-        )
-        .await;
+        let anchor = cx
+            .data
+            .surface
+            .echo(
+                guild_id,
+                &transport,
+                &CrackedMessage::Echo(Box::new(line)),
+                &RenderCx::now(),
+            )
+            .await;
         settle.after(&cx, call.as_ref(), anchor).await;
     });
     Ok(Some(echo))
@@ -594,8 +595,34 @@ mod test {
         .expect("an echo renders as an embed")
     }
 
-    fn data() -> Data {
-        Data(Arc::new(DataInner::default()))
+    /// Review Focus 4: the echo the dashboard posts goes through the surface,
+    /// and the real surface honours a guild's "control echoes off".
+    #[tokio::test]
+    async fn remote_echo_respects_control_echoes_off() {
+        use crate::guild::settings::GuildSettings;
+        use crack_common::test_support::FakeTransport;
+        let d = Data(Arc::new(DataInner::default()));
+        crate::messaging::status::note_command_channel(
+            &d,
+            G,
+            serenity::all::GenericChannelId::new(10),
+        )
+        .await;
+        let mut settings = GuildSettings::new(crack_types::discord::ToRef::to_ref(&G), None, None);
+        settings.control_echoes = false;
+        d.guild_settings_map.write().await.insert(G, settings);
+        let t = FakeTransport::default();
+        let at = d
+            .music_data()
+            .surface
+            .echo(G, &t, &CrackedMessage::Clear, &RenderCx::now())
+            .await;
+        assert_eq!(at, None);
+        assert!(t.ops().is_empty(), "{:?}", t.ops());
+    }
+
+    fn data() -> MusicData {
+        Data(Arc::new(DataInner::default())).music_data()
     }
 
     #[tokio::test]
@@ -700,7 +727,7 @@ mod test {
 
     #[tokio::test]
     async fn a_game_refuses_a_move_before_the_call_is_looked_up() {
-        let d = Arc::new(data());
+        let d = data();
         d.claim_playback(G, crate::music::PlaybackOwner::Game)
             .unwrap();
         let http = Arc::new(Http::new(crack_types::get_valid_token()));
@@ -721,7 +748,7 @@ mod test {
     async fn a_move_with_no_call_is_not_playing() {
         let http = Arc::new(Http::new(crack_types::get_valid_token()));
         let got = move_by_id(
-            Arc::new(data()),
+            data(),
             http,
             Arc::new(Cache::default()),
             G,
@@ -811,7 +838,7 @@ mod test {
 
     #[tokio::test]
     async fn a_game_refuses_a_control_before_the_call_is_looked_up() {
-        let d = Arc::new(data());
+        let d = data();
         d.claim_playback(G, crate::music::PlaybackOwner::Game)
             .unwrap();
         let http = Arc::new(Http::new(crack_types::get_valid_token()));
@@ -832,7 +859,7 @@ mod test {
     async fn a_control_with_no_call_is_not_playing() {
         let http = Arc::new(Http::new(crack_types::get_valid_token()));
         let got = control(
-            Arc::new(data()),
+            data(),
             http,
             Arc::new(Cache::default()),
             G,

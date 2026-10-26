@@ -95,7 +95,7 @@ impl EventHandler for IdleHandler {
         };
         if times_out(no_timeout, self.limit, count) {
             match crate::music::disconnect::disconnect(
-                &data,
+                &data.music_data(),
                 manager,
                 self.guild_id,
                 crate::music::audit::Actor::bot(crate::music::audit::BotReason::IdleTimeout),

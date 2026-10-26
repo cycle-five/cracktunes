@@ -239,12 +239,12 @@ pub async fn volume(cx: &OpCx, percent: u32) -> Result<Done<VolumeSet>, OpRefuse
 
 pub(crate) async fn volume_on(
     call: &Arc<Mutex<Call>>,
-    data: &Data,
+    data: &MusicData,
     guild: GuildId,
     percent: u32,
 ) -> Result<Done<VolumeSet>, OpRefused> {
     let new = percent as f32 / 100.0;
-    let old = data.set_volume(guild, new).await;
+    let old = data.guild.set_volume(guild, new).await;
     let current = call.lock().await.queue().current();
     if let Some(track) = current {
         if let Err(e) = track.set_volume(new) {
@@ -263,7 +263,7 @@ pub async fn volume_now(cx: &OpCx) -> Result<VolumeNow, OpRefused> {
     let call = connected_call(&cx.data.songbird, cx.guild_id, None)
         .await
         .ok_or(OpRefused::NotConnected)?;
-    let setting = cx.data.get_volume(cx.guild_id).await.0;
+    let setting = cx.data.guild.get_volume(cx.guild_id).await.0;
     let current = call.lock().await.queue().current();
     let track = match current {
         Some(track) => match timeout(TRACK_INFO_TIMEOUT, track.get_info()).await {
@@ -385,7 +385,9 @@ mod test {
             GuildSettings::new(crack_types::discord::ToRef::to_ref(&GUILD), None, None),
         );
         data.set_volume(GUILD, 0.3).await;
-        let done = volume_on(&call, &data, GUILD, 70).await.unwrap();
+        let done = volume_on(&call, &data.music_data(), GUILD, 70)
+            .await
+            .unwrap();
         assert_eq!(*done.settle(), Settle::Nothing);
         assert_eq!(*done.outcome(), VolumeSet { old: 0.3, new: 0.7 });
         assert_eq!(data.get_volume(GUILD).await.0, 0.7);

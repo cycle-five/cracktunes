@@ -4,13 +4,13 @@
 use super::{
     gated, saved_from_metadata, Hit, HitDetail, Query, SourceResult, EXTERNAL, HITS_PER_SOURCE,
 };
-use crate::Data;
+use crate::music::MusicData;
 use songbird::input::AuxMetadata;
 
 /// How many hits the yt-dlp fallback asks for.
 pub(crate) const YTDLP_HITS: usize = 5;
 
-pub(crate) async fn search_youtube(data: &Data, q: &Query) -> SourceResult {
+pub(crate) async fn search_youtube(data: &MusicData, q: &Query) -> SourceResult {
     gated(&EXTERNAL, async {
         let rusty = data
             .ct_client
@@ -112,7 +112,7 @@ mod test {
     #[tokio::test]
     #[ignore = "hits live YouTube"]
     async fn a_live_youtube_search_finds_something() {
-        let data = crate::Data::default();
+        let data = crate::Data::default().music_data();
         let SourceResult::Hits(h) =
             search_youtube(&data, &Query::new("abba waterloo").unwrap()).await
         else {

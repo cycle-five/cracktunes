@@ -261,7 +261,7 @@ pub(crate) async fn join_permitted(
                 // would disconnect that live session and bin its queue.
                 if connected_call(manager, guild_id, None).await.is_none() {
                     if let Err(e) = crate::music::disconnect::disconnect(
-                        data,
+                        &data.music_data(),
                         manager,
                         guild_id,
                         crate::music::audit::Actor::bot(

@@ -273,7 +273,7 @@ mod test {
         d.claim_playback(GUILD, crate::music::PlaybackOwner::Game)
             .unwrap();
         let cx = OpCx {
-            data: Arc::new(d),
+            data: d.music_data(),
             ..super::super::test_support::cx_without_call()
         };
         assert!(matches!(
@@ -325,7 +325,7 @@ mod test {
             .is_some());
         let g = guard(&data).await;
         let cx = OpCx {
-            data: Arc::new(data),
+            data: data.music_data(),
             ..super::super::test_support::cx_without_call()
         };
         let done = add_with(

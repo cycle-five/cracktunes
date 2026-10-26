@@ -4,6 +4,7 @@ pub mod autoplay;
 #[cfg(test)]
 mod autoplay_probe;
 pub mod context;
+pub mod core_surface;
 mod data_impl;
 pub mod disconnect;
 pub mod lease;
@@ -14,6 +15,7 @@ pub(crate) mod queue;
 pub mod remote;
 pub mod resume;
 pub mod search;
+pub mod surface;
 
 pub use context::QueryContext;
 pub use lease::{PlaybackOwner, QueueGuard};
@@ -46,6 +48,7 @@ pub struct MusicData {
         dashmap::DashMap<poise::serenity_prelude::GuildId, std::sync::Arc<tokio::sync::Mutex<()>>>,
     >,
     pub guild: crate::guild::operations::GuildData,
+    pub surface: std::sync::Arc<dyn surface::Surface>,
 }
 
 impl std::fmt::Debug for MusicData {

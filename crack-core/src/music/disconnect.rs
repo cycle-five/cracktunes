@@ -3,7 +3,7 @@
 //! the discard is recorded like any other queue change. See `music::audit`.
 
 use crate::music::audit::{emit, Action, Actor, AuditEvent};
-use crate::Data;
+use crate::music::MusicData;
 use serenity::all::{ChannelId, GuildId};
 use songbird::Songbird;
 
@@ -15,7 +15,7 @@ use songbird::Songbird;
     reason = "the one audited caller of `Songbird::get` and `Songbird::remove`; see clippy.toml"
 )]
 pub async fn disconnect(
-    data: &Data,
+    data: &MusicData,
     manager: &Songbird,
     guild_id: GuildId,
     actor: Actor,
@@ -107,9 +107,14 @@ mod test {
         let manager = manager();
         register(&data, &manager, 2).await;
         while rx.try_recv().is_ok() {}
-        disconnect(&data, &manager, G, Actor::bot(BotReason::IdleTimeout))
-            .await
-            .expect("an unconnected Call leaves Ok");
+        disconnect(
+            &data.music_data(),
+            &manager,
+            G,
+            Actor::bot(BotReason::IdleTimeout),
+        )
+        .await
+        .expect("an unconnected Call leaves Ok");
         let e = rx.try_recv().expect("recorded");
         assert_eq!(e.action, Action::Leave { discarded: 2 });
         assert_eq!(e.actor, Actor::bot(BotReason::IdleTimeout));
@@ -121,7 +126,13 @@ mod test {
         let manager = manager();
         // A registered but empty Call, so the `discarded > 0` check is what is tested.
         let _ = manager.get_or_insert(G);
-        let _ = disconnect(&data, &manager, G, Actor::bot(BotReason::Kicked)).await;
+        let _ = disconnect(
+            &data.music_data(),
+            &manager,
+            G,
+            Actor::bot(BotReason::Kicked),
+        )
+        .await;
         assert!(rx.try_recv().is_err());
     }
 
@@ -139,7 +150,12 @@ mod test {
             .unwrap();
         let _ = tokio::time::timeout(
             std::time::Duration::from_millis(200),
-            disconnect(&data, &manager, G, Actor::bot(BotReason::Kicked)),
+            disconnect(
+                &data.music_data(),
+                &manager,
+                G,
+                Actor::bot(BotReason::Kicked),
+            ),
         )
         .await
         .expect("disconnect must not take the queue lease");

@@ -1,12 +1,14 @@
 //! Offline queues for op tests: tracks queue on a `Call::standalone`, nothing plays.
-use super::OpCx;
+use super::{OpCx, Settle};
+use crate::messaging::{message::CrackedMessage, render::RenderCx, transport::Transport};
 use crate::music::{
     audit::{Action, Actor, AuditEvent, BotReason},
     queue::enqueue_input_back,
     PlaybackOwner,
 };
+use crate::music::{surface::Surface, MusicData};
 use crate::{Data, DataInner};
-use serenity::all::{Cache, GuildId, Http, UserId};
+use serenity::all::{Cache, GenericChannelId, GuildId, Http, MessageId, UserId};
 use songbird::{input::AuxMetadata, Call};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -132,10 +134,56 @@ pub async fn ids_of(call: &Arc<Mutex<Call>>) -> Vec<uuid::Uuid> {
 /// An `OpCx` over a default `Data` with no call registered.
 pub fn cx_without_call() -> OpCx {
     OpCx {
-        data: Arc::new(Data(Arc::new(DataInner::default()))),
+        data: Data(Arc::new(DataInner::default())).music_data(),
         http: Arc::new(Http::new(crack_types::get_valid_token())),
         cache: Arc::new(Cache::default()),
         guild_id: GUILD,
         actor: Actor::web(UserId::new(9), "test"),
+    }
+}
+
+/// One settle the recording surface was asked for.
+pub type RecordedSettle = (Settle, GuildId, Option<(GenericChannelId, MessageId)>);
+
+/// A [`Surface`] that records what it is asked and renders and sends nothing.
+/// `echo` records the message's `Debug` text and returns `None`.
+#[derive(Default)]
+pub struct RecordingSurface {
+    pub settles: std::sync::Mutex<Vec<RecordedSettle>>,
+    pub echoes: std::sync::Mutex<Vec<String>>,
+}
+
+#[serenity::async_trait]
+impl Surface for RecordingSurface {
+    async fn settle(
+        &self,
+        settle: Settle,
+        cx: &OpCx,
+        _call: Option<&Arc<Mutex<Call>>>,
+        anchor: Option<(GenericChannelId, MessageId)>,
+    ) {
+        self.settles
+            .lock()
+            .unwrap()
+            .push((settle, cx.guild_id, anchor));
+    }
+
+    async fn echo(
+        &self,
+        _guild: GuildId,
+        _transport: &dyn Transport,
+        msg: &CrackedMessage,
+        _cx: &RenderCx,
+    ) -> Option<(GenericChannelId, MessageId)> {
+        self.echoes.lock().unwrap().push(format!("{msg:?}"));
+        None
+    }
+}
+
+/// A `MusicData` over a default `Data` whose surface is `surface`.
+pub fn music_data_recording(surface: Arc<RecordingSurface>) -> MusicData {
+    MusicData {
+        surface,
+        ..Data(Arc::new(DataInner::default())).music_data()
     }
 }

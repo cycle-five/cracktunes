@@ -3,11 +3,11 @@
 
 use super::{Hit, HitDetail, Query, SavedTrack, SourceResult, HITS_PER_SOURCE};
 use crate::music::remote::{self, QueueState};
-use crate::Data;
+use crate::music::MusicData;
 use serenity::all::GuildId;
 
 /// The queue in `guild`, searched for `q`.
-pub(crate) async fn search_queue(data: &Data, guild: GuildId, q: &Query) -> SourceResult {
+pub(crate) async fn search_queue(data: &MusicData, guild: GuildId, q: &Query) -> SourceResult {
     queue_hits(remote::queue_state(data, guild).await, q)
 }
 

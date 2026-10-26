@@ -669,6 +669,9 @@ impl Data {
             playback_owners: self.playback_owners.clone(),
             queue_locks: self.queue_locks.clone(),
             guild: self.guild_data(),
+            surface: Arc::new(crate::music::core_surface::CoreSurface {
+                data: Arc::new(self.clone()),
+            }),
         }
     }
 
