@@ -13,9 +13,9 @@ use super::settings::{render_room_name, RoomSettings};
 use super::state::{RoomState, StoredOverwrite};
 use super::RoomsData;
 use crate::db::rooms::StoredRoom;
-use crate::messaging::messages::ROOM_NAME_FALLBACK;
-use crate::messaging::transport::DiscordTransport;
 use crate::modlog::batch::NoopSink;
+use crack_common::messages::ROOM_NAME_FALLBACK;
+use crack_common::transport::DiscordTransport;
 use dashmap::DashSet;
 use serenity::all::{Cache, ChannelId, Context, Guild, GuildId, Timestamp, UserId, VoiceState};
 use std::collections::{HashMap, HashSet};
@@ -1098,11 +1098,11 @@ async fn reconcile_with(data: &RoomsData, ctx: &Context, guild: GuildId, stored:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messaging::test_support::{FakeTransport, Op};
     use crate::rooms::facts::tests::empty;
     use crate::rooms::registry::NEW_ROOM_COOLDOWN;
     use crate::rooms::state::OverwriteTarget;
     use crate::rooms::test_support::{Call, CallKind, FakeRoomsDiscord};
+    use crack_common::test_support::{FakeTransport, Op};
     use serenity::all::{GuildChannel, MessageId, Permissions, RoleId};
     use serenity::nonmax::NonMaxU16;
     use serenity::small_fixed_array::{FixedArray, FixedString};
@@ -2581,7 +2581,8 @@ mod tests {
         use crate::db::rooms::{insert_room, rooms_in};
         use sqlx::PgPool;
 
-        pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+        pub static MIGRATOR: sqlx::migrate::Migrator =
+            sqlx::migrate!("../crack-core/test_migrations");
 
         fn world(pool: &PgPool, discord: FakeRoomsDiscord) -> World {
             World::build(discord, Some(pool.clone()))

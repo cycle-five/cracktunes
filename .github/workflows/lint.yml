@@ -106,6 +106,17 @@ jobs:
             exit 1
           fi
 
+      # crack-rooms holds the voice rooms, the mod log and their queries: it may
+      # use serenity and crack-economy, never poise or crack-core.
+      - name: crack-rooms depends on no poise or crack-core
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-rooms -e normal --prefix none)
+          if echo "$tree" | grep -E '^(poise|crack-core) '; then
+            echo "crack-rooms must not depend on poise or crack-core" >&2
+            exit 1
+          fi
+
       # crack-test-db is test tooling shared by the crates' db tests: no poise,
       # no crack-core (crack-core depends on it, not the other way round).
       - name: crack-test-db depends on no poise or crack-core
@@ -124,6 +135,16 @@ jobs:
           tree=$(cargo tree -p crack-economy -e normal,dev --prefix none)
           if echo "$tree" | grep -E '^crack-core '; then
             echo "crack-economy must not depend on crack-core, even in tests" >&2
+            exit 1
+          fi
+
+      # Dev-dependencies count too: `cargo test -p crack-rooms` must not build crack-core.
+      - name: crack-rooms has no crack-core dev-dependency
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-rooms -e normal,dev --prefix none)
+          if echo "$tree" | grep -E '^crack-core '; then
+            echo "crack-rooms must not depend on crack-core, even in tests" >&2
             exit 1
           fi
 

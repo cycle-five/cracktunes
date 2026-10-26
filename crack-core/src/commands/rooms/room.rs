@@ -336,12 +336,28 @@ pub async fn panel(ctx: Context<'_>) -> Result<(), Error> {
 mod tests {
     use super::*;
     use crate::rooms::card::reference_lines;
-    use crate::rooms::facts::tests::empty;
+    use crate::rooms::facts::GuildFacts;
     use crate::rooms::registry::{LiveRoom, RenameWindow};
     use crate::rooms::state::RoomState;
     use serenity::all::Permissions;
 
     const G: GuildId = GuildId::new(100);
+
+    /// A server where nobody is known; the same shape as crack-rooms' own
+    /// test helper, which a test build of another crate cannot see.
+    fn empty(guild: GuildId) -> GuildFacts {
+        GuildFacts {
+            guild,
+            owner: UserId::new(77),
+            bot: UserId::new(99),
+            everyone: Permissions::VIEW_CHANNEL | Permissions::CONNECT,
+            role_perms: Default::default(),
+            roles: Default::default(),
+            voice: Default::default(),
+            display: Default::default(),
+            overwrites: Default::default(),
+        }
+    }
     const VOICE_ROOM: ChannelId = ChannelId::new(500);
     const CHAT_ROOM: ChannelId = ChannelId::new(501);
     const PLAIN: ChannelId = ChannelId::new(502);

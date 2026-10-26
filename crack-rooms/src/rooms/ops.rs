@@ -13,13 +13,13 @@ use super::registry::LiveRoom;
 use super::settings::{RoomSettings, SettingsError, ROOM_NAME_MAX};
 use super::state::{OverwriteTarget, RoomState, StoredOverwrite};
 use super::RoomsData;
-use crate::messaging::courier::{edit_rendered_message, post_message};
-use crate::messaging::message::CrackedMessage;
-use crate::messaging::render::{render, RenderCx, Rendered};
-use crate::messaging::transport::{Transport, TransportError};
 use crate::modlog::attribution::AuditKind;
 use crate::modlog::batch::ModLogSink;
 use crate::modlog::event::ModLogEvent;
+use crack_common::courier::{edit_rendered_message, post_message};
+use crack_common::message::CrackedMessage;
+use crack_common::render::{render, RenderCx, Rendered};
+use crack_common::transport::{Transport, TransportError};
 use crack_types::discord::ToRef;
 use serenity::all::{ChannelId, GuildId, MessageId, RoleId, UserId};
 use std::sync::Arc;
@@ -348,7 +348,7 @@ fn panel(room: &LiveRoom) -> Rendered {
 }
 
 /// The member an action is aimed at, if any.
-pub(crate) fn user_target(action: &RoomAction) -> Option<UserId> {
+pub fn user_target(action: &RoomAction) -> Option<UserId> {
     match action {
         RoomAction::Kick { target, .. }
         | RoomAction::LetIn { target }
@@ -712,8 +712,6 @@ pub async fn save_settings(data: &RoomsData, s: RoomSettings) -> Result<(), Sett
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messaging::test_support::{FakeTransport, Op};
-    use crate::messaging::transport::TransportError;
     use crate::modlog::event::ModLogEvent;
     use crate::modlog::settings::ModLogSettings;
     use crate::modlog::test_support::FakeSink;
@@ -723,6 +721,8 @@ mod tests {
     use crate::rooms::registry::RenameWindow;
     use crate::rooms::state::{OverwriteTarget, RoomState, StoredOverwrite};
     use crate::rooms::test_support::{Call, CallKind, FakeRoomsDiscord};
+    use crack_common::test_support::{FakeTransport, Op};
+    use crack_common::transport::TransportError;
     use serenity::all::{GuildId, Permissions, RoleId};
     use std::sync::Arc;
     use std::time::Duration;
@@ -801,11 +801,11 @@ mod tests {
     #[test]
     fn the_panel_is_drawn_from_the_room() {
         let r = panel(&live(vec![]));
-        let embed = serde_json::to_string(&crate::messaging::discord::first_embed(&r)).unwrap();
+        let embed = serde_json::to_string(&crack_common::discord::first_embed(&r)).unwrap();
         assert!(embed.contains("Saucey's room"), "{embed}");
         assert!(embed.contains(&format!("<@{}>", OWNER.get())), "{embed}");
         assert!(embed.contains(&format!("<@{}>", HELPER.get())), "{embed}");
-        let rows = serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap();
+        let rows = serde_json::to_string(&crack_common::discord::action_rows(&r.rows)).unwrap();
         assert!(
             rows.contains(&format!("room:kick:{}", ROOM.get())),
             "{rows}"
@@ -879,7 +879,7 @@ mod tests {
         }
     }
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     fn on_with_hub() -> RoomSettings {
         RoomSettings {
@@ -2335,7 +2335,8 @@ mod tests {
         use crate::db::rooms::{insert_room, rooms_in, StoredRoom};
         use sqlx::PgPool;
 
-        pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+        pub static MIGRATOR: sqlx::migrate::Migrator =
+            sqlx::migrate!("../crack-core/test_migrations");
 
         async fn world(pool: PgPool) -> sqlx::Result<World> {
             let room = live(vec![]);

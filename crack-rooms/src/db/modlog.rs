@@ -45,7 +45,7 @@ pub async fn save_settings(pool: &PgPool, s: &ModLogSettings) -> sqlx::Result<()
 mod tests {
     use super::*;
 
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(

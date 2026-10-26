@@ -84,7 +84,7 @@ mod tests {
 
     const G: GuildId = GuildId::new(1);
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     fn on() -> ModLogSettings {
         ModLogSettings {

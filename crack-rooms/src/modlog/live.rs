@@ -9,13 +9,13 @@ use super::attribution::Change;
 use super::audit::{nonzero, AuditSource, LiveAudit};
 use super::batch::{self, ModLogSink};
 use super::event::{Actor, ModLogEvent};
-use crate::economy::discord::SHOP_AUDIT_REASON_PREFIX;
-use crate::messaging::courier::post_to_channel;
-use crate::messaging::message::CrackedMessage;
-use crate::messaging::render::{render, RenderCx};
-use crate::messaging::transport::{DiscordTransport, Transport};
 use crate::rooms::lifecycle::{classify, VoiceChange};
 use crate::rooms::RoomsData;
+use crack_common::courier::post_to_channel;
+use crack_common::message::CrackedMessage;
+use crack_common::render::{render, RenderCx};
+use crack_common::transport::{DiscordTransport, Transport};
+use crack_economy::discord::SHOP_AUDIT_REASON_PREFIX;
 use crack_types::discord::ToRef;
 use futures::future::BoxFuture;
 use serenity::all::{AuditLogEntry, ChannelId, Context, GuildId, Http, UserId, VoiceState};
@@ -360,13 +360,13 @@ pub async fn on_guild_create(data: &RoomsData, http: Arc<Http>, guild: GuildId) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messaging::messages::{MODLOG_DEAFENED, MODLOG_MUTED};
-    use crate::messaging::render::Mentions;
-    use crate::messaging::test_support::{FakeTransport, Op};
     use crate::modlog::attribution::AuditKind::{Disconnect, Move};
     use crate::modlog::batch::{DEBOUNCE, MAX_WAIT, SKEW};
     use crate::modlog::settings::ModLogSettings;
     use crate::modlog::test_support::{FakeAudit, FakeSink};
+    use crack_common::messages::{MODLOG_DEAFENED, MODLOG_MUTED};
+    use crack_common::render::Mentions;
+    use crack_common::test_support::{FakeTransport, Op};
     use std::cell::Cell;
     use std::collections::VecDeque;
     use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
@@ -978,7 +978,7 @@ mod tests {
         );
     }
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(

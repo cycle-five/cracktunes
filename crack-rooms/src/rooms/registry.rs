@@ -4,7 +4,7 @@
 
 use super::settings::RoomSettings;
 use super::state::{RoomState, StoredOverwrite};
-use crate::messaging::throttle::Throttle;
+use crack_common::throttle::Throttle;
 use dashmap::{DashMap, DashSet};
 use serenity::all::{ChannelId, GuildId, UserId};
 use std::collections::VecDeque;

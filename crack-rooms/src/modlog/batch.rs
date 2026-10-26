@@ -658,7 +658,7 @@ mod tests {
     const C2: ChannelId = ChannelId::new(102);
     const LOG: ChannelId = ChannelId::new(555);
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     /// A change's whole round with no fetch delay: the debounce, then the
     /// grace and the margin before the decision.

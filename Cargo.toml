@@ -13,6 +13,7 @@ members = [
   "crack-types",
   "crack-test-db",
   "crack-economy",
+  "crack-rooms",
 ]
 resolver = "2"
 

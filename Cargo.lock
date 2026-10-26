@@ -1118,6 +1118,7 @@ dependencies = [
  "crack-model",
  "crack-musicreco",
  "crack-osint",
+ "crack-rooms",
  "crack-sleevenote",
  "crack-test-db",
  "crack-test-macros",
@@ -1218,6 +1219,29 @@ dependencies = [
  "serde",
  "serde_json",
  "sha1 0.10.7",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "crack-rooms"
+version = "0.40.0"
+dependencies = [
+ "chrono",
+ "crack-common",
+ "crack-economy",
+ "crack-model",
+ "crack-test-db",
+ "crack-test-macros",
+ "crack-types",
+ "dashmap 6.2.1",
+ "futures",
+ "http",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "serenity",
+ "sqlx 0.9.0",
  "tokio",
  "tracing",
 ]

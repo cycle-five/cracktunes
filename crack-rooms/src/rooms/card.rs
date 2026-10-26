@@ -6,9 +6,9 @@
 use super::ids::RoomButton;
 use super::preflight::{Finding, Where};
 use super::settings::RoomSettings;
-use crate::messaging::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
-use crate::messaging::messages::*;
-use crate::messaging::render::{RenderCx, Rendered};
+use crack_common::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
+use crack_common::messages::*;
+use crack_common::render::{RenderCx, Rendered};
 use crack_model::{Button, ButtonStyle, Card, Field, Mention, RoleRef, RoomRef, Row, UserRef};
 use crack_types::discord::ToRef;
 use serenity::all::ChannelId;
@@ -197,7 +197,7 @@ impl From<&Finding> for FindingView {
     }
 }
 
-impl From<RoomCard> for crate::messaging::message::CrackedMessage {
+impl From<RoomCard> for crack_common::message::CrackedMessage {
     fn from(card: RoomCard) -> Self {
         Self::Room(Box::new(card))
     }
@@ -252,7 +252,7 @@ pub fn render_card(card: &RoomCard, _cx: &RenderCx) -> Rendered {
 }
 
 /// Every control, one line each, then the two facts worth knowing.
-pub(crate) fn reference_lines() -> [&'static str; 18] {
+pub fn reference_lines() -> [&'static str; 18] {
     [
         ROOM_REF_KICK,
         ROOM_REF_MUTE,
@@ -564,7 +564,7 @@ fn status_text(
     lines.join("\n")
 }
 
-impl crate::messaging::render::Payload for RoomCard {
+impl crack_common::render::Payload for RoomCard {
     fn render(&self, cx: &RenderCx) -> Rendered {
         render_card(self, cx)
     }
@@ -573,8 +573,8 @@ impl crate::messaging::render::Payload for RoomCard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messaging::render::Mentions;
     use crate::rooms::ids::ButtonId;
+    use crack_common::render::Mentions;
     use serenity::all::{GuildId, Permissions, RoleId, UserId};
 
     const ROOM: ChannelId = ChannelId::new(555);
@@ -601,7 +601,7 @@ mod tests {
 
     /// `(custom_id, label)` per button, per row.
     fn rows(r: &Rendered) -> Vec<Vec<(String, String)>> {
-        crate::messaging::discord::action_rows(&r.rows)
+        crack_common::discord::action_rows(&r.rows)
             .iter()
             .map(|row| {
                 json(row)["components"]
@@ -620,7 +620,7 @@ mod tests {
     }
 
     fn description(r: &Rendered) -> String {
-        json(&crate::messaging::discord::first_embed(r).unwrap())["description"]
+        json(&crack_common::discord::first_embed(r).unwrap())["description"]
             .as_str()
             .unwrap()
             .to_owned()
@@ -631,9 +631,9 @@ mod tests {
         format!(
             "{:?}|{}|{}|{}|{:?}",
             r.content,
-            serde_json::to_string(&crate::messaging::discord::first_embed(r)).unwrap(),
-            serde_json::to_string(&crate::messaging::discord::extra_embeds(r)).unwrap(),
-            serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap(),
+            serde_json::to_string(&crack_common::discord::first_embed(r)).unwrap(),
+            serde_json::to_string(&crack_common::discord::extra_embeds(r)).unwrap(),
+            serde_json::to_string(&crack_common::discord::action_rows(&r.rows)).unwrap(),
             r.mentions
         )
     }
@@ -875,7 +875,7 @@ mod tests {
         }));
         assert_eq!(r.mentions, Mentions::None);
         assert_eq!(r.content, None);
-        let embed = json(&crate::messaging::discord::first_embed(&r).unwrap());
+        let embed = json(&crack_common::discord::first_embed(&r).unwrap());
         assert_eq!(embed["title"], "🔊 @everyone");
         let owner = embed["fields"]
             .as_array()
@@ -885,7 +885,7 @@ mod tests {
             .unwrap();
         assert_eq!(owner["value"], "<@7>");
         // `@everyone` is only ever inside the embed.
-        assert!(!json(&crate::messaging::discord::action_rows(&r.rows))
+        assert!(!json(&crack_common::discord::action_rows(&r.rows))
             .to_string()
             .contains("@everyone"));
     }
@@ -929,8 +929,7 @@ mod tests {
             locked: true,
             ..view()
         }));
-        let fields =
-            json(&crate::messaging::discord::first_embed(&r).unwrap())["fields"].to_string();
+        let fields = json(&crack_common::discord::first_embed(&r).unwrap())["fields"].to_string();
         assert!(fields.contains("5 people") && fields.contains("<@8> <@9>"));
         assert!(fields.contains("🔒 Locked · 💬 Chat open"));
     }

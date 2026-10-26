@@ -18,12 +18,11 @@ pub mod macros;
 pub mod economy;
 pub mod messaging;
 pub mod metrics;
-pub mod modlog;
 #[cfg(feature = "crack-music")]
 pub mod music;
 pub mod owners;
 pub mod poise_ext;
-pub mod rooms;
+pub use crack_rooms::{modlog, rooms};
 pub mod sources;
 #[cfg(test)]
 pub mod test;

@@ -5,7 +5,7 @@
 
 use super::overwrites::MANAGED;
 use super::state::{OverwriteTarget, StoredOverwrite};
-use crate::music::perms::roles_resolvable;
+use crack_common::perms::roles_resolvable;
 use serenity::all::{Cache, ChannelId, GuildId, Permissions};
 
 /// What the bot needs in the hub's category (or server-wide with no category).

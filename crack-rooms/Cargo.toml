@@ -1,0 +1,45 @@
+[package]
+name = "crack-rooms"
+version.workspace = true
+edition = "2021"
+authors = ["Cycle Five <cycle.five@proton.me>"]
+publish = true
+license = "MIT"
+description = "The voice rooms, the mod log and their queries for Crack Tunes."
+keywords = ["music", "bot", "crack", "tunes", "rooms"]
+homepage = "https://cracktun.es/"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = ".."
+
+[features]
+# Tests that need a live postgres at DATABASE_URL: see docs/testing.md.
+db-tests = []
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = ["db-tests"]
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+dashmap = "6"
+futures = "0.3"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+crack-common = { path = "../crack-common" }
+crack-economy = { path = "../crack-economy" }
+crack-model = { path = "../crack-model" }
+crack-types = { path = "../crack-types" }
+tracing = { workspace = true }
+sqlx = { workspace = true }
+serenity = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+crack-common = { path = "../crack-common", features = ["test-support"] }
+crack-test-macros = { path = "../crack-test-macros" }
+crack-test-db = { path = "../crack-test-db" }
+# Builds a Discord error response for the 50013/10003 mapping tests.
+http = "1"
+# The reqwest serenity itself uses (the workspace one is 0.12); its error
+# responses can only be built from one of its `Response`s.
+reqwest13 = { package = "reqwest", version = "0.13", default-features = false }
+# `#[tokio::test(start_paused = true)]` and `tokio::time::advance`.
+tokio = { workspace = true, features = ["test-util"] }

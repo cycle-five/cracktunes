@@ -25,10 +25,11 @@ use super::ops::{act, target_standing, user_target, validate, RoomCx};
 use super::settings::ROOM_NAME_MAX;
 use super::state::RoomState;
 use super::RoomsData;
-use crate::messaging::courier;
-use crate::messaging::format::clip;
-use crate::messaging::message::CrackedMessage;
-use crate::messaging::messages::{
+use crate::modlog::live::ChannelSink;
+use crack_common::courier;
+use crack_common::format::clip;
+use crack_common::message::CrackedMessage;
+use crack_common::messages::{
     ROOM_DESC_HELPER, ROOM_DESC_LIMIT, ROOM_DESC_MEMBER, ROOM_DESC_MODE_HELPERS,
     ROOM_DESC_MODE_WHO, ROOM_DESC_NAME, ROOM_DESC_REASON, ROOM_DESC_REASON_OPTIONAL,
     ROOM_DESC_WHO_ROLE, ROOM_DESC_WHO_USER, ROOM_LABEL_LIMIT, ROOM_LABEL_MEMBER, ROOM_LABEL_MODE,
@@ -40,9 +41,8 @@ use crate::messaging::messages::{
     ROOM_PICK_MODE, ROOM_PICK_ROLE, ROOM_PLACEHOLDER_LIMIT, ROOM_PLACEHOLDER_NAME,
     ROOM_PLACEHOLDER_REASON,
 };
-use crate::messaging::render::RenderCx;
-use crate::messaging::transport::{DiscordModalPress, DiscordPress, DiscordTransport, Press};
-use crate::modlog::live::ChannelSink;
+use crack_common::render::RenderCx;
+use crack_common::transport::{DiscordModalPress, DiscordPress, DiscordTransport, Press};
 // Modal select menus are Discord input, not neutral output (spec: modals stay Discord).
 #[expect(
     clippy::disallowed_types,
@@ -117,7 +117,7 @@ impl FactSource for LiveFacts {
 }
 
 /// The live pieces a press or a submit works with.
-pub(crate) struct Live {
+pub struct Live {
     discord: LiveRoomsDiscord,
     transport: DiscordTransport,
     facts: LiveFacts,
@@ -125,7 +125,7 @@ pub(crate) struct Live {
 }
 
 impl Live {
-    pub(crate) fn of(ctx: &serenity::all::Context, data: &RoomsData, guild: GuildId) -> Self {
+    pub fn of(ctx: &serenity::all::Context, data: &RoomsData, guild: GuildId) -> Self {
         Self {
             discord: LiveRoomsDiscord {
                 http: ctx.http.clone(),
@@ -143,7 +143,7 @@ impl Live {
         }
     }
 
-    pub(crate) fn cx<'a>(&'a self, data: &'a RoomsData) -> RoomCx<'a> {
+    pub fn cx<'a>(&'a self, data: &'a RoomsData) -> RoomCx<'a> {
         RoomCx {
             data,
             discord: &self.discord,
@@ -813,9 +813,6 @@ async fn answer_after(press: &dyn Press, card: RoomCard) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messaging::messages::*;
-    use crate::messaging::test_support::{FakePress, FakeTransport, Op, PressOp};
-    use crate::messaging::transport::TransportError;
     use crate::modlog::batch::NoopSink;
     use crate::rooms::authority::Reason;
     use crate::rooms::facts::tests::empty;
@@ -824,6 +821,9 @@ mod tests {
     use crate::rooms::registry::{LiveRoom, RenameWindow};
     use crate::rooms::state::{OverwriteTarget, StoredOverwrite};
     use crate::rooms::test_support::{Call, FakeRoomsDiscord};
+    use crack_common::messages::*;
+    use crack_common::test_support::{FakePress, FakeTransport, Op, PressOp};
+    use crack_common::transport::TransportError;
     use serde_json::Value;
     use serenity::all::{MessageId, ModalInteractionData, Permissions};
     use std::sync::Mutex;

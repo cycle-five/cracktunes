@@ -1,9 +1,9 @@
 //! The events the mod log posts, and the one embed each renders to.
-use crate::economy::settings::ActionKind;
-use crate::messaging::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
-use crate::messaging::messages::*;
-use crate::messaging::render::{RenderCx, Rendered};
 use chrono::{DateTime, Utc};
+use crack_common::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
+use crack_common::messages::*;
+use crack_common::render::{RenderCx, Rendered};
+use crack_economy::settings::ActionKind;
 use crack_model::{Card, Field, Footer, Mention, RoomRef, UserRef};
 use crack_types::discord::ToRef;
 use serenity::all::UserId;
@@ -173,7 +173,7 @@ impl std::fmt::Display for ModLogEvent {
     }
 }
 
-impl From<ModLogEvent> for crate::messaging::message::CrackedMessage {
+impl From<ModLogEvent> for crack_common::message::CrackedMessage {
     fn from(e: ModLogEvent) -> Self {
         Self::ModLog(Box::new(e))
     }
@@ -524,7 +524,7 @@ pub fn render(e: &ModLogEvent, cx: &RenderCx) -> Rendered {
     Rendered::card(card)
 }
 
-impl crate::messaging::render::Payload for ModLogEvent {
+impl crack_common::render::Payload for ModLogEvent {
     fn render(&self, cx: &RenderCx) -> Rendered {
         render(self, cx)
     }
@@ -533,7 +533,7 @@ impl crate::messaging::render::Payload for ModLogEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messaging::render::Mentions;
+    use crack_common::render::Mentions;
 
     const T: UserId = UserId::new(11);
     const A: UserId = UserId::new(22);
@@ -565,7 +565,7 @@ mod tests {
     }
 
     fn json(r: &Rendered) -> serde_json::Value {
-        serde_json::to_value(crate::messaging::discord::first_embed(r).unwrap()).unwrap()
+        serde_json::to_value(crack_common::discord::first_embed(r).unwrap()).unwrap()
     }
 
     fn ids(n: u64) -> Vec<UserRef> {
@@ -689,9 +689,9 @@ mod tests {
         format!(
             "{:?}|{}|{}|{}|{:?}",
             r.content,
-            serde_json::to_string(&crate::messaging::discord::first_embed(r)).unwrap(),
-            serde_json::to_string(&crate::messaging::discord::extra_embeds(r)).unwrap(),
-            serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap(),
+            serde_json::to_string(&crack_common::discord::first_embed(r)).unwrap(),
+            serde_json::to_string(&crack_common::discord::extra_embeds(r)).unwrap(),
+            serde_json::to_string(&crack_common::discord::action_rows(&r.rows)).unwrap(),
             r.mentions
         )
     }

@@ -4,10 +4,10 @@
 //! [`preflight`] is pure; [`for_guild`] is the thin cache reader that feeds
 //! it. An empty result means ready.
 
-use crate::messaging::messages::*;
-use crate::music::perms::roles_resolvable;
 use crate::rooms::card::perm_names;
 use crate::rooms::RoomsData;
+use crack_common::messages::*;
+use crack_common::perms::roles_resolvable;
 use serenity::all::{Cache, ChannelId, GuildId, Permissions};
 
 /// What the bot needs server-wide: the audit log is not a channel thing.
