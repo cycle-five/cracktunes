@@ -16,5 +16,7 @@ pub use ui::*;
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod test_delivery;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
