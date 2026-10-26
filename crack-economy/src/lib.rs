@@ -33,8 +33,9 @@ use settings::{EconomySettings, EconomySettingsError};
 use std::sync::Arc;
 
 /// What the economy needs from the bot's shared data: its database pool and
-/// its registry. A narrow copy of two fields of the bot's shared state, under the same names;
-/// the `Arc` keeps the registry the same one the commands read.
+/// its registry. A narrow copy of two fields of the bot's shared state, under
+/// the same names; the `Arc` keeps the registry the same one the commands
+/// read.
 #[derive(Debug, Clone, Default)]
 pub struct EconomyData {
     pub database_pool: Option<sqlx::PgPool>,

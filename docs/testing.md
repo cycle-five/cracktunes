@@ -62,13 +62,16 @@ async fn test_insert_user(pool: PgPool) { ... }
 The macro takes the same argument and the same function shapes as
 `#[sqlx::test]`; moving a test over changes only the attribute's path. 🪤 Only
 a crate can use it once it has `crate::test_db`, because the expansion calls it:
-`#[cfg(test)] pub(crate) use crack_test_db::test_db;`. 167 test sites in
-`crack-core` use it. `crack-voting` and `cracktunes` (the `crack-cli` package)
-stay on `#[sqlx::test]`.
+`#[cfg(test)] pub(crate) use crack_test_db::test_db;`. Every db test site in
+`crack-core`, `crack-economy` and `crack-test-db` uses it (109, 57 and 7 sites
+when counted). `crack-voting` and `cracktunes` (the `crack-cli` package) stay
+on `#[sqlx::test]`.
 
 To run them, start a postgres and turn the feature on. The feature lives in
-each package that has such tests, so a workspace run names all four, plus
-`crack-core/crack-coin` for the CrackCoin tests:
+each package that has such tests, so a workspace run names all five
+(`crack-core`, `cracktunes`, `crack-voting`, `crack-test-db`, `crack-economy`),
+plus `crack-core/crack-coin` and `crack-economy/crack-coin` for the CrackCoin
+tests:
 
 ```bash
 docker run -d --name crack-pg -p 5432:5432 \
@@ -359,7 +362,7 @@ The check only sees touched code, so the old misses are worked down on
 purpose, a module at a time, each in its own PR.
 
 ```bash
-gh workflow run mutants-full.yml -f files='crack-core/src/economy/**'
+gh workflow run mutants-full.yml -f files='crack-economy/src/**'
 gh workflow run mutants-full.yml -f files='crack-core/src/db/**,crack-core/src/guild/**' -f shards=12
 ```
 

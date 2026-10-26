@@ -106,6 +106,17 @@ jobs:
             exit 1
           fi
 
+      # crack-test-db is test tooling shared by the crates' db tests: no poise,
+      # no crack-core (crack-core depends on it, not the other way round).
+      - name: crack-test-db depends on no poise or crack-core
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-test-db -e normal --prefix none)
+          if echo "$tree" | grep -E '^(poise|crack-core) '; then
+            echo "crack-test-db must not depend on poise or crack-core" >&2
+            exit 1
+          fi
+
       # Dev-dependencies count too: `cargo test -p crack-economy` must not build crack-core.
       - name: crack-economy has no crack-core dev-dependency
         if: success() || failure()

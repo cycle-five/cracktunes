@@ -1,7 +1,7 @@
 //! Walk-on themes: a member pays to have a link play, for a few seconds, the
 //! next time another member joins voice. The purchase escrows the price; the
-//! target's next join plays the clip (`walk_on::on_voice_join`) and spends it. If it
-//! never plays, the buyer gets it back.
+//! target's next join plays the clip (crack-core's `economy::walk_on`, in
+//! `on_voice_join`) and spends it. If it never plays, the buyer gets it back.
 
 use super::immunity::Protection;
 use super::settings::ActionKind;
