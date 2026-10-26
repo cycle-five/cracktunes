@@ -19,12 +19,22 @@ pub mod target;
 pub mod theme;
 pub mod wallet;
 
-use crate::Data;
 use chrono::{DateTime, Utc};
 use discord::EconomyDiscord;
 use immunity::{can_switch_optout, is_protected, Protection};
+use registry::EconomyRegistry;
 use serenity::all::{GuildId, UserId};
 use settings::{EconomySettings, EconomySettingsError};
+use std::sync::Arc;
+
+/// What the economy needs from the bot's shared data: its database pool and
+/// its registry. A narrow copy of two fields of the bot's shared state, under the same names;
+/// the `Arc` keeps the registry the same one the commands read.
+#[derive(Debug, Clone, Default)]
+pub struct EconomyData {
+    pub database_pool: Option<sqlx::PgPool>,
+    pub economy: Arc<EconomyRegistry>,
+}
 
 /// Why [`save_settings`] changed nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,7 +51,7 @@ pub enum EconomySaveError {
 /// Read a server's stored settings and opted-out members into the registry
 /// and record that they were read (absent counts). Without a database there
 /// is nothing to read. False when a database read failed.
-pub async fn load_settings(data: &Data, g: GuildId) -> bool {
+pub async fn load_settings(data: &EconomyData, g: GuildId) -> bool {
     let Some(pool) = data.database_pool.as_ref() else {
         return true;
     };
@@ -71,7 +81,7 @@ pub async fn load_settings(data: &Data, g: GuildId) -> bool {
 /// can tell a purchase a crash left behind from one still in flight. Called
 /// once at startup, before the gateway connects. Without a database, or if
 /// the read fails, reconcile falls back to its grace alone.
-pub async fn record_process_start(data: &Data) {
+pub async fn record_process_start(data: &EconomyData) {
     let Some(pool) = data.database_pool.as_ref() else {
         return;
     };
@@ -84,7 +94,10 @@ pub async fn record_process_start(data: &Data) {
 /// The one way a server's economy settings change. Validates, writes the
 /// database (when there is one), then the registry, so memory never runs
 /// ahead of what a restart would load.
-pub async fn save_settings(data: &Data, mut s: EconomySettings) -> Result<(), EconomySaveError> {
+pub async fn save_settings(
+    data: &EconomyData,
+    mut s: EconomySettings,
+) -> Result<(), EconomySaveError> {
     if data.database_pool.is_some() && !data.economy.loaded(s.guild) {
         return Err(EconomySaveError::NotLoaded);
     }
@@ -121,7 +134,7 @@ pub enum OptOutError {
 /// Callers must gate on `EconomyRegistry::is_enabled` first: an unloaded
 /// server reads default settings here.
 pub async fn opt_out(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     g: GuildId,
     u: UserId,
@@ -161,7 +174,7 @@ pub async fn opt_out(
 
 /// Whether a member is protected now, from the stored flag and grants.
 pub async fn protection(
-    data: &Data,
+    data: &EconomyData,
     g: GuildId,
     u: UserId,
     now: DateTime<Utc>,
@@ -185,7 +198,7 @@ pub enum GrantError {
 
 /// A moderator grants a member immunity (`until: None` lasts until lifted).
 pub async fn mod_grant(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     g: GuildId,
     target: UserId,
@@ -213,7 +226,7 @@ pub async fn mod_grant(
 /// undo (they opted out, a moderator granted immunity): each is undone as if
 /// it had expired. A failure is logged; the sweeper retries what is left.
 async fn end_pranks_on(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     g: GuildId,
     u: UserId,
@@ -228,7 +241,7 @@ async fn end_pranks_on(
 /// A moderator cancels everything running on a member (`/economy cancel`):
 /// each prank is undone as if it had expired. Returns how many were ended.
 pub async fn mod_cancel(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     g: GuildId,
     target: UserId,
@@ -248,7 +261,7 @@ pub async fn mod_cancel(
 
 /// Remove a member's moderator grant; true when there was one. Always
 /// allowed, whatever the server's switches say.
-pub async fn mod_lift(data: &Data, g: GuildId, target: UserId) -> Result<bool, GrantError> {
+pub async fn mod_lift(data: &EconomyData, g: GuildId, target: UserId) -> Result<bool, GrantError> {
     let Some(pool) = data.database_pool.as_ref() else {
         return Err(GrantError::NoDatabase);
     };
@@ -265,9 +278,7 @@ mod tests {
     use super::*;
     use crate::economy::discord::fake::{Call, FakeEconomyDiscord};
     use crate::economy::wallet::ActionPayload;
-    use crate::DataInner;
     use settings::ActionKind;
-    use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
 
@@ -282,7 +293,7 @@ mod tests {
 
     #[tokio::test]
     async fn save_refuses_invalid_and_leaves_registry() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = EconomyData::default();
         let before = data.economy.settings(G);
         assert_eq!(
             save_settings(&data, on()).await,
@@ -294,7 +305,7 @@ mod tests {
 
     #[tokio::test]
     async fn disabling_without_a_pool_is_allowed() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = EconomyData::default();
         let mut off = EconomySettings::off(G);
         off.config.max_bet = 77;
         assert_eq!(save_settings(&data, off.clone()).await, Ok(()));
@@ -318,10 +329,10 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        let data = Data(Arc::new(DataInner {
+        let data = EconomyData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
+        };
         assert_eq!(
             save_settings(&data, on()).await,
             Err(EconomySaveError::NotLoaded)
@@ -352,12 +363,12 @@ mod tests {
         DateTime::from_timestamp(1_800_000_000, 0).unwrap()
     }
 
-    async fn live(pool: &sqlx::PgPool, s: EconomySettings) -> Data {
+    async fn live(pool: &sqlx::PgPool, s: EconomySettings) -> EconomyData {
         crate::db::economy::save_settings(pool, &s).await.unwrap();
-        let data = Data(Arc::new(DataInner {
+        let data = EconomyData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
+        };
         assert!(load_settings(&data, G).await);
         data
     }
@@ -398,10 +409,10 @@ mod tests {
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     async fn load_with_no_row_resets_to_off(pool: sqlx::PgPool) {
-        let data = Data(Arc::new(DataInner {
+        let data = EconomyData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
+        };
         data.economy.set_settings(on());
         assert!(data.economy.is_enabled(G));
         assert!(load_settings(&data, G).await);
@@ -523,7 +534,7 @@ mod tests {
 
     #[tokio::test]
     async fn without_a_pool_opt_out_and_grants_are_refused_and_protection_is_none() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = EconomyData::default();
         let now = t0();
         assert_eq!(
             opt_out(&data, &FakeEconomyDiscord::default(), G, U, true, now).await,
@@ -747,7 +758,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_without_a_database_says_so() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = EconomyData::default();
         assert_eq!(
             mod_cancel(&data, &FakeEconomyDiscord::default(), G, U, t0()).await,
             Err(GrantError::NoDatabase)

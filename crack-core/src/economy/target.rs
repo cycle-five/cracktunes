@@ -319,7 +319,7 @@ pub async fn gather_facts(
         tracing::warn!("economy: reading {what} of {member} in {guild} failed: {err}");
         BuyError::Db
     };
-    let protection = crate::economy::protection(data, guild, member, now)
+    let protection = crate::economy::protection(&data.economy_data(), guild, member, now)
         .await
         .map_err(|e| fail("protection", e))?;
     let mirrors = economy::active_of_kind(pool, guild, member, &[ActionKind::Mirror])
@@ -1028,7 +1028,7 @@ mod tests {
                 database_pool: Some(pool.clone()),
                 ..Default::default()
             }));
-            assert!(crate::economy::load_settings(&data, G).await);
+            assert!(crate::economy::load_settings(&data.economy_data(), G).await);
             data
         }
 

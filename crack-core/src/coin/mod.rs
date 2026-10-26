@@ -10,7 +10,7 @@ pub mod resolve;
 pub mod sweep;
 
 use crate::economy::effects::spawn_one_shot;
-use crate::Data;
+use crate::economy::EconomyData;
 use chain::{CoinChain, LiveChain, OpenError};
 use config::{CoinConfig, CoinOff};
 use registry::CoinState;
@@ -59,7 +59,7 @@ fn after_open(result: Result<LiveChain, OpenError>) -> Next {
 }
 
 /// Decide whether CrackCoin is ready or off, say so once, and start the sweeper.
-pub fn start(data: Data) {
+pub fn start(data: EconomyData) {
     if !data.economy.coin.start_once() {
         return;
     }

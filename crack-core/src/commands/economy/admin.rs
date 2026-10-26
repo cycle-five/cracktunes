@@ -392,7 +392,7 @@ pub async fn grant(
     let until = hours.map(|h| Utc::now() + Duration::hours(i64::from(h)));
     let by = ctx.author().id;
     match mod_grant(
-        &ctx.data(),
+        &ctx.data().economy_data(),
         &live(ctx),
         guild,
         member.id,
@@ -435,7 +435,7 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
     if !mod_gate(ctx).await? {
         return Ok(());
     }
-    match mod_lift(&ctx.data(), guild, member.id).await {
+    match mod_lift(&ctx.data().economy_data(), guild, member.id).await {
         Ok(true) => {
             let replied = say(ctx, ECONOMY_ADMIN_LIFT_DONE, true).await;
             log(
@@ -470,7 +470,15 @@ pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Re
     }
     // One Discord call per prank: past Discord's three seconds otherwise.
     ctx.defer_ephemeral().await?;
-    match mod_cancel(&ctx.data(), &live(ctx), guild, member.id, Utc::now()).await {
+    match mod_cancel(
+        &ctx.data().economy_data(),
+        &live(ctx),
+        guild,
+        member.id,
+        Utc::now(),
+    )
+    .await
+    {
         Ok(0) => say(ctx, ECONOMY_CANCEL_NONE, true).await,
         Ok(n) => {
             let replied = say(

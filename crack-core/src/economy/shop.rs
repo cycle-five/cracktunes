@@ -814,13 +814,14 @@ async fn charge_and_cleanse(
         },
     )
     .await?;
-    let ended = match end_running_pranks(data, discord, g, user, "cleansed", now).await {
-        Ok(n) => n.were_active,
-        Err(err) => {
-            tracing::warn!("economy: ending the pranks on {user} in {g} failed: {err}");
-            0
-        },
-    };
+    let ended =
+        match end_running_pranks(&data.economy_data(), discord, g, user, "cleansed", now).await {
+            Ok(n) => n.were_active,
+            Err(err) => {
+                tracing::warn!("economy: ending the pranks on {user} in {g} failed: {err}");
+                0
+            },
+        };
     if ended == 0 {
         // Never charge for nothing: something ended them first, or the read failed.
         if let Err(err) = db::refund_action(pool, charged.action_id).await {
@@ -1140,7 +1141,7 @@ mod tests {
             database_pool: Some(pool.clone()),
             ..Default::default()
         }));
-        assert!(crate::economy::load_settings(&data, G).await);
+        assert!(crate::economy::load_settings(&data.economy_data(), G).await);
         data
     }
 
@@ -1168,7 +1169,9 @@ mod tests {
         assert_eq!(bought.until, now + chrono::Duration::hours(24));
         assert_eq!(bought.balance, 300);
         assert_eq!(
-            crate::economy::protection(&data, G, U, now).await.unwrap(),
+            crate::economy::protection(&data.economy_data(), G, U, now)
+                .await
+                .unwrap(),
             Some(Protection::Until(now + chrono::Duration::hours(24)))
         );
         assert_eq!(crate::db::economy::balance(&pool, G, U).await.unwrap(), 300);
@@ -2417,7 +2420,7 @@ mod tests {
                 1
             );
             // The next sweep retries the undo and ends it as cleansed.
-            crate::economy::effects::sweep(&data, &fake, t0(), &|_| true).await;
+            crate::economy::effects::sweep(&data.economy_data(), &fake, t0(), &|_| true).await;
             assert_eq!(
                 state_and_reason(&pool, mute.action_id).await,
                 ("ended".to_string(), Some("cleansed".to_string()))

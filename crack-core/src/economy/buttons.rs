@@ -689,7 +689,7 @@ mod tests {
             database_pool: Some(pool.clone()),
             ..Default::default()
         }));
-        assert!(crate::economy::load_settings(&data, G).await);
+        assert!(crate::economy::load_settings(&data.economy_data(), G).await);
         data
     }
 

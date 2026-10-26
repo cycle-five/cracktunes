@@ -88,7 +88,7 @@ pub async fn place(
         Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
     };
     let placed = match place_bounty(
-        &data,
+        &data.economy_data(),
         facts,
         BountyRequest {
             guild,

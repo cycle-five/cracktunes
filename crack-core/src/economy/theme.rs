@@ -443,7 +443,8 @@ pub async fn claim_theme(
         .filter(|r| r.state == ActionState::Active && r.expires_at.is_some_and(|end| end > now))
         .collect();
     let oldest = waiting.first()?.clone();
-    let protection = match crate::economy::protection(data, guild, user, now).await {
+    let protection = match crate::economy::protection(&data.economy_data(), guild, user, now).await
+    {
         Ok(p) => p,
         Err(err) => {
             tracing::warn!("economy: reading the protection of {user} in {guild} failed: {err}");
@@ -1025,7 +1026,7 @@ mod tests {
             database_pool: Some(pool.clone()),
             ..Default::default()
         }));
-        assert!(crate::economy::load_settings(&data, G).await);
+        assert!(crate::economy::load_settings(&data.economy_data(), G).await);
         data
     }
 

@@ -8,6 +8,7 @@ use super::shop::{cant_afford, check_purchase, BuyError, BuyOutcome, PurchaseFac
 use super::target::{check_target, TargetFacts};
 use super::wallet::{ActionPayload, LedgerKind, MoveError};
 use crate::db::economy::{self as db, BountyStake};
+use crate::economy::EconomyData;
 use crate::messaging::format::{escape, CONTENT_MAX};
 use crate::messaging::messages::{
     ECONOMY_BOUNTY_CARD_COLLECTED_PREFIX, ECONOMY_BOUNTY_CARD_COLLECTED_SUFFIX,
@@ -17,7 +18,6 @@ use crate::messaging::messages::{
     ECONOMY_BOUNTY_LIST_MORE_SUFFIX, ECONOMY_BOUNTY_LIST_NONE, ECONOMY_BOUNTY_LIST_TITLE,
     ECONOMY_BOUNTY_SIGN_ANON, ECONOMY_BOUNTY_SIGN_DASH,
 };
-use crate::Data;
 use chrono::{DateTime, Duration, Utc};
 use serenity::all::{ChannelId, GuildId, UserId};
 use std::collections::BTreeMap;
@@ -95,7 +95,7 @@ pub fn check_bounty(
 /// `active` until [`BOUNTY_DAYS`] from now. `facts` describes the target.
 /// The caller validates the note and posts the card and the mod log event.
 pub async fn place(
-    data: &Data,
+    data: &EconomyData,
     facts: TargetFacts,
     req: BountyRequest,
 ) -> Result<Placed, BuyError> {
@@ -312,9 +312,7 @@ mod tests {
     use crate::economy::immunity::Protection;
     use crate::economy::settings::EconomySettings;
     use crate::economy::shop::{buy, BuyRequest};
-    use crate::DataInner;
     use sqlx::PgPool;
-    use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
     const A: UserId = UserId::new(10);
@@ -605,16 +603,16 @@ mod tests {
         .unwrap();
     }
 
-    async fn bounty_data(pool: &PgPool) -> Data {
+    async fn bounty_data(pool: &PgPool) -> EconomyData {
         let s = EconomySettings {
             enabled: true,
             ..EconomySettings::off(G)
         };
         db::save_settings(pool, &s).await.unwrap();
-        let data = Data(Arc::new(DataInner {
+        let data = EconomyData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
+        };
         assert!(crate::economy::load_settings(&data, G).await);
         data
     }
@@ -693,7 +691,17 @@ mod tests {
         assert_eq!(stakes.iter().map(|s| s.amount).sum::<i64>(), 170);
     });
 
-    async fn mirror_for(pool: &PgPool, data: &Data, owner: UserId) {
+    /// `shop::buy` still takes `Data` until Task 2 converts it; the bridge
+    /// shares the pool and the registry. Delete it with that conversion.
+    fn as_data(e: &EconomyData) -> crate::Data {
+        crate::Data(std::sync::Arc::new(crate::DataInner {
+            database_pool: e.database_pool.clone(),
+            economy: e.economy.clone(),
+            ..Default::default()
+        }))
+    }
+
+    async fn mirror_for(pool: &PgPool, data: &EconomyData, owner: UserId) {
         fund(pool, owner, 150).await;
         let r = BuyRequest {
             guild: G,
@@ -706,7 +714,7 @@ mod tests {
             now: t0(),
         };
         buy(
-            data,
+            &as_data(data),
             &FakeEconomyDiscord::default(),
             clean(),
             clean(),
@@ -746,7 +754,7 @@ mod tests {
                 ..clean()
             };
             let bought = buy(
-                &data,
+                &as_data(&data),
                 &FakeEconomyDiscord::default(),
                 clean(),
                 me,
@@ -804,7 +812,7 @@ mod tests {
             ..clean()
         };
         let bought = buy(
-            &data,
+            &as_data(&data),
             &FakeEconomyDiscord::default(),
             mirrored,
             me,
