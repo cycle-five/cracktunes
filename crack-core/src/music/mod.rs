@@ -4,6 +4,7 @@ pub mod autoplay;
 #[cfg(test)]
 mod autoplay_probe;
 pub mod context;
+mod data_impl;
 pub mod disconnect;
 pub mod lease;
 pub mod ops;
@@ -18,3 +19,40 @@ pub use context::QueryContext;
 pub use lease::{PlaybackOwner, QueueGuard};
 pub(crate) use query::*;
 pub(crate) use queue::*;
+
+/// The music player's state, without `Data`: the pool, songbird, the lease
+/// maps and the rest the player reads. `Data::music_data` builds one; the maps
+/// are shared with `Data`, not copied.
+#[derive(Clone)]
+pub struct MusicData {
+    pub database_pool: Option<sqlx::PgPool>,
+    pub songbird: std::sync::Arc<songbird::Songbird>,
+    pub ct_client: crack_testing::CrackTrackClient<'static>,
+    pub http_client: reqwest::Client,
+    pub audit_tx: Option<tokio::sync::mpsc::Sender<audit::AuditEvent>>,
+    pub db_channel: Option<tokio::sync::mpsc::Sender<crate::db::MetadataMsg>>,
+    pub autoplay_buffer: std::sync::Arc<autoplay::AutoplayBuffer>,
+    pub guild_cache_map: std::sync::Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<
+                poise::serenity_prelude::GuildId,
+                crate::guild::cache::GuildCache,
+            >,
+        >,
+    >,
+    pub playback_owners:
+        std::sync::Arc<dashmap::DashMap<poise::serenity_prelude::GuildId, lease::PlaybackOwner>>,
+    pub queue_locks: std::sync::Arc<
+        dashmap::DashMap<poise::serenity_prelude::GuildId, std::sync::Arc<tokio::sync::Mutex<()>>>,
+    >,
+    pub guild: crate::guild::operations::GuildData,
+}
+
+impl std::fmt::Debug for MusicData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MusicData")
+            .field("database_pool", &self.database_pool)
+            .field("guild", &self.guild)
+            .finish_non_exhaustive()
+    }
+}

@@ -101,7 +101,7 @@ impl AutoplayBuffer {
     }
 }
 
-impl crate::Data {
+impl crate::music::MusicData {
     /// Get the current autoplay settings.
     pub async fn get_autoplay(&self, guild_id: GuildId) -> bool {
         self.guild_cache_map

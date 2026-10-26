@@ -11,7 +11,7 @@
 //!
 //! # 🔑 Ownership is written in exactly five places
 //!
-//! [`Data::claim_playback`] and [`Data::release_playback`] are called from
+//! [`crate::music::MusicData::claim_playback`] and [`crate::music::MusicData::release_playback`] are called from
 //! *inside* the methods that move `gp_games`, never alongside them. An explicit
 //! lease is a second source of truth, and a lease that outlives its game wedges
 //! `/play` forever with no game left to end. Co-locating the two writes makes
@@ -26,7 +26,7 @@
 //!
 //! The two locks are:
 //!
-//! 1. the exclusion mutex behind [`Data::lock_queue`] (via `queue_locks`)
+//! 1. the exclusion mutex behind [`crate::music::MusicData::lock_queue`] (via `queue_locks`)
 //! 2. **songbird's `Arc<Mutex<Call>>`**, which is per-guild — songbird keys one
 //!    `Call` per guild in its manager
 //!
@@ -76,7 +76,6 @@
 //! its own merits, and it is why the ordering has not yet bitten in practice.
 
 use crate::errors::CrackedError;
-use crate::Data;
 use dashmap::mapref::entry::Entry;
 use poise::serenity_prelude::GuildId;
 use std::sync::Arc;
@@ -98,7 +97,7 @@ pub enum PlaybackOwner {
 /// Proof that the holder may mutate this guild's queue, and that nobody else is
 /// doing so concurrently.
 ///
-/// Obtained only from [`Data::lock_queue`]. The exclusion is released when this
+/// Obtained only from [`crate::music::MusicData::lock_queue`]. The exclusion is released when this
 /// is dropped, so do not hold one across a slow operation -- in particular never
 /// across track resolution, which takes 8-15s cold.
 #[derive(Debug)]
@@ -145,7 +144,7 @@ impl QueueGuard {
     }
 }
 
-impl Data {
+impl crate::music::MusicData {
     /// Who owns playback in this guild. A guild with no claim is [`PlaybackOwner::Free`].
     #[must_use]
     pub fn playback_owner(&self, guild_id: GuildId) -> PlaybackOwner {

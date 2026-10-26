@@ -343,9 +343,10 @@ pub struct DataInner {
     /// Who owns playback per guild. Written ONLY by `claim_playback` /
     /// `release_playback`, which are called from inside the methods that move
     /// `gp_games` -- see `music/lease.rs`. Do not write it anywhere else.
-    pub playback_owners: dashmap::DashMap<serenity::GuildId, crate::music::lease::PlaybackOwner>,
+    pub playback_owners:
+        Arc<dashmap::DashMap<serenity::GuildId, crate::music::lease::PlaybackOwner>>,
     /// Per-guild queue-mutation mutex. Held for milliseconds; see `lock_queue`.
-    pub queue_locks: dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>,
+    pub queue_locks: Arc<dashmap::DashMap<serenity::GuildId, Arc<tokio::sync::Mutex<()>>>>,
     /// Per-guild floating status message; see `messaging::status`.
     pub status_slots: dashmap::DashMap<
         serenity::GuildId,
@@ -572,8 +573,8 @@ impl Default for DataInner {
             ct_client: CrackTrackClient::default(),
             songbird: Songbird::serenity(), // Initialize with an uninitialized Songbird instance
             bot_settings: Default::default(),
-            playback_owners: Default::default(),
-            queue_locks: Default::default(),
+            playback_owners: Arc::default(),
+            queue_locks: Arc::default(),
             status_slots: Default::default(),
             failure_notices: Default::default(),
             np_presses: crate::messaging::throttle::Throttle::new(
@@ -649,6 +650,25 @@ impl Data {
             database_pool: self.database_pool.clone(),
             guild_settings_map: self.guild_settings_map.clone(),
             bot_prefix: self.bot_settings.get_prefix(),
+        }
+    }
+
+    /// The music player's state, as a handle that does not name `Data`. The
+    /// lease maps, the autoplay buffer and the guild cache are shared (same
+    /// `Arc`), not copied.
+    pub fn music_data(&self) -> crate::music::MusicData {
+        crate::music::MusicData {
+            database_pool: self.database_pool.clone(),
+            songbird: self.songbird.clone(),
+            ct_client: self.ct_client.clone(),
+            http_client: self.http_client.clone(),
+            audit_tx: self.audit_tx.clone(),
+            db_channel: self.db_channel.clone(),
+            autoplay_buffer: self.autoplay_buffer.clone(),
+            guild_cache_map: self.guild_cache_map.clone(),
+            playback_owners: self.playback_owners.clone(),
+            queue_locks: self.queue_locks.clone(),
+            guild: self.guild_data(),
         }
     }
 
@@ -920,6 +940,33 @@ msg_on_dc:     false
             ..Default::default()
         }));
         assert_eq!(custom.guild_data().bot_prefix, "x!");
+    }
+
+    #[tokio::test]
+    async fn music_data_shares_the_lease_maps_and_the_pool() {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/unused")
+            .unwrap();
+        let data = Data(Arc::new(DataInner::default().with_database_pool(pool)));
+        let music = data.music_data();
+        assert!(music.database_pool.is_some());
+        assert!(Arc::ptr_eq(&music.playback_owners, &data.playback_owners));
+        assert!(Arc::ptr_eq(&music.queue_locks, &data.queue_locks));
+        assert!(Arc::ptr_eq(&music.autoplay_buffer, &data.autoplay_buffer));
+        assert!(Arc::ptr_eq(&music.guild_cache_map, &data.guild_cache_map));
+        assert!(Arc::ptr_eq(&music.songbird, &data.songbird));
+        assert!(Arc::ptr_eq(
+            &music.guild.guild_settings_map,
+            &data.guild_settings_map
+        ));
+
+        let guild = serenity::GuildId::new(9);
+        data.claim_playback(guild, crate::music::PlaybackOwner::Game)
+            .unwrap();
+        assert_eq!(
+            music.playback_owner(guild),
+            crate::music::PlaybackOwner::Game
+        );
     }
 }
 
