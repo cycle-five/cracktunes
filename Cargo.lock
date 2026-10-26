@@ -1196,7 +1196,6 @@ version = "0.45.0"
 dependencies = [
  "chrono",
  "crack-common",
- "crack-guild",
  "crack-model",
  "crack-music",
  "crack-test-db",

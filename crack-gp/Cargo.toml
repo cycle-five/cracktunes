@@ -27,7 +27,6 @@ rand = "0.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 crack-common = { path = "../crack-common" }
-crack-guild = { path = "../crack-guild" }
 crack-model = { path = "../crack-model" }
 crack-music = { path = "../crack-music" }
 crack-testing = { path = "../crack-testing" }

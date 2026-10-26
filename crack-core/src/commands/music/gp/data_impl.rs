@@ -1,10 +1,14 @@
 //! `Data`'s side of the /gp game: each method hands the call to the
 //! [`GpData`](super::GpData) handle, which shares the games map and the lease.
 
-use super::*;
 use crate::commands::music::gp_prompts::{GpCategories, GpPrompt};
 use crate::{CrackedResult, Data};
 use ::serenity::all::{ChannelId, GenericChannelId, GuildId, MessageId, UserId};
+use crack_gp::gp::{
+    GpClip, GpGame, GpGuessOutcome, GpLikeOutcome, GpReveal, GpStatus, GpSubmitOutcome,
+    GpTrackResult, GpTrackStart, GpVoteFullOutcome, GpVoteSkipOutcome, GpWindowClosed,
+    GpWindowOpened, GpWindowWarning,
+};
 use crack_testing::ResolvedTrack;
 use rand::Rng;
 use std::time::Duration;

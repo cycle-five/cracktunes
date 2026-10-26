@@ -1,4 +1,3 @@
-use super::*;
 use crate::{
     errors::CrackedError,
     messaging::{
@@ -20,6 +19,11 @@ use ::serenity::{
         UserId,
     },
     async_trait,
+};
+use crack_gp::gp::{
+    gp_min_played, gp_post, gp_rendered, gp_warning_text, now, parse_custom_id, user_refs, GpCard,
+    GpClip, GpComponent, GpGuessOutcome, GpLikeOutcome, GpNext, GpPlayed, GpTrackStart,
+    GpWindowClosed, GpWindowOpened, GP_DEAD_LINK, GP_REVEAL_PAUSE_SECS, GP_WARNING_SECS,
 };
 use poise::serenity_prelude::Context as SerenityContext;
 use songbird::tracks::{PlayMode, TrackHandle, TrackState};

@@ -28,10 +28,10 @@
 //! itself. A hard crash leaves `last_seen_at` at the last checkpoint, which
 //! errs toward not resuming.
 //!
-//! On the way back up, [`gp_resume_guild`] runs from the guild-create handler for
+//! On the way back up, `gp_resume_guild` (crack-core's `commands::music::gp_resume`) runs from the guild-create handler for
 //! each guild as it arrives. A live game is brought back only if it can still be
 //! going: a submission window that is still open, or closed less than
-//! [`GP_RESUME_WINDOW_SECS`] ago by its own `closes_at`; a song whose game was
+//! [`GP_RESUME_WINDOW_SECS`](crate::gp::GP_RESUME_WINDOW_SECS) ago by its own `closes_at`; a song whose game was
 //! seen within that long. Anything older, or whose voice channel is empty, is
 //! marked lost and its scoreboard posted with a line saying why. Anything else is put back into the map, the bot
 //! rejoins voice, and the game re-enters its phase: a submission window with
@@ -584,7 +584,7 @@ pub async fn close_out<Fut>(
 }
 
 /// Post the results of every round the game moved past without them reaching
-/// the channel (see [`GpGame::unposted_results`]). Returns the rounds posted;
+/// the channel (see `GpGame::unposted_results`). Returns the rounds posted;
 /// marking them is the caller's, since only a game back in the map can be
 /// written down.
 pub async fn post_owed_results(transport: &dyn Transport, game: &GpGame) -> Vec<usize> {

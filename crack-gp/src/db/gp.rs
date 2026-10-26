@@ -11,7 +11,7 @@
 //! [`GpSaved::changed_rounds`]). Late in a 25-player, 20-round game that is a
 //! few hundred rows per save instead of the twelve thousand the whole game is.
 //!
-//! Nothing here knows about the in-memory game; `commands::music::gp_persist`
+//! Nothing here knows about the in-memory game; `crate::gp_persist`
 //! converts in both directions. Keeping the persisted shape its own set of
 //! plain types is what lets a later write-behind send the same rows.
 

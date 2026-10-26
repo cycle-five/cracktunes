@@ -330,7 +330,7 @@ Measured on the map of 4b-2's branch. /gp is about 4.9k non-test lines of functi
 - **`gp_persist.rs`**: the saved form (`GpGame::to_saved`/`from_saved`), the writer, and four methods on `Data` that read `gp_persist` and `gp_games`. Boot-time resume (`gp_resume_guild`, `abandon_resume` and `announce`) reads songbird, the join permit and the track-end handlers.
 - **`gp_prompts.rs`** (the prompt deck) and **`db/gp.rs`** name neither poise nor `Data`.
 
-So the game moves and its Discord delivery stays, as with the player. Unlike 4b, nothing that moves posts to Discord, so no `Surface`-style trait is needed.
+So the game moves and its Discord delivery stays, as with the player. Unlike 4b, nothing that moves names a Discord client: what posts does so through crack-common's `Transport`, so no `Surface`-style trait is needed.
 
 **One PR (v0.45.0) into a new crate, `crack-gp`.** It depends on crack-music for the lease that a game claims.
 - Why not inside crack-music: /gp has its own stream of changes (a contributor's PRs arrive there) and its own 3.4k-line test file. In its own crate, a /gp change rebuilds and tests crack-gp alone.
@@ -338,7 +338,7 @@ So the game moves and its Discord delivery stays, as with the player. Unlike 4b,
 
 **What moves:** `gp/state.rs`, `gp/ui.rs`, `gp_prompts.rs` (with `gp_prompts.json`), `gp_persist.rs` minus resume, `db/gp.rs`, and the state-machine and UI tests in `gp/test.rs`.
 
-**What stays in crack-core as glue:** `gp/commands.rs`, `gp/playback.rs`, resume (split out of `gp_persist.rs` into a crack-core `gp_resume.rs`), `gp/test_delivery.rs`, and the tests in `gp/test.rs` that exercise playback or commands.
+**What stays in crack-core as glue:** `gp/commands.rs`, `gp/playback.rs`, resume (split out of `gp_persist.rs` into a crack-core `gp_resume.rs`), `gp/test_delivery.rs` (the delivery tests whose subjects stay), and the tests in `gp/test.rs` that exercise playback or commands.
 
 **The handle.** `GpData { gp_games, gp_persist, music: MusicData }`, built by `Data::gp_data()`.
 - `gp_games` becomes `Arc<DashMap<…>>` in `DataInner`, as the lease maps did.
