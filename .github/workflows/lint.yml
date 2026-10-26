@@ -74,10 +74,21 @@ jobs:
             exit 1
           fi
 
+      # crack-common holds the errors and neutral messages: it may use
+      # serenity and songbird, never poise or crack-core.
+      - name: crack-common depends on no poise or crack-core
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-common -e normal --prefix none)
+          if echo "$tree" | grep -E '^(poise|crack-core) '; then
+            echo "crack-common must not depend on poise or crack-core" >&2
+            exit 1
+          fi
+
       # 🔑 The only job that compiles the optional-module seam. crack-bf and
       # crack-osint now live in their own repositories, so their crates are
       # gated by their own CI -- but `commands/osint.rs`, `commands/bf.rs` and
-      # the osint arms in `messaging/message.rs` are the seam BETWEEN them, and
+      # the osint arms in `crack-common/src/message.rs` are the seam BETWEEN them, and
       # nothing else here builds it: this workflow's clippy passes no features,
       # build.yml passes only the db-tests ones, and rust-clippy.yml's
       # --all-features run is continue-on-error and never runs on a PR.

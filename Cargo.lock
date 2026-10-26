@@ -1077,6 +1077,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "crack-common"
+version = "0.38.0"
+dependencies = [
+ "anyhow",
+ "audiopus",
+ "crack-model",
+ "crack-osint",
+ "crack-types",
+ "reqwest 0.12.28",
+ "rspotify",
+ "rusty_ytdl",
+ "serde_json",
+ "serenity",
+ "songbird",
+ "sqlx 0.9.0",
+ "symphonia",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "crack-core"
 version = "0.38.0"
 dependencies = [
@@ -1090,6 +1112,7 @@ dependencies = [
  "const-random",
  "crack-bf",
  "crack-coin",
+ "crack-common",
  "crack-model",
  "crack-musicreco",
  "crack-osint",

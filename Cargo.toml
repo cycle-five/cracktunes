@@ -8,6 +8,7 @@ members = [
   "crack-web",
   "crack-testing",
   "crack-test-macros",
+  "crack-common",
   "crack-model",
   "crack-types",
 ]

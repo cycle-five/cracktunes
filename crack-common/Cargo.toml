@@ -1,0 +1,50 @@
+[package]
+name = "crack-common"
+version.workspace = true
+edition = "2021"
+authors = ["Cycle Five <cycle.five@proton.me>"]
+publish = true
+license = "MIT"
+description = "Errors, user-facing strings and platform-neutral messages for Crack Tunes."
+keywords = ["music", "bot", "crack", "tunes", "messages"]
+categories = [
+  "multimedia::audio",
+  "multimedia::music",
+  "multimedia::bot",
+]
+homepage = "https://cracktun.es/"
+# The official main repo is sr.ht, this is needed for the CI/CD pipeline.
+#repository = "https://git.sr.ht/~cycle-five/cracktunes"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = ".."
+
+[features]
+crack-osint = ["dep:crack-osint"]
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = []
+
+[dependencies]
+anyhow = "1.0"
+serde_json = "1.0"
+audiopus = "0.3.0-rc.0"
+url = "2.5"
+crack-osint = { git = "https://github.com/cycle-five/crack-osint", tag = "v0.1.0", optional = true, features = ["checkpass", "virustotal", "scan"] }
+crack-model = { path = "../crack-model" }
+crack-types = { path = "../crack-types" }
+reqwest = { workspace = true }
+sqlx = { workspace = true }
+serenity = { workspace = true }
+songbird = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+symphonia = { workspace = true }
+
+[dependencies.rusty_ytdl]
+version = "0.7.4"
+default-features = false
+features = ["live", "rustls-tls", "search", "blocking", "ffmpeg"]
+
+[dependencies.rspotify]
+version = "0.16"
+default-features = false
+features = ["client-reqwest", "reqwest-rustls-tls"]

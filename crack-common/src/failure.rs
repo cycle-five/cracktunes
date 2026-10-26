@@ -2,8 +2,8 @@
 //!
 //! Only one of the [`FailReason`]s ever reaches Discord: the raw error can
 //! carry a tool's stderr (v0.17.2's leak), so the detail goes to the log.
-use crate::messaging::format::{TrackLabel, INLINE_TITLE_MAX};
-use crate::messaging::messages::{
+use crate::format::{TrackLabel, INLINE_TITLE_MAX};
+use crate::messages::{
     TRACK_FAILED, TRACK_FAILED_BROKE_OFF, TRACK_FAILED_FORMAT, TRACK_FAILED_MORE,
     TRACK_FAILED_OPEN, TRACK_FAILED_SEEK, TRACK_FAILED_TRACKS,
 };

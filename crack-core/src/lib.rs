@@ -9,7 +9,7 @@ pub mod commands;
 pub mod config;
 pub mod connection;
 pub mod db;
-pub mod errors;
+pub use crack_common::errors;
 pub mod guild;
 pub mod handlers;
 pub mod http_utils;
@@ -77,8 +77,7 @@ pub type ArcTMutex<T> = Arc<tokio::sync::Mutex<T>>;
 pub type ArcRwMap<K, V> = Arc<std::sync::RwLock<HashMap<K, V>>>;
 pub type ArcTRwMap<K, V> = Arc<tokio::sync::RwLock<HashMap<K, V>>>;
 pub type ArcMutDMap<K, V> = Arc<tokio::sync::Mutex<HashMap<K, V>>>;
-pub type CrackedResult<T> = std::result::Result<T, CrackedError>;
-pub type CrackedHowResult<T> = anyhow::Result<T, CrackedError>;
+pub use crack_common::{CrackedHowResult, CrackedResult};
 
 pub type Command = poise::Command<Data, CommandError>;
 pub type Context<'a> = poise::Context<'a, Data, CommandError>;

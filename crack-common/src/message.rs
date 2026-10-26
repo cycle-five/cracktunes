@@ -6,13 +6,11 @@ use crack_osint::virustotal::VirusTotalApiResponse;
 use std::time::Duration;
 
 use crate::{
+    cards::{EchoLine, NowPlayingCard, QueuedCard},
     errors::CrackedError,
-    messaging::{
-        cards::{EchoLine, NowPlayingCard, QueuedCard},
-        failure,
-        format::{duration_to_string, TrackLabel, INLINE_TITLE_MAX},
-        messages::*,
-    },
+    failure,
+    format::{duration_to_string, TrackLabel, INLINE_TITLE_MAX},
+    messages::*,
 };
 
 pub const RELEASES_LINK: &str = "https://github.com/cycle-five/cracktunes/releases";
@@ -267,15 +265,15 @@ pub enum CrackedMessage {
     ControlEchoesOff,
     ButtonOutOfDate,
     /// Every `/gp` message, rendered by `gp::render_card`.
-    Gp(Box<dyn crate::messaging::render::Payload>),
+    Gp(Box<dyn crate::render::Payload>),
     NowPlayingButtonsDisabled,
     NowPlayingButtonsOn,
     NowPlayingButtonsOff,
     QueueResumed,
     /// Every voice-room message, rendered by `rooms::card::render_card`.
-    Room(Box<dyn crate::messaging::render::Payload>),
+    Room(Box<dyn crate::render::Payload>),
     /// A mod log entry, rendered by `modlog::event::render`.
-    ModLog(Box<dyn crate::messaging::render::Payload>),
+    ModLog(Box<dyn crate::render::Payload>),
 }
 
 impl CrackedMessage {
@@ -283,8 +281,8 @@ impl CrackedMessage {
     /// embed today: `Pong`, `Version` and `Prefixes` are all sent as embeds
     /// at their call sites. `Text` is for Task 9's text replies.
     #[must_use]
-    pub fn style(&self) -> crate::messaging::render::Style {
-        crate::messaging::render::Style::Embed
+    pub fn style(&self) -> crate::render::Style {
+        crate::render::Style::Embed
     }
 
     /// The embed colour, 0xRRGGBB.
@@ -614,22 +612,16 @@ impl Display for CrackedMessage {
             Self::GpVoteFullCarried => f.write_str(GP_VOTEFULL_CARRIED),
             Self::GpVoteFullPassed => f.write_str(GP_VOTEFULL_PASSED),
             Self::GpVoteFullAlready => f.write_str(GP_VOTEFULL_ALREADY),
-            Self::EphemeralRepliesOn => {
-                f.write_str(crate::messaging::messages::EPHEMERAL_REPLIES_ON)
-            },
-            Self::EphemeralRepliesOff => {
-                f.write_str(crate::messaging::messages::EPHEMERAL_REPLIES_OFF)
-            },
-            Self::ControlEchoesOn => f.write_str(crate::messaging::messages::CONTROL_ECHOES_ON),
-            Self::ControlEchoesOff => f.write_str(crate::messaging::messages::CONTROL_ECHOES_OFF),
-            Self::ButtonOutOfDate => f.write_str(crate::messaging::messages::BUTTON_OUT_OF_DATE),
+            Self::EphemeralRepliesOn => f.write_str(crate::messages::EPHEMERAL_REPLIES_ON),
+            Self::EphemeralRepliesOff => f.write_str(crate::messages::EPHEMERAL_REPLIES_OFF),
+            Self::ControlEchoesOn => f.write_str(crate::messages::CONTROL_ECHOES_ON),
+            Self::ControlEchoesOff => f.write_str(crate::messages::CONTROL_ECHOES_OFF),
+            Self::ButtonOutOfDate => f.write_str(crate::messages::BUTTON_OUT_OF_DATE),
             Self::Gp(card) => write!(f, "{card}"),
-            Self::NowPlayingButtonsDisabled => {
-                f.write_str(crate::messaging::messages::NP_BUTTONS_DISABLED)
-            },
-            Self::NowPlayingButtonsOn => f.write_str(crate::messaging::messages::NP_BUTTONS_ON),
-            Self::NowPlayingButtonsOff => f.write_str(crate::messaging::messages::NP_BUTTONS_OFF),
-            Self::QueueResumed => f.write_str(crate::messaging::messages::QUEUE_RESUMED),
+            Self::NowPlayingButtonsDisabled => f.write_str(crate::messages::NP_BUTTONS_DISABLED),
+            Self::NowPlayingButtonsOn => f.write_str(crate::messages::NP_BUTTONS_ON),
+            Self::NowPlayingButtonsOff => f.write_str(crate::messages::NP_BUTTONS_OFF),
+            Self::QueueResumed => f.write_str(crate::messages::QUEUE_RESUMED),
             Self::Room(card) => write!(f, "{card}"),
             Self::ModLog(event) => write!(f, "{event}"),
         }
@@ -670,18 +662,18 @@ impl From<CrackedMessage> for crate::CrackedHowResult<CrackedMessage> {
 mod test {
     use super::CrackedMessage;
     use crack_types::discord::ToRef;
-    use poise::serenity_prelude as serenity;
+    use serenity::all as serenity;
 
     #[test]
     fn premium_thanks_displays_the_thanks() {
-        use crate::messaging::messages::PREMIUM_THANKS;
+        use crate::messages::PREMIUM_THANKS;
 
         assert_eq!(CrackedMessage::PremiumThanks.to_string(), PREMIUM_THANKS);
     }
 
     #[test]
     fn ephemeral_replies_messages_say_what_changed() {
-        use crate::messaging::messages::{EPHEMERAL_REPLIES_OFF, EPHEMERAL_REPLIES_ON};
+        use crate::messages::{EPHEMERAL_REPLIES_OFF, EPHEMERAL_REPLIES_ON};
 
         assert_eq!(
             CrackedMessage::EphemeralRepliesOn.to_string(),
@@ -737,7 +729,7 @@ mod test {
 
     #[test]
     fn test_gp_messages_display() {
-        use crate::messaging::messages::{
+        use crate::messages::{
             GP_CLOSED_BY_HOST, GP_ENDED_BY, GP_ROUND_SKIPPED, GP_SUBMITTED, GP_SUBMITTED_REPLACED,
             GP_VOTEFULL_CARRIED, GP_VOTEFULL_ROOM, GP_VOTEFULL_ROOM_NEEDED, GP_VOTESKIP_CARRIED,
             GP_VOTESKIP_PULLED, GP_VOTESKIP_ROOM, GP_VOTESKIP_ROOM_NEEDED, GP_WINDOW_CLOSED_SONGS,

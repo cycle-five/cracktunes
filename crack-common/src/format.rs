@@ -4,7 +4,7 @@
 //! markdown character in a title, a relative URL or an unknown duration is
 //! handled once. Before this, `SkipTo` printed "Skipped to **!" for a track
 //! with an empty title, and `/play` printed "Track duration: 00:00".
-use crate::messaging::messages::{
+use crate::messages::{
     PROGRESS_ENDS, PROGRESS_ON_REPEAT, PROGRESS_PAUSED, PROGRESS_PAUSED_AT, PROGRESS_REPEATING,
     PROGRESS_STARTED, TRACK_UNTITLED,
 };
