@@ -6,12 +6,12 @@
 //! [`economy_preflight`]'s report.
 
 use super::settings::{ActionKind, EconomyConfig};
-use crate::messaging::messages::{
+use crack_common::messages::{
     DASH_ECONOMY_FINDING_GIVE, DASH_ECONOMY_FINDING_IN, DASH_ECONOMY_FINDING_SERVER,
     DASH_ECONOMY_PREFLIGHT_NO_JAIL,
 };
-use crate::music::perms::roles_resolvable;
-use crate::rooms::card::perm_names;
+use crack_common::perms::perm_names;
+use crack_common::perms::roles_resolvable;
 use serde::Serialize;
 use serenity::all::{Cache, ChannelId, GuildId, Permissions};
 use std::collections::HashMap;

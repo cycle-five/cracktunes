@@ -12,12 +12,12 @@ use crate::economy::crowdfund::{
     NotLanded, PledgeRequest, LIST_MAX_FUNDS,
 };
 use crate::economy::discord::{EconDiscordError, LiveEconomyDiscord};
+use crate::economy::facts::{gather_facts, Subject};
 use crate::economy::preflight;
 use crate::economy::settings::{
     validate_nick, validate_note, ActionKind, EconomyConfig, NickError,
 };
 use crate::economy::shop::{buy_error_text, preflight_refusal, BuyOutcome};
-use crate::economy::target::{gather_facts, Subject};
 use crate::messaging::courier;
 use crate::messaging::format::CONTENT_MAX;
 use crate::messaging::messages::{
@@ -287,7 +287,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
     };
     let target_voice = facts.in_voice;
     match execute(
-        &data,
+        &data.economy_data(),
         &discord,
         FillFacts {
             guild,
@@ -454,7 +454,7 @@ pub async fn start(
     let row_nick = nick.clone();
     let log_note = note.clone();
     let opened = match start_fund(
-        &data,
+        &data.economy_data(),
         facts,
         FundRequest {
             guild,
@@ -603,7 +603,7 @@ pub async fn pledge(
         return say(ctx, ECONOMY_SHOP_BOT_BUYER, true).await;
     }
     let done = match pledge_to(
-        &data,
+        &data.economy_data(),
         PledgeRequest {
             guild,
             pledger: pledger.user.id,

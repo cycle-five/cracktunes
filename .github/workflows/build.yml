@@ -97,8 +97,8 @@ jobs:
         # They are ignored by default so the suite is green without one.
         # nextest does not run doctests, so `cargo test --doc` keeps them running.
         run: |
-          cargo nextest run --profile ci --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
-          cargo test --doc --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
+          cargo nextest run --profile ci --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin
+          cargo test --doc --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin
 
       - name: Run Release Unit Tests
         if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
@@ -109,8 +109,8 @@ jobs:
           PG_PASSWORD: mysecretpassword
         # nextest does not run doctests, so `cargo test --doc` keeps them running.
         run: |
-          cargo nextest run --profile ci --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
-          cargo test --doc --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
+          cargo nextest run --profile ci --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin
+          cargo test --doc --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin
 
       # - name: Build Binary
       #   if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')

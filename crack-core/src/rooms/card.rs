@@ -11,7 +11,7 @@ use crate::messaging::messages::*;
 use crate::messaging::render::{RenderCx, Rendered};
 use crack_model::{Button, ButtonStyle, Card, Field, Mention, RoleRef, RoomRef, Row, UserRef};
 use crack_types::discord::ToRef;
-use serenity::all::{ChannelId, Permissions};
+use serenity::all::ChannelId;
 
 /// Why a room action was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -458,25 +458,8 @@ fn refusal_text(refusal: RoomRefusal) -> String {
     }
 }
 
-fn permission_names(perms: Permissions) -> Vec<String> {
-    perms
-        .get_permission_names()
-        .iter()
-        .map(|n| (*n).to_string())
-        .collect()
-}
-
-fn names_text(names: &[String], bold: bool) -> String {
-    names
-        .iter()
-        .map(|n| if bold { format!("**{n}**") } else { n.clone() })
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-pub fn perm_names(perms: Permissions, bold: bool) -> String {
-    names_text(&permission_names(perms), bold)
-}
+pub use crack_common::perms::perm_names;
+use crack_common::perms::{names_text, permission_names};
 
 fn where_text(at: &WhereView, name_of: &impl Fn(&RoomRef) -> String) -> String {
     match at {
@@ -592,7 +575,7 @@ mod tests {
     use super::*;
     use crate::messaging::render::Mentions;
     use crate::rooms::ids::ButtonId;
-    use serenity::all::{GuildId, RoleId, UserId};
+    use serenity::all::{GuildId, Permissions, RoleId, UserId};
 
     const ROOM: ChannelId = ChannelId::new(555);
 

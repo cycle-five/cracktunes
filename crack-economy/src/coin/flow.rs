@@ -331,7 +331,7 @@ mod tests {
     use crate::db::economy::{balance, credit_earnings, EarnRow};
     use chrono::{Duration as ChronoDuration, Utc};
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     const G: GuildId = GuildId::new(1);
     const U: UserId = UserId::new(10);

@@ -5,7 +5,7 @@
 //! only when its guarded `UPDATE` moved the row.
 
 use super::{lock_wallet, set_balance, uid};
-use crate::economy::wallet::{LedgerKind, MoveError};
+use crate::wallet::{LedgerKind, MoveError};
 use chrono::{DateTime, Utc};
 use serenity::all::{GuildId, UserId};
 use sqlx::PgPool;
@@ -560,12 +560,12 @@ pub async fn wallet_overview(pool: &PgPool, user: UserId) -> sqlx::Result<Wallet
 mod tests {
     use super::*;
     use crate::db::economy::{balance, credit_earnings, EarnRow};
-    use crate::economy::wallet::{LedgerKind, MoveError};
+    use crate::wallet::{LedgerKind, MoveError};
     use chrono::{Duration, Utc};
     use serenity::all::{GuildId, UserId};
     use sqlx::PgPool;
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     const G: GuildId = GuildId::new(1);
     const G2: GuildId = GuildId::new(2);

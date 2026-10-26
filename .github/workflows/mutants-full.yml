@@ -8,7 +8,7 @@ name: Mutants (module pass)
 #
 # Dispatch it with a file glob (several globs: separate them with commas):
 #
-#   gh workflow run mutants-full.yml -f files='crack-core/src/economy/**'
+#   gh workflow run mutants-full.yml -f files='crack-economy/src/**'
 #   gh workflow run mutants-full.yml -f files='crack-core/src/db/**,crack-core/src/guild/**' -f shards=12
 #
 # Each glob becomes its own `-f` for cargo-mutants. `files` is required: with
@@ -58,7 +58,7 @@ on:
   workflow_dispatch:
     inputs:
       files:
-        description: "File glob(s) to mutate, comma-separated, e.g. crack-core/src/economy/**"
+        description: "File glob(s) to mutate, comma-separated, e.g. crack-economy/src/**"
         type: string
         required: true
       shards:
@@ -138,7 +138,7 @@ jobs:
         shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       SQLX_OFFLINE: "true"
-      # 🔑 Tells the test harness (crack-core/src/test_db.rs) it is running
+      # 🔑 Tells the test harness (crack-test-db/src/test_db.rs) it is running
       # under mutation, so a failing test's database is dropped. cargo-mutants
       # sets no variable of its own.
       CRACK_MUTANTS: "1"

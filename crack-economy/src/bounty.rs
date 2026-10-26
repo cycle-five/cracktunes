@@ -8,8 +8,10 @@ use super::shop::{cant_afford, check_purchase, BuyError, BuyOutcome, PurchaseFac
 use super::target::{check_target, TargetFacts};
 use super::wallet::{ActionPayload, LedgerKind, MoveError};
 use crate::db::economy::{self as db, BountyStake};
-use crate::messaging::format::{escape, CONTENT_MAX};
-use crate::messaging::messages::{
+use crate::EconomyData;
+use chrono::{DateTime, Duration, Utc};
+use crack_common::format::{escape, CONTENT_MAX};
+use crack_common::messages::{
     ECONOMY_BOUNTY_CARD_COLLECTED_PREFIX, ECONOMY_BOUNTY_CARD_COLLECTED_SUFFIX,
     ECONOMY_BOUNTY_CARD_HEAD, ECONOMY_BOUNTY_CARD_ON, ECONOMY_BOUNTY_CARD_PREFIX,
     ECONOMY_BOUNTY_CARD_TAIL, ECONOMY_BOUNTY_COLLECTED_PREFIX, ECONOMY_BOUNTY_COLLECTED_SUFFIX,
@@ -17,8 +19,6 @@ use crate::messaging::messages::{
     ECONOMY_BOUNTY_LIST_MORE_SUFFIX, ECONOMY_BOUNTY_LIST_NONE, ECONOMY_BOUNTY_LIST_TITLE,
     ECONOMY_BOUNTY_SIGN_ANON, ECONOMY_BOUNTY_SIGN_DASH,
 };
-use crate::Data;
-use chrono::{DateTime, Duration, Utc};
 use serenity::all::{ChannelId, GuildId, UserId};
 use std::collections::BTreeMap;
 
@@ -95,7 +95,7 @@ pub fn check_bounty(
 /// `active` until [`BOUNTY_DAYS`] from now. `facts` describes the target.
 /// The caller validates the note and posts the card and the mod log event.
 pub async fn place(
-    data: &Data,
+    data: &EconomyData,
     facts: TargetFacts,
     req: BountyRequest,
 ) -> Result<Placed, BuyError> {
@@ -308,13 +308,11 @@ pub fn bounty_list_text(stakes: &[BountyStake], currency: &str, emoji: &str) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::economy::discord::fake::FakeEconomyDiscord;
-    use crate::economy::immunity::Protection;
-    use crate::economy::settings::EconomySettings;
-    use crate::economy::shop::{buy, BuyRequest};
-    use crate::DataInner;
+    use crate::discord::fake::FakeEconomyDiscord;
+    use crate::immunity::Protection;
+    use crate::settings::EconomySettings;
+    use crate::shop::{buy, BuyRequest};
     use sqlx::PgPool;
-    use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
     const A: UserId = UserId::new(10);
@@ -322,7 +320,7 @@ mod tests {
     const C: UserId = UserId::new(12);
     const T: UserId = UserId::new(20);
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     /// The moment this test run starts, on the real clock: the database
     /// judges a bounty's liveness by its own (`claim_bounties`,
@@ -445,7 +443,7 @@ mod tests {
             Err(Refusal::CantAfford { .. })
         ));
         assert_eq!(
-            crate::economy::shop::refusal_text(&Refusal::BountyTooSmall { min: 50 }, "credits"),
+            crate::shop::refusal_text(&Refusal::BountyTooSmall { min: 50 }, "credits"),
             "A bounty starts at 50 credits."
         );
     }
@@ -605,17 +603,17 @@ mod tests {
         .unwrap();
     }
 
-    async fn bounty_data(pool: &PgPool) -> Data {
+    async fn bounty_data(pool: &PgPool) -> EconomyData {
         let s = EconomySettings {
             enabled: true,
             ..EconomySettings::off(G)
         };
         db::save_settings(pool, &s).await.unwrap();
-        let data = Data(Arc::new(DataInner {
+        let data = EconomyData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
-        assert!(crate::economy::load_settings(&data, G).await);
+        };
+        assert!(crate::load_settings(&data, G).await);
         data
     }
 
@@ -693,7 +691,7 @@ mod tests {
         assert_eq!(stakes.iter().map(|s| s.amount).sum::<i64>(), 170);
     });
 
-    async fn mirror_for(pool: &PgPool, data: &Data, owner: UserId) {
+    async fn mirror_for(pool: &PgPool, data: &EconomyData, owner: UserId) {
         fund(pool, owner, 150).await;
         let r = BuyRequest {
             guild: G,

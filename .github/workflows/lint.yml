@@ -95,6 +95,38 @@ jobs:
             exit 1
           fi
 
+      # crack-economy holds the economy and its CrackCoin glue: it may use
+      # serenity, never poise or crack-core.
+      - name: crack-economy depends on no poise or crack-core
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-economy -e normal --prefix none)
+          if echo "$tree" | grep -E '^(poise|crack-core) '; then
+            echo "crack-economy must not depend on poise or crack-core" >&2
+            exit 1
+          fi
+
+      # crack-test-db is test tooling shared by the crates' db tests: no poise,
+      # no crack-core (crack-core depends on it, not the other way round).
+      - name: crack-test-db depends on no poise or crack-core
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-test-db -e normal --prefix none)
+          if echo "$tree" | grep -E '^(poise|crack-core) '; then
+            echo "crack-test-db must not depend on poise or crack-core" >&2
+            exit 1
+          fi
+
+      # Dev-dependencies count too: `cargo test -p crack-economy` must not build crack-core.
+      - name: crack-economy has no crack-core dev-dependency
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-economy -e normal,dev --prefix none)
+          if echo "$tree" | grep -E '^crack-core '; then
+            echo "crack-economy must not depend on crack-core, even in tests" >&2
+            exit 1
+          fi
+
       # 🔑 The only job that compiles the optional-module seam. crack-bf and
       # crack-osint now live in their own repositories, so their crates are
       # gated by their own CI -- but `commands/osint.rs`, `commands/bf.rs` and
@@ -115,6 +147,11 @@ jobs:
       - name: Clippy the crack-coin glue
         if: success() || failure()
         run: cargo clippy -p crack-core --features crack-coin --locked -- -D warnings
+
+      # crack-economy's own CrackCoin glue (`coin`) is gated the same way.
+      - name: Clippy the crack-economy crack-coin glue
+        if: success() || failure()
+        run: cargo clippy -p crack-economy --features crack-coin --locked -- -D warnings
 
   # 🔑 The mutants tooling is Python: scripts/mutants_check.py (the check),
   # scripts/check_waivers.py (every waiver carries a reason) and

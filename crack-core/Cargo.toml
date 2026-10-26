@@ -27,7 +27,7 @@ default = [
 cache = ["serenity/cache", "poise/cache"]
 crack-activity = []
 crack-bf = ["dep:crack-bf"]
-crack-coin = ["dep:crack-coin"]
+crack-coin = ["crack-economy/crack-coin"]
 crack-metrics = ["dep:prometheus"]
 crack-telemetry = []
 crack-music = []
@@ -43,7 +43,7 @@ ignore-presence-log = []
 # checkout without postgres reports 20+ red tests that say nothing about the
 # change under review. The gated tests are still COMPILED, so they cannot rot;
 # CI turns this on. See docs/testing.md.
-db-tests = []
+db-tests = ["crack-economy/db-tests"]
 
 # The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
 mutation-testing = ["db-tests", "crack-coin"]
@@ -81,9 +81,9 @@ extract_map = "0.3"
 
 crack-osint = { git = "https://github.com/cycle-five/crack-osint", tag = "v0.1.0", optional = true, features = ["checkpass", "virustotal", "scan"] }
 crack-bf = { git = "https://github.com/cycle-five/crack-bf", tag = "v0.1.1", optional = true }
-crack-coin = { git = "https://github.com/cycle-five/crack-coin", tag = "v0.1.0", optional = true }
 crack-testing = { path = "../crack-testing", optional = true }
 crack-common = { path = "../crack-common" }
+crack-economy = { path = "../crack-economy" }
 crack-model = { path = "../crack-model" }
 crack-types = { path = "../crack-types", optional = true, features = ["poise"] }
 # Not optional and not feature-gated: it pulls in nothing the crate does not
@@ -121,8 +121,10 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 ctor = "1.0"
 # `#[cfg_attr(test, mutants::skip)]` waivers: see docs/testing.md.
 mutants = "0.0.4"
-# `#[db_test]`: db tests on template databases (src/test_db.rs).
+# `#[db_test]`: db tests on template databases (crack-test-db/src/test_db.rs).
 crack-test-macros = { path = "../crack-test-macros" }
+# The runner behind it (crack-test-db/src/test_db.rs).
+crack-test-db = { path = "../crack-test-db" }
 # Builds a Discord error response for the 50013/10003 mapping test.
 http = "1"
 # The reqwest serenity itself uses (the workspace one is 0.12); its error

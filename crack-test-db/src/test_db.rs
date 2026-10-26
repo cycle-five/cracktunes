@@ -90,7 +90,7 @@ fn fnv1a(hash: u64, bytes: &[u8]) -> u64 {
 ///
 /// A passing test's database is dropped; a failing one's is kept, so it can be
 /// inspected. `#[sqlx::test]` draws the same line.
-pub(crate) trait Outcome {
+pub trait Outcome {
     fn passed(&self) -> bool;
 }
 
@@ -331,7 +331,7 @@ fn stale_templates(mut templates: Vec<(String, Option<String>)>, current: &str) 
 /// The database is dropped if the test passes, and kept if it fails or panics,
 /// for inspection. The next run of the same test replaces it. In a mutant run
 /// it is dropped either way: see [`MUTANTS_ENV`].
-pub(crate) fn run<F, Fut>(migrator: &'static Migrator, test_path: &str, test_fn: F) -> Fut::Output
+pub fn run<F, Fut>(migrator: &'static Migrator, test_path: &str, test_fn: F) -> Fut::Output
 where
     F: FnOnce(PgPool) -> Fut,
     Fut: Future,
@@ -525,11 +525,22 @@ async fn drop_database(admin: &mut PgConnection, name: &str) -> sqlx::Result<()>
         .map(drop)
 }
 
+/// The local test postgres, used when `DATABASE_URL` is unset or blank.
+const TEST_DATABASE_URL: &str = "postgresql://postgres:mysecretpassword@localhost:5432/postgres";
+
+/// An exported, non-blank `DATABASE_URL` wins; otherwise the local test postgres.
+fn database_url_or_default(existing: Option<&str>) -> String {
+    match existing {
+        Some(url) if !url.trim().is_empty() => url.to_string(),
+        _ => TEST_DATABASE_URL.to_string(),
+    }
+}
+
 /// The server and database `DATABASE_URL` names.
 fn admin_options() -> PgConnectOptions {
     let url = match std::env::var("DATABASE_URL") {
-        Ok(url) => url,
-        Err(std::env::VarError::NotPresent) => panic!("DATABASE_URL must be set for db-tests"),
+        Ok(url) => database_url_or_default(Some(&url)),
+        Err(std::env::VarError::NotPresent) => database_url_or_default(None),
         // 🪤 Not `expect`: the error's Debug output is the raw value, password
         // and all.
         Err(std::env::VarError::NotUnicode(_)) => panic!("DATABASE_URL is not valid UTF-8"),
@@ -575,7 +586,18 @@ mod tests {
     use super::*;
     use std::sync::Barrier;
 
-    static MIGRATOR: Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: Migrator = sqlx::migrate!("../crack-core/test_migrations");
+
+    #[test]
+    fn an_exported_database_url_wins_and_unset_or_blank_gives_the_default() {
+        assert_eq!(
+            database_url_or_default(Some("postgres://me@elsewhere/db")),
+            "postgres://me@elsewhere/db"
+        );
+        assert_eq!(database_url_or_default(None), TEST_DATABASE_URL);
+        assert_eq!(database_url_or_default(Some("")), TEST_DATABASE_URL);
+        assert_eq!(database_url_or_default(Some("  \t")), TEST_DATABASE_URL);
+    }
 
     #[test]
     fn template_name_is_stable_and_prefixed() {
@@ -1144,7 +1166,7 @@ mod tests {
     )]
     async fn the_attribute_runs_a_test_returning_a_cracked_result(
         pool: PgPool,
-    ) -> Result<(), crate::errors::CrackedError> {
+    ) -> Result<(), crack_common::errors::CrackedError> {
         let one: i32 = sqlx::query_scalar("SELECT 1").fetch_one(&pool).await?;
         assert_eq!(one, 1);
         Ok(())

@@ -4,7 +4,8 @@ use super::registry::CoinState;
 use super::resolve::RefundReason;
 use crate::coin::flow::Outcome;
 use crate::db::economy::coin::{WalletOverview, WithdrawalState};
-use crate::messaging::messages::{
+use crack_coin::Pubkey;
+use crack_common::messages::{
     COIN_ADDRESS_IS_THE_MINT, COIN_ADDRESS_NOT_BASE58, COIN_ADDRESS_OFF_CURVE,
     COIN_ADDRESS_WRONG_LENGTH, COIN_DEVNET_HINT, COIN_LINK_YOURS, COIN_MINTED, COIN_MINTING,
     COIN_REASON_DEVNET_RESET, COIN_REASON_EXPIRED, COIN_REASON_FAILED_ON_CHAIN,
@@ -14,7 +15,6 @@ use crate::messaging::messages::{
     COIN_SHOW_LINKED, COIN_SHOW_MINT, COIN_SHOW_NO_LINK, COIN_SHOW_REASON, COIN_SHOW_TOTAL,
     COIN_STATE_DONE, COIN_STATE_PENDING, COIN_STATE_REFUNDED, COIN_STILL_SETTLING,
 };
-use crack_coin::Pubkey;
 use std::str::FromStr;
 
 /// The authority must hold at least this much (0.01 SOL) to pay for a transfer.

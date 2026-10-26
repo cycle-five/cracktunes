@@ -1,8 +1,8 @@
 //! Economy settings as a row per server, and the opted-out set. See `economy`.
 
-use crate::economy::immunity::{Grant, GrantSource};
-use crate::economy::settings::{ActionKind, EconomyConfig, EconomySettings};
-use crate::economy::wallet::{ActionPayload, ActionState, LedgerKind, MoveError};
+use crate::immunity::{Grant, GrantSource};
+use crate::settings::{ActionKind, EconomyConfig, EconomySettings};
+use crate::wallet::{ActionPayload, ActionState, LedgerKind, MoveError};
 use chrono::{DateTime, Utc};
 use serenity::all::{GuildId, UserId};
 use sqlx::{types::Json, PgPool};
@@ -2175,7 +2175,7 @@ pub async fn lift_mod(pool: &PgPool, guild: GuildId, user: UserId) -> sqlx::Resu
 mod tests {
     use super::*;
 
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
@@ -2237,9 +2237,9 @@ mod tests {
         Ok(())
     }
 
-    use crate::economy::immunity::GrantSource;
-    use crate::economy::settings::ActionKind;
-    use crate::economy::wallet::{ActionPayload, ActionState, MoveError};
+    use crate::immunity::GrantSource;
+    use crate::settings::ActionKind;
+    use crate::wallet::{ActionPayload, ActionState, MoveError};
     use chrono::{Duration, TimeZone};
 
     const G: GuildId = GuildId::new(1);

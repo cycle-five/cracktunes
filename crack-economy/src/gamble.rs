@@ -1,7 +1,7 @@
 //! The coinflip's rules, apart from Discord and the database: which bets are
 //! refused, how the coin falls, and what is said about it.
 
-use crate::messaging::messages::{
+use crack_common::messages::{
     ECONOMY_BET_NON_POSITIVE, ECONOMY_BET_OVER_MAX_PREFIX, ECONOMY_COIN_BALANCE,
     ECONOMY_COIN_LANDED, ECONOMY_COIN_LOST, ECONOMY_COIN_WON, ECONOMY_COIN_YOU_CALLED,
     ECONOMY_GAMBLER_OPTED_OUT, ECONOMY_GAMBLING_OFF, ECONOMY_HEADS, ECONOMY_TAILS,
@@ -10,7 +10,7 @@ use crate::messaging::messages::{
 use rand::{Rng, RngExt};
 
 /// A side of the coin.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, poise::ChoiceParameter)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoinSide {
     Heads,
     Tails,

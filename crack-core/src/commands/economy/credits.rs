@@ -441,7 +441,15 @@ async fn switch(ctx: Context<'_>, out: bool) -> Result<(), Error> {
     // Opting out ends the pranks on you, one Discord call each.
     ctx.defer_ephemeral().await?;
     let now = Utc::now();
-    let result = economy::opt_out(&ctx.data(), &live(ctx), guild, ctx.author().id, out, now).await;
+    let result = economy::opt_out(
+        &ctx.data().economy_data(),
+        &live(ctx),
+        guild,
+        ctx.author().id,
+        out,
+        now,
+    )
+    .await;
     let days = ctx
         .data()
         .economy

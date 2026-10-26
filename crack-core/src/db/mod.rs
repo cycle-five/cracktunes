@@ -1,4 +1,4 @@
-pub mod economy;
+pub use crack_economy::db::economy;
 pub mod gp;
 pub mod guild;
 pub mod metadata;

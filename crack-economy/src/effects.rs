@@ -9,7 +9,7 @@ use super::discord::{EconDiscordError, EconomyDiscord, LiveEconomyDiscord};
 use super::settings::ActionKind;
 use super::wallet::{ActionPayload, ActionState};
 use crate::db::economy::{self, ActionRow};
-use crate::Data;
+use crate::EconomyData;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
 use std::future::Future;
@@ -121,7 +121,7 @@ impl Finished {
 ///   instead schedules it: its end moves to now with `reason` stored, so the
 ///   sweeper retries it within a tick and the hour counts from now.
 pub async fn finish(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     guild: GuildId,
     row: &ActionRow,
@@ -232,7 +232,7 @@ pub struct EndedPranks {
 /// active lock. A row that cannot be undone right now is warned about by
 /// [`finish`] and scheduled for the sweeper.
 pub async fn end_running_pranks(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     guild: GuildId,
     target: UserId,
@@ -276,7 +276,7 @@ pub fn undo_backoff(failures: u32) -> ChronoDuration {
 /// neither hold up the rest nor spend Discord's invalid-request budget. The
 /// hour's give-up is unchanged.
 pub async fn sweep(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     now: DateTime<Utc>,
     held: &(dyn Fn(GuildId) -> bool + Sync),
@@ -329,7 +329,7 @@ async fn sweep_funds(pool: &sqlx::PgPool, now: DateTime<Utc>) {
 
 /// A member joined voice: finish their `ending` rows.
 pub async fn on_voice_join(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     guild: GuildId,
     user: UserId,
@@ -436,7 +436,7 @@ fn landed(view: &dyn MemberView, guild: GuildId, row: &ActionRow) -> Option<bool
 /// done), the rest are refunded. When the cache cannot tell, refund and put
 /// back what the bot may have done, so nothing lingers unowned.
 async fn resolve_pending(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     view: &dyn MemberView,
     guild: GuildId,
@@ -543,7 +543,7 @@ fn past_the_grace(
 /// revert). If that read fails the row is left alone; the sweeper ends it on
 /// time anyway.
 async fn let_away_renames_stand(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     view: &dyn MemberView,
     guild: GuildId,
@@ -591,7 +591,7 @@ async fn let_away_renames_stand(
 /// stand, finish rows that came due while the bot was down, and finish
 /// `ending` rows of members who are in voice now.
 pub async fn reconcile(
-    data: &Data,
+    data: &EconomyData,
     discord: &dyn EconomyDiscord,
     view: &dyn MemberView,
     guild: GuildId,
@@ -689,7 +689,7 @@ where
 }
 
 /// Spawns the 15 s sweeper, the first time only and only with a database.
-pub fn start_sweeper(data: Data, http: Arc<Http>, cache: Arc<Cache>) {
+pub fn start_sweeper(data: EconomyData, http: Arc<Http>, cache: Arc<Cache>) {
     if !data.economy.start_sweeper_once() {
         return;
     }
@@ -711,9 +711,8 @@ pub fn start_sweeper(data: Data, http: Arc<Http>, cache: Arc<Cache>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::economy::discord::fake::{Call, CallKind, FakeEconomyDiscord};
-    use crate::economy::settings::EconomySettings;
-    use crate::DataInner;
+    use crate::discord::fake::{Call, CallKind, FakeEconomyDiscord};
+    use crate::settings::EconomySettings;
     use sqlx::{types::Json, PgPool};
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -722,7 +721,7 @@ mod tests {
     const U: UserId = UserId::new(10);
     const BUYER: UserId = UserId::new(20);
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     fn t0() -> DateTime<Utc> {
         DateTime::from_timestamp(1_800_000_000, 0).unwrap()
@@ -917,15 +916,15 @@ mod tests {
 
     /// A process that started at `t0()`: every row seeded before it was left
     /// by a previous process.
-    fn data_with(pool: &PgPool) -> Data {
+    fn data_with(pool: &PgPool) -> EconomyData {
         data_started(pool, t0())
     }
 
-    fn data_started(pool: &PgPool, at: DateTime<Utc>) -> Data {
-        let data = Data(Arc::new(DataInner {
+    fn data_started(pool: &PgPool, at: DateTime<Utc>) -> EconomyData {
+        let data = EconomyData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
+        };
         data.economy.set_process_start(at);
         data
     }
@@ -934,7 +933,7 @@ mod tests {
     /// database's clock: a restart. For rows the database stamped itself
     /// (`created_at` = its `now()`), which a fixed `t0()` can't be placed
     /// against once the calendar passes it.
-    async fn restarted(pool: &PgPool) -> Data {
+    async fn restarted(pool: &PgPool) -> EconomyData {
         let db_now = crate::db::economy::db_now(pool).await.unwrap();
         data_started(pool, db_now + mins(1))
     }
@@ -1526,10 +1525,10 @@ mod tests {
                 db_now - secs(10),
             )
             .await;
-            let unknown = Data(Arc::new(DataInner {
+            let unknown = EconomyData {
                 database_pool: Some(pool.clone()),
                 ..Default::default()
-            }));
+            };
             reconcile(&unknown, &fake, &FakeView::default(), G, Utc::now()).await;
             assert_eq!(state_of(&pool, fresh).await.0, "pending");
         }
@@ -2074,9 +2073,9 @@ mod tests {
         expires: DateTime<Utc>,
     ) -> i64 {
         let ledger = if kind == ActionKind::Bounty {
-            crate::economy::wallet::LedgerKind::BountyPlaced
+            crate::wallet::LedgerKind::BountyPlaced
         } else {
-            crate::economy::wallet::LedgerKind::Purchase
+            crate::wallet::LedgerKind::Purchase
         };
         crate::db::economy::charge_active(
             pool,

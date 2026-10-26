@@ -665,7 +665,7 @@ impl Backend for LiveBackend {
                     settings::ChannelKind::Text => self.text_channel_of(g, raw),
                 },
             )?;
-        save_settings(&self.deps.data, settings)
+        save_settings(&self.deps.data.economy_data(), settings)
             .await
             .map_err(|e| match e {
                 EconomySaveError::Invalid(e) => EconomySaveRefused::Invalid(e),

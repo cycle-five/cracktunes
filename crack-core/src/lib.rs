@@ -4,7 +4,7 @@
 #![recursion_limit = "256"]
 
 #[cfg(feature = "crack-coin")]
-pub mod coin;
+pub use crack_economy::coin;
 pub mod commands;
 pub mod config;
 pub mod connection;
@@ -28,7 +28,7 @@ pub mod sources;
 #[cfg(test)]
 pub mod test;
 #[cfg(test)]
-pub(crate) mod test_db;
+pub(crate) use crack_test_db::test_db;
 pub mod utils;
 
 //#![feature(linked_list_cursors)]
@@ -399,7 +399,7 @@ pub struct DataInner {
     /// The mod log's settings; see `modlog::registry`.
     pub modlog: crate::modlog::registry::ModLogRegistry,
     /// Per-server credits settings; see `economy::registry`.
-    pub economy: crate::economy::registry::EconomyRegistry,
+    pub economy: Arc<crate::economy::registry::EconomyRegistry>,
 }
 
 impl std::fmt::Debug for DataInner {
@@ -622,6 +622,15 @@ impl std::ops::Deref for Data {
 
 /// Impl for our custom [`Data`] struct
 impl Data {
+    /// The two fields the economy reads, as a handle that does not name
+    /// `Data`. The registry is shared (same `Arc`), not copied.
+    pub fn economy_data(&self) -> crate::economy::EconomyData {
+        crate::economy::EconomyData {
+            database_pool: self.database_pool.clone(),
+            economy: self.economy.clone(),
+        }
+    }
+
     /// Insert a guild into the guild settings map.
     pub async fn insert_guild(
         &self,
@@ -771,6 +780,12 @@ mod lib_test {
     use super::*;
     use serde_json::json;
 
+    #[cfg(feature = "crack-coin")]
+    #[test]
+    fn coin_build_is_true_here() {
+        assert!(crate::COIN_BUILD);
+    }
+
     /// Test the creation of a default EventLog
     #[tokio::test]
     async fn test_event_log_default() {
@@ -830,6 +845,18 @@ msg_on_dc:     false
             data.check_music_permissions(GuildId::new(6), UserId::new(7))
                 .await
         );
+    }
+
+    #[tokio::test]
+    async fn economy_data_carries_the_pool_and_shares_the_registry() {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://localhost/unused")
+            .unwrap();
+        let data = Data(Arc::new(DataInner::default().with_database_pool(pool)));
+        let handle = data.economy_data();
+        assert!(handle.database_pool.is_some());
+        assert!(Arc::ptr_eq(&handle.economy, &data.economy));
+        assert!(Data::default().economy_data().database_pool.is_none());
     }
 }
 

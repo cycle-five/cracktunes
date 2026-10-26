@@ -47,7 +47,7 @@ impl EventHandler for SerenityHandler {
             },
             FullEvent::Message { new_message, .. } => {
                 // Credits for chatting: counted, never awaited.
-                crate::economy::earn::on_message(&self.data, new_message);
+                crate::economy::earn::on_message(&self.data.economy_data(), new_message);
             },
             FullEvent::GuildMemberAddition { new_member } => {
                 self.on_guild_member_addition(ctx.clone(), new_member.clone())
@@ -66,8 +66,9 @@ impl EventHandler for SerenityHandler {
                         let discord = crate::economy::discord::LiveEconomyDiscord {
                             http: ctx.http.clone(),
                         };
+                        let economy = self.data.economy_data();
                         let join = crate::economy::effects::on_voice_join(
-                            &self.data,
+                            &economy,
                             &discord,
                             guild,
                             new.user_id,
@@ -88,7 +89,7 @@ impl EventHandler for SerenityHandler {
                 // A walk-on theme waiting for them plays on a join, or on
                 // the move out of the rooms hub into their room. Spawned: it
                 // never holds up this event.
-                crate::economy::theme::on_voice_state(&self.data, ctx, old.as_ref(), new);
+                crate::economy::walk_on::on_voice_state(&self.data, ctx, old.as_ref(), new);
                 // A jailed member who changed channel is moved back.
                 if let Some(guild) = new.guild_id {
                     let from = old.as_ref().and_then(|o| o.channel_id);
@@ -96,8 +97,9 @@ impl EventHandler for SerenityHandler {
                         let discord = crate::economy::discord::LiveEconomyDiscord {
                             http: ctx.http.clone(),
                         };
+                        let economy = self.data.economy_data();
                         let moved = crate::economy::lock::on_voice_move(
-                            &self.data,
+                            &economy,
                             &discord,
                             guild,
                             new.user_id,
@@ -109,7 +111,7 @@ impl EventHandler for SerenityHandler {
                             // Out again inside the rate limit: one re-check
                             // at its end, so moving twice doesn't escape.
                             Ok(Some(at)) => crate::economy::lock::spawn_jail_recheck(
-                                self.data.clone(),
+                                economy,
                                 ctx.http.clone(),
                                 ctx.cache.clone(),
                                 guild,
@@ -143,9 +145,9 @@ impl EventHandler for SerenityHandler {
                 let discord = crate::economy::discord::LiveEconomyDiscord {
                     http: ctx.http.clone(),
                 };
-                let audit = crate::economy::lock::on_audit_entry(
-                    &self.data, &discord, *guild_id, entry, bot,
-                );
+                let economy = self.data.economy_data();
+                let audit =
+                    crate::economy::lock::on_audit_entry(&economy, &discord, *guild_id, entry, bot);
                 if tokio::time::timeout(std::time::Duration::from_secs(5), audit)
                     .await
                     .is_err()
@@ -368,16 +370,16 @@ impl SerenityHandler {
         // (reconnect) is harmless: the tick starts once per process. Placed
         // before the loops below in case one of them awaits for long.
         if let Some(cache) = ctx.cache() {
-            crate::economy::earn::start(self.data.clone(), cache.clone());
+            crate::economy::earn::start(self.data.economy_data(), cache.clone());
         }
         // And the sweeper that ends timed pranks on time.
         crate::economy::effects::start_sweeper(
-            self.data.clone(),
+            self.data.economy_data(),
             ctx.http.clone(),
             ctx.cache.clone(),
         );
         #[cfg(feature = "crack-coin")]
-        crate::coin::start(self.data.clone());
+        crate::coin::start(self.data.economy_data());
 
         // Process-level background work, moved off `CacheReady`.
         //
@@ -615,7 +617,7 @@ impl SerenityHandler {
         // The economy's settings and opted-out members, likewise (off without
         // a database). A failed read leaves the economy unsaveable and
         // earning nothing for the server until a read succeeds.
-        if !crate::economy::load_settings(&self.data, guild.id).await {
+        if !crate::economy::load_settings(&self.data.economy_data(), guild.id).await {
             tracing::warn!("economy: loading the settings of {} failed", guild.id);
             // One retry after 60 s, in the background. If it also fails the
             // server stays unloaded (earning nothing, refusing saves) until
@@ -629,7 +631,7 @@ impl SerenityHandler {
                 if data.economy.loaded(gid) {
                     return;
                 }
-                if !crate::economy::load_settings(&data, gid).await {
+                if !crate::economy::load_settings(&data.economy_data(), gid).await {
                     tracing::warn!("economy: retrying the settings of {gid} failed too");
                 }
             });
@@ -646,7 +648,7 @@ impl SerenityHandler {
             tokio::spawn(async move {
                 let discord = crate::economy::discord::LiveEconomyDiscord { http };
                 crate::economy::effects::reconcile(
-                    &data,
+                    &data.economy_data(),
                     &discord,
                     cache.as_ref(),
                     gid,

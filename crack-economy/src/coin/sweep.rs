@@ -5,7 +5,7 @@
 use super::chain::CoinChain;
 use super::flow::{resolve_row, Outcome, Step};
 use crate::db::economy::coin::pending_withdrawals;
-use crate::economy::effects::spawn_supervised;
+use crate::effects::spawn_supervised;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -104,7 +104,7 @@ mod tests {
     use chrono::Duration as ChronoDuration;
     use serenity::all::{GuildId, UserId};
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     const G: GuildId = GuildId::new(1);
 

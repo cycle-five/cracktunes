@@ -36,9 +36,9 @@ The same run with the database tests, as CI does it:
 
 ```bash
 cargo nextest run --profile ci --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin
 cargo test --doc --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin
 ```
 
 The dev profile is tuned for rebuilds: `debug = "line-tables-only"` for the
@@ -61,25 +61,31 @@ async fn test_insert_user(pool: PgPool) { ... }
 
 The macro takes the same argument and the same function shapes as
 `#[sqlx::test]`; moving a test over changes only the attribute's path. 🪤 Only
-`crack-core` can use it, because the expansion calls `crate::test_db`. 167 test
-sites there use it. `crack-voting` and `cracktunes` (the `crack-cli` package)
-stay on `#[sqlx::test]`.
+a crate can use it once it has `crate::test_db`, because the expansion calls it:
+`#[cfg(test)] pub(crate) use crack_test_db::test_db;`. Every db test site in
+`crack-core`, `crack-economy` and `crack-test-db` uses it (109, 57 and 7 sites
+when counted). `crack-voting` and `cracktunes` (the `crack-cli` package) stay
+on `#[sqlx::test]`.
 
 To run them, start a postgres and turn the feature on. The feature lives in
-each package that has such tests, so a workspace run names all three, plus
-`crack-core/crack-coin` for the CrackCoin tests:
+each package that has such tests, so a workspace run names all five
+(`crack-core`, `cracktunes`, `crack-voting`, `crack-test-db`, `crack-economy`),
+plus `crack-core/crack-coin` and `crack-economy/crack-coin` for the CrackCoin
+tests:
 
 ```bash
 docker run -d --name crack-pg -p 5432:5432 \
   -e POSTGRES_PASSWORD=mysecretpassword postgres:16
 
 cargo nextest run --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin
 ```
 
-`DATABASE_URL` defaults to `postgresql://postgres:mysecretpassword@localhost:5432/postgres`,
-set by a `#[ctor]` in `crack-core/src/db/user.rs` when nothing else has set
-it; export your own to point elsewhere.
+`DATABASE_URL` defaults to `postgresql://postgres:mysecretpassword@localhost:5432/postgres`.
+`crack-test-db`'s runner applies that default itself, for every crate, when
+nothing else has set it (`crack-core`'s `#[ctor]` in `src/db/user.rs` remains
+for crack-core tests that read the variable directly). Export your own to
+point elsewhere.
 
 CI provisions postgres and passes those features, so the database tests do run
 on every push. The gate is about the default local experience, not coverage.
@@ -89,7 +95,7 @@ on every push. The gate is about the default local experience, not coverage.
 `#[sqlx::test]` creates an empty database for every test and runs every
 migration into it. `db_test` runs the migrations once, into a template, and
 gives each test a copy (`CREATE DATABASE ... TEMPLATE`). The code is
-`crack-core/src/test_db.rs`.
+`crack-test-db/src/test_db.rs`.
 
 - **Templates** are named `crack_tpl_` plus a hash of every migration's
   version and checksum. Editing or adding a migration gives a new name, so a
@@ -154,7 +160,7 @@ cargo install cargo-llvm-cov --version 0.9.1 --locked
 cargo install cargo-nextest --version 0.9.149 --locked
 rustup component add llvm-tools-preview
 cargo llvm-cov nextest --profile ci --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin \
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin \
   --lcov --output-path lcov.info
 ```
 
@@ -356,7 +362,7 @@ The check only sees touched code, so the old misses are worked down on
 purpose, a module at a time, each in its own PR.
 
 ```bash
-gh workflow run mutants-full.yml -f files='crack-core/src/economy/**'
+gh workflow run mutants-full.yml -f files='crack-economy/src/**'
 gh workflow run mutants-full.yml -f files='crack-core/src/db/**,crack-core/src/guild/**' -f shards=12
 ```
 

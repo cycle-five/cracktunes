@@ -13,8 +13,9 @@ test_tool = "nextest"
 # missed, for the wrong reason.
 #
 # 🔑 One umbrella feature, `mutation-testing`, that every crate defines: in
-# crack-core and cracktunes it turns on `db-tests` and `crack-coin`, in
-# crack-voting `db-tests`, and elsewhere nothing. cargo-mutants passes
+# crack-core, crack-economy and cracktunes it turns on `db-tests` and
+# `crack-coin`, in crack-voting and crack-test-db `db-tests`, and elsewhere
+# nothing. cargo-mutants passes
 # `--features` to EVERY cargo call, including the per-crate ones (each mutant
 # builds and tests only its own crate, below). cargo rejects a feature that no
 # selected crate has, so `db-tests` on its own would make every mutant in
@@ -58,6 +59,10 @@ exclude_globs = [
     # it says nothing about the bot. (It is also the one crate without the
     # `mutation-testing` feature, so its mutants could not build.)
     "crack-test-macros/**",
+    # Test-only tooling: the template-database runner never ships in the bot.
+    # As `#[cfg(test)]` code inside crack-core it listed no mutants; as its own
+    # crate it would, and mutating it says nothing about the bot.
+    "crack-test-db/**",
 ]
 
 # 🔑 The one exception to "legacy misses don't go here" (owner's call,

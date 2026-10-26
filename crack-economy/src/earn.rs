@@ -7,7 +7,7 @@
 
 use super::registry::EconomyRegistry;
 use crate::db::economy::{credit_earnings, EarnRow};
-use crate::Data;
+use crate::EconomyData;
 use serenity::all::{Cache, ChannelId, GuildId, Message, UserId, VoiceState};
 use serenity::async_trait;
 use sqlx::PgPool;
@@ -102,7 +102,7 @@ pub fn earn_rows(
 
 /// Counts one message towards its author's earnings. Synchronous: the event
 /// handler never waits on it.
-pub fn on_message(data: &Data, msg: &Message) {
+pub fn on_message(data: &EconomyData, msg: &Message) {
     let Some(guild) = msg.guild_id else { return };
     if msg.author.bot() {
         return;
@@ -140,7 +140,7 @@ impl EarnWriter for PgPool {
 /// messages dropped and earns nothing. A failed write is logged and that
 /// minute's messages are lost.
 pub async fn tick_with(
-    data: &Data,
+    data: &EconomyData,
     snapshots: Vec<(GuildId, VoiceSnapshot)>,
     writer: &dyn EarnWriter,
 ) {
@@ -209,7 +209,7 @@ pub fn snapshot(cache: &Cache, guild: GuildId) -> Option<VoiceSnapshot> {
 
 /// Spawns the once-a-minute payout, the first time only and only with a
 /// database.
-pub fn start(data: Data, cache: Arc<Cache>) {
+pub fn start(data: EconomyData, cache: Arc<Cache>) {
     if !data.economy.start_once() {
         return;
     }
@@ -236,7 +236,7 @@ pub fn start(data: Data, cache: Arc<Cache>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::economy::settings::EconomySettings;
+    use crate::settings::EconomySettings;
     use std::sync::Mutex;
 
     fn u(n: u64) -> UserId {
@@ -438,8 +438,8 @@ mod tests {
         }
     }
 
-    fn data_with(enabled: bool, loaded: bool) -> Data {
-        let data = Data::default();
+    fn data_with(enabled: bool, loaded: bool) -> EconomyData {
+        let data = EconomyData::default();
         let mut s = EconomySettings::off(G);
         s.enabled = enabled;
         data.economy.set_settings(s);
@@ -449,7 +449,7 @@ mod tests {
         data
     }
 
-    async fn count(data: &Data, user: u64) {
+    async fn count(data: &EconomyData, user: u64) {
         assert!(data
             .economy
             .count_message(G, u(user), Instant::now(), Duration::from_secs(60)));
@@ -515,7 +515,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn tick_pays_only_cameras_when_the_server_requires_one() {
-        let data = Data::default();
+        let data = EconomyData::default();
         let mut s = EconomySettings::off(G);
         s.enabled = true;
         s.config.voice_requires_camera = true;

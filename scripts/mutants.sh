@@ -52,7 +52,7 @@ export NEXTEST_PROFILE=mutants
 # depends on that database's schema. Offline, they use the committed `.sqlx/`
 # metadata, as CI does.
 export SQLX_OFFLINE=true
-# Tells the database test runner (crack-core/src/test_db.rs) to drop a failing
+# Tells the database test runner (crack-test-db/src/test_db.rs) to drop a failing
 # test's database. Mutant runs fail tests on purpose, and each scratch copy has
 # its own database names, so kept databases would pile up.
 export CRACK_MUTANTS=1
