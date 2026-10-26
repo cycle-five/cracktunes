@@ -11,8 +11,12 @@ pub mod ephemeral;
 pub mod gambling;
 pub mod get_metadata;
 pub mod gp;
-pub mod gp_persist;
-pub mod gp_prompts;
+pub mod gp_persist {
+    pub use super::gp_resume::gp_resume_guild;
+    pub use crack_gp::gp_persist::*;
+}
+pub use crack_gp::gp_prompts;
+pub mod gp_resume;
 pub mod grab;
 pub mod leave;
 pub mod lyrics;

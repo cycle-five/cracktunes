@@ -620,6 +620,16 @@
   - `cargo test -p crack-music` builds no crack-core.
 
   Nothing the bot does changed.
+- **Step 4c: the /gp game is its own crate, `crack-gp`.**
+  - What moved: the game's state machine, its cards, its prompt deck, its saved
+    form and writer, and its table. The game's methods live on a `GpData`
+    handle, and `Data` delegates to it.
+  - What stays in crack-core: the poise commands, the card delivery and boot
+    resume.
+  - crack-gp depends on crack-music for the lease a game claims.
+  - `cargo test -p crack-gp` builds no crack-core.
+
+  Nothing the bot does changed.
 
 ## TODO:
 

@@ -2,21 +2,18 @@
 //! sends, edits and gives up on. The game's rules are tested in `test.rs`.
 use super::commands::gp_spawn_park_backstop;
 use super::playback::{gp_after_close, gp_answer_component, gp_spawn_window_timer_secs};
-use super::test::{
+use super::test_glue::{
     data, game, game_started_at, game_with, game_with_reveal, game_with_settings,
-    playing_with_title, rng, submit, A, B, G, NOW, TC,
+    playing_with_title, submit, A, B, G, NOW, TC,
 };
 use super::*;
-use crate::commands::music::gp_persist::{
-    close_out, post_owed_results, take_down_components, GpCloseOut,
-};
-use crate::db::GpOutcome;
-use crate::messaging::messages::{GP_ABORTED, GP_GAME_OVER, GP_SCOREBOARD, GP_WINDOW_WARNING};
+use crate::messaging::messages::{GP_ABORTED, GP_GAME_OVER, GP_WINDOW_WARNING};
 use crate::messaging::test_support::{FakePress, FakeTransport, Op, PressOp};
 use crate::messaging::transport::TransportError;
 use crate::music::ops::test_support::standalone_call;
 use crate::Data;
 use ::serenity::all::MessageId;
+use crack_gp::gp::test_support::rng;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
@@ -303,35 +300,6 @@ async fn a_click_is_answered_once_privately_and_never_acknowledged() {
     );
 }
 
-/// A two-round game whose first round has been revealed in memory but whose
-/// results never reached the channel.
-fn round_one_owed(data: &Data) {
-    let opened = game_with_reveal(data, &["first", "second"], None, GpReveal::Round);
-    submit(data, B, "bob", "Song");
-    data.gp_close_window_if(G, opened.generation, &mut rng(), NOW)
-        .unwrap();
-    data.gp_reveal_and_advance(G, 0, 0, NOW).unwrap();
-}
-
-#[tokio::test]
-async fn owed_results_are_posted_and_reported() {
-    let data = data();
-    round_one_owed(&data);
-    let fake = FakeTransport::default();
-    assert_eq!(post_owed_results(&fake, &game(&data)).await, vec![0]);
-    assert_eq!(fake.ops(), vec![Op::Send(TC.get())]);
-}
-
-#[tokio::test]
-async fn owed_results_that_fail_are_not_reported_posted() {
-    let data = data();
-    round_one_owed(&data);
-    let fake = FakeTransport::default();
-    fail_sends(&fake, 1);
-    assert!(post_owed_results(&fake, &game(&data)).await.is_empty());
-    assert_eq!(fake.ops(), vec![Op::Send(TC.get())], "a send was attempted");
-}
-
 /// The backstop `/gp end` leaves behind collects the game it was spawned for
 /// if that game's `End` never came, and nothing else (#423).
 #[tokio::test(start_paused = true)]
@@ -347,7 +315,7 @@ async fn the_end_backstop_collects_its_own_game_and_only_that() {
     );
 
     // A game parked after another `/gp end`'s backstop was spawned.
-    let data = super::test::data();
+    let data = super::test_glue::data();
     game_with(&data, &["first"]);
     let first = data.gp_park_for_end(G, A, false).unwrap();
     gp_spawn_park_backstop(data.clone(), G, first.started_at);
@@ -356,128 +324,4 @@ async fn the_end_backstop_collects_its_own_game_and_only_that() {
     data.gp_park_for_end(G, A, false).unwrap();
     tokio::time::sleep(Duration::from_secs(GP_PARK_GRACE_SECS + 1)).await;
     assert!(data.gp_is_active(G), "not the game it was spawned for");
-}
-
-// A game the resume will not bring back is closed out by its tombstone, and
-// says so only once that has landed: `on_guild_create` runs on every
-// reconnect, and until the tombstone is written the row is still live (#469).
-
-async fn store_down(_: GpOutcome) -> sqlx::Result<bool> {
-    Err(sqlx::Error::PoolTimedOut)
-}
-
-async fn store_up(_: GpOutcome) -> sqlx::Result<bool> {
-    Ok(true)
-}
-
-#[tokio::test]
-async fn reconnects_while_writes_fail_post_the_owed_results_once() {
-    let data = data();
-    round_one_owed(&data);
-    let fake = FakeTransport::default();
-    // Two reconnects with the store refusing writes, then one with it back.
-    // After that the row is finished and the next reconnect never loads it.
-    close_out(&fake, &game(&data), GpCloseOut::Lost, store_down).await;
-    close_out(&fake, &game(&data), GpCloseOut::Lost, store_down).await;
-    close_out(&fake, &game(&data), GpCloseOut::Lost, store_up).await;
-    assert_eq!(fake.ops(), vec![Op::Send(TC.get()), Op::Send(TC.get())]);
-}
-
-#[tokio::test]
-async fn a_lost_game_whose_tombstone_fails_posts_nothing() {
-    let data = data();
-    round_one_owed(&data);
-    let fake = FakeTransport::default();
-    close_out(&fake, &game(&data), GpCloseOut::Lost, store_down).await;
-    assert_eq!(fake.ops(), vec![]);
-}
-
-#[tokio::test]
-async fn a_finished_game_whose_tombstone_fails_posts_nothing() {
-    let data = data();
-    round_one_owed(&data);
-    let fake = FakeTransport::default();
-    close_out(&fake, &game(&data), GpCloseOut::Finished, store_down).await;
-    assert_eq!(fake.ops(), vec![]);
-}
-
-#[tokio::test]
-async fn a_row_something_else_closed_first_posts_nothing() {
-    let data = data();
-    round_one_owed(&data);
-    let fake = FakeTransport::default();
-    close_out(&fake, &game(&data), GpCloseOut::Lost, |_| async {
-        Ok(false)
-    })
-    .await;
-    assert_eq!(fake.ops(), vec![], "whoever closed it says so");
-}
-
-#[tokio::test]
-async fn the_tombstone_is_written_with_the_ending_it_closes_out() {
-    let data = data();
-    round_one_owed(&data);
-    let fake = FakeTransport::default();
-    let seen = std::sync::Mutex::new(Vec::new());
-    for ending in [GpCloseOut::Lost, GpCloseOut::Finished] {
-        close_out(&fake, &game(&data), ending, |o| {
-            seen.lock().unwrap().push(o);
-            async { Err(sqlx::Error::PoolTimedOut) }
-        })
-        .await;
-    }
-    assert_eq!(
-        *seen.lock().unwrap(),
-        vec![GpOutcome::Lost, GpOutcome::Finished]
-    );
-}
-
-#[tokio::test]
-async fn a_lost_game_posts_its_owed_results_then_the_lost_scoreboard() {
-    let data = data();
-    round_one_owed(&data);
-    let fake = FakeTransport::default();
-    close_out(&fake, &game(&data), GpCloseOut::Lost, store_up).await;
-    assert_eq!(fake.ops(), vec![Op::Send(TC.get()), Op::Send(TC.get())]);
-    assert_eq!(embed_title(&fake, 1), GP_SCOREBOARD);
-}
-
-#[tokio::test]
-async fn a_lost_game_that_owed_no_results_still_posts_its_scoreboard() {
-    let data = data();
-    game_with(&data, &["first"]);
-    let fake = FakeTransport::default();
-    close_out(&fake, &game(&data), GpCloseOut::Lost, store_up).await;
-    assert_eq!(fake.ops(), vec![Op::Send(TC.get())]);
-    assert_eq!(embed_title(&fake, 0), GP_SCOREBOARD);
-}
-
-#[tokio::test]
-async fn a_finished_game_posts_its_owed_results_then_the_final_scoreboard() {
-    let data = data();
-    round_one_owed(&data);
-    let fake = FakeTransport::default();
-    close_out(&fake, &game(&data), GpCloseOut::Finished, store_up).await;
-    assert_eq!(fake.ops(), vec![Op::Send(TC.get()), Op::Send(TC.get())]);
-    assert_eq!(embed_title(&fake, 1), GP_GAME_OVER);
-}
-
-#[tokio::test]
-async fn a_finished_game_that_owed_nothing_posts_nothing() {
-    let data = data();
-    game_with(&data, &["first"]);
-    let fake = FakeTransport::default();
-    close_out(&fake, &game(&data), GpCloseOut::Finished, store_up).await;
-    assert_eq!(fake.ops(), vec![], "its scoreboard may well be up already");
-}
-
-#[tokio::test]
-async fn taking_down_the_old_dropdown_clears_components_and_nothing_else() {
-    let fake = FakeTransport::default();
-    take_down_components(&fake, G, TC, MessageId::new(88)).await;
-    assert_eq!(fake.ops(), vec![Op::ClearComponents(TC.get(), 88)]);
-    assert!(
-        fake.sent.lock().unwrap().is_empty(),
-        "the embed is left alone"
-    );
 }

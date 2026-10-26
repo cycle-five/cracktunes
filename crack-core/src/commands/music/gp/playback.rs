@@ -1,5 +1,3 @@
-use super::state::*;
-use super::ui::*;
 use crate::{
     errors::CrackedError,
     messaging::{
@@ -21,6 +19,11 @@ use ::serenity::{
         UserId,
     },
     async_trait,
+};
+use crack_gp::gp::{
+    gp_min_played, gp_post, gp_rendered, gp_warning_text, now, parse_custom_id, user_refs, GpCard,
+    GpClip, GpComponent, GpGuessOutcome, GpLikeOutcome, GpNext, GpPlayed, GpTrackStart,
+    GpWindowClosed, GpWindowOpened, GP_DEAD_LINK, GP_REVEAL_PAUSE_SECS, GP_WARNING_SECS,
 };
 use poise::serenity_prelude::Context as SerenityContext;
 use songbird::tracks::{PlayMode, TrackHandle, TrackState};
@@ -131,13 +134,6 @@ async fn gp_send(
         pb.guild_id
     );
     Ok(courier::post_message(&*pb.transport, channel, &out).await?)
-}
-
-/// Post a card to a channel. Best effort: a failure is logged with the card.
-pub async fn gp_post(transport: &dyn Transport, channel: GenericChannelId, card: GpCard) {
-    if let Err(e) = courier::post_message(transport, channel, &gp_rendered(card.clone())).await {
-        tracing::warn!("gp: posting \"{card}\" to {channel} failed: {e}");
-    }
 }
 
 /// Edit `card` into `message`, or post it if there is no message or the edit

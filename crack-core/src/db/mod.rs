@@ -1,6 +1,5 @@
 pub use crack_economy::db::economy;
-pub use crack_rooms::db::{modlog, rooms};
-pub mod gp;
+pub use crack_gp::db::gp;
 pub use crack_guild::db::guild;
 pub use crack_music::db::metadata;
 pub use crack_music::db::musicreco;
@@ -12,6 +11,7 @@ pub use crack_music::db::queue_snapshot;
 pub use crack_music::db::track_reaction;
 pub use crack_music::db::user;
 pub use crack_music::db::worker_pool;
+pub use crack_rooms::db::{modlog, rooms};
 
 pub use gp::*;
 pub use guild::*;

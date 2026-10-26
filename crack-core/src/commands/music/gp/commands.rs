@@ -1,6 +1,4 @@
 use super::playback::*;
-use super::state::*;
-use super::ui::*;
 use crate::music::from_ctx::ActorFromCtx;
 use crate::{
     commands::cmd_check_music,
@@ -25,6 +23,13 @@ use crate::{
     Context, CrackedResult, Error,
 };
 use ::serenity::all::{ChannelId, ComponentInteractionDataKind, GuildId, UserId};
+use crack_gp::gp::{
+    gp_picked, gp_rendered, now, user_refs, GpCard, GpClip, GpPhase, GpReveal, GpVoteFullOutcome,
+    GpVoteSkipOutcome, GP_DEFAULT_CLIPS, GP_DEFAULT_CLIP_LENGTH_SECS, GP_DEFAULT_CLIP_START_SECS,
+    GP_DEFAULT_ROUNDS, GP_DEFAULT_TIMER_SECS, GP_MAX_CLIP_LENGTH_SECS, GP_MAX_CLIP_START_SECS,
+    GP_MAX_ROUNDS, GP_MAX_TIMER_SECS, GP_MIN_CLIP_LENGTH_SECS, GP_MIN_TIMER_SECS,
+    GP_PARK_GRACE_SECS, GP_PICK_CANCEL_ID, GP_PICK_START_ID, GP_PICK_TIMEOUT_SECS,
+};
 use crack_types::QueryType;
 use poise::serenity_prelude::CollectComponentInteractions;
 use songbird::Call;

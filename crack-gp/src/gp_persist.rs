@@ -1,6 +1,6 @@
 //! Saving `/gp` games to Postgres, and picking them up after a restart.
 //!
-//! A game lives in [`Data::gp_games`], in memory, and that stays the source of
+//! A game lives in [`GpData::gp_games`], in memory, and that stays the source of
 //! truth while it runs. It is written down at the five moments its shape
 //! changes -- a song is submitted, the window closes on a round, a song's
 //! message is posted, a song ends, a round's results are posted -- as a
@@ -12,7 +12,7 @@
 //! can re-cast, never a scoreboard.
 //!
 //! Nothing on the interaction or songbird path waits on the database. The
-//! `gp_*` mutations on [`Data`] clone the game and send it down a channel; one
+//! `gp_*` mutations on [`GpData`] clone the game and send it down a channel; one
 //! writer task per process drains that channel in order, so a later snapshot
 //! can never be overwritten by an earlier one. Shutdown drains the channel
 //! before the pool closes, which fits in Docker's ten-second stop grace because
@@ -28,10 +28,10 @@
 //! itself. A hard crash leaves `last_seen_at` at the last checkpoint, which
 //! errs toward not resuming.
 //!
-//! On the way back up, [`gp_resume_guild`] runs from the guild-create handler for
+//! On the way back up, `gp_resume_guild` (crack-core's `commands::music::gp_resume`) runs from the guild-create handler for
 //! each guild as it arrives. A live game is brought back only if it can still be
 //! going: a submission window that is still open, or closed less than
-//! [`GP_RESUME_WINDOW_SECS`] ago by its own `closes_at`; a song whose game was
+//! [`GP_RESUME_WINDOW_SECS`](crate::gp::GP_RESUME_WINDOW_SECS) ago by its own `closes_at`; a song whose game was
 //! seen within that long. Anything older, or whose voice channel is empty, is
 //! marked lost and its scoreboard posted with a line saying why. Anything else is put back into the map, the bot
 //! rejoins voice, and the game re-enters its phase: a submission window with
@@ -47,36 +47,25 @@
 //! posted, and only if the tombstone lands ([`close_out`]): the row stays live
 //! until it does, and the next reconnect would post it all again.
 
-use super::gp::{
-    gp_after_close, gp_play_track, gp_post, gp_rendered, gp_spawn_window_timer_secs, now,
-    user_refs, GpCard, GpClip, GpGame, GpPhase, GpPlayback, GpPlayed, GpReveal, GpRound, GpTrack,
-    GP_RESUME_WINDOW_SECS,
-};
-use super::gp_prompts::{GpCategories, GpCategory};
-use crate::commands::music_utils::set_global_handlers_with;
 use crate::db::{
     gp_mark_finished, gp_touch_live, GpGameRow, GpOutcome, GpPlayerRow, GpRoundRow, GpSaved,
     GpTrackRow,
 };
-use crate::messaging::messages::{
-    GP_GAME_OVER, GP_LOST, GP_RESUMED, GP_RESUMED_SONG, GP_RESUMED_WINDOW,
-    GP_RESUMED_WINDOW_CLOSED, GP_SCOREBOARD,
+use crate::gp::{
+    gp_post, gp_rendered, user_refs, GpCard, GpClip, GpData, GpGame, GpPhase, GpPlayed, GpReveal,
+    GpRound, GpTrack,
 };
-use crate::messaging::{
-    courier,
-    transport::{DiscordTransport, Transport},
-};
-use crate::Data;
+use crate::gp_prompts::{GpCategories, GpCategory};
 use ::serenity::all::{ChannelId, GenericChannelId, Guild, GuildId, MessageId, UserId};
+use crack_common::messages::{GP_GAME_OVER, GP_LOST, GP_SCOREBOARD};
+use crack_common::{courier, transport::Transport};
 use crack_testing::ResolvedTrack;
 use crack_types::SavedTrack;
-use poise::serenity_prelude::Context as SerenityContext;
 use sqlx::PgPool;
 use std::{
     collections::{HashMap, HashSet},
     fmt,
     future::Future,
-    sync::Arc,
     time::Duration,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -144,7 +133,7 @@ pub async fn run_gp_writer(mut rx: mpsc::UnboundedReceiver<GpPersist>, pool: PgP
     }
 }
 
-impl Data {
+impl GpData {
     fn gp_persist_send(&self, msg: GpPersist) {
         if let Some(tx) = &self.gp_persist {
             if tx.send(msg).is_err() {
@@ -196,7 +185,7 @@ impl Data {
     }
 }
 
-fn game_id(guild_id: GuildId) -> i64 {
+pub fn game_id(guild_id: GuildId) -> i64 {
     guild_id.get() as i64
 }
 
@@ -518,7 +507,7 @@ fn sorted_users(set: &HashSet<UserId>) -> Vec<i64> {
 /// from the session that just died is usually still in the payload, and counting
 /// it would let the "nobody is left in the channel" check pass on the bot's own
 /// ghost -- resuming the game to an empty room.
-pub(crate) fn vc_members(guild: &Guild, vc: ChannelId, me: UserId) -> usize {
+pub fn vc_members(guild: &Guild, vc: ChannelId, me: UserId) -> usize {
     guild
         .voice_states
         .iter()
@@ -528,221 +517,9 @@ pub(crate) fn vc_members(guild: &Guild, vc: ChannelId, me: UserId) -> usize {
         .count()
 }
 
-/// Give up on a resume entirely: release the lease, mark the game lost in the
-/// database, and tell the channel. Shared by every failure path in
-/// [`gp_resume_guild`] once the game has been restored to the guild.
-///
-/// Goes through the method, not a raw map removal: `gp_remove` is the one
-/// place a game ends, and it is what releases the playback lease. A raw
-/// remove here would leave the guild owned by a game that no longer exists,
-/// and `/play` refused forever (`music/lease.rs`).
-async fn abandon_resume(
-    data: &Data,
-    pool: &PgPool,
-    guild_id: GuildId,
-    started_at: i64,
-    text_channel: GenericChannelId,
-    transport: &dyn Transport,
-) {
-    data.gp_remove(guild_id);
-    if let Err(e) = gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await {
-        tracing::warn!("gp: marking the game in {guild_id} lost: {e}");
-    }
-    gp_post(transport, text_channel, GpCard::Line(GP_LOST.into())).await;
-}
-
-/// Bring back the guild's live game, if it has one and it is worth bringing
-/// back. Called for every guild as it arrives after a (re)connect; a guild with
-/// a game already in memory, or with nothing saved, is a quick no.
-pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) {
-    let Some(pool) = data.database_pool.as_ref() else {
-        return;
-    };
-    let guild_id = guild.id;
-    if data.gp_is_active(guild_id) {
-        return;
-    }
-    let loaded = match GpSaved::load_live(pool, game_id(guild_id)).await {
-        Ok(Some(l)) => l,
-        Ok(None) => return,
-        Err(e) => {
-            tracing::warn!("gp: looking for a saved game in {guild_id}: {e}");
-            return;
-        },
-    };
-    let started_at = loaded.saved.game.started_at;
-    let game = match GpGame::from_saved(&loaded.saved) {
-        Ok(g) => g,
-        Err(e) => {
-            tracing::warn!(
-                "gp: the saved game in {guild_id} could not be loaded ({e}); dropping it"
-            );
-            if let Err(e) =
-                gp_mark_finished(pool, game_id(guild_id), started_at, GpOutcome::Lost).await
-            {
-                tracing::warn!("gp: marking the unloadable game in {guild_id} lost: {e}");
-            }
-            return;
-        },
-    };
-    let text_channel = game.text_channel;
-    let transport: Arc<dyn Transport> = Arc::new(DiscordTransport::of(ctx));
-    let tombstone = |outcome| gp_mark_finished(pool, game_id(guild_id), started_at, outcome);
-
-    if game.phase == GpPhase::Finished {
-        tracing::info!("gp: the game in {guild_id} had finished; posting what it still owed");
-        close_out(&*transport, &game, GpCloseOut::Finished, tombstone).await;
-        return;
-    }
-
-    // Alive until when? An open window says so itself: it was open until
-    // `closes_at` whatever happened to the bot. A song has no such clock, so the
-    // last time the bot wrote or stamped the game stands in.
-    let alive_until = match game.phase {
-        GpPhase::Submitting => game.rounds[game.current_round].closes_at.unwrap_or(0),
-        _ => now() - loaded.last_seen_secs_ago,
-    };
-    let down_for = now() - alive_until;
-    let too_late = down_for > GP_RESUME_WINDOW_SECS;
-    let nobody = vc_members(guild, game.voice_channel, ctx.cache.current_user().id) == 0;
-    if too_late || nobody {
-        let why = if too_late {
-            format!("gone for {down_for}s")
-        } else {
-            "the voice channel is empty".to_string()
-        };
-        tracing::info!("gp: not resuming the game in {guild_id}: {why}");
-        close_out(&*transport, &game, GpCloseOut::Lost, tombstone).await;
-        return;
-    }
-
-    // A round the game moved past without its results reaching the channel is
-    // owed them, and they go up first -- before anything is said about the
-    // restart -- so they read as results arriving late.
-    let owed = post_owed_results(&*transport, &game).await;
-
-    let (phase, voice_channel, current_round) =
-        (game.phase, game.voice_channel, game.current_round);
-    let closes_at = game.rounds[current_round].closes_at;
-    if !data.gp_restore(guild_id, game) {
-        // `/gp start` beat us to it; that game's first snapshot closes this row.
-        return;
-    }
-    // Now that the game is the guild's again, write down that those results are
-    // up, or the next restart would post them a second time.
-    for idx in owed {
-        data.gp_mark_results_posted(guild_id, idx);
-    }
-    // No invoking user on this path -- the guild is being restored after a
-    // restart -- so a refusal is reported to the tracing log and the game's
-    // own text channel rather than a reply. It abandons the resume exactly
-    // like a failed join does below: otherwise the guild stays owned by a
-    // game that can never play again (`music/lease.rs`).
-    let permit = match crate::music::perms::ensure_can_join(&ctx.cache, guild_id, voice_channel) {
-        Ok(permit) => permit,
-        Err(e) => {
-            tracing::warn!("gp: cannot rejoin {voice_channel} in {guild_id} to resume: {e}");
-            abandon_resume(data, pool, guild_id, started_at, text_channel, &*transport).await;
-            return;
-        },
-    };
-    // Through `join_permitted`, not `songbird.join`: this path used to do no
-    // cleanup at all after a failed join, so the connectionless `Call` songbird
-    // leaves registered survived and the next join found it and skipped the
-    // permission gate (#502). There is now one implementation of "join and tidy
-    // up if it fails", and this is the same one `do_join` uses.
-    let call =
-        match crate::commands::music_utils::join_permitted(data, &data.songbird, permit).await {
-            Ok(call) => call,
-            Err(e) => {
-                tracing::warn!("gp: rejoining {voice_channel} in {guild_id} to resume: {e}");
-                // Through the method, not the map: `gp_remove` is the one place a
-                // game ends, and it is what releases the playback lease. A raw
-                // remove here would leave the guild owned by a game that no longer
-                // exists, and /play refused forever. Its own bookkeeping write
-                // is superseded by `abandon_resume`, which owns the authoritative
-                // database write for this path, since `gp_remove`'s in-memory
-                // `game` reflects the pre-rejoin-failure state.
-                abandon_resume(data, pool, guild_id, started_at, text_channel, &*transport).await;
-                return;
-            },
-        };
-    set_global_handlers_with(
-        ctx,
-        Arc::new(data.clone()),
-        call.clone(),
-        guild_id,
-        text_channel,
-    )
-    .await;
-    let pb = GpPlayback {
-        data: Arc::new(data.clone()),
-        transport: transport.clone(),
-        call,
-        guild_id,
-    };
-    tracing::info!("gp: resuming the game in {guild_id} in {phase:?}, round {current_round}");
-
-    match phase {
-        GpPhase::Submitting => {
-            let remaining = closes_at.unwrap_or(0) - now();
-            let round_no = current_round + 1;
-            // The generation the restore left in the map is the one the timer
-            // must match; read it back rather than trusting the copy we had.
-            let generation = data
-                .gp_games
-                .get(&guild_id)
-                .map(|g| g.generation)
-                .unwrap_or(0);
-            if remaining <= 0 {
-                announce(
-                    &pb,
-                    text_channel,
-                    &GP_RESUMED_WINDOW_CLOSED.replace("{round}", &round_no.to_string()),
-                )
-                .await;
-                // Bound first: a `ThreadRng` temporary is not `Send`, and the
-                // condition of an `if let` lives across the body's await.
-                let closed = data.gp_close_window_if(guild_id, generation, &mut rand::rng(), now());
-                if let Some(closed) = closed {
-                    if let Err(e) = gp_after_close(pb, closed).await {
-                        tracing::warn!("gp: closing the resumed window in {guild_id}: {e}");
-                    }
-                }
-            } else {
-                announce(
-                    &pb,
-                    text_channel,
-                    &format!(
-                        "{GP_RESUMED_WINDOW} {round_no}, <t:{}:R>.",
-                        closes_at.unwrap_or(0)
-                    ),
-                )
-                .await;
-                gp_spawn_window_timer_secs(pb, generation, text_channel, remaining as u64);
-            }
-        },
-        GpPhase::Playing => {
-            let Some((start, old_message)) = data.gp_resume_playing(guild_id) else {
-                return;
-            };
-            announce(&pb, text_channel, GP_RESUMED_SONG).await;
-            // Restore the one-live-dropdown invariant: the reveal only edits the
-            // message the track remembers, which is about to be the new one.
-            if let Some((c, m)) = old_message {
-                take_down_components(&*pb.transport, guild_id, c, m).await;
-            }
-            if let Err(e) = gp_play_track(&pb, start).await {
-                tracing::warn!("gp: restarting the song in {guild_id}: {e}");
-            }
-        },
-        GpPhase::Finished => unreachable!("finished games are not restored"),
-    }
-}
-
 /// How a game the resume is not bringing back ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GpCloseOut {
+pub enum GpCloseOut {
     /// It played out, but its ending may never have gone up.
     Finished,
     /// Too long an outage, or nobody left in the voice channel.
@@ -766,7 +543,7 @@ impl GpCloseOut {
 /// the tombstone is not written the row is still live, so posting first would
 /// put the same embeds up each time the gateway blinked (#469). A row that was
 /// already finished (`Ok(false)`) was closed out by whatever finished it.
-pub(crate) async fn close_out<Fut>(
+pub async fn close_out<Fut>(
     transport: &dyn Transport,
     game: &GpGame,
     ending: GpCloseOut,
@@ -807,10 +584,10 @@ pub(crate) async fn close_out<Fut>(
 }
 
 /// Post the results of every round the game moved past without them reaching
-/// the channel (see [`GpGame::unposted_results`]). Returns the rounds posted;
+/// the channel (see `GpGame::unposted_results`). Returns the rounds posted;
 /// marking them is the caller's, since only a game back in the map can be
 /// written down.
-pub(crate) async fn post_owed_results(transport: &dyn Transport, game: &GpGame) -> Vec<usize> {
+pub async fn post_owed_results(transport: &dyn Transport, game: &GpGame) -> Vec<usize> {
     let mut posted = Vec::new();
     for idx in game.unposted_results() {
         let out = gp_rendered(GpCard::RoundResults((&game.round_result(idx)).into()));
@@ -829,7 +606,7 @@ pub(crate) async fn post_owed_results(transport: &dyn Transport, game: &GpGame) 
 /// Take the dropdown off a song message from before a restart, leaving its
 /// embed: the reveal only edits the message the track remembers, which is
 /// about to be a new one. Best effort.
-pub(crate) async fn take_down_components(
+pub async fn take_down_components(
     transport: &dyn Transport,
     guild: GuildId,
     channel: GenericChannelId,
@@ -840,15 +617,6 @@ pub(crate) async fn take_down_components(
     }
 }
 
-async fn announce(pb: &GpPlayback, text_channel: GenericChannelId, what: &str) {
-    gp_post(
-        &*pb.transport,
-        text_channel,
-        GpCard::Line(format!("{GP_RESUMED} {what}")),
-    )
-    .await;
-}
-
 // ------------------------------------------------------------------
 // Tests: what gets written, and that rows come back as the same game
 // ------------------------------------------------------------------
@@ -856,10 +624,11 @@ async fn announce(pb: &GpPlayback, text_channel: GenericChannelId, what: &str) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::commands::music::gp_prompts::GpPrompt;
-    use crate::DataInner;
+    use crate::gp_prompts::GpPrompt;
+    use crack_music::music::ops::test_support::test_music_data;
     use crack_types::{AuxMetadata, QueryType};
     use rand::{rngs::StdRng, SeedableRng};
+    use std::sync::Arc;
 
     const G: GuildId = GuildId::new(1);
     const VC: ChannelId = ChannelId::new(10);
@@ -869,13 +638,14 @@ mod test {
     const C: UserId = UserId::new(300);
     const NOW: i64 = 1_700_000_000;
 
-    /// A `Data` whose writes land in a channel instead of a database.
-    fn recording() -> (Data, mpsc::UnboundedReceiver<GpPersist>) {
+    /// A `GpData` whose writes land in a channel instead of a database.
+    fn recording() -> (GpData, mpsc::UnboundedReceiver<GpPersist>) {
         let (tx, rx) = mpsc::unbounded_channel();
-        let data = Data(Arc::new(DataInner {
+        let data = GpData {
+            gp_games: Arc::default(),
             gp_persist: Some(tx),
-            ..Default::default()
-        }));
+            music: test_music_data(),
+        };
         (data, rx)
     }
 
@@ -892,7 +662,7 @@ mod test {
         })
     }
 
-    fn start(data: &Data, prompts: &[&str]) {
+    fn start(data: &GpData, prompts: &[&str]) {
         data.gp_start(
             G,
             A,
@@ -1095,7 +865,11 @@ mod test {
 
     #[tokio::test]
     async fn without_a_database_nothing_is_sent_and_nothing_panics() {
-        let data = Data::default();
+        let data = GpData {
+            gp_games: Arc::default(),
+            gp_persist: None,
+            music: test_music_data(),
+        };
         start(&data, &["p0"]);
         data.gp_submit(G, A, "alice".into(), track("a"), &[])
             .unwrap();

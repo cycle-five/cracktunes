@@ -1,15 +1,15 @@
 use crate::{
-    commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt},
     db::GpOutcome,
-    errors::CrackedError,
-    music::PlaybackOwner,
-    CrackedResult, Data,
+    gp_prompts::{GpCategories, GpCategory, GpPrompt},
 };
 use ::serenity::all::{ChannelId, GenericChannelId, GuildId, MessageId, UserId};
+use crack_common::{errors::CrackedError, CrackedResult};
+use crack_music::music::PlaybackOwner;
 use crack_testing::ResolvedTrack;
 use rand::{seq::SliceRandom, Rng};
 use std::{
     collections::{HashMap, HashSet},
+    sync::Arc,
     time::Duration,
 };
 
@@ -123,7 +123,7 @@ pub const GP_PICK_TIMEOUT_SECS: u64 = 120;
 /// funnel, which is the one case where a user could still land a mutation on a
 /// live round.
 ///
-/// [`QueueGuard`]: crate::music::QueueGuard
+/// [`QueueGuard`]: crack_music::music::QueueGuard
 pub const GP_BLOCKED_COMMANDS: &[&str] = &[
     "play",
     "playnext",
@@ -157,7 +157,7 @@ pub const GP_BLOCKED_COMMANDS: &[&str] = &[
 /// The subset of [`GP_BLOCKED_COMMANDS`] that would stall the game outright: the
 /// current track would never reach [`songbird::TrackEvent::End`], so no round would ever
 /// advance. Named separately so the test can assert none of them is ever dropped.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub const GP_STALLING_COMMANDS: &[&str] = &["pause", "repeat", "seek"];
 
 /// Votes needed to end a song early: a strict majority of the *eligible* voters,
@@ -337,10 +337,7 @@ pub struct GpTrackScore {
 }
 
 impl GpTrack {
-    pub(in crate::commands::music::gp) fn new(
-        submitter: UserId,
-        track: ResolvedTrack<'static>,
-    ) -> Self {
+    pub(in crate::gp) fn new(submitter: UserId, track: ResolvedTrack<'static>) -> Self {
         Self {
             submitter,
             track,
@@ -357,7 +354,7 @@ impl GpTrack {
     /// The payout for this song. `guessable` is the round's: a one-song round
     /// has nothing to guess, so no guess or fooled points are paid. A song that
     /// never played pays nothing at all -- not even for its likes.
-    pub(in crate::commands::music::gp) fn score(&self, guessable: bool) -> GpTrackScore {
+    pub(in crate::gp) fn score(&self, guessable: bool) -> GpTrackScore {
         if self.played == GpPlayed::Never {
             return GpTrackScore::default();
         }
@@ -500,11 +497,9 @@ pub struct GpGame {
     /// closed early (host, or everyone submitted) leaves no stale fire behind.
     pub generation: u64,
     /// Set by `/gp end`. The game is finished but deliberately still in the map:
-    /// `stop()` has queued an `End` the global [`TrackEndHandler`] must see a game
+    /// `stop()` has queued an `End` the global `TrackEndHandler` must see a game
     /// for, or it treats it as an ordinary track ending and starts autoplay.
     /// Whoever handles that `End` removes the game.
-    ///
-    /// [`TrackEndHandler`]: crate::handlers::TrackEndHandler
     pub parked_for_end: bool,
     /// Everyone who has submitted, guessed or liked, with the display name we saw.
     pub players: HashMap<UserId, String>,
@@ -513,7 +508,7 @@ pub struct GpGame {
 
 impl GpGame {
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::commands::music::gp) fn new(
+    pub(in crate::gp) fn new(
         guild_id: GuildId,
         host: UserId,
         voice_channel: ChannelId,
@@ -579,7 +574,7 @@ impl GpGame {
 
     /// Every player with their points, best first; ties broken by name so the
     /// order is stable between edits.
-    pub(crate) fn sorted_scores(&self) -> Vec<(UserId, u32)> {
+    pub fn sorted_scores(&self) -> Vec<(UserId, u32)> {
         self.sort_points(
             self.players
                 .keys()
@@ -1000,7 +995,39 @@ pub enum GpStatus {
 }
 
 // ------------------------------------------------------------------
-// State helpers on Data
+// The game's state, as a handle
+// ------------------------------------------------------------------
+
+/// The game's state, as a handle that does not name `Data`. The games map is
+/// shared (same `Arc`), not copied, and `music` shares the playback lease.
+#[derive(Clone)]
+pub struct GpData {
+    pub gp_games: Arc<dashmap::DashMap<GuildId, GpGame>>,
+    pub gp_persist: Option<tokio::sync::mpsc::UnboundedSender<crate::gp_persist::GpPersist>>,
+    pub music: crack_music::music::MusicData,
+}
+
+impl std::fmt::Debug for GpData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GpData")
+            .field("games", &self.gp_games.len())
+            .field("persisting", &self.gp_persist.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+impl GpData {
+    fn claim_playback(&self, guild_id: GuildId, owner: PlaybackOwner) -> Result<(), CrackedError> {
+        self.music.claim_playback(guild_id, owner)
+    }
+
+    fn release_playback(&self, guild_id: GuildId) {
+        self.music.release_playback(guild_id);
+    }
+}
+
+// ------------------------------------------------------------------
+// State helpers on GpData
 // ------------------------------------------------------------------
 
 // Every helper below is synchronous: it takes the `gp_games` entry, mutates
@@ -1008,7 +1035,7 @@ pub enum GpStatus {
 // Never hold a `DashMap` ref across an await -- the track end handler runs on
 // songbird's event task and then takes the call lock, so an entry held there
 // is a deadlock waiting to happen.
-impl Data {
+impl GpData {
     /// Create the game and open round 0's window.
     #[allow(clippy::too_many_arguments)]
     pub fn gp_start(
@@ -1587,13 +1614,11 @@ impl Data {
     /// remove. `TrackHandle::stop()` only queues a message for the driver task, so
     /// the `End` it causes arrives later; removing on the next line -- as this used
     /// to -- wins that race every time, and the `End` still reaches the global
-    /// [`TrackEndHandler`] with no game to find, which is exactly the autoplay bug
+    /// `TrackEndHandler` with no game to find, which is exactly the autoplay bug
     /// this was meant to fix. Collection belongs to whoever handles that `End`;
-    /// [`Data::gp_remove_if_parked`] is how they do it. Moving out of `Playing` and
+    /// [`GpData::gp_remove_if_parked`] is how they do it. Moving out of `Playing` and
     /// bumping the generation is what stops the game's *own* handlers and timers
     /// acting on the same event.
-    ///
-    /// [`TrackEndHandler`]: crate::handlers::TrackEndHandler
     pub fn gp_park_for_end(
         &self,
         guild_id: GuildId,

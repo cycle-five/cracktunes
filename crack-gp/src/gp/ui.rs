@@ -1,6 +1,8 @@
 use super::state::*;
-use crate::commands::music::gp_prompts::GpCategory;
-use crate::messaging::messages::{
+use crate::gp_prompts::GpCategory;
+use ::serenity::all::{GenericChannelId, GuildId, UserId};
+use crack_common::format::duration_to_string;
+use crack_common::messages::{
     GP_FOOLED_EVERYONE, GP_FULL_SONG, GP_FULL_SONG_NOTE, GP_GUESSED_RIGHT, GP_HOW_TO,
     GP_HOW_TO_TITLE, GP_LIKES, GP_LIKE_HINT, GP_LIKE_LABEL, GP_NOBODY_GUESSED, GP_NOBODY_YET,
     GP_PICK_CANCEL, GP_PICK_PLACEHOLDER, GP_PICK_START, GP_PICK_TITLE, GP_PROMPT_CLOSES_EARLY,
@@ -14,13 +16,13 @@ use crate::messaging::messages::{
     GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, GP_WINDOW_CLOSED,
     GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING, GP_WINDOW_WARNING_IN,
 };
-use crate::messaging::{
+use crack_common::{
+    courier,
     format::{clip, escape, TrackLabel, DESCRIPTION_MAX, FIELD_MAX},
     message::CrackedMessage,
     render::{render, RenderCx, Rendered},
+    transport::Transport,
 };
-use crate::utils::duration_to_string;
-use ::serenity::all::{GuildId, UserId};
 use crack_model::{
     colour, Button, ButtonStyle, Card, CommunityRef, Field, Mention, Row, Select, SelectOption,
     UserRef,
@@ -71,7 +73,7 @@ pub enum GpCard {
 }
 
 /// `UserId`s as refs, for the views below.
-pub(crate) fn user_refs(scores: &[(UserId, u32)]) -> Vec<(UserRef, u32)> {
+pub fn user_refs(scores: &[(UserId, u32)]) -> Vec<(UserRef, u32)> {
     scores.iter().map(|(id, n)| (id.to_ref(), *n)).collect()
 }
 
@@ -429,9 +431,16 @@ pub fn render_card(card: &GpCard, _cx: &RenderCx) -> Rendered {
     }
 }
 
-impl crate::messaging::render::Payload for GpCard {
+impl crack_common::render::Payload for GpCard {
     fn render(&self, cx: &RenderCx) -> Rendered {
         render_card(self, cx)
+    }
+}
+
+/// Post a card to a channel. Best effort: a failure is logged with the card.
+pub async fn gp_post(transport: &dyn Transport, channel: GenericChannelId, card: GpCard) {
+    if let Err(e) = courier::post_message(transport, channel, &gp_rendered(card.clone())).await {
+        tracing::warn!("gp: posting \"{card}\" to {channel} failed: {e}");
     }
 }
 
@@ -629,7 +638,7 @@ fn field(name: impl Into<String>, value: impl Into<String>, inline: bool) -> Fie
     }
 }
 
-pub(in crate::commands::music::gp) fn gp_pick_embed(text: &str) -> Card {
+pub(in crate::gp) fn gp_pick_embed(text: &str) -> Card {
     Card {
         title: Some(GP_PICK_TITLE.to_string()),
         description: Some(text.to_string()),
@@ -1018,7 +1027,7 @@ pub fn gp_status_embed(status: &GpStatusView) -> Card {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messaging::messages::{
+    use crack_common::messages::{
         GP_QUEUE_CLEARED, GP_STARTED, GP_STARTED_NO_RESULTS, GP_STARTED_REVEAL_SONG,
     };
     use std::time::Duration;

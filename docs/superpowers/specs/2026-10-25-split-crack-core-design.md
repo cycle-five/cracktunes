@@ -76,7 +76,8 @@ The table shows the pattern. **Each `db/<feature>.rs` belongs to its feature**, 
 cracktunes (the binary, in crack-cli/)
   └─ crack-core          the Discord layer: poise commands, event handlers, Data,
        │                 message delivery (courier, transport, buttons), glue
-       ├─ crack-music    steps 4b–4c: the player, then /gp
+       ├─ crack-gp       step 4c: the /gp game (depends on crack-music)
+       ├─ crack-music    step 4b: the player
        ├─ crack-rooms    step 3: voice rooms + mod log + their queries
        ├─ crack-economy  step 2: economy + coin glue + their queries
        ├─ crack-guild    step 4a: guild settings, the per-guild cache, their queries
@@ -206,7 +207,7 @@ After step 3 the map showed music is far more tangled than rooms were. It reads 
 
 - **4a: crack-guild.** Guild settings, the per-guild session cache and their queries. Small, low-risk, and it unblocks music. Detailed below.
 - **4b: crack-music, the player.** `music/`, `sources/`, `http_utils.rs` and the player's tables (`queue_audit`, `play_log`, `play_history`, `queue_snapshot`, `playlist`, `metadata`, `musicreco`, `track_reaction`). Two PRs, seams then the move; designed below, after 4a landed.
-- **4c: /gp.** `commands/music/gp`'s game logic and `db/gp.rs`, after 4b.
+- **4c: /gp.** `commands/music/gp`'s game logic and `db/gp.rs`, after 4b; one PR into `crack-gp`, designed below.
 
 songbird lives in 4b's crate, so the Matrix-seam rule applies there: no new state in songbird's queue or track handles.
 
@@ -318,6 +319,41 @@ Each lands in a day, so music is never frozen for long.
 **Tests:** they move with the code (rule 4). Op tests that assert on what a settle rendered stay in crack-core with the real surface. Op tests that assert what was asked to settle move, with the recording surface.
 
 **Done when:** 4b-2's crack-music passes the same checks as crack-rooms and crack-guild, and `cargo test -p crack-music` builds no crack-core.
+
+#### 4c: crack-gp, the game (design pass of 2026-10-26, after 4b-2 landed)
+
+Measured on the map of 4b-2's branch. /gp is about 4.9k non-test lines of functions:
+- **`gp/commands.rs`** (848): the poise commands, almost all built on `Context`.
+- **`gp/playback.rs`** (688): /gp's Discord delivery. It posts and edits cards through the courier, answers components, and registers track handlers. 392 of its lines read `Data`.
+- **`gp/state.rs`** (1,213): the game's state machine, about 30 `gp_*` methods on `Data` that read only `gp_games` and the lease.
+- **`gp/ui.rs`** (770): the cards. It names neither poise nor `Data`.
+- **`gp_persist.rs`**: the saved form (`GpGame::to_saved`/`from_saved`), the writer, and four methods on `Data` that read `gp_persist` and `gp_games`. Boot-time resume (`gp_resume_guild`, `abandon_resume` and `announce`) reads songbird, the join permit and the track-end handlers.
+- **`gp_prompts.rs`** (the prompt deck) and **`db/gp.rs`** name neither poise nor `Data`.
+
+So the game moves and its Discord delivery stays, as with the player. Unlike 4b, nothing that moves names a Discord client: what posts does so through crack-common's `Transport`, so no `Surface`-style trait is needed.
+
+**One PR (v0.45.0) into a new crate, `crack-gp`.** It depends on crack-music for the lease that a game claims.
+- Why not inside crack-music: /gp has its own stream of changes (a contributor's PRs arrive there) and its own 3.4k-line test file. In its own crate, a /gp change rebuilds and tests crack-gp alone.
+- Cost: a feature crate depends on another feature crate. Rule 1 allows that for crates carved earlier; crack-rooms → crack-economy is the precedent.
+
+**What moves:** `gp/state.rs`, `gp/ui.rs`, `gp_prompts.rs` (with `gp_prompts.json`), `gp_persist.rs` minus resume, `db/gp.rs`, and the state-machine and UI tests in `gp/test.rs`.
+
+**What stays in crack-core as glue:** `gp/commands.rs`, `gp/playback.rs`, resume (split out of `gp_persist.rs` into a crack-core `gp_resume.rs`), `gp/test_delivery.rs` (the delivery tests whose subjects stay), and the tests in `gp/test.rs` that exercise playback or commands.
+
+**The handle.** `GpData { gp_games, gp_persist, music: MusicData }`, built by `Data::gp_data()`.
+- `gp_games` becomes `Arc<DashMap<…>>` in `DataInner`, as the lease maps did.
+- The `gp_*` methods in `state.rs` and `gp_persist.rs` become `impl GpData`, with the same bodies. `Data` keeps them as one-line delegations, so commands, playback, the handlers and the music glue don't change.
+- `GpData` gets two private one-liners, `claim_playback` and `release_playback`, which call `self.music`. That keeps the game's bodies verbatim.
+
+**Tests** that build `Data` to reach game state build a `GpData` over crack-music's `test_music_data()`. crack-gp enables crack-music's `test-support` as a dev-dependency.
+
+**Lessons from 4b's reviews, applied up front:**
+- Prove the cut by compiling the moved crate, not by grep.
+- Give any new `test-support` file its mutants exclusion in the same commit.
+- Grep crack-core's tests for every function that moves.
+- /gp's `#[expect(clippy::disallowed_methods)]` sites are in `commands.rs` and `playback.rs`, which stay.
+
+**Done when:** crack-gp passes the same checks as crack-music, and `cargo test -p crack-gp` builds no crack-core.
 
 ### Later, unscheduled
 

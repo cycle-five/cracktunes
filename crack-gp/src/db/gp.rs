@@ -11,7 +11,7 @@
 //! [`GpSaved::changed_rounds`]). Late in a 25-player, 20-round game that is a
 //! few hundred rows per save instead of the twelve thousand the whole game is.
 //!
-//! Nothing here knows about the in-memory game; `commands::music::gp_persist`
+//! Nothing here knows about the in-memory game; `crate::gp_persist`
 //! converts in both directions. Keeping the persisted shape its own set of
 //! plain types is what lets a later write-behind send the same rows.
 
@@ -672,7 +672,7 @@ pub async fn gp_touch_live(pool: &PgPool, guild_ids: &[i64]) -> sqlx::Result<u64
 mod tests {
     use super::*;
 
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     fn track(round_idx: i32, submitter_id: i64, position: Option<i32>) -> GpTrackRow {
         GpTrackRow {

@@ -89,7 +89,7 @@ jobs:
           # needs no live database for type checking.
           SQLX_OFFLINE: "true"
         run: |
-          cargo llvm-cov nextest --profile ci --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests --lcov --output-path lcov.info
+          cargo llvm-cov nextest --profile ci --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests,crack-gp/db-tests --lcov --output-path lcov.info
 
       - name: Upload to codecov.io
         uses: codecov/codecov-action@v7
