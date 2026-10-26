@@ -525,11 +525,22 @@ async fn drop_database(admin: &mut PgConnection, name: &str) -> sqlx::Result<()>
         .map(drop)
 }
 
+/// The local test postgres, used when `DATABASE_URL` is unset or blank.
+const TEST_DATABASE_URL: &str = "postgresql://postgres:mysecretpassword@localhost:5432/postgres";
+
+/// An exported, non-blank `DATABASE_URL` wins; otherwise the local test postgres.
+fn database_url_or_default(existing: Option<&str>) -> String {
+    match existing {
+        Some(url) if !url.trim().is_empty() => url.to_string(),
+        _ => TEST_DATABASE_URL.to_string(),
+    }
+}
+
 /// The server and database `DATABASE_URL` names.
 fn admin_options() -> PgConnectOptions {
     let url = match std::env::var("DATABASE_URL") {
-        Ok(url) => url,
-        Err(std::env::VarError::NotPresent) => panic!("DATABASE_URL must be set for db-tests"),
+        Ok(url) => database_url_or_default(Some(&url)),
+        Err(std::env::VarError::NotPresent) => database_url_or_default(None),
         // 🪤 Not `expect`: the error's Debug output is the raw value, password
         // and all.
         Err(std::env::VarError::NotUnicode(_)) => panic!("DATABASE_URL is not valid UTF-8"),
@@ -577,18 +588,15 @@ mod tests {
 
     static MIGRATOR: Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
-    /// The local test postgres, as crack-core's tests default to it.
-    const TEST_DATABASE_URL: &str =
-        "postgresql://postgres:mysecretpassword@localhost:5432/postgres";
-
-    /// Point these db-tests at the local postgres when nothing else has set
-    /// `DATABASE_URL` (crack-core's ctor does not run in this crate's binary).
-    #[ctor::ctor(unsafe)]
-    fn set_env() {
-        let unset = std::env::var("DATABASE_URL").map_or(true, |url| url.trim().is_empty());
-        if unset {
-            std::env::set_var("DATABASE_URL", TEST_DATABASE_URL);
-        }
+    #[test]
+    fn an_exported_database_url_wins_and_unset_or_blank_gives_the_default() {
+        assert_eq!(
+            database_url_or_default(Some("postgres://me@elsewhere/db")),
+            "postgres://me@elsewhere/db"
+        );
+        assert_eq!(database_url_or_default(None), TEST_DATABASE_URL);
+        assert_eq!(database_url_or_default(Some("")), TEST_DATABASE_URL);
+        assert_eq!(database_url_or_default(Some("  \t")), TEST_DATABASE_URL);
     }
 
     #[test]

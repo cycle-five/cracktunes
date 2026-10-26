@@ -1215,7 +1215,6 @@ version = "0.39.0"
 dependencies = [
  "crack-common",
  "crack-test-macros",
- "ctor",
  "futures",
  "sqlx 0.9.0",
  "tokio",

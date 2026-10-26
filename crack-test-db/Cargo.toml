@@ -25,4 +25,3 @@ tokio = { workspace = true }
 [dev-dependencies]
 crack-test-macros = { path = "../crack-test-macros" }
 crack-common = { path = "../crack-common" }
-ctor = "1.0"
