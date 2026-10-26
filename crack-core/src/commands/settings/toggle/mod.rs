@@ -2,7 +2,6 @@ use crate::{Context, Error};
 
 pub mod toggle_autopause;
 
-pub use toggle_autopause::*;
 
 /// Settings-toggle commands
 #[poise::command(

@@ -7,14 +7,13 @@ mod say;
 mod smoketest;
 pub mod version;
 
-pub use clean::*;
-pub use debug::*;
-pub use get_letter_league_players::*;
-pub use invite::*;
-pub use ping::*;
-pub use say::*;
-pub use smoketest::*;
-pub use version::*;
+pub use clean::clean;
+pub use debug::{debug, BotStatus};
+pub use invite::invite;
+pub use ping::ping;
+pub use say::say_internal;
+pub use smoketest::{get_all_test_messages, run_smoke_test, smoketest_internal, SmokeTest};
+pub use version::version;
 
 use crate::{CommandResult, Context, CrackedMessage, Error};
 use poise::serenity_prelude::Mentionable;

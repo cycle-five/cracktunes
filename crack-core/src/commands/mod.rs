@@ -20,16 +20,17 @@ pub mod utility;
 
 //pub use admin::commands;
 #[cfg(feature = "crack-bf")]
-pub use bf::*;
+pub use bf::bf;
 pub use help::sub_help;
-pub use music::*;
-pub use music_utils::*;
+pub use music::{resume_internal, roll_n_d};
+pub(crate) use music_utils::connected_call;
+pub use music_utils::{do_join, get_call_or_join_author};
 #[cfg(feature = "crack-osint")]
-pub use osint::*;
-pub use permissions::*;
-pub use register::*;
+pub use osint::osint;
+pub use permissions::cmd_check_music;
+pub use register::register_application_commands_buttons_cracked;
 //pub use settings::*;
-pub use utility::*;
+pub use utility::uptime_internal;
 
 pub use crate::errors::CrackedError;
 use dashmap;

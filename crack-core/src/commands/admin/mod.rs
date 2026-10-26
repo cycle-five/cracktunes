@@ -33,12 +33,12 @@ use crate::{Context, Error};
 // pub use kick::*;
 // pub use message_cache::*;
 // pub use move_users::*;
-pub use mute::*;
-pub use random_mute_lol::*;
+pub use mute::{mute, mute_others, unmute};
+pub use random_mute_lol::random_mute;
 // pub use role::*;
 // pub use set_vc_size::*;
 // pub use timeout::*;
-pub use user::*;
+pub use user::{deafen, undeafen};
 
 //use crate::commands::help;
 

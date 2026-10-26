@@ -4,9 +4,9 @@ pub mod ban;
 pub mod deafen;
 pub mod unban;
 
-pub use ban::*;
-pub use deafen::*;
-pub use unban::*;
+pub use ban::ban;
+pub use deafen::{deafen, undeafen};
+pub use unban::unban;
 
 pub use crate::poise_ext::ContextExt;
 pub use crate::utils;

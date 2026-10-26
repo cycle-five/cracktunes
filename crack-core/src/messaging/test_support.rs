@@ -1,5 +1,5 @@
 //! Stand-in Discord for messaging tests: everything sent is recorded.
-pub use crack_common::test_support::*;
+pub use crack_common::test_support::{text_of, FakePress, FakeTransport, Op, PressOp};
 
 use super::courier::ReplySink;
 use super::render::Rendered;

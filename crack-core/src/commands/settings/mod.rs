@@ -9,10 +9,7 @@ pub mod toggle;
 
 use crate::commands::help;
 pub use get::get;
-pub use prefix::*;
-pub use print_settings::*;
 pub use set::set;
-pub use toggle::*;
 
 /// Settings commands
 #[poise::command(
