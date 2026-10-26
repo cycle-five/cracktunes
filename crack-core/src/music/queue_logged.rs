@@ -556,17 +556,20 @@ mod play_history_wiring_tests {
     /// functions and senders it counts, so scanning the whole file would match
     /// its own text and pass no matter what the real code did.
     fn production_source() -> String {
-        ["src/music/queue.rs", "src/music/queue_logged.rs"]
-            .iter()
-            .map(|path| {
-                let src = std::fs::read_to_string(path).expect("readable");
-                let end = src
-                    .find("#[cfg(test)]")
-                    .expect("this file has test modules");
-                src[..end].to_string()
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
+        [
+            "../crack-music/src/music/queue.rs",
+            "src/music/queue_logged.rs",
+        ]
+        .iter()
+        .map(|path| {
+            let src = std::fs::read_to_string(path).expect("readable");
+            let end = src
+                .find("#[cfg(test)]")
+                .expect("this file has test modules");
+            src[..end].to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
     }
 
     /// What each public enqueue entry point is expected to do about history.

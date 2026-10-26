@@ -1117,6 +1117,7 @@ dependencies = [
  "crack-economy",
  "crack-guild",
  "crack-model",
+ "crack-music",
  "crack-musicreco",
  "crack-osint",
  "crack-rooms",
@@ -1216,6 +1217,48 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "crack-music"
+version = "0.43.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "colored",
+ "crack-common",
+ "crack-guild",
+ "crack-model",
+ "crack-musicreco",
+ "crack-sleevenote",
+ "crack-test-db",
+ "crack-test-macros",
+ "crack-testing",
+ "crack-types",
+ "ctor",
+ "dashmap 6.2.1",
+ "futures",
+ "itertools 0.15.0",
+ "lazy_static",
+ "mutants",
+ "once_cell",
+ "rand 0.10.3",
+ "regex",
+ "reqwest 0.12.28",
+ "rspotify",
+ "rusty_ytdl",
+ "serde",
+ "serde_json",
+ "serenity",
+ "songbird",
+ "sqlx 0.9.0",
+ "symphonia",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "uuid",
 ]
 
 [[package]]
