@@ -630,7 +630,8 @@
   - `cargo test -p crack-gp` builds no crack-core.
 
   Nothing the bot does changed.
-- **Clippy is the gate for imports in non-test code, and lints the tests for everything else.**
+- **Clippy is the gate for imports in non-test code, and lints the tests for
+  everything else.**
   - One `[workspace.lints]` table in the root `Cargo.toml`, which every crate
     inherits, so a local `cargo clippy` is the same check CI runs.
   - It denies `clippy::all`, `wildcard_imports` and `enum_glob_use`, and
@@ -642,9 +643,9 @@
     they gate non-test code only. Review keeps globs out of tests and out of
     `pub use`. The hits that turned up are fixed.
   - Every `pub use x::*` re-export, 127 of them, became an explicit list of
-    what callers use, plus what `unnameable_types` asks for. clippy can't flag a glob re-export, so review keeps new
-    ones out. During the split, a glob had hidden a function's real dependency
-    from grep.
+    what callers use, plus what `unnameable_types` asks for. clippy can't flag
+    a glob re-export, so review keeps new ones out. During the split, a glob
+    had hidden a function's real dependency from grep.
   - The unregistered `saychan`, `saychanid` and `smoketest` commands, which
     only a glob kept public, are marked `#[expect(dead_code)]`.
 
