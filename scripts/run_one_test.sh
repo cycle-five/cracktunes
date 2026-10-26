@@ -16,9 +16,8 @@ cargo test \
 #-- sources::rusty_ytdl::test::test_rusty_youtube_search \
 # sources::youtube::test::test_get_track_metadata_video_link
 cargo test \
-	--package crack-core \
+	--package crack-music \
 	--lib \
-	--features crack-osint --features crack-bf \
 	-- sources::youtube::test::test_get_track_source_and_metadata \
 	--exact \
 	--show-output

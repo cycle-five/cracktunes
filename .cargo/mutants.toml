@@ -68,6 +68,11 @@ exclude_globs = [
     # code in crack-core they listed no mutants; here they would, and mutating
     # a stand-in Discord says nothing about the bot.
     "crack-common/src/test_support.rs",
+    # Test-only fixtures (test_music_data, RecordingSurface, queue_of, ...),
+    # compiled into crack-music only under `cfg(test)` or the `test-support`
+    # feature. As `#[cfg(test)]` code in crack-core they listed no mutants; here
+    # they would, and mutating a test fake says nothing about the bot.
+    "crack-music/src/music/ops/test_support.rs",
 ]
 
 # 🔑 The one exception to "legacy misses don't go here" (owner's call,

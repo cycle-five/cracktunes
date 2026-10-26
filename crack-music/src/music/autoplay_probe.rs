@@ -27,7 +27,7 @@ use std::time::Duration;
 async fn autoplay_probe() {
     let filter = tracing_subscriber::EnvFilter::try_from_env("RUST_LOG").unwrap_or_else(|_| {
         tracing_subscriber::EnvFilter::new(
-            "warn,crack_musicreco=debug,crack_core::music::autoplay=debug",
+            "warn,crack_musicreco=debug,crack_music::music::autoplay=debug",
         )
     });
     let _ = tracing_subscriber::fmt()

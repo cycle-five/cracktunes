@@ -61,3 +61,16 @@ pub fn get_voice_channel_for_user(guild: &Guild, user_id: &UserId) -> Result<Cha
         .and_then(|voice_state| voice_state.channel_id)
         .ok_or(CrackedError::NotConnected.into())
 }
+
+#[cfg(test)]
+mod test {
+    use serenity::all::{Guild, UserId};
+
+    #[test]
+    fn test_get_voice_channel_for_user() {
+        let guild = Guild::default();
+        let user_id = UserId::new(1);
+
+        assert!(super::get_voice_channel_for_user(&guild, &user_id).is_err());
+    }
+}

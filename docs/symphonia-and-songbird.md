@@ -36,7 +36,7 @@ pub trait MediaSource: Read + Seek + Send + Sync {
 }
 ```
 
-`crack-core/src/sources/rusty_ytdl.rs` implements that trait and hands the result
+`crack-music/src/sources/rusty_ytdl.rs` implements that trait and hands the result
 to songbird's `Compose`, whose signature is
 `Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError>`. Bump only our
 side and two `symphonia-core` crates land in one graph — our impl satisfies

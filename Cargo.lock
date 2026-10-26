@@ -1240,7 +1240,6 @@ dependencies = [
  "futures",
  "itertools 0.15.0",
  "lazy_static",
- "mutants",
  "once_cell",
  "rand 0.10.3",
  "regex",
@@ -1257,7 +1256,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
- "urlencoding",
  "uuid",
 ]
 

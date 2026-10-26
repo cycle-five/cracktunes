@@ -130,7 +130,7 @@ jobs:
 
       # crack-music holds the music player, its sources and its tables: it may
       # use serenity and songbird, never poise or crack-core.
-      - name: crack-music depends on no poise or crack-core
+      - name: crack-music depends on no poise, crack-core, crack-economy or crack-rooms
         if: success() || failure()
         run: |
           tree=$(cargo tree -p crack-music -e normal --prefix none)

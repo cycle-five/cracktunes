@@ -34,7 +34,6 @@ serde_json = "1.0"
 url = "2.5"
 uuid = "1"
 regex = "1.11"
-urlencoding = "2.1"
 crack-common = { path = "../crack-common" }
 crack-guild = { path = "../crack-guild" }
 crack-model = { path = "../crack-model" }
@@ -64,8 +63,6 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 [dev-dependencies]
 ctor = "1.0"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-# `#[cfg_attr(test, mutants::skip)]` waivers: see docs/testing.md.
-mutants = "0.0.4"
 crack-test-macros = { path = "../crack-test-macros" }
 crack-test-db = { path = "../crack-test-db" }
 crack-common = { path = "../crack-common", features = ["test-support"] }

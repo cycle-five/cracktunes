@@ -393,7 +393,7 @@ another version may word it differently. Run it only through the wrapper:
 
 ```bash
 scripts/mutants.sh --list                                 # what would be mutated, no tests run
-scripts/mutants.sh -j 1 -f crack-core/src/db/user.rs      # one file
+scripts/mutants.sh -j 1 -f crack-music/src/db/user.rs      # one file
 scripts/mutants.sh -j 1 -f 'crack-core/src/messaging/**'  # one module
 scripts/mutants.sh -j 1 --in-diff my.diff                 # only the lines in a diff
 ```

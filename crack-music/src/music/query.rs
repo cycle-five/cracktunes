@@ -82,7 +82,7 @@ impl From<NewQueryType> for crack_types::QueryType {
 
 /// A [`QueryType::SpotifyLink`] that reached playback without being resolved.
 ///
-/// Resolution happens at the entry points -- [`query_type_from_url`] for
+/// Resolution happens at the entry points -- `query_type_from_url` (crack-core's `music::query_modes`) for
 /// `/play`, `gp_submit` for the game -- because it needs an HTTP call to
 /// sleevenote and a message written for the user, neither of which belongs
 /// this far down. Holding one here means an entry point was added without

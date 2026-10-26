@@ -557,8 +557,11 @@ mod play_history_wiring_tests {
     /// its own text and pass no matter what the real code did.
     fn production_source() -> String {
         [
-            "../crack-music/src/music/queue.rs",
-            "src/music/queue_logged.rs",
+            concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../crack-music/src/music/queue.rs"
+            ),
+            concat!(env!("CARGO_MANIFEST_DIR"), "/src/music/queue_logged.rs"),
         ]
         .iter()
         .map(|path| {

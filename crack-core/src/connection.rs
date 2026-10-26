@@ -76,14 +76,6 @@ mod test {
     }
 
     #[test]
-    fn test_get_voice_channel_for_user() {
-        let guild = Guild::default();
-        let user_id = UserId::new(1);
-
-        assert!(super::get_voice_channel_for_user(&guild, &user_id).is_err());
-    }
-
-    #[test]
     fn test_get_voice_channel_for_user_summon() {
         let guild = Guild::default();
         let user_id = UserId::new(1);
