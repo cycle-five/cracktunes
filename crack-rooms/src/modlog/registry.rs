@@ -1,4 +1,4 @@
-//! The mod log's in-memory state, on `Data`: per-server settings, which
+//! The mod log's in-memory state, on `RoomsData`: per-server settings, which
 //! servers' stored settings have been read, and for servers with the log on,
 //! the voice changes waiting for an audit fetch, the audit snapshots, and the
 //! fetch suspension (see `modlog::batch`).

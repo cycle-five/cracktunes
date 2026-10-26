@@ -12,14 +12,14 @@ use super::overwrites::{diff, fold_cached, managed_members, room_overwrites, Ove
 use super::registry::LiveRoom;
 use super::settings::{RoomSettings, SettingsError, ROOM_NAME_MAX};
 use super::state::{OverwriteTarget, RoomState, StoredOverwrite};
-use crate::messaging::courier::{edit_rendered_message, post_message};
-use crate::messaging::message::CrackedMessage;
-use crate::messaging::render::{render, RenderCx, Rendered};
-use crate::messaging::transport::{Transport, TransportError};
+use super::RoomsData;
 use crate::modlog::attribution::AuditKind;
 use crate::modlog::batch::ModLogSink;
 use crate::modlog::event::ModLogEvent;
-use crate::Data;
+use crack_common::courier::{edit_rendered_message, post_message};
+use crack_common::message::CrackedMessage;
+use crack_common::render::{render, RenderCx, Rendered};
+use crack_common::transport::{Transport, TransportError};
 use crack_types::discord::ToRef;
 use serenity::all::{ChannelId, GuildId, MessageId, RoleId, UserId};
 use std::sync::Arc;
@@ -33,7 +33,7 @@ pub const CACHE_SETTLE: Duration = Duration::from_secs(10);
 
 /// What an action needs besides its inputs.
 pub struct RoomCx<'a> {
-    pub data: &'a Data,
+    pub data: &'a RoomsData,
     pub discord: &'a dyn RoomsDiscord,
     pub transport: &'a dyn Transport,
     /// Where the mod log events of kicks, mutes and let-ins go.
@@ -201,7 +201,7 @@ pub async fn act(
 /// the bot's: most likely a moderator's who got there first. Its audit unit
 /// then has no change left to explain it, so the disconnects are re-read
 /// and absorbed rather than carried forward to whoever leaves next (M28c).
-fn no_leave_coming(data: &Data, guild: GuildId, target: UserId) {
+fn no_leave_coming(data: &RoomsData, guild: GuildId, target: UserId) {
     if !data.modlog.clear_expected(guild, target) {
         data.modlog
             .mark_reread(guild, AuditKind::Disconnect, tokio::time::Instant::now());
@@ -245,7 +245,7 @@ fn mod_log_event(action: &RoomAction, room: ChannelId, actor: UserId) -> Option<
 /// baseline ([`fold_cached`]), and save the baseline if that changed it.
 /// Nothing is folded on a cache miss, or while the cache may not yet show
 /// the bot's own last write ([`CACHE_SETTLE`]).
-async fn fold_channel(data: &Data, facts: &GuildFacts, live: &mut LiveRoom, now: Instant) {
+async fn fold_channel(data: &RoomsData, facts: &GuildFacts, live: &mut LiveRoom, now: Instant) {
     let settling = live
         .wrote_at
         .is_some_and(|at| now.saturating_duration_since(at) < CACHE_SETTLE);
@@ -348,7 +348,7 @@ fn panel(room: &LiveRoom) -> Rendered {
 }
 
 /// The member an action is aimed at, if any.
-pub(crate) fn user_target(action: &RoomAction) -> Option<UserId> {
+pub fn user_target(action: &RoomAction) -> Option<UserId> {
     match action {
         RoomAction::Kick { target, .. }
         | RoomAction::LetIn { target }
@@ -652,7 +652,7 @@ fn whole_secs(wait: Duration) -> u32 {
 }
 
 /// Save the room's state when there is a database. A failure is logged.
-async fn persist(data: &Data, room: ChannelId, state: &RoomState) {
+async fn persist(data: &RoomsData, room: ChannelId, state: &RoomState) {
     let Some(pool) = data.database_pool.as_ref() else {
         return;
     };
@@ -677,7 +677,7 @@ pub enum SettingsSaveError {
 /// that they were read (absent counts: the server never set rooms up).
 /// Without a database there is nothing to read. Run at `GuildCreate`, and
 /// again by reconcile's retry while a read has not yet succeeded.
-pub async fn load_settings(data: &Data, guild: GuildId) -> sqlx::Result<()> {
+pub async fn load_settings(data: &RoomsData, guild: GuildId) -> sqlx::Result<()> {
     let Some(pool) = data.database_pool.as_ref() else {
         return Ok(());
     };
@@ -693,7 +693,7 @@ pub async fn load_settings(data: &Data, guild: GuildId) -> sqlx::Result<()> {
 /// memory never runs ahead of what a restart would load. Refused while the
 /// server's stored settings have not been read ([`load_settings`]): the
 /// caller built `s` on defaults, and would write them over what is stored.
-pub async fn save_settings(data: &Data, s: RoomSettings) -> Result<(), SettingsSaveError> {
+pub async fn save_settings(data: &RoomsData, s: RoomSettings) -> Result<(), SettingsSaveError> {
     if data.database_pool.is_some() && !data.rooms.settings_loaded(s.guild) {
         return Err(SettingsSaveError::NotLoaded);
     }
@@ -712,8 +712,6 @@ pub async fn save_settings(data: &Data, s: RoomSettings) -> Result<(), SettingsS
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messaging::test_support::{FakeTransport, Op};
-    use crate::messaging::transport::TransportError;
     use crate::modlog::event::ModLogEvent;
     use crate::modlog::settings::ModLogSettings;
     use crate::modlog::test_support::FakeSink;
@@ -723,7 +721,8 @@ mod tests {
     use crate::rooms::registry::RenameWindow;
     use crate::rooms::state::{OverwriteTarget, RoomState, StoredOverwrite};
     use crate::rooms::test_support::{Call, CallKind, FakeRoomsDiscord};
-    use crate::DataInner;
+    use crack_common::test_support::{FakeTransport, Op};
+    use crack_common::transport::TransportError;
     use serenity::all::{GuildId, Permissions, RoleId};
     use std::sync::Arc;
     use std::time::Duration;
@@ -802,11 +801,11 @@ mod tests {
     #[test]
     fn the_panel_is_drawn_from_the_room() {
         let r = panel(&live(vec![]));
-        let embed = serde_json::to_string(&crate::messaging::discord::first_embed(&r)).unwrap();
+        let embed = serde_json::to_string(&crack_common::discord::first_embed(&r)).unwrap();
         assert!(embed.contains("Saucey's room"), "{embed}");
         assert!(embed.contains(&format!("<@{}>", OWNER.get())), "{embed}");
         assert!(embed.contains(&format!("<@{}>", HELPER.get())), "{embed}");
-        let rows = serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap();
+        let rows = serde_json::to_string(&crack_common::discord::action_rows(&r.rows)).unwrap();
         assert!(
             rows.contains(&format!("room:kick:{}", ROOM.get())),
             "{rows}"
@@ -814,7 +813,7 @@ mod tests {
     }
 
     struct World {
-        data: Data,
+        data: RoomsData,
         discord: FakeRoomsDiscord,
         transport: FakeTransport,
         log: FakeSink,
@@ -822,9 +821,7 @@ mod tests {
 
     impl World {
         fn new(room: LiveRoom) -> Self {
-            let data = Data(Arc::new(DataInner {
-                ..Default::default()
-            }));
+            let data = RoomsData::default();
             data.rooms.insert(room);
             Self {
                 data,
@@ -882,7 +879,7 @@ mod tests {
         }
     }
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     fn on_with_hub() -> RoomSettings {
         RoomSettings {
@@ -894,7 +891,7 @@ mod tests {
 
     #[tokio::test]
     async fn save_settings_refuses_invalid_and_leaves_the_registry_alone() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = RoomsData::default();
         let before = data.rooms.settings(G);
         // Enabling needs a database.
         assert_eq!(
@@ -915,7 +912,7 @@ mod tests {
 
     #[tokio::test]
     async fn save_settings_without_a_pool_still_turns_rooms_off() {
-        let data = Data(Arc::new(DataInner::default()));
+        let data = RoomsData::default();
         let off = RoomSettings {
             default_limit: 4,
             ..RoomSettings::off(G)
@@ -930,10 +927,10 @@ mod tests {
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     async fn save_settings_writes_the_database_then_the_registry(pool: sqlx::PgPool) {
-        let data = Data(Arc::new(DataInner {
+        let data = RoomsData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
+        };
         load_settings(&data, G).await.unwrap();
         let s = on_with_hub();
         assert_eq!(save_settings(&data, s.clone()).await, Ok(()));
@@ -962,10 +959,10 @@ mod tests {
         crate::db::rooms::save_settings(&pool, &stored)
             .await
             .unwrap();
-        let data = Data(Arc::new(DataInner {
+        let data = RoomsData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
+        };
         // `/rooms setup` builds on what the registry holds: defaults.
         let setup = RoomSettings {
             enabled: true,
@@ -1004,10 +1001,10 @@ mod tests {
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     async fn a_server_with_no_stored_settings_counts_as_read(pool: sqlx::PgPool) {
-        let data = Data(Arc::new(DataInner {
+        let data = RoomsData {
             database_pool: Some(pool),
             ..Default::default()
-        }));
+        };
         assert!(!data.rooms.settings_loaded(G));
         load_settings(&data, G).await.unwrap();
         assert!(data.rooms.settings_loaded(G));
@@ -1020,10 +1017,10 @@ mod tests {
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
     async fn a_failed_settings_read_leaves_saves_refused(pool: sqlx::PgPool) {
-        let data = Data(Arc::new(DataInner {
+        let data = RoomsData {
             database_pool: Some(pool.clone()),
             ..Default::default()
-        }));
+        };
         pool.close().await;
         assert!(load_settings(&data, G).await.is_err());
         assert!(!data.rooms.settings_loaded(G));
@@ -2338,7 +2335,8 @@ mod tests {
         use crate::db::rooms::{insert_room, rooms_in, StoredRoom};
         use sqlx::PgPool;
 
-        pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+        pub static MIGRATOR: sqlx::migrate::Migrator =
+            sqlx::migrate!("../crack-core/test_migrations");
 
         async fn world(pool: PgPool) -> sqlx::Result<World> {
             let room = live(vec![]);
@@ -2353,10 +2351,10 @@ mod tests {
                 },
             )
             .await?;
-            let data = Data(Arc::new(DataInner {
+            let data = RoomsData {
                 database_pool: Some(pool),
                 ..Default::default()
-            }));
+            };
             data.rooms.insert(room);
             Ok(World {
                 data,

@@ -87,7 +87,7 @@ pub async fn setup(
         hub: Some(hub.expect_channel()),
         ..ctx.data().rooms.settings(guild)
     };
-    match save_settings(&ctx.data(), settings).await {
+    match save_settings(&ctx.data().rooms_data(), settings).await {
         Ok(()) => say(ctx, status_card(ctx, guild)).await,
         Err(err) => say_text(ctx, save_error_text(err)).await,
     }
@@ -104,7 +104,7 @@ pub async fn off(ctx: Context<'_>) -> Result<(), Error> {
         enabled: false,
         ..ctx.data().rooms.settings(guild)
     };
-    match save_settings(&ctx.data(), settings).await {
+    match save_settings(&ctx.data().rooms_data(), settings).await {
         Ok(()) => say(ctx, RoomCard::Switched { on: false }).await,
         Err(err) => say_text(ctx, save_error_text(err)).await,
     }

@@ -578,6 +578,15 @@
   builds no crack-core. The template-database test runner is its own crate,
   `crack-test-db`. Nothing the bot does changed; `/coinflip`'s choices are
   pinned.
+- **Step 3 of 4: voice rooms and the mod log are their own crate,
+  `crack-rooms`.** The rooms, the mod log and their queries left crack-core;
+  their functions take a `RoomsData` handle (the pool and the two registries)
+  instead of `Data`. The delivery layer they send through (the transport,
+  button presses, the courier's sends, the throttle and the Discord
+  conversions) moved down to crack-common, with poise's reply builders left in
+  crack-core as `ToPoiseReply`. crack-core re-exports the old paths.
+  `cargo test -p crack-rooms` builds no crack-core. Nothing the bot does
+  changed.
 
 ## TODO:
 

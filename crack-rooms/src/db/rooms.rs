@@ -164,7 +164,7 @@ mod tests {
     use crate::rooms::state::OverwriteTarget;
     use serenity::all::{Permissions, RoleId};
 
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     fn room(channel: u64, guild: u64, owner: u64) -> StoredRoom {
         let mut state = RoomState::new(UserId::new(owner));

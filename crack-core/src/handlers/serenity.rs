@@ -57,7 +57,12 @@ impl EventHandler for SerenityHandler {
                 // The mod log first: it never waits, so a leave or move is
                 // timed when it arrived. It takes CrackTunes' own changes too
                 // (their audit units must be consumed, M8a).
-                crate::modlog::live::on_voice_state(&self.data, ctx, old.as_ref(), new);
+                crate::modlog::live::on_voice_state(
+                    &self.data.rooms_data(),
+                    ctx,
+                    old.as_ref(),
+                    new,
+                );
                 // A member who just joined voice has pranks waiting to be
                 // undone (their mute could not land while they were away).
                 if let (None, Some(guild)) = (old.as_ref().and_then(|o| o.channel_id), new.guild_id)
@@ -130,7 +135,13 @@ impl EventHandler for SerenityHandler {
                 }
                 // Then voice rooms: the handler below returns early for
                 // anyone but the bot.
-                crate::rooms::lifecycle::on_voice_state(&self.data, ctx, old.as_ref(), new).await;
+                crate::rooms::lifecycle::on_voice_state(
+                    &self.data.rooms_data(),
+                    ctx,
+                    old.as_ref(),
+                    new,
+                )
+                .await;
                 self.on_voice_state_update(ctx.clone(), old.clone(), new.clone())
                     .await;
             },
@@ -139,7 +150,8 @@ impl EventHandler for SerenityHandler {
             FullEvent::GuildAuditLogEntryCreate { entry, guild_id } => {
                 // Read out first: the cache guard must not be held across an await.
                 let bot = ctx.cache.current_user().id;
-                crate::modlog::live::on_audit_event(&self.data, ctx, *guild_id, entry).await;
+                crate::modlog::live::on_audit_event(&self.data.rooms_data(), ctx, *guild_id, entry)
+                    .await;
                 // The lock and moderators' overrides act whether or not the
                 // mod log is on.
                 let discord = crate::economy::discord::LiveEconomyDiscord {
@@ -157,7 +169,8 @@ impl EventHandler for SerenityHandler {
             },
             // A voice room deleted by hand drops its row and its timer.
             FullEvent::ChannelDelete { channel, .. } => {
-                crate::rooms::lifecycle::on_channel_delete(&self.data, channel.id).await;
+                crate::rooms::lifecycle::on_channel_delete(&self.data.rooms_data(), channel.id)
+                    .await;
             },
             FullEvent::CacheReady { guilds } => {
                 self.on_cache_ready(ctx.clone(), guilds.clone()).await;
@@ -190,7 +203,7 @@ impl EventHandler for SerenityHandler {
                 .custom_id
                 .starts_with(crate::rooms::ids::ROOM_PREFIX) =>
             {
-                crate::rooms::interact::handle_press(&self.data, ctx, mci).await;
+                crate::rooms::interact::handle_press(&self.data.rooms_data(), ctx, mci).await;
             },
             FullEvent::InteractionCreate {
                 interaction: Interaction::Modal(mi),
@@ -199,7 +212,7 @@ impl EventHandler for SerenityHandler {
                 .custom_id
                 .starts_with(crate::rooms::ids::ROOM_MODAL_PREFIX) =>
             {
-                crate::rooms::interact::handle_submit(&self.data, ctx, mi).await;
+                crate::rooms::interact::handle_submit(&self.data.rooms_data(), ctx, mi).await;
             },
             // Prank card buttons (`econ:`), and the modal Rename them back
             // opens (`econm:`). Neither prefix starts with the other.
@@ -566,7 +579,7 @@ impl SerenityHandler {
     async fn on_guild_create(&self, ctx: SerenityContext, guild: serenity::Guild) {
         // First, before any await below: a re-identify must mark the mod log's
         // existing snapshots stale before a flush can run against them.
-        crate::modlog::live::mark_reconnected(&self.data, guild.id);
+        crate::modlog::live::mark_reconnected(&self.data.rooms_data(), guild.id);
         let prefix = self.data.bot_settings.get_prefix();
         let name = guild.name.clone();
         let settings = match self.data.database_pool.as_ref() {
@@ -607,7 +620,8 @@ impl SerenityHandler {
         // rooms stay off. A failed read leaves rooms off and room settings
         // unsaveable for the server until a read succeeds: reconcile below
         // tries again, then once more a minute later.
-        if let Err(err) = crate::rooms::ops::load_settings(&self.data, guild.id).await {
+        if let Err(err) = crate::rooms::ops::load_settings(&self.data.rooms_data(), guild.id).await
+        {
             tracing::warn!(
                 "rooms: loading the room settings of {} failed: {err}",
                 guild.id
@@ -660,7 +674,8 @@ impl SerenityHandler {
 
         // The mod log's settings, likewise (off without a database); a server
         // with the log on has its audit snapshots seeded in the background.
-        crate::modlog::live::on_guild_create(&self.data, ctx.http.clone(), guild.id).await;
+        crate::modlog::live::on_guild_create(&self.data.rooms_data(), ctx.http.clone(), guild.id)
+            .await;
 
         // A `/gp` game that was running when the bot went down comes back here,
         // per guild, for the same reason the settings do.
@@ -670,7 +685,7 @@ impl SerenityHandler {
         crate::music::resume::queue_resume_guild(&self.data, &ctx, &guild).await;
         // Voice rooms: drop rows for vanished channels, sweep empty rooms,
         // give the hub's occupants rooms. Runs on every reconnect too.
-        crate::rooms::lifecycle::reconcile_guild(&self.data, &ctx, &guild).await;
+        crate::rooms::lifecycle::reconcile_guild(&self.data.rooms_data(), &ctx, &guild).await;
     }
 
     // We use the cache_ready event just in case some cache operation is required in whatever use

@@ -43,7 +43,7 @@ ignore-presence-log = []
 # checkout without postgres reports 20+ red tests that say nothing about the
 # change under review. The gated tests are still COMPILED, so they cannot rot;
 # CI turns this on. See docs/testing.md.
-db-tests = ["crack-economy/db-tests"]
+db-tests = ["crack-economy/db-tests", "crack-rooms/db-tests"]
 
 # The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
 mutation-testing = ["db-tests", "crack-coin"]
@@ -84,6 +84,7 @@ crack-bf = { git = "https://github.com/cycle-five/crack-bf", tag = "v0.1.1", opt
 crack-testing = { path = "../crack-testing", optional = true }
 crack-common = { path = "../crack-common" }
 crack-economy = { path = "../crack-economy" }
+crack-rooms = { path = "../crack-rooms" }
 crack-model = { path = "../crack-model" }
 crack-types = { path = "../crack-types", optional = true, features = ["poise"] }
 # Not optional and not feature-gated: it pulls in nothing the crate does not
@@ -125,6 +126,8 @@ mutants = "0.0.4"
 crack-test-macros = { path = "../crack-test-macros" }
 # The runner behind it (crack-test-db/src/test_db.rs).
 crack-test-db = { path = "../crack-test-db" }
+# The fakes in crack_common::test_support (FakeTransport, FakePress).
+crack-common = { path = "../crack-common", features = ["test-support"] }
 # Builds a Discord error response for the 50013/10003 mapping test.
 http = "1"
 # The reqwest serenity itself uses (the workspace one is 0.12); its error

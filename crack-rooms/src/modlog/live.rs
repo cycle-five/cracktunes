@@ -9,13 +9,13 @@ use super::attribution::Change;
 use super::audit::{nonzero, AuditSource, LiveAudit};
 use super::batch::{self, ModLogSink};
 use super::event::{Actor, ModLogEvent};
-use crate::economy::discord::SHOP_AUDIT_REASON_PREFIX;
-use crate::messaging::courier::{self, Destination};
-use crate::messaging::message::CrackedMessage;
-use crate::messaging::render::RenderCx;
-use crate::messaging::transport::{DiscordTransport, Transport};
 use crate::rooms::lifecycle::{classify, VoiceChange};
-use crate::Data;
+use crate::rooms::RoomsData;
+use crack_common::courier::post_to_channel;
+use crack_common::message::CrackedMessage;
+use crack_common::render::{render, RenderCx};
+use crack_common::transport::{DiscordTransport, Transport};
+use crack_economy::discord::SHOP_AUDIT_REASON_PREFIX;
 use crack_types::discord::ToRef;
 use futures::future::BoxFuture;
 use serenity::all::{AuditLogEntry, ChannelId, Context, GuildId, Http, UserId, VoiceState};
@@ -29,7 +29,7 @@ use tokio::time::Instant;
 /// Posts each event to the server's log channel, read at post time: nothing
 /// while the log is off or has no channel (M3).
 pub struct ChannelSink {
-    pub data: Data,
+    pub data: RoomsData,
     pub transport: Arc<dyn Transport>,
 }
 
@@ -43,13 +43,10 @@ impl ModLogSink for ChannelSink {
         };
         let kind = e.to_string();
         let msg = CrackedMessage::from(e);
-        let dest = Destination::Channel(channel.widen());
-        let landed = courier::post(
-            &self.data,
+        let landed = post_to_channel(
             self.transport.as_ref(),
-            dest,
-            &msg,
-            &RenderCx::now(),
+            channel.widen(),
+            render(&msg, &RenderCx::now()),
         )
         .await;
         if landed.is_none() {
@@ -123,7 +120,7 @@ fn events_of(entry: &AuditLogEntry, bot: UserId, actor_is_bot: bool) -> Vec<ModL
 /// the actor, the new value and the reason. Nothing for a server with the
 /// log off.
 pub async fn on_audit_entry(
-    data: &Data,
+    data: &RoomsData,
     sink: &dyn ModLogSink,
     guild: GuildId,
     entry: &AuditLogEntry,
@@ -167,7 +164,7 @@ struct Wire {
 /// [`on_voice_state`] once serenity's types are unpacked: a leave or move
 /// in a server with the log on is batched, whoever made it (M8a).
 fn feed(
-    data: &Data,
+    data: &RoomsData,
     guild: GuildId,
     user: UserId,
     old: Option<ChannelId>,
@@ -187,7 +184,11 @@ fn feed(
 }
 
 /// Seed the server's snapshots in the background, if its log is on.
-fn spawn_seed(data: &Data, audit: Arc<dyn AuditSource>, guild: GuildId) -> Option<JoinHandle<()>> {
+fn spawn_seed(
+    data: &RoomsData,
+    audit: Arc<dyn AuditSource>,
+    guild: GuildId,
+) -> Option<JoinHandle<()>> {
     if !data.modlog.is_enabled(guild) {
         return None;
     }
@@ -203,7 +204,7 @@ pub const LOAD_RETRY: Duration = Duration::from_secs(60);
 
 /// Reads a server's stored settings into the registry; false when the read
 /// failed.
-type Load = Arc<dyn Fn(Data, GuildId) -> BoxFuture<'static, bool> + Send + Sync>;
+type Load = Arc<dyn Fn(RoomsData, GuildId) -> BoxFuture<'static, bool> + Send + Sync>;
 
 /// The real read: [`super::load_settings`].
 fn stored_settings() -> Load {
@@ -215,7 +216,7 @@ fn stored_settings() -> Load {
 /// handle is returned. Until a read succeeds the server keeps what was read
 /// before (off, if nothing was) and refuses saves (`NotLoaded`).
 async fn load_and_seed(
-    data: &Data,
+    data: &RoomsData,
     audit: Arc<dyn AuditSource>,
     guild: GuildId,
     load: Load,
@@ -248,7 +249,7 @@ async fn load_and_seed(
 /// Every voice state update, CrackTunes' own included (M8a). Synchronous:
 /// it runs before the rooms hook, which can wait on Discord, so a change's
 /// arrival time is when the gateway delivered it.
-pub fn on_voice_state(data: &Data, ctx: &Context, old: Option<&VoiceState>, new: &VoiceState) {
+pub fn on_voice_state(data: &RoomsData, ctx: &Context, old: Option<&VoiceState>, new: &VoiceState) {
     let Some(guild) = new.guild_id else {
         return;
     };
@@ -273,7 +274,12 @@ pub fn on_voice_state(data: &Data, ctx: &Context, old: Option<&VoiceState>, new:
 }
 
 /// Every audit log entry Discord pushes (it needs View Audit Log).
-pub async fn on_audit_event(data: &Data, ctx: &Context, guild: GuildId, entry: &AuditLogEntry) {
+pub async fn on_audit_event(
+    data: &RoomsData,
+    ctx: &Context,
+    guild: GuildId,
+    entry: &AuditLogEntry,
+) {
     if !data.modlog.is_enabled(guild) {
         return;
     }
@@ -315,13 +321,13 @@ async fn is_bot_account(ctx: &Context, guild: GuildId, user: UserId) -> bool {
 /// and the dashboard call this after a successful save (M20). At most once
 /// per server per minute (M26): a save inside that minute was stored, but
 /// starts no fetch; the next flush then seeds what it reads.
-pub fn after_save(data: &Data, http: Arc<Http>, guild: GuildId) {
+pub fn after_save(data: &RoomsData, http: Arc<Http>, guild: GuildId) {
     seed_after_save(data, Arc::new(LiveAudit { http }), guild);
 }
 
 /// [`after_save`] with the audit log passed in.
 fn seed_after_save(
-    data: &Data,
+    data: &RoomsData,
     audit: Arc<dyn AuditSource>,
     guild: GuildId,
 ) -> Option<JoinHandle<()>> {
@@ -340,13 +346,13 @@ fn seed_after_save(
 /// take time, during which a flush can already run, and it must find the
 /// marks. [`ModLogRegistry::mark_reconnected`] asks for a read from `SKEW`
 /// after now, so a fetch that began before cannot clear them.
-pub fn mark_reconnected(data: &Data, guild: GuildId) {
+pub fn mark_reconnected(data: &RoomsData, guild: GuildId) {
     data.modlog.mark_reconnected(guild, Instant::now());
 }
 
 /// `GuildCreate`: read the server's stored settings, then seed if the log is
 /// on; a failed read is retried once a minute later (see `load_and_seed`).
-pub async fn on_guild_create(data: &Data, http: Arc<Http>, guild: GuildId) {
+pub async fn on_guild_create(data: &RoomsData, http: Arc<Http>, guild: GuildId) {
     let audit = Arc::new(LiveAudit { http });
     load_and_seed(data, audit, guild, stored_settings()).await;
 }
@@ -354,14 +360,13 @@ pub async fn on_guild_create(data: &Data, http: Arc<Http>, guild: GuildId) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messaging::messages::{MODLOG_DEAFENED, MODLOG_MUTED};
-    use crate::messaging::render::Mentions;
-    use crate::messaging::test_support::{FakeTransport, Op};
     use crate::modlog::attribution::AuditKind::{Disconnect, Move};
     use crate::modlog::batch::{DEBOUNCE, MAX_WAIT, SKEW};
     use crate::modlog::settings::ModLogSettings;
     use crate::modlog::test_support::{FakeAudit, FakeSink};
-    use crate::DataInner;
+    use crack_common::messages::{MODLOG_DEAFENED, MODLOG_MUTED};
+    use crack_common::render::Mentions;
+    use crack_common::test_support::{FakeTransport, Op};
     use std::cell::Cell;
     use std::collections::VecDeque;
     use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
@@ -385,13 +390,13 @@ mod tests {
         }
     }
 
-    fn data_off() -> Data {
-        Data(Arc::new(DataInner::default()))
+    fn data_off() -> RoomsData {
+        RoomsData::default()
     }
 
     /// The log on, set straight into the registry (enabling through
     /// `save_settings` needs a database).
-    fn data_on() -> Data {
+    fn data_on() -> RoomsData {
         let data = data_off();
         data.modlog.set_settings(on());
         data
@@ -413,7 +418,7 @@ mod tests {
     const MUTE_ON: &str = r#"{"key": "mute", "old_value": false, "new_value": true}"#;
     const DEAF_OFF: &str = r#"{"key": "deaf", "old_value": true, "new_value": false}"#;
 
-    async fn posted(data: &Data, e: &AuditLogEntry) -> Vec<(GuildId, ModLogEvent)> {
+    async fn posted(data: &RoomsData, e: &AuditLogEntry) -> Vec<(GuildId, ModLogEvent)> {
         let sink = FakeSink::default();
         on_audit_entry(data, &sink, G, e, BOT, false).await;
         sink.posted()
@@ -527,7 +532,7 @@ mod tests {
     }
 
     /// Configured, with a channel, but off.
-    fn configure_off(data: &Data) {
+    fn configure_off(data: &RoomsData) {
         data.modlog.set_settings(ModLogSettings {
             channel: Some(LOG),
             ..ModLogSettings::off(G)
@@ -657,7 +662,7 @@ mod tests {
     /// `on_voice_state`'s path with fakes in place of the live audit log
     /// and channel.
     struct V {
-        data: Data,
+        data: RoomsData,
         audit: Arc<FakeAudit>,
         sink: Arc<FakeSink>,
         /// How many times the wiring was built.
@@ -665,7 +670,7 @@ mod tests {
     }
 
     impl V {
-        fn new(data: Data) -> Self {
+        fn new(data: RoomsData) -> Self {
             Self {
                 data,
                 audit: Arc::default(),
@@ -868,7 +873,7 @@ mod tests {
         let script = Arc::new(Mutex::new(script.iter().copied().collect::<VecDeque<_>>()));
         let reads = Arc::new(AtomicUsize::new(0));
         let counted = reads.clone();
-        let load: Load = Arc::new(move |data: Data, guild: GuildId| {
+        let load: Load = Arc::new(move |data: RoomsData, guild: GuildId| {
             counted.fetch_add(1, SeqCst);
             let ok = script.lock().unwrap().pop_front().unwrap_or(false);
             let then = then.clone();
@@ -973,7 +978,7 @@ mod tests {
         );
     }
 
-    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     #[crack_test_macros::db_test(migrator = "MIGRATOR")]
     #[cfg_attr(
@@ -983,10 +988,10 @@ mod tests {
     async fn a_failed_stored_read_schedules_a_retry(pool: sqlx::PgPool) {
         // A closed pool fails every read.
         pool.close().await;
-        let data = Data(Arc::new(DataInner {
+        let data = RoomsData {
             database_pool: Some(pool),
             ..Default::default()
-        }));
+        };
         let retry = load_and_seed(&data, Arc::new(FakeAudit::default()), G, stored_settings())
             .await
             .expect("a failed read is retried");

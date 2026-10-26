@@ -1,6 +1,6 @@
 //! Per-server settings for temporary voice rooms.
 
-use crate::messaging::messages::ROOM_NAME_FALLBACK;
+use crack_common::messages::ROOM_NAME_FALLBACK;
 use serenity::all::{ChannelId, GuildId};
 
 /// The empty-room grace periods a server can pick, in seconds.

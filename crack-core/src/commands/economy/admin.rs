@@ -306,7 +306,7 @@ pub(super) async fn log_to(
     event: ModLogEvent,
 ) {
     let sink = ChannelSink {
-        data: data.clone(),
+        data: data.rooms_data(),
         transport: Arc::new(DiscordTransport::of(ctx)),
     };
     sink.post(guild, event).await;
