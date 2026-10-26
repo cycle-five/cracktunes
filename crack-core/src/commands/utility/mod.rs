@@ -3,16 +3,22 @@ mod debug;
 pub mod get_letter_league_players;
 pub mod invite;
 pub mod ping;
+#[expect(
+    dead_code,
+    reason = "saychan and saychanid are commented out of utility_commands(); only a glob re-export kept them alive"
+)]
 mod say;
+#[expect(
+    dead_code,
+    reason = "smoketest is commented out of utility_commands(); only a glob re-export kept it alive"
+)]
 mod smoketest;
 pub mod version;
 
 pub use clean::clean;
-pub use debug::{debug, BotStatus};
+pub use debug::debug;
 pub use invite::invite;
 pub use ping::ping;
-pub use say::say_internal;
-pub use smoketest::{get_all_test_messages, run_smoke_test, smoketest_internal, SmokeTest};
 pub use version::version;
 
 use crate::{CommandResult, Context, CrackedMessage, Error};

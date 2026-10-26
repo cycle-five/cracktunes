@@ -13,7 +13,7 @@ use std::fmt;
 /// The status of the bot.
 #[derive(Debug, Clone, Default)]
 pub struct BotStatus<'ctx> {
-    pub name: Cow<'ctx, String>,
+    pub name: Cow<'ctx, str>,
     pub play_mode: PlayMode,
     pub queue_len: usize,
     pub current_channel: Option<GenericChannelId>,
