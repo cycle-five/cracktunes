@@ -22,7 +22,6 @@ chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6"
 futures = "0.3"
 serde = { version = "1.0", features = ["derive", "rc"] }
-serde_json = "1.0"
 crack-common = { path = "../crack-common" }
 crack-economy = { path = "../crack-economy" }
 crack-model = { path = "../crack-model" }
@@ -33,6 +32,7 @@ serenity = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
+serde_json = "1.0"
 crack-common = { path = "../crack-common", features = ["test-support"] }
 crack-test-macros = { path = "../crack-test-macros" }
 crack-test-db = { path = "../crack-test-db" }

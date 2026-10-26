@@ -249,6 +249,49 @@ mod tests {
         serde_json::to_string(v).unwrap()
     }
 
+    fn long() -> Rendered {
+        Rendered::text("a".repeat(3000))
+    }
+
+    /// The `content` of a serialised builder, as a character count.
+    fn content_len<T: serde::Serialize>(v: &T) -> usize {
+        #[derive(serde::Deserialize)]
+        struct Body {
+            content: String,
+        }
+        let body: Body = serde_json::from_str(&json(v)).unwrap();
+        body.content.chars().count()
+    }
+
+    #[test]
+    fn every_send_path_clips_long_content() {
+        let r = long();
+        assert_eq!(content_len(&r.to_message()), crate::format::CONTENT_MAX);
+        assert_eq!(
+            content_len(&r.to_interaction_message()),
+            crate::format::CONTENT_MAX
+        );
+        assert_eq!(
+            content_len(&r.to_followup(false)),
+            crate::format::CONTENT_MAX
+        );
+        assert_eq!(content_len(&r.to_edit()), crate::format::CONTENT_MAX);
+    }
+
+    #[test]
+    fn mentions_none_survives_every_send_path() {
+        let r = Rendered::text("<@123>");
+        let none = "\"allowed_mentions\":{\"parse\":[],\"users\":[],\"roles\":[]}";
+        for wire in [
+            json(&r.to_message()),
+            json(&r.to_interaction_message()),
+            json(&r.to_followup(false)),
+            json(&r.to_edit()),
+        ] {
+            assert!(wire.contains(none), "{wire}");
+        }
+    }
+
     #[test]
     fn every_card_field_converts_like_the_builder() {
         let card = Card {

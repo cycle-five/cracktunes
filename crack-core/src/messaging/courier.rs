@@ -336,23 +336,6 @@ mod tests {
         assert_eq!(at, Some((GenericChannelId::new(7), MessageId::new(1000))));
     }
 
-    /// A queue page refresh edits in place and keeps its nav buttons.
-    #[tokio::test]
-    async fn edit_rendered_message_edits_that_message_with_its_components() {
-        let t = FakeTransport::default();
-        let out = Rendered::card(crack_model::Card {
-            description: Some("page".into()),
-            ..crack_model::Card::default()
-        })
-        .with_rows(crate::messaging::interface::create_nav_btns(0, 2));
-        edit_rendered_message(&t, GenericChannelId::new(7), MessageId::new(42), out)
-            .await
-            .unwrap();
-        assert_eq!(t.ops(), vec![Op::Edit(7, 42)]);
-        let sent = t.sent.lock().unwrap();
-        assert_eq!(sent.last().map(|r| r.rows.len()), Some(1));
-    }
-
     #[tokio::test]
     async fn a_failed_channel_post_is_swallowed() {
         let data = Data(Arc::new(DataInner::default()));

@@ -84,4 +84,6 @@ exclude_globs = [
 exclude_re = [
     # Live-Discord glue: a poise command entry point's whole body, which only a live Discord can observe.
     '^crack-core/src/commands/(admin/.*|economy/.*|utility/.*|music/[^/]+|register|status)\.rs:[0-9]+:[0-9]+: replace \S+ -> Result<\(\), (Error|serenity::Error|CrackedError)> with Ok\(\(\)\)$',
+    # Test-only helpers: first_embed and extra_embeds are compiled only under `cfg(test)` or the `test-support` feature, for other crates' tests to read a built message. Nothing in crack-common calls them, so their mutants would show as missed for the wrong reason.
+    '^crack-common/src/discord\.rs:[0-9]+:[0-9]+: replace (first_embed|extra_embeds) ',
 ]

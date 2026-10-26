@@ -111,10 +111,6 @@ mod tests {
     #[test]
     fn every_send_path_clips_long_content() {
         let r = long();
-        assert_eq!(content_len(&r.to_message()), CONTENT_MAX);
-        assert_eq!(content_len(&r.to_interaction_message()), CONTENT_MAX);
-        assert_eq!(content_len(&r.to_followup(false)), CONTENT_MAX);
-        assert_eq!(content_len(&r.to_edit()), CONTENT_MAX);
         let reply = r
             .to_reply(false)
             .to_slash_initial_response(CreateInteractionResponseMessage::new());
@@ -128,10 +124,6 @@ mod tests {
         let r = Rendered::text("<@123>");
         let none = "\"allowed_mentions\":{\"parse\":[],\"users\":[],\"roles\":[]}";
         for wire in [
-            json(&r.to_message()),
-            json(&r.to_interaction_message()),
-            json(&r.to_followup(false)),
-            json(&r.to_edit()),
             json(
                 &r.to_reply(false)
                     .to_slash_initial_response(CreateInteractionResponseMessage::new()),
