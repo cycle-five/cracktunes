@@ -723,7 +723,7 @@ mod test {
     }
 
     #[test]
-    fn repeat_is_described_and_filterable() {
+    fn repeat_is_described() {
         assert_eq!(what_text(&Action::Repeat { on: true }), "repeat on");
         assert_eq!(what_text(&Action::Repeat { on: false }), "repeat off");
     }

@@ -244,7 +244,7 @@ pub async fn handle(data: &Data, ctx: &serenity::all::Context, interaction: &Com
         member: interaction.member.as_deref(),
         channel: interaction.channel_id,
     };
-    let data_arc = data.music_data();
+    let music = data.music_data();
     respond(
         data,
         &press,
@@ -253,7 +253,7 @@ pub async fn handle(data: &Data, ctx: &serenity::all::Context, interaction: &Com
         Instant::now(),
         |guild, user, via, c| {
             remote::control(
-                data_arc,
+                music,
                 ctx.http.clone(),
                 ctx.cache.clone(),
                 guild,

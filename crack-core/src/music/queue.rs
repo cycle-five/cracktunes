@@ -1,10 +1,10 @@
 use crate::{
     errors::CrackedError,
+    music::track_data::TrackData,
     music::{
         audit::{track_ref, Action, AddAt},
         QueueGuard,
     },
-    utils::TrackData,
 };
 use crack_testing::ResolvedTrack;
 use crack_types::{Mode, NewAuxMetadata};

@@ -9,7 +9,7 @@
 //! roughly December 2025, so [`Spotify::auth`] fails on every deployment that
 //! did not already hold a client id and secret.
 
-use crate::{errors::CrackedError, utils::MUSIC_SEARCH_SUFFIX};
+use crate::{errors::CrackedError, music::track_data::MUSIC_SEARCH_SUFFIX};
 use crack_types::{QueryType, SpotifyTrack};
 use lazy_static::lazy_static;
 use rspotify::model::{FullTrack, SimplifiedAlbum};

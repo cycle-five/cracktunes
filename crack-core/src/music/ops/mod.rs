@@ -18,11 +18,11 @@ pub(crate) mod test_support;
 
 use crate::messaging::transport::DiscordTransport;
 use crate::{
-    commands::music_utils::connected_call,
     messaging::messages::{
         FAIL_LOOP, FAIL_PAUSE, FAIL_SEEK_OP, FAIL_SEEK_TIMED_OUT, FAIL_SKIP, OP_TRACK_ABSENT,
         OP_TRACK_PLAYING, OP_TRACK_STALE,
     },
+    music::connected::connected_call,
     music::{audit::Actor, MusicData, PlaybackOwner, QueueGuard},
     CrackedError,
 };

@@ -11,8 +11,8 @@ use crate::messaging::render::RenderCx;
 use crate::messaging::transport::DiscordTransport;
 use crate::music::{audit::Actor, ops, MusicData, PlaybackOwner, QueueGuard};
 use crate::{
-    commands::music_utils::connected_call,
-    utils::{get_requesting_user, get_track_handle_metadata},
+    music::connected::connected_call,
+    music::track_data::{get_requesting_user, get_track_handle_metadata},
 };
 use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
 use songbird::{

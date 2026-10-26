@@ -4,12 +4,12 @@ use std::future::Future;
 
 use crate::errors::CrackedError;
 use crate::guild::settings::GuildSettings;
-use crate::messaging::discord;
 use crate::messaging::{message::CrackedMessage, messages::UNKNOWN};
 use crate::music::NewQueryType;
-use crate::serenity::Color;
 use crate::CrackedResult;
+use crack_common::discord;
 use crack_model::Card;
+use serenity::all::Color;
 use serenity::all::{CacheHttp, CreateMessage, GenericChannelId, GuildId, Message, UserId};
 use serenity::small_fixed_array::FixedString;
 

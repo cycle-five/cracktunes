@@ -3,8 +3,8 @@ use super::*;
 use crate::messaging::format::TrackLabel;
 use crate::music::track_data::get_track_handle_metadata;
 use crate::{
-    connection::get_voice_channel_for_user,
     messaging::message::CrackedMessage,
+    music::connected::get_voice_channel_for_user,
     music::{
         queue::{drain_after_current, force_skip_top_track},
         remote::{summarize, summary_of, TrackSummary},
