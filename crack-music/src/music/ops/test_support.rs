@@ -170,11 +170,10 @@ pub fn cx_without_call() -> OpCx {
 pub type RecordedSettle = (Settle, GuildId, Option<(GenericChannelId, MessageId)>);
 
 /// A [`Surface`] that records what it is asked and renders and sends nothing.
-/// `echo` records the message's `Debug` text and returns `None`.
+/// `echo` returns `None`.
 #[derive(Default)]
 pub struct RecordingSurface {
     pub settles: std::sync::Mutex<Vec<RecordedSettle>>,
-    pub echoes: std::sync::Mutex<Vec<String>>,
 }
 
 #[serenity::async_trait]
@@ -196,10 +195,9 @@ impl Surface for RecordingSurface {
         &self,
         _guild: GuildId,
         _transport: &dyn Transport,
-        msg: &CrackedMessage,
+        _msg: &CrackedMessage,
         _cx: &RenderCx,
     ) -> Option<(GenericChannelId, MessageId)> {
-        self.echoes.lock().unwrap().push(format!("{msg:?}"));
         None
     }
 }

@@ -14,7 +14,7 @@ test_tool = "nextest"
 #
 # 🔑 One umbrella feature, `mutation-testing`, that every crate defines: in
 # crack-core, crack-economy and cracktunes it turns on `db-tests` and
-# `crack-coin`, in crack-rooms, crack-guild, crack-voting and crack-test-db `db-tests`, and
+# `crack-coin`, in crack-rooms, crack-guild, crack-music, crack-voting and crack-test-db `db-tests`, and
 # elsewhere nothing. cargo-mutants passes
 # `--features` to EVERY cargo call, including the per-crate ones (each mutant
 # builds and tests only its own crate, below). cargo rejects a feature that no

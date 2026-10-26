@@ -1,7 +1,7 @@
 //! Queue operations for callers with no poise `Context` -- the web dashboard and the now-playing buttons.
 //!
 //! Everything that touches songbird for the dashboard lives here, inside
-//! crack-core, so it stays behind this crate's `clippy.toml` bans (no
+//! crack-music, so it stays behind this crate's `clippy.toml` bans (no
 //! `Songbird::get`, no `TrackHandle::data`). crack-web only sees the plain
 //! types below.
 
