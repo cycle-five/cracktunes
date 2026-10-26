@@ -3,7 +3,7 @@
 //! code they pin lives in crack-common.
 
 mod render_pins {
-    use crate::messaging::discord::ToDiscord;
+    use crate::messaging::discord::{ToDiscord, ToPoiseReply};
     use crate::messaging::message::CrackedMessage;
     use crate::messaging::render::*;
     use crack_model::Card;

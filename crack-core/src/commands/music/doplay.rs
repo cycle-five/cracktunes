@@ -1242,7 +1242,7 @@ mod degraded_perms_notice_tests {
 #[cfg(test)]
 mod degraded_notice_wiring_tests {
     use super::*;
-    use crate::messaging::discord::ToDiscord;
+    use crate::messaging::discord::ToPoiseReply;
     use crate::music::perms::{TextKind, TextPerms, TEXT_REQUIRED};
     use poise::serenity_prelude::all::{GenericChannelId, Permissions};
 

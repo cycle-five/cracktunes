@@ -63,6 +63,11 @@ exclude_globs = [
     # As `#[cfg(test)]` code inside crack-core it listed no mutants; as its own
     # crate it would, and mutating it says nothing about the bot.
     "crack-test-db/**",
+    # Test-only fakes (FakeTransport, FakePress), compiled into crack-common
+    # only under `cfg(test)` or the `test-support` feature. As `#[cfg(test)]`
+    # code in crack-core they listed no mutants; here they would, and mutating
+    # a stand-in Discord says nothing about the bot.
+    "crack-common/src/test_support.rs",
 ]
 
 # 🔑 The one exception to "legacy misses don't go here" (owner's call,

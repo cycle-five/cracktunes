@@ -125,6 +125,8 @@ mutants = "0.0.4"
 crack-test-macros = { path = "../crack-test-macros" }
 # The runner behind it (crack-test-db/src/test_db.rs).
 crack-test-db = { path = "../crack-test-db" }
+# The fakes in crack_common::test_support (FakeTransport, FakePress).
+crack-common = { path = "../crack-common", features = ["test-support"] }
 # Builds a Discord error response for the 50013/10003 mapping test.
 http = "1"
 # The reqwest serenity itself uses (the workspace one is 0.12); its error

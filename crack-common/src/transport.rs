@@ -1,15 +1,27 @@
 //! The wire to Discord for channel messages: send, edit, delete, and what the
 //! cache knows of a channel. Tests swap in `test_support::FakeTransport`.
 
-use crate::http_utils::is_unknown_message;
-use crate::messaging::discord::ToDiscord;
-use crate::messaging::render::Rendered;
+use crate::discord::ToDiscord;
+use crate::render::Rendered;
 use serenity::all::{
     Cache, ComponentInteraction, CreateInteractionResponse, CreateModal, GenericChannelId, GuildId,
     Http, MessageId, ModalInteraction,
 };
 use serenity::async_trait;
 use std::sync::Arc;
+
+/// Whether Discord refused a request because the message is already gone
+/// (JSON error 10008, Unknown Message) -- deleted by hand, say.
+///
+/// Shared by `/clean` and the status message, which both treat an
+/// already-deleted message as settled rather than as a failure.
+pub fn is_unknown_message(err: &serenity::Error) -> bool {
+    matches!(
+        err,
+        serenity::Error::Http(serenity::http::HttpError::UnsuccessfulRequest(response))
+            if response.error.code == serenity::http::JsonErrorCode::UnknownMessage
+    )
+}
 
 /// Why a send, edit or delete did not happen.
 #[derive(Debug, Clone, PartialEq, Eq)]

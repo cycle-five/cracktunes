@@ -22,9 +22,12 @@ workspace = ".."
 crack-osint = ["dep:crack-osint"]
 # The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
 mutation-testing = []
+# The fakes in `test_support`, for other crates' tests: enable as a dev-dependency.
+test-support = []
 
 [dependencies]
 anyhow = "1.0"
+dashmap = "6"
 serde_json = "1.0"
 audiopus = "0.3.0-rc.0"
 url = "2.5"
@@ -49,4 +52,6 @@ default-features = false
 features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dev-dependencies]
+# `serde::Serialize` bound in the Discord conversion tests.
+serde = { version = "1.0", features = ["derive", "rc"] }
 symphonia = { workspace = true }
