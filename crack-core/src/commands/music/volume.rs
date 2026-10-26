@@ -1,6 +1,7 @@
 use crate::commands::{cmd_check_music, help};
 use crate::errors::CrackedError;
 use crate::messaging::{courier, message::CrackedMessage};
+use crate::music::from_ctx::OpCxFromCtx;
 use crate::music::ops::{self, OpCx, OpRefused, VolumeSet};
 use crate::{Context, Error};
 use crack_model::Card;

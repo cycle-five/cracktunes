@@ -1,6 +1,7 @@
 use crate::commands::get_call_or_join_author;
 use crate::commands::{cmd_check_music, help};
 use crate::music::query::{query_type_from_url, ResolvedQuery};
+use crate::music::query_modes::QueryModes;
 use crate::music::queue::{get_mode, get_msg, queue_track_back};
 use crate::music::NewQueryType;
 use crate::CrackedResult;

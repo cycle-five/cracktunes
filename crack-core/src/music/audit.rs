@@ -77,19 +77,7 @@ pub struct Actor {
 }
 
 impl Actor {
-    /// The member running this command, in the channel they ran it from.
-    #[must_use]
-    pub fn from_ctx(ctx: &crate::Context<'_>) -> Self {
-        let is_prefix = matches!(ctx, poise::Context::Prefix(_));
-        Self::for_command(
-            ctx.author().id,
-            is_prefix,
-            ctx.command().qualified_name.clone(),
-            Some(ctx.channel_id()),
-        )
-    }
-
-    /// A command, spelled out. `from_ctx` is the usual way in.
+    /// A command, spelled out. `ActorFromCtx::from_ctx` is the usual way in.
     #[must_use]
     pub fn for_command(
         user: UserId,

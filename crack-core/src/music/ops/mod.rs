@@ -19,13 +19,9 @@ pub(crate) mod test_support;
 use crate::messaging::transport::DiscordTransport;
 use crate::{
     commands::music_utils::connected_call,
-    messaging::{
-        courier,
-        message::CrackedMessage,
-        messages::{
-            FAIL_LOOP, FAIL_PAUSE, FAIL_SEEK_OP, FAIL_SEEK_TIMED_OUT, FAIL_SKIP, OP_TRACK_ABSENT,
-            OP_TRACK_PLAYING, OP_TRACK_STALE,
-        },
+    messaging::messages::{
+        FAIL_LOOP, FAIL_PAUSE, FAIL_SEEK_OP, FAIL_SEEK_TIMED_OUT, FAIL_SKIP, OP_TRACK_ABSENT,
+        OP_TRACK_PLAYING, OP_TRACK_STALE,
     },
     music::{audit::Actor, MusicData, PlaybackOwner, QueueGuard},
     CrackedError,
@@ -51,18 +47,6 @@ impl OpCx {
             http: self.http.clone(),
             cache: self.cache.clone(),
         }
-    }
-
-    /// The member running this command.
-    pub fn from_ctx(ctx: &crate::Context<'_>) -> Result<OpCx, CrackedError> {
-        let sc = ctx.serenity_context();
-        Ok(OpCx {
-            data: ctx.data().music_data(),
-            http: sc.http.clone(),
-            cache: sc.cache.clone(),
-            guild_id: ctx.guild_id().ok_or(CrackedError::NoGuildId)?,
-            actor: Actor::from_ctx(ctx),
-        })
     }
 }
 
@@ -190,25 +174,6 @@ impl<T> Done<T> {
     pub async fn settle_after(self, cx: &OpCx, anchor: Option<(GenericChannelId, MessageId)>) -> T {
         self.settle.after(cx, self.call.as_ref(), anchor).await;
         self.outcome
-    }
-
-    /// Reply to the command with `msg`, then settle below that reply, so a
-    /// re-rendered status lands under the command's answer, as `/skip`'s
-    /// does. A failed reply still settles (with no floor) before its error is
-    /// returned: the op happened either way.
-    pub async fn reply_then_settle(
-        self,
-        ctx: crate::Context<'_>,
-        cx: &OpCx,
-        msg: CrackedMessage,
-    ) -> Result<T, CrackedError> {
-        let reply = courier::reply(ctx, msg).await;
-        let anchor = match &reply {
-            Ok(handle) => courier::locate(ctx, handle).await,
-            Err(_) => None,
-        };
-        let outcome = self.settle_after(cx, anchor).await;
-        reply.map(|_| outcome)
     }
 
     /// The outcome, for a surface that renders its reply before it settles.
