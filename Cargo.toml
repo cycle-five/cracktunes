@@ -11,6 +11,7 @@ members = [
   "crack-common",
   "crack-model",
   "crack-types",
+  "crack-test-db",
 ]
 resolver = "2"
 

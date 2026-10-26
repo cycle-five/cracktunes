@@ -1,0 +1,28 @@
+[package]
+name = "crack-test-db"
+version.workspace = true
+edition = "2021"
+authors = ["Cycle Five <cycle.five@proton.me>"]
+publish = false
+license = "MIT"
+description = "Template-database runner behind #[crack_test_macros::db_test], for Crack Tunes' db tests."
+keywords = ["music", "bot", "crack", "tunes", "testing"]
+homepage = "https://cracktun.es/"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = ".."
+
+[features]
+# Gates this crate's own db tests, as crack-core's feature does for its tests.
+db-tests = []
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = ["db-tests"]
+
+[dependencies]
+futures = "0.3"
+sqlx = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+crack-test-macros = { path = "../crack-test-macros" }
+crack-common = { path = "../crack-common" }
+ctor = "1.0"

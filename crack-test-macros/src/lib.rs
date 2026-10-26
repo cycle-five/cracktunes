@@ -6,9 +6,11 @@
 //! template that was migrated once. It takes the same argument and the same
 //! function shapes, so moving a test over changes only the attribute's path.
 //!
-//! 🪤 **Only crack-core can use it.** The expansion calls `crate::test_db`,
-//! which resolves in the crate that uses the attribute, and only crack-core has
-//! that module.
+//! 🪤 **The using crate must have `crate::test_db`.** The expansion calls it,
+//! and it resolves in the crate that uses the attribute. The runner lives in
+//! `crack-test-db`; a crate gets the module with one line (and `crack-test-db`
+//! as a dev-dependency):
+//! `#[cfg(test)] pub(crate) use crack_test_db::test_db;`.
 //!
 //! ```ignore
 //! #[crack_test_macros::db_test(migrator = "MIGRATOR")]

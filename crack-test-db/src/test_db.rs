@@ -90,7 +90,7 @@ fn fnv1a(hash: u64, bytes: &[u8]) -> u64 {
 ///
 /// A passing test's database is dropped; a failing one's is kept, so it can be
 /// inspected. `#[sqlx::test]` draws the same line.
-pub(crate) trait Outcome {
+pub trait Outcome {
     fn passed(&self) -> bool;
 }
 
@@ -331,7 +331,7 @@ fn stale_templates(mut templates: Vec<(String, Option<String>)>, current: &str) 
 /// The database is dropped if the test passes, and kept if it fails or panics,
 /// for inspection. The next run of the same test replaces it. In a mutant run
 /// it is dropped either way: see [`MUTANTS_ENV`].
-pub(crate) fn run<F, Fut>(migrator: &'static Migrator, test_path: &str, test_fn: F) -> Fut::Output
+pub fn run<F, Fut>(migrator: &'static Migrator, test_path: &str, test_fn: F) -> Fut::Output
 where
     F: FnOnce(PgPool) -> Fut,
     Fut: Future,
@@ -575,7 +575,21 @@ mod tests {
     use super::*;
     use std::sync::Barrier;
 
-    static MIGRATOR: Migrator = sqlx::migrate!("./test_migrations");
+    static MIGRATOR: Migrator = sqlx::migrate!("../crack-core/test_migrations");
+
+    /// The local test postgres, as crack-core's tests default to it.
+    const TEST_DATABASE_URL: &str =
+        "postgresql://postgres:mysecretpassword@localhost:5432/postgres";
+
+    /// Point these db-tests at the local postgres when nothing else has set
+    /// `DATABASE_URL` (crack-core's ctor does not run in this crate's binary).
+    #[ctor::ctor(unsafe)]
+    fn set_env() {
+        let unset = std::env::var("DATABASE_URL").map_or(true, |url| url.trim().is_empty());
+        if unset {
+            std::env::set_var("DATABASE_URL", TEST_DATABASE_URL);
+        }
+    }
 
     #[test]
     fn template_name_is_stable_and_prefixed() {
@@ -1144,7 +1158,7 @@ mod tests {
     )]
     async fn the_attribute_runs_a_test_returning_a_cracked_result(
         pool: PgPool,
-    ) -> Result<(), crate::errors::CrackedError> {
+    ) -> Result<(), crack_common::errors::CrackedError> {
         let one: i32 = sqlx::query_scalar("SELECT 1").fetch_one(&pool).await?;
         assert_eq!(one, 1);
         Ok(())

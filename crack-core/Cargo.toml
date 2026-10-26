@@ -121,8 +121,10 @@ features = ["client-reqwest", "reqwest-rustls-tls"]
 ctor = "1.0"
 # `#[cfg_attr(test, mutants::skip)]` waivers: see docs/testing.md.
 mutants = "0.0.4"
-# `#[db_test]`: db tests on template databases (src/test_db.rs).
+# `#[db_test]`: db tests on template databases (crack-test-db/src/test_db.rs).
 crack-test-macros = { path = "../crack-test-macros" }
+# The runner behind it (crack-test-db/src/test_db.rs).
+crack-test-db = { path = "../crack-test-db" }
 # Builds a Discord error response for the 50013/10003 mapping test.
 http = "1"
 # The reqwest serenity itself uses (the workspace one is 0.12); its error

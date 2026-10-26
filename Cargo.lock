@@ -1117,6 +1117,7 @@ dependencies = [
  "crack-musicreco",
  "crack-osint",
  "crack-sleevenote",
+ "crack-test-db",
  "crack-test-macros",
  "crack-testing",
  "crack-types",
@@ -1206,6 +1207,18 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "crack-test-db"
+version = "0.39.0"
+dependencies = [
+ "crack-common",
+ "crack-test-macros",
+ "ctor",
+ "futures",
+ "sqlx 0.9.0",
+ "tokio",
 ]
 
 [[package]]

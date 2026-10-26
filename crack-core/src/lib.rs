@@ -28,7 +28,7 @@ pub mod sources;
 #[cfg(test)]
 pub mod test;
 #[cfg(test)]
-pub(crate) mod test_db;
+pub(crate) use crack_test_db::test_db;
 pub mod utils;
 
 //#![feature(linked_list_cursors)]
