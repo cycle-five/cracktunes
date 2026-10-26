@@ -140,7 +140,7 @@ jobs:
           fi
 
       # crack-gp holds the /gp game, its saved form, its prompts and its table: it
-      # may use crack-gp, serenity and songbird, never poise or crack-core.
+      # may use crack-music, serenity and songbird, never poise or crack-core.
       - name: crack-gp depends on no poise, crack-core, crack-economy or crack-rooms
         if: success() || failure()
         run: |
