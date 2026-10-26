@@ -1,11 +1,10 @@
 use crate::{
-    commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt},
     db::GpOutcome,
-    errors::CrackedError,
-    music::PlaybackOwner,
-    CrackedResult,
+    gp_prompts::{GpCategories, GpCategory, GpPrompt},
 };
 use ::serenity::all::{ChannelId, GenericChannelId, GuildId, MessageId, UserId};
+use crack_common::{errors::CrackedError, CrackedResult};
+use crack_music::music::PlaybackOwner;
 use crack_testing::ResolvedTrack;
 use rand::{seq::SliceRandom, Rng};
 use std::{
@@ -124,7 +123,7 @@ pub const GP_PICK_TIMEOUT_SECS: u64 = 120;
 /// funnel, which is the one case where a user could still land a mutation on a
 /// live round.
 ///
-/// [`QueueGuard`]: crate::music::QueueGuard
+/// [`QueueGuard`]: crack_music::music::QueueGuard
 pub const GP_BLOCKED_COMMANDS: &[&str] = &[
     "play",
     "playnext",
@@ -158,7 +157,7 @@ pub const GP_BLOCKED_COMMANDS: &[&str] = &[
 /// The subset of [`GP_BLOCKED_COMMANDS`] that would stall the game outright: the
 /// current track would never reach [`songbird::TrackEvent::End`], so no round would ever
 /// advance. Named separately so the test can assert none of them is ever dropped.
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub const GP_STALLING_COMMANDS: &[&str] = &["pause", "repeat", "seek"];
 
 /// Votes needed to end a song early: a strict majority of the *eligible* voters,
@@ -338,10 +337,7 @@ pub struct GpTrackScore {
 }
 
 impl GpTrack {
-    pub(in crate::commands::music::gp) fn new(
-        submitter: UserId,
-        track: ResolvedTrack<'static>,
-    ) -> Self {
+    pub(in crate::gp) fn new(submitter: UserId, track: ResolvedTrack<'static>) -> Self {
         Self {
             submitter,
             track,
@@ -358,7 +354,7 @@ impl GpTrack {
     /// The payout for this song. `guessable` is the round's: a one-song round
     /// has nothing to guess, so no guess or fooled points are paid. A song that
     /// never played pays nothing at all -- not even for its likes.
-    pub(in crate::commands::music::gp) fn score(&self, guessable: bool) -> GpTrackScore {
+    pub(in crate::gp) fn score(&self, guessable: bool) -> GpTrackScore {
         if self.played == GpPlayed::Never {
             return GpTrackScore::default();
         }
@@ -512,7 +508,7 @@ pub struct GpGame {
 
 impl GpGame {
     #[allow(clippy::too_many_arguments)]
-    pub(in crate::commands::music::gp) fn new(
+    pub(in crate::gp) fn new(
         guild_id: GuildId,
         host: UserId,
         voice_channel: ChannelId,
@@ -578,7 +574,7 @@ impl GpGame {
 
     /// Every player with their points, best first; ties broken by name so the
     /// order is stable between edits.
-    pub(crate) fn sorted_scores(&self) -> Vec<(UserId, u32)> {
+    pub fn sorted_scores(&self) -> Vec<(UserId, u32)> {
         self.sort_points(
             self.players
                 .keys()
@@ -1007,9 +1003,8 @@ pub enum GpStatus {
 #[derive(Clone)]
 pub struct GpData {
     pub gp_games: Arc<dashmap::DashMap<GuildId, GpGame>>,
-    pub gp_persist:
-        Option<tokio::sync::mpsc::UnboundedSender<crate::commands::music::gp_persist::GpPersist>>,
-    pub music: crate::music::MusicData,
+    pub gp_persist: Option<tokio::sync::mpsc::UnboundedSender<crate::gp_persist::GpPersist>>,
+    pub music: crack_music::music::MusicData,
 }
 
 impl std::fmt::Debug for GpData {

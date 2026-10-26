@@ -672,7 +672,7 @@ pub async fn gp_touch_live(pool: &PgPool, guild_ids: &[i64]) -> sqlx::Result<u64
 mod tests {
     use super::*;
 
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
+    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("../crack-core/test_migrations");
 
     fn track(round_idx: i32, submitter_id: i64, position: Option<i32>) -> GpTrackRow {
         GpTrackRow {

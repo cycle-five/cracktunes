@@ -1115,6 +1115,7 @@ dependencies = [
  "crack-bf",
  "crack-common",
  "crack-economy",
+ "crack-gp",
  "crack-guild",
  "crack-model",
  "crack-music",
@@ -1187,6 +1188,31 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "crack-gp"
+version = "0.44.0"
+dependencies = [
+ "chrono",
+ "crack-common",
+ "crack-guild",
+ "crack-model",
+ "crack-music",
+ "crack-test-db",
+ "crack-test-macros",
+ "crack-testing",
+ "crack-types",
+ "dashmap 6.2.1",
+ "once_cell",
+ "rand 0.10.3",
+ "serde",
+ "serde_json",
+ "serenity",
+ "songbird",
+ "sqlx 0.9.0",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

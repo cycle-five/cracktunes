@@ -2,7 +2,6 @@
 //! sends, edits and gives up on. The game's rules are tested in `test.rs`.
 use super::commands::gp_spawn_park_backstop;
 use super::playback::{gp_after_close, gp_answer_component, gp_spawn_window_timer_secs};
-use super::test::rng;
 use super::test_glue::{
     data, game, game_started_at, game_with, game_with_reveal, game_with_settings,
     playing_with_title, submit, A, B, G, NOW, TC,
@@ -18,6 +17,7 @@ use crate::messaging::transport::TransportError;
 use crate::music::ops::test_support::standalone_call;
 use crate::Data;
 use ::serenity::all::MessageId;
+use crack_gp::gp::test_support::rng;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 

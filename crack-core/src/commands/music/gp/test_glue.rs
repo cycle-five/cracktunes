@@ -4,15 +4,16 @@
 //! tested in `test.rs`, which has no `Data`.
 use super::commands::{gp, gp_start, refuse_gp, GpCategoryChoice, GpRevealChoice};
 use super::playback::{gp_played, gp_played_at_end};
-use super::test::{self as game_tests};
 use super::*;
 use crate::commands::music::gp_prompts::GpCategory;
 use crate::messaging::message::CrackedMessage;
 use crate::{errors::CrackedError, Data, DataInner};
 use ::serenity::all::{GuildId, UserId};
+use crack_gp::gp::test_support as game_tests;
+use crack_gp::gp::GP_STALLING_COMMANDS;
 use std::{sync::Arc, time::Duration};
 
-pub(super) use super::test::{A, B, G, NOW, TC};
+pub(super) use crack_gp::gp::test_support::{A, B, G, NOW, TC};
 
 /// A `Data` with no database; its game handle shares the map and the lease.
 pub(super) fn data() -> Data {

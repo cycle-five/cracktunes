@@ -1,8 +1,9 @@
-use crate::commands::music::gp_prompts::{GpCategories, GpCategory, GpPrompt};
-use crate::errors::CrackedError;
-use crate::messaging::format::DESCRIPTION_MAX;
-use crate::messaging::message::CrackedMessage;
-use crate::messaging::messages::{
+use crate::gp_prompts::{GpCategories, GpCategory, GpPrompt};
+use ::serenity::all::{GuildId, MessageId, UserId};
+use crack_common::errors::CrackedError;
+use crack_common::format::DESCRIPTION_MAX;
+use crack_common::message::CrackedMessage;
+use crack_common::messages::{
     GP_FOOLED_EVERYONE, GP_FULL_SONG, GP_GAME_OVER, GP_GUESSED_RIGHT, GP_LIKES, GP_LIKE_HINT,
     GP_LIKE_LABEL, GP_LOST, GP_NOBODY_GUESSED, GP_NOBODY_YET, GP_PROMPT_CLOSES_TITLE,
     GP_PROMPT_HOW_TO_TITLE, GP_RESULTS_GUESSED_BY, GP_RESULTS_GUESSED_COUNT,
@@ -12,66 +13,15 @@ use crate::messaging::messages::{
     GP_STATUS_SUBMITTING, GP_TITLE, GP_TRACK_FAILED, GP_TRACK_FAILED_NOTE, GP_WINDOW_CLOSED,
     GP_WINDOW_CLOSED_SONGS, GP_WINDOW_EMPTY, GP_WINDOW_WARNING,
 };
-use crate::messaging::render::{render, RenderCx, Rendered};
-use crate::music::PlaybackOwner;
-use ::serenity::all::{ChannelId, GenericChannelId, GuildId, MessageId, UserId};
-use crack_testing::ResolvedTrack;
-use crack_types::QueryType;
+use crack_common::render::{render, RenderCx, Rendered};
+use crack_music::music::PlaybackOwner;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
+use super::test_support::*;
 use super::*;
-use crate::music::ops::test_support::test_music_data;
+use crack_music::music::ops::test_support::test_music_data;
 use crack_types::discord::ToRef;
-use crack_types::AuxMetadata;
 use rand::{rngs::StdRng, SeedableRng};
-
-pub(super) const G: GuildId = GuildId::new(1);
-const VC: ChannelId = ChannelId::new(10);
-pub(super) const TC: GenericChannelId = GenericChannelId::new(20);
-pub(super) const A: UserId = UserId::new(100);
-pub(super) const B: UserId = UserId::new(200);
-const C: UserId = UserId::new(300);
-/// Never submits anything, so never a player.
-const D: UserId = UserId::new(400);
-pub(super) const NOW: i64 = 1_700_000_000;
-const TIMER: u64 = 120;
-
-pub(super) fn data() -> GpData {
-    GpData {
-        gp_games: Arc::default(),
-        gp_persist: None,
-        music: test_music_data(),
-    }
-}
-
-fn track(title: &str) -> ResolvedTrack<'static> {
-    ResolvedTrack::new(QueryType::VideoLink(format!(
-        "https://www.youtube.com/watch?v={title}"
-    )))
-    .with_metadata(AuxMetadata {
-        title: Some(title.to_string()),
-        source_url: Some(format!("https://www.youtube.com/watch?v={title}")),
-        ..Default::default()
-    })
-}
-
-pub(super) fn rng() -> StdRng {
-    StdRng::seed_from_u64(0)
-}
-
-fn prompts(names: &[&str]) -> Vec<GpPrompt> {
-    names
-        .iter()
-        .map(|s| GpPrompt {
-            category: GpCategory::Nostalgia,
-            text: s.to_string(),
-        })
-        .collect()
-}
-
-fn nostalgia() -> GpCategories {
-    GpCategories::from_choice(GpCategory::Nostalgia).unwrap()
-}
 
 /// A clip that never fires in the pure-state tests, but proves the setting is
 /// carried from `/gp start` all the way to `GpTrackStart`.
@@ -80,83 +30,6 @@ fn clip() -> GpClip {
         start: Duration::from_secs(GP_DEFAULT_CLIP_START_SECS),
         length: Duration::from_secs(GP_DEFAULT_CLIP_LENGTH_SECS),
     }
-}
-
-/// A game hosted by alice with the given prompts; round 0's window is open.
-pub(super) fn game_with(data: &GpData, prompt_list: &[&str]) -> GpWindowOpened {
-    game_with_clip(data, prompt_list, None)
-}
-
-/// As [`game_with`], with an explicit clip setting. The reveal is the
-/// game's default -- held to the round's end -- so the tests below exercise
-/// the game as it is played; one about per-song reveals opts into
-/// [`GpReveal::Song`] through [`game_with_reveal`].
-fn game_with_clip(data: &GpData, prompt_list: &[&str], clip: Option<GpClip>) -> GpWindowOpened {
-    game_with_reveal(data, prompt_list, clip, GpReveal::default())
-}
-
-/// As [`game_with_clip`], with an explicit reveal setting.
-pub(super) fn game_with_reveal(
-    data: &GpData,
-    prompt_list: &[&str],
-    clip: Option<GpClip>,
-    reveal: GpReveal,
-) -> GpWindowOpened {
-    game_with_settings(data, prompt_list, clip, reveal, true)
-}
-
-/// Every setting spelled out.
-pub(super) fn game_with_settings(
-    data: &GpData,
-    prompt_list: &[&str],
-    clip: Option<GpClip>,
-    reveal: GpReveal,
-    round_results: bool,
-) -> GpWindowOpened {
-    data.gp_start(
-        G,
-        A,
-        "alice".into(),
-        VC,
-        TC,
-        nostalgia(),
-        prompts(prompt_list),
-        TIMER,
-        clip,
-        reveal,
-        round_results,
-        NOW,
-    )
-    .unwrap()
-}
-
-/// A one-round game started at `at` instead of [`NOW`]: a game's identity is
-/// its guild and its start, so a second game in the same guild needs another.
-pub(super) fn game_started_at(data: &GpData, at: i64) -> GpWindowOpened {
-    data.gp_start(
-        G,
-        A,
-        "alice".into(),
-        VC,
-        TC,
-        nostalgia(),
-        prompts(&["later"]),
-        TIMER,
-        None,
-        GpReveal::default(),
-        true,
-        at,
-    )
-    .unwrap()
-}
-
-pub(super) fn submit(data: &GpData, user: UserId, name: &str, title: &str) -> GpSubmitOutcome {
-    data.gp_submit(G, user, name.into(), track(title), &[])
-        .unwrap()
-}
-
-pub(super) fn game(data: &GpData) -> GpGame {
-    data.gp_games.get(&G).unwrap().clone()
 }
 
 #[test]
@@ -2363,7 +2236,7 @@ fn gp_blocks_dedicate_and_jump() {
 // their own tests in `music/lease.rs`. These exercise the lease as wired
 // into the five places that move `gp_games` in this file.
 
-use crate::commands::music::gp_persist::GpPersist;
+use crate::gp_persist::GpPersist;
 use tokio::sync::mpsc;
 
 /// A `GpData` whose persistence writes land in a channel rather than
@@ -2498,7 +2371,7 @@ fn cx() -> RenderCx {
 }
 
 fn embed_json(r: &Rendered) -> serde_json::Value {
-    serde_json::to_value(crate::messaging::discord::first_embed(r).expect("an embed")).unwrap()
+    serde_json::to_value(crack_common::discord::first_embed(r).expect("an embed")).unwrap()
 }
 
 fn description(r: &Rendered) -> String {
@@ -2506,19 +2379,6 @@ fn description(r: &Rendered) -> String {
         .as_str()
         .unwrap_or_default()
         .to_string()
-}
-
-/// A one-round game whose only song is `title`, closed and so playing.
-pub(super) fn playing_with_title(data: &GpData, title: &str, reveal: GpReveal) -> GpTrackStart {
-    let opened = game_with_reveal(data, &["only"], None, reveal);
-    submit(data, B, "bob", title);
-    let closed = data
-        .gp_close_window_if(G, opened.generation, &mut rng(), NOW)
-        .unwrap();
-    match closed.next {
-        GpNext::Track(start) => *start,
-        other => panic!("expected a song, got {other:?}"),
-    }
 }
 
 fn title_of(r: &Rendered) -> String {
@@ -2780,14 +2640,14 @@ fn a_long_title_is_capped_and_a_real_one_is_not() {
 // Test helper: turns neutral output into the builders Discord receives, for JSON pins.
 #[allow(clippy::disallowed_types)]
 fn embed_of(card: crack_model::Card) -> ::serenity::builder::CreateEmbed<'static> {
-    crate::messaging::discord::embed(&card)
+    crack_common::discord::embed(&card)
 }
 
 /// Neutral rows as the components Discord receives.
 // Test helper: turns neutral output into the builders Discord receives, for JSON pins.
 #[allow(clippy::disallowed_types)]
 fn rows_of(rows: Vec<crack_model::Row>) -> Vec<::serenity::builder::CreateComponent<'static>> {
-    crate::messaging::discord::action_rows(&rows)
+    crack_common::discord::action_rows(&rows)
 }
 
 /// A card as Discord receives it: content, embed and components, each as the
@@ -2795,8 +2655,8 @@ fn rows_of(rows: Vec<crack_model::Row>) -> Vec<::serenity::builder::CreateCompon
 fn wire(r: &Rendered) -> (String, String, String) {
     (
         r.content.clone().unwrap_or_default(),
-        serde_json::to_string(&crate::messaging::discord::first_embed(r)).unwrap(),
-        serde_json::to_string(&crate::messaging::discord::action_rows(&r.rows)).unwrap(),
+        serde_json::to_string(&crack_common::discord::first_embed(r)).unwrap(),
+        serde_json::to_string(&crack_common::discord::action_rows(&r.rows)).unwrap(),
     )
 }
 

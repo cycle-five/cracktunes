@@ -47,19 +47,18 @@
 //! posted, and only if the tombstone lands ([`close_out`]): the row stays live
 //! until it does, and the next reconnect would post it all again.
 
-use super::gp::{
-    gp_post, gp_rendered, user_refs, GpCard, GpClip, GpData, GpGame, GpPhase, GpPlayed, GpReveal,
-    GpRound, GpTrack,
-};
-use super::gp_prompts::{GpCategories, GpCategory};
-pub use super::gp_resume::gp_resume_guild;
 use crate::db::{
     gp_mark_finished, gp_touch_live, GpGameRow, GpOutcome, GpPlayerRow, GpRoundRow, GpSaved,
     GpTrackRow,
 };
-use crate::messaging::messages::{GP_GAME_OVER, GP_LOST, GP_SCOREBOARD};
-use crate::messaging::{courier, transport::Transport};
+use crate::gp::{
+    gp_post, gp_rendered, user_refs, GpCard, GpClip, GpData, GpGame, GpPhase, GpPlayed, GpReveal,
+    GpRound, GpTrack,
+};
+use crate::gp_prompts::{GpCategories, GpCategory};
 use ::serenity::all::{ChannelId, GenericChannelId, Guild, GuildId, MessageId, UserId};
+use crack_common::messages::{GP_GAME_OVER, GP_LOST, GP_SCOREBOARD};
+use crack_common::{courier, transport::Transport};
 use crack_testing::ResolvedTrack;
 use crack_types::SavedTrack;
 use sqlx::PgPool;
@@ -186,7 +185,7 @@ impl GpData {
     }
 }
 
-pub(crate) fn game_id(guild_id: GuildId) -> i64 {
+pub fn game_id(guild_id: GuildId) -> i64 {
     guild_id.get() as i64
 }
 
@@ -508,7 +507,7 @@ fn sorted_users(set: &HashSet<UserId>) -> Vec<i64> {
 /// from the session that just died is usually still in the payload, and counting
 /// it would let the "nobody is left in the channel" check pass on the bot's own
 /// ghost -- resuming the game to an empty room.
-pub(crate) fn vc_members(guild: &Guild, vc: ChannelId, me: UserId) -> usize {
+pub fn vc_members(guild: &Guild, vc: ChannelId, me: UserId) -> usize {
     guild
         .voice_states
         .iter()
@@ -520,7 +519,7 @@ pub(crate) fn vc_members(guild: &Guild, vc: ChannelId, me: UserId) -> usize {
 
 /// How a game the resume is not bringing back ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GpCloseOut {
+pub enum GpCloseOut {
     /// It played out, but its ending may never have gone up.
     Finished,
     /// Too long an outage, or nobody left in the voice channel.
@@ -544,7 +543,7 @@ impl GpCloseOut {
 /// the tombstone is not written the row is still live, so posting first would
 /// put the same embeds up each time the gateway blinked (#469). A row that was
 /// already finished (`Ok(false)`) was closed out by whatever finished it.
-pub(crate) async fn close_out<Fut>(
+pub async fn close_out<Fut>(
     transport: &dyn Transport,
     game: &GpGame,
     ending: GpCloseOut,
@@ -588,7 +587,7 @@ pub(crate) async fn close_out<Fut>(
 /// the channel (see [`GpGame::unposted_results`]). Returns the rounds posted;
 /// marking them is the caller's, since only a game back in the map can be
 /// written down.
-pub(crate) async fn post_owed_results(transport: &dyn Transport, game: &GpGame) -> Vec<usize> {
+pub async fn post_owed_results(transport: &dyn Transport, game: &GpGame) -> Vec<usize> {
     let mut posted = Vec::new();
     for idx in game.unposted_results() {
         let out = gp_rendered(GpCard::RoundResults((&game.round_result(idx)).into()));
@@ -607,7 +606,7 @@ pub(crate) async fn post_owed_results(transport: &dyn Transport, game: &GpGame) 
 /// Take the dropdown off a song message from before a restart, leaving its
 /// embed: the reveal only edits the message the track remembers, which is
 /// about to be a new one. Best effort.
-pub(crate) async fn take_down_components(
+pub async fn take_down_components(
     transport: &dyn Transport,
     guild: GuildId,
     channel: GenericChannelId,
@@ -625,8 +624,8 @@ pub(crate) async fn take_down_components(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::commands::music::gp_prompts::GpPrompt;
-    use crate::music::ops::test_support::test_music_data;
+    use crate::gp_prompts::GpPrompt;
+    use crack_music::music::ops::test_support::test_music_data;
     use crack_types::{AuxMetadata, QueryType};
     use rand::{rngs::StdRng, SeedableRng};
     use std::sync::Arc;
