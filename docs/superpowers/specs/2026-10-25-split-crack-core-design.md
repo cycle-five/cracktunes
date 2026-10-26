@@ -205,7 +205,7 @@ That's about 10k non-test lines. db's 219 wrong-way references become internal.
 After step 3 the map showed music is far more tangled than rooms were. It reads guild settings (volume, autoplay, echoes) through methods on `Data`, reaches into the floating status message and /gp's state, and part of it is built on poise's `Context`. Guild settings, which every feature reads, turned out clean: no poise and almost no `Data`. So step 4 became three PRs. I proposed this order in chat and the owner approved it on 2026-10-26: "Yes, thank you, go ahead and continue on in this manner." It moves guild settings out of "Later, unscheduled".
 
 - **4a: crack-guild.** Guild settings, the per-guild session cache and their queries. Small, low-risk, and it unblocks music. Detailed below.
-- **4b: crack-music, the player.** `music/`, `sources/`, `http_utils.rs` and the player's tables (`queue_audit`, `play_log`, `play_history`, `queue_snapshot`, `playlist`, `metadata`, `musicreco`, `track_reaction`). It gets its own design section when 4a lands, because the knots below decide its shape.
+- **4b: crack-music, the player.** `music/`, `sources/`, `http_utils.rs` and the player's tables (`queue_audit`, `play_log`, `play_history`, `queue_snapshot`, `playlist`, `metadata`, `musicreco`, `track_reaction`). Two PRs, seams then the move; designed below, after 4a landed.
 - **4c: /gp.** `commands/music/gp`'s game logic and `db/gp.rs`, after 4b.
 
 songbird lives in 4b's crate, so the Matrix-seam rule applies there: no new state in songbird's queue or track handles.
@@ -252,15 +252,72 @@ They become inherent `impl Data` methods in crack-core's `music/autoplay.rs`, ne
 
 **Done when:** the same checks as step 3 pass for crack-guild, plus the boundary step in `lint.yml`, and v0.42.0 is on TuneTitan.
 
-#### 4b's knots, recorded for its design section
+#### 4b: crack-music, the player (design pass of 2026-10-26, after 4a landed)
 
-- **`Data` coupling:** about 12 `DataInner` fields; `OpCx { data: Arc<Data> }` in `music/ops`; `remote.rs` holds `Arc<Data>`; `impl Data` in `music/lease.rs`; `gp_is_active` and `gp_start`; `status_slot`.
-- **poise:** `QueryContext` holds poise's `Context`, and `queue.rs` uses `poise_ext::ContextExt`.
-- **Upward references:**
-  - `commands::music_utils` (`connected_call`, `join_permitted`, `set_global_handlers_with`), `gp_persist::vc_members` and `gp_prompts`;
-  - `handlers::track_end::update_queue_messages`;
-  - `messaging::status`, and the courier's `post`, `Destination`, `locate` and `reply`;
-  - several `utils` helpers, `db::worker_pool::MetadataMsg`, `connection::get_voice_channel_for_user` and `BotConfig::get_playlist_limit`.
+Measured on the map of 4a's branch. `music/`, `sources/` and `http_utils.rs` hold 6,328 non-test lines of functions:
+- 932 lines name poise's `Context`: `query.rs`'s `mode_*` (386), `queue.rs`'s logged entry points (486), and three constructors;
+- 826 lines name `Data` or `DataInner`;
+- the rest name neither.
+
+So most of the player can move, but not as it stands. The ops already separate *doing* from *showing*: each op returns `Done<T> { outcome, Settle, call }`, and a surface settles it afterwards. Only `Settle::after` needs crack-core's status message and queue messages. That is the seam.
+
+**Two PRs**, as "How each step is done" foresaw:
+- **4b-1, the seams (v0.43.0):** inside crack-core, no crate. It cuts every reference from the code that will move to `Data`, `DataInner`, poise's `Context` and crack-core's Discord layer.
+- **4b-2, the move (v0.44.0):** `git mv` into `crack-music`, with shims.
+
+Each lands in a day, so music is never frozen for long.
+
+**What moves in 4b-2:**
+- `sources/` and `http_utils.rs`;
+- in `music/`: `audit`, `audit_view`, `autoplay` (the buffer), `autoplay_probe`, `disconnect`, `lease`, `ops`, `perms`, `remote` and `search`;
+- `queue.rs`'s primitives (the `Primitive` rows of its `SURFACE` table and their helpers);
+- `query.rs`'s `NewQueryType` with its query builders;
+- the player's tables: `db/{queue_audit, play_log, play_history, queue_snapshot, playlist, metadata, musicreco, track_reaction}`, plus `db/worker_pool.rs` (`MetadataMsg` and its writer) and `db/user.rs`, which `playlist` reads;
+- the clean helpers the player calls:
+  - `utils::{TrackData, track_data, get_track_handle_metadata, get_requesting_user, MUSIC_SEARCH_SUFFIX}`;
+  - `commands::music_utils::connected_call`;
+  - `connection::get_voice_channel_for_user`.
+
+**What stays in crack-core as glue:**
+- `music/context.rs` (`QueryContext`) and `query.rs`'s `mode_*`;
+- `queue.rs`'s logged entry points (the `Logs` and `Delegates` rows);
+- `music/resume.rs` whole. Boot and shutdown orchestration reads the status slot, /gp, the join permit and the track-end handlers;
+- the status message, the courier's `post`/`reply`, `track_end`, `yt_search_select`, `join_permitted` and `set_global_handlers_with`.
+
+**The handle.** `MusicData`, built by `Data::music_data()`, with `DataInner`'s field names so bodies move verbatim:
+- `database_pool`, `songbird`, `ct_client`, `http_client`, `audit_tx`, `db_channel`, `autoplay_buffer`, `guild_cache_map`, `playback_owners` and `queue_locks`;
+- `guild: GuildData`, for the volume op's two settings calls;
+- `surface: Arc<dyn Surface>` (next paragraph).
+
+`playback_owners` and `queue_locks` become `Arc<DashMap<…>>` in `DataInner`, as `rooms` and `modlog` did, so a handle shares them. Every other field is already shared by cloning.
+
+`lease.rs`'s four methods (`playback_owner`, `claim_playback`, `release_playback`, `lock_queue`) and autoplay's `get_autoplay`/`set_autoplay` become `impl MusicData`. `Data` keeps them as one-line delegations, as 4a did, so their 80-odd callers in /gp, the handlers and the commands don't change.
+
+**The `Surface` trait: what the player asks of the Discord layer above it.** It has two methods:
+- `settle(settle, cx, call, anchor)` is today's `Settle::after` body, moved verbatim into crack-core's implementation: refresh the queue messages, re-render now playing, or show finished.
+- `echo(guild, transport, msg)` is the courier's `post(…, Destination::Echo(guild), …)`, which `remote` calls twice.
+
+`Settle::after` and `Done::settle_now`/`settle_after` keep their signatures and call `cx.data.surface`, so no surface (command, button, dashboard) changes.
+- **Why a trait:** the spec's anti-goal is a trait "with one implementation, added for later". This one cuts four real references (status, `track_end`, the courier and `Data`). It also has a second, test implementation that records what was settled. So crack-music's op tests can assert *what* an op asks to refresh without a Discord layer.
+- **No `Default` in production:** a `MusicData` exists in production only through `Data::music_data()`, which supplies crack-core's surface. A silent no-op surface would drop every refresh.
+
+**poise's constructors become crack-core extension traits,** as step 3 did with `ToPoiseReply`. The orphan rule forbids inherent methods on another crate's type. The bodies don't change, and callers only import the trait.
+- `OpCx::from_ctx` (14 sites) and `Actor::from_ctx` (12) become `OpCxFromCtx` and `ActorFromCtx`;
+- `Done::reply_then_settle` (4 sites) becomes `ReplyThenSettle`;
+- `NewQueryType`'s eight `mode_*` (19 sites) become `QueryModes`.
+
+**`OpCx.data` becomes a `MusicData`.** Because it keeps `Data`'s field and method names, op bodies don't change.
+- `remote`, `search` and `disconnect` take `&MusicData`.
+- crack-web and the commands pass `&data.music_data()`.
+- The volume op's two settings calls become `data.guild.get_volume`/`set_volume`.
+
+**`queue.rs` splits.** The primitives move. The logged entry points stay in a crack-core `music/queue.rs`, which starts with `pub use crack_music::queue::*;`. Its source-scanning `SURFACE` tests stay in crack-core and read both files, since they check how the two halves fit.
+
+**crack-testing drops its unused `poise` dependency** (no file in it names poise). Otherwise crack-music would reach poise through it and fail rule 1's lint.
+
+**Tests:** they move with the code (rule 4). Op tests that assert on what a settle rendered stay in crack-core with the real surface. Op tests that assert what was asked to settle move, with the recording surface.
+
+**Done when:** 4b-2's crack-music passes the same checks as crack-rooms and crack-guild, and `cargo test -p crack-music` builds no crack-core.
 
 ### Later, unscheduled
 
