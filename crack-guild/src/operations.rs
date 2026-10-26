@@ -1,10 +1,11 @@
-use crate::{errors::CrackedError, GuildSettings};
+use crate::settings::GuildSettings;
+use crack_common::errors::CrackedError;
 use crack_types::discord::{from_snowflake, generic_channel_id, snowflake, ToRef};
 use serenity::all::{Context as SerenityContext, GenericChannelId, GuildId};
 use std::{collections::HashMap, future::Future, sync::Arc};
 use tokio::sync::RwLock;
 
-use super::settings::{Provenance, DEFAULT_PREFIX, DEFAULT_VOLUME_LEVEL};
+use crate::settings::{Provenance, DEFAULT_PREFIX, DEFAULT_VOLUME_LEVEL};
 
 pub trait GuildSettingsOperations {
     fn get_guild_settings(&self, guild_id: GuildId) -> impl Future<Output = Option<GuildSettings>>;
@@ -158,7 +159,7 @@ impl GuildSettingsOperations for GuildData {
     /// upsert, so mutating those defaults and saving them replaces the guild's
     /// stored row wholesale -- the same unrecoverable loss the shutdown
     /// handler's `is_persistable()` guard prevents, reached through a
-    /// different door. See [`crate::guild::settings::Provenance`].
+    /// different door. See [`crate::settings::Provenance`].
     ///
     /// 🪤 **The guard belongs here, not inside `save()`.** `save()` itself
     /// calls `get_or_create`, so a blanket `is_persistable()` check in there
@@ -576,7 +577,7 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
+            crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
         );
         let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
@@ -585,7 +586,7 @@ mod test {
 
         assert_eq!(
             data.get_guild_settings(guild_id).await,
-            Some(crate::GuildSettings::new(
+            Some(crate::settings::GuildSettings::new(
                 guild_id.to_ref(),
                 Some("r!"),
                 None
@@ -605,9 +606,9 @@ mod test {
         assert_eq!(
             data.get_or_create_guild_settings(guild_id, None, None)
                 .await,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 guild_id: guild_id.to_ref(),
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             }
         );
     }
@@ -620,12 +621,15 @@ mod test {
     /// defaults' empty name and blanked the stored one.
     #[tokio::test]
     async fn get_or_create_keeps_the_settings_a_guild_already_has() {
-        use crate::guild::settings::Provenance;
+        use crate::settings::Provenance;
         let guild_id = GuildId::new(1);
-        let loaded =
-            crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), Some("KYSCORD".to_string()))
-                .with_premium(true)
-                .with_provenance(Provenance::Database);
+        let loaded = crate::settings::GuildSettings::new(
+            guild_id.to_ref(),
+            Some("r!"),
+            Some("KYSCORD".to_string()),
+        )
+        .with_premium(true)
+        .with_provenance(Provenance::Database);
         let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(HashMap::from([(guild_id, loaded.clone())]))),
             ..Default::default()
@@ -654,7 +658,7 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
+            crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
         );
         let data = GuildData {
             guild_settings_map: Arc::new(RwLock::new(guild_settings_map)),
@@ -663,13 +667,13 @@ mod test {
 
         data.set_guild_settings(
             guild_id,
-            crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
+            crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None),
         )
         .await;
 
         assert_eq!(
             data.get_guild_settings(guild_id).await,
-            Some(crate::GuildSettings::new(
+            Some(crate::settings::GuildSettings::new(
                 guild_id.to_ref(),
                 Some("r!"),
                 None
@@ -759,7 +763,7 @@ mod test {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let channel_id = GenericChannelId::new(2);
-        let mut settings = crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
+        let mut settings = crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
         settings.set_music_channel(channel_id.to_ref());
         guild_settings_map.insert(guild_id, settings);
         let data = GuildData {
@@ -775,7 +779,7 @@ mod test {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let channel_id = GenericChannelId::new(2);
-        let mut settings = crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
+        let mut settings = crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
         settings.set_music_channel(channel_id.to_ref());
         guild_settings_map.insert(guild_id, settings);
         let data = GuildData {
@@ -798,9 +802,9 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 timeout: 5,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
         let data = GuildData {
@@ -817,9 +821,9 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 timeout: 5,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
         let data = GuildData {
@@ -838,9 +842,9 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 premium: true,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
         let data = GuildData {
@@ -857,9 +861,9 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 premium: true,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
         let data = GuildData {
@@ -878,9 +882,9 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 prefix: "!".to_string(),
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
         let data = GuildData {
@@ -897,9 +901,9 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 prefix: "!".to_string(),
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
         let data = GuildData {
@@ -918,9 +922,9 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 prefix: "!".to_string(),
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
         let data = GuildData {
@@ -943,9 +947,9 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 autopause: true,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
         let data = GuildData {
@@ -962,9 +966,9 @@ mod test {
         let guild_id = GuildId::new(1);
         guild_settings_map.insert(
             guild_id,
-            crate::GuildSettings {
+            crate::settings::GuildSettings {
                 autopause: true,
-                ..crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
+                ..crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None)
             },
         );
         let data = GuildData {
@@ -982,7 +986,7 @@ mod test {
         let mut guild_settings_map = HashMap::new();
         let guild_id = GuildId::new(1);
         let auto_role = 123;
-        let mut settings = crate::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
+        let mut settings = crate::settings::GuildSettings::new(guild_id.to_ref(), Some("r!"), None);
         settings.set_auto_role(Some(RoleId::new(auto_role).to_ref()));
         guild_settings_map.insert(guild_id, settings);
         let data = GuildData {
@@ -1015,7 +1019,7 @@ mod test {
     /// production's configuration today, so it is the case that must not break.
     #[tokio::test]
     async fn ensure_settings_loaded_is_a_noop_without_a_pool() {
-        use crate::guild::settings::Provenance;
+        use crate::settings::Provenance;
 
         let guild_id = GuildId::new(1);
         let mut map = HashMap::new();

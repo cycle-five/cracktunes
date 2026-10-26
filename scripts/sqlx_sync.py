@@ -12,6 +12,8 @@ migrated database at DATABASE_URL:
         cargo build -p crack-economy --all-targets --features db-tests,crack-coin
     SQLX_OFFLINE=false SQLX_OFFLINE_DIR="$out" \
         cargo build -p crack-rooms --all-targets --features db-tests
+    SQLX_OFFLINE=false SQLX_OFFLINE_DIR="$out" \
+        cargo build -p crack-guild --all-targets --features db-tests
     python3 scripts/sqlx_sync.py "$out"
 
 - Writes every generated query file that is new or differs (origin keys

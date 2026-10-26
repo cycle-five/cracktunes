@@ -36,9 +36,9 @@ The same run with the database tests, as CI does it:
 
 ```bash
 cargo nextest run --profile ci --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests
 cargo test --doc --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests
 ```
 
 The dev profile is tuned for rebuilds: `debug = "line-tables-only"` for the
@@ -63,14 +63,15 @@ The macro takes the same argument and the same function shapes as
 `#[sqlx::test]`; moving a test over changes only the attribute's path. 🪤 Only
 a crate can use it once it has `crate::test_db`, because the expansion calls it:
 `#[cfg(test)] pub(crate) use crack_test_db::test_db;`. Every db test site in
-`crack-core`, `crack-economy`, `crack-rooms` and `crack-test-db` uses it (74,
-57, 35 and 7 sites when counted). `crack-voting` and `cracktunes` (the
+`crack-core`, `crack-economy`, `crack-rooms`, `crack-guild` and `crack-test-db`
+uses it (64, 57, 35, 10 and 7 sites when counted with
+`grep -rh '#\[crack_test_macros::db_test' <crate>/src | wc -l`). `crack-voting` and `cracktunes` (the
 `crack-cli` package) stay on `#[sqlx::test]`.
 
 To run them, start a postgres and turn the feature on. The feature lives in
-each package that has such tests, so a workspace run names all six
+each package that has such tests, so a workspace run names all seven
 (`crack-core`, `cracktunes`, `crack-voting`, `crack-test-db`, `crack-economy`,
-`crack-rooms`),
+`crack-rooms`, `crack-guild`),
 plus `crack-core/crack-coin` and `crack-economy/crack-coin` for the CrackCoin
 tests:
 
@@ -79,7 +80,7 @@ docker run -d --name crack-pg -p 5432:5432 \
   -e POSTGRES_PASSWORD=mysecretpassword postgres:16
 
 cargo nextest run --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests
 ```
 
 `DATABASE_URL` defaults to `postgresql://postgres:mysecretpassword@localhost:5432/postgres`.
@@ -161,7 +162,7 @@ cargo install cargo-llvm-cov --version 0.9.1 --locked
 cargo install cargo-nextest --version 0.9.149 --locked
 rustup component add llvm-tools-preview
 cargo llvm-cov nextest --profile ci --workspace \
-  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests \
+  --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests \
   --lcov --output-path lcov.info
 ```
 

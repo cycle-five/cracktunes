@@ -1,7 +1,7 @@
-use super::permissions::ref_set;
 use crate::db::{GuildEntity, WelcomeSettingsRead};
-use crate::errors::CrackedError;
-use crate::CrackedResult;
+use crate::permissions::ref_set;
+use crack_common::errors::CrackedError;
+use crack_common::CrackedResult;
 use crack_model::{CommunityRef, RoleRef, RoomRef, UserRef};
 use crack_types::discord::{
     as_snowflake_opt, as_snowflake_set, as_snowflake_string, from_snowflake, snowflake, IdError,
@@ -20,22 +20,21 @@ use std::{
 };
 use typemap_rev::TypeMapKey;
 
-pub(crate) const DEFAULT_ACTIVITY: &str = "/play";
-pub(crate) const DEFAULT_LOG_PREFIX: &str = "data/logs";
-pub(crate) const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
-pub(crate) const DEFAULT_SETTINGS_PATH: &str = "data/settings";
-pub(crate) const YOUTUBE_WATCH_URL: &str = "https://www.youtube.com/watch?v=";
-pub(crate) const VIDEO_WATCH_URL: &str = YOUTUBE_WATCH_URL;
-pub(crate) const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
-pub(crate) const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
-pub(crate) const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
-pub(crate) const DEFAULT_PREFIX: &str = "r!";
-pub(crate) const DEFAULT_DB_URL: &str =
-    "postgresql://postgres:mysecretpassword@localhost:5432/postgres";
-pub(crate) const DEFAULT_IDLE_TIMEOUT: u32 = 10 * 60;
-pub(crate) const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
-pub(crate) const DEFAULT_PREMIUM: bool = false;
-pub(crate) const ADDITIONAL_PREFIXES: [&str; 8] = [
+pub const DEFAULT_ACTIVITY: &str = "/play";
+pub const DEFAULT_LOG_PREFIX: &str = "data/logs";
+pub const DEFAULT_ALLOW_ALL_DOMAINS: bool = true;
+pub const DEFAULT_SETTINGS_PATH: &str = "data/settings";
+pub const YOUTUBE_WATCH_URL: &str = "https://www.youtube.com/watch?v=";
+pub const VIDEO_WATCH_URL: &str = YOUTUBE_WATCH_URL;
+pub const DEFAULT_ALLOWED_DOMAINS: [&str; 1] = ["youtube.com"];
+pub const DEFAULT_VOLUME_LEVEL: f32 = 1.0;
+pub const DEFAULT_VIDEO_STATUS_POLL_INTERVAL: u64 = 120;
+pub const DEFAULT_PREFIX: &str = "r!";
+pub const DEFAULT_DB_URL: &str = "postgresql://postgres:mysecretpassword@localhost:5432/postgres";
+pub const DEFAULT_IDLE_TIMEOUT: u32 = 10 * 60;
+pub const DEFAULT_LYRICS_PAGE_SIZE: usize = 1024;
+pub const DEFAULT_PREMIUM: bool = false;
+pub const ADDITIONAL_PREFIXES: [&str; 8] = [
     "hey bot,", "hey bot", "bot,", "bot", "!play", "!music", "!youtube", "!yt", //, "m/", "M/",
 ];
 
@@ -285,7 +284,7 @@ impl WelcomeSettings {
     }
 }
 
-use super::permissions::GenericPermissionSettings;
+use crate::permissions::GenericPermissionSettings;
 
 /// Where a guild's in-memory settings came from, and therefore whether writing
 /// them back to Postgres is safe.
@@ -990,14 +989,13 @@ pub type GuildSettingsMapParam =
 
 #[cfg(test)]
 mod test {
-    use crate::guild::settings::{GuildSettings, Provenance};
+    use crate::settings::{GuildSettings, Provenance};
     use crack_types::discord::ToRef;
     use serenity::all::{GenericChannelId, GuildId};
 
     #[test]
     fn test_default() {
-        let settings =
-            crate::guild::settings::GuildSettings::new(GuildId::new(123).to_ref(), None, None);
+        let settings = crate::settings::GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         assert_eq!(settings.prefix, "r!");
         assert_eq!(settings.allowed_domains.len(), 1);
         assert!(settings.allowed_domains.contains("youtube.com"));
@@ -1029,7 +1027,7 @@ mod test {
     #[test]
     fn test_get_log_channel() {
         let mut settings =
-            crate::guild::settings::GuildSettings::new(GuildId::new(123).to_ref(), None, None);
+            crate::settings::GuildSettings::new(GuildId::new(123).to_ref(), None, None);
         let channel_id = 123;
         settings.set_all_log_channel(GenericChannelId::new(channel_id).to_ref());
         assert_eq!(

@@ -14,6 +14,7 @@ members = [
   "crack-test-db",
   "crack-economy",
   "crack-rooms",
+  "crack-guild",
 ]
 resolver = "2"
 

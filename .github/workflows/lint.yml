@@ -117,6 +117,17 @@ jobs:
             exit 1
           fi
 
+      # crack-guild holds the guild settings, the per-guild cache and their
+      # queries: it may use serenity, never poise or crack-core.
+      - name: crack-guild depends on no poise, crack-core, crack-economy or crack-rooms
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-guild -e normal --prefix none)
+          if echo "$tree" | grep -E '^(poise|crack-core|crack-economy|crack-rooms) '; then
+            echo "crack-guild must not depend on poise, crack-core, crack-economy or crack-rooms" >&2
+            exit 1
+          fi
+
       # crack-test-db is test tooling shared by the crates' db tests: no poise,
       # no crack-core (crack-core depends on it, not the other way round).
       - name: crack-test-db depends on no poise or crack-core
@@ -145,6 +156,16 @@ jobs:
           tree=$(cargo tree -p crack-rooms -e normal,dev --prefix none)
           if echo "$tree" | grep -E '^crack-core '; then
             echo "crack-rooms must not depend on crack-core, even in tests" >&2
+            exit 1
+          fi
+
+      # Dev-dependencies count too: `cargo test -p crack-guild` must not build crack-core.
+      - name: crack-guild has no crack-core dev-dependency
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-guild -e normal,dev --prefix none)
+          if echo "$tree" | grep -E '^crack-core '; then
+            echo "crack-guild must not depend on crack-core, even in tests" >&2
             exit 1
           fi
 

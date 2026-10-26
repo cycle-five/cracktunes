@@ -1,8 +1,8 @@
 //! What a server's plan allows. Premium is `guild_settings.premium`.
 //! Spec: docs/superpowers/specs/2026-10-03-premium-history-window-design.md
 
-use crate::messaging::message::CrackedMessage;
 use chrono::{DateTime, Duration, Utc};
+use crack_common::message::CrackedMessage;
 
 /// How far back a free server's queue history goes.
 pub const FREE_HISTORY_WINDOW: Duration = Duration::hours(24);

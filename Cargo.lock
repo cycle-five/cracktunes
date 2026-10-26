@@ -1115,6 +1115,7 @@ dependencies = [
  "crack-bf",
  "crack-common",
  "crack-economy",
+ "crack-guild",
  "crack-model",
  "crack-musicreco",
  "crack-osint",
@@ -1185,6 +1186,27 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "crack-guild"
+version = "0.41.0"
+dependencies = [
+ "chrono",
+ "crack-common",
+ "crack-model",
+ "crack-test-db",
+ "crack-test-macros",
+ "crack-types",
+ "dashmap 6.2.1",
+ "lazy_static",
+ "serde",
+ "serde_json",
+ "serenity",
+ "sqlx 0.9.0",
+ "tokio",
+ "tracing",
+ "typemap_rev",
 ]
 
 [[package]]
