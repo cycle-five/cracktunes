@@ -74,7 +74,8 @@ exclude_globs = [
     # they would, and mutating a test fake says nothing about the bot.
     "crack-music/src/music/ops/test_support.rs",
     # Test-only fixtures (a started game, a submitted song, a seeded rng),
-    # compiled into crack-gp only under `cfg(test)` or the `test-support` feature. As `#[cfg(test)]` code in crack-core they listed no mutants; here
+    # compiled into crack-gp only under `cfg(test)` or the `test-support`
+    # feature. As `#[cfg(test)]` code in crack-core they listed no mutants; here
     # they would, and mutating a test fake says nothing about the bot.
     "crack-gp/src/gp/test_support.rs",
 ]
