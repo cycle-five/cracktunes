@@ -35,3 +35,6 @@ tokio = { workspace = true }
 [dev-dependencies]
 crack-test-macros = { path = "../crack-test-macros" }
 crack-test-db = { path = "../crack-test-db" }
+
+[lints]
+workspace = true

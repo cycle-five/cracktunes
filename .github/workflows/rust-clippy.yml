@@ -56,11 +56,15 @@ jobs:
       - name: Install required cargo
         run: cargo install clippy-sarif sarif-fmt
 
+      # Lints are capped at warn: the workspace table denies clippy::all, and
+      # an error in one crate would stop its dependents being linted, so the
+      # SARIF would silently shrink. lint.yml is the gate; this job reports.
       - name: Run rust-clippy
         run:
           cargo clippy
           --all-features
-          --message-format=json | clippy-sarif | tee rust-clippy-results.sarif | sarif-fmt
+          --message-format=json
+          -- --cap-lints warn | clippy-sarif | tee rust-clippy-results.sarif | sarif-fmt
         continue-on-error: true
 
       - name: Upload analysis results to GitHub

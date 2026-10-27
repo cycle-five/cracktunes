@@ -2,7 +2,9 @@
 //! [`Rendered`] into the `poise::CreateReply` a command sends. Everything
 //! else lives in crack-common's `discord` and is re-exported here.
 
-pub use crack_common::discord::*;
+pub use crack_common::discord::{action_rows, content, embed, embeds, ToDiscord};
+#[cfg(test)]
+pub use crack_common::discord::{extra_embeds, first_embed};
 
 use crack_model::Rendered;
 

@@ -6,13 +6,12 @@
 			"command": "clippy",
 			"args": [
 				"--all",
+				"--all-targets",
 				"--profile=release",
 				"--workspace",
 				"--features",
 				"crack-bf,crack-osint",
 				"--",
-				"-D",
-				"clippy::all",
 				"-D",
 				"warnings"
 			],

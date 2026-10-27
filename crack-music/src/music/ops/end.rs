@@ -1,5 +1,5 @@
 //! Ops that end playback: stop everything, or leave voice.
-use super::*;
+use super::{begin, Arc, Call, Done, Mutex, OpCx, OpRefused, QueueGuard, Settle};
 use crate::music::{disconnect::disconnect, queue::stop_queue};
 use crack_common::message::CrackedMessage;
 use songbird::error::JoinError;
@@ -79,6 +79,7 @@ pub async fn leave(cx: &OpCx) -> Result<Done<Left>, OpRefused> {
 mod test {
     use super::*;
     use crate::music::{audit::Action, ops::test_support::*};
+    use crack_common::errors::CrackedError;
 
     #[tokio::test]
     async fn stop_empties_the_queue_and_settles_finished() {

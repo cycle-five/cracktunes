@@ -30,3 +30,6 @@ tokio = { workspace = true, features = ["process"] }
 # test-util: MusicBrainz's 1/sec gate (Task 5) is pinned under
 # `#[tokio::test(start_paused = true)]` rather than timing real sleeps.
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

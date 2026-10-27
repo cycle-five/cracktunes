@@ -2546,12 +2546,12 @@ mod tests {
                 revealed(&pool, mute).await,
                 (true, Some(VICTIM.get() as i64))
             );
-            assert_eq!(revealed(&pool, rename).await.0, false);
-            assert_eq!(revealed(&pool, clown).await.0, false);
+            assert!(!revealed(&pool, rename).await.0);
+            assert!(!revealed(&pool, clown).await.0);
             // Then the rename; then nothing is left to unmask.
             let second = reveal(&data, G, VICTIM, None).await.unwrap();
             assert_eq!((second.kind, second.balance), (ActionKind::Rename, 150));
-            assert_eq!(revealed(&pool, rename).await.0, true);
+            assert!(revealed(&pool, rename).await.0);
             assert_eq!(
                 reveal(&data, G, VICTIM, None).await,
                 Err(BuyError::Refused(Refusal::NothingToReveal))
@@ -2637,7 +2637,7 @@ mod tests {
                 );
             }
             assert_eq!(db::balance(&pool, G, bystander).await.unwrap(), 500);
-            assert_eq!(revealed(&pool, rename).await.0, false);
+            assert!(!revealed(&pool, rename).await.0);
             // Their own latest, by default, is still nothing: no prank is aimed at them.
             assert_eq!(
                 reveal(&data, G, bystander, None).await,
@@ -2748,7 +2748,7 @@ mod tests {
         // It was still aimed at the mirror's owner, who can unmask it.
         let done = reveal(&data, G, VICTIM, None).await.unwrap();
         assert_eq!((done.buyer, done.kind), (U, ActionKind::Rename));
-        assert_eq!(revealed(&pool, blocked.action_id).await.0, true);
+        assert!(revealed(&pool, blocked.action_id).await.0);
     });
 
     db_test!(marking_a_prank_revealed_works_once, |pool: PgPool| async {

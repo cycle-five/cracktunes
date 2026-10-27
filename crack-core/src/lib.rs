@@ -836,7 +836,7 @@ mod lib_test {
     #[cfg(feature = "crack-coin")]
     #[test]
     fn coin_build_is_true_here() {
-        assert!(crate::COIN_BUILD);
+        const { assert!(crate::COIN_BUILD) };
     }
 
     /// Test the creation of a default EventLog

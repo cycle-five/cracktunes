@@ -1,7 +1,9 @@
 //! Fixtures for tests of the game, here and in crack-core's glue: a started game, a
 //! submitted song, a seeded rng. Built for `cfg(test)` and the `test-support` feature.
 
-use super::*;
+use super::{
+    GpClip, GpData, GpGame, GpNext, GpReveal, GpSubmitOutcome, GpTrackStart, GpWindowOpened,
+};
 use crate::gp_prompts::{GpCategories, GpCategory, GpPrompt};
 use ::serenity::all::{ChannelId, GenericChannelId, GuildId, UserId};
 use crack_music::music::ops::test_support::test_music_data;

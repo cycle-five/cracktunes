@@ -95,7 +95,7 @@ pub fn generic_channel_id(r: &RoomRef) -> Result<GenericChannelId, IdError> {
 
 /// `#[serde(with = "…::as_snowflake")]`: a ref as a bare JSON number.
 pub mod as_snowflake {
-    use super::*;
+    use super::{from_snowflake, snowflake, Kind, Ref};
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<K: Kind, S: Serializer>(r: &Ref<K>, s: S) -> Result<S::Ok, S::Error> {
@@ -110,7 +110,7 @@ pub mod as_snowflake {
 /// `#[serde(with = "…::as_snowflake_string")]`: a ref as serenity writes an id,
 /// a JSON string of the decimal snowflake. Reads a string or a number.
 pub mod as_snowflake_string {
-    use super::*;
+    use super::{from_snowflake, snowflake, Kind, Ref};
     use serde::de::{self, Visitor};
     use serde::{Deserializer, Serializer};
     use std::fmt;
@@ -150,7 +150,7 @@ pub mod as_snowflake_string {
 
 /// `#[serde(with = "…::as_snowflake_opt", default)]` for `Option<Ref<K>>`.
 pub mod as_snowflake_opt {
-    use super::*;
+    use super::{as_snowflake, from_snowflake, Kind, Ref};
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<K: Kind, S: Serializer>(r: &Option<Ref<K>>, s: S) -> Result<S::Ok, S::Error> {
@@ -171,7 +171,7 @@ pub mod as_snowflake_opt {
 
 /// `#[serde(with = "…::as_snowflake_set")]` for `HashSet<Ref<K>>`.
 pub mod as_snowflake_set {
-    use super::*;
+    use super::{from_snowflake, snowflake, Kind, Ref};
     use serde::ser::SerializeSeq;
     use serde::{Deserialize, Deserializer, Serializer};
     use std::collections::HashSet;

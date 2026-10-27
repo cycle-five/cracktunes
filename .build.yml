@@ -48,7 +48,7 @@ tasks:
                   export DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:5432/postgres
                   export SQLX_OFFLINE=true
                   cd cracktunes
-                  cargo clippy --all -- -D clippy::all -D warnings --allow clippy::needless_return
+                  cargo clippy --all --all-targets -- -D warnings
         - initdb: |
                   export POSTGRES_PASSWORD=$(cat ~/PG_PASSWORD)
                   sudo -u postgres psql -c "ALTER USER postgres PASSWORD '${POSTGRES_PASSWORD}';"

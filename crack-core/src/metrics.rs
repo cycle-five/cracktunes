@@ -71,4 +71,7 @@ mod metrics_internal {
     pub fn register_custom_metrics() {}
 }
 
-pub use metrics_internal::*;
+#[cfg(not(feature = "crack-metrics"))]
+pub use metrics_internal::register_custom_metrics;
+#[cfg(feature = "crack-metrics")]
+pub use metrics_internal::{register_custom_metrics, COMMAND_EXECUTIONS};

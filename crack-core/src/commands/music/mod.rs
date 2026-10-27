@@ -13,7 +13,10 @@ pub mod get_metadata;
 pub mod gp;
 pub mod gp_persist {
     pub use super::gp_resume::gp_resume_guild;
-    pub use crack_gp::gp_persist::*;
+    pub use crack_gp::gp_persist::{
+        close_out, game_id, post_owed_results, spawn_gp_writer, take_down_components, vc_members,
+        GpCloseOut, GpPersist,
+    };
 }
 pub use crack_gp::gp_prompts;
 pub mod gp_resume;
@@ -39,38 +42,36 @@ pub mod volume;
 pub mod vote;
 pub mod voteskip;
 
-pub use auditlog::*;
-pub use autopause::*;
-pub use autoplay::*;
-pub use clear::*;
-pub use collector::*;
-pub use diagnose::*;
-pub use doplay::*;
-pub use echoes::*;
-pub use gambling::*;
-pub use get_metadata::*;
-pub use gp::*;
-pub use grab::*;
-pub use leave::*;
-pub use lyrics::*;
-pub use manage_sources::*;
-pub use nowplaying::*;
-pub use np_buttons::*;
-pub use pause::*;
-pub use playlog::*;
-pub use queue::*;
-pub use remove::*;
-pub use repeat::*;
-pub use resume::*;
-pub use seek::*;
-pub use shuffle::*;
-pub use skip::*;
-pub use spotify::*;
-pub use stop::*;
-pub use summon::*;
-pub use volume::*;
-pub use vote::*;
-pub use voteskip::*;
+pub use auditlog::auditlog;
+pub use autopause::autopause;
+pub use autoplay::autoplay;
+pub use clear::clear;
+pub use diagnose::diagnose;
+pub use doplay::{optplay, play, playfile, playnext, playytplaylist, search};
+pub use echoes::echoes;
+pub use gambling::{coinflip, roll_n_d, rolldice};
+pub use get_metadata::get_metadata;
+pub use gp::{gp, GpReveal};
+pub use grab::grab;
+pub use leave::leave;
+pub use lyrics::lyrics;
+pub use nowplaying::nowplaying;
+pub use np_buttons::buttons;
+pub use pause::pause;
+pub use playlog::playlog;
+pub use queue::queue;
+pub use remove::remove;
+pub use repeat::repeat;
+pub use resume::{resume, resume_internal};
+pub use seek::seek;
+pub use shuffle::{movesong, shuffle};
+pub use skip::{downvote, send_skip_reply, skip};
+pub use spotify::spotify;
+pub use stop::stop;
+pub use summon::summonchannel;
+pub use volume::volume;
+pub use vote::vote;
+pub use voteskip::voteskip;
 
 pub fn music_commands() -> Vec<crate::Command> {
     if cfg!(feature = "crack-music") {

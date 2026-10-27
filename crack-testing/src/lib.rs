@@ -1,7 +1,7 @@
 pub mod queue;
-pub use queue::*;
+pub use queue::CrackTrackQueue;
 pub mod resolve;
-pub use resolve::*;
+pub use resolve::ResolvedTrack;
 pub mod yt_playlist;
 pub use yt_playlist::{fetch_playlist, PlaylistEntry};
 

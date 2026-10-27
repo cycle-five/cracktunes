@@ -41,3 +41,6 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 # `#[cfg_attr(test, mutants::skip)]` waivers: see docs/testing.md.
 mutants = "0.0.4"
+
+[lints]
+workspace = true

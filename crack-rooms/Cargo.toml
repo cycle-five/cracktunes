@@ -43,3 +43,6 @@ http = "1"
 reqwest13 = { package = "reqwest", version = "0.13", default-features = false }
 # `#[tokio::test(start_paused = true)]` and `tokio::time::advance`.
 tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

@@ -122,7 +122,7 @@ fn button_rows(offered: &[RegisterButton]) -> Vec<Row> {
 /// mode anyone else who can run the command (mods) may register or delete
 /// their own server's commands; in `Global` mode only the owner may do anything.
 pub fn offered_buttons(mode: CommandRegistration, is_owner: bool) -> Vec<RegisterButton> {
-    use RegisterButton::*;
+    use RegisterButton::{RegisterGlobal, RegisterGuild, UnregisterGlobal, UnregisterGuild};
     match (mode, is_owner) {
         (_, true) => vec![
             RegisterGuild,

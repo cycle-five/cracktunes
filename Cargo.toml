@@ -30,10 +30,24 @@ resolver = "2"
 # did not bump it. docker.yml refuses a tag that does not match this line, since
 # a mismatched tag would publish yesterday's code under the new image name that
 # the homelab compose files pin to.
-version = "0.45.0"
+version = "0.45.1"
 edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
+
+# The import lints (wildcard_imports, enum_glob_use) do not fire in test code:
+# clippy skips test crates and #[cfg(test)] modules. Review keeps globs out of
+# tests and out of `pub use`.
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+needless_return = "allow"
+wildcard_imports = "deny"
+enum_glob_use = "deny"
+
+[workspace.lints.rust]
+ambiguous_glob_reexports = "deny"
+hidden_glob_reexports = "deny"
+unnameable_types = "warn"
 
 [workspace.dependencies.typesize]
 version = "0.1.6"
