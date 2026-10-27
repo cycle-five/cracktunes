@@ -410,6 +410,13 @@
 
 ### Fixed
 
+- **YouTube tracks play again.** YouTube now refuses a freshly resolved stream
+  URL with `403 Forbidden` for its first ~5 seconds, and yt-dlp reports when it
+  opens (`available_at`). songbird fetched at once, so every YouTube track
+  failed to open, and the retry only re-resolved into a new wait. songbird now
+  comes from the CycleFive fork, which waits until `available_at` (at most
+  30 s) before fetching: a track starts about 5 s later, as yt-dlp's own
+  downloads do.
 - **The bot no longer restart-loops when httpbin.org is down.** It sent two
   requests to httpbin.org while starting up and exited if either failed; it
   now makes none before connecting (#554).

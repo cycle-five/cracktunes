@@ -11,6 +11,11 @@
 //! `YoutubeDl::create_async` runs yt-dlp on every call -- so the retry asks for
 //! a new URL rather than repeating the refused one. A second refusal is final
 //! and reaches the channel as `messaging::track_failed`'s notice.
+//!
+//! The 403s of 2026-10-27, on every track, were something else: YouTube holds
+//! a freshly resolved URL for ~5 s (yt-dlp's `available_at`), so a retry that
+//! re-resolves only meets a new hold. songbird, from the CycleFive fork, waits
+//! for it before fetching (the workspace `Cargo.toml` says why).
 use async_trait::async_trait;
 use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input};
 use symphonia::core::io::MediaSource;
