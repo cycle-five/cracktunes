@@ -121,10 +121,11 @@ mod test {
         assert!(playable.is_ok(), "{:?}", playable.err());
     }
 
-    /// YouTube refuses a fresh stream URL until yt-dlp's `available_at`, and
-    /// on 2026-10-27 that failed every track with 403. The CycleFive songbird
-    /// waits for it before fetching; this stops compiling if the workspace
-    /// goes back to a songbird that doesn't.
+    /// YouTube refuses a stream URL until yt-dlp's `available_at`, when any
+    /// pre-roll ad served with it would have ended, and on 2026-10-27 that
+    /// failed every track with 403. The CycleFive songbird waits for it before
+    /// fetching; this stops compiling if the workspace goes back to a songbird
+    /// that doesn't.
     #[test]
     fn songbird_waits_for_available_at() {
         use std::time::{Duration, UNIX_EPOCH};
@@ -136,6 +137,104 @@ mod test {
             output.time_until_available(now),
             Some(Duration::from_secs(5))
         );
+    }
+
+    /// Two unskippable pre-roll ads can hold a URL for 30 to 40 s, longer
+    /// than the 30 s cap the fork started with; one cut short is refused.
+    #[test]
+    fn songbird_waits_out_a_forty_second_ad_break() {
+        use std::time::{Duration, UNIX_EPOCH};
+
+        let output: songbird::input::metadata::YoutubeDlOutput =
+            serde_json::from_str(r#"{"url":"u","available_at":1040}"#).unwrap();
+        let now = UNIX_EPOCH + Duration::from_secs(1000);
+        assert_eq!(
+            output.time_until_available(now),
+            Some(Duration::from_secs(40))
+        );
+    }
+
+    /// A stand-in for yt-dlp that prints one result, pointing at a port where
+    /// nothing listens, and counts how often it runs.
+    #[cfg(unix)]
+    struct FakeYtdl {
+        program: String,
+    }
+
+    #[cfg(unix)]
+    impl FakeYtdl {
+        fn new(name: &str) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+
+            let program = std::env::temp_dir()
+                .join(format!("crack-fake-ytdl-{}-{name}", std::process::id()))
+                .to_str()
+                .unwrap()
+                .to_owned();
+            std::fs::write(
+                &program,
+                "#!/bin/sh\necho run >> \"$0.runs\"\necho '{\"url\":\"http://127.0.0.1:9/\",\"title\":\"t\"}'\n",
+            )
+            .unwrap();
+            std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+            let _ = std::fs::remove_file(format!("{program}.runs"));
+            Self { program }
+        }
+
+        fn runs(&self) -> usize {
+            std::fs::read_to_string(format!("{}.runs", self.program))
+                .map_or(0, |runs| runs.lines().count())
+        }
+
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "runs the stand-in; the URL is a fixed word, never user text"
+        )]
+        fn youtubedl(&self) -> songbird::input::YoutubeDl<'_> {
+            songbird::input::YoutubeDl::new_ytdl_like(
+                &self.program,
+                reqwest::Client::new(),
+                "unused",
+            )
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for FakeYtdl {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.program);
+            let _ = std::fs::remove_file(format!("{}.runs", self.program));
+        }
+    }
+
+    /// `query.rs` fetches a track's metadata and then plays the same
+    /// `YoutubeDl`, which ran yt-dlp twice until the CycleFive songbird kept
+    /// the first resolve. Fails if the workspace goes back to a songbird that
+    /// resolves again to open the stream.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn songbird_opens_the_stream_from_the_metadata_resolve() {
+        use songbird::input::Compose;
+
+        let fake = FakeYtdl::new("reuse");
+        let mut ytdl = fake.youtubedl();
+        ytdl.aux_metadata().await.unwrap();
+        assert!(ytdl.create_async().await.is_err());
+        assert_eq!(fake.runs(), 1, "opening the stream ran yt-dlp again");
+    }
+
+    /// `/play` logs its query with `{:?}`, and a link's query holds the
+    /// resolved `YoutubeDl`, whose kept resolve has a signed stream URL that
+    /// carries the bot's IP address.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_resolved_youtubedl_keeps_its_stream_url_out_of_logs() {
+        use songbird::input::Compose;
+
+        let fake = FakeYtdl::new("debug");
+        let mut ytdl = fake.youtubedl();
+        ytdl.aux_metadata().await.unwrap();
+        assert!(!format!("{ytdl:?}").contains("127.0.0.1:9"));
     }
 
     #[tokio::test]

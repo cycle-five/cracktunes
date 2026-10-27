@@ -410,6 +410,19 @@
 
 ### Fixed
 
+- **A track is looked up once, not twice.** Playing a link or a search ran
+  yt-dlp for the track's title and then again to open its stream, because
+  songbird's `YoutubeDl` kept only the metadata. The CycleFive fork now keeps
+  the first result and opens the stream from it, if it is under 30 minutes
+  old, so a track starts one yt-dlp run sooner, and part of YouTube's wait
+  (below) has already passed. A retry after a refusal still asks yt-dlp
+  afresh.
+- **YouTube's wait is a pre-roll ad, and long ones are waited out.** The ~5 s
+  hold behind the 2026-10-27 failures is the ad YouTube served with the
+  stream: yt-dlp's `available_at` is when that ad would have ended (a
+  skippable ad's skip point, or an unskippable ad's whole length), and no ad
+  means no wait. Two unskippable ads can run 30 to 40 s, past the old 30 s
+  cap, so the cap is now 45 s.
 - **YouTube tracks play again.** YouTube now refuses a freshly resolved stream
   URL with `403 Forbidden` for its first ~5 seconds, and yt-dlp reports when it
   opens (`available_at`). songbird fetched at once, so every YouTube track
