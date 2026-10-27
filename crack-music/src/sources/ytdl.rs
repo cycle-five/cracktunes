@@ -236,20 +236,4 @@ mod test {
         ytdl.aux_metadata().await.unwrap();
         assert!(!format!("{ytdl:?}").contains("127.0.0.1:9"));
     }
-
-    #[tokio::test]
-    async fn test_ytdl() {
-        let url =
-            "https://www.youtube.com/playlist?list=PLzk-s3QLDrQ8tGpRzZ01woRoUd4ed-84q".to_string();
-        let mut ytdl = crate::sources::ytdl::MyYoutubeDl::new(url);
-        let playlist = ytdl.get_playlist().await;
-        match playlist {
-            Err(e) => println!(
-                "{:?}",
-                e.to_string()
-                    .contains("Your IP is likely blocked by YouTube.")
-            ),
-            Ok(playlist) => println!("{playlist:?}"),
-        }
-    }
 }
