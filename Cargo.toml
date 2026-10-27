@@ -30,7 +30,7 @@ resolver = "2"
 # did not bump it. docker.yml refuses a tag that does not match this line, since
 # a mismatched tag would publish yesterday's code under the new image name that
 # the homelab compose files pin to.
-version = "0.45.2"
+version = "0.45.3"
 edition = "2021"
 license = "MIT"
 authors = ["Cycle Five <cycle.five@proton.me>"]
@@ -106,9 +106,14 @@ features = [
 
 [workspace.dependencies.songbird]
 # The CycleFive fork: upstream `serenity-next` (songbird 0.6.x) at 3fe7289 plus
-# one fix, waiting until yt-dlp's `available_at` before fetching a stream.
-# YouTube refuses a fresh URL with 403 for its first ~5 s, which failed every
-# track (2026-10-27). Return to serenity-rs/songbird once upstream has it.
+# our `YoutubeDl` fixes:
+# - wait until yt-dlp's `available_at` before fetching a stream, at most 45 s.
+#   YouTube refuses the URL with 403 until any pre-roll ad served with it
+#   would have ended; fetching at once failed every track (2026-10-27);
+# - open the stream from the resolve that fetched the metadata, so yt-dlp
+#   runs once per track rather than twice.
+# The first is offered upstream as serenity-rs/songbird#317. Return to
+# serenity-rs/songbird once upstream has both.
 git = "https://github.com/CycleFive/songbird"
 branch = "serenity-next-cracktunes"
 version = "0.6"

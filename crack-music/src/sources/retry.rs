@@ -7,13 +7,15 @@
 //! plays and the queue moves on.
 //!
 //! [`RetryRefused`] wraps a lazy source and, when opening it fails on an HTTP
-//! status, opens it once more. For yt-dlp that is a fresh resolve -- songbird's
-//! `YoutubeDl::create_async` runs yt-dlp on every call -- so the retry asks for
-//! a new URL rather than repeating the refused one. A second refusal is final
+//! status, opens it once more. For yt-dlp that is a fresh resolve -- the
+//! CycleFive songbird's `YoutubeDl::create_async` opens from the metadata
+//! resolve only the first time, and runs yt-dlp on every later call -- so the
+//! retry asks for a new URL rather than repeating the refused one. A second refusal is final
 //! and reaches the channel as `messaging::track_failed`'s notice.
 //!
 //! The 403s of 2026-10-27, on every track, were something else: YouTube holds
-//! a freshly resolved URL for ~5 s (yt-dlp's `available_at`), so a retry that
+//! a resolved URL until any pre-roll ad served with it would have ended
+//! (yt-dlp's `available_at`; 5 s for a skippable ad), so a retry that
 //! re-resolves only meets a new hold. songbird, from the CycleFive fork, waits
 //! for it before fetching (the workspace `Cargo.toml` says why).
 use async_trait::async_trait;
