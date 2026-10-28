@@ -1121,6 +1121,12 @@ pub const ECONOMY_SHOP_BOT_BUYER: &str = "Bots can't buy anything.";
 pub const ECONOMY_NOTHING_TO_CLEANSE: &str = "Nothing's running on you.";
 pub const ECONOMY_NOTHING_TO_REVEAL: &str = "There's nothing to unmask.";
 pub const ECONOMY_ALREADY_REVEALED: &str = "You've already unmasked that one.";
+pub const ECONOMY_MOD_ALREADY_REVEALED: &str = "That one is already unmasked.";
+pub const ECONOMY_MOD_REVEAL_DONE_PREFIX: &str = "Unmasked: the";
+pub const ECONOMY_MOD_REVEAL_DONE_ON: &str = "on";
+pub const ECONOMY_MOD_REVEAL_DONE_BOUGHT_BY: &str = "was bought by";
+pub const ECONOMY_MOD_REVEAL_NOT_POSTED: &str =
+    "The reveal stands, but CrackTunes couldn't post it in this channel.";
 pub const ECONOMY_SHOP_DONE: &str = "Done.";
 pub const ECONOMY_SHOP_MIRROR_UP: &str = "Your mirror is up. Nobody can see it.";
 pub const ECONOMY_SHOP_BOUNCED: &str = "Their mirror sent it back at you.";

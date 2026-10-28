@@ -112,7 +112,7 @@ mod tests {
         let economy = &cmds[3];
         assert_eq!(
             subs(economy),
-            ["adjust", "cancel", "grant", "lift", "status"]
+            ["adjust", "cancel", "grant", "lift", "reveal", "status"]
         );
         // Every one is a guild-only slash command.
         assert!(shop

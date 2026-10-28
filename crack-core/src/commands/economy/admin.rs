@@ -1,11 +1,14 @@
 //! `/economy status|grant|lift|adjust`, for moderators.
 use super::credits::{gate, gate_for, live, say, GateNeed};
 use crate::db::economy::{self as db, RecentAction};
-use crate::economy::ledger::{self, EconomyLogEvent, Ender};
+use crate::economy::ledger::{self, EconomyLogEvent, Ender, Unmasker};
 use crate::economy::preflight::{report_for, ActionPreflight};
+use crate::economy::settings::ActionKind;
 use crate::economy::settings::EconomySettings;
+use crate::economy::shop::{mod_reveal, reveal_choices, BuyError, Refusal};
 use crate::economy::wallet::{ActionState, MoveError};
 use crate::economy::{mod_cancel, mod_grant, mod_lift, GrantError};
+use crate::messaging::courier;
 use crate::messaging::format::CONTENT_MAX;
 use crate::messaging::messages::{
     DASH_ECONOMY_ANNOUNCE_STATUS, DASH_ECONOMY_PREFLIGHT, DASH_ECONOMY_PREFLIGHT_READY,
@@ -15,15 +18,18 @@ use crate::messaging::messages::{
     ECONOMY_ADMIN_GRANT_DISABLED, ECONOMY_ADMIN_GRANT_DONE, ECONOMY_ADMIN_GRANT_FAILED,
     ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE, ECONOMY_ADMIN_LIFT_FAILED,
     ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE, ECONOMY_CANCEL_DONE_PREFIX,
-    ECONOMY_CANCEL_DONE_SUFFIX, ECONOMY_CANCEL_NONE, ECONOMY_NO_DATABASE, ECONOMY_READ_FAILED,
-    ECONOMY_STATUS_CAMERA, ECONOMY_STATUS_COIN, ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING,
-    ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET,
-    ECONOMY_STATUS_MODS, ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
-    ECONOMY_STATUS_PER_VOICE_MINUTE, ECONOMY_STATUS_RECENT, ECONOMY_STATUS_RECENT_MORE_PREFIX,
-    ECONOMY_STATUS_RECENT_MORE_SUFFIX, ECONOMY_STATUS_RECENT_NONE, ECONOMY_STATUS_SECONDS,
-    ECONOMY_STATUS_SHOP, ECONOMY_STATUS_TAP, ECONOMY_STATUS_TITLE, ECONOMY_STATUS_UNTIL,
-    ECONOMY_STATUS_WALLETS,
+    ECONOMY_CANCEL_DONE_SUFFIX, ECONOMY_CANCEL_NONE, ECONOMY_MOD_ALREADY_REVEALED,
+    ECONOMY_MOD_REVEAL_DONE_BOUGHT_BY, ECONOMY_MOD_REVEAL_DONE_ON, ECONOMY_MOD_REVEAL_DONE_PREFIX,
+    ECONOMY_MOD_REVEAL_NOT_POSTED, ECONOMY_NOTHING_TO_REVEAL, ECONOMY_NO_DATABASE,
+    ECONOMY_READ_FAILED, ECONOMY_STATUS_CAMERA, ECONOMY_STATUS_COIN, ECONOMY_STATUS_CURRENCY,
+    ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY,
+    ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS, ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON,
+    ECONOMY_STATUS_PER_MESSAGE, ECONOMY_STATUS_PER_VOICE_MINUTE, ECONOMY_STATUS_RECENT,
+    ECONOMY_STATUS_RECENT_MORE_PREFIX, ECONOMY_STATUS_RECENT_MORE_SUFFIX,
+    ECONOMY_STATUS_RECENT_NONE, ECONOMY_STATUS_SECONDS, ECONOMY_STATUS_SHOP, ECONOMY_STATUS_TAP,
+    ECONOMY_STATUS_TITLE, ECONOMY_STATUS_UNTIL, ECONOMY_STATUS_WALLETS,
 };
+use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
 use crate::modlog::batch::ModLogSink;
 use crate::modlog::event::ModLogEvent;
@@ -31,7 +37,11 @@ use crate::modlog::live::ChannelSink;
 use crate::{Context, Data, Error};
 use chrono::{DateTime, Duration, Utc};
 use crack_types::discord::ToRef;
-use serenity::all::{GuildId, Permissions, User, UserId};
+use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
+use serenity::all::{
+    CommandDataOption, CommandDataOptionValue, GenericChannelId, GuildId, Permissions, User, UserId,
+};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 /// Longest immunity a moderator can grant by hours: a year.
@@ -421,7 +431,7 @@ pub fn adjust_events(
     slash_command,
     guild_only,
     default_member_permissions = "MODERATE_MEMBERS",
-    subcommands("status", "grant", "lift", "cancel", "adjust"),
+    subcommands("status", "grant", "lift", "cancel", "adjust", "reveal_command"),
     subcommand_required
 )]
 pub async fn economy(_ctx: Context<'_>) -> Result<(), Error> {
@@ -583,6 +593,156 @@ pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Re
     }
 }
 
+/// The `member` option's user id from an autocomplete interaction's options.
+/// Discord nests a subcommand's options inside the subcommand, so this looks
+/// through every subcommand level; `None` if absent or not a user.
+pub fn member_option(options: &[CommandDataOption]) -> Option<UserId> {
+    options.iter().find_map(|o| match &o.value {
+        CommandDataOptionValue::User(id) if o.name == "member" => Some(*id),
+        CommandDataOptionValue::SubCommand(inner)
+        | CommandDataOptionValue::SubCommandGroup(inner) => member_option(inner),
+        _ => None,
+    })
+}
+
+/// The public line when a moderator unmasks a prank. One copy, shared with
+/// the economy log: it says "a moderator", never which one.
+pub fn mod_unmasked_text(kind: ActionKind, target: UserId, buyer: UserId) -> String {
+    ledger::line(&EconomyLogEvent::Unmasked {
+        action: kind,
+        target,
+        buyer,
+        by: Unmasker::Moderator,
+    })
+}
+
+/// The moderator's private confirmation of an unmasking.
+pub fn mod_reveal_done_text(kind: ActionKind, target: UserId, buyer: UserId) -> String {
+    format!(
+        "{ECONOMY_MOD_REVEAL_DONE_PREFIX} {} {ECONOMY_MOD_REVEAL_DONE_ON} <@{target}> \
+         {ECONOMY_MOD_REVEAL_DONE_BOUGHT_BY} <@{buyer}>.",
+        kind.label().to_lowercase()
+    )
+}
+
+/// The two log events for a moderator's unmasking.
+pub fn reveal_events(
+    by: UserId,
+    kind: ActionKind,
+    target: UserId,
+    buyer: UserId,
+) -> (ModLogEvent, EconomyLogEvent) {
+    (
+        ModLogEvent::PrankUnmasked {
+            by: by.to_ref(),
+            action: kind,
+            target: target.to_ref(),
+            buyer: buyer.to_ref(),
+        },
+        EconomyLogEvent::Unmasked {
+            action: kind,
+            target,
+            buyer,
+            by: Unmasker::Moderator,
+        },
+    )
+}
+
+/// The chosen member's last ten unsigned, unrevealed pranks, as picker
+/// choices; none until a member is chosen.
+// live-Discord glue: needs a live interaction; the options and label come from tested pure functions.
+#[cfg_attr(test, mutants::skip)]
+async fn mod_reveal_autocomplete<'a>(
+    ctx: poise::ApplicationContext<'_, Data, Error>,
+    _partial: &'a str,
+) -> CreateAutocompleteResponse<'a> {
+    let Some(guild) = ctx.interaction.guild_id else {
+        return CreateAutocompleteResponse::new();
+    };
+    let Some(member) = member_option(&ctx.interaction.data.options) else {
+        return CreateAutocompleteResponse::new();
+    };
+    let now = Utc::now();
+    let choices: Vec<AutocompleteChoice<'a>> =
+        reveal_choices(&ctx.data().economy_data(), guild, member, 10)
+            .await
+            .into_iter()
+            .filter_map(|c| {
+                Some(AutocompleteChoice::new(
+                    Cow::Owned(super::shop::reveal_label(c.row.kind, now, c.bought_at)),
+                    u64::try_from(c.row.id).ok()?,
+                ))
+            })
+            .collect();
+    CreateAutocompleteResponse::new().set_choices(Cow::Owned(choices))
+}
+
+/// Unmask who bought an unsigned prank aimed at a member, for free.
+#[poise::command(slash_command, guild_only, rename = "reveal")]
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build.
+#[cfg_attr(test, mutants::skip)]
+pub async fn reveal_command(
+    ctx: Context<'_>,
+    #[description = "Whose prank"] member: User,
+    #[description = "Which one (default: the most recent)"]
+    #[autocomplete = "mod_reveal_autocomplete"]
+    action: Option<i64>,
+) -> Result<(), Error> {
+    // Needs only the database: a moderator can unmask with the economy off.
+    let Some((guild, _pool)) = gate_for(ctx, GateNeed::DatabaseOnly).await? else {
+        return Ok(());
+    };
+    if !mod_gate(ctx).await? {
+        return Ok(());
+    }
+    ctx.defer_ephemeral().await?;
+    let by = ctx.author().id;
+    match mod_reveal(&ctx.data().economy_data(), guild, member.id, action, by).await {
+        Ok(done) => {
+            // Private reply first, then the public line, then the logs.
+            let replied = say(
+                ctx,
+                mod_reveal_done_text(done.kind, member.id, done.buyer),
+                true,
+            )
+            .await;
+            let transport = DiscordTransport::of(ctx.serenity_context());
+            let line = Rendered::text(mod_unmasked_text(done.kind, member.id, done.buyer));
+            if let Err(err) = courier::post_message(
+                &transport,
+                GenericChannelId::new(ctx.channel_id().get()),
+                &line,
+            )
+            .await
+            {
+                tracing::warn!("economy: the moderator unmasking could not be posted: {err:?}");
+                if let Err(err) = say(ctx, ECONOMY_MOD_REVEAL_NOT_POSTED, true).await {
+                    tracing::warn!(
+                        "economy: telling the moderator it was not posted failed: {err:?}"
+                    );
+                }
+            }
+            let (m, e) = reveal_events(by, done.kind, member.id, done.buyer);
+            both_logs(ctx, guild, m, e).await;
+            replied
+        },
+        Err(BuyError::Refused(Refusal::NothingToReveal)) => {
+            say(ctx, ECONOMY_NOTHING_TO_REVEAL, true).await
+        },
+        Err(BuyError::Refused(Refusal::AlreadyRevealed)) => {
+            say(ctx, ECONOMY_MOD_ALREADY_REVEALED, true).await
+        },
+        Err(BuyError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
+        Err(err) => {
+            tracing::warn!(
+                "economy: a moderator reveal on {} failed: {err:?}",
+                member.id
+            );
+            say(ctx, ECONOMY_READ_FAILED, true).await
+        },
+    }
+}
+
 /// Add or remove credits (negative removes). Needs Manage Server.
 #[poise::command(slash_command, guild_only)]
 // live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build.
@@ -679,6 +839,58 @@ mod tests {
             assert!(!line.contains(&MOD.get().to_string()), "{line}");
             assert!(line.contains(&format!("<@{MEMBER}>")), "{line}");
         }
+    }
+
+    /// What Discord sends while the moderator types in `action`: the member
+    /// is a sibling option inside the `reveal` subcommand.
+    fn options(json: &str) -> Vec<CommandDataOption> {
+        serde_json::from_str::<Vec<CommandDataOption>>(json).unwrap()
+    }
+
+    #[test]
+    fn member_option_reads_the_nested_member() {
+        let present = options(
+            r#"[{"name":"reveal","type":1,"options":[
+                {"name":"member","type":6,"value":"2"},
+                {"name":"action","type":4,"value":"5","focused":true}]}]"#,
+        );
+        assert_eq!(member_option(&present), Some(UserId::new(2)));
+        let missing = options(
+            r#"[{"name":"reveal","type":1,"options":[
+                {"name":"action","type":4,"value":"5","focused":true}]}]"#,
+        );
+        assert_eq!(member_option(&missing), None);
+        // Not a user id: a string called "member" is not a member.
+        let wrong = options(
+            r#"[{"name":"reveal","type":1,"options":[
+                {"name":"member","type":3,"value":"2"}]}]"#,
+        );
+        assert_eq!(member_option(&wrong), None);
+        assert_eq!(member_option(&[]), None);
+    }
+
+    #[test]
+    fn mod_unmasked_text_is_exact() {
+        assert_eq!(
+            mod_unmasked_text(
+                crate::economy::settings::ActionKind::Rename,
+                UserId::new(2),
+                UserId::new(3)
+            ),
+            "A moderator unmasked the rename on <@2>: <@3>"
+        );
+    }
+
+    #[test]
+    fn mod_reveal_done_text_is_exact() {
+        assert_eq!(
+            mod_reveal_done_text(
+                crate::economy::settings::ActionKind::Rename,
+                UserId::new(2),
+                UserId::new(3)
+            ),
+            "Unmasked: the rename on <@2> was bought by <@3>."
+        );
     }
 
     #[test]

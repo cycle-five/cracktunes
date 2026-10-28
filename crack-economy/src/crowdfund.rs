@@ -836,6 +836,27 @@ mod tests {
         }
     );
 
+    db_test!(
+        a_crowdfund_is_unmasked_naming_its_starter,
+        |pool: PgPool| async {
+            let data = fund_data(&pool, |_| {}).await;
+            let row = filled_mute(&pool, &data).await;
+            let fake = FakeEconomyDiscord::default();
+            run(&data, &fake, clean(), &row).await.unwrap();
+            // An unsigned fund hides its starter until someone unmasks it.
+            sqlx::query("UPDATE economy_actions SET signed = false WHERE id = $1")
+                .bind(row.id)
+                .execute(&pool)
+                .await
+                .unwrap();
+            let by = UserId::new(99);
+            let done = crate::shop::mod_reveal(&data, G, T, None, by)
+                .await
+                .unwrap();
+            assert_eq!((done.buyer, done.kind), (A, ActionKind::Mute));
+        }
+    );
+
     async fn assert_everyone_refunded(pool: &PgPool, id: i64, reason: &str) {
         assert_eq!(db::balance(pool, G, A).await.unwrap(), 100);
         assert_eq!(db::balance(pool, G, B).await.unwrap(), 100);

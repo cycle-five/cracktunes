@@ -857,6 +857,54 @@ pub struct Revealed {
     pub balance: i64,
 }
 
+/// A prank a moderator unmasked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModRevealed {
+    /// Who bought the unmasked prank.
+    pub buyer: UserId,
+    pub kind: ActionKind,
+}
+
+/// A moderator unmasks a prank aimed at `target` (`/economy reveal`): free,
+/// no purchase row, whether the economy is on or off. `action_id` of `None`
+/// picks the most recent unrevealed one. Nothing to unmask is
+/// `NothingToReveal`; one already unmasked, or unmasked by a racing press
+/// between the check and the stamp, is `AlreadyRevealed`.
+pub async fn mod_reveal(
+    data: &EconomyData,
+    g: GuildId,
+    target: UserId,
+    action_id: Option<i64>,
+    by: UserId,
+) -> Result<ModRevealed, BuyError> {
+    use crate::db::economy as db;
+    let Some(pool) = data.database_pool.as_ref() else {
+        return Err(BuyError::NoDatabase);
+    };
+    let found = db::reveal_candidates(pool, g, target, action_id, action_id.is_none(), 1)
+        .await
+        .map_err(|e| db_failed(&format!("reading pranks on {target} in {g}"), &e))?;
+    let Some(prank) = found.into_iter().next().map(|c| c.row) else {
+        return Err(BuyError::Refused(Refusal::NothingToReveal));
+    };
+    if prank.revealed_at.is_some() {
+        return Err(BuyError::Refused(Refusal::AlreadyRevealed));
+    }
+    let mut conn = pool
+        .acquire()
+        .await
+        .map_err(|e| db_failed(&format!("unmasking action {}", prank.id), &e))?;
+    match db::mark_revealed(&mut conn, prank.id, by).await {
+        Ok(true) => Ok(ModRevealed {
+            buyer: prank.buyer,
+            kind: prank.kind,
+        }),
+        // Another press unmasked it between the check and now.
+        Ok(false) => Err(BuyError::Refused(Refusal::AlreadyRevealed)),
+        Err(err) => Err(db_failed(&format!("unmasking action {}", prank.id), &err)),
+    }
+}
+
 /// The pranks `user` could unmask, newest first, at most `limit`: unsigned,
 /// unrevealed, aimed at them by someone else (spec 4.3). Autocomplete reads
 /// these too.
@@ -2682,6 +2730,81 @@ mod tests {
             );
         }
     });
+
+    const MOD: UserId = UserId::new(99);
+
+    db_test!(mod_reveal_unmasks_for_free, |pool: PgPool| async {
+        // The economy is off: a moderator needs only the database.
+        let data = shop_data(&pool, 1000).await;
+        let fake = FakeEconomyDiscord::default();
+        let (rename, mute, _clown) = three_pranks(&data, &fake).await;
+        let mut s = data.economy.settings(G);
+        s.enabled = false;
+        data.economy.set_settings(s);
+        let actions = count(&pool, "SELECT count(*) FROM economy_actions").await;
+        let balance = db::balance(&pool, G, VICTIM).await.unwrap();
+        let done = mod_reveal(&data, G, VICTIM, None, MOD).await.unwrap();
+        assert_eq!(
+            done,
+            ModRevealed {
+                buyer: U,
+                kind: ActionKind::Mute
+            }
+        );
+        assert_eq!(revealed(&pool, mute).await, (true, Some(MOD.get() as i64)));
+        assert!(!revealed(&pool, rename).await.0);
+        assert_eq!(db::balance(&pool, G, VICTIM).await.unwrap(), balance);
+        assert_eq!(
+            count(&pool, "SELECT count(*) FROM economy_actions").await,
+            actions
+        );
+    });
+
+    db_test!(
+        mod_reveal_refuses_nothing_and_already,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 1000).await;
+            assert_eq!(
+                mod_reveal(&data, G, VICTIM, None, MOD).await,
+                Err(BuyError::Refused(Refusal::NothingToReveal))
+            );
+            let fake = FakeEconomyDiscord::default();
+            let (rename, _mute, _clown) = three_pranks(&data, &fake).await;
+            mod_reveal(&data, G, VICTIM, Some(rename), MOD)
+                .await
+                .unwrap();
+            assert_eq!(
+                mod_reveal(&data, G, VICTIM, Some(rename), MOD).await,
+                Err(BuyError::Refused(Refusal::AlreadyRevealed))
+            );
+        }
+    );
+
+    db_test!(
+        a_paid_reveal_after_a_mod_reveal_is_refused_and_refunded,
+        |pool: PgPool| async {
+            let data = shop_data(&pool, 1000).await;
+            fund(&pool, VICTIM, 300).await;
+            let fake = FakeEconomyDiscord::default();
+            let (rename, _mute, _clown) = three_pranks(&data, &fake).await;
+            mod_reveal(&data, G, VICTIM, Some(rename), MOD)
+                .await
+                .unwrap();
+            assert_eq!(
+                reveal(&data, G, VICTIM, Some(rename)).await,
+                Err(BuyError::Refused(Refusal::AlreadyRevealed))
+            );
+            assert_eq!(db::balance(&pool, G, VICTIM).await.unwrap(), 300);
+            assert_eq!(
+                count(
+                    &pool,
+                    "SELECT count(*) FROM economy_actions WHERE kind = 'reveal'"
+                )
+                .await,
+                0
+            );
+        }
+    );
 
     db_test!(
         reveal_choices_lists_the_latest_ten_unsigned,
