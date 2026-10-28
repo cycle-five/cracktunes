@@ -481,19 +481,6 @@ pub async fn start(
         Ok(o) => o,
         Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
     };
-    // Only a signed starter is named, here as on the card.
-    econ_log_to(
-        &data,
-        ctx.serenity_context(),
-        guild,
-        EconomyLogEvent::CrowdfundStarted {
-            action: kind,
-            starter: Byline::new(starter_id, signed),
-            target,
-            note: log_note,
-        },
-    )
-    .await;
     let price = i64::from(cfg.prices.get(kind).price);
     let mut reply = ECONOMY_FUND_STARTED.to_string();
     // The share cap keeps a first pledge below the price (a fund costs at
@@ -537,7 +524,22 @@ pub async fn start(
         reply.push(' ');
         reply.push_str(ECONOMY_FUND_OPEN_HINT);
     }
-    say(ctx, reply, true).await
+    // Reply first: a slow log channel must not delay it. Only a signed
+    // starter is named, here as on the card.
+    let replied = say(ctx, reply, true).await;
+    econ_log_to(
+        &data,
+        ctx.serenity_context(),
+        guild,
+        EconomyLogEvent::CrowdfundStarted {
+            action: kind,
+            starter: Byline::new(starter_id, signed),
+            target,
+            note: log_note,
+        },
+    )
+    .await;
+    replied
 }
 
 /// The member's balance now (a refund may have moved it), else `fallback`.
