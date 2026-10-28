@@ -1250,6 +1250,7 @@ pub const ECONOMY_BACK_REVEAL_FIRST: &str = "Reveal who did it first.";
 pub const ECONOMY_BUTTON_NOT_YOURS: &str = "Only the person it was done to can use these buttons.";
 pub const ECONOMY_BUTTON_STALE: &str = "That card is out of date.";
 pub const ECONOMY_BACK_MODAL_TITLE: &str = "Rename them back";
+pub const ECONOMY_CARD_NOT_POSTED: &str = "CrackTunes couldn't post the card where it goes, and posting it here would show it was you, so it was skipped. Your purchase still went through.";
 pub const ECONOMY_BACK_LABEL: &str = "New nickname";
 pub const ECONOMY_BACK_DESC: &str = "1 to 32 characters. This is bought like /shop rename.";
 pub const ECONOMY_BACK_PLACEHOLDER: &str = "Up to 32 characters";

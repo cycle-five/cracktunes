@@ -1,7 +1,9 @@
 //! `/crowdfund start|pledge|list`: pool credits for a prank against a member.
 use super::admin::{discord_len, econ_log_to, fit};
 use super::credits::{gate, say};
-use super::shop::{involved_channels, nick_error_text, note_error_text};
+use super::shop::{
+    card_fallback, involved_channels, nick_error_text, note_error_text, CardFallback,
+};
 use crate::db::economy as db;
 use crate::db::economy::ActionRow;
 use crate::economy::cards::{
@@ -22,11 +24,12 @@ use crate::economy::shop::{buy_error_text, preflight_refusal, BuyOutcome};
 use crate::messaging::courier;
 use crate::messaging::format::CONTENT_MAX;
 use crate::messaging::messages::{
-    ECONOMY_CANT_TELL, ECONOMY_FUND_FAILED_CARD_SUFFIX, ECONOMY_FUND_FILLED_FAILED,
-    ECONOMY_FUND_FILLED_LANDED, ECONOMY_FUND_LIST_ENDS, ECONOMY_FUND_LIST_MORE_PREFIX,
-    ECONOMY_FUND_LIST_MORE_SUFFIX, ECONOMY_FUND_LIST_NONE, ECONOMY_FUND_LIST_ON,
-    ECONOMY_FUND_LIST_TITLE, ECONOMY_FUND_OF, ECONOMY_FUND_OPEN_HINT, ECONOMY_FUND_PLEDGED,
-    ECONOMY_FUND_STARTED, ECONOMY_READ_FAILED, ECONOMY_SHOP_BOT_BUYER, ECONOMY_YOU_HAVE,
+    ECONOMY_CANT_TELL, ECONOMY_CARD_NOT_POSTED, ECONOMY_FUND_FAILED_CARD_SUFFIX,
+    ECONOMY_FUND_FILLED_FAILED, ECONOMY_FUND_FILLED_LANDED, ECONOMY_FUND_LIST_ENDS,
+    ECONOMY_FUND_LIST_MORE_PREFIX, ECONOMY_FUND_LIST_MORE_SUFFIX, ECONOMY_FUND_LIST_NONE,
+    ECONOMY_FUND_LIST_ON, ECONOMY_FUND_LIST_TITLE, ECONOMY_FUND_OF, ECONOMY_FUND_OPEN_HINT,
+    ECONOMY_FUND_PLEDGED, ECONOMY_FUND_STARTED, ECONOMY_READ_FAILED, ECONOMY_SHOP_BOT_BUYER,
+    ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
@@ -250,6 +253,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 &cfg,
                 invoked_in,
                 fund_failed_card_text(target),
+                false,
             )
             .await;
             return Fate::Failed(why);
@@ -283,6 +287,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 &cfg,
                 invoked_in,
                 fund_failed_card_text(target),
+                false,
             )
             .await;
             return Fate::Failed(why);
@@ -320,7 +325,17 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 row.note.as_deref(),
                 &done.signers,
             );
-            post(ctx, kind, Some(target_voice), &cfg, invoked_in, card).await;
+            let invoker_named = done.signers.contains(&ctx.author().id);
+            post(
+                ctx,
+                kind,
+                Some(target_voice),
+                &cfg,
+                invoked_in,
+                card,
+                invoker_named,
+            )
+            .await;
             econ_log_to(
                 &data,
                 sctx,
@@ -344,6 +359,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 &cfg,
                 invoked_in,
                 fund_failed_card_text(target),
+                false,
             )
             .await;
             Fate::Failed(why)
@@ -354,7 +370,9 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
 /// Post a fund's card where the prank's card would go: `landed_voice` is
 /// `Some(target's voice)` for a card of a fund that landed, `None` for the
 /// couldn't-land card (which goes to the announce channel or where the
-/// command ran). Falls back to a public follow-up.
+/// command ran). Falls back to a public follow-up only when `invoker_named`
+/// (the card already names the command's invoker, whom Discord labels on a
+/// follow-up); otherwise the card is skipped and the invoker told privately.
 async fn post(
     ctx: Context<'_>,
     kind: ActionKind,
@@ -362,6 +380,7 @@ async fn post(
     cfg: &EconomyConfig,
     invoked_in: ChannelId,
     text: String,
+    invoker_named: bool,
 ) {
     let channel = match landed_voice {
         Some(voice) => card_channel(
@@ -383,8 +402,17 @@ async fn post(
         tracing::warn!(
             "economy: posting the crowdfund card in {channel} failed, answering in the invoking channel: {err:?}"
         );
-        if let Err(err) = courier::reply_rendered(ctx, rendered, false).await {
-            tracing::warn!("economy: the crowdfund card follow-up failed: {err:?}");
+        match card_fallback(invoker_named) {
+            CardFallback::InvokingChannel => {
+                if let Err(err) = courier::reply_rendered(ctx, rendered, false).await {
+                    tracing::warn!("economy: the crowdfund card follow-up failed: {err:?}");
+                }
+            },
+            CardFallback::TellPrivately => {
+                if let Err(err) = say(ctx, ECONOMY_CARD_NOT_POSTED, true).await {
+                    tracing::warn!("economy: the crowdfund card notice failed: {err:?}");
+                }
+            },
         }
     }
 }
@@ -520,7 +548,7 @@ pub async fn start(
             signed.then_some(starter_id),
         );
         let here = ChannelId::new(ctx.channel_id().get());
-        post(ctx, kind, None, &cfg, here, card).await;
+        post(ctx, kind, None, &cfg, here, card, signed).await;
         reply.push(' ');
         reply.push_str(ECONOMY_FUND_OPEN_HINT);
     }

@@ -26,12 +26,12 @@ use crate::economy::theme::{buy_theme, parse_start, StartError, ThemeRequest};
 use crate::economy::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::courier;
 use crate::messaging::messages::{
-    DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_CANT_TELL, ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL,
-    ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK, ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG,
-    ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK, ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG,
-    ECONOMY_PLAY_NAME_A_SONG, ECONOMY_PLAY_NOT_CHARGED, ECONOMY_PLAY_ONE_SONG,
-    ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS,
-    ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED,
+    DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_CANT_TELL, ECONOMY_CARD_NOT_POSTED, ECONOMY_DOCS_URL,
+    ECONOMY_IMMUNE_UNTIL, ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK, ECONOMY_NICK_MENTION,
+    ECONOMY_NICK_TOO_LONG, ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK, ECONOMY_NOTE_MENTION,
+    ECONOMY_NOTE_TOO_LONG, ECONOMY_PLAY_NAME_A_SONG, ECONOMY_PLAY_NOT_CHARGED,
+    ECONOMY_PLAY_ONE_SONG, ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED,
+    ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED,
     ECONOMY_SHOP_CLEANSED_PREFIX, ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL,
     ECONOMY_SHOP_DONE, ECONOMY_SHOP_FROM, ECONOMY_SHOP_GROUP_PLAY, ECONOMY_SHOP_IMMUNITY_NOTE,
     ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_MUSIC, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
@@ -255,6 +255,25 @@ pub fn involved_channels(
     }
 }
 
+/// Where a card goes when it can't be posted in its own channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardFallback {
+    /// A public follow-up in the invoking channel.
+    InvokingChannel,
+    /// Skip the card and tell the invoker privately.
+    TellPrivately,
+}
+
+/// A follow-up is labelled "<invoker> used /command", so it falls back
+/// publicly only when the card already names the invoker.
+pub fn card_fallback(invoker_named: bool) -> CardFallback {
+    if invoker_named {
+        CardFallback::InvokingChannel
+    } else {
+        CardFallback::TellPrivately
+    }
+}
+
 /// Reply to a purchase error privately.
 async fn say_buy_error(ctx: Context<'_>, err: BuyError, currency: &str) -> Result<(), Error> {
     say(ctx, buy_error_text(&err, currency), true).await
@@ -453,8 +472,17 @@ pub(crate) async fn run_prank(
         tracing::warn!(
             "economy: posting the {kind:?} card in {channel} failed, answering in the invoking channel: {err:?}"
         );
-        if let Err(err) = answer.public(rendered).await {
-            tracing::warn!("economy: the {kind:?} card follow-up failed: {err:?}");
+        match card_fallback(signed) {
+            CardFallback::InvokingChannel => {
+                if let Err(err) = answer.public(rendered).await {
+                    tracing::warn!("economy: the {kind:?} card follow-up failed: {err:?}");
+                }
+            },
+            CardFallback::TellPrivately => {
+                if let Err(err) = answer.private(ECONOMY_CARD_NOT_POSTED.to_string()).await {
+                    tracing::warn!("economy: the {kind:?} card notice failed: {err:?}");
+                }
+            },
         }
     }
     if let Some(event) = shop_event(
@@ -1225,6 +1253,20 @@ mod tests {
     fn menu(s: &EconomySettings, perms: Option<&preflight::BotPerms>) -> String {
         let (report, _) = preflight::economy_preflight(&s.config, perms, |c| format!("<#{c}>"));
         menu_text(s, &report)
+    }
+
+    #[test]
+    fn an_unsigned_card_never_falls_back_publicly() {
+        assert_eq!(card_fallback(false), CardFallback::TellPrivately);
+        assert_eq!(card_fallback(true), CardFallback::InvokingChannel);
+    }
+
+    #[test]
+    fn not_posted_text_is_exact() {
+        assert_eq!(
+            ECONOMY_CARD_NOT_POSTED,
+            "CrackTunes couldn't post the card where it goes, and posting it here would show it was you, so it was skipped. Your purchase still went through."
+        );
     }
 
     #[test]
