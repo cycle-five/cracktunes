@@ -728,6 +728,8 @@ pub const ROOM_DESC_WHO_ROLE: &str = "Only for the three role choices.";
 pub const ROOM_DONE_KICKED: &str = "Kicked";
 pub const ROOM_DONE_LET_IN: &str = "Let back in";
 pub const ROOM_DONE_MUTED: &str = "Muted";
+pub const ROOM_DONE_MUTED_ON_REJOIN: &str =
+    "CrackTunes needs Mute Members to silence them now, so it takes effect when they rejoin.";
 pub const ROOM_DONE_UNMUTED: &str = "Unmuted";
 pub const ROOM_DONE_LOCKED: &str = "🔒 Room locked. Nobody new can join.";
 pub const ROOM_DONE_UNLOCKED: &str = "🔓 Room unlocked.";

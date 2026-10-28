@@ -7,10 +7,11 @@
 //! server.
 
 use super::discord::{DiscordError, RoomsDiscord};
+use super::lifecycle::{is_bot, Sweep};
 use super::RoomsData;
 use crate::db::mute_holds;
 use dashmap::DashMap;
-use serenity::all::{ChannelId, GuildId, UserId};
+use serenity::all::{ChannelId, Context, GuildId, UserId, VoiceState};
 use std::sync::Arc;
 use tokio::sync::{Mutex, OwnedMutexGuard};
 
@@ -265,6 +266,61 @@ pub async fn settle(
             forget(pool, holds, g, u).await;
             Settled::Dropped
         },
+    }
+}
+
+/// What a voice update means for a member's mute: `Arrived` when the channel
+/// changed to one, else `Other` (a self-mute or a camera in place).
+fn cause_of(old: Option<ChannelId>, new: Option<ChannelId>) -> Cause {
+    match new {
+        Some(c) if old != Some(c) => Cause::Arrived(c),
+        _ => Cause::Other,
+    }
+}
+
+/// Every voice update, before the rooms' own handling. Synchronous: any work
+/// is spawned. Bots and updates without a server are skipped; a member who
+/// holds nothing and arrives nowhere that mutes them costs no database read. (Glue over a live `Context`; `cause_of` and
+/// `settle` carry the tests.)
+pub fn on_voice_state(data: &RoomsData, ctx: &Context, old: Option<&VoiceState>, new: &VoiceState) {
+    let Some(g) = new.guild_id else {
+        return;
+    };
+    if is_bot(&ctx.cache, g, new) {
+        return;
+    }
+    let u = new.user_id;
+    let cause = cause_of(old.and_then(|o| o.channel_id), new.channel_id);
+    let arrives_in_muting_room = matches!(cause, Cause::Arrived(c) if data.rooms.get(c).is_some());
+    if !data.rooms.holds.may_hold(g, u) && !arrives_in_muting_room {
+        return;
+    }
+    let data = data.clone();
+    let discord = Sweep::live(ctx).discord;
+    tokio::spawn(async move {
+        settle(&data, &*discord, g, u, cause).await;
+    });
+}
+
+/// Settle every hold the server has, once its rooms are back (a hold settled
+/// before its room is live would be lifted wrongly). Without a database:
+/// nothing.
+pub async fn reconcile(data: &RoomsData, discord: &dyn RoomsDiscord, g: GuildId) {
+    let Some(pool) = &data.database_pool else {
+        return;
+    };
+    let owed = match mute_holds::holds_in(pool, g).await {
+        Ok(owed) => owed,
+        Err(e) => {
+            tracing::warn!("room mute: {g}: listing the holds: {e}");
+            return;
+        },
+    };
+    for (u, ch) in &owed {
+        data.rooms.holds.set(g, *u, *ch);
+    }
+    for (u, _) in owed {
+        settle(data, discord, g, u, Cause::Other).await;
     }
 }
 
@@ -621,5 +677,101 @@ mod tests {
         let out = settle(&data, &fake, G, T, Cause::Other).await;
         assert_eq!(out, Settled::Failed);
         assert_eq!(held(&data).await, Some(R));
+    }
+
+    #[test]
+    fn a_channel_change_is_an_arrival_and_an_update_in_place_is_not() {
+        assert_eq!(cause_of(None, Some(R)), Cause::Arrived(R));
+        assert_eq!(cause_of(Some(OTHER), Some(R)), Cause::Arrived(R));
+        assert_eq!(cause_of(Some(R), Some(R)), Cause::Other);
+        assert_eq!(cause_of(Some(R), None), Cause::Other);
+        assert_eq!(cause_of(None, None), Cause::Other);
+    }
+
+    /// The reconcile path: rooms are restored from their rows first, so a held
+    /// member found in their still-muting room stays muted.
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn reconcile_settles_after_rooms_are_back(pool: PgPool) {
+        use crate::db::rooms::StoredRoom;
+        use crate::modlog::batch::NoopSink;
+        use crate::rooms::facts::tests::empty;
+        use crate::rooms::lifecycle::{
+            reconcile as reconcile_rooms, Channels, ExistingChannel, Sweep,
+        };
+        use crate::rooms::ops::RoomCx;
+        use crack_common::test_support::FakeTransport;
+        use std::collections::HashMap;
+
+        let data = RoomsData {
+            database_pool: Some(pool.clone()),
+            ..RoomsData::default()
+        };
+        // Two holds from before the restart: T in R, and U outside any room.
+        let u2 = UserId::new(8);
+        mute_holds::hold(&pool, G, T, R).await.unwrap();
+        mute_holds::hold(&pool, G, u2, R).await.unwrap();
+        let mut state = RoomState::new(UserId::new(100));
+        state.muted.insert(T);
+        let row = StoredRoom {
+            channel: R,
+            guild: G,
+            owner: UserId::new(100),
+            state,
+            baseline: vec![],
+        };
+        let fake = Arc::new(FakeRoomsDiscord::default());
+        fake.set_voice(T, at(R, true));
+        fake.set_voice(u2, at(HUB, true));
+        let sweep = Sweep {
+            discord: fake.clone(),
+            occupancy: Arc::new(NoOccupants),
+        };
+        let transport = FakeTransport::default();
+        let cx = RoomCx {
+            data: &data,
+            discord: &*fake,
+            transport: &transport,
+            log: &NoopSink,
+        };
+        let channels = Channels {
+            listed: HashMap::from([(
+                R,
+                ExistingChannel {
+                    name: "room".into(),
+                    limit: 0,
+                },
+            )]),
+            read_at: serenity::all::Timestamp::now(),
+        };
+        let settings = crate::rooms::settings::RoomSettings::off(G);
+        assert!(data.rooms.get(R).is_none());
+        reconcile_rooms(
+            &cx,
+            &sweep,
+            &empty(G),
+            vec![row],
+            &channels,
+            &settings,
+            None,
+        )
+        .await;
+        assert!(data.rooms.get(R).is_some());
+        // T is still muted in R, which is back and muting them: left alone.
+        assert_eq!(held(&data).await, Some(R));
+        assert!(!fake.calls().contains(&Call::SetMute(7, false)));
+        // U was found outside: the debt is paid.
+        assert!(fake.calls().contains(&Call::SetMute(8, false)));
+        assert_eq!(mute_holds::held_for(&pool, G, u2).await.unwrap(), None);
+    }
+
+    struct NoOccupants;
+    impl crate::rooms::lifecycle::Occupancy for NoOccupants {
+        fn humans_in(&self, _guild: GuildId, _room: ChannelId) -> usize {
+            1
+        }
     }
 }

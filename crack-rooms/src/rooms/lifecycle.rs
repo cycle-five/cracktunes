@@ -6,6 +6,7 @@
 
 use super::discord::{DiscordError, LiveRoomsDiscord, NewRoom, RoomsDiscord};
 use super::facts::{gather, GuildFacts};
+use super::mute_hold;
 use super::ops::{post_panel, RoomCx};
 use super::overwrites::{diff, room_overwrites, OverwriteChange};
 use super::registry::{LiveRoom, RenameWindow};
@@ -738,6 +739,10 @@ pub async fn reconcile(
         }
     }
 
+    // Held server mutes, now that the rooms they are held for are back: a
+    // hold settled before its room is live would be lifted wrongly.
+    mute_hold::reconcile(data, cx.discord, guild).await;
+
     // Members found sitting in the hub are fresh joins.
     let Some(hub) = hub.filter(|h| settings.enabled && settings.hub == Some(h.channel)) else {
         return;
@@ -854,6 +859,8 @@ pub async fn on_voice_state(
     let Some(guild) = new.guild_id else {
         return;
     };
+    // Before `classify`: a mute in place (a moderator's unmute) is no move.
+    mute_hold::on_voice_state(data, ctx, old, new);
     let Some(change) = classify(old.and_then(|o| o.channel_id), new.channel_id) else {
         return;
     };
@@ -874,7 +881,7 @@ pub async fn on_voice_state(
     }
 }
 
-fn is_bot(cache: &Cache, guild: GuildId, vs: &VoiceState) -> bool {
+pub(crate) fn is_bot(cache: &Cache, guild: GuildId, vs: &VoiceState) -> bool {
     if vs.user_id == cache.current_user().id {
         return true;
     }
@@ -1041,6 +1048,8 @@ fn nothing_to_reconcile(
 async fn reconcile_with(data: &RoomsData, ctx: &Context, guild: GuildId, stored: Vec<StoredRoom>) {
     let settings = data.rooms.settings(guild);
     if nothing_to_reconcile(data, guild, &settings, &stored) {
+        // No rooms at all: any server mute still held is owed back.
+        mute_hold::reconcile(data, &*Sweep::live(ctx).discord, guild).await;
         return;
     }
     // The hub's occupants by name, first: each may get a room, the joiner

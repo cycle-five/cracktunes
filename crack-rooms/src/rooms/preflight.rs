@@ -23,7 +23,7 @@ pub const NEED_IN_HUB: Permissions = Permissions::VIEW_CHANNEL
     .union(Permissions::MOVE_MEMBERS);
 
 /// Nice to have; rooms work without it.
-pub const OPTIONAL: Permissions = Permissions::PIN_MESSAGES;
+pub const OPTIONAL: Permissions = Permissions::PIN_MESSAGES.union(Permissions::MUTE_MEMBERS);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Where {
@@ -198,6 +198,19 @@ mod tests {
                     perms: OPTIONAL
                 }
             ]
+        );
+    }
+
+    #[test]
+    fn mute_members_is_optional() {
+        let mut i = input();
+        i.bot_in_category -= Permissions::MUTE_MEMBERS;
+        assert_eq!(
+            preflight(&i),
+            vec![Finding::Optional {
+                at: Where::Category(CAT),
+                perms: Permissions::MUTE_MEMBERS
+            }]
         );
     }
 
