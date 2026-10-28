@@ -161,7 +161,9 @@ async fn room_mutes(data: &RoomsData, g: GuildId, ch: ChannelId, u: UserId) -> b
 /// lock, so never call this with one held.
 ///
 /// A failed unmute keeps the hold; it is retried at the next event or
-/// reconcile, never looped.
+/// reconcile, never looped. So does a mute whose answer was lost (an error
+/// other than a refusal or the member having left voice): Discord may have
+/// applied it, and a mute with no record would outlive the room.
 pub async fn settle(
     data: &RoomsData,
     discord: &dyn RoomsDiscord,
@@ -221,16 +223,20 @@ pub async fn settle(
             holds.set(g, u, c);
             match discord.set_mute(g, u, true).await {
                 Ok(()) => Settled::Muted,
-                Err(e) => {
+                Err(DiscordError::MissingPermissions) => {
                     forget(pool, holds, g, u).await;
-                    match e {
-                        DiscordError::MissingPermissions => Settled::MuteRefused,
-                        DiscordError::NotConnected => Settled::Unchanged,
-                        other => {
-                            tracing::warn!("room mute: {g}: muting {u}: {other:?}");
-                            Settled::Failed
-                        },
-                    }
+                    Settled::MuteRefused
+                },
+                Err(DiscordError::NotConnected) => {
+                    forget(pool, holds, g, u).await;
+                    Settled::Unchanged
+                },
+                // A timeout or a 5xx may have been applied by Discord anyway:
+                // the row stays, so a mute that did land is never unrecorded.
+                // The next settle lifts it or drops it.
+                Err(other) => {
+                    tracing::warn!("room mute: {g}: muting {u}: {other:?}");
+                    Settled::Failed
                 },
             }
         },
@@ -551,5 +557,69 @@ mod tests {
         let out = settle(&data, &fake, G, T, Cause::Other).await;
         assert_eq!(out, Settled::Unmuted);
         assert_eq!(held(&data).await, None);
+    }
+
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn a_mute_whose_answer_is_lost_keeps_the_hold(pool: PgPool) {
+        let data = data_with_room(pool);
+        let fake = FakeRoomsDiscord::default();
+        fake.set_voice(T, at(R, false));
+        fake.fail_next(CallKind::SetMute, DiscordError::Other("timeout".into()));
+        let out = settle(&data, &fake, G, T, Cause::MutedInRoom(R)).await;
+        assert_eq!(out, Settled::Failed);
+        assert_eq!(held(&data).await, Some(R));
+        assert!(data.rooms.holds.may_hold(G, T));
+        // It did land: in R and server-muted, the hold stands, no call.
+        fake.set_voice(T, at(R, true));
+        let before = fake.calls().len();
+        assert_eq!(
+            settle(&data, &fake, G, T, Cause::Other).await,
+            Settled::Unchanged
+        );
+        assert_eq!(fake.calls().len(), before + 1, "only the voice read");
+        assert_eq!(held(&data).await, Some(R));
+        // It did not: in R and not muted, the hold is dropped.
+        fake.set_voice(T, at(R, false));
+        assert_eq!(
+            settle(&data, &fake, G, T, Cause::Other).await,
+            Settled::Dropped
+        );
+        assert_eq!(held(&data).await, None);
+    }
+
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn muting_someone_who_just_left_voice_releases_the_hold(pool: PgPool) {
+        let data = data_with_room(pool);
+        let fake = FakeRoomsDiscord::default();
+        fake.set_voice(T, at(R, false));
+        fake.fail_next(CallKind::SetMute, DiscordError::NotConnected);
+        let out = settle(&data, &fake, G, T, Cause::MutedInRoom(R)).await;
+        assert_eq!(out, Settled::Unchanged);
+        assert_eq!(held(&data).await, None);
+        assert!(!data.rooms.holds.may_hold(G, T));
+    }
+
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn an_unreadable_voice_state_leaves_the_hold_alone(pool: PgPool) {
+        let data = data_with_room(pool);
+        let fake = FakeRoomsDiscord::default();
+        fake.set_voice(T, at(R, false));
+        settle(&data, &fake, G, T, Cause::Arrived(R)).await;
+        fake.fail_next(CallKind::VoiceNow, DiscordError::Other("boom".into()));
+        let out = settle(&data, &fake, G, T, Cause::Other).await;
+        assert_eq!(out, Settled::Failed);
+        assert_eq!(held(&data).await, Some(R));
     }
 }
