@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Upgrading to v0.46.0
+
+- **Economy lines stop going to the mod log.** Pick a public channel as the
+  **Economy log** on the dashboard (Settings, Economy) to get them back, and
+  point the mod log at a moderators-only channel. Nothing is posted to an
+  economy log until you set one.
+
 ### Security
 
 - **A YouTube playlist link could make yt-dlp read files and post them to the
@@ -42,6 +49,28 @@
 
 ### Added
 
+- **An economy log.** A new per-server setting, **Economy log**, beside the
+  announcement channel on the dashboard. It is public by design: it carries
+  who used what on whom, crowdfunds, pranks ended early and unmaskings, as
+  plain lines that never ping, and it never names an unsigned buyer, crowdfund
+  starter or backer. A crowdfund names each person only if their own pledge was
+  signed; the rest are counted. Moderators' actions appear as "a moderator".
+  It is off until a channel is set, needs View Channel and Send Messages there,
+  and `/economy status` shows it.
+- **`/economy reveal <member> [action]`.** A moderator unmasks an unsigned
+  prank for free. CrackTunes posts "A moderator unmasked the rename on @Jo:
+  @Mika" as a plain message in the channel (not as a reply to the command,
+  which Discord would label with the moderator's name), tells the moderator
+  privately, and logs it to both logs. The effects are those of a bought
+  reveal.
+- **The mod log records what the shop did to a member**, with no buyer:
+  "CrackTunes server-muted @Jo (shop: Mute)", and the same for unmute, deafen,
+  undeafen, moves and nickname changes. Moderators' economy actions (immunity,
+  credit adjustments, `/economy cancel`, `/economy reveal`) go to both logs,
+  naming the moderator in the mod log and saying "a moderator" in the economy
+  log.
+- **Mute Members is an optional room permission**, shown by `/rooms status`
+  and the dashboard.
 - **The economy, part 1: credits, immunity and a coinflip.** A server can turn
   on an economy under the dashboard's Settings (off by default, free, and it
   needs a database). Members earn credits for each minute in voice with at least
@@ -335,6 +364,21 @@
 
 ### Changed
 
+- **The mod log no longer carries the economy's story.** Shop purchases,
+  cleanses and crowdfund lines moved to the economy log, and the mod log never
+  names a buyer, a crowdfund's starter or a backer. Every log line is now
+  written as if the whole server reads it.
+- **A room's Mute now server-mutes the member while they are in the room**, so
+  it works mid-sentence; before, it only denied Speak, which Discord applies
+  when someone next joins. Moving elsewhere (the hub included) unmutes at once;
+  after a disconnect the unmute is owed until their next voice join in the
+  server (or the bot's startup check); rejoining the room mutes again. A
+  moderator's server-unmute in the room wins until they rejoin, someone already
+  server-muted by a moderator or the shop is never taken over, and the Unmute
+  button lifts both. Without Mute Members the room falls back to the Speak deny
+  and says so. The room's own mute is not logged twice. Known edge: if the room
+  mutes someone the shop had already muted, they can speak in the room after
+  the shop's mute ends, until they rejoin.
 - **A YouTube playlist link now queues up to 300 tracks, not 100.** Set
   `playlist_limit` in `cracktunes.toml`, or `PLAYLIST_LIMIT` in the environment,
   to change it, and the YouTube playlist reader follows as many pages as that
@@ -410,6 +454,10 @@
 
 ### Fixed
 
+- **An unsigned prank card could name its buyer.** When a card couldn't be
+  posted where it goes, it fell back to a reply to the buyer's command, which
+  Discord labels "<buyer> used /shop ...". An unsigned card is now skipped and
+  the buyer is told privately; a signed card keeps the fallback.
 - **A track is looked up once, not twice.** Playing a link or a search ran
   yt-dlp for the track's title and then again to open its stream, because
   songbird's `YoutubeDl` kept only the metadata. The CycleFive fork now keeps
