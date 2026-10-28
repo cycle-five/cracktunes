@@ -9,7 +9,6 @@ use crate::economy::buttons::{card_buttons, carries_buttons};
 use crate::economy::cards::{
     card_channel, card_destination, card_text, dedication_card_text, jump_card_text,
 };
-use crate::economy::discord::LiveEconomyDiscord;
 use crate::economy::facts::{gather_facts, Subject};
 use crate::economy::preflight::{self, report_for, ActionPreflight};
 use crate::economy::settings::{
@@ -370,9 +369,7 @@ pub(crate) async fn run_prank(
         signed,
         now,
     };
-    let discord = LiveEconomyDiscord {
-        http: ctx.http.clone(),
-    };
+    let discord = crate::economy::live_discord(data, ctx.http.clone(), cache.clone());
     let bought = match buy(
         &data.economy_data(),
         &discord,

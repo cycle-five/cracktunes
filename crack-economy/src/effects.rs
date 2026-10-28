@@ -5,13 +5,13 @@
 //! act through the [`EconomyDiscord`] seam and read the cache through
 //! [`MemberView`], so tests drive them without Discord.
 
-use super::discord::{EconDiscordError, EconomyDiscord, LiveEconomyDiscord};
+use super::discord::{EconDiscordError, EconomyDiscord, LiveShopDiscord};
 use super::settings::ActionKind;
 use super::wallet::{ActionPayload, ActionState};
 use crate::db::economy::{self, ActionRow};
 use crate::EconomyData;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use serenity::all::{Cache, ChannelId, GuildId, Http, UserId};
+use serenity::all::{Cache, ChannelId, GuildId, UserId};
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
@@ -689,7 +689,7 @@ where
 }
 
 /// Spawns the 15 s sweeper, the first time only and only with a database.
-pub fn start_sweeper(data: EconomyData, http: Arc<Http>, cache: Arc<Cache>) {
+pub fn start_sweeper(data: EconomyData, discord: LiveShopDiscord, cache: Arc<Cache>) {
     if !data.economy.start_sweeper_once() {
         return;
     }
@@ -697,7 +697,6 @@ pub fn start_sweeper(data: EconomyData, http: Arc<Http>, cache: Arc<Cache>) {
         return;
     }
     spawn_supervised("sweeper", async move {
-        let discord = LiveEconomyDiscord { http };
         let mut tick = tokio::time::interval(SWEEP_EVERY);
         tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
@@ -1002,6 +1001,81 @@ mod tests {
             async fn $name($pool: PgPool) $body
         };
     }
+
+    /// What the shop's door reported, in order.
+    #[derive(Default)]
+    struct ChangeRecorder(Mutex<Vec<(UserId, crate::discord::ShopChange, ActionKind)>>);
+
+    impl crate::discord::ShopChangeLog for ChangeRecorder {
+        fn changed(
+            &self,
+            _g: GuildId,
+            u: UserId,
+            change: crate::discord::ShopChange,
+            kind: ActionKind,
+        ) {
+            self.0.lock().unwrap().push((u, change, kind));
+        }
+    }
+
+    db_test!(apply_and_undo_each_report_once, |pool| {
+        use crate::discord::{Logged, ShopChange};
+        use crate::shop::{buy, BuyRequest};
+        use crate::target::TargetFacts;
+        crate::db::economy::save_settings(
+            &pool,
+            &EconomySettings {
+                enabled: true,
+                ..EconomySettings::off(G)
+            },
+        )
+        .await
+        .unwrap();
+        fund_wallet(&pool, BUYER, 1000).await;
+        let data = data_with(&pool);
+        assert!(crate::load_settings(&data, G).await);
+        let rec = Arc::new(ChangeRecorder::default());
+        let door = Logged::new(FakeEconomyDiscord::default(), rec.clone());
+        let facts = TargetFacts {
+            is_bot: false,
+            is_self: false,
+            is_owner: false,
+            top_role_position: Some(1),
+            bot_top_role_position: Some(5),
+            in_voice: Some(ch(5)),
+            server_mute: false,
+            server_deaf: false,
+            opted_out: false,
+            protection: None,
+            has_mirror: false,
+            running_same_kind: None,
+            can_join_destination: Some(true),
+            current_nick: None,
+            display_name: "disp".to_string(),
+        };
+        let req = BuyRequest {
+            guild: G,
+            buyer: BUYER,
+            kind: ActionKind::Mute,
+            target: Some(U),
+            nick: None,
+            note: None,
+            signed: false,
+            now: t0(),
+        };
+        let bought = buy(&data, &door, facts.clone(), facts, None, req)
+            .await
+            .unwrap();
+        let until = bought.until.expect("a mute is timed");
+        sweep(&data, &door, until + mins(1), &|_| true).await;
+        assert_eq!(
+            *rec.0.lock().unwrap(),
+            vec![
+                (U, ShopChange::Mute(true), ActionKind::Mute),
+                (U, ShopChange::Mute(false), ActionKind::Mute),
+            ]
+        );
+    });
 
     db_test!(sweep_restores_the_old_nickname, |pool| {
         let data = data_with(&pool);

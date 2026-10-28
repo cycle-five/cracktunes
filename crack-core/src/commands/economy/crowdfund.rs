@@ -11,7 +11,7 @@ use crate::economy::crowdfund::{
     execute, not_landed_reason, pledge as pledge_to, start as start_fund, FillFacts, FundRequest,
     NotLanded, PledgeRequest, LIST_MAX_FUNDS,
 };
-use crate::economy::discord::{EconDiscordError, LiveEconomyDiscord};
+use crate::economy::discord::EconDiscordError;
 use crate::economy::facts::{gather_facts, Subject};
 use crate::economy::preflight;
 use crate::economy::settings::{
@@ -282,9 +282,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
     let channels = involved_channels(kind, facts.in_voice, None, cfg.jail_channel_id);
     let perms = preflight::bot_perms(&sctx.cache, guild, &channels);
     let pre = preflight_refusal(kind, perms.as_ref(), &channels);
-    let discord = LiveEconomyDiscord {
-        http: sctx.http.clone(),
-    };
+    let discord = crate::economy::live_discord(&ctx.data(), sctx.http.clone(), sctx.cache.clone());
     let target_voice = facts.in_voice;
     match execute(
         &data.economy_data(),

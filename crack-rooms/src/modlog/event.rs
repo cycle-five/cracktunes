@@ -5,18 +5,24 @@ use crack_common::messages::{
     MODLOG_ADJUSTED_CREDITS_OF, MODLOG_AND, MODLOG_AUDIT_FOOTER, MODLOG_BOT_MARK, MODLOG_BY,
     MODLOG_BY_ONE_OF, MODLOG_CROWDFUNDED_BY, MODLOG_CROWDFUND_STARTED, MODLOG_DEAFENED,
     MODLOG_DISCONNECTED, MODLOG_FROM, MODLOG_GRANTED_IMMUNITY_TO, MODLOG_IN, MODLOG_KICKED,
-    MODLOG_LET_BACK_IN, MODLOG_LIFTED_IMMUNITY_OF, MODLOG_MINUS, MODLOG_MORE, MODLOG_MUTED,
-    MODLOG_OF, MODLOG_ONE_OR_MORE_OF, MODLOG_REASON_FIELD, MODLOG_SHOP_ANONYMOUS,
-    MODLOG_SHOP_BOUNCED_PREFIX, MODLOG_SHOP_BOUNCED_SUFFIX, MODLOG_SHOP_CLEANSED, MODLOG_SHOP_ON,
+    MODLOG_LET_BACK_IN, MODLOG_LIFTED_IMMUNITY_OF, MODLOG_MINUS, MODLOG_MORE, MODLOG_MOVED,
+    MODLOG_MUTED, MODLOG_OF, MODLOG_ONE_OR_MORE_OF, MODLOG_REASON_FIELD, MODLOG_SHOP_ANONYMOUS,
+    MODLOG_SHOP_BOUNCED_PREFIX, MODLOG_SHOP_BOUNCED_SUFFIX, MODLOG_SHOP_CHANGE_ACTOR,
+    MODLOG_SHOP_CHANGE_CHANGED, MODLOG_SHOP_CHANGE_CLEARED, MODLOG_SHOP_CHANGE_NICKNAME,
+    MODLOG_SHOP_CHANGE_NICKNAME_TO, MODLOG_SHOP_CHANGE_SERVER_DEAFENED,
+    MODLOG_SHOP_CHANGE_SERVER_MUTED, MODLOG_SHOP_CHANGE_SHOP, MODLOG_SHOP_CLEANSED, MODLOG_SHOP_ON,
     MODLOG_SHOP_SIGNED, MODLOG_SHOP_USED, MODLOG_TITLE_BATCH, MODLOG_TITLE_CREDITS_ADJUSTED,
     MODLOG_TITLE_CROWDFUND, MODLOG_TITLE_CROWDFUND_STARTED, MODLOG_TITLE_DEAFEN,
     MODLOG_TITLE_DISCONNECT, MODLOG_TITLE_IMMUNITY_GRANTED, MODLOG_TITLE_IMMUNITY_LIFTED,
     MODLOG_TITLE_MOVE, MODLOG_TITLE_MUTE, MODLOG_TITLE_ROOM_KICK, MODLOG_TITLE_ROOM_MUTE,
     MODLOG_TITLE_ROOM_UNBLOCK, MODLOG_TITLE_ROOM_UNMUTE, MODLOG_TITLE_SHOP_ACTION,
-    MODLOG_TITLE_SHOP_CANCELLED, MODLOG_TITLE_UNDEAFEN, MODLOG_TITLE_UNMUTE, MODLOG_TO,
+    MODLOG_TITLE_SHOP_CANCELLED, MODLOG_TITLE_SHOP_DEAFEN, MODLOG_TITLE_SHOP_MOVE,
+    MODLOG_TITLE_SHOP_MUTE, MODLOG_TITLE_SHOP_NICKNAME, MODLOG_TITLE_SHOP_UNDEAFEN,
+    MODLOG_TITLE_SHOP_UNMUTE, MODLOG_TITLE_UNDEAFEN, MODLOG_TITLE_UNMUTE, MODLOG_TO,
     MODLOG_UNDEAFENED, MODLOG_UNMUTED, MODLOG_UNTIL, MODLOG_UNTIL_LIFTED,
 };
 use crack_common::render::{RenderCx, Rendered};
+use crack_economy::discord::ShopChange;
 use crack_economy::settings::ActionKind;
 use crack_model::{Card, Field, Footer, Mention, RoomRef, UserRef};
 use crack_types::discord::ToRef;
@@ -137,6 +143,14 @@ pub enum ModLogEvent {
         /// Whose mirror bounced the prank onto the buyer.
         mirrored_from: Option<UserRef>,
     },
+    /// One member change the shop made (a prank landing or ending, a lock's
+    /// revert, a jail move...). CrackTunes is the actor, as in Discord's own
+    /// audit log: there is no buyer field, so no line can name one.
+    ShopChange {
+        target: UserRef,
+        change: ShopChange,
+        action: ActionKind,
+    },
     /// The pranks running on `target` were ended early: by `target`'s own
     /// cleanse (`by == target`) or a moderator's `/economy cancel`.
     ShopCancelled {
@@ -179,6 +193,7 @@ impl std::fmt::Display for ModLogEvent {
             Self::ImmunityLifted { .. } => "immunity_lifted",
             Self::CreditsAdjusted { .. } => "credits_adjusted",
             Self::ShopAction { .. } => "shop_action",
+            Self::ShopChange { .. } => "shop_change",
             Self::ShopCancelled { .. } => "shop_cancelled",
             Self::CrowdfundStarted { .. } => "crowdfund_started",
             Self::CrowdfundExecuted { .. } => "crowdfund_executed",
@@ -190,6 +205,15 @@ impl std::fmt::Display for ModLogEvent {
 impl From<ModLogEvent> for crack_common::message::CrackedMessage {
     fn from(e: ModLogEvent) -> Self {
         Self::ModLog(Box::new(e))
+    }
+}
+
+/// The event for one change the shop made to member `u`.
+pub fn shop_change_event(u: UserId, change: ShopChange, kind: ActionKind) -> ModLogEvent {
+    ModLogEvent::ShopChange {
+        target: u.to_ref(),
+        change,
+        action: kind,
     }
 }
 
@@ -466,6 +490,49 @@ fn parts(e: &ModLogEvent) -> Parts {
                 ..plain(MODLOG_TITLE_SHOP_ACTION, d)
             }
         },
+        ModLogEvent::ShopChange {
+            target,
+            change,
+            action,
+        } => {
+            let t = user(target);
+            let actor = MODLOG_SHOP_CHANGE_ACTOR;
+            let tail = format!("{MODLOG_SHOP_CHANGE_SHOP} {})", action.label());
+            let (title, line) = match change {
+                ShopChange::Mute(true) => (
+                    MODLOG_TITLE_SHOP_MUTE,
+                    format!("{actor} {MODLOG_SHOP_CHANGE_SERVER_MUTED} {t}"),
+                ),
+                ShopChange::Mute(false) => (
+                    MODLOG_TITLE_SHOP_UNMUTE,
+                    format!("{actor} {MODLOG_UNMUTED} {t}"),
+                ),
+                ShopChange::Deaf(true) => (
+                    MODLOG_TITLE_SHOP_DEAFEN,
+                    format!("{actor} {MODLOG_SHOP_CHANGE_SERVER_DEAFENED} {t}"),
+                ),
+                ShopChange::Deaf(false) => (
+                    MODLOG_TITLE_SHOP_UNDEAFEN,
+                    format!("{actor} {MODLOG_UNDEAFENED} {t}"),
+                ),
+                ShopChange::Move(to) => (
+                    MODLOG_TITLE_SHOP_MOVE,
+                    format!("{actor} {MODLOG_MOVED} {t} {MODLOG_TO} {}", channel(&to.to_ref())),
+                ),
+                ShopChange::Nick(Some(name)) => (
+                    MODLOG_TITLE_SHOP_NICKNAME,
+                    format!(
+                        "{actor} {MODLOG_SHOP_CHANGE_CHANGED} {t}{MODLOG_SHOP_CHANGE_NICKNAME_TO} \"{}\"",
+                        escape(name)
+                    ),
+                ),
+                ShopChange::Nick(None) => (
+                    MODLOG_TITLE_SHOP_NICKNAME,
+                    format!("{actor} {MODLOG_SHOP_CHANGE_CLEARED} {t}{MODLOG_SHOP_CHANGE_NICKNAME}"),
+                ),
+            };
+            plain(title, format!("{line} {tail}"))
+        },
         ModLogEvent::ShopCancelled { by, target } => plain(
             MODLOG_TITLE_SHOP_CANCELLED,
             format!("{} {MODLOG_SHOP_CLEANSED} {}", user(by), user(target)),
@@ -586,6 +653,10 @@ mod tests {
         (1..=n).map(|i| UserId::new(1000 + i).to_ref()).collect()
     }
 
+    fn shop_change(change: ShopChange, action: ActionKind) -> ModLogEvent {
+        shop_change_event(T, change, action)
+    }
+
     fn all() -> Vec<ModLogEvent> {
         vec![
             ModLogEvent::ServerMute {
@@ -653,6 +724,12 @@ mod tests {
                 on: false,
                 reason: None,
             },
+            shop_change(ShopChange::Mute(true), ActionKind::Mute),
+            shop_change(ShopChange::Mute(false), ActionKind::Mute),
+            shop_change(ShopChange::Deaf(true), ActionKind::Deafen),
+            shop_change(ShopChange::Deaf(false), ActionKind::Deafen),
+            shop_change(ShopChange::Move(R), ActionKind::Jail),
+            shop_change(ShopChange::Nick(Some("Goblin".into())), ActionKind::Rename),
             ModLogEvent::ImmunityGranted {
                 by: a(),
                 target: t(),
@@ -777,6 +854,7 @@ mod tests {
                 contributors: vec![a(), t()],
                 until,
             },
+            shop_change(ShopChange::Nick(None), ActionKind::Rename),
         ]);
         out
     }
@@ -1201,6 +1279,103 @@ mod tests {
     }
 
     #[test]
+    fn shop_change_lines_read_exactly() {
+        let to = |c: ShopChange, k: ActionKind| {
+            let r = json(&render(&shop_change(c, k), &cx()));
+            (
+                r["title"].as_str().unwrap().to_owned(),
+                r["description"].as_str().unwrap().to_owned(),
+            )
+        };
+        let cases = [
+            (
+                ShopChange::Mute(true),
+                ActionKind::Mute,
+                "🛒 Shop mute",
+                "CrackTunes server-muted <@11> (shop: Mute)",
+            ),
+            (
+                ShopChange::Mute(false),
+                ActionKind::Mute,
+                "🛒 Shop unmute",
+                "CrackTunes unmuted <@11> (shop: Mute)",
+            ),
+            (
+                ShopChange::Deaf(true),
+                ActionKind::Deafen,
+                "🛒 Shop deafen",
+                "CrackTunes server-deafened <@11> (shop: Deafen)",
+            ),
+            (
+                ShopChange::Deaf(false),
+                ActionKind::Deafen,
+                "🛒 Shop undeafen",
+                "CrackTunes undeafened <@11> (shop: Deafen)",
+            ),
+            (
+                ShopChange::Move(R),
+                ActionKind::Jail,
+                "🛒 Shop move",
+                "CrackTunes moved <@11> to <#333> (shop: Jail)",
+            ),
+            (
+                ShopChange::Nick(Some("Goblin".into())),
+                ActionKind::Rename,
+                "🛒 Shop nickname",
+                "CrackTunes changed <@11>'s nickname to \"Goblin\" (shop: Rename)",
+            ),
+            (
+                ShopChange::Nick(None),
+                ActionKind::Rename,
+                "🛒 Shop nickname",
+                "CrackTunes cleared <@11>'s nickname (shop: Rename)",
+            ),
+        ];
+        for (change, kind, title, line) in cases {
+            assert_eq!(to(change, kind), (title.to_owned(), line.to_owned()));
+        }
+    }
+
+    #[test]
+    fn shop_change_names_no_buyer() {
+        // The variant has no buyer field; what it renders holds only the
+        // target's id and, for a move, the room's.
+        let ids_of = |c: ShopChange| {
+            let text = json(&render(&shop_change(c, ActionKind::Jail), &cx()))["description"]
+                .as_str()
+                .unwrap()
+                .to_owned();
+            let mut ids: Vec<&str> = text
+                .split(|ch: char| !ch.is_ascii_digit())
+                .filter(|d| !d.is_empty())
+                .collect();
+            ids.sort_unstable();
+            ids.into_iter().map(str::to_owned).collect::<Vec<_>>()
+        };
+        assert_eq!(ids_of(ShopChange::Mute(true)), ["11"]);
+        assert_eq!(ids_of(ShopChange::Nick(None)), ["11"]);
+        assert_eq!(ids_of(ShopChange::Move(R)), ["11", "333"]);
+    }
+
+    #[test]
+    fn shop_nick_line_escapes_the_name() {
+        let line = json(&render(
+            &shop_change(
+                ShopChange::Nick(Some("**x** @everyone".into())),
+                ActionKind::Rename,
+            ),
+            &cx(),
+        ))["description"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert_eq!(
+            line,
+            "CrackTunes changed <@11>'s nickname to \"\\*\\*x\\*\\* \\@everyone\" (shop: Rename)"
+        );
+    }
+
+    #[test]
     fn economy_events_log_their_kind() {
         let shown: Vec<String> = all().iter().rev().take(7).map(|e| e.to_string()).collect();
         assert_eq!(
@@ -1230,6 +1405,12 @@ mod tests {
         r##"None|{"title":"✅ Let back into a room","type":"rich","description":"<@22> let back in <@11> in <#333>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"🤐 Muted in a room","type":"rich","description":"<@22> muted <@11> in <#333>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"🗣️ Unmuted in a room","type":"rich","description":"<@22> unmuted <@11> in <#333>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🛒 Shop mute","type":"rich","description":"CrackTunes server-muted <@11> (shop: Mute)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🛒 Shop unmute","type":"rich","description":"CrackTunes unmuted <@11> (shop: Mute)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🛒 Shop deafen","type":"rich","description":"CrackTunes server-deafened <@11> (shop: Deafen)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🛒 Shop undeafen","type":"rich","description":"CrackTunes undeafened <@11> (shop: Deafen)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🛒 Shop move","type":"rich","description":"CrackTunes moved <@11> to <#333> (shop: Jail)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🛒 Shop nickname","type":"rich","description":"CrackTunes changed <@11>'s nickname to \"Goblin\" (shop: Rename)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"🛡️ Immunity granted","type":"rich","description":"<@22> granted immunity to <@11> until lifted","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"🛡️ Immunity lifted","type":"rich","description":"<@22> lifted the immunity of <@11>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"🪙 Credits adjusted","type":"rich","description":"<@22> adjusted the credits of <@11> by +5","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"x","inline":false}]}|[]|[]|None"##,
@@ -1247,5 +1428,6 @@ mod tests {
         r##"None|{"title":"🛍️ Shop action","type":"rich","description":"<@22> used Mute on <@11> until <t:1700003600:f> (bounced by <@555>'s mirror) (signed)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"🎉 Crowdfund started","type":"rich","description":"<@22> started a crowdfund for Mute on <@11> (signed)","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"n","inline":false}]}|[]|[]|None"##,
         r##"None|{"title":"🎉 Crowdfund executed","type":"rich","description":"Mute on <@11> until <t:1700003600:f> (crowdfunded by <@22>, <@11>)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🛒 Shop nickname","type":"rich","description":"CrackTunes cleared <@11>'s nickname (shop: Rename)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
     ];
 }

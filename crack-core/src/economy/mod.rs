@@ -13,6 +13,30 @@ pub use crack_economy::{
     GrantError, OptOutError,
 };
 
+use crate::Data;
+use crack_economy::discord::{LiveEconomyDiscord, LiveShopDiscord};
+use crack_rooms::modlog::live::ShopChangeSink;
+use serenity::all::{Cache, Http};
+use std::sync::Arc;
+
+/// The one live door the shop acts through. Every change it makes reaches the
+/// mod log as a literal line, with CrackTunes as the actor and no buyer.
+// live-Discord glue: builds the live door from the real `Http` and `Cache`, which no unit test has.
+#[cfg_attr(test, mutants::skip)]
+pub fn live_discord(data: &Data, http: Arc<Http>, cache: Arc<Cache>) -> LiveShopDiscord {
+    let transport = Arc::new(crack_common::transport::DiscordTransport {
+        http: http.clone(),
+        cache,
+    });
+    LiveEconomyDiscord::logged(
+        http,
+        Arc::new(ShopChangeSink {
+            data: data.rooms_data(),
+            transport,
+        }),
+    )
+}
+
 pub mod buttons;
 pub mod facts;
 pub mod walk_on;
