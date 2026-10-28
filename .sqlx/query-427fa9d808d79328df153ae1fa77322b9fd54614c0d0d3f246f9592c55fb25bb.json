@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO room_mute_holds (guild_id, user_id, channel_id)\n           VALUES ($1, $2, $3)\n           ON CONFLICT (guild_id, user_id) DO UPDATE SET channel_id = EXCLUDED.channel_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "427fa9d808d79328df153ae1fa77322b9fd54614c0d0d3f246f9592c55fb25bb"
+}

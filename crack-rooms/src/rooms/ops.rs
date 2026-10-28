@@ -8,6 +8,7 @@ use super::card::{PanelView, RoomCard, RoomDone, RoomRefusal};
 use super::discord::{DiscordError, RoomsDiscord};
 use super::facts::GuildFacts;
 use super::guard::role_can_connect;
+use super::mute_hold::{settle, Cause, Settled};
 use super::overwrites::{diff, fold_cached, managed_members, room_overwrites, OverwriteChange};
 use super::registry::LiveRoom;
 use super::settings::{RoomSettings, SettingsError, ROOM_NAME_MAX};
@@ -189,6 +190,30 @@ pub async fn act(
     // The room's lock is let go first: a slow post must not hold up presses.
     let event = mod_log_event(&action, room, actor);
     drop(live);
+    // 11. The server mute follows the room's list, never under the room's
+    // lock (the server's hold lock comes first). A mute CrackTunes may not
+    // apply is only deferred: the Speak deny stands for when they rejoin.
+    let done = match &action {
+        RoomAction::Mute { target, .. } => {
+            match settle(
+                cx.data,
+                cx.discord,
+                guild,
+                *target,
+                Cause::MutedInRoom(room),
+            )
+            .await
+            {
+                Settled::MuteRefused => RoomDone::MutedOnRejoin(target.to_ref()),
+                _ => done,
+            }
+        },
+        RoomAction::Unmute { target } => {
+            settle(cx.data, cx.discord, guild, *target, Cause::Other).await;
+            done
+        },
+        _ => done,
+    };
     if let Some(event) = event {
         cx.log.post(guild, event).await;
     }
@@ -829,6 +854,28 @@ mod tests {
                 transport: FakeTransport::default(),
                 log: FakeSink::default(),
             }
+        }
+
+        /// With a database, so the server mute is settled.
+        fn with_pool(room: LiveRoom, pool: sqlx::PgPool) -> Self {
+            let mut w = Self::new(room);
+            let data = RoomsData {
+                database_pool: Some(pool),
+                ..RoomsData::default()
+            };
+            data.rooms.insert(w.room_now());
+            w.data = data;
+            w
+        }
+
+        fn room_now(&self) -> LiveRoom {
+            self.data
+                .rooms
+                .get(ROOM)
+                .expect("registered")
+                .try_lock()
+                .expect("unlocked")
+                .clone()
         }
 
         fn cx(&self) -> RoomCx<'_> {
@@ -2048,6 +2095,135 @@ mod tests {
                 Call::Put(ROOM.get(), ow(member(TARGET), NONE, Permissions::SPEAK)),
                 Call::DeleteOverwrite(ROOM.get(), member(TARGET)),
             ]
+        );
+    }
+
+    use crate::rooms::mute_hold::VoiceNow;
+
+    fn mute_target() -> RoomAction {
+        RoomAction::Mute {
+            target: TARGET,
+            reason: None,
+        }
+    }
+    fn in_room(server_muted: bool) -> VoiceNow {
+        VoiceNow {
+            channel: Some(ROOM),
+            server_muted,
+        }
+    }
+    fn speak_deny() -> Call {
+        Call::Put(ROOM.get(), ow(member(TARGET), NONE, Permissions::SPEAK))
+    }
+
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn mute_in_the_room_server_mutes_them(pool: sqlx::PgPool) {
+        let w = World::with_pool(live(vec![]), pool.clone());
+        w.discord.set_voice(TARGET, in_room(false));
+        assert_eq!(
+            w.act(&facts(), HELPER, mute_target()).await,
+            Ok(RoomDone::Muted(TARGET.to_ref()))
+        );
+        let calls = w.discord.calls();
+        let put = calls.iter().position(|c| *c == speak_deny()).unwrap();
+        let mute = calls
+            .iter()
+            .position(|c| *c == Call::SetMute(TARGET.get(), true))
+            .unwrap();
+        assert!(put < mute, "{calls:?}");
+        assert_eq!(
+            crate::db::mute_holds::held_for(&pool, G, TARGET)
+                .await
+                .unwrap(),
+            Some(ROOM)
+        );
+    }
+
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn mute_without_mute_members_says_rejoin(pool: sqlx::PgPool) {
+        let w = World::with_pool(live(vec![]), pool.clone());
+        w.discord.set_voice(TARGET, in_room(false));
+        w.discord
+            .fail_next(CallKind::SetMute, DiscordError::MissingPermissions);
+        assert_eq!(
+            w.act(&facts(), HELPER, mute_target()).await,
+            Ok(RoomDone::MutedOnRejoin(TARGET.to_ref()))
+        );
+        assert!(w.discord.calls().contains(&speak_deny()));
+        assert!(w.room().await.state.muted.contains(&TARGET));
+        assert_eq!(
+            crate::db::mute_holds::held_for(&pool, G, TARGET)
+                .await
+                .unwrap(),
+            None
+        );
+        // The mod log line is the same either way.
+        assert_eq!(w.log.events().len(), 1);
+    }
+
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn unmute_lifts_the_hold(pool: sqlx::PgPool) {
+        let w = World::with_pool(live(vec![]), pool.clone());
+        w.discord.set_voice(TARGET, in_room(false));
+        w.act(&facts(), HELPER, mute_target()).await.unwrap();
+        w.discord.set_voice(TARGET, in_room(true));
+        assert_eq!(
+            w.act(&facts(), HELPER, RoomAction::Unmute { target: TARGET })
+                .await,
+            Ok(RoomDone::Unmuted(TARGET.to_ref()))
+        );
+        assert_eq!(
+            w.discord.calls().last(),
+            Some(&Call::SetMute(TARGET.get(), false))
+        );
+        assert_eq!(
+            crate::db::mute_holds::held_for(&pool, G, TARGET)
+                .await
+                .unwrap(),
+            None
+        );
+    }
+
+    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
+    #[cfg_attr(
+        not(feature = "db-tests"),
+        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
+    )]
+    async fn mute_of_someone_outside_only_denies_speak(pool: sqlx::PgPool) {
+        let w = World::with_pool(live(vec![]), pool.clone());
+        w.discord.set_voice(
+            TARGET,
+            VoiceNow {
+                channel: Some(ChannelId::new(501)),
+                server_muted: false,
+            },
+        );
+        assert_eq!(
+            w.act(&facts(), HELPER, mute_target()).await,
+            Ok(RoomDone::Muted(TARGET.to_ref()))
+        );
+        assert!(!w
+            .discord
+            .calls()
+            .iter()
+            .any(|c| matches!(c, Call::SetMute(..))));
+        assert_eq!(
+            crate::db::mute_holds::held_for(&pool, G, TARGET)
+                .await
+                .unwrap(),
+            None
         );
     }
 

@@ -1,36 +1,48 @@
 //! `/economy status|grant|lift|adjust`, for moderators.
 use super::credits::{gate, gate_for, live, say, GateNeed};
 use crate::db::economy::{self as db, RecentAction};
-use crate::economy::preflight::{report_for, ActionPreflight};
+use crate::economy::ledger::{self, EconomyLogEvent, Ender, Unmasker};
+use crate::economy::preflight::{log_report_for, report_for, ActionPreflight};
+use crate::economy::settings::ActionKind;
 use crate::economy::settings::EconomySettings;
+use crate::economy::shop::{mod_reveal, reveal_choices, BuyError, Refusal};
 use crate::economy::wallet::{ActionState, MoveError};
 use crate::economy::{mod_cancel, mod_grant, mod_lift, GrantError};
+use crate::messaging::courier;
 use crate::messaging::format::CONTENT_MAX;
 use crate::messaging::messages::{
-    DASH_ECONOMY_ANNOUNCE_STATUS, DASH_ECONOMY_PREFLIGHT, DASH_ECONOMY_PREFLIGHT_READY,
-    DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_ADMIN_ADJUST_BELOW_ZERO_PREFIX,
-    ECONOMY_ADMIN_ADJUST_DONE, ECONOMY_ADMIN_ADJUST_FAILED, ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE,
-    ECONOMY_ADMIN_ADJUST_TOO_BIG, ECONOMY_ADMIN_ADJUST_ZERO, ECONOMY_ADMIN_BOT_TARGET,
-    ECONOMY_ADMIN_GRANT_DISABLED, ECONOMY_ADMIN_GRANT_DONE, ECONOMY_ADMIN_GRANT_FAILED,
-    ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE, ECONOMY_ADMIN_LIFT_FAILED,
-    ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE, ECONOMY_CANCEL_DONE_PREFIX,
-    ECONOMY_CANCEL_DONE_SUFFIX, ECONOMY_CANCEL_NONE, ECONOMY_NO_DATABASE, ECONOMY_READ_FAILED,
-    ECONOMY_STATUS_CAMERA, ECONOMY_STATUS_COIN, ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING,
-    ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_MAX_BET,
-    ECONOMY_STATUS_MODS, ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
+    DASH_ECONOMY_ANNOUNCE_STATUS, DASH_ECONOMY_LOG_STATUS, DASH_ECONOMY_PREFLIGHT,
+    DASH_ECONOMY_PREFLIGHT_READY, DASH_ECONOMY_PREFLIGHT_UNKNOWN,
+    ECONOMY_ADMIN_ADJUST_BELOW_ZERO_PREFIX, ECONOMY_ADMIN_ADJUST_DONE, ECONOMY_ADMIN_ADJUST_FAILED,
+    ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE, ECONOMY_ADMIN_ADJUST_TOO_BIG, ECONOMY_ADMIN_ADJUST_ZERO,
+    ECONOMY_ADMIN_BOT_TARGET, ECONOMY_ADMIN_GRANT_DISABLED, ECONOMY_ADMIN_GRANT_DONE,
+    ECONOMY_ADMIN_GRANT_FAILED, ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE,
+    ECONOMY_ADMIN_LIFT_FAILED, ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE,
+    ECONOMY_CANCEL_DONE_PREFIX, ECONOMY_CANCEL_DONE_SUFFIX, ECONOMY_CANCEL_NONE,
+    ECONOMY_MOD_ALREADY_REVEALED, ECONOMY_MOD_REVEAL_DONE_BOUGHT_BY, ECONOMY_MOD_REVEAL_DONE_ON,
+    ECONOMY_MOD_REVEAL_DONE_PREFIX, ECONOMY_MOD_REVEAL_NOT_POSTED, ECONOMY_NOTHING_TO_REVEAL,
+    ECONOMY_NO_DATABASE, ECONOMY_READ_FAILED, ECONOMY_STATUS_CAMERA, ECONOMY_STATUS_COIN,
+    ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD,
+    ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_LOG, ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS,
+    ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
     ECONOMY_STATUS_PER_VOICE_MINUTE, ECONOMY_STATUS_RECENT, ECONOMY_STATUS_RECENT_MORE_PREFIX,
     ECONOMY_STATUS_RECENT_MORE_SUFFIX, ECONOMY_STATUS_RECENT_NONE, ECONOMY_STATUS_SECONDS,
     ECONOMY_STATUS_SHOP, ECONOMY_STATUS_TAP, ECONOMY_STATUS_TITLE, ECONOMY_STATUS_UNTIL,
     ECONOMY_STATUS_WALLETS,
 };
+use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
 use crate::modlog::batch::ModLogSink;
 use crate::modlog::event::ModLogEvent;
 use crate::modlog::live::ChannelSink;
 use crate::{Context, Data, Error};
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use crack_types::discord::ToRef;
-use serenity::all::{GuildId, Permissions, User};
+use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
+use serenity::all::{
+    CommandDataOption, CommandDataOptionValue, GenericChannelId, GuildId, Permissions, User, UserId,
+};
+use std::borrow::Cow;
 use std::sync::Arc;
 
 /// Longest immunity a moderator can grant by hours: a year.
@@ -88,7 +100,8 @@ pub fn economy_status_text(
          {ECONOMY_STATUS_HELD}: {credits} {emoji} {name}\n\
          {ECONOMY_STATUS_EARNING}: {} {ECONOMY_STATUS_PER_VOICE_MINUTE}{}, {} {ECONOMY_STATUS_PER_MESSAGE} {}{ECONOMY_STATUS_SECONDS}\n\
          {ECONOMY_STATUS_IMMUNITY} {}, {ECONOMY_STATUS_SHOP} {}, {ECONOMY_STATUS_MODS} {}\n\
-         {ECONOMY_STATUS_GAMBLING}: {}, {ECONOMY_STATUS_MAX_BET} {}",
+         {ECONOMY_STATUS_GAMBLING}: {}, {ECONOMY_STATUS_MAX_BET} {}\n\
+         {ECONOMY_STATUS_LOG}: {}",
         on_off(s.enabled),
         c.voice_credits_per_minute,
         if c.voice_requires_camera {
@@ -103,6 +116,8 @@ pub fn economy_status_text(
         on_off(c.immunity_mods),
         on_off(c.gambling_enabled),
         c.max_bet,
+        c.log_channel_id
+            .map_or_else(|| ECONOMY_STATUS_OFF.to_string(), |ch| format!("<#{ch}>")),
     );
     if let Some(l) = coin {
         text.push('\n');
@@ -151,7 +166,11 @@ fn needs_words(needs: Option<&[String]>) -> String {
 
 /// The permission report, one line per prank, then the announcement
 /// channel's when one is set and could be checked.
-pub fn preflight_lines(report: &[ActionPreflight], announce: Option<&[String]>) -> Vec<String> {
+pub fn preflight_lines(
+    report: &[ActionPreflight],
+    announce: Option<&[String]>,
+    log: Option<&[String]>,
+) -> Vec<String> {
     let mut lines: Vec<String> = report
         .iter()
         .map(|a| format!("{}: {}", a.label, needs_words(a.needs.as_deref())))
@@ -159,6 +178,12 @@ pub fn preflight_lines(report: &[ActionPreflight], announce: Option<&[String]>) 
     if let Some(gaps) = announce {
         lines.push(format!(
             "{DASH_ECONOMY_ANNOUNCE_STATUS}: {}",
+            needs_words(Some(gaps))
+        ));
+    }
+    if let Some(gaps) = log {
+        lines.push(format!(
+            "{DASH_ECONOMY_LOG_STATUS}: {}",
             needs_words(Some(gaps))
         ));
     }
@@ -226,10 +251,11 @@ pub fn status_report_text(
     base: &str,
     report: &[ActionPreflight],
     announce: Option<&[String]>,
+    log: Option<&[String]>,
     recent: Option<&[RecentAction]>,
 ) -> String {
     let mut head = vec![base.to_string(), format!("**{DASH_ECONOMY_PREFLIGHT}**")];
-    head.extend(preflight_lines(report, announce));
+    head.extend(preflight_lines(report, announce, log));
     head.push(format!("**{ECONOMY_STATUS_RECENT}**"));
     let rows: Vec<String> = match recent {
         None => vec![ECONOMY_READ_FAILED.to_string()],
@@ -294,12 +320,14 @@ pub fn adjust_amount_ok(amount: i64) -> bool {
 }
 
 /// Post a mod log event; nothing happens while the log is off.
-pub(super) async fn log(ctx: Context<'_>, guild: GuildId, event: ModLogEvent) {
-    log_to(&ctx.data(), ctx.serenity_context(), guild, event).await;
+// live-Discord glue: needs a live `Context`; the events it posts come from tested pure builders.
+#[cfg_attr(test, mutants::skip)]
+pub(super) async fn mod_log(ctx: Context<'_>, guild: GuildId, event: ModLogEvent) {
+    mod_log_to(&ctx.data(), ctx.serenity_context(), guild, event).await;
 }
 
-/// [`log`] without a command context (a button or modal press).
-pub(super) async fn log_to(
+/// [`mod_log`] without a command context (a button or modal press).
+pub(super) async fn mod_log_to(
     data: &Data,
     ctx: &serenity::all::Context,
     guild: GuildId,
@@ -312,13 +340,109 @@ pub(super) async fn log_to(
     sink.post(guild, event).await;
 }
 
+/// Post an economy log line; nothing happens while the log is off.
+pub(super) async fn econ_log_to(
+    data: &Data,
+    ctx: &serenity::all::Context,
+    guild: GuildId,
+    event: EconomyLogEvent,
+) {
+    ledger::post(
+        &data.economy_data(),
+        &DiscordTransport::of(ctx),
+        guild,
+        event,
+    )
+    .await;
+}
+
+/// A moderator's action goes to both logs, each told separately: the mod log
+/// names the moderator, the economy log says "a moderator" (2026-10-28 rule).
+/// One log being off or unreachable never stops the other.
+// live-Discord glue: needs a live `Context`; the two events come from tested pure builders.
+#[cfg_attr(test, mutants::skip)]
+pub(super) async fn both_logs(
+    ctx: Context<'_>,
+    guild: GuildId,
+    m: ModLogEvent,
+    e: EconomyLogEvent,
+) {
+    mod_log(ctx, guild, m).await;
+    econ_log_to(&ctx.data(), ctx.serenity_context(), guild, e).await;
+}
+
+/// The two log events for a moderator's immunity grant.
+pub fn grant_events(
+    by: UserId,
+    target: UserId,
+    until: Option<DateTime<Utc>>,
+    reason: Option<String>,
+) -> (ModLogEvent, EconomyLogEvent) {
+    (
+        ModLogEvent::ImmunityGranted {
+            by: by.to_ref(),
+            target: target.to_ref(),
+            until,
+            reason: reason.clone(),
+        },
+        EconomyLogEvent::ImmunityGranted { target, until },
+    )
+}
+
+/// The two log events for a moderator lifting immunity.
+pub fn lift_events(by: UserId, target: UserId) -> (ModLogEvent, EconomyLogEvent) {
+    (
+        ModLogEvent::ImmunityLifted {
+            by: by.to_ref(),
+            target: target.to_ref(),
+        },
+        EconomyLogEvent::ImmunityLifted { target },
+    )
+}
+
+/// The two log events for `/economy cancel`.
+pub fn cancel_events(by: UserId, target: UserId) -> (ModLogEvent, EconomyLogEvent) {
+    (
+        ModLogEvent::ShopCancelled {
+            by: by.to_ref(),
+            target: target.to_ref(),
+        },
+        EconomyLogEvent::PranksEnded {
+            target,
+            by: Ender::Moderator,
+        },
+    )
+}
+
+/// The two log events for a credit adjustment.
+pub fn adjust_events(
+    by: UserId,
+    target: UserId,
+    amount: i64,
+    reason: String,
+) -> (ModLogEvent, EconomyLogEvent) {
+    (
+        ModLogEvent::CreditsAdjusted {
+            by: by.to_ref(),
+            target: target.to_ref(),
+            amount,
+            reason: reason.clone(),
+        },
+        EconomyLogEvent::CreditsAdjusted {
+            target,
+            amount,
+            reason,
+        },
+    )
+}
+
 /// Mod tools for the economy.
 #[poise::command(
     category = "Economy",
     slash_command,
     guild_only,
     default_member_permissions = "MODERATE_MEMBERS",
-    subcommands("status", "grant", "lift", "cancel", "adjust"),
+    subcommands("status", "grant", "lift", "cancel", "adjust", "reveal_command"),
     subcommand_required
 )]
 pub async fn economy(_ctx: Context<'_>) -> Result<(), Error> {
@@ -349,11 +473,13 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
         Ok((wallets, credits)) => {
             let s = ctx.data().economy.settings(guild);
             let (report, announce) = report_for(&ctx.serenity_context().cache, guild, &s.config);
+            let log = log_report_for(&ctx.serenity_context().cache, guild, &s.config);
             let coin = coin_line(ctx, &s).await;
             let text = status_report_text(
                 &economy_status_text(&s, wallets, credits, coin.as_ref()),
                 &report,
                 announce.as_deref(),
+                log.as_deref(),
                 recent.as_deref(),
             );
             say(ctx, text, true).await
@@ -373,7 +499,7 @@ pub async fn grant(
     ctx: Context<'_>,
     #[description = "Who"] member: User,
     #[description = "Hours (1 to 8760); leave out for until lifted"] hours: Option<u32>,
-    #[description = "Why"] reason: Option<String>,
+    #[description = "Why (shown in the mod log)"] reason: Option<String>,
 ) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
@@ -405,17 +531,8 @@ pub async fn grant(
         Ok(()) => {
             // Reply first: a slow log channel must not time the interaction out.
             let replied = say(ctx, ECONOMY_ADMIN_GRANT_DONE, true).await;
-            log(
-                ctx,
-                guild,
-                ModLogEvent::ImmunityGranted {
-                    by: by.to_ref(),
-                    target: member.id.to_ref(),
-                    until,
-                    reason,
-                },
-            )
-            .await;
+            let (m, e) = grant_events(by, member.id, until, reason);
+            both_logs(ctx, guild, m, e).await;
             replied
         },
         Err(GrantError::Disabled) => say(ctx, ECONOMY_ADMIN_GRANT_DISABLED, true).await,
@@ -438,15 +555,8 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
     match mod_lift(&ctx.data().economy_data(), guild, member.id).await {
         Ok(true) => {
             let replied = say(ctx, ECONOMY_ADMIN_LIFT_DONE, true).await;
-            log(
-                ctx,
-                guild,
-                ModLogEvent::ImmunityLifted {
-                    by: ctx.author().id.to_ref(),
-                    target: member.id.to_ref(),
-                },
-            )
-            .await;
+            let (m, e) = lift_events(ctx.author().id, member.id);
+            both_logs(ctx, guild, m, e).await;
             replied
         },
         Ok(false) => say(ctx, ECONOMY_ADMIN_LIFT_NONE, true).await,
@@ -487,19 +597,162 @@ pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Re
                 true,
             )
             .await;
-            log(
-                ctx,
-                guild,
-                ModLogEvent::ShopCancelled {
-                    by: ctx.author().id.to_ref(),
-                    target: member.id.to_ref(),
-                },
-            )
-            .await;
+            let (m, e) = cancel_events(ctx.author().id, member.id);
+            both_logs(ctx, guild, m, e).await;
             replied
         },
         Err(GrantError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
         Err(_) => say(ctx, ECONOMY_READ_FAILED, true).await,
+    }
+}
+
+/// The `member` option's user id from an autocomplete interaction's options.
+/// Discord nests a subcommand's options inside the subcommand, so this looks
+/// through every subcommand level; `None` if absent or not a user.
+pub fn member_option(options: &[CommandDataOption]) -> Option<UserId> {
+    options.iter().find_map(|o| match &o.value {
+        CommandDataOptionValue::User(id) if o.name == "member" => Some(*id),
+        CommandDataOptionValue::SubCommand(inner)
+        | CommandDataOptionValue::SubCommandGroup(inner) => member_option(inner),
+        _ => None,
+    })
+}
+
+/// The public line when a moderator unmasks a prank. One copy, shared with
+/// the economy log: it says "a moderator", never which one.
+pub fn mod_unmasked_text(kind: ActionKind, target: UserId, buyer: UserId) -> String {
+    ledger::line(&EconomyLogEvent::Unmasked {
+        action: kind,
+        target,
+        buyer,
+        by: Unmasker::Moderator,
+    })
+}
+
+/// The moderator's private confirmation of an unmasking.
+pub fn mod_reveal_done_text(kind: ActionKind, target: UserId, buyer: UserId) -> String {
+    format!(
+        "{ECONOMY_MOD_REVEAL_DONE_PREFIX} {} {ECONOMY_MOD_REVEAL_DONE_ON} <@{target}> \
+         {ECONOMY_MOD_REVEAL_DONE_BOUGHT_BY} <@{buyer}>.",
+        kind.label().to_lowercase()
+    )
+}
+
+/// The two log events for a moderator's unmasking.
+pub fn reveal_events(
+    by: UserId,
+    kind: ActionKind,
+    target: UserId,
+    buyer: UserId,
+) -> (ModLogEvent, EconomyLogEvent) {
+    (
+        ModLogEvent::PrankUnmasked {
+            by: by.to_ref(),
+            action: kind,
+            target: target.to_ref(),
+            buyer: buyer.to_ref(),
+        },
+        EconomyLogEvent::Unmasked {
+            action: kind,
+            target,
+            buyer,
+            by: Unmasker::Moderator,
+        },
+    )
+}
+
+/// The chosen member's last ten unsigned, unrevealed pranks, as picker
+/// choices; none until a member is chosen.
+// live-Discord glue: needs a live interaction; the options and label come from tested pure functions.
+#[cfg_attr(test, mutants::skip)]
+async fn mod_reveal_autocomplete<'a>(
+    ctx: poise::ApplicationContext<'_, Data, Error>,
+    _partial: &'a str,
+) -> CreateAutocompleteResponse<'a> {
+    let Some(guild) = ctx.interaction.guild_id else {
+        return CreateAutocompleteResponse::new();
+    };
+    let Some(member) = member_option(&ctx.interaction.data.options) else {
+        return CreateAutocompleteResponse::new();
+    };
+    let now = Utc::now();
+    let choices: Vec<AutocompleteChoice<'a>> =
+        reveal_choices(&ctx.data().economy_data(), guild, member, 10)
+            .await
+            .into_iter()
+            .filter_map(|c| {
+                Some(AutocompleteChoice::new(
+                    Cow::Owned(super::shop::reveal_label(c.row.kind, now, c.bought_at)),
+                    u64::try_from(c.row.id).ok()?,
+                ))
+            })
+            .collect();
+    CreateAutocompleteResponse::new().set_choices(Cow::Owned(choices))
+}
+
+/// Unmask who bought an unsigned prank aimed at a member, for free.
+#[poise::command(slash_command, guild_only, rename = "reveal")]
+// live-Discord glue: a poise command body needs a live `Context` (Discord HTTP, cache, gateway), which no unit test can build.
+#[cfg_attr(test, mutants::skip)]
+pub async fn reveal_command(
+    ctx: Context<'_>,
+    #[description = "Whose prank"] member: User,
+    #[description = "Which one (default: the most recent)"]
+    #[autocomplete = "mod_reveal_autocomplete"]
+    action: Option<i64>,
+) -> Result<(), Error> {
+    // Needs only the database: a moderator can unmask with the economy off.
+    let Some((guild, _pool)) = gate_for(ctx, GateNeed::DatabaseOnly).await? else {
+        return Ok(());
+    };
+    if !mod_gate(ctx).await? {
+        return Ok(());
+    }
+    ctx.defer_ephemeral().await?;
+    let by = ctx.author().id;
+    match mod_reveal(&ctx.data().economy_data(), guild, member.id, action, by).await {
+        Ok(done) => {
+            // Private reply first, then the public line, then the logs.
+            let replied = say(
+                ctx,
+                mod_reveal_done_text(done.kind, member.id, done.buyer),
+                true,
+            )
+            .await;
+            let transport = DiscordTransport::of(ctx.serenity_context());
+            let line = Rendered::text(mod_unmasked_text(done.kind, member.id, done.buyer));
+            if let Err(err) = courier::post_message(
+                &transport,
+                GenericChannelId::new(ctx.channel_id().get()),
+                &line,
+            )
+            .await
+            {
+                tracing::warn!("economy: the moderator unmasking could not be posted: {err:?}");
+                if let Err(err) = say(ctx, ECONOMY_MOD_REVEAL_NOT_POSTED, true).await {
+                    tracing::warn!(
+                        "economy: telling the moderator it was not posted failed: {err:?}"
+                    );
+                }
+            }
+            let (m, e) = reveal_events(by, done.kind, member.id, done.buyer);
+            both_logs(ctx, guild, m, e).await;
+            replied
+        },
+        Err(BuyError::Refused(Refusal::NothingToReveal)) => {
+            say(ctx, ECONOMY_NOTHING_TO_REVEAL, true).await
+        },
+        Err(BuyError::Refused(Refusal::AlreadyRevealed)) => {
+            say(ctx, ECONOMY_MOD_ALREADY_REVEALED, true).await
+        },
+        Err(BuyError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
+        Err(err) => {
+            tracing::warn!(
+                "economy: a moderator reveal on {} failed: {err:?}",
+                member.id
+            );
+            say(ctx, ECONOMY_READ_FAILED, true).await
+        },
     }
 }
 
@@ -514,7 +767,7 @@ pub async fn adjust(
     #[min = -1000000000]
     #[max = 1000000000]
     amount: i64,
-    #[description = "Why (shown in the mod log)"] reason: String,
+    #[description = "Why (shown in the mod log and the public economy log)"] reason: String,
 ) -> Result<(), Error> {
     let Some((guild, pool)) = gate(ctx).await? else {
         return Ok(());
@@ -543,17 +796,8 @@ pub async fn adjust(
                 true,
             )
             .await;
-            log(
-                ctx,
-                guild,
-                ModLogEvent::CreditsAdjusted {
-                    by: by.to_ref(),
-                    target: member.id.to_ref(),
-                    amount,
-                    reason,
-                },
-            )
-            .await;
+            let (m, e) = adjust_events(by, member.id, amount, reason);
+            both_logs(ctx, guild, m, e).await;
             replied
         },
         Err(MoveError::Insufficient { balance }) => {
@@ -578,7 +822,89 @@ pub async fn adjust(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serenity::all::GuildId;
+    use serenity::all::{ChannelId, GuildId};
+
+    const MOD: UserId = UserId::new(987_654_321);
+    const MEMBER: UserId = UserId::new(11);
+
+    /// A moderator is named in the mod log and nowhere in the economy log,
+    /// which every member of the server can read.
+    #[test]
+    fn moderator_actions_name_the_moderator_only_in_the_mod_log() {
+        let until = DateTime::from_timestamp(1_800_000_000, 0);
+        let pairs = [
+            grant_events(MOD, MEMBER, until, Some("why".into())),
+            lift_events(MOD, MEMBER),
+            cancel_events(MOD, MEMBER),
+            adjust_events(MOD, MEMBER, -5, "why".into()),
+        ];
+        for (m, e) in pairs {
+            let (ModLogEvent::ImmunityGranted { by, .. }
+            | ModLogEvent::ImmunityLifted { by, .. }
+            | ModLogEvent::ShopCancelled { by, .. }
+            | ModLogEvent::CreditsAdjusted { by, .. }) = &m
+            else {
+                panic!("not a moderator event: {m:?}");
+            };
+            assert_eq!(*by, MOD.to_ref(), "{m:?}");
+            let line = ledger::line(&e);
+            assert!(line.starts_with("A moderator "), "{line}");
+            assert!(!line.contains(&MOD.get().to_string()), "{line}");
+            assert!(line.contains(&format!("<@{MEMBER}>")), "{line}");
+        }
+    }
+
+    /// What Discord sends while the moderator types in `action`: the member
+    /// is a sibling option inside the `reveal` subcommand.
+    fn options(json: &str) -> Vec<CommandDataOption> {
+        serde_json::from_str::<Vec<CommandDataOption>>(json).unwrap()
+    }
+
+    #[test]
+    fn member_option_reads_the_nested_member() {
+        let present = options(
+            r#"[{"name":"reveal","type":1,"options":[
+                {"name":"member","type":6,"value":"2"},
+                {"name":"action","type":4,"value":"5","focused":true}]}]"#,
+        );
+        assert_eq!(member_option(&present), Some(UserId::new(2)));
+        let missing = options(
+            r#"[{"name":"reveal","type":1,"options":[
+                {"name":"action","type":4,"value":"5","focused":true}]}]"#,
+        );
+        assert_eq!(member_option(&missing), None);
+        // Not a user id: a string called "member" is not a member.
+        let wrong = options(
+            r#"[{"name":"reveal","type":1,"options":[
+                {"name":"member","type":3,"value":"2"}]}]"#,
+        );
+        assert_eq!(member_option(&wrong), None);
+        assert_eq!(member_option(&[]), None);
+    }
+
+    #[test]
+    fn mod_unmasked_text_is_exact() {
+        assert_eq!(
+            mod_unmasked_text(
+                crate::economy::settings::ActionKind::Rename,
+                UserId::new(2),
+                UserId::new(3)
+            ),
+            "A moderator unmasked the rename on <@2>: <@3>"
+        );
+    }
+
+    #[test]
+    fn mod_reveal_done_text_is_exact() {
+        assert_eq!(
+            mod_reveal_done_text(
+                crate::economy::settings::ActionKind::Rename,
+                UserId::new(2),
+                UserId::new(3)
+            ),
+            "Unmasked: the rename on <@2> was bought by <@3>."
+        );
+    }
 
     #[test]
     fn economy_status_text_exact() {
@@ -591,8 +917,13 @@ mod tests {
              Held in total: 1250 🪙 credits\n\
              Earning: 1 per voice minute, 1 per message, at most once every 60s\n\
              Immunity: opt-out on, shop on, mod grants on\n\
-             Gambling: off, max bet 500"
+             Gambling: off, max bet 500\n\
+             Economy log: off"
         );
+        s.config.log_channel_id = Some(ChannelId::new(77));
+        assert!(economy_status_text(&s, 3, 1250, None)
+            .ends_with("Gambling: off, max bet 500\nEconomy log: <#77>"));
+        s.config.log_channel_id = None;
         s.enabled = true;
         s.config.currency_name = "gems".into();
         s.config.currency_emoji = "💎".into();
@@ -601,7 +932,7 @@ mod tests {
         let t = economy_status_text(&s, 0, 0, None);
         assert!(t.starts_with("**Economy status**: on\nCurrency: 💎 gems\n"));
         assert!(t.contains("shop off"));
-        assert!(t.ends_with("Gambling: on, max bet 500"));
+        assert!(t.ends_with("Gambling: on, max bet 500\nEconomy log: off"));
     }
 
     #[test]
@@ -676,7 +1007,7 @@ mod tests {
             ),
             recent(ActionKind::Drag, ActionState::Done, true, None, None),
         ];
-        let text = status_report_text("BASE", &[], None, Some(&rows));
+        let text = status_report_text("BASE", &[], None, None, Some(&rows));
         assert_eq!(
             text,
             "BASE\n\
@@ -687,10 +1018,10 @@ mod tests {
              Drag · <@7> → <@8> · done"
         );
         assert_eq!(
-            status_report_text("BASE", &[], None, Some(&[])),
+            status_report_text("BASE", &[], None, None, Some(&[])),
             "BASE\n**What CrackTunes needs for each prank**\n**Recent shop actions**\nNothing bought yet."
         );
-        assert!(status_report_text("BASE", &[], None, None)
+        assert!(status_report_text("BASE", &[], None, None, None)
             .ends_with("**Recent shop actions**\nCouldn't read that right now. Try again."));
     }
 
@@ -727,7 +1058,7 @@ mod tests {
                 r
             })
             .collect();
-        let text = status_report_text(&base, &report, Some(&announce), Some(&rows));
+        let text = status_report_text(&base, &report, Some(&announce), None, Some(&rows));
         // Measured independently, in UTF-16 units: the most Discord can count.
         let units = |s: &str| s.encode_utf16().count();
         assert!(units(&text) <= 2000, "{}", units(&text));
@@ -743,7 +1074,7 @@ mod tests {
         );
         assert!((1..10).contains(&shown), "{shown}");
         // A head longer than any message is cut, never sent too long.
-        let huge = status_report_text(&"B".repeat(3000), &report, None, None);
+        let huge = status_report_text(&"B".repeat(3000), &report, None, None, None);
         assert!(units(&huge) <= 2000);
         assert!(huge.ends_with('…'));
     }
@@ -768,7 +1099,7 @@ mod tests {
         ];
         let gaps = vec!["Give CrackTunes Embed Links in <#5>".to_owned()];
         assert_eq!(
-            preflight_lines(&report, Some(&gaps)),
+            preflight_lines(&report, Some(&gaps), None),
             vec![
                 "Rename: Ready.",
                 "Lock nickname: Give CrackTunes View Audit Log in Server Settings → Roles",
@@ -778,10 +1109,21 @@ mod tests {
             ]
         );
         assert_eq!(
-            preflight_lines(&report[..1], Some(&[])),
+            preflight_lines(&report[..1], Some(&[]), None),
             vec!["Rename: Ready.", "Announcements: Ready."]
         );
-        assert_eq!(preflight_lines(&report[..1], None), vec!["Rename: Ready."]);
+        assert_eq!(
+            preflight_lines(&report[..1], None, None),
+            vec!["Rename: Ready."]
+        );
+        let log_gaps = vec!["Give CrackTunes Send Messages in <#6>".to_owned()];
+        assert_eq!(
+            preflight_lines(&report[..1], None, Some(&log_gaps)),
+            vec![
+                "Rename: Ready.",
+                "Economy log: Give CrackTunes Send Messages in <#6>"
+            ]
+        );
     }
 
     #[test]

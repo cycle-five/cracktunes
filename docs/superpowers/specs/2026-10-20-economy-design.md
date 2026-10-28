@@ -29,7 +29,7 @@ to grow (section 9).
 |---|---|
 | What credits buy | Bot-performed, temporary actions. Never roles or permissions |
 | Notes | Every action can carry a message. Signing it is optional (anonymous by default) |
-| Accountability | The mod log **always** names the buyer, signed or not |
+| Accountability | The mod log **always** names the buyer, signed or not. *Superseded 2026-10-28 by `2026-10-28-economy-log-and-room-mute-design.md`: no log names an unsigned buyer.* |
 | Unmasking | "Reveal who did it" is itself something you can buy |
 | Earning | Time in voice pays out directly. Messages sent count too (a count, never the content) |
 | The catalogue | All of section 4, including every action I proposed: "keep them all" |
@@ -330,6 +330,8 @@ Otherwise a revenge rename would unmask the hidden buyer for the price of a
 rename, and nobody would buy a reveal.
 
 ### 5.4 The mod log
+
+> **Superseded 2026-10-28 by `2026-10-28-economy-log-and-room-mute-design.md`.** The economy's events moved to a separate economy log, the mod log carries literal shop lines with no buyer, and "the buyer is always named" below was reversed.
 
 New `ModLogEvent` variants, posted directly (exact, like room kicks):
 - `ShopAction { action, buyer, target, note, signed, until }`: every action

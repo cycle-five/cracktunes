@@ -226,7 +226,7 @@ Channel Permission). A target the bot has no reason to touch is never sent.
 |---|---|
 | owner, helpers | member allow Connect (so a lock cannot lock them out); while the chat is locked, also allow Send Messages |
 | blocked user | member deny View Channel + Connect |
-| muted user | member deny Speak |
+| muted user | member deny Speak. *Superseded 2026-10-28 by `2026-10-28-economy-log-and-room-mute-design.md`: the room also server-mutes the member while they are in it.* |
 | permitted user (only matters while locked) | member allow Connect |
 | locked | Connect moves from allow to deny on `@everyone` and on every role overwrite that allows it; permitted roles keep allow Connect |
 | chat locked | the same for Send Messages |
@@ -520,7 +520,7 @@ dashboard Settings page links to it.
 | Assumption | If wrong |
 |---|---|
 | A channel created in a category without overwrites is synced to it | The sync check (1.3 step 5) copies them; the room is deleted if it cannot |
-| A member-level Speak deny mutes someone already connected, at once | Mute becomes a server mute plus a tracked undo on leave (stored in `RoomState`, reconciled at startup) |
+| A member-level Speak deny mutes someone already connected, at once | Mute becomes a server mute plus a tracked undo on leave (stored in `RoomState`, reconciled at startup). *Superseded 2026-10-28 by `2026-10-28-economy-log-and-room-mute-design.md`: it did not, so mute is now a server mute while in the room, with holds in their own table.* |
 | Pins work in a voice channel's chat | Nothing breaks: the panel is the chat's first message, and `/room panel` re-posts it |
 | `MEMBER_DISCONNECT`/`MEMBER_MOVE` entries lack a target and aggregate | Attribution already pairs exactly when a target is present |
 | Re-PUTting a role overwrite whose baseline bits the bot lacks is refused | The preflight warning is then just conservative |

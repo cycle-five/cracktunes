@@ -277,6 +277,8 @@ pub struct EconomyConfig {
     pub short_effect_minutes: u32,
     pub jail_channel_id: Option<ChannelId>,
     pub announce_channel_id: Option<ChannelId>,
+    /// Where the economy's public log goes. Off (no lines) until set.
+    pub log_channel_id: Option<ChannelId>,
     /// Whether members may turn credits into CrackCoin here. Off by default;
     /// only a coin build ever reads it, but every build keeps it.
     pub coin_withdrawals: bool,
@@ -308,6 +310,7 @@ impl Default for EconomyConfig {
             short_effect_minutes: 5,
             jail_channel_id: None,
             announce_channel_id: None,
+            log_channel_id: None,
             coin_withdrawals: false,
             extra: BTreeMap::new(),
         }
@@ -913,6 +916,19 @@ mod tests {
         // A number reads too.
         let n: EconomyConfig = serde_json::from_str(r#"{"jail_channel_id": 9}"#).unwrap();
         assert_eq!(n.jail_channel_id, Some(ChannelId::new(9)));
+    }
+
+    #[test]
+    fn log_channel_round_trips_as_a_string() {
+        let c = EconomyConfig {
+            log_channel_id: Some(ChannelId::new(5)),
+            ..EconomyConfig::default()
+        };
+        let raw = serde_json::to_string(&c).unwrap();
+        assert!(raw.contains(r#""log_channel_id":"5""#), "{raw}");
+        assert_eq!(serde_json::from_str::<EconomyConfig>(&raw).unwrap(), c);
+        let old: EconomyConfig = serde_json::from_str(r#"{"rename_hours": 12}"#).unwrap();
+        assert_eq!(old.log_channel_id, None);
     }
 
     #[test]

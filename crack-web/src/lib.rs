@@ -638,10 +638,12 @@ impl Backend for LiveBackend {
             .jail_channel_id
             .into_iter()
             .chain(c.announce_channel_id)
+            .chain(c.log_channel_id)
             .collect();
         let perms = bot_perms(&self.deps.cache, g, &channels);
         (view.preflight, view.announce_findings) =
             settings::economy_preflight(c, perms.as_ref(), name_of);
+        view.log_findings = settings::log_findings(c, perms.as_ref(), name_of);
         view
     }
 

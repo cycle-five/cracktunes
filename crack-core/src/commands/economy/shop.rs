@@ -1,5 +1,5 @@
 //! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|theme|cleanse|reveal`.
-use super::admin::{log, log_to};
+use super::admin::econ_log_to;
 use super::credits::{gate, live, say};
 use crate::commands::music::doplay::{play_core, play_settlement, Settlement};
 use crate::commands::permissions::cmd_check_music;
@@ -9,8 +9,8 @@ use crate::economy::buttons::{card_buttons, carries_buttons};
 use crate::economy::cards::{
     card_channel, card_destination, card_text, dedication_card_text, jump_card_text,
 };
-use crate::economy::discord::LiveEconomyDiscord;
 use crate::economy::facts::{gather_facts, Subject};
+use crate::economy::ledger::{Byline, EconomyLogEvent, Ender, Unmasker};
 use crate::economy::preflight::{self, report_for, ActionPreflight};
 use crate::economy::settings::{
     validate_nick, validate_note, ActionKind, EconomySettings, NickError, NoteError,
@@ -26,12 +26,12 @@ use crate::economy::theme::{buy_theme, parse_start, StartError, ThemeRequest};
 use crate::economy::wallet::{ActionPayload, ActionState, MoveError};
 use crate::messaging::courier;
 use crate::messaging::messages::{
-    DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_CANT_TELL, ECONOMY_DOCS_URL, ECONOMY_IMMUNE_UNTIL,
-    ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK, ECONOMY_NICK_MENTION, ECONOMY_NICK_TOO_LONG,
-    ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK, ECONOMY_NOTE_MENTION, ECONOMY_NOTE_TOO_LONG,
-    ECONOMY_PLAY_NAME_A_SONG, ECONOMY_PLAY_NOT_CHARGED, ECONOMY_PLAY_ONE_SONG,
-    ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED, ECONOMY_REVEAL_WAS,
-    ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED,
+    DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_CANT_TELL, ECONOMY_CARD_NOT_POSTED, ECONOMY_DOCS_URL,
+    ECONOMY_IMMUNE_UNTIL, ECONOMY_NICK_EMPTY, ECONOMY_NICK_LINK, ECONOMY_NICK_MENTION,
+    ECONOMY_NICK_TOO_LONG, ECONOMY_NOTE_EMPTY, ECONOMY_NOTE_LINK, ECONOMY_NOTE_MENTION,
+    ECONOMY_NOTE_TOO_LONG, ECONOMY_PLAY_NAME_A_SONG, ECONOMY_PLAY_NOT_CHARGED,
+    ECONOMY_PLAY_ONE_SONG, ECONOMY_PURCHASE_FAILED, ECONOMY_REVEAL_PREFIX, ECONOMY_REVEAL_UNMASKED,
+    ECONOMY_REVEAL_WAS, ECONOMY_SHOP_BLOCKED, ECONOMY_SHOP_BOT_BUYER, ECONOMY_SHOP_BOUNCED,
     ECONOMY_SHOP_CLEANSED_PREFIX, ECONOMY_SHOP_CLEANSED_SUFFIX, ECONOMY_SHOP_DOCS_LABEL,
     ECONOMY_SHOP_DONE, ECONOMY_SHOP_FROM, ECONOMY_SHOP_GROUP_PLAY, ECONOMY_SHOP_IMMUNITY_NOTE,
     ECONOMY_SHOP_MIRROR_UP, ECONOMY_SHOP_MUSIC, ECONOMY_SHOP_NOT_SOLD, ECONOMY_SHOP_TITLE,
@@ -40,10 +40,8 @@ use crate::messaging::messages::{
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
-use crate::modlog::event::ModLogEvent;
 use crate::{Context, Data, Error};
 use chrono::{DateTime, Utc};
-use crack_types::discord::ToRef;
 use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
 use serenity::all::{ChannelId, GenericChannelId, GuildId, Member, UserId};
 use std::borrow::Cow;
@@ -206,9 +204,10 @@ pub fn revealed_reply_text(
     )
 }
 
-/// The mod log entry for a purchase. Only an action that changed a member is
-/// logged (spec 5.4): a prank a mirror blocked changed nobody, so it has none.
-/// A bounce is logged against the buyer, naming whose mirror sent it back.
+/// The economy log line for a purchase. Only an action that changed a member
+/// is logged (spec 5.4): a prank a mirror blocked changed nobody, so it has
+/// none. A bounce is logged against the buyer, naming whose mirror sent it
+/// back. The buyer is named only if they signed (2026-10-28 rule).
 pub fn shop_event(
     kind: ActionKind,
     outcome: BuyOutcome,
@@ -217,21 +216,23 @@ pub fn shop_event(
     note: Option<String>,
     signed: bool,
     until: Option<DateTime<Utc>>,
-) -> Option<ModLogEvent> {
-    let (target, mirrored_from) = match outcome {
-        BuyOutcome::Landed => (target, None),
-        BuyOutcome::Bounced => (buyer, Some(target)),
-        BuyOutcome::Blocked => return None,
-    };
-    Some(ModLogEvent::ShopAction {
-        action: kind,
-        buyer: buyer.to_ref(),
-        target: target.to_ref(),
-        note,
-        signed,
-        until,
-        mirrored_from: mirrored_from.map(|m| m.to_ref()),
-    })
+) -> Option<EconomyLogEvent> {
+    let buyer = Byline::new(buyer, signed);
+    match outcome {
+        BuyOutcome::Landed => Some(EconomyLogEvent::Purchase {
+            action: kind,
+            buyer,
+            target,
+            note,
+            until,
+        }),
+        BuyOutcome::Bounced => Some(EconomyLogEvent::Bounced {
+            action: kind,
+            buyer,
+            owner: target,
+        }),
+        BuyOutcome::Blocked => None,
+    }
 }
 
 /// How a prank is shown in the reveal picker: "Rename \u{b7} 5 minutes ago".
@@ -251,6 +252,25 @@ pub fn involved_channels(
         ActionKind::Drag => target_voice.into_iter().chain(buyer_voice).collect(),
         ActionKind::Jail => jail.into_iter().collect(),
         _ => Vec::new(),
+    }
+}
+
+/// Where a card goes when it can't be posted in its own channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardFallback {
+    /// A public follow-up in the invoking channel.
+    InvokingChannel,
+    /// Skip the card and tell the invoker privately.
+    TellPrivately,
+}
+
+/// A follow-up is labelled "<invoker> used /command", so it falls back
+/// publicly only when the card already names the invoker.
+pub fn card_fallback(invoker_named: bool) -> CardFallback {
+    if invoker_named {
+        CardFallback::InvokingChannel
+    } else {
+        CardFallback::TellPrivately
     }
 }
 
@@ -370,9 +390,7 @@ pub(crate) async fn run_prank(
         signed,
         now,
     };
-    let discord = LiveEconomyDiscord {
-        http: ctx.http.clone(),
-    };
+    let discord = crate::economy::live_discord(data, ctx.http.clone(), cache.clone());
     let bought = match buy(
         &data.economy_data(),
         &discord,
@@ -454,8 +472,17 @@ pub(crate) async fn run_prank(
         tracing::warn!(
             "economy: posting the {kind:?} card in {channel} failed, answering in the invoking channel: {err:?}"
         );
-        if let Err(err) = answer.public(rendered).await {
-            tracing::warn!("economy: the {kind:?} card follow-up failed: {err:?}");
+        match card_fallback(signed) {
+            CardFallback::InvokingChannel => {
+                if let Err(err) = answer.public(rendered).await {
+                    tracing::warn!("economy: the {kind:?} card follow-up failed: {err:?}");
+                }
+            },
+            CardFallback::TellPrivately => {
+                if let Err(err) = answer.private(ECONOMY_CARD_NOT_POSTED.to_string()).await {
+                    tracing::warn!("economy: the {kind:?} card notice failed: {err:?}");
+                }
+            },
         }
     }
     if let Some(event) = shop_event(
@@ -467,7 +494,7 @@ pub(crate) async fn run_prank(
         signed,
         bought.until,
     ) {
-        log_to(env.data, env.ctx, env.guild, event).await;
+        econ_log_to(env.data, env.ctx, env.guild, event).await;
     }
     replied
 }
@@ -701,18 +728,16 @@ pub async fn theme(
         true,
     )
     .await;
-    log_to(
+    econ_log_to(
         &data,
         ctx.serenity_context(),
         guild,
-        ModLogEvent::ShopAction {
+        EconomyLogEvent::Purchase {
             action: ActionKind::Theme,
-            buyer: buyer_id.to_ref(),
-            target: target.to_ref(),
+            buyer: Byline::new(buyer_id, signed),
+            target,
             note,
-            signed,
             until: bought.until,
-            mirrored_from: None,
         },
     )
     .await;
@@ -964,18 +989,16 @@ async fn paid_play(
         }
     }
     if let Some(target) = target {
-        log_to(
+        econ_log_to(
             &data,
             ctx.serenity_context(),
             guild,
-            ModLogEvent::ShopAction {
+            EconomyLogEvent::Purchase {
                 action: ActionKind::Dedicate,
-                buyer: buyer_id.to_ref(),
-                target: target.to_ref(),
+                buyer: Byline::new(buyer_id, signed),
+                target,
                 note,
-                signed,
                 until: None,
-                mirrored_from: None,
             },
         )
         .await;
@@ -1105,12 +1128,13 @@ pub async fn cleanse_command(ctx: Context<'_>) -> Result<(), Error> {
                 true,
             )
             .await;
-            log(
-                ctx,
+            econ_log_to(
+                &ctx.data(),
+                ctx.serenity_context(),
                 guild,
-                ModLogEvent::ShopCancelled {
-                    by: buyer.id.to_ref(),
-                    target: buyer.id.to_ref(),
+                EconomyLogEvent::PranksEnded {
+                    target: buyer.id,
+                    by: Ender::Target,
                 },
             )
             .await;
@@ -1189,6 +1213,18 @@ pub async fn reveal_command(
             {
                 tracing::warn!("economy: the public unmasking failed: {err:?}");
             }
+            econ_log_to(
+                &ctx.data(),
+                ctx.serenity_context(),
+                guild,
+                EconomyLogEvent::Unmasked {
+                    action: done.kind,
+                    target: presser.id,
+                    buyer: done.buyer,
+                    by: Unmasker::Target,
+                },
+            )
+            .await;
             replied
         },
         Err(e) => say_buy_error(ctx, e, &cfg.currency_name).await,
@@ -1217,6 +1253,20 @@ mod tests {
     fn menu(s: &EconomySettings, perms: Option<&preflight::BotPerms>) -> String {
         let (report, _) = preflight::economy_preflight(&s.config, perms, |c| format!("<#{c}>"));
         menu_text(s, &report)
+    }
+
+    #[test]
+    fn an_unsigned_card_never_falls_back_publicly() {
+        assert_eq!(card_fallback(false), CardFallback::TellPrivately);
+        assert_eq!(card_fallback(true), CardFallback::InvokingChannel);
+    }
+
+    #[test]
+    fn not_posted_text_is_exact() {
+        assert_eq!(
+            ECONOMY_CARD_NOT_POSTED,
+            "CrackTunes couldn't post the card where it goes, and posting it here would show it was you, so it was skipped. Your purchase still went through."
+        );
     }
 
     #[test]
@@ -1556,31 +1606,25 @@ mod tests {
     #[test]
     fn only_actions_that_changed_a_member_are_logged() {
         let (b, t) = (UserId::new(1), UserId::new(2));
-        let log = |o| shop_event(ActionKind::Rename, o, b, t, Some("gg".into()), false, None);
-        let Some(ModLogEvent::ShopAction {
-            buyer,
-            target,
-            mirrored_from,
-            ..
-        }) = log(BuyOutcome::Landed)
+        let log =
+            |o, signed| shop_event(ActionKind::Rename, o, b, t, Some("gg".into()), signed, None);
+        // Unsigned: the log holds no id for the buyer at all.
+        let Some(EconomyLogEvent::Purchase { buyer, target, .. }) = log(BuyOutcome::Landed, false)
         else {
             panic!("a landed prank is logged");
         };
-        assert_eq!(
-            (buyer, target, mirrored_from),
-            (b.to_ref(), t.to_ref(), None)
-        );
+        assert_eq!((buyer.shown(), target), (None, t));
+        let Some(EconomyLogEvent::Purchase { buyer, .. }) = log(BuyOutcome::Landed, true) else {
+            panic!("a landed prank is logged");
+        };
+        assert_eq!(buyer.shown(), Some(b));
         // A bounce changed the buyer, and names whose mirror sent it back.
-        let Some(ModLogEvent::ShopAction {
-            target,
-            mirrored_from,
-            ..
-        }) = log(BuyOutcome::Bounced)
+        let Some(EconomyLogEvent::Bounced { buyer, owner, .. }) = log(BuyOutcome::Bounced, false)
         else {
             panic!("a bounce is logged");
         };
-        assert_eq!((target, mirrored_from), (b.to_ref(), Some(t.to_ref())));
+        assert_eq!((buyer.shown(), owner), (None, t));
         // A blocked one changed nobody.
-        assert_eq!(log(BuyOutcome::Blocked), None);
+        assert_eq!(log(BuyOutcome::Blocked, true), None);
     }
 }
