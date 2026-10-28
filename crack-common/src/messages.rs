@@ -1294,3 +1294,29 @@ pub const COIN_ADDRESS_OFF_CURVE: &str =
     "That looks like a token account, not a wallet. Link your wallet's own address.";
 pub const COIN_ADDRESS_IS_THE_MINT: &str =
     "That is the token's own address. Link your wallet's address instead.";
+
+// The economy log (`crack-economy` `ledger`): public lines, written as if the
+// whole server reads them. Word pieces, in the style of `MODLOG_*`.
+pub const ECONLOG_USED: &str = "used";
+pub const ECONLOG_ON: &str = "on";
+pub const ECONLOG_UNTIL: &str = "until";
+pub const ECONLOG_UNTIL_LIFTED: &str = "until lifted";
+pub const ECONLOG_BOUNCED_OFF: &str = "bounced off";
+pub const ECONLOG_MIRROR: &str = "mirror";
+pub const ECONLOG_STARTED_A_CROWDFUND: &str = "started a crowdfund:";
+pub const ECONLOG_CROWDFUND_LANDED: &str = "Crowdfund landed:";
+pub const ECONLOG_BACKED_BY: &str = "backed by";
+pub const ECONLOG_OTHER: &str = "other";
+pub const ECONLOG_OTHERS: &str = "others";
+pub const ECONLOG_ANONYMOUS_BACKER: &str = "anonymous backer";
+pub const ECONLOG_ANONYMOUS_BACKERS: &str = "anonymous backers";
+pub const ECONLOG_ENDED_THE_PRANKS_ON_THEM: &str = "ended the pranks on them";
+pub const ECONLOG_A_MODERATOR: &str = "A moderator";
+pub const ECONLOG_ENDED_THE_PRANKS_ON: &str = "ended the pranks on";
+pub const ECONLOG_MADE: &str = "made";
+pub const ECONLOG_IMMUNE: &str = "immune";
+pub const ECONLOG_LIFTED: &str = "lifted";
+pub const ECONLOG_IMMUNITY: &str = "immunity";
+pub const ECONLOG_ADJUSTED: &str = "adjusted";
+pub const ECONLOG_BALANCE_BY: &str = "balance by";
+pub const ECONLOG_UNMASKED_THE: &str = "unmasked the";

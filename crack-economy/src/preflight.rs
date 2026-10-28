@@ -24,6 +24,10 @@ pub const NEED_CARD: Permissions = Permissions::VIEW_CHANNEL
     .union(Permissions::SEND_MESSAGES)
     .union(Permissions::EMBED_LINKS);
 
+/// What the economy log channel must offer the bot: its lines are plain text,
+/// so no Embed Links.
+pub const NEED_LOG: Permissions = Permissions::VIEW_CHANNEL.union(Permissions::SEND_MESSAGES);
+
 /// The bot's computed permissions: server-wide, and in the channels asked about.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct BotPerms {
@@ -176,6 +180,32 @@ pub fn economy_preflight(
         }
     });
     (actions, announce)
+}
+
+/// The economy log channel's gaps, worded like the announce channel's.
+/// `None` with no log channel or when the cache cannot answer.
+pub fn log_findings(
+    c: &EconomyConfig,
+    perms: Option<&BotPerms>,
+    name_of: impl Fn(ChannelId) -> String,
+) -> Option<Vec<String>> {
+    c.log_channel_id.zip(perms).map(|(ch, p)| {
+        let have = p
+            .in_channel
+            .get(&ch)
+            .copied()
+            .unwrap_or_else(Permissions::empty);
+        let gap = NEED_LOG - have;
+        if gap.is_empty() {
+            Vec::new()
+        } else {
+            vec![format!(
+                "{DASH_ECONOMY_FINDING_GIVE} {} {DASH_ECONOMY_FINDING_IN} {}",
+                perm_names(gap, false),
+                name_of(ch)
+            )]
+        }
+    })
 }
 
 /// [`economy_preflight`] for a server, from the cache, naming channels as
@@ -353,6 +383,32 @@ mod tests {
         assert_eq!(ann, Some(vec![]));
         let (_, ann) = economy_preflight(&c, None, |ch| format!("#{ch}"));
         assert_eq!(ann, None);
+    }
+
+    #[test]
+    fn log_findings_name_what_the_log_channel_lacks() {
+        let ch = ChannelId::new(333);
+        let none = EconomyConfig::default();
+        assert_eq!(
+            log_findings(&none, Some(&all_perms()), |c| format!("#{c}")),
+            None
+        );
+        let c = EconomyConfig {
+            log_channel_id: Some(ch),
+            ..Default::default()
+        };
+        assert_eq!(log_findings(&c, None, |c| format!("#{c}")), None);
+        let mut p = all_perms();
+        p.in_channel.insert(ch, NEED_LOG);
+        assert_eq!(
+            log_findings(&c, Some(&p), |c| format!("#{c}")),
+            Some(vec![])
+        );
+        p.in_channel.insert(ch, Permissions::VIEW_CHANNEL);
+        assert_eq!(
+            log_findings(&c, Some(&p), |c| format!("#{c}")),
+            Some(vec!["Give CrackTunes Send Messages in #333".to_owned()])
+        );
     }
 
     #[test]

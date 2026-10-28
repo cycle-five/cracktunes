@@ -12,6 +12,7 @@ pub mod earn;
 pub mod effects;
 pub mod gamble;
 pub mod immunity;
+pub mod ledger;
 pub mod lock;
 pub mod preflight;
 pub mod registry;
