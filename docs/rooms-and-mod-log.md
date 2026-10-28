@@ -73,9 +73,11 @@ On the **hub channel** itself CrackTunes needs View Channel, Connect and Move
 Members. Normally these come from the category; a permission set directly on
 the hub can take them away.
 
-One more is optional: **Pin Messages**. With it the panel is pinned in the
-room's chat. Without it rooms still work and the panel is just a normal
-message.
+Two more are optional. **Pin Messages**: with it the panel is pinned in the
+room's chat; without it rooms still work and the panel is just a normal
+message. **Mute Members**: with it Mute server-mutes the person while they are
+in the room (see the notes on each control); without it Mute only denies
+Speak, which takes effect when they next join.
 
 Manage Permissions deserves a note. It is what lets CrackTunes lock rooms. A
 lock rewrites the room's permission overwrites, and Discord only lets a bot
@@ -93,7 +95,7 @@ has everything it needs." or one line per problem:
 
 - "Give CrackTunes **Move Members** on #category": a required permission is
   missing there. The line says where: the category, the hub, or server-wide.
-- "Optional: give CrackTunes **Pin Messages** on #category".
+- "Optional: give CrackTunes **Pin Messages** (or **Mute Members**) on #category".
 - "Locking a room may fail: CrackTunes lacks ...": see the note above.
 - "Couldn't check permissions ...": CrackTunes cannot see the hub or its
   category (give it View Channel there) or it has only just started. Try again
@@ -211,8 +213,20 @@ Someone you kick is also removed from the helpers and from the people let in.
   moderator who kicks the room's owner frees the room: anyone left in it can
   claim it, and the hub gives the old owner a new room rather than moving
   them back.
-- **Mute** is for this room only. It does not server-mute the person anywhere
-  else. If someone is muted and leaves, the mute stays with the room.
+- **Mute** server-mutes the person while they are in this room, so it works
+  even mid-sentence, and the room also denies them Speak so the mute holds if
+  they rejoin. It is for this room only: moving to any other channel (the hub
+  included) unmutes them at once. If they disconnect instead, Discord won't
+  unmute someone who isn't in voice, so CrackTunes lifts the mute the next time
+  they join voice in the server (or when it starts up and finds them there).
+  Rejoining the room mutes them again. **Unmute** lifts both. Two things are
+  never overridden: someone a moderator (or the shop) had already server-muted
+  keeps that mute as theirs, and the room never lifts it; and if a moderator
+  server-unmutes someone in the room, that stands until they rejoin the room.
+  Without **Mute Members**, Mute only denies Speak, and CrackTunes says it
+  takes effect when they rejoin. One edge: if the room mutes someone the shop
+  had already muted, they can speak in the room after the shop's mute ends,
+  until they rejoin.
 - **Lock** blocks newcomers, not the people already inside: they can rejoin
   if they drop out. The owner, helpers and anyone you allowed can still join,
   and so can CrackTunes, to play music. Allow a person or role first, then
@@ -265,9 +279,9 @@ Discord has no way to deafen someone in one channel. Server-deafen applies
 to a person everywhere in the server, and it can only be done by a bot or
 a moderator, so a room owner pressing "Deafen" would silence someone in every
 voice channel they join, long after they left the room. CrackTunes does not
-offer a control that would do that. Mute works because Discord can deny the
-Speak permission in a single channel. There is no such permission for
-hearing.
+offer a control that would do that. Mute works in one room because CrackTunes
+takes the server mute back off when the person leaves, and denies Speak in the
+channel meanwhile. There is no such permission for hearing.
 
 Kick, mute and lock cover what deafening someone in your room would be for.
 
@@ -292,7 +306,9 @@ without one it cannot be turned on.
 | Moved | Who was moved from which channel to which, and by whom. | Matched by timing. |
 | Disconnected several | Several disconnects at once, when they cannot be told apart. | Matched by timing. |
 | Kicked from a room | Who kicked whom from which voice room, with the reason. | Exact: CrackTunes did it itself. |
-| Muted / unmuted in a room | Who did it, to whom, in which room; a mute shows its reason if one was given. | Exact. |
+| Muted / unmuted in a room | Who did it, to whom, in which room; a mute shows its reason if one was given. This one line is the record: the server mute the room applies is not logged a second time. | Exact. |
+| Shop changes (mute, unmute, deafen, undeafen, move, nickname) | "CrackTunes server-muted @Jo (shop: Mute)", with the prank's name and no buyer. Titles read "Shop mute", "Shop move", "Shop nickname" and so on. | Exact: CrackTunes did it itself. |
+| A moderator's economy action (immunity granted or lifted, credits adjusted, pranks ended, a prank unmasked) | Who did it and to whom. | Exact. |
 | Let back into a room | Who lifted a room kick. | Exact. |
 
 Server mutes and deafens appear as soon as Discord records them. CrackTunes
@@ -301,6 +317,11 @@ button, and, like every self-deafen, that is never logged. A server mute or
 deafen that CrackTunes applied to itself would not be logged either. A
 moderator muting CrackTunes is logged, and so is CrackTunes muting someone
 else.
+
+The economy's purchases are not in the mod log: [the economy log](economy.md#the-economy-log)
+tells that story, and never names an anonymous buyer. The mod log keeps only
+what was done to the member. Because it names moderators, point it at a
+channel moderators can read and others can't.
 
 Another bot's moderation is logged the same way, with "(bot)" after its name:
 its mutes and deafens, and its disconnects and moves (a temp-voice bot moving

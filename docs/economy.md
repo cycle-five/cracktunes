@@ -14,6 +14,7 @@ It needs the bot to have a database. If yours doesn't, it can't be turned on.
 be cashed out. They exist only inside your server.
 
 - [For admins](#for-admins)
+- [The economy log](#the-economy-log)
 - [How members earn credits](#how-members-earn-credits)
 - [Commands for members](#commands-for-members)
 - [Commands for moderators](#commands-for-moderators)
@@ -56,6 +57,7 @@ command replies privately "The economy is off in this server." and does nothing.
 | Minutes a mute, deafen or jail lasts | How long those three last | 5 | 1 to 60 |
 | Jail channel | The voice channel jailed members are moved to. Without one, jail isn't sold | none | a voice channel of the server |
 | Announcement channel | Where prank cards are posted, when they aren't posted in a voice channel's chat | none (cards go where the command was run) | a text channel of the server |
+| Economy log | Where [the economy log](#the-economy-log) posts. It is meant to be read by the whole server | none (no economy log) | a text channel of the server |
 
 Setting a rate to 0 turns that kind of earning off. A value outside its range
 is refused when you save, and nothing is changed.
@@ -155,17 +157,61 @@ are running when the economy is turned off.
 | `/economy grant <member> [hours] [reason]` | **Moderate Members** | Makes a member immune for 1 to 8760 hours, or until lifted if you leave the hours out. Refused if the server has turned off moderator grants. |
 | `/economy lift <member>` | **Moderate Members** | Removes a moderator grant. Always allowed, even if grants are switched off. It doesn't touch immunity the member bought. |
 | `/economy cancel <member>` | **Moderate Members** | Ends every prank running on a member now, each undone as if it had expired. It says how many it ended, or that nothing was running. |
+| `/economy reveal <member> [action]` | **Moderate Members** | Unmasks a prank that was bought unsigned, for free. See [Unmasking a prank as a moderator](#unmasking-a-prank-as-a-moderator). |
 | `/economy adjust <member> <amount> <reason>` | **Manage Server**, on top of Moderate Members | Adds credits, or removes them with a negative amount. The reason is required. Refused if it would take the member below zero (it tells you what they hold), or if the amount is 0 or larger than 1,000,000,000 either way. |
 
 Bots can't be granted immunity or have their credits adjusted.
 
-If you have [the mod log](rooms-and-mod-log.md#mod-log) turned on, `grant`,
-`lift`, `cancel` and `adjust` are posted to it, with who did it and to whom (and
-why, for `grant` and `adjust`). So is every prank that changes a member, which
-always names the buyer, signed or not (see [The prank shop](#the-prank-shop)),
-and so is every walk-on theme, dedication and bounty, every crowdfund that
-starts, which names its starter, and every crowdfunded prank that runs, which
-names all its contributors (see [Music](#music) and [Group play](#group-play)).
+A moderator's economy actions (`grant`, `lift`, `cancel`, `adjust` and
+`reveal`) go to **both** logs. [The mod log](rooms-and-mod-log.md#mod-log), if
+it is on, says who did it and to whom (and why, for `grant` and `adjust`).
+[The economy log](#the-economy-log), if you set one, says "a moderator", so a
+public log doesn't name your staff. The mod log no longer carries the shop's
+purchases: what the shop *did* to a member shows there as literal lines (see
+[The mod log](#the-mod-log)), and who bought it is not part of them.
+
+## The economy log
+
+The economy log is a channel where CrackTunes tells the economy's story: who
+used what on whom, crowdfunds, pranks ended early, immunity and credits
+changed by a moderator, and unmaskings. **It is public by design**: write
+every line assuming the whole server can read the channel. That is why it
+never names a buyer who chose not to sign.
+
+It is **off until you pick a channel**. The economy itself runs either way.
+Pick the channel under **Economy log** in the economy settings on the
+dashboard (a text channel; it sits beside the announcement channel).
+CrackTunes needs **View Channel** and **Send Messages** there. `/economy status`
+shows the channel, and the dashboard lists the permissions still missing. If
+CrackTunes can't post there, the line is dropped and logged; the purchase or
+the moderator's action is not affected.
+
+The lines are plain text. Mentions inside them never ping anyone.
+
+| What happened | Unsigned, not unmasked | Signed, or unmasked |
+|---|---|---|
+| A purchase aimed at a member (any prank, theme, dedication, jump, bounty) | "Someone used Rename on @Jo until ..." | "@Mika used Rename on @Jo until ..." |
+| A prank bounced by a mirror | "Someone's rename bounced off @Jo's mirror" | names the buyer |
+| A crowdfund starts or lands | the starter and backers are not named | names those who signed |
+| Pranks ended early | by the member's own cleanse: names them. By a moderator: "A moderator ended the pranks on @Jo" | |
+| Immunity granted or lifted, credits adjusted | "A moderator ..." | |
+| A prank unmasked | bought: "@Jo unmasked the rename: @Mika". By a moderator: "A moderator unmasked the rename on @Jo: @Mika" | |
+
+**Crowdfunds name each person by their own choice.** The starter is named only
+if they signed the crowdfund, and each backer only if their own pledge was
+signed. Everyone else is counted ("+3 others", "2 anonymous backers"), people
+rather than pledges.
+
+### Upgrading to v0.46.0
+
+Before v0.46.0, economy events went to the mod log, and named the buyer even
+when the purchase was unsigned. **After upgrading, they stop going to the mod
+log.** Nothing goes to the economy log until you set one. So:
+
+1. On the dashboard, pick a **public** channel as the **Economy log**.
+2. If the mod log was a public channel, point it at a moderators-only channel
+   (the mod log still names moderators and, for mutes and the like, what
+   CrackTunes did).
 
 ## Immunity
 
@@ -210,7 +256,9 @@ Credits buy things the bot does itself. They never buy roles or permissions.
 Members use `/shop <prank> <member>`, and CrackTunes makes the change in
 Discord, then posts a public **card** saying what happened, to whom, until when,
 and the buyer's note if there is one. The card says "someone" unless the buyer
-chose `signed`; **the mod log always names the buyer** (see below).
+chose `signed`. No log names an unsigned buyer either: the economy log says
+"someone", and the mod log records what was done to the member, not who bought
+it (see below). Only [a reveal](#mirror-cleanse-and-reveal) names them.
 
 Every prank takes an optional `note` (up to 200 characters, no mentions or
 links) and a `signed` choice (default off). The buyer's own reply is private and
@@ -270,9 +318,12 @@ Economy section lists the gaps.
 | jail | Move Members; View Channel and Connect in the jail channel |
 | the cards | View Channel, Send Messages and Embed Links in the channel they post to |
 
-Immunity, mirror, cleanse and reveal need no permissions. If the card can't be
-posted where it should go, it is posted in the channel the command was run in
-instead.
+Immunity, mirror, cleanse and reveal need no permissions. If a **signed** card
+can't be posted where it should go, it is posted in the channel the command was
+run in instead. An **unsigned** card is never posted there: Discord labels such
+a reply "<buyer> used /shop ...", which would name the buyer. The card is
+skipped, and the buyer is told privately that it couldn't be posted (the
+purchase still went through). The same goes for the button on a card.
 
 Cards for drag, jail, mute and deafen go to the chat of the voice channel the
 target is in; every other card goes to the announcement channel, or to where
@@ -289,7 +340,7 @@ the command was run if none is set.
   A mirror holder who is also immune still bounces the prank: the mirror is
   checked first.
   A bounced drag is always blocked, since it would move the buyer into their
-  own channel. A blocked prank changes nobody, so it isn't posted to the mod log. The card says
+  own channel. A blocked prank changes nobody, so the mod log has nothing to show. The card says
   what happened: a bounce names whose mirror sent it back.
 - **`/shop cleanse`** (80) ends every prank running on you now, each undone as
   if it had expired. A standing mirror is kept. If nothing is running on you
@@ -313,6 +364,21 @@ the command was run if none is set.
   bounce it. It works only once the buyer is known (they signed it, or you have
   revealed it). Until then it says "Reveal who did it first", so that a revenge
   rename can't unmask an anonymous buyer for the price of a rename.
+
+### Unmasking a prank as a moderator
+
+`/economy reveal <member> [action]` is `/shop reveal` for moderators, and it is
+free. Pick the member whose prank it is; `action` lists that member's unsigned,
+unrevealed pranks (leave it empty for the most recent). CrackTunes posts a
+plain message in the channel where you ran it, "A moderator unmasked the rename
+on @Jo: @Mika", and **not** as a reply to your command, which Discord would
+label with your name. You are told privately who the buyer was. If CrackTunes
+can't post in that channel you are told so, and the reveal still stands.
+
+The effects are those of a bought reveal: the target can no longer buy a reveal
+of it, and the card's **Rename them back** button works. Both logs get a line
+(see above). A prank that was already revealed, or that has nothing to reveal,
+is refused with the shop's words.
 
 ### How pranks end
 
@@ -353,12 +419,17 @@ deafen waiting for the member to rejoin voice keeps waiting.
 
 ### The mod log
 
-With [the mod log](rooms-and-mod-log.md#mod-log) on, every prank that changes
-a member is posted with the buyer named, signed or not, and a bounce names the
-original attacker. The shop's own nickname, mute and move changes are
-recorded as the shop's, not as CrackTunes acting alone. With the mod log
-off, nothing is posted, and the prank records stay in the database:
-`/economy status` lists the last 10, with their buyers.
+With [the mod log](rooms-and-mod-log.md#mod-log) on, every change the shop
+makes to a member is posted as a literal line, with CrackTunes as the one who
+did it and **no buyer**: "CrackTunes server-muted @Jo (shop: Mute)", the same
+for unmuting, deafening and undeafening, "CrackTunes moved @Jo to #jail (shop:
+Jail)", and "CrackTunes changed @Jo's nickname to ..." or "cleared @Jo's
+nickname". Applying a prank, undoing it when it ends, a lock putting a nickname
+back, a crowdfund landing and a mirror's bounce all read the same way. With the
+mod log off, nothing is posted, and the prank records stay in the database:
+`/economy status` lists the last 10, with their buyers (moderators only).
+
+Who bought what is the economy log's business, and only for buyers who signed.
 
 ## Music
 
@@ -421,8 +492,9 @@ most `12:00:00`).
 - **Making jumping a perk:** see [For admins](#for-admins).
 
 None of these is stopped or bounced by a mirror: a mirror only answers pranks.
-The mod log names the buyer of every dedication, and of every theme, signed or
-not. A jump is aimed at nobody and posts nothing there.
+The economy log posts a theme like any purchase aimed at a member, naming the
+buyer only if they signed. A dedication always names its buyer. A jump is aimed
+at nobody and posts nothing there.
 
 ## Group play
 
@@ -441,7 +513,7 @@ head. `/bounty list` shows the bounties running in the server.
 - **Cards.** A public card goes out when a bounty is placed ("💰 … on
   @target's head"). When it is collected, the prank's card says a bounty was
   collected, without naming who collected it.
-- The mod log names the buyer of every bounty.
+- The economy log posts every bounty, naming the placer only if they signed.
 
 ### Crowdfunds
 
@@ -477,8 +549,9 @@ Members can pool credits for a prank against someone.
   "it couldn't land on them right now"; the reason (which could be the
   target's immunity or opt-out) goes privately to the member whose pledge
   filled it.
-- **The mod log** names the starter when a fund starts, signed or not, and every
-  contributor when it lands.
+- **The economy log** posts when a fund starts and when it lands. It names the
+  starter only if the fund was signed, and each contributor only if their own
+  pledge was signed; the rest are counted.
 - **Restarts.** A crowdfund interrupted between filling and running is refunded
   to its pledgers.
 
