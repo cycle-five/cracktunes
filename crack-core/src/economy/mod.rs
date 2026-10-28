@@ -7,8 +7,8 @@
 //! theme playback (`walk_on`) and the target facts (`facts`).
 
 pub use crack_economy::{
-    bounty, cards, crowdfund, discord, earn, effects, gamble, immunity, load_settings, lock,
-    mod_cancel, mod_grant, mod_lift, opt_out, preflight, protection, record_process_start,
+    bounty, cards, crowdfund, discord, earn, effects, gamble, immunity, ledger, load_settings,
+    lock, mod_cancel, mod_grant, mod_lift, opt_out, preflight, protection, record_process_start,
     registry, save_settings, settings, shop, target, theme, wallet, EconomyData, EconomySaveError,
     GrantError, OptOutError,
 };

@@ -3,23 +3,21 @@ use chrono::{DateTime, Utc};
 use crack_common::format::{clip, escape, DESCRIPTION_MAX, EMBED_TITLE_MAX, FIELD_MAX};
 use crack_common::messages::{
     MODLOG_ADJUSTED_CREDITS_OF, MODLOG_AND, MODLOG_AUDIT_FOOTER, MODLOG_BOT_MARK, MODLOG_BY,
-    MODLOG_BY_ONE_OF, MODLOG_CROWDFUNDED_BY, MODLOG_CROWDFUND_STARTED, MODLOG_DEAFENED,
-    MODLOG_DISCONNECTED, MODLOG_FROM, MODLOG_GRANTED_IMMUNITY_TO, MODLOG_IN, MODLOG_KICKED,
-    MODLOG_LET_BACK_IN, MODLOG_LIFTED_IMMUNITY_OF, MODLOG_MINUS, MODLOG_MORE, MODLOG_MOVED,
-    MODLOG_MUTED, MODLOG_OF, MODLOG_ONE_OR_MORE_OF, MODLOG_REASON_FIELD, MODLOG_SHOP_ANONYMOUS,
-    MODLOG_SHOP_BOUNCED_PREFIX, MODLOG_SHOP_BOUNCED_SUFFIX, MODLOG_SHOP_CHANGE_ACTOR,
+    MODLOG_BY_ONE_OF, MODLOG_DEAFENED, MODLOG_DISCONNECTED, MODLOG_FROM,
+    MODLOG_GRANTED_IMMUNITY_TO, MODLOG_IN, MODLOG_KICKED, MODLOG_LET_BACK_IN,
+    MODLOG_LIFTED_IMMUNITY_OF, MODLOG_MINUS, MODLOG_MORE, MODLOG_MOVED, MODLOG_MUTED, MODLOG_OF,
+    MODLOG_ONE_OR_MORE_OF, MODLOG_REASON_FIELD, MODLOG_SHOP_CHANGE_ACTOR,
     MODLOG_SHOP_CHANGE_CHANGED, MODLOG_SHOP_CHANGE_CLEARED, MODLOG_SHOP_CHANGE_NICKNAME,
     MODLOG_SHOP_CHANGE_NICKNAME_TO, MODLOG_SHOP_CHANGE_SERVER_DEAFENED,
     MODLOG_SHOP_CHANGE_SERVER_MUTED, MODLOG_SHOP_CHANGE_SHOP, MODLOG_SHOP_CLEANSED, MODLOG_SHOP_ON,
-    MODLOG_SHOP_SIGNED, MODLOG_SHOP_USED, MODLOG_TITLE_BATCH, MODLOG_TITLE_CREDITS_ADJUSTED,
-    MODLOG_TITLE_CROWDFUND, MODLOG_TITLE_CROWDFUND_STARTED, MODLOG_TITLE_DEAFEN,
+    MODLOG_TITLE_BATCH, MODLOG_TITLE_CREDITS_ADJUSTED, MODLOG_TITLE_DEAFEN,
     MODLOG_TITLE_DISCONNECT, MODLOG_TITLE_IMMUNITY_GRANTED, MODLOG_TITLE_IMMUNITY_LIFTED,
-    MODLOG_TITLE_MOVE, MODLOG_TITLE_MUTE, MODLOG_TITLE_ROOM_KICK, MODLOG_TITLE_ROOM_MUTE,
-    MODLOG_TITLE_ROOM_UNBLOCK, MODLOG_TITLE_ROOM_UNMUTE, MODLOG_TITLE_SHOP_ACTION,
+    MODLOG_TITLE_MOVE, MODLOG_TITLE_MUTE, MODLOG_TITLE_PRANK_UNMASKED, MODLOG_TITLE_ROOM_KICK,
+    MODLOG_TITLE_ROOM_MUTE, MODLOG_TITLE_ROOM_UNBLOCK, MODLOG_TITLE_ROOM_UNMUTE,
     MODLOG_TITLE_SHOP_CANCELLED, MODLOG_TITLE_SHOP_DEAFEN, MODLOG_TITLE_SHOP_MOVE,
     MODLOG_TITLE_SHOP_MUTE, MODLOG_TITLE_SHOP_NICKNAME, MODLOG_TITLE_SHOP_UNDEAFEN,
     MODLOG_TITLE_SHOP_UNMUTE, MODLOG_TITLE_UNDEAFEN, MODLOG_TITLE_UNMUTE, MODLOG_TO,
-    MODLOG_UNDEAFENED, MODLOG_UNMUTED, MODLOG_UNTIL, MODLOG_UNTIL_LIFTED,
+    MODLOG_UNDEAFENED, MODLOG_UNMASKED_THE, MODLOG_UNMUTED, MODLOG_UNTIL, MODLOG_UNTIL_LIFTED,
 };
 use crack_common::render::{RenderCx, Rendered};
 use crack_economy::discord::ShopChange;
@@ -131,18 +129,6 @@ pub enum ModLogEvent {
         amount: i64,
         reason: String,
     },
-    /// A shop purchase aimed at a member. The buyer is always named
-    /// here, signed or not (owner ruling): moderators see who did it.
-    ShopAction {
-        action: ActionKind,
-        buyer: UserRef,
-        target: UserRef,
-        note: Option<String>,
-        signed: bool,
-        until: Option<DateTime<Utc>>,
-        /// Whose mirror bounced the prank onto the buyer.
-        mirrored_from: Option<UserRef>,
-    },
     /// One member change the shop made (a prank landing or ending, a lock's
     /// revert, a jail move...). CrackTunes is the actor, as in Discord's own
     /// audit log: there is no buyer field, so no line can name one.
@@ -151,29 +137,21 @@ pub enum ModLogEvent {
         change: ShopChange,
         action: ActionKind,
     },
-    /// The pranks running on `target` were ended early: by `target`'s own
-    /// cleanse (`by == target`) or a moderator's `/economy cancel`.
+    /// A moderator's `/economy cancel` ended the pranks running on `target`.
+    /// A member's own cleanse is the economy log's story, not this log's.
     ShopCancelled {
         by: UserRef,
         target: UserRef,
     },
-    /// A crowdfund was opened (with the starter's own first pledge). The
-    /// starter is always named here, signed or not, as a shop purchase's
-    /// buyer is; `signed` says whether the public card named them too.
-    CrowdfundStarted {
-        action: ActionKind,
-        starter: UserRef,
-        target: UserRef,
-        note: Option<String>,
-        signed: bool,
-    },
-    /// A filled crowdfund landed. Every contributor is named, signed or not:
-    /// the starter first, then each pledger once in pledge order.
-    CrowdfundExecuted {
+    /// A prank's buyer was unmasked, by the target's paid reveal or a
+    /// moderator's `/economy reveal`. Whoever unmasked it is named, as a
+    /// moderator's action is in this log; the unmasking is what makes the
+    /// buyer's name fair to show (2026-10-28 rule).
+    PrankUnmasked {
+        by: UserRef,
         action: ActionKind,
         target: UserRef,
-        contributors: Vec<UserRef>,
-        until: Option<DateTime<Utc>>,
+        buyer: UserRef,
     },
 }
 
@@ -192,11 +170,9 @@ impl std::fmt::Display for ModLogEvent {
             Self::ImmunityGranted { .. } => "immunity_granted",
             Self::ImmunityLifted { .. } => "immunity_lifted",
             Self::CreditsAdjusted { .. } => "credits_adjusted",
-            Self::ShopAction { .. } => "shop_action",
             Self::ShopChange { .. } => "shop_change",
             Self::ShopCancelled { .. } => "shop_cancelled",
-            Self::CrowdfundStarted { .. } => "crowdfund_started",
-            Self::CrowdfundExecuted { .. } => "crowdfund_executed",
+            Self::PrankUnmasked { .. } => "prank_unmasked",
         };
         write!(f, "ModLog({kind})")
     }
@@ -457,39 +433,6 @@ fn parts(e: &ModLogEvent) -> Parts {
                 )
             }
         },
-        ModLogEvent::ShopAction {
-            action,
-            buyer,
-            target,
-            note,
-            signed,
-            until,
-            mirrored_from,
-        } => {
-            let mut d = format!(
-                "{} {MODLOG_SHOP_USED} {} {MODLOG_SHOP_ON} {}",
-                user(buyer),
-                action.label(),
-                user(target)
-            );
-            if let Some(t) = until {
-                d.push_str(&format!(" {MODLOG_UNTIL} <t:{}:f>", t.timestamp()));
-            }
-            if let Some(owner) = mirrored_from {
-                d.push_str(&format!(
-                    " {MODLOG_SHOP_BOUNCED_PREFIX} {}{MODLOG_SHOP_BOUNCED_SUFFIX}",
-                    user(owner)
-                ));
-            }
-            d.push_str(&format!(
-                " ({})",
-                toggle(*signed, MODLOG_SHOP_SIGNED, MODLOG_SHOP_ANONYMOUS)
-            ));
-            Parts {
-                reason: note.clone(),
-                ..plain(MODLOG_TITLE_SHOP_ACTION, d)
-            }
-        },
         ModLogEvent::ShopChange {
             target,
             change,
@@ -537,43 +480,21 @@ fn parts(e: &ModLogEvent) -> Parts {
             MODLOG_TITLE_SHOP_CANCELLED,
             format!("{} {MODLOG_SHOP_CLEANSED} {}", user(by), user(target)),
         ),
-        ModLogEvent::CrowdfundStarted {
-            action,
-            starter,
-            target,
-            note,
-            signed,
-        } => Parts {
-            reason: note.clone(),
-            ..plain(
-                MODLOG_TITLE_CROWDFUND_STARTED,
-                format!(
-                    "{} {MODLOG_CROWDFUND_STARTED} {} {MODLOG_SHOP_ON} {} ({})",
-                    user(starter),
-                    action.label(),
-                    user(target),
-                    toggle(*signed, MODLOG_SHOP_SIGNED, MODLOG_SHOP_ANONYMOUS)
-                ),
-            )
-        },
-        ModLogEvent::CrowdfundExecuted {
+        ModLogEvent::PrankUnmasked {
+            by,
             action,
             target,
-            contributors,
-            until,
-        } => {
-            // The action and the target first, so a long list of
-            // contributors can only ever clip its own tail.
-            let mut d = format!("{} {MODLOG_SHOP_ON} {}", action.label(), user(target));
-            if let Some(t) = until {
-                d.push_str(&format!(" {MODLOG_UNTIL} <t:{}:f>", t.timestamp()));
-            }
-            d.push_str(&format!(
-                " ({MODLOG_CROWDFUNDED_BY} {})",
-                users(contributors)
-            ));
-            plain(MODLOG_TITLE_CROWDFUND, d)
-        },
+            buyer,
+        } => plain(
+            MODLOG_TITLE_PRANK_UNMASKED,
+            format!(
+                "{} {MODLOG_UNMASKED_THE} {} {MODLOG_SHOP_ON} {}: {}",
+                user(by),
+                action.label(),
+                user(target),
+                user(buyer)
+            ),
+        ),
     }
 }
 
@@ -620,7 +541,6 @@ mod tests {
     const A: UserId = UserId::new(22);
     const R: serenity::all::ChannelId = serenity::all::ChannelId::new(333);
     const R2: serenity::all::ChannelId = serenity::all::ChannelId::new(444);
-    const R_USER: UserId = UserId::new(555);
 
     fn t() -> UserRef {
         T.to_ref()
@@ -746,31 +666,15 @@ mod tests {
                 amount: 5,
                 reason: "x".into(),
             },
-            ModLogEvent::ShopAction {
-                action: ActionKind::Rename,
-                buyer: a(),
-                target: t(),
-                note: Some("hi".into()),
-                signed: false,
-                until: None,
-                mirrored_from: None,
-            },
             ModLogEvent::ShopCancelled {
                 by: a(),
                 target: t(),
             },
-            ModLogEvent::CrowdfundStarted {
-                action: ActionKind::Mute,
-                starter: a(),
+            ModLogEvent::PrankUnmasked {
+                by: t(),
+                action: ActionKind::Rename,
                 target: t(),
-                note: None,
-                signed: false,
-            },
-            ModLogEvent::CrowdfundExecuted {
-                action: ActionKind::Mute,
-                target: t(),
-                contributors: vec![a(), t()],
-                until: None,
+                buyer: a(),
             },
         ]
     }
@@ -832,28 +736,6 @@ mod tests {
                 amount: -5,
                 reason: "x".into(),
             },
-            ModLogEvent::ShopAction {
-                action: ActionKind::Mute,
-                buyer: a(),
-                target: t(),
-                note: None,
-                signed: true,
-                until,
-                mirrored_from: Some(R_USER.to_ref()),
-            },
-            ModLogEvent::CrowdfundStarted {
-                action: ActionKind::Mute,
-                starter: a(),
-                target: t(),
-                note: Some("n".into()),
-                signed: true,
-            },
-            ModLogEvent::CrowdfundExecuted {
-                action: ActionKind::Mute,
-                target: t(),
-                contributors: vec![a(), t()],
-                until,
-            },
             shop_change(ShopChange::Nick(None), ActionKind::Rename),
         ]);
         out
@@ -889,24 +771,40 @@ mod tests {
         }
     }
 
-    /// One event for a member's cleanse and a moderator's cancel, so its
-    /// words fit both.
+    /// Only a moderator's cancel reaches the mod log: it names them.
     #[test]
-    fn ended_pranks_read_the_same_for_a_cleanse_and_a_cancel() {
-        for by in [A, T] {
-            let j = json(&render(
-                &ModLogEvent::ShopCancelled {
-                    by: by.to_ref(),
-                    target: t(),
-                },
-                &cx(),
-            ));
-            assert_eq!(j["title"], "🧼 Shop pranks ended");
-            assert_eq!(
-                j["description"],
-                format!("<@{by}> ended the pranks on <@{T}>").as_str()
-            );
-        }
+    fn cancel_names_the_moderator() {
+        let j = json(&render(
+            &ModLogEvent::ShopCancelled {
+                by: A.to_ref(),
+                target: t(),
+            },
+            &cx(),
+        ));
+        assert_eq!(j["title"], "🧼 Shop pranks ended");
+        assert_eq!(
+            j["description"],
+            format!("<@{A}> ended the pranks on <@{T}>").as_str()
+        );
+    }
+
+    #[test]
+    fn prank_unmasked_reads_exactly() {
+        let e = ModLogEvent::PrankUnmasked {
+            by: t(),
+            action: ActionKind::Rename,
+            target: t(),
+            buyer: a(),
+        };
+        let r = render(&e, &cx());
+        let j = json(&r);
+        assert_eq!(j["title"], "🔎 Prank unmasked");
+        assert_eq!(
+            j["description"],
+            "<@11> unmasked the Rename on <@11>: <@22>"
+        );
+        assert_eq!(r.mentions, Mentions::None);
+        assert_eq!(e.to_string(), "ModLog(prank_unmasked)");
     }
 
     /// Another bot's action is logged like a moderator's, with a mark after
@@ -957,95 +855,6 @@ mod tests {
         };
         let j = json(&render(&person, &cx()));
         assert_eq!(j["description"], format!("<@22> {MODLOG_MUTED} <@11>"));
-    }
-
-    #[test]
-    fn shop_action_renders_buyer_even_unsigned() {
-        let until = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
-        let e = ModLogEvent::ShopAction {
-            action: ActionKind::Rename,
-            buyer: a(),
-            target: t(),
-            note: Some("gg".into()),
-            signed: false,
-            until: Some(until),
-            mirrored_from: None,
-        };
-        let j = json(&render(&e, &cx()));
-        assert_eq!(
-            j["description"],
-            "<@22> used Rename on <@11> until <t:1800000000:f> (anonymous)"
-        );
-        assert_eq!(j["fields"][0]["value"], "gg");
-        let bounced = ModLogEvent::ShopAction {
-            action: ActionKind::Rename,
-            buyer: a(),
-            target: t(),
-            note: None,
-            signed: true,
-            until: None,
-            mirrored_from: Some(t()),
-        };
-        let j = json(&render(&bounced, &cx()));
-        assert_eq!(
-            j["description"],
-            "<@22> used Rename on <@11> (bounced by <@11>'s mirror) (signed)"
-        );
-    }
-
-    #[test]
-    fn crowdfund_started_names_the_starter() {
-        let e = ModLogEvent::CrowdfundStarted {
-            action: ActionKind::Rename,
-            starter: a(),
-            target: t(),
-            note: Some("gg".into()),
-            signed: true,
-        };
-        let j = json(&render(&e, &cx()));
-        assert_eq!(j["title"], "🎉 Crowdfund started");
-        assert_eq!(
-            j["description"],
-            "<@22> started a crowdfund for Rename on <@11> (signed)"
-        );
-        assert_eq!(j["fields"][0]["value"], "gg");
-        assert_eq!(render(&e, &cx()).mentions, Mentions::None);
-        assert_eq!(e.to_string(), "ModLog(crowdfund_started)");
-        // Unsigned, with no note: no reason field, and the starter is still
-        // named, marked as anonymous on the public card.
-        let bare = ModLogEvent::CrowdfundStarted {
-            action: ActionKind::Mute,
-            starter: a(),
-            target: t(),
-            note: None,
-            signed: false,
-        };
-        let j = json(&render(&bare, &cx()));
-        assert_eq!(
-            j["description"],
-            "<@22> started a crowdfund for Mute on <@11> (anonymous)"
-        );
-        assert!(j["fields"].as_array().is_none_or(Vec::is_empty), "{j}");
-    }
-
-    #[test]
-    fn crowdfund_executed_renders_every_contributor() {
-        let until = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
-        let c = UserId::new(33);
-        let e = ModLogEvent::CrowdfundExecuted {
-            action: ActionKind::Rename,
-            target: t(),
-            contributors: vec![a(), c.to_ref(), UserId::new(44).to_ref()],
-            until: Some(until),
-        };
-        let j = json(&render(&e, &cx()));
-        assert_eq!(j["title"], "🎉 Crowdfund executed");
-        assert_eq!(
-            j["description"],
-            "Rename on <@11> until <t:1800000000:f> (crowdfunded by <@22>, <@33>, <@44>)"
-        );
-        assert_eq!(render(&e, &cx()).mentions, Mentions::None);
-        assert_eq!(e.to_string(), "ModLog(crowdfund_executed)");
     }
 
     #[test]
@@ -1377,14 +1186,12 @@ mod tests {
 
     #[test]
     fn economy_events_log_their_kind() {
-        let shown: Vec<String> = all().iter().rev().take(7).map(|e| e.to_string()).collect();
+        let shown: Vec<String> = all().iter().rev().take(5).map(|e| e.to_string()).collect();
         assert_eq!(
             shown,
             [
-                "ModLog(crowdfund_executed)",
-                "ModLog(crowdfund_started)",
+                "ModLog(prank_unmasked)",
                 "ModLog(shop_cancelled)",
-                "ModLog(shop_action)",
                 "ModLog(credits_adjusted)",
                 "ModLog(immunity_lifted)",
                 "ModLog(immunity_granted)"
@@ -1414,10 +1221,8 @@ mod tests {
         r##"None|{"title":"🛡️ Immunity granted","type":"rich","description":"<@22> granted immunity to <@11> until lifted","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"🛡️ Immunity lifted","type":"rich","description":"<@22> lifted the immunity of <@11>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"🪙 Credits adjusted","type":"rich","description":"<@22> adjusted the credits of <@11> by +5","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"x","inline":false}]}|[]|[]|None"##,
-        r##"None|{"title":"🛍️ Shop action","type":"rich","description":"<@22> used Rename on <@11> (anonymous)","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"hi","inline":false}]}|[]|[]|None"##,
         r##"None|{"title":"🧼 Shop pranks ended","type":"rich","description":"<@22> ended the pranks on <@11>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
-        r##"None|{"title":"🎉 Crowdfund started","type":"rich","description":"<@22> started a crowdfund for Mute on <@11> (anonymous)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
-        r##"None|{"title":"🎉 Crowdfund executed","type":"rich","description":"Mute on <@11> (crowdfunded by <@22>, <@11>)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
+        r##"None|{"title":"🔎 Prank unmasked","type":"rich","description":"<@11> unmasked the Rename on <@11>: <@22>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"🔇 Server muted","type":"rich","description":"<@22> (bot) muted <@11>","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"⏏️ Disconnected","type":"rich","description":"<@11> from <#333> by <@22> (bot)","timestamp":"2023-11-14T22:13:20Z","footer":{"text":"Matched from Discord's audit log by timing","icon_url":null}}|[]|[]|None"##,
         r##"None|{"title":"🗂️ Disconnected several","type":"rich","description":"One or more of <@22>, <@11> (bot) disconnected 14 of: <@1001>, <@1002>, <@1003>, <@1004>, <@1005>, <@1006>, <@1007>, <@1008>, <@1009>, <@1010> and 4 more","timestamp":"2023-11-14T22:13:20Z","footer":{"text":"Matched from Discord's audit log by timing","icon_url":null}}|[]|[]|None"##,
@@ -1425,9 +1230,6 @@ mod tests {
         r##"None|{"title":"🤐 Muted in a room","type":"rich","description":"<@22> muted <@11> in <#333>","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"shh","inline":false}]}|[]|[]|None"##,
         r##"None|{"title":"🛡️ Immunity granted","type":"rich","description":"<@22> granted immunity to <@11> until <t:1700003600:f>","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"ok","inline":false}]}|[]|[]|None"##,
         r##"None|{"title":"🪙 Credits adjusted","type":"rich","description":"<@22> adjusted the credits of <@11> by −5","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"x","inline":false}]}|[]|[]|None"##,
-        r##"None|{"title":"🛍️ Shop action","type":"rich","description":"<@22> used Mute on <@11> until <t:1700003600:f> (bounced by <@555>'s mirror) (signed)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
-        r##"None|{"title":"🎉 Crowdfund started","type":"rich","description":"<@22> started a crowdfund for Mute on <@11> (signed)","timestamp":"2023-11-14T22:13:20Z","fields":[{"name":"Reason","value":"n","inline":false}]}|[]|[]|None"##,
-        r##"None|{"title":"🎉 Crowdfund executed","type":"rich","description":"Mute on <@11> until <t:1700003600:f> (crowdfunded by <@22>, <@11>)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
         r##"None|{"title":"🛒 Shop nickname","type":"rich","description":"CrackTunes cleared <@11>'s nickname (shop: Rename)","timestamp":"2023-11-14T22:13:20Z"}|[]|[]|None"##,
     ];
 }

@@ -1,6 +1,7 @@
 //! `/economy status|grant|lift|adjust`, for moderators.
 use super::credits::{gate, gate_for, live, say, GateNeed};
 use crate::db::economy::{self as db, RecentAction};
+use crate::economy::ledger::{self, EconomyLogEvent, Ender};
 use crate::economy::preflight::{report_for, ActionPreflight};
 use crate::economy::settings::EconomySettings;
 use crate::economy::wallet::{ActionState, MoveError};
@@ -28,9 +29,9 @@ use crate::modlog::batch::ModLogSink;
 use crate::modlog::event::ModLogEvent;
 use crate::modlog::live::ChannelSink;
 use crate::{Context, Data, Error};
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use crack_types::discord::ToRef;
-use serenity::all::{GuildId, Permissions, User};
+use serenity::all::{GuildId, Permissions, User, UserId};
 use std::sync::Arc;
 
 /// Longest immunity a moderator can grant by hours: a year.
@@ -294,12 +295,14 @@ pub fn adjust_amount_ok(amount: i64) -> bool {
 }
 
 /// Post a mod log event; nothing happens while the log is off.
-pub(super) async fn log(ctx: Context<'_>, guild: GuildId, event: ModLogEvent) {
-    log_to(&ctx.data(), ctx.serenity_context(), guild, event).await;
+// live-Discord glue: needs a live `Context`; the events it posts come from tested pure builders.
+#[cfg_attr(test, mutants::skip)]
+pub(super) async fn mod_log(ctx: Context<'_>, guild: GuildId, event: ModLogEvent) {
+    mod_log_to(&ctx.data(), ctx.serenity_context(), guild, event).await;
 }
 
-/// [`log`] without a command context (a button or modal press).
-pub(super) async fn log_to(
+/// [`mod_log`] without a command context (a button or modal press).
+pub(super) async fn mod_log_to(
     data: &Data,
     ctx: &serenity::all::Context,
     guild: GuildId,
@@ -310,6 +313,106 @@ pub(super) async fn log_to(
         transport: Arc::new(DiscordTransport::of(ctx)),
     };
     sink.post(guild, event).await;
+}
+
+/// Post an economy log line; nothing happens while the log is off.
+pub(super) async fn econ_log_to(
+    data: &Data,
+    ctx: &serenity::all::Context,
+    guild: GuildId,
+    event: EconomyLogEvent,
+) {
+    ledger::post(
+        &data.economy_data(),
+        &DiscordTransport::of(ctx),
+        guild,
+        event,
+    )
+    .await;
+}
+
+/// A moderator's action goes to both logs, each told separately: the mod log
+/// names the moderator, the economy log says "a moderator" (2026-10-28 rule).
+/// One log being off or unreachable never stops the other.
+// live-Discord glue: needs a live `Context`; the two events come from tested pure builders.
+#[cfg_attr(test, mutants::skip)]
+pub(super) async fn both_logs(
+    ctx: Context<'_>,
+    guild: GuildId,
+    m: ModLogEvent,
+    e: EconomyLogEvent,
+) {
+    mod_log(ctx, guild, m).await;
+    econ_log_to(&ctx.data(), ctx.serenity_context(), guild, e).await;
+}
+
+/// The two log events for a moderator's immunity grant.
+pub fn grant_events(
+    by: UserId,
+    target: UserId,
+    until: Option<DateTime<Utc>>,
+    reason: Option<String>,
+) -> (ModLogEvent, EconomyLogEvent) {
+    (
+        ModLogEvent::ImmunityGranted {
+            by: by.to_ref(),
+            target: target.to_ref(),
+            until,
+            reason: reason.clone(),
+        },
+        EconomyLogEvent::ImmunityGranted {
+            target,
+            until,
+            reason,
+        },
+    )
+}
+
+/// The two log events for a moderator lifting immunity.
+pub fn lift_events(by: UserId, target: UserId) -> (ModLogEvent, EconomyLogEvent) {
+    (
+        ModLogEvent::ImmunityLifted {
+            by: by.to_ref(),
+            target: target.to_ref(),
+        },
+        EconomyLogEvent::ImmunityLifted { target },
+    )
+}
+
+/// The two log events for `/economy cancel`.
+pub fn cancel_events(by: UserId, target: UserId) -> (ModLogEvent, EconomyLogEvent) {
+    (
+        ModLogEvent::ShopCancelled {
+            by: by.to_ref(),
+            target: target.to_ref(),
+        },
+        EconomyLogEvent::PranksEnded {
+            target,
+            by: Ender::Moderator,
+        },
+    )
+}
+
+/// The two log events for a credit adjustment.
+pub fn adjust_events(
+    by: UserId,
+    target: UserId,
+    amount: i64,
+    reason: String,
+) -> (ModLogEvent, EconomyLogEvent) {
+    (
+        ModLogEvent::CreditsAdjusted {
+            by: by.to_ref(),
+            target: target.to_ref(),
+            amount,
+            reason: reason.clone(),
+        },
+        EconomyLogEvent::CreditsAdjusted {
+            target,
+            amount,
+            reason,
+        },
+    )
 }
 
 /// Mod tools for the economy.
@@ -405,17 +508,8 @@ pub async fn grant(
         Ok(()) => {
             // Reply first: a slow log channel must not time the interaction out.
             let replied = say(ctx, ECONOMY_ADMIN_GRANT_DONE, true).await;
-            log(
-                ctx,
-                guild,
-                ModLogEvent::ImmunityGranted {
-                    by: by.to_ref(),
-                    target: member.id.to_ref(),
-                    until,
-                    reason,
-                },
-            )
-            .await;
+            let (m, e) = grant_events(by, member.id, until, reason);
+            both_logs(ctx, guild, m, e).await;
             replied
         },
         Err(GrantError::Disabled) => say(ctx, ECONOMY_ADMIN_GRANT_DISABLED, true).await,
@@ -438,15 +532,8 @@ pub async fn lift(ctx: Context<'_>, #[description = "Who"] member: User) -> Resu
     match mod_lift(&ctx.data().economy_data(), guild, member.id).await {
         Ok(true) => {
             let replied = say(ctx, ECONOMY_ADMIN_LIFT_DONE, true).await;
-            log(
-                ctx,
-                guild,
-                ModLogEvent::ImmunityLifted {
-                    by: ctx.author().id.to_ref(),
-                    target: member.id.to_ref(),
-                },
-            )
-            .await;
+            let (m, e) = lift_events(ctx.author().id, member.id);
+            both_logs(ctx, guild, m, e).await;
             replied
         },
         Ok(false) => say(ctx, ECONOMY_ADMIN_LIFT_NONE, true).await,
@@ -487,15 +574,8 @@ pub async fn cancel(ctx: Context<'_>, #[description = "Who"] member: User) -> Re
                 true,
             )
             .await;
-            log(
-                ctx,
-                guild,
-                ModLogEvent::ShopCancelled {
-                    by: ctx.author().id.to_ref(),
-                    target: member.id.to_ref(),
-                },
-            )
-            .await;
+            let (m, e) = cancel_events(ctx.author().id, member.id);
+            both_logs(ctx, guild, m, e).await;
             replied
         },
         Err(GrantError::NoDatabase) => say(ctx, ECONOMY_NO_DATABASE, true).await,
@@ -543,17 +623,8 @@ pub async fn adjust(
                 true,
             )
             .await;
-            log(
-                ctx,
-                guild,
-                ModLogEvent::CreditsAdjusted {
-                    by: by.to_ref(),
-                    target: member.id.to_ref(),
-                    amount,
-                    reason,
-                },
-            )
-            .await;
+            let (m, e) = adjust_events(by, member.id, amount, reason);
+            both_logs(ctx, guild, m, e).await;
             replied
         },
         Err(MoveError::Insufficient { balance }) => {
@@ -579,6 +650,36 @@ pub async fn adjust(
 mod tests {
     use super::*;
     use serenity::all::GuildId;
+
+    const MOD: UserId = UserId::new(987_654_321);
+    const MEMBER: UserId = UserId::new(11);
+
+    /// A moderator is named in the mod log and nowhere in the economy log,
+    /// which every member of the server can read.
+    #[test]
+    fn moderator_actions_name_the_moderator_only_in_the_mod_log() {
+        let until = DateTime::from_timestamp(1_800_000_000, 0);
+        let pairs = [
+            grant_events(MOD, MEMBER, until, Some("why".into())),
+            lift_events(MOD, MEMBER),
+            cancel_events(MOD, MEMBER),
+            adjust_events(MOD, MEMBER, -5, "why".into()),
+        ];
+        for (m, e) in pairs {
+            let (ModLogEvent::ImmunityGranted { by, .. }
+            | ModLogEvent::ImmunityLifted { by, .. }
+            | ModLogEvent::ShopCancelled { by, .. }
+            | ModLogEvent::CreditsAdjusted { by, .. }) = &m
+            else {
+                panic!("not a moderator event: {m:?}");
+            };
+            assert_eq!(*by, MOD.to_ref(), "{m:?}");
+            let line = ledger::line(&e);
+            assert!(line.starts_with("A moderator "), "{line}");
+            assert!(!line.contains(&MOD.get().to_string()), "{line}");
+            assert!(line.contains(&format!("<@{MEMBER}>")), "{line}");
+        }
+    }
 
     #[test]
     fn economy_status_text_exact() {

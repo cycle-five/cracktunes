@@ -1,5 +1,5 @@
 //! `/shop menu|immunity|rename|lock|clown|drag|mute|deafen|jail|mirror|theme|cleanse|reveal`.
-use super::admin::{log, log_to};
+use super::admin::econ_log_to;
 use super::credits::{gate, live, say};
 use crate::commands::music::doplay::{play_core, play_settlement, Settlement};
 use crate::commands::permissions::cmd_check_music;
@@ -10,6 +10,7 @@ use crate::economy::cards::{
     card_channel, card_destination, card_text, dedication_card_text, jump_card_text,
 };
 use crate::economy::facts::{gather_facts, Subject};
+use crate::economy::ledger::{Byline, EconomyLogEvent, Ender, Unmasker};
 use crate::economy::preflight::{self, report_for, ActionPreflight};
 use crate::economy::settings::{
     validate_nick, validate_note, ActionKind, EconomySettings, NickError, NoteError,
@@ -39,10 +40,8 @@ use crate::messaging::messages::{
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
-use crate::modlog::event::ModLogEvent;
 use crate::{Context, Data, Error};
 use chrono::{DateTime, Utc};
-use crack_types::discord::ToRef;
 use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
 use serenity::all::{ChannelId, GenericChannelId, GuildId, Member, UserId};
 use std::borrow::Cow;
@@ -205,9 +204,10 @@ pub fn revealed_reply_text(
     )
 }
 
-/// The mod log entry for a purchase. Only an action that changed a member is
-/// logged (spec 5.4): a prank a mirror blocked changed nobody, so it has none.
-/// A bounce is logged against the buyer, naming whose mirror sent it back.
+/// The economy log line for a purchase. Only an action that changed a member
+/// is logged (spec 5.4): a prank a mirror blocked changed nobody, so it has
+/// none. A bounce is logged against the buyer, naming whose mirror sent it
+/// back. The buyer is named only if they signed (2026-10-28 rule).
 pub fn shop_event(
     kind: ActionKind,
     outcome: BuyOutcome,
@@ -216,21 +216,23 @@ pub fn shop_event(
     note: Option<String>,
     signed: bool,
     until: Option<DateTime<Utc>>,
-) -> Option<ModLogEvent> {
-    let (target, mirrored_from) = match outcome {
-        BuyOutcome::Landed => (target, None),
-        BuyOutcome::Bounced => (buyer, Some(target)),
-        BuyOutcome::Blocked => return None,
-    };
-    Some(ModLogEvent::ShopAction {
-        action: kind,
-        buyer: buyer.to_ref(),
-        target: target.to_ref(),
-        note,
-        signed,
-        until,
-        mirrored_from: mirrored_from.map(|m| m.to_ref()),
-    })
+) -> Option<EconomyLogEvent> {
+    let buyer = Byline::new(buyer, signed);
+    match outcome {
+        BuyOutcome::Landed => Some(EconomyLogEvent::Purchase {
+            action: kind,
+            buyer,
+            target,
+            note,
+            until,
+        }),
+        BuyOutcome::Bounced => Some(EconomyLogEvent::Bounced {
+            action: kind,
+            buyer,
+            owner: target,
+        }),
+        BuyOutcome::Blocked => None,
+    }
 }
 
 /// How a prank is shown in the reveal picker: "Rename \u{b7} 5 minutes ago".
@@ -464,7 +466,7 @@ pub(crate) async fn run_prank(
         signed,
         bought.until,
     ) {
-        log_to(env.data, env.ctx, env.guild, event).await;
+        econ_log_to(env.data, env.ctx, env.guild, event).await;
     }
     replied
 }
@@ -698,18 +700,16 @@ pub async fn theme(
         true,
     )
     .await;
-    log_to(
+    econ_log_to(
         &data,
         ctx.serenity_context(),
         guild,
-        ModLogEvent::ShopAction {
+        EconomyLogEvent::Purchase {
             action: ActionKind::Theme,
-            buyer: buyer_id.to_ref(),
-            target: target.to_ref(),
+            buyer: Byline::new(buyer_id, signed),
+            target,
             note,
-            signed,
             until: bought.until,
-            mirrored_from: None,
         },
     )
     .await;
@@ -961,18 +961,16 @@ async fn paid_play(
         }
     }
     if let Some(target) = target {
-        log_to(
+        econ_log_to(
             &data,
             ctx.serenity_context(),
             guild,
-            ModLogEvent::ShopAction {
+            EconomyLogEvent::Purchase {
                 action: ActionKind::Dedicate,
-                buyer: buyer_id.to_ref(),
-                target: target.to_ref(),
+                buyer: Byline::new(buyer_id, signed),
+                target,
                 note,
-                signed,
                 until: None,
-                mirrored_from: None,
             },
         )
         .await;
@@ -1102,12 +1100,13 @@ pub async fn cleanse_command(ctx: Context<'_>) -> Result<(), Error> {
                 true,
             )
             .await;
-            log(
-                ctx,
+            econ_log_to(
+                &ctx.data(),
+                ctx.serenity_context(),
                 guild,
-                ModLogEvent::ShopCancelled {
-                    by: buyer.id.to_ref(),
-                    target: buyer.id.to_ref(),
+                EconomyLogEvent::PranksEnded {
+                    target: buyer.id,
+                    by: Ender::Target,
                 },
             )
             .await;
@@ -1186,6 +1185,18 @@ pub async fn reveal_command(
             {
                 tracing::warn!("economy: the public unmasking failed: {err:?}");
             }
+            econ_log_to(
+                &ctx.data(),
+                ctx.serenity_context(),
+                guild,
+                EconomyLogEvent::Unmasked {
+                    action: done.kind,
+                    target: presser.id,
+                    buyer: done.buyer,
+                    by: Unmasker::Target,
+                },
+            )
+            .await;
             replied
         },
         Err(e) => say_buy_error(ctx, e, &cfg.currency_name).await,
@@ -1553,31 +1564,25 @@ mod tests {
     #[test]
     fn only_actions_that_changed_a_member_are_logged() {
         let (b, t) = (UserId::new(1), UserId::new(2));
-        let log = |o| shop_event(ActionKind::Rename, o, b, t, Some("gg".into()), false, None);
-        let Some(ModLogEvent::ShopAction {
-            buyer,
-            target,
-            mirrored_from,
-            ..
-        }) = log(BuyOutcome::Landed)
+        let log =
+            |o, signed| shop_event(ActionKind::Rename, o, b, t, Some("gg".into()), signed, None);
+        // Unsigned: the log holds no id for the buyer at all.
+        let Some(EconomyLogEvent::Purchase { buyer, target, .. }) = log(BuyOutcome::Landed, false)
         else {
             panic!("a landed prank is logged");
         };
-        assert_eq!(
-            (buyer, target, mirrored_from),
-            (b.to_ref(), t.to_ref(), None)
-        );
+        assert_eq!((buyer.shown(), target), (None, t));
+        let Some(EconomyLogEvent::Purchase { buyer, .. }) = log(BuyOutcome::Landed, true) else {
+            panic!("a landed prank is logged");
+        };
+        assert_eq!(buyer.shown(), Some(b));
         // A bounce changed the buyer, and names whose mirror sent it back.
-        let Some(ModLogEvent::ShopAction {
-            target,
-            mirrored_from,
-            ..
-        }) = log(BuyOutcome::Bounced)
+        let Some(EconomyLogEvent::Bounced { buyer, owner, .. }) = log(BuyOutcome::Bounced, false)
         else {
             panic!("a bounce is logged");
         };
-        assert_eq!((target, mirrored_from), (b.to_ref(), Some(t.to_ref())));
+        assert_eq!((buyer.shown(), owner), (None, t));
         // A blocked one changed nobody.
-        assert_eq!(log(BuyOutcome::Blocked), None);
+        assert_eq!(log(BuyOutcome::Blocked, true), None);
     }
 }

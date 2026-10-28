@@ -7,6 +7,7 @@
 //! Every press is answered: a card from before the economy was switched off
 //! gets the refusal the commands give.
 use super::discord::EconDiscordError;
+use super::ledger::{self, EconomyLogEvent, Unmasker};
 use super::settings::ActionKind;
 use super::shop::{buy_error_text, reveal, BuyOutcome};
 use crate::commands::economy::shop::{
@@ -20,7 +21,9 @@ use crate::messaging::messages::{
     ECONOMY_OFF, ECONOMY_PURCHASE_FAILED, ECONOMY_TARGET_LEFT,
 };
 use crate::messaging::render::Rendered;
-use crate::messaging::transport::{DiscordModalPress, DiscordPress, Press};
+use crate::messaging::transport::{
+    DiscordModalPress, DiscordPress, DiscordTransport, Press, Transport,
+};
 use crate::{Data, Error};
 use crack_model::{Button, ButtonStyle, Row};
 use serenity::all::{
@@ -257,7 +260,16 @@ pub async fn handle_press(data: &Data, ctx: &serenity::all::Context, i: &Compone
         http: &ctx.http,
         interaction: i,
     };
-    respond_press(data, &press, i.guild_id, i.user.id, &i.data.custom_id).await;
+    let transport = DiscordTransport::of(ctx);
+    respond_press(
+        data,
+        &press,
+        &transport,
+        i.guild_id,
+        i.user.id,
+        &i.data.custom_id,
+    )
+    .await;
 }
 
 /// [`handle_press`] without Discord. Rename them back checks, then opens its
@@ -265,6 +277,7 @@ pub async fn handle_press(data: &Data, ctx: &serenity::all::Context, i: &Compone
 pub(crate) async fn respond_press(
     data: &Data,
     press: &dyn Press,
+    transport: &dyn Transport,
     guild: Option<GuildId>,
     presser: UserId,
     custom_id: &str,
@@ -314,6 +327,18 @@ pub(crate) async fn respond_press(
                     if let Err(err) = press.followup(unmasked, false).await {
                         tracing::warn!("economy: the public unmasking failed: {err:?}");
                     }
+                    ledger::post(
+                        &data.economy_data(),
+                        transport,
+                        guild,
+                        EconomyLogEvent::Unmasked {
+                            action: done.kind,
+                            target: presser,
+                            buyer: done.buyer,
+                            by: Unmasker::Target,
+                        },
+                    )
+                    .await;
                 },
                 Err(e) => refuse_after(press, buy_error_text(&e, &cfg.currency_name)).await,
             }
@@ -406,7 +431,7 @@ mod tests {
     use super::*;
     use crate::economy::settings::EconomySettings;
     use crate::messaging::discord;
-    use crate::messaging::test_support::{FakePress, PressOp};
+    use crate::messaging::test_support::{FakePress, FakeTransport, PressOp};
     use crate::DataInner;
     use serenity::all::ModalInteractionData;
     use std::sync::Arc;
@@ -615,7 +640,15 @@ mod tests {
 
     async fn press_on(data: &Data, id: &str) -> Vec<PressOp> {
         let press = FakePress::default();
-        respond_press(data, &press, Some(G), UserId::new(5), id).await;
+        respond_press(
+            data,
+            &press,
+            &FakeTransport::default(),
+            Some(G),
+            UserId::new(5),
+            id,
+        )
+        .await;
         press.ops()
     }
 
@@ -660,6 +693,7 @@ mod tests {
         respond_press(
             &data_with(true),
             &press,
+            &FakeTransport::default(),
             None,
             UserId::new(5),
             "econ:back:3",
@@ -743,7 +777,7 @@ mod tests {
 
     async fn press_as(data: &Data, who: UserId, id: &str) -> (Vec<PressOp>, usize) {
         let press = FakePress::default();
-        respond_press(data, &press, Some(G), who, id).await;
+        respond_press(data, &press, &FakeTransport::default(), Some(G), who, id).await;
         let modals = press.modals.lock().unwrap().len();
         (press.ops(), modals)
     }
@@ -847,6 +881,38 @@ mod tests {
                 }
             );
             assert_eq!(db_e::balance(&pool, G, VICTIM).await.unwrap(), 150);
+        }
+    );
+
+    db_test!(
+        a_paid_reveal_is_told_to_the_economy_log_after_the_replies,
+        |pool: PgPool| async {
+            let data = world(&pool).await;
+            let mut settings = data.economy.settings(G);
+            settings.config.log_channel_id = Some(ChannelId::new(77));
+            data.economy.set_settings(settings);
+            let id = rename(&pool, G, false).await;
+            fund(&pool, VICTIM, 250).await;
+            let press = FakePress::default();
+            let transport = FakeTransport::default();
+            respond_press(
+                &data,
+                &press,
+                &transport,
+                Some(G),
+                VICTIM,
+                &format!("econ:reveal:{id}"),
+            )
+            .await;
+            assert_eq!(press.ops().len(), 3);
+            assert_eq!(
+                transport.ops(),
+                vec![crate::messaging::test_support::Op::Send(77)]
+            );
+            assert_eq!(
+                transport.texts(),
+                vec!["<@5> unmasked the rename: <@10>".to_string()]
+            );
         }
     );
 

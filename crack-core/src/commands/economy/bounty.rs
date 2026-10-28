@@ -1,5 +1,5 @@
 //! `/bounty place|list`: put credits on a member's head, and see what stands.
-use super::admin::log_to;
+use super::admin::econ_log_to;
 use super::credits::{gate, say};
 use super::shop::note_error_text;
 use crate::db::economy as db;
@@ -7,6 +7,7 @@ use crate::economy::bounty::{
     bounty_card_channel, bounty_card_text, bounty_list_text, place as place_bounty, BountyRequest,
 };
 use crate::economy::facts::{gather_facts, Subject};
+use crate::economy::ledger::{Byline, EconomyLogEvent};
 use crate::economy::settings::{validate_note, ActionKind};
 use crate::economy::shop::buy_error_text;
 use crate::messaging::courier;
@@ -16,10 +17,8 @@ use crate::messaging::messages::{
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
-use crate::modlog::event::ModLogEvent;
 use crate::{Context, Error};
 use chrono::Utc;
-use crack_types::discord::ToRef;
 use serenity::all::{ChannelId, GenericChannelId, Member};
 
 /// Put credits on a member's head, or see the bounties that stand.
@@ -134,18 +133,16 @@ pub async fn place(
             tracing::warn!("economy: the bounty card follow-up failed: {err:?}");
         }
     }
-    log_to(
+    econ_log_to(
         &data,
         ctx.serenity_context(),
         guild,
-        ModLogEvent::ShopAction {
+        EconomyLogEvent::Purchase {
             action: ActionKind::Bounty,
-            buyer: placer_id.to_ref(),
-            target: target.to_ref(),
+            buyer: Byline::new(placer_id, signed),
+            target,
             note,
-            signed,
             until: Some(placed.until),
-            mirrored_from: None,
         },
     )
     .await;

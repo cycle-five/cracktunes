@@ -1,5 +1,5 @@
 //! `/crowdfund start|pledge|list`: pool credits for a prank against a member.
-use super::admin::{discord_len, fit, log_to};
+use super::admin::{discord_len, econ_log_to, fit};
 use super::credits::{gate, say};
 use super::shop::{involved_channels, nick_error_text, note_error_text};
 use crate::db::economy as db;
@@ -13,6 +13,7 @@ use crate::economy::crowdfund::{
 };
 use crate::economy::discord::EconDiscordError;
 use crate::economy::facts::{gather_facts, Subject};
+use crate::economy::ledger::{Byline, EconomyLogEvent};
 use crate::economy::preflight;
 use crate::economy::settings::{
     validate_nick, validate_note, ActionKind, EconomyConfig, NickError,
@@ -29,13 +30,21 @@ use crate::messaging::messages::{
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
-use crate::modlog::event::ModLogEvent;
 use crate::{Context, Data, Error};
 use chrono::Utc;
-use crack_types::discord::ToRef;
 use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
 use serenity::all::{ChannelId, GenericChannelId, GuildId, Member, UserId};
 use std::borrow::Cow;
+
+/// The backers of a landed fund as the economy log may show them: one per
+/// contributor, in contributor order, named only if they signed. A backer who
+/// pledged twice, once signed and once not, is a contributor once, and signed.
+pub fn landed_backers(contributors: &[UserId], signers: &[UserId]) -> Vec<Byline> {
+    contributors
+        .iter()
+        .map(|&c| Byline::new(c, signers.contains(&c)))
+        .collect()
+}
 
 /// The pranks a crowdfund can buy: [`ActionKind::FUNDABLE`] (drag is left
 /// out: its destination is the buyer's channel at the moment it runs, and a
@@ -312,14 +321,14 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 &done.signers,
             );
             post(ctx, kind, Some(target_voice), &cfg, invoked_in, card).await;
-            log_to(
+            econ_log_to(
                 &data,
                 sctx,
                 guild,
-                ModLogEvent::CrowdfundExecuted {
+                EconomyLogEvent::CrowdfundLanded {
                     action: kind,
-                    target: target.to_ref(),
-                    contributors: done.contributors.iter().map(ToRef::to_ref).collect(),
+                    target,
+                    backers: landed_backers(&done.contributors, &done.signers),
                     until: done.until,
                 },
             )
@@ -472,17 +481,16 @@ pub async fn start(
         Ok(o) => o,
         Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
     };
-    // The mod log always names the starter, whatever the card says.
-    log_to(
+    // Only a signed starter is named, here as on the card.
+    econ_log_to(
         &data,
         ctx.serenity_context(),
         guild,
-        ModLogEvent::CrowdfundStarted {
+        EconomyLogEvent::CrowdfundStarted {
             action: kind,
-            starter: starter_id.to_ref(),
-            target: target.to_ref(),
+            starter: Byline::new(starter_id, signed),
+            target,
             note: log_note,
-            signed,
         },
     )
     .await;
@@ -661,8 +669,29 @@ pub async fn list(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::economy::ledger;
     use crate::economy::wallet::{ActionPayload, ActionState};
     use chrono::DateTime;
+
+    /// A backer who pledged once signed and once not is listed once, and
+    /// named; the hidden count counts people, not pledges.
+    #[test]
+    fn landed_bylines_follow_the_signers() {
+        let (a, b, c) = (UserId::new(1), UserId::new(2), UserId::new(3));
+        let shown = |cs: &[UserId], ss: &[UserId]| -> Vec<Option<UserId>> {
+            landed_backers(cs, ss).iter().map(Byline::shown).collect()
+        };
+        assert_eq!(shown(&[a, b, c], &[a, c]), [Some(a), None, Some(c)]);
+        assert_eq!(shown(&[a, b], &[b]), [None, Some(b)]);
+        let line = ledger::line(&EconomyLogEvent::CrowdfundLanded {
+            action: ActionKind::Rename,
+            target: UserId::new(9),
+            backers: landed_backers(&[a, b], &[b]),
+            until: None,
+        });
+        assert!(line.ends_with("backed by <@2> +1 other"), "{line}");
+        assert!(!line.contains("<@1>"), "{line}");
+    }
 
     fn row(id: i64, kind: ActionKind, target: u64) -> ActionRow {
         ActionRow {
