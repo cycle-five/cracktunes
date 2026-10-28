@@ -16,7 +16,7 @@ use crack_core::{
     rooms::settings::SettingsError,
 };
 // The report is shared with `/economy status` and `/shop menu`.
-pub use crack_core::economy::preflight::{economy_preflight, ActionPreflight};
+pub use crack_core::economy::preflight::{economy_preflight, log_findings, ActionPreflight};
 use serde::{Deserialize, Serialize};
 use serenity::all::ChannelId;
 
@@ -154,6 +154,8 @@ pub struct EconomySettingsView {
     /// Ids are strings, as for rooms.
     pub jail_channel: Option<String>,
     pub announce_channel: Option<String>,
+    /// The economy log channel, if any.
+    pub log_channel: Option<String>,
     /// The jail picker's options. Without a cache: the stored channel only.
     pub voice_channels: Vec<ChannelOption>,
     /// The announcement picker's options.
@@ -163,6 +165,9 @@ pub struct EconomySettingsView {
     /// What the announcement channel lacks for cards; `None` when no
     /// channel is set or the cache cannot say.
     pub announce_findings: Option<Vec<String>>,
+    /// What the economy log channel lacks; `None` when no channel is set or
+    /// the cache cannot say.
+    pub log_findings: Option<Vec<String>>,
     /// Whether this build can talk to the chain; the page shows the switch
     /// only then.
     pub coin_build: bool,
@@ -192,6 +197,11 @@ impl EconomySettingsView {
         // says it can't tell. The live backend fills both in.
         let (preflight, announce_findings) =
             economy_preflight(c, None, |ch| format!("channel {ch}"));
+        let mut text_channels = stored_option(c.announce_channel_id);
+        if c.log_channel_id != c.announce_channel_id {
+            text_channels.extend(stored_option(c.log_channel_id));
+        }
+        let log_findings = log_findings(c, None, |ch| format!("channel {ch}"));
         Self {
             enabled: s.enabled,
             currency_name: c.currency_name.clone(),
@@ -224,10 +234,12 @@ impl EconomySettingsView {
             short_effect_minutes: c.short_effect_minutes,
             jail_channel: c.jail_channel_id.map(|c| c.to_string()),
             announce_channel: c.announce_channel_id.map(|c| c.to_string()),
+            log_channel: c.log_channel_id.map(|c| c.to_string()),
             voice_channels: stored_option(c.jail_channel_id),
-            text_channels: stored_option(c.announce_channel_id),
+            text_channels,
             preflight,
             announce_findings,
+            log_findings,
             coin_build,
             coin_withdrawals: c.coin_withdrawals,
         }
@@ -263,6 +275,9 @@ pub struct EconomySettingsForm {
     pub short_effect_minutes: u32,
     pub jail_channel: Option<String>,
     pub announce_channel: Option<String>,
+    /// Absent means no log channel; the page always sends it.
+    #[serde(default)]
+    pub log_channel: Option<String>,
     /// `None` (the page sent no switch, as in a lean build) keeps the stored
     /// value.
     #[serde(default)]
@@ -322,6 +337,7 @@ pub fn apply_form(
     };
     let jail = pick(ChannelKind::Voice, &form.jail_channel)?;
     let announce = pick(ChannelKind::Text, &form.announce_channel)?;
+    let log = pick(ChannelKind::Text, &form.log_channel)?;
     // Resolve every row first so a bad one changes nothing.
     let rows = form
         .prices
@@ -361,6 +377,7 @@ pub fn apply_form(
     c.short_effect_minutes = form.short_effect_minutes;
     c.jail_channel_id = jail;
     c.announce_channel_id = announce;
+    c.log_channel_id = log;
     if let Some(on) = form.coin_withdrawals {
         c.coin_withdrawals = on;
     }
@@ -400,6 +417,7 @@ mod tests {
             short_effect_minutes: 7,
             jail_channel: Some("111".into()),
             announce_channel: Some("222".into()),
+            log_channel: None,
             coin_withdrawals: None,
             voice_requires_camera: None,
         }
@@ -536,6 +554,43 @@ mod tests {
         let out = apply_form(stored, f, any_channel).unwrap();
         assert_eq!(out.config.jail_channel_id, None);
         assert_eq!(out.config.announce_channel_id, None);
+    }
+
+    #[test]
+    fn apply_form_sets_and_clears_the_log_channel() {
+        let mut f = form();
+        f.log_channel = Some("333".into());
+        let out = apply_form(EconomySettings::off(GuildId::new(5)), f, any_channel).unwrap();
+        assert_eq!(out.config.log_channel_id, Some(ChannelId::new(333)));
+        let mut stored = EconomySettings::off(GuildId::new(5));
+        stored.config.log_channel_id = Some(ChannelId::new(9));
+        let out = apply_form(stored, form(), any_channel).unwrap();
+        assert_eq!(out.config.log_channel_id, None);
+    }
+
+    #[test]
+    fn an_unknown_log_channel_is_refused() {
+        let mut f = form();
+        f.log_channel = Some("333".into());
+        let only_text_222 = |kind: ChannelKind, raw: &str| match (kind, raw) {
+            (ChannelKind::Voice, "111") => Some(ChannelId::new(111)),
+            (ChannelKind::Text, "222") => Some(ChannelId::new(222)),
+            _ => None,
+        };
+        assert_eq!(
+            apply_form(EconomySettings::off(GuildId::new(5)), f, only_text_222),
+            Err(EconomySaveRefused::UnknownChannel)
+        );
+    }
+
+    #[test]
+    fn the_view_carries_the_stored_log_channel() {
+        let mut s = EconomySettings::off(GuildId::new(5));
+        s.config.log_channel_id = Some(ChannelId::new(333));
+        let v = EconomySettingsView::from_settings(&s, false);
+        assert_eq!(v.log_channel.as_deref(), Some("333"));
+        assert!(v.text_channels.iter().any(|c| c.id == "333"));
+        assert_eq!(v.log_findings, None);
     }
 
     #[test]

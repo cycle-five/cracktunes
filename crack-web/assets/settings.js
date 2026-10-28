@@ -215,6 +215,7 @@
       el("e-short").value = view.short_effect_minutes;
       fillChannels(el("e-jail"), view.voice_channels, view.jail_channel);
       fillChannels(el("e-announce"), view.text_channels, view.announce_channel);
+      fillChannels(el("e-log"), view.text_channels, view.log_channel);
       showPreflight(view);
     }
 
@@ -237,6 +238,9 @@
       const rows = view.preflight.map((a) => [a.kind, a.label, words(a.needs)]);
       if (view.announce_channel) {
         rows.push(["announce", list.dataset.announce, words(view.announce_findings)]);
+      }
+      if (view.log_channel) {
+        rows.push(["log", list.dataset.log, words(view.log_findings)]);
       }
       list.replaceChildren(
         ...rows.map(([kind, label, text]) => {
@@ -289,6 +293,7 @@
         short_effect_minutes: num("e-short"),
         jail_channel: el("e-jail").value || null,
         announce_channel: el("e-announce").value || null,
+        log_channel: el("e-log").value || null,
       };
       // Only a coin build renders the switch; without it nothing is sent and
       // the stored value stays.

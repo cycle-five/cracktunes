@@ -2,7 +2,7 @@
 use super::credits::{gate, gate_for, live, say, GateNeed};
 use crate::db::economy::{self as db, RecentAction};
 use crate::economy::ledger::{self, EconomyLogEvent, Ender, Unmasker};
-use crate::economy::preflight::{report_for, ActionPreflight};
+use crate::economy::preflight::{log_report_for, report_for, ActionPreflight};
 use crate::economy::settings::ActionKind;
 use crate::economy::settings::EconomySettings;
 use crate::economy::shop::{mod_reveal, reveal_choices, BuyError, Refusal};
@@ -11,23 +11,24 @@ use crate::economy::{mod_cancel, mod_grant, mod_lift, GrantError};
 use crate::messaging::courier;
 use crate::messaging::format::CONTENT_MAX;
 use crate::messaging::messages::{
-    DASH_ECONOMY_ANNOUNCE_STATUS, DASH_ECONOMY_PREFLIGHT, DASH_ECONOMY_PREFLIGHT_READY,
-    DASH_ECONOMY_PREFLIGHT_UNKNOWN, ECONOMY_ADMIN_ADJUST_BELOW_ZERO_PREFIX,
-    ECONOMY_ADMIN_ADJUST_DONE, ECONOMY_ADMIN_ADJUST_FAILED, ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE,
-    ECONOMY_ADMIN_ADJUST_TOO_BIG, ECONOMY_ADMIN_ADJUST_ZERO, ECONOMY_ADMIN_BOT_TARGET,
-    ECONOMY_ADMIN_GRANT_DISABLED, ECONOMY_ADMIN_GRANT_DONE, ECONOMY_ADMIN_GRANT_FAILED,
-    ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE, ECONOMY_ADMIN_LIFT_FAILED,
-    ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE, ECONOMY_CANCEL_DONE_PREFIX,
-    ECONOMY_CANCEL_DONE_SUFFIX, ECONOMY_CANCEL_NONE, ECONOMY_MOD_ALREADY_REVEALED,
-    ECONOMY_MOD_REVEAL_DONE_BOUGHT_BY, ECONOMY_MOD_REVEAL_DONE_ON, ECONOMY_MOD_REVEAL_DONE_PREFIX,
-    ECONOMY_MOD_REVEAL_NOT_POSTED, ECONOMY_NOTHING_TO_REVEAL, ECONOMY_NO_DATABASE,
-    ECONOMY_READ_FAILED, ECONOMY_STATUS_CAMERA, ECONOMY_STATUS_COIN, ECONOMY_STATUS_CURRENCY,
-    ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD, ECONOMY_STATUS_IMMUNITY,
-    ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS, ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON,
-    ECONOMY_STATUS_PER_MESSAGE, ECONOMY_STATUS_PER_VOICE_MINUTE, ECONOMY_STATUS_RECENT,
-    ECONOMY_STATUS_RECENT_MORE_PREFIX, ECONOMY_STATUS_RECENT_MORE_SUFFIX,
-    ECONOMY_STATUS_RECENT_NONE, ECONOMY_STATUS_SECONDS, ECONOMY_STATUS_SHOP, ECONOMY_STATUS_TAP,
-    ECONOMY_STATUS_TITLE, ECONOMY_STATUS_UNTIL, ECONOMY_STATUS_WALLETS,
+    DASH_ECONOMY_ANNOUNCE_STATUS, DASH_ECONOMY_LOG_STATUS, DASH_ECONOMY_PREFLIGHT,
+    DASH_ECONOMY_PREFLIGHT_READY, DASH_ECONOMY_PREFLIGHT_UNKNOWN,
+    ECONOMY_ADMIN_ADJUST_BELOW_ZERO_PREFIX, ECONOMY_ADMIN_ADJUST_DONE, ECONOMY_ADMIN_ADJUST_FAILED,
+    ECONOMY_ADMIN_ADJUST_NEEDS_MANAGE, ECONOMY_ADMIN_ADJUST_TOO_BIG, ECONOMY_ADMIN_ADJUST_ZERO,
+    ECONOMY_ADMIN_BOT_TARGET, ECONOMY_ADMIN_GRANT_DISABLED, ECONOMY_ADMIN_GRANT_DONE,
+    ECONOMY_ADMIN_GRANT_FAILED, ECONOMY_ADMIN_HOURS_RANGE, ECONOMY_ADMIN_LIFT_DONE,
+    ECONOMY_ADMIN_LIFT_FAILED, ECONOMY_ADMIN_LIFT_NONE, ECONOMY_ADMIN_NEEDS_MODERATE,
+    ECONOMY_CANCEL_DONE_PREFIX, ECONOMY_CANCEL_DONE_SUFFIX, ECONOMY_CANCEL_NONE,
+    ECONOMY_MOD_ALREADY_REVEALED, ECONOMY_MOD_REVEAL_DONE_BOUGHT_BY, ECONOMY_MOD_REVEAL_DONE_ON,
+    ECONOMY_MOD_REVEAL_DONE_PREFIX, ECONOMY_MOD_REVEAL_NOT_POSTED, ECONOMY_NOTHING_TO_REVEAL,
+    ECONOMY_NO_DATABASE, ECONOMY_READ_FAILED, ECONOMY_STATUS_CAMERA, ECONOMY_STATUS_COIN,
+    ECONOMY_STATUS_CURRENCY, ECONOMY_STATUS_EARNING, ECONOMY_STATUS_GAMBLING, ECONOMY_STATUS_HELD,
+    ECONOMY_STATUS_IMMUNITY, ECONOMY_STATUS_LOG, ECONOMY_STATUS_MAX_BET, ECONOMY_STATUS_MODS,
+    ECONOMY_STATUS_OFF, ECONOMY_STATUS_ON, ECONOMY_STATUS_PER_MESSAGE,
+    ECONOMY_STATUS_PER_VOICE_MINUTE, ECONOMY_STATUS_RECENT, ECONOMY_STATUS_RECENT_MORE_PREFIX,
+    ECONOMY_STATUS_RECENT_MORE_SUFFIX, ECONOMY_STATUS_RECENT_NONE, ECONOMY_STATUS_SECONDS,
+    ECONOMY_STATUS_SHOP, ECONOMY_STATUS_TAP, ECONOMY_STATUS_TITLE, ECONOMY_STATUS_UNTIL,
+    ECONOMY_STATUS_WALLETS,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
@@ -99,7 +100,8 @@ pub fn economy_status_text(
          {ECONOMY_STATUS_HELD}: {credits} {emoji} {name}\n\
          {ECONOMY_STATUS_EARNING}: {} {ECONOMY_STATUS_PER_VOICE_MINUTE}{}, {} {ECONOMY_STATUS_PER_MESSAGE} {}{ECONOMY_STATUS_SECONDS}\n\
          {ECONOMY_STATUS_IMMUNITY} {}, {ECONOMY_STATUS_SHOP} {}, {ECONOMY_STATUS_MODS} {}\n\
-         {ECONOMY_STATUS_GAMBLING}: {}, {ECONOMY_STATUS_MAX_BET} {}",
+         {ECONOMY_STATUS_GAMBLING}: {}, {ECONOMY_STATUS_MAX_BET} {}\n\
+         {ECONOMY_STATUS_LOG}: {}",
         on_off(s.enabled),
         c.voice_credits_per_minute,
         if c.voice_requires_camera {
@@ -114,6 +116,8 @@ pub fn economy_status_text(
         on_off(c.immunity_mods),
         on_off(c.gambling_enabled),
         c.max_bet,
+        c.log_channel_id
+            .map_or_else(|| ECONOMY_STATUS_OFF.to_string(), |ch| format!("<#{ch}>")),
     );
     if let Some(l) = coin {
         text.push('\n');
@@ -162,7 +166,11 @@ fn needs_words(needs: Option<&[String]>) -> String {
 
 /// The permission report, one line per prank, then the announcement
 /// channel's when one is set and could be checked.
-pub fn preflight_lines(report: &[ActionPreflight], announce: Option<&[String]>) -> Vec<String> {
+pub fn preflight_lines(
+    report: &[ActionPreflight],
+    announce: Option<&[String]>,
+    log: Option<&[String]>,
+) -> Vec<String> {
     let mut lines: Vec<String> = report
         .iter()
         .map(|a| format!("{}: {}", a.label, needs_words(a.needs.as_deref())))
@@ -170,6 +178,12 @@ pub fn preflight_lines(report: &[ActionPreflight], announce: Option<&[String]>) 
     if let Some(gaps) = announce {
         lines.push(format!(
             "{DASH_ECONOMY_ANNOUNCE_STATUS}: {}",
+            needs_words(Some(gaps))
+        ));
+    }
+    if let Some(gaps) = log {
+        lines.push(format!(
+            "{DASH_ECONOMY_LOG_STATUS}: {}",
             needs_words(Some(gaps))
         ));
     }
@@ -237,10 +251,11 @@ pub fn status_report_text(
     base: &str,
     report: &[ActionPreflight],
     announce: Option<&[String]>,
+    log: Option<&[String]>,
     recent: Option<&[RecentAction]>,
 ) -> String {
     let mut head = vec![base.to_string(), format!("**{DASH_ECONOMY_PREFLIGHT}**")];
-    head.extend(preflight_lines(report, announce));
+    head.extend(preflight_lines(report, announce, log));
     head.push(format!("**{ECONOMY_STATUS_RECENT}**"));
     let rows: Vec<String> = match recent {
         None => vec![ECONOMY_READ_FAILED.to_string()],
@@ -462,11 +477,13 @@ pub async fn status(ctx: Context<'_>) -> Result<(), Error> {
         Ok((wallets, credits)) => {
             let s = ctx.data().economy.settings(guild);
             let (report, announce) = report_for(&ctx.serenity_context().cache, guild, &s.config);
+            let log = log_report_for(&ctx.serenity_context().cache, guild, &s.config);
             let coin = coin_line(ctx, &s).await;
             let text = status_report_text(
                 &economy_status_text(&s, wallets, credits, coin.as_ref()),
                 &report,
                 announce.as_deref(),
+                log.as_deref(),
                 recent.as_deref(),
             );
             say(ctx, text, true).await
@@ -809,7 +826,7 @@ pub async fn adjust(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serenity::all::GuildId;
+    use serenity::all::{ChannelId, GuildId};
 
     const MOD: UserId = UserId::new(987_654_321);
     const MEMBER: UserId = UserId::new(11);
@@ -904,8 +921,13 @@ mod tests {
              Held in total: 1250 🪙 credits\n\
              Earning: 1 per voice minute, 1 per message, at most once every 60s\n\
              Immunity: opt-out on, shop on, mod grants on\n\
-             Gambling: off, max bet 500"
+             Gambling: off, max bet 500\n\
+             Economy log: off"
         );
+        s.config.log_channel_id = Some(ChannelId::new(77));
+        assert!(economy_status_text(&s, 3, 1250, None)
+            .ends_with("Gambling: off, max bet 500\nEconomy log: <#77>"));
+        s.config.log_channel_id = None;
         s.enabled = true;
         s.config.currency_name = "gems".into();
         s.config.currency_emoji = "💎".into();
@@ -914,7 +936,7 @@ mod tests {
         let t = economy_status_text(&s, 0, 0, None);
         assert!(t.starts_with("**Economy status**: on\nCurrency: 💎 gems\n"));
         assert!(t.contains("shop off"));
-        assert!(t.ends_with("Gambling: on, max bet 500"));
+        assert!(t.ends_with("Gambling: on, max bet 500\nEconomy log: off"));
     }
 
     #[test]
@@ -989,7 +1011,7 @@ mod tests {
             ),
             recent(ActionKind::Drag, ActionState::Done, true, None, None),
         ];
-        let text = status_report_text("BASE", &[], None, Some(&rows));
+        let text = status_report_text("BASE", &[], None, None, Some(&rows));
         assert_eq!(
             text,
             "BASE\n\
@@ -1000,10 +1022,10 @@ mod tests {
              Drag · <@7> → <@8> · done"
         );
         assert_eq!(
-            status_report_text("BASE", &[], None, Some(&[])),
+            status_report_text("BASE", &[], None, None, Some(&[])),
             "BASE\n**What CrackTunes needs for each prank**\n**Recent shop actions**\nNothing bought yet."
         );
-        assert!(status_report_text("BASE", &[], None, None)
+        assert!(status_report_text("BASE", &[], None, None, None)
             .ends_with("**Recent shop actions**\nCouldn't read that right now. Try again."));
     }
 
@@ -1040,7 +1062,7 @@ mod tests {
                 r
             })
             .collect();
-        let text = status_report_text(&base, &report, Some(&announce), Some(&rows));
+        let text = status_report_text(&base, &report, Some(&announce), None, Some(&rows));
         // Measured independently, in UTF-16 units: the most Discord can count.
         let units = |s: &str| s.encode_utf16().count();
         assert!(units(&text) <= 2000, "{}", units(&text));
@@ -1056,7 +1078,7 @@ mod tests {
         );
         assert!((1..10).contains(&shown), "{shown}");
         // A head longer than any message is cut, never sent too long.
-        let huge = status_report_text(&"B".repeat(3000), &report, None, None);
+        let huge = status_report_text(&"B".repeat(3000), &report, None, None, None);
         assert!(units(&huge) <= 2000);
         assert!(huge.ends_with('…'));
     }
@@ -1081,7 +1103,7 @@ mod tests {
         ];
         let gaps = vec!["Give CrackTunes Embed Links in <#5>".to_owned()];
         assert_eq!(
-            preflight_lines(&report, Some(&gaps)),
+            preflight_lines(&report, Some(&gaps), None),
             vec![
                 "Rename: Ready.",
                 "Lock nickname: Give CrackTunes View Audit Log in Server Settings → Roles",
@@ -1091,10 +1113,21 @@ mod tests {
             ]
         );
         assert_eq!(
-            preflight_lines(&report[..1], Some(&[])),
+            preflight_lines(&report[..1], Some(&[]), None),
             vec!["Rename: Ready.", "Announcements: Ready."]
         );
-        assert_eq!(preflight_lines(&report[..1], None), vec!["Rename: Ready."]);
+        assert_eq!(
+            preflight_lines(&report[..1], None, None),
+            vec!["Rename: Ready."]
+        );
+        let log_gaps = vec!["Give CrackTunes Send Messages in <#6>".to_owned()];
+        assert_eq!(
+            preflight_lines(&report[..1], None, Some(&log_gaps)),
+            vec![
+                "Rename: Ready.",
+                "Economy log: Give CrackTunes Send Messages in <#6>"
+            ]
+        );
     }
 
     #[test]

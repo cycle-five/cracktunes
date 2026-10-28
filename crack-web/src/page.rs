@@ -18,6 +18,7 @@ use crack_core::{
             DASH_ECONOMY_GAMBLING, DASH_ECONOMY_GAMBLING_NOTE, DASH_ECONOMY_GUIDE,
             DASH_ECONOMY_IMMUNITY_HOURS, DASH_ECONOMY_IMMUNITY_MODS, DASH_ECONOMY_IMMUNITY_OPTOUT,
             DASH_ECONOMY_IMMUNITY_SHOP, DASH_ECONOMY_JAIL_CHANNEL, DASH_ECONOMY_JAIL_NOTE,
+            DASH_ECONOMY_LOG_CHANNEL, DASH_ECONOMY_LOG_HINT, DASH_ECONOMY_LOG_STATUS,
             DASH_ECONOMY_MAX_BET, DASH_ECONOMY_MESSAGE_COOLDOWN, DASH_ECONOMY_MESSAGE_RATE,
             DASH_ECONOMY_NO_CHANNEL_OPTION, DASH_ECONOMY_OPTOUT_COOLDOWN, DASH_ECONOMY_PREFLIGHT,
             DASH_ECONOMY_PREFLIGHT_READY, DASH_ECONOMY_PREFLIGHT_UNKNOWN, DASH_ECONOMY_PRICES,
@@ -296,6 +297,7 @@ pub fn settings_page(
         };
     let jail_options = channel_options(&economy.voice_channels, &economy.jail_channel);
     let announce_options = channel_options(&economy.text_channels, &economy.announce_channel);
+    let log_options = channel_options(&economy.text_channels, &economy.log_channel);
     let lines = |needs: &Option<Vec<String>>| match needs {
         None => esc(DASH_ECONOMY_PREFLIGHT_UNKNOWN),
         Some(l) if l.is_empty() => esc(DASH_ECONOMY_PREFLIGHT_READY),
@@ -318,6 +320,14 @@ pub fn settings_page(
         (Some(_), found) => format!(
             "<li data-kind=\"announce\"><strong>{label}</strong>: <span>{text}</span></li>",
             label = esc(DASH_ECONOMY_ANNOUNCE_STATUS),
+            text = lines(found),
+        ),
+    };
+    let log_row = match (&economy.log_channel, &economy.log_findings) {
+        (None, _) => String::new(),
+        (Some(_), found) => format!(
+            "<li data-kind=\"log\"><strong>{label}</strong>: <span>{text}</span></li>",
+            label = esc(DASH_ECONOMY_LOG_STATUS),
             text = lines(found),
         ),
     };
@@ -350,6 +360,8 @@ pub fn settings_page(
 <label>{jail_text} <select id=\"e-jail\"><option value=\"\">{no_channel}</option>{jail_options}</select></label>\
 <p id=\"e-jail-note\">{jail_note}</p>\
 <label>{announce_text} <select id=\"e-announce\"><option value=\"\">{no_channel}</option>{announce_options}</select></label>\
+<label>{log_text} <select id=\"e-log\" aria-describedby=\"e-log-note\"><option value=\"\">{no_channel}</option>{log_options}</select></label>\
+<p id=\"e-log-note\">{log_hint}</p>\
 <h3>{prices_text}</h3><table id=\"e-prices\"><tbody>{price_rows}</tbody></table>\
 <label class=\"check\"><input type=\"checkbox\" id=\"e-optout\"{optout}> {optout_text}</label>\
 <label class=\"check\"><input type=\"checkbox\" id=\"e-shop\"{shop}> {shop_text}</label>\
@@ -363,7 +375,7 @@ pub fn settings_page(
 <button type=\"submit\" id=\"e-save\">{save}</button>\
 <p id=\"e-note\" role=\"status\" hidden></p></form>\
 <h3>{preflight_text}</h3><ul id=\"e-preflight\" data-ready=\"{ready_text}\" data-unknown=\"{unknown_text}\" \
-data-announce=\"{announce_status}\">{preflight_rows}{announce_row}</ul>\
+data-announce=\"{announce_status}\" data-log=\"{log_status}\">{preflight_rows}{announce_row}{log_row}</ul>\
 <p class=\"links\"><a href=\"{guide}\">{guide_text}</a></p>",
         title = esc(DASH_ECONOMY_TITLE),
         coin_row = coin_row,
@@ -408,6 +420,11 @@ data-announce=\"{announce_status}\">{preflight_rows}{announce_row}</ul>\
         jail_note = esc(DASH_ECONOMY_JAIL_NOTE),
         announce_text = esc(DASH_ECONOMY_ANNOUNCE_CHANNEL),
         announce_options = announce_options,
+        log_text = esc(DASH_ECONOMY_LOG_CHANNEL),
+        log_options = log_options,
+        log_hint = esc(DASH_ECONOMY_LOG_HINT),
+        log_status = esc(DASH_ECONOMY_LOG_STATUS),
+        log_row = log_row,
         preflight_text = esc(DASH_ECONOMY_PREFLIGHT),
         ready_text = esc(DASH_ECONOMY_PREFLIGHT_READY),
         unknown_text = esc(DASH_ECONOMY_PREFLIGHT_UNKNOWN),

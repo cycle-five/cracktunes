@@ -224,6 +224,14 @@ pub fn report_for(
     economy_preflight(c, perms.as_ref(), |ch| format!("<#{ch}>"))
 }
 
+/// [`log_findings`] for a server, from the cache, naming the channel as a
+/// Discord mention.
+pub fn log_report_for(cache: &Cache, guild: GuildId, c: &EconomyConfig) -> Option<Vec<String>> {
+    let channels: Vec<ChannelId> = c.log_channel_id.into_iter().collect();
+    let perms = bot_perms(cache, guild, &channels);
+    log_findings(c, perms.as_ref(), |ch| format!("<#{ch}>"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
