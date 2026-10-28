@@ -68,7 +68,8 @@
   undeafen, moves and nickname changes. Moderators' economy actions (immunity,
   credit adjustments, `/economy cancel`, `/economy reveal`) go to both logs,
   naming the moderator in the mod log and saying "a moderator" in the economy
-  log.
+  log. An adjustment's reason is shown in both logs, so the public economy log
+  too; a grant's reason is shown only in the mod log.
 - **Mute Members is an optional room permission**, shown by `/rooms status`
   and the dashboard.
 - **The economy, part 1: credits, immunity and a coinflip.** A server can turn
@@ -375,7 +376,8 @@
   server (or the bot's startup check); rejoining the room mutes again. A
   moderator's server-unmute in the room wins until they rejoin, someone already
   server-muted by a moderator or the shop is never taken over, and the Unmute
-  button lifts both. Without Mute Members the room falls back to the Speak deny
+  button lifts the room's Speak deny and the room's own server mute (never
+  someone else's). Without Mute Members the room falls back to the Speak deny
   and says so. The room's own mute is not logged twice. Known edge: if the room
   mutes someone the shop had already muted, they can speak in the room after
   the shop's mute ends, until they rejoin.

@@ -226,7 +226,10 @@ Someone you kick is also removed from the helpers and from the people let in.
   Without **Mute Members**, Mute only denies Speak, and CrackTunes says it
   takes effect when they rejoin. One edge: if the room mutes someone the shop
   had already muted, they can speak in the room after the shop's mute ends,
-  until they rejoin.
+  until they rejoin. Another: if a moderator unmutes and then quickly re-mutes
+  a member the room holds while they are in the room, the room may keep its
+  hold and lift that mute when they leave (it reads Discord's current state, so
+  a quick toggle can be missed).
 - **Lock** blocks newcomers, not the people already inside: they can rejoin
   if they drop out. The owner, helpers and anyone you allowed can still join,
   and so can CrackTunes, to play music. Allow a person or role first, then

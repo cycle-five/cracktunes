@@ -87,7 +87,6 @@ pub enum EconomyLogEvent {
     ImmunityGranted {
         target: UserId,
         until: Option<DateTime<Utc>>,
-        reason: Option<String>,
     },
     ImmunityLifted {
         target: UserId,
@@ -218,21 +217,14 @@ pub fn line(e: &EconomyLogEvent) -> String {
                 mention(*target)
             ),
         },
-        ImmunityGranted {
-            target,
-            until,
-            reason,
-        } => {
+        ImmunityGranted { target, until } => {
             let when = until.map_or_else(
                 || ECONLOG_UNTIL_LIFTED.to_owned(),
                 |t| format!("{ECONLOG_UNTIL} <t:{}:f>", t.timestamp()),
             );
-            with_note(
-                format!(
-                    "{ECONLOG_A_MODERATOR} {ECONLOG_MADE} {} {ECONLOG_IMMUNE} {when}",
-                    mention(*target)
-                ),
-                reason.as_deref(),
+            format!(
+                "{ECONLOG_A_MODERATOR} {ECONLOG_MADE} {} {ECONLOG_IMMUNE} {when}",
+                mention(*target)
             )
         },
         ImmunityLifted { target } => format!(
@@ -448,18 +440,16 @@ mod tests {
         assert_eq!(
             line(&ImmunityGranted {
                 target: T,
-                until: Some(at()),
-                reason: None
+                until: Some(at())
             }),
             "A moderator made <@11> immune until <t:1800000000:f>"
         );
         assert_eq!(
             line(&ImmunityGranted {
                 target: T,
-                until: None,
-                reason: Some("ok".into())
+                until: None
             }),
-            "A moderator made <@11> immune until lifted\n> ok"
+            "A moderator made <@11> immune until lifted"
         );
         assert_eq!(
             line(&ImmunityLifted { target: T }),
@@ -546,7 +536,6 @@ mod tests {
             ImmunityGranted {
                 target: T,
                 until: None,
-                reason: None,
             },
             ImmunityLifted { target: T },
             CreditsAdjusted {

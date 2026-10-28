@@ -385,11 +385,7 @@ pub fn grant_events(
             until,
             reason: reason.clone(),
         },
-        EconomyLogEvent::ImmunityGranted {
-            target,
-            until,
-            reason,
-        },
+        EconomyLogEvent::ImmunityGranted { target, until },
     )
 }
 
@@ -503,7 +499,7 @@ pub async fn grant(
     ctx: Context<'_>,
     #[description = "Who"] member: User,
     #[description = "Hours (1 to 8760); leave out for until lifted"] hours: Option<u32>,
-    #[description = "Why"] reason: Option<String>,
+    #[description = "Why (shown in the mod log)"] reason: Option<String>,
 ) -> Result<(), Error> {
     let Some((guild, _pool)) = gate(ctx).await? else {
         return Ok(());
@@ -771,7 +767,7 @@ pub async fn adjust(
     #[min = -1000000000]
     #[max = 1000000000]
     amount: i64,
-    #[description = "Why (shown in the mod log)"] reason: String,
+    #[description = "Why (shown in the mod log and the public economy log)"] reason: String,
 ) -> Result<(), Error> {
     let Some((guild, pool)) = gate(ctx).await? else {
         return Ok(());

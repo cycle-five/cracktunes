@@ -143,10 +143,10 @@ pub enum ModLogEvent {
         by: UserRef,
         target: UserRef,
     },
-    /// A prank's buyer was unmasked, by the target's paid reveal or a
-    /// moderator's `/economy reveal`. Whoever unmasked it is named, as a
-    /// moderator's action is in this log; the unmasking is what makes the
-    /// buyer's name fair to show (2026-10-28 rule).
+    /// A prank's buyer was unmasked by a moderator's `/economy reveal` (a
+    /// target's paid reveal goes to the economy log only). The moderator is
+    /// named, as in this log's other moderator actions; the unmasking is what
+    /// makes the buyer's name fair to show (2026-10-28 rule).
     PrankUnmasked {
         by: UserRef,
         action: ActionKind,

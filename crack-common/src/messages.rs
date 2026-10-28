@@ -1240,7 +1240,7 @@ pub const DASH_ECONOMY_ANNOUNCE_CHANNEL: &str = "Announcement channel";
 pub const DASH_ECONOMY_NO_CHANNEL_OPTION: &str = "None";
 pub const DASH_ECONOMY_JAIL_NOTE: &str = "Members are moved here even if they can't see it.";
 pub const DASH_ECONOMY_UNKNOWN_CHANNEL: &str =
-    "The jail channel must be a voice channel and the announcement channel a text channel of this server.";
+    "The jail channel must be a voice channel, and the announcement and economy log channels text channels, of this server.";
 pub const DASH_ECONOMY_PREFLIGHT: &str = "What CrackTunes needs for each prank";
 pub const DASH_ECONOMY_PREFLIGHT_READY: &str = "Ready.";
 pub const DASH_ECONOMY_PREFLIGHT_UNKNOWN: &str = "Couldn't check permissions right now.";

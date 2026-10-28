@@ -154,17 +154,18 @@ are running when the economy is turned off.
 | Command | Who may run it | What it does |
 |---|---|---|
 | `/economy status` | **Moderate Members** | Shows the currency, how many wallets the server has (zero balances and opted-out members count) and how many credits are held in total, the earning rates, the three immunity switches and the gambling settings. Then what CrackTunes needs for each prank, in the dashboard's words, and the last 10 shop actions (fewer, saying how many were left out, if they don't fit in one message), newest first: what, who bought it (signed or not), on whom, its state, and when it ends or why it ended. Only you see it. |
-| `/economy grant <member> [hours] [reason]` | **Moderate Members** | Makes a member immune for 1 to 8760 hours, or until lifted if you leave the hours out. Refused if the server has turned off moderator grants. |
+| `/economy grant <member> [hours] [reason]` | **Moderate Members** | Makes a member immune for 1 to 8760 hours, or until lifted if you leave the hours out. Refused if the server has turned off moderator grants. The reason, if any, is shown in the mod log only. |
 | `/economy lift <member>` | **Moderate Members** | Removes a moderator grant. Always allowed, even if grants are switched off. It doesn't touch immunity the member bought. |
 | `/economy cancel <member>` | **Moderate Members** | Ends every prank running on a member now, each undone as if it had expired. It says how many it ended, or that nothing was running. |
 | `/economy reveal <member> [action]` | **Moderate Members** | Unmasks a prank that was bought unsigned, for free. See [Unmasking a prank as a moderator](#unmasking-a-prank-as-a-moderator). |
-| `/economy adjust <member> <amount> <reason>` | **Manage Server**, on top of Moderate Members | Adds credits, or removes them with a negative amount. The reason is required. Refused if it would take the member below zero (it tells you what they hold), or if the amount is 0 or larger than 1,000,000,000 either way. |
+| `/economy adjust <member> <amount> <reason>` | **Manage Server**, on top of Moderate Members | Adds credits, or removes them with a negative amount. The reason is required, and is shown in both the mod log and the public economy log. Refused if it would take the member below zero (it tells you what they hold), or if the amount is 0 or larger than 1,000,000,000 either way. |
 
 Bots can't be granted immunity or have their credits adjusted.
 
 A moderator's economy actions (`grant`, `lift`, `cancel`, `adjust` and
 `reveal`) go to **both** logs. [The mod log](rooms-and-mod-log.md#mod-log), if
 it is on, says who did it and to whom (and why, for `grant` and `adjust`).
+The economy log shows an adjustment's reason too, but never a grant's.
 [The economy log](#the-economy-log), if you set one, says "a moderator", so a
 public log doesn't name your staff. The mod log no longer carries the shop's
 purchases: what the shop *did* to a member shows there as literal lines (see

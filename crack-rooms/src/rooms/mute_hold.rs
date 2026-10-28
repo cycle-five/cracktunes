@@ -280,8 +280,8 @@ fn cause_of(old: Option<ChannelId>, new: Option<ChannelId>) -> Cause {
 
 /// Every voice update, before the rooms' own handling. Synchronous: any work
 /// is spawned. Bots and updates without a server are skipped; a member who
-/// holds nothing and arrives nowhere that mutes them costs no database read. (Glue over a live `Context`; `cause_of` and
-/// `settle` carry the tests.)
+/// holds nothing and arrives nowhere that mutes them costs no database read.
+/// (Glue over a live `Context`; `cause_of` and `settle` carry the tests.)
 pub fn on_voice_state(data: &RoomsData, ctx: &Context, old: Option<&VoiceState>, new: &VoiceState) {
     let Some(g) = new.guild_id else {
         return;
@@ -325,7 +325,10 @@ pub async fn reconcile(data: &RoomsData, discord: &dyn RoomsDiscord, g: GuildId)
 }
 
 /// Delete the hold row and its filter entry. A failed delete is logged: the
-/// row then says a mute is owed that is not, and the next settle drops it.
+/// row then stays although the in-memory filter entry is already cleared, so
+/// nothing re-reads it until the member's next voice join or the startup check;
+/// a reconcile then could unmute a mute a moderator applied in the meantime.
+/// Rare: it needs a database failure.
 async fn forget(pool: &sqlx::PgPool, holds: &HoldIndex, g: GuildId, u: UserId) {
     holds.clear(g, u);
     if let Err(e) = mute_holds::release(pool, g, u).await {
