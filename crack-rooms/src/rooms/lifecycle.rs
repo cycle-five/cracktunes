@@ -1719,6 +1719,21 @@ mod tests {
         async fn pin(&self, ch: ChannelId, msg: MessageId) -> Result<(), DiscordError> {
             self.inner.pin(ch, msg).await
         }
+        async fn set_mute(
+            &self,
+            guild: GuildId,
+            user: UserId,
+            on: bool,
+        ) -> Result<(), DiscordError> {
+            self.inner.set_mute(guild, user, on).await
+        }
+        async fn voice_now(
+            &self,
+            guild: GuildId,
+            user: UserId,
+        ) -> Result<super::super::mute_hold::VoiceNow, DiscordError> {
+            self.inner.voice_now(guild, user).await
+        }
     }
 
     #[tokio::test]

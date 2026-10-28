@@ -9,6 +9,7 @@ use super::attribution::Change;
 use super::audit::{nonzero, AuditSource, LiveAudit};
 use super::batch::{self, ModLogSink};
 use super::event::{shop_change_event, Actor, ModLogEvent};
+use crate::rooms::discord::ROOM_AUDIT_REASON_PREFIX;
 use crate::rooms::lifecycle::{classify, VoiceChange};
 use crate::rooms::RoomsData;
 use crack_common::courier::post_to_channel;
@@ -101,6 +102,15 @@ fn events_of(entry: &AuditLogEntry, bot: UserId, actor_is_bot: bool) -> Vec<ModL
             .reason
             .as_deref()
             .is_some_and(|r| r.starts_with(SHOP_AUDIT_REASON_PREFIX))
+    {
+        return Vec::new();
+    }
+    // So are the room's own mutes: its `RoomMute` line is the record.
+    if actor == bot
+        && entry
+            .reason
+            .as_deref()
+            .is_some_and(|r| r.starts_with(ROOM_AUDIT_REASON_PREFIX))
     {
         return Vec::new();
     }
@@ -501,6 +511,18 @@ mod tests {
         // A moderator quoting the prefix is not the shop.
         let spoof = member_update(MUTE_ON, Some("CrackTunes shop: mute"));
         assert_eq!(posted(&data, &spoof).await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn events_of_skips_the_rooms_own_mutes() {
+        let data = data_on();
+        assert!(posted(&data, &bot_mute("CrackTunes room: mute"))
+            .await
+            .is_empty());
+        // A moderator's mute, even quoting the prefix, is still logged.
+        let spoof = member_update(MUTE_ON, Some("CrackTunes room: mute"));
+        assert_eq!(posted(&data, &spoof).await.len(), 1);
+        assert_eq!(posted(&data, &member_update(MUTE_ON, None)).await.len(), 1);
     }
 
     #[tokio::test]
