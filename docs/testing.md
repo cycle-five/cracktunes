@@ -76,8 +76,9 @@ plus `crack-core/crack-coin` and `crack-economy/crack-coin` for the CrackCoin
 tests:
 
 ```bash
-docker run -d --name crack-pg -p 5432:5432 \
-  -e POSTGRES_PASSWORD=mysecretpassword postgres:16
+docker run -d --rm --name crack-pg -p 127.0.0.1:5432:5432 \
+  -e POSTGRES_PASSWORD=mysecretpassword \
+  --tmpfs /var/lib/postgresql/data:size=4g postgres:16-alpine
 
 cargo nextest run --workspace \
   --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests,crack-gp/db-tests
@@ -85,9 +86,15 @@ cargo nextest run --workspace \
 
 `DATABASE_URL` defaults to `postgresql://postgres:mysecretpassword@localhost:5432/postgres`.
 `crack-test-db`'s runner applies that default itself, for every crate, when
-nothing else has set it (`crack-core`'s `#[ctor]` in `src/db/user.rs` remains
-for crack-core tests that read the variable directly). Export your own to
-point elsewhere.
+nothing else has set it. Export your own to point elsewhere.
+
+🔑 **Keep the test database in memory (`--tmpfs`).** Every db test creates a
+database from the template and drops it afterwards, and with 20 tests at a
+time those wait on the server's disk: a test that takes 0.15 s alone took
+about 2 s in its suite. Measured 2026-10-31, crack-economy's 406 tests ran in
+17 s against a database on disk and 3 s against one in memory; crack-rooms'
+went from 3.3 s to 0.8 s. Turning off `fsync` with the data still on disk did
+not help. The data is throwaway either way.
 
 CI provisions postgres and passes those features, so the database tests do run
 on every push. The gate is about the default local experience, not coverage.
@@ -145,11 +152,15 @@ schema without someone noticing at build time.
 
 ## Tests that reach the network
 
-Some tests in `crack-testing` make live calls (YouTube). Those are marked
-`#[ignore]` on their own and are not covered by `db-tests`. They fail for
-reasons unrelated to whatever you changed; run them deliberately, by name.
-crack-osint's own HIBP live-call test moved with it to
-`cycle-five/crack-osint` and is no longer part of this repository.
+None do by default. Whether YouTube or top.gg is up is not a question for this
+suite, and a test that passes whether or not its call worked checks nothing;
+give the code a fake to talk to instead. Checked 2026-10-31 by logging every
+connection the whole suite opened: none left the machine.
+
+Five `#[ignore]`d tests still make live calls, and run only by name with
+`--ignored`: two that fetch from SoundCloud through yt-dlp, two against
+httpbin.org in `crack-types`, and `crack-music`'s `autoplay_probe`, a
+hand-run reproduction of autoplay against the live services.
 
 ## Coverage
 
