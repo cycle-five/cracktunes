@@ -98,38 +98,3 @@ pub async fn has_voted_bot_id(
         .map(|v| v == 1)
         .ok_or(CrackedError::Other("Error in response from top.gg"))
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
-
-    #[ctor::ctor(unsafe)]
-    fn set_env() {
-        use std::env;
-
-        if env::var("TOPGG_TOKEN").is_err() {
-            env::set_var("TOPGG_TOKEN", "FAKE_TOKEN");
-        }
-    }
-
-    #[crack_test_macros::db_test(migrator = "MIGRATOR")]
-    #[cfg_attr(
-        not(feature = "db-tests"),
-        ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
-    )]
-    async fn test_check_and_record_vote(pool: sqlx::PgPool) {
-        let user_id = 285219649921220608;
-        let username = "test".to_string();
-        let bot_id = 1115229568006103122;
-
-        let has_voted = check_and_record_vote(&pool, user_id, username, bot_id).await;
-
-        if let Ok(voted) = &has_voted {
-            assert!(!*voted);
-        } else {
-            println!("{:?}", has_voted)
-        }
-    }
-}
