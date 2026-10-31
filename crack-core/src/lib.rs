@@ -39,7 +39,7 @@ pub const MAX_PLAYLIST_LIMIT: u64 = 1000;
 use ::serenity::all::Activity;
 use chrono::{DateTime, Utc};
 use crack_testing::CrackTrackClient;
-use db::worker_pool::MetadataMsg;
+use db::play_log_writer::MetadataMsg;
 use db::{PlayLog, TrackReaction};
 use errors::CrackedError;
 use guild::settings::get_log_prefix;
@@ -363,7 +363,8 @@ pub struct DataInner {
     // Why Option instead of Arc here? Certainly it's an indirection to allow for an uninitialized state
     // to exist, but why not just use a default value? If it's necessary to wrap the type is that newtype better
     // or worse than using an Option?
-    pub db_channel: Option<Sender<MetadataMsg>>,
+    /// The play log's writer; see `db::play_log_writer`. None without a pool.
+    pub play_log_writer: Option<Sender<MetadataMsg>>,
     pub database_pool: Option<sqlx::PgPool>,
     pub http_client: reqwest::Client,
     //RwLock, then Mutex, why?
@@ -432,14 +433,6 @@ impl DataInner {
     pub fn with_database_pool(&self, database_pool: sqlx::PgPool) -> Self {
         Self {
             database_pool: Some(database_pool),
-            ..self.clone()
-        }
-    }
-
-    /// Set the channel for the database pool communication.
-    pub fn with_db_channel(&self, db_channel: Sender<MetadataMsg>) -> Self {
-        Self {
-            db_channel: Some(db_channel),
             ..self.clone()
         }
     }
@@ -590,7 +583,7 @@ impl Default for DataInner {
             http_client: http_utils::get_client().clone(),
             event_log_async: EventLogAsync::default(),
             database_pool: None,
-            db_channel: None,
+            play_log_writer: None,
             musicreco: None,
             autoplay_buffer: Arc::default(),
             rooms: Default::default(),
@@ -672,7 +665,7 @@ impl Data {
             ct_client: self.ct_client.clone(),
             http_client: self.http_client.clone(),
             audit_tx: self.audit_tx.clone(),
-            db_channel: self.db_channel.clone(),
+            play_log_writer: self.play_log_writer.clone(),
             autoplay_buffer: self.autoplay_buffer.clone(),
             guild_cache_map: self.guild_cache_map.clone(),
             playback_owners: self.playback_owners.clone(),

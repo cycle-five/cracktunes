@@ -280,10 +280,10 @@ pub async fn poise_framework(
             },
         },
     };
-    let db_channel = match database_pool.clone().map(db::worker_pool::setup_workers) {
-        Some(c) => Some(c.await),
-        None => None,
-    };
+    // The writer's task is left to run; it ends with the process.
+    let play_log_writer = database_pool
+        .clone()
+        .map(|pool| db::play_log_writer::spawn(pool).0);
 
     let manager: Arc<Songbird> = songbird::Songbird::serenity_from_config(songbird_config());
 
@@ -313,7 +313,7 @@ pub async fn poise_framework(
         songbird: manager.clone(),
         event_log_async,
         database_pool,
-        db_channel,
+        play_log_writer,
         gp_persist,
         audit_tx,
         musicreco,

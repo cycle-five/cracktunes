@@ -70,7 +70,7 @@ pub fn test_music_data() -> MusicData {
         ct_client: crack_testing::CrackTrackClient::default(),
         http_client: crate::http_utils::get_client().clone(),
         audit_tx: None,
-        db_channel: None,
+        play_log_writer: None,
         autoplay_buffer: Arc::default(),
         guild_cache_map: Arc::new(Mutex::new(std::collections::HashMap::new())),
         playback_owners: Arc::default(),

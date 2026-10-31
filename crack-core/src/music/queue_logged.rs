@@ -133,9 +133,7 @@ pub async fn queue_track_back(
     let after_ready = std::time::Instant::now();
     // 🪤 `ready_track` is NOT in scope here -- it exists only in the fallback
     // branch above, which returns. This leg goes `ct_client` -> ResolvedTrack
-    // and never builds one, which is why simply uncommenting the old
-    // `//ctx.async_send_track_metadata_write_msg(&ready_track);` line did not
-    // even compile, and why this path needs its own sender.
+    // and never builds one, which is why this path needs its own sender.
     ctx.send_resolved_metadata_write_msg(&resolved);
     let after_send = std::time::Instant::now();
     //let queue = queue_track_ready_back(call, ready_track).await;

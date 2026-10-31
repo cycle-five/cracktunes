@@ -13,5 +13,5 @@ pub mod track_reaction;
 pub use track_reaction::TrackReaction;
 pub mod user;
 pub use user::User;
-pub mod worker_pool;
-pub use worker_pool::MetadataMsg;
+pub mod play_log_writer;
+pub use play_log_writer::MetadataMsg;
