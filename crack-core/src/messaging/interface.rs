@@ -1239,7 +1239,9 @@ mod test {
     /// one: the queue embed, the now-playing embed and the requester. A panic
     /// here is a dead `/queue` or `/nowplaying` -- or, from the track-end
     /// handler, a dead event task.
-    #[tokio::test]
+    // Paused clock: `get_info` never answers on an offline call, so each read
+    // waits out `TRACK_INFO_TIMEOUT`; paused, tokio skips straight to it.
+    #[tokio::test(start_paused = true)]
     async fn every_way_a_track_is_queued_reads_back_without_a_panic() {
         let data = test_music_data();
         let guard = data

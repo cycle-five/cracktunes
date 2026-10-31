@@ -275,8 +275,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_sweep_without_a_database_ends_nothing_and_does_not_panic() {
+        // Nothing listens on port 1, so every acquire waits out its timeout;
+        // keep it short, as the outcome is the same at any length.
         let pool = sqlx::postgres::PgPoolOptions::new()
-            .acquire_timeout(Duration::from_secs(2))
+            .acquire_timeout(Duration::from_millis(100))
             .connect_lazy("postgresql://nobody:nothing@127.0.0.1:1/none")
             .unwrap();
         let fake = FakeChain::new();

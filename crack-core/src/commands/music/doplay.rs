@@ -1404,7 +1404,9 @@ mod time_until_play_tests {
     /// Each track ahead counts its own length. It used to count the playing
     /// track's length for every one of them, so a live stream in the middle
     /// went unnoticed. (Offline, the playing track reads as just started.)
-    #[tokio::test]
+    // Paused clock: `get_info` never answers on an offline call, so each read
+    // waits out `TRACK_INFO_TIMEOUT`; paused, tokio skips straight to it.
+    #[tokio::test(start_paused = true)]
     async fn the_wait_adds_up_each_track_ahead() {
         assert_eq!(
             wait_for(&[Some(100), Some(30), Some(10)], Mode::End).await,
@@ -1423,7 +1425,9 @@ mod time_until_play_tests {
 
     /// The queued reply, end to end: the card is the new track's, with its
     /// length and the wait ahead of it; behind a live stream, the length only.
-    #[tokio::test]
+    // Paused clock: `get_info` never answers on an offline call, so each read
+    // waits out `TRACK_INFO_TIMEOUT`; paused, tokio skips straight to it.
+    #[tokio::test(start_paused = true)]
     async fn a_queued_reply_says_the_new_tracks_length_and_its_wait() {
         let footer = |lengths: &'static [Option<u64>]| async move {
             let (_call, queue) = queue_of(lengths).await;
