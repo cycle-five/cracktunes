@@ -10,6 +10,16 @@ checks both.
 
 ## Unreleased
 
+## v0.46.1 (2026-10-31)
+
+### Changed
+
+- **Dependency updates only; no CrackTunes code changed.** 21 crates take
+  patch or minor updates, among them `uuid` 1.29.0, `cc` 1.10.0, the `icu_*`
+  family 2.4.0, `webpki-roots` 1.0.11, `smallvec` 1.16.4 and `trim-in-place`
+  0.1.8. The test-only `crack-test-macros` moves to `syn` 3, which other
+  crates already brought into the build.
+
 ## v0.46.0 (2026-10-28)
 
 ### Upgrading to v0.46.0
