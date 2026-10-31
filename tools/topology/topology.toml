@@ -1,0 +1,17 @@
+name = "cracktunes"
+# crack-testing is production code (a default-feature dependency of crack-core).
+test_crates = ["crack-test-macros"]
+
+[groups]
+discord = ["serenity", "serenity-voice-model", "poise", "poise_macros", "songbird", "discortp", "davey"]
+database = ["sqlx", "sqlx-*"]
+http = ["reqwest"]
+coin = ["crack-coin", "solana-*", "spl-*"]
+media = ["symphonia", "symphonia-*", "audiopus", "audiopus_sys", "rusty_ytdl"]
+
+[rust_analyzer.env]
+SQLX_OFFLINE = "true"
+
+[timings]
+rebuild_package = "crack-core"
+through_package = "cracktunes"

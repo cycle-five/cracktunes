@@ -1,0 +1,50 @@
+name: Topology tool
+
+# Builds and tests tools/topology, the standalone workspace-topology tool. It is
+# not a member of the root workspace, so no other workflow sees it. It never
+# gates the bot: it only runs when the tool itself changes.
+
+on:
+  pull_request:
+    paths:
+      - "tools/topology/**"
+      - ".github/workflows/topology.yml"
+  push:
+    branches: [master]
+    paths:
+      - "tools/topology/**"
+      - ".github/workflows/topology.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  topology:
+    name: Build and test the topology tool
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Repository Checkout
+        uses: actions/checkout@v7
+
+      # rust-analyzer: the tool's tests index fixture workspaces with the real
+      # `rust-analyzer scip`. rust-src: rust-analyzer needs the std sources.
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update --component rust-analyzer,rust-src,clippy,rustfmt
+          rustup default stable
+        shell: bash
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tools/topology
+          shared-key: topology
+
+      - name: Format
+        run: cargo fmt --check --manifest-path tools/topology/Cargo.toml
+
+      - name: Clippy
+        run: cargo clippy --manifest-path tools/topology/Cargo.toml --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --manifest-path tools/topology/Cargo.toml --locked

@@ -1,0 +1,40 @@
+[package]
+name = "rust-topology"
+version = "0.1.0"
+edition = "2024"
+description = "Maps a Cargo workspace into facts using rust-analyzer's SCIP export plus syn"
+publish = false
+build = "build.rs"
+
+[lib]
+name = "rust_topology"
+
+[[bin]]
+name = "topology"
+path = "src/main.rs"
+
+[[test]]
+name = "fixture"
+path = "tests/fixture/main.rs"
+
+# Standalone: never part of the cracktunes root workspace.
+[workspace]
+
+[dependencies]
+anyhow = "1"
+cargo_metadata = "0.23"
+clap = { version = "4", features = ["derive"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+protobuf = "3.7.2"
+quote = "1"
+scip = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.10"
+syn = { version = "2", features = ["full"] }
+toml = "0.9"
+walkdir = "2"
+
+[build-dependencies]
+sha2 = "0.10"
+walkdir = "2"

@@ -1,0 +1,12 @@
+[package]
+name = "appcore"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+apptypes = { path = "../apptypes" }
+fakecord = { path = "../fakecord" }
+fakechars = { path = "../fakechars" }
+
+[features]
+extra = []
