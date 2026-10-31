@@ -73,9 +73,14 @@ impl Parse for Args {
 }
 
 fn expand(args: &Args, item: ItemFn) -> syn::Result<TokenStream2> {
+    // 🔑 No `..`: a field syn adds to `ItemFn` must fail this build, as
+    // `modifiers` did in syn 3, so someone decides where it goes in the output.
+    // `modifiers` holds only `default` (specialization), which a free function
+    // cannot carry, and syn's own printing of an `ItemFn` leaves it out too.
     let ItemFn {
         attrs,
         vis,
+        modifiers: _,
         sig,
         block,
     } = item;
