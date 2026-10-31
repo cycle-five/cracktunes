@@ -122,7 +122,6 @@ default-features = false
 features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dev-dependencies]
-ctor = "1.0"
 # `#[cfg_attr(test, mutants::skip)]` waivers: see docs/testing.md.
 mutants = "0.0.4"
 # `#[db_test]`: db tests on template databases (crack-test-db/src/test_db.rs).

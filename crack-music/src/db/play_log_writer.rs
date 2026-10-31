@@ -1,9 +1,17 @@
+//! The play log's writer: one background task that records each queued track
+//! (its metadata, the member, and a `play_log` row) off the command's path.
+//!
+//! 🔑 One task, not a pool. Senders `try_send`, so /play never waits on these
+//! writes, and a 300-track playlist's writes go through one connection, one at
+//! a time, instead of taking every connection in the bot's pool.
+
 use serenity::all::{GenericChannelId, GuildId, UserId};
 use songbird::input::AuxMetadata;
 use sqlx::postgres::PgPool;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tracing;
 
 use crate::db::{metadata::aux_metadata_to_db_structures, Metadata, PlayLog, User};
@@ -33,7 +41,7 @@ impl Display for MetadataMsg {
 }
 use crate::db::metadata::MetadataAnd;
 /// Writes metadata to the database for a playing track.
-pub async fn write_metadata_pg(
+async fn write_metadata_pg(
     database_pool: &PgPool,
     data: MetadataMsg,
 ) -> Result<Metadata, CrackedError> {
@@ -99,10 +107,10 @@ pub async fn write_metadata_pg(
     Ok(returned_metadata)
 }
 
-/// Run a worker that writes metadata to the database.
-pub async fn run_db_worker(mut receiver: mpsc::Receiver<MetadataMsg>, pool: PgPool) {
+/// Writes each message as it arrives, until every sender is dropped.
+async fn run(mut receiver: mpsc::Receiver<MetadataMsg>, pool: PgPool) {
     while let Some(message) = receiver.recv().await {
-        tracing::trace!("Received message in run_db_worker: {}", message);
+        tracing::trace!("play log writer received {}", message);
         match write_metadata_pg(&pool, message).await {
             Ok(_) => tracing::trace!("Metadata written to database"),
             Err(e) => tracing::warn!("Failed to write metadata to database: {}", e),
@@ -110,14 +118,12 @@ pub async fn run_db_worker(mut receiver: mpsc::Receiver<MetadataMsg>, pool: PgPo
     }
 }
 
-/// Setup the workers to handle db writes asynchronously during runtime.
-pub async fn setup_workers(pool: PgPool) -> mpsc::Sender<MetadataMsg> {
+/// Starts the writer. Returns its sender and the task, which ends once every
+/// sender is dropped and the queue is written; the bot never waits for it.
+pub fn spawn(pool: PgPool) -> (mpsc::Sender<MetadataMsg>, JoinHandle<()>) {
     let (tx, rx) = mpsc::channel(CHANNEL_BUF_SIZE);
-    let pool = pool.clone();
-    tokio::spawn(async move {
-        run_db_worker(rx, pool).await;
-    });
-    tx
+    let writer = tokio::spawn(run(rx, pool));
+    (tx, writer)
 }
 
 #[cfg(test)]
@@ -131,9 +137,9 @@ mod test {
         not(feature = "db-tests"),
         ignore = "needs a postgres at DATABASE_URL; enable the db-tests feature"
     )]
-    async fn test_workers(pool: PgPool) {
+    async fn the_writer_records_a_queued_track(pool: PgPool) {
         let url = "https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string();
-        let sender = setup_workers(pool.clone()).await;
+        let (sender, writer) = spawn(pool.clone());
         let data = MetadataMsg {
             aux_metadata: AuxMetadata {
                 source_url: Some(url.clone()),
@@ -145,7 +151,9 @@ mod test {
             channel_id: GenericChannelId::new(1),
         };
         sender.send(data).await.unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        // Dropping the only sender ends the writer once the queue is written.
+        drop(sender);
+        writer.await.unwrap();
         let metadata = crate::db::metadata::Metadata::get_by_url(&pool, &url)
             .await
             .unwrap()

@@ -123,11 +123,6 @@ pub fn build_query_lyric_aux_metadata(aux_metadata: &AuxMetadata) -> String {
 
 #[cfg(test)]
 mod test {
-
-    use rusty_ytdl::search::YouTube;
-
-    use crate::http_utils::{self};
-
     use super::*;
 
     /// Nothing listens on port 9, so whatever opens a source pointing here
@@ -195,103 +190,5 @@ mod test {
         };
         let res = build_query_lyric_aux_metadata(&aux_metadata);
         assert_eq!(res, format!("world hello {}", MUSIC_SEARCH_SUFFIX));
-    }
-
-    #[tokio::test]
-    async fn test_get_track_metadata_video_link() {
-        let opts = RequestOptions {
-            client: Some(http_utils::get_client().clone()),
-            ..Default::default()
-        };
-        let reqclient = http_utils::get_client().clone();
-        let ytclient = YouTube::new_with_options(&opts).unwrap();
-        let query_type =
-            QueryType::VideoLink("https://www.youtube.com/watch?v=6n3pFFPSlW4".to_string());
-        let query_type = NewQueryType(query_type);
-        let res = query_type.get_track_metadata(ytclient, reqclient).await;
-        if let Err(ref e) = res {
-            // let phrase = "Sign in to confirm you’re not a bot";
-            // assert!(e.to_string().contains(phrase));
-            println!("{}", e);
-        }
-        //assert!(res.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_get_track_source_and_metadata() {
-        let reqclient = http_utils::get_client().clone();
-        let query_type = QueryType::Keywords("hello".to_string());
-        let query_type = NewQueryType(query_type);
-        let res = query_type
-            .get_track_source_and_metadata(Some(reqclient))
-            .await;
-        if let Err(ref e) = res {
-            //let phrase = "Sign in to confirm you’re not a bot";
-            println!("{}", e);
-            //assert!(e.to_string().contains(phrase));
-        }
-    }
-
-    #[tokio::test]
-    async fn test_get_track_source_and_metadata_video_link() {
-        let query_type =
-            QueryType::VideoLink("https://www.youtube.com/watch?v=MNmLn6a-jqw".to_string());
-        let query_type = NewQueryType(query_type);
-        let client = http_utils::build_client();
-        let res = query_type.get_track_source_and_metadata(Some(client)).await;
-        if let Err(ref e) = res {
-            // let phrase = "Sign in to confirm you’re not a bot";
-            println!("{}", e);
-            //assert!(e.to_string());
-        }
-        //assert!(res.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_get_track_source_and_metadata_playlist_link() {
-        let query_type = QueryType::PlaylistLink(
-            "https://www.youtube.com/playlist?list=PLFgquLnL59alCl_2TQvOiD5Vgm1hCaGSI".to_string(),
-        );
-        let query_type = NewQueryType(query_type);
-        let client = Some(http_utils::build_client());
-        let res = query_type.get_track_source_and_metadata(client).await;
-        if let Err(ref e) = res {
-            // let phrase = "Sign in to confirm you’re not a bot";
-            println!("{}", e);
-            // assert!(e.to_string().contains(phrase));
-        }
-    }
-
-    #[tokio::test]
-    async fn test_get_track_source_and_metadata_keyword_list() {
-        let query_type = NewQueryType(QueryType::KeywordList(vec![
-            "hello".to_string(),
-            "world".to_string(),
-        ]));
-        let client = Some(http_utils::build_client());
-        let res = query_type.get_track_source_and_metadata(client).await;
-        if let Err(e) = res {
-            // let phrase = "Sign in to confirm you’re not a bot";
-            println!("{}", e);
-            // assert!(e.to_string().contains(phrase));
-        }
-    }
-
-    #[tokio::test]
-    async fn test_search_query_to_source_and_metadata() {
-        let client = reqwest::Client::new();
-        let query = "hello".to_string();
-        let res = search_query_to_source_and_metadata(client, query).await;
-        match res {
-            Ok((source, metadata)) => {
-                assert!(!source.is_playable());
-                assert_eq!(metadata.len(), 1);
-            },
-            Err(e) => {
-                // let phrase = "Sign in to confirm you’re not a bot";
-                // assert!(e.to_string().contains(phrase));
-                println!("{}", e);
-            },
-        }
     }
 }

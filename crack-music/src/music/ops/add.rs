@@ -5,7 +5,7 @@ use super::{
     begin, Arc, Call, CrackedError, Done, GuildId, Mutex, OpCx, OpRefused, QueueGuard, Settle,
 };
 use crate::{
-    db::worker_pool::MetadataMsg,
+    db::play_log_writer::MetadataMsg,
     music::queue::{enqueue_resolved_track_next, enqueue_resolved_tracks_back},
 };
 use crack_common::messages::ADD_UNPLAYABLE;
@@ -69,7 +69,7 @@ async fn add_with(
         .await
         .current_channel()
         .map(|c| ChannelId::new(c.get()));
-    if let Some(tx) = &cx.data.db_channel {
+    if let Some(tx) = &cx.data.play_log_writer {
         let msg = play_log_message(track, user, member_name, cx.guild_id, channel);
         // try_send, as the /play paths do: a wedged writer must not block an add.
         if let Err(e) = tx.try_send(msg) {
@@ -314,7 +314,7 @@ mod test {
         let (tx, mut log) = tokio::sync::mpsc::channel(4);
         let (data, call, _ids, _rx) = queue_of(1).await;
         let data = MusicData {
-            db_channel: Some(tx),
+            play_log_writer: Some(tx),
             ..data
         };
         let pick = Recommendation {

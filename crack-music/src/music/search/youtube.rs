@@ -108,16 +108,4 @@ mod test {
         );
         assert!(from_rusty::<String>(Err("boom".into())).is_none(), "Err");
     }
-
-    #[tokio::test]
-    #[ignore = "hits live YouTube"]
-    async fn a_live_youtube_search_finds_something() {
-        let data = crate::music::ops::test_support::test_music_data();
-        let SourceResult::Hits(h) =
-            search_youtube(&data, &Query::new("abba waterloo").unwrap()).await
-        else {
-            panic!()
-        };
-        assert!(!h.is_empty());
-    }
 }

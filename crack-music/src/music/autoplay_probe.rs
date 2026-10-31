@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! AUTOPLAY_PROBE='https://www.youtube.com/watch?v=NJKhbnSGLsQ;hit that' \
-//!   SQLX_OFFLINE=true cargo test -p crack-core --lib autoplay_probe -- --ignored --nocapture
+//!   SQLX_OFFLINE=true cargo test -p crack-music --lib autoplay_probe -- --ignored --nocapture
 //! ```
 //!
 //! Queries are separated by `;`. A query starting with `http` is a video link,

@@ -10,6 +10,22 @@ checks both.
 
 ## Unreleased
 
+## v0.46.2 (2026-10-31)
+
+### Changed
+
+- **No test reaches the network any more.** Seven tests called YouTube or
+  top.gg on every run and passed whether or not the call worked, so they
+  checked nothing about CrackTunes. They are gone, along with 16 opt-in tests
+  that only asked whether YouTube was up and still answering the way it used to.
+- **Faster tests.** Five tests waited out real timeouts or a fixed sleep; they
+  now take milliseconds. `docs/testing.md` now starts the test database in
+  memory, which runs crack-economy's suite in about 3 s rather than 17 s.
+- **The play history writer is named for what it is.** One background task
+  records each queued track for play history; it was called a worker pool.
+  Behaviour is unchanged, and an unused path that wrote play history directly
+  is removed.
+
 ## v0.46.1 (2026-10-31)
 
 ### Changed

@@ -28,7 +28,7 @@ pub struct MusicData {
     pub ct_client: crack_testing::CrackTrackClient<'static>,
     pub http_client: reqwest::Client,
     pub audit_tx: Option<tokio::sync::mpsc::Sender<audit::AuditEvent>>,
-    pub db_channel: Option<tokio::sync::mpsc::Sender<crate::db::MetadataMsg>>,
+    pub play_log_writer: Option<tokio::sync::mpsc::Sender<crate::db::MetadataMsg>>,
     pub autoplay_buffer: std::sync::Arc<autoplay::AutoplayBuffer>,
     pub guild_cache_map: std::sync::Arc<
         tokio::sync::Mutex<
