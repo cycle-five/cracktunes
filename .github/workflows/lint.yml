@@ -243,8 +243,9 @@ jobs:
   # scripts/check_waivers.py (every waiver carries a reason) and
   # scripts/sweep_target.py (the target sweep), with unittest tests beside
   # them. The opt-in Mutants job runs these scripts, so a broken one has to fail
-  # here, not when someone finally labels a PR. Standard library only, so
-  # the runner's own python3 is enough: no setup step, no Rust.
+  # here, not when someone finally labels a PR. scripts/check_changelog.py
+  # (the CHANGELOG is ready to be release notes) runs here too. Standard
+  # library only, so the runner's own python3 is enough: no setup step, no Rust.
   scripts:
     name: Script tests
     runs-on: ubuntu-latest
@@ -257,3 +258,11 @@ jobs:
 
       - name: Every mutants waiver has a reason
         run: python3 scripts/check_waivers.py
+
+      # On a tag push, cargo-dist copies the version's CHANGELOG section into
+      # the GitHub release. With no `## vX.Y.Z` heading the release silently
+      # gets no notes (v0.7.0 to v0.46.0 did), and a bare `@name` in the notes
+      # notifies a real GitHub user (ct#656 did).
+      - name: The CHANGELOG has this version's notes, and they mention nobody
+        if: success() || failure()
+        run: python3 scripts/check_changelog.py

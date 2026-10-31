@@ -4,14 +4,14 @@
 //! Everything here acts on rows that are already running, so none of it
 //! checks whether the server still has the economy on (spec 14).
 
-use super::discord::{EconomyDiscord, LiveEconomyDiscord};
+use super::discord::{EconomyDiscord, LiveShopDiscord};
 use super::effects::MemberView;
 use super::settings::ActionKind;
 use super::wallet::{ActionPayload, ActionState};
 use crate::db::economy::{self, ActionRow};
 use crate::EconomyData;
 use chrono::{DateTime, Utc};
-use serenity::all::{AuditLogEntry, Cache, ChannelId, GuildId, Http, UserId};
+use serenity::all::{AuditLogEntry, Cache, ChannelId, GuildId, UserId};
 use serenity::model::guild::audit_log::{Action, Change, MemberAction};
 use std::sync::Arc;
 use std::time::Duration;
@@ -320,14 +320,13 @@ pub async fn jail_recheck(
 /// limit: sleep until `at`, then [`jail_recheck`] (again, if it asks).
 pub fn spawn_jail_recheck(
     data: EconomyData,
-    http: Arc<Http>,
+    discord: LiveShopDiscord,
     cache: Arc<Cache>,
     guild: GuildId,
     user: UserId,
     at: Instant,
 ) {
     tokio::spawn(async move {
-        let discord = LiveEconomyDiscord { http };
         let mut at = at;
         loop {
             tokio::time::sleep_until(at).await;

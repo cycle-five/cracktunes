@@ -76,13 +76,110 @@ pub trait EconomyDiscord: Send + Sync {
     async fn member_nick(&self, g: GuildId, u: UserId) -> Result<Option<String>, EconDiscordError>;
 }
 
-/// The real Discord behind [`EconomyDiscord`]. Untested here; the TuneTitan
-/// checklist covers it.
-pub struct LiveEconomyDiscord {
-    pub http: Arc<Http>,
+/// One change the shop made to a member, as the mod log reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShopChange {
+    /// `None`: the nickname was cleared.
+    Nick(Option<String>),
+    Mute(bool),
+    Deaf(bool),
+    Move(ChannelId),
 }
 
+/// Told of every change the shop made to a member, after Discord accepted
+/// it. The change has no buyer: the actor is CrackTunes, as in Discord's own
+/// audit log. Synchronous: an implementation that does I/O spawns it.
+pub trait ShopChangeLog: Send + Sync {
+    fn changed(&self, g: GuildId, u: UserId, change: ShopChange, kind: ActionKind);
+}
+
+/// An [`EconomyDiscord`] that reports each *successful* change to a
+/// [`ShopChangeLog`]. A failed call changed nothing, so it reports nothing;
+/// the nickname read is not a change.
+pub struct Logged<D> {
+    inner: D,
+    log: Arc<dyn ShopChangeLog>,
+}
+
+impl<D> Logged<D> {
+    pub fn new(inner: D, log: Arc<dyn ShopChangeLog>) -> Self {
+        Self { inner, log }
+    }
+}
+
+#[async_trait]
+impl<D: EconomyDiscord> EconomyDiscord for Logged<D> {
+    async fn set_nick(
+        &self,
+        g: GuildId,
+        u: UserId,
+        nick: Option<&str>,
+        kind: ActionKind,
+    ) -> Result<(), EconDiscordError> {
+        self.inner.set_nick(g, u, nick, kind).await?;
+        self.log
+            .changed(g, u, ShopChange::Nick(nick.map(str::to_owned)), kind);
+        Ok(())
+    }
+
+    async fn set_mute(
+        &self,
+        g: GuildId,
+        u: UserId,
+        on: bool,
+        kind: ActionKind,
+    ) -> Result<(), EconDiscordError> {
+        self.inner.set_mute(g, u, on, kind).await?;
+        self.log.changed(g, u, ShopChange::Mute(on), kind);
+        Ok(())
+    }
+
+    async fn set_deaf(
+        &self,
+        g: GuildId,
+        u: UserId,
+        on: bool,
+        kind: ActionKind,
+    ) -> Result<(), EconDiscordError> {
+        self.inner.set_deaf(g, u, on, kind).await?;
+        self.log.changed(g, u, ShopChange::Deaf(on), kind);
+        Ok(())
+    }
+
+    async fn move_member(
+        &self,
+        g: GuildId,
+        u: UserId,
+        to: ChannelId,
+        kind: ActionKind,
+    ) -> Result<(), EconDiscordError> {
+        self.inner.move_member(g, u, to, kind).await?;
+        self.log.changed(g, u, ShopChange::Move(to), kind);
+        Ok(())
+    }
+
+    async fn member_nick(&self, g: GuildId, u: UserId) -> Result<Option<String>, EconDiscordError> {
+        self.inner.member_nick(g, u).await
+    }
+}
+
+/// The real Discord behind [`EconomyDiscord`], which only ever exists wrapped
+/// in [`Logged`] (see [`LiveEconomyDiscord::logged`]): every change the shop
+/// makes reaches the mod log. Untested here; the TuneTitan checklist covers it.
+pub struct LiveEconomyDiscord {
+    http: Arc<Http>,
+}
+
+/// The only live door there is.
+pub type LiveShopDiscord = Logged<LiveEconomyDiscord>;
+
 impl LiveEconomyDiscord {
+    /// The live door, already reporting to `log`. There is no way to build one
+    /// that doesn't.
+    pub fn logged(http: Arc<Http>, log: Arc<dyn ShopChangeLog>) -> LiveShopDiscord {
+        Logged::new(Self { http }, log)
+    }
+
     async fn edit(
         &self,
         g: GuildId,
@@ -307,6 +404,64 @@ mod tests {
         serenity::Error::Http(HttpError::UnsuccessfulRequest(
             ErrorResponse::from_response(response, http::Method::PATCH).await,
         ))
+    }
+
+    /// What a [`ShopChangeLog`] was told, in order.
+    #[derive(Default)]
+    struct Recorder(std::sync::Mutex<Vec<(UserId, ShopChange, ActionKind)>>);
+
+    impl ShopChangeLog for Recorder {
+        fn changed(&self, _g: GuildId, u: UserId, change: ShopChange, kind: ActionKind) {
+            self.0.lock().unwrap().push((u, change, kind));
+        }
+    }
+
+    #[tokio::test]
+    async fn logged_reports_each_success_once_and_no_failure() {
+        let rec = Arc::new(Recorder::default());
+        let door = Logged::new(FakeEconomyDiscord::default(), rec.clone());
+        let to = ChannelId::new(7);
+        door.set_nick(G, U, Some("x"), ActionKind::Rename)
+            .await
+            .unwrap();
+        door.set_mute(G, U, true, ActionKind::Mute).await.unwrap();
+        door.set_deaf(G, U, false, ActionKind::Deafen)
+            .await
+            .unwrap();
+        door.move_member(G, U, to, ActionKind::Jail).await.unwrap();
+        let ok = vec![
+            (U, ShopChange::Nick(Some("x".into())), ActionKind::Rename),
+            (U, ShopChange::Mute(true), ActionKind::Mute),
+            (U, ShopChange::Deaf(false), ActionKind::Deafen),
+            (U, ShopChange::Move(to), ActionKind::Jail),
+        ];
+        assert_eq!(*rec.0.lock().unwrap(), ok);
+
+        // Each kind now fails once: nothing more is reported.
+        let fake = &door.inner;
+        for kind in [
+            CallKind::Nick,
+            CallKind::Mute,
+            CallKind::Deaf,
+            CallKind::Move,
+        ] {
+            fake.fail_next(kind, EconDiscordError::NotConnected);
+        }
+        assert!(door.set_nick(G, U, None, ActionKind::Rename).await.is_err());
+        assert!(door.set_mute(G, U, false, ActionKind::Mute).await.is_err());
+        assert!(door.set_deaf(G, U, true, ActionKind::Deafen).await.is_err());
+        assert!(door.move_member(G, U, to, ActionKind::Jail).await.is_err());
+        assert_eq!(*rec.0.lock().unwrap(), ok);
+    }
+
+    #[tokio::test]
+    async fn member_nick_is_never_reported() {
+        let rec = Arc::new(Recorder::default());
+        let fake = FakeEconomyDiscord::default();
+        fake.set_member_nick(U, Some("n"));
+        let door = Logged::new(fake, rec.clone());
+        assert_eq!(door.member_nick(G, U).await, Ok(Some("n".into())));
+        assert!(rec.0.lock().unwrap().is_empty());
     }
 
     #[test]

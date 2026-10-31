@@ -2,6 +2,7 @@
 //! run one after the other, plus the indexes and per-server settings the
 //! lifecycle reads on every voice event.
 
+use super::mute_hold::HoldIndex;
 use super::settings::RoomSettings;
 use super::state::{RoomState, StoredOverwrite};
 use crack_common::throttle::Throttle;
@@ -89,6 +90,9 @@ pub struct RoomRegistry {
     /// leaves them alone (the cache may not have seen their channel yet),
     /// and the hub does not move their owner into them.
     pub creating: DashSet<ChannelId>,
+    /// Who holds a room's server mute, and the per-server lock that
+    /// serializes `mute_hold::settle`.
+    pub holds: HoldIndex,
 }
 
 impl Default for RoomRegistry {
@@ -102,6 +106,7 @@ impl Default for RoomRegistry {
             cooldown: Throttle::new(NEW_ROOM_COOLDOWN),
             hub_creating: DashSet::new(),
             creating: DashSet::new(),
+            holds: HoldIndex::default(),
         }
     }
 }

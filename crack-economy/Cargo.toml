@@ -37,6 +37,7 @@ tokio = { workspace = true }
 [dev-dependencies]
 crack-test-macros = { path = "../crack-test-macros" }
 crack-test-db = { path = "../crack-test-db" }
+crack-common = { path = "../crack-common", features = ["test-support"] }
 # Builds a Discord error response for the 50013/10003 mapping test.
 http = "1"
 # The reqwest serenity itself uses (the workspace one is 0.12); its error

@@ -1,7 +1,9 @@
 //! `/crowdfund start|pledge|list`: pool credits for a prank against a member.
-use super::admin::{discord_len, fit, log_to};
+use super::admin::{discord_len, econ_log_to, fit};
 use super::credits::{gate, say};
-use super::shop::{involved_channels, nick_error_text, note_error_text};
+use super::shop::{
+    card_fallback, involved_channels, nick_error_text, note_error_text, CardFallback,
+};
 use crate::db::economy as db;
 use crate::db::economy::ActionRow;
 use crate::economy::cards::{
@@ -11,8 +13,9 @@ use crate::economy::crowdfund::{
     execute, not_landed_reason, pledge as pledge_to, start as start_fund, FillFacts, FundRequest,
     NotLanded, PledgeRequest, LIST_MAX_FUNDS,
 };
-use crate::economy::discord::{EconDiscordError, LiveEconomyDiscord};
+use crate::economy::discord::EconDiscordError;
 use crate::economy::facts::{gather_facts, Subject};
+use crate::economy::ledger::{Byline, EconomyLogEvent};
 use crate::economy::preflight;
 use crate::economy::settings::{
     validate_nick, validate_note, ActionKind, EconomyConfig, NickError,
@@ -21,21 +24,30 @@ use crate::economy::shop::{buy_error_text, preflight_refusal, BuyOutcome};
 use crate::messaging::courier;
 use crate::messaging::format::CONTENT_MAX;
 use crate::messaging::messages::{
-    ECONOMY_CANT_TELL, ECONOMY_FUND_FAILED_CARD_SUFFIX, ECONOMY_FUND_FILLED_FAILED,
-    ECONOMY_FUND_FILLED_LANDED, ECONOMY_FUND_LIST_ENDS, ECONOMY_FUND_LIST_MORE_PREFIX,
-    ECONOMY_FUND_LIST_MORE_SUFFIX, ECONOMY_FUND_LIST_NONE, ECONOMY_FUND_LIST_ON,
-    ECONOMY_FUND_LIST_TITLE, ECONOMY_FUND_OF, ECONOMY_FUND_OPEN_HINT, ECONOMY_FUND_PLEDGED,
-    ECONOMY_FUND_STARTED, ECONOMY_READ_FAILED, ECONOMY_SHOP_BOT_BUYER, ECONOMY_YOU_HAVE,
+    ECONOMY_CANT_TELL, ECONOMY_CARD_NOT_POSTED, ECONOMY_FUND_FAILED_CARD_SUFFIX,
+    ECONOMY_FUND_FILLED_FAILED, ECONOMY_FUND_FILLED_LANDED, ECONOMY_FUND_LIST_ENDS,
+    ECONOMY_FUND_LIST_MORE_PREFIX, ECONOMY_FUND_LIST_MORE_SUFFIX, ECONOMY_FUND_LIST_NONE,
+    ECONOMY_FUND_LIST_ON, ECONOMY_FUND_LIST_TITLE, ECONOMY_FUND_OF, ECONOMY_FUND_OPEN_HINT,
+    ECONOMY_FUND_PLEDGED, ECONOMY_FUND_STARTED, ECONOMY_READ_FAILED, ECONOMY_SHOP_BOT_BUYER,
+    ECONOMY_YOU_HAVE,
 };
 use crate::messaging::render::Rendered;
 use crate::messaging::transport::DiscordTransport;
-use crate::modlog::event::ModLogEvent;
 use crate::{Context, Data, Error};
 use chrono::Utc;
-use crack_types::discord::ToRef;
 use poise::serenity_prelude::{AutocompleteChoice, CreateAutocompleteResponse};
 use serenity::all::{ChannelId, GenericChannelId, GuildId, Member, UserId};
 use std::borrow::Cow;
+
+/// The backers of a landed fund as the economy log may show them: one per
+/// contributor, in contributor order, named only if they signed. A backer who
+/// pledged twice, once signed and once not, is a contributor once, and signed.
+pub fn landed_backers(contributors: &[UserId], signers: &[UserId]) -> Vec<Byline> {
+    contributors
+        .iter()
+        .map(|&c| Byline::new(c, signers.contains(&c)))
+        .collect()
+}
 
 /// The pranks a crowdfund can buy: [`ActionKind::FUNDABLE`] (drag is left
 /// out: its destination is the buyer's channel at the moment it runs, and a
@@ -241,6 +253,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 &cfg,
                 invoked_in,
                 fund_failed_card_text(target),
+                false,
             )
             .await;
             return Fate::Failed(why);
@@ -274,6 +287,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 &cfg,
                 invoked_in,
                 fund_failed_card_text(target),
+                false,
             )
             .await;
             return Fate::Failed(why);
@@ -282,9 +296,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
     let channels = involved_channels(kind, facts.in_voice, None, cfg.jail_channel_id);
     let perms = preflight::bot_perms(&sctx.cache, guild, &channels);
     let pre = preflight_refusal(kind, perms.as_ref(), &channels);
-    let discord = LiveEconomyDiscord {
-        http: sctx.http.clone(),
-    };
+    let discord = crate::economy::live_discord(&ctx.data(), sctx.http.clone(), sctx.cache.clone());
     let target_voice = facts.in_voice;
     match execute(
         &data.economy_data(),
@@ -313,15 +325,25 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 row.note.as_deref(),
                 &done.signers,
             );
-            post(ctx, kind, Some(target_voice), &cfg, invoked_in, card).await;
-            log_to(
+            let invoker_named = done.signers.contains(&ctx.author().id);
+            post(
+                ctx,
+                kind,
+                Some(target_voice),
+                &cfg,
+                invoked_in,
+                card,
+                invoker_named,
+            )
+            .await;
+            econ_log_to(
                 &data,
                 sctx,
                 guild,
-                ModLogEvent::CrowdfundExecuted {
+                EconomyLogEvent::CrowdfundLanded {
                     action: kind,
-                    target: target.to_ref(),
-                    contributors: done.contributors.iter().map(ToRef::to_ref).collect(),
+                    target,
+                    backers: landed_backers(&done.contributors, &done.signers),
                     until: done.until,
                 },
             )
@@ -337,6 +359,7 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
                 &cfg,
                 invoked_in,
                 fund_failed_card_text(target),
+                false,
             )
             .await;
             Fate::Failed(why)
@@ -347,7 +370,9 @@ async fn run_fill(ctx: Context<'_>, guild: GuildId, fund_id: i64) -> Fate {
 /// Post a fund's card where the prank's card would go: `landed_voice` is
 /// `Some(target's voice)` for a card of a fund that landed, `None` for the
 /// couldn't-land card (which goes to the announce channel or where the
-/// command ran). Falls back to a public follow-up.
+/// command ran). Falls back to a public follow-up only when `invoker_named`
+/// (the card already names the command's invoker, whom Discord labels on a
+/// follow-up); otherwise the card is skipped and the invoker told privately.
 async fn post(
     ctx: Context<'_>,
     kind: ActionKind,
@@ -355,6 +380,7 @@ async fn post(
     cfg: &EconomyConfig,
     invoked_in: ChannelId,
     text: String,
+    invoker_named: bool,
 ) {
     let channel = match landed_voice {
         Some(voice) => card_channel(
@@ -376,8 +402,17 @@ async fn post(
         tracing::warn!(
             "economy: posting the crowdfund card in {channel} failed, answering in the invoking channel: {err:?}"
         );
-        if let Err(err) = courier::reply_rendered(ctx, rendered, false).await {
-            tracing::warn!("economy: the crowdfund card follow-up failed: {err:?}");
+        match card_fallback(invoker_named) {
+            CardFallback::InvokingChannel => {
+                if let Err(err) = courier::reply_rendered(ctx, rendered, false).await {
+                    tracing::warn!("economy: the crowdfund card follow-up failed: {err:?}");
+                }
+            },
+            CardFallback::TellPrivately => {
+                if let Err(err) = say(ctx, ECONOMY_CARD_NOT_POSTED, true).await {
+                    tracing::warn!("economy: the crowdfund card notice failed: {err:?}");
+                }
+            },
         }
     }
 }
@@ -474,20 +509,6 @@ pub async fn start(
         Ok(o) => o,
         Err(e) => return say(ctx, buy_error_text(&e, &cfg.currency_name), true).await,
     };
-    // The mod log always names the starter, whatever the card says.
-    log_to(
-        &data,
-        ctx.serenity_context(),
-        guild,
-        ModLogEvent::CrowdfundStarted {
-            action: kind,
-            starter: starter_id.to_ref(),
-            target: target.to_ref(),
-            note: log_note,
-            signed,
-        },
-    )
-    .await;
     let price = i64::from(cfg.prices.get(kind).price);
     let mut reply = ECONOMY_FUND_STARTED.to_string();
     // The share cap keeps a first pledge below the price (a fund costs at
@@ -527,11 +548,26 @@ pub async fn start(
             signed.then_some(starter_id),
         );
         let here = ChannelId::new(ctx.channel_id().get());
-        post(ctx, kind, None, &cfg, here, card).await;
+        post(ctx, kind, None, &cfg, here, card, signed).await;
         reply.push(' ');
         reply.push_str(ECONOMY_FUND_OPEN_HINT);
     }
-    say(ctx, reply, true).await
+    // Reply first: a slow log channel must not delay it. Only a signed
+    // starter is named, here as on the card.
+    let replied = say(ctx, reply, true).await;
+    econ_log_to(
+        &data,
+        ctx.serenity_context(),
+        guild,
+        EconomyLogEvent::CrowdfundStarted {
+            action: kind,
+            starter: Byline::new(starter_id, signed),
+            target,
+            note: log_note,
+        },
+    )
+    .await;
+    replied
 }
 
 /// The member's balance now (a refund may have moved it), else `fallback`.
@@ -663,8 +699,29 @@ pub async fn list(ctx: Context<'_>) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::economy::ledger;
     use crate::economy::wallet::{ActionPayload, ActionState};
     use chrono::DateTime;
+
+    /// A backer who pledged once signed and once not is listed once, and
+    /// named; the hidden count counts people, not pledges.
+    #[test]
+    fn landed_bylines_follow_the_signers() {
+        let (a, b, c) = (UserId::new(1), UserId::new(2), UserId::new(3));
+        let shown = |cs: &[UserId], ss: &[UserId]| -> Vec<Option<UserId>> {
+            landed_backers(cs, ss).iter().map(Byline::shown).collect()
+        };
+        assert_eq!(shown(&[a, b, c], &[a, c]), [Some(a), None, Some(c)]);
+        assert_eq!(shown(&[a, b], &[b]), [None, Some(b)]);
+        let line = ledger::line(&EconomyLogEvent::CrowdfundLanded {
+            action: ActionKind::Rename,
+            target: UserId::new(9),
+            backers: landed_backers(&[a, b], &[b]),
+            until: None,
+        });
+        assert!(line.ends_with("backed by <@2> +1 other"), "{line}");
+        assert!(!line.contains("<@1>"), "{line}");
+    }
 
     fn row(id: i64, kind: ActionKind, target: u64) -> ActionRow {
         ActionRow {

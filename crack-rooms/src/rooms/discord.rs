@@ -1,6 +1,7 @@
 //! The only door voice rooms use for channel, member and permission calls, so
 //! tests can record exactly what would be sent. Messages go through the
 //! courier, never through here.
+use super::mute_hold::VoiceNow;
 use super::state::{OverwriteTarget, StoredOverwrite};
 use serenity::all::{
     ChannelId, ChannelType, CreateChannel, EditChannel, EditMember, GuildId, Http, MessageId,
@@ -13,6 +14,12 @@ use std::sync::Arc;
 
 /// The audit-log reason on every call rooms make.
 const REASON: &str = "CrackTunes voice room";
+
+/// What the mod log's audit reader skips: the room's server mute and its undo
+/// are recorded by the room's own `RoomMute` line.
+pub const ROOM_AUDIT_REASON_PREFIX: &str = "CrackTunes room";
+/// The audit-log reason on a room's server mute and its undo.
+pub const ROOM_MUTE_AUDIT_REASON: &str = "CrackTunes room: mute";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DiscordError {
@@ -74,6 +81,12 @@ pub trait RoomsDiscord: Send + Sync {
         to: Option<ChannelId>,
     ) -> Result<(), DiscordError>;
     async fn pin(&self, ch: ChannelId, msg: MessageId) -> Result<(), DiscordError>;
+    /// Server-mute or unmute the member. Refused with `NotConnected` when
+    /// they are not in voice.
+    async fn set_mute(&self, guild: GuildId, user: UserId, on: bool) -> Result<(), DiscordError>;
+    /// The member's voice state as Discord has it right now. A member who is
+    /// not in voice is `VoiceNow::default()`.
+    async fn voice_now(&self, guild: GuildId, user: UserId) -> Result<VoiceNow, DiscordError>;
 }
 
 /// The real Discord behind [`RoomsDiscord`]. Untested here; the TuneTitan
@@ -168,6 +181,30 @@ impl RoomsDiscord for LiveRoomsDiscord {
 
     async fn pin(&self, ch: ChannelId, msg: MessageId) -> Result<(), DiscordError> {
         Ok(ch.widen().pin(&self.http, msg, Some(REASON)).await?)
+    }
+
+    async fn set_mute(&self, guild: GuildId, user: UserId, on: bool) -> Result<(), DiscordError> {
+        let builder = EditMember::new()
+            .mute(on)
+            .audit_log_reason(ROOM_MUTE_AUDIT_REASON);
+        guild.edit_member(&self.http, user, builder).await?;
+        Ok(())
+    }
+
+    async fn voice_now(&self, guild: GuildId, user: UserId) -> Result<VoiceNow, DiscordError> {
+        match self.http.get_user_voice_state(guild, user).await {
+            Ok(vs) => Ok(VoiceNow {
+                channel: vs.channel_id,
+                server_muted: vs.mute(),
+            }),
+            // Discord's answer for a member who is not in voice.
+            Err(serenity::Error::Http(HttpError::UnsuccessfulRequest(response)))
+                if response.error.code == JsonErrorCode::UnknownVoiceState =>
+            {
+                Ok(VoiceNow::default())
+            },
+            Err(err) => Err(err.into()),
+        }
     }
 }
 

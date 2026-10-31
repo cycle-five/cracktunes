@@ -8,14 +8,16 @@
 use super::attribution::Change;
 use super::audit::{nonzero, AuditSource, LiveAudit};
 use super::batch::{self, ModLogSink};
-use super::event::{Actor, ModLogEvent};
+use super::event::{shop_change_event, Actor, ModLogEvent};
+use crate::rooms::discord::ROOM_AUDIT_REASON_PREFIX;
 use crate::rooms::lifecycle::{classify, VoiceChange};
 use crate::rooms::RoomsData;
 use crack_common::courier::post_to_channel;
 use crack_common::message::CrackedMessage;
 use crack_common::render::{render, RenderCx};
 use crack_common::transport::{DiscordTransport, Transport};
-use crack_economy::discord::SHOP_AUDIT_REASON_PREFIX;
+use crack_economy::discord::{ShopChange, ShopChangeLog, SHOP_AUDIT_REASON_PREFIX};
+use crack_economy::settings::ActionKind;
 use crack_types::discord::ToRef;
 use futures::future::BoxFuture;
 use serenity::all::{AuditLogEntry, ChannelId, Context, GuildId, Http, UserId, VoiceState};
@@ -55,6 +57,26 @@ impl ModLogSink for ChannelSink {
     }
 }
 
+/// Posts the shop's member changes to the mod log as literal lines, with
+/// CrackTunes as the actor and no buyer. With the log off nothing is spawned.
+pub struct ShopChangeSink {
+    pub data: RoomsData,
+    pub transport: Arc<dyn Transport>,
+}
+
+impl ShopChangeLog for ShopChangeSink {
+    fn changed(&self, g: GuildId, u: UserId, change: ShopChange, kind: ActionKind) {
+        if !self.data.modlog.is_enabled(g) {
+            return;
+        }
+        let sink = ChannelSink {
+            data: self.data.clone(),
+            transport: self.transport.clone(),
+        };
+        tokio::spawn(async move { sink.post(g, shop_change_event(u, change, kind)).await });
+    }
+}
+
 /// The server mutes and deafens one audit entry records, in its order. None
 /// for another action, for an entry without an actor or a target (or with a
 /// zero id), and for CrackTunes muting or deafening itself (its self-deafen:
@@ -74,12 +96,21 @@ fn events_of(entry: &AuditLogEntry, bot: UserId, actor_is_bot: bool) -> Vec<ModL
     if actor == bot && target == bot {
         return Vec::new();
     }
-    // The shop's own changes are logged by the shop, with the buyer named.
+    // The shop's own changes are logged by `ShopChangeSink`, without the buyer.
     if actor == bot
         && entry
             .reason
             .as_deref()
             .is_some_and(|r| r.starts_with(SHOP_AUDIT_REASON_PREFIX))
+    {
+        return Vec::new();
+    }
+    // So are the room's own mutes: its `RoomMute` line is the record.
+    if actor == bot
+        && entry
+            .reason
+            .as_deref()
+            .is_some_and(|r| r.starts_with(ROOM_AUDIT_REASON_PREFIX))
     {
         return Vec::new();
     }
@@ -480,6 +511,18 @@ mod tests {
         // A moderator quoting the prefix is not the shop.
         let spoof = member_update(MUTE_ON, Some("CrackTunes shop: mute"));
         assert_eq!(posted(&data, &spoof).await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn events_of_skips_the_rooms_own_mutes() {
+        let data = data_on();
+        assert!(posted(&data, &bot_mute("CrackTunes room: mute"))
+            .await
+            .is_empty());
+        // A moderator's mute, even quoting the prefix, is still logged.
+        let spoof = member_update(MUTE_ON, Some("CrackTunes room: mute"));
+        assert_eq!(posted(&data, &spoof).await.len(), 1);
+        assert_eq!(posted(&data, &member_update(MUTE_ON, None)).await.len(), 1);
     }
 
     #[tokio::test]

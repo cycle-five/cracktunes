@@ -2936,6 +2936,7 @@ mod test {
                     short_effect_minutes: 7,
                     jail_channel: Some("111".into()),
                     announce_channel: None,
+                    log_channel: None,
                     coin_withdrawals: None,
                     voice_requires_camera: None,
                 }
@@ -3046,10 +3047,12 @@ mod test {
                 short_effect_minutes: 7,
                 jail_channel: None,
                 announce_channel: None,
+                log_channel: None,
                 voice_channels: vec![],
                 text_channels: vec![],
                 preflight: vec![],
                 announce_findings: None,
+                log_findings: None,
                 coin_build: false,
                 coin_withdrawals: false,
             };
@@ -3133,6 +3136,8 @@ mod test {
                 },
             ];
             v.announce_findings = Some(vec![]);
+            v.log_channel = Some("222".into());
+            v.log_findings = Some(vec![]);
         }
         let r = get(fake, "/g/5/settings", Some(&session(9))).await;
         let html = body(r).await;
@@ -3149,6 +3154,8 @@ mod test {
             "<li data-kind=\"lock\"><strong>Lock</strong>: <span>Give CrackTunes View Audit Log in Server Settings</span></li>",
             "<li data-kind=\"mute\"><strong>Mute</strong>: <span>Couldn't check permissions right now.</span></li>",
             "<li data-kind=\"announce\"><strong>Announcements</strong>: <span>Ready.</span></li>",
+            "<li data-kind=\"log\"><strong>Economy log</strong>: <span>Ready.</span></li>",
+            "Public by design: it never names an anonymous buyer. Leave empty to keep no economy log.",
         ] {
             let escaped = needle.replace('\'', "&#39;");
             assert!(html.contains(&escaped), "missing {needle}: {html}");
@@ -3156,6 +3163,7 @@ mod test {
         let at = |n: &str| html.find(n).unwrap();
         assert!(at("id=\"e-jail\"") < at("id=\"e-jail-note\""));
         assert!(at("id=\"e-jail-note\"") < at("id=\"e-announce\""));
+        assert!(at("id=\"e-announce\"") < at("id=\"e-log\""));
     }
 
     #[tokio::test]

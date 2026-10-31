@@ -1,75 +1,319 @@
 # Change Log
 
+Each PR adds its entries under `## Unreleased`. The version bump renames that
+heading to `## vX.Y.Z (YYYY-MM-DD)` and starts a new, empty `## Unreleased`
+above it. When the tag is pushed, cargo-dist copies that version's section into
+the GitHub release, so write every line as release notes, and put a Discord
+user like `@Jo` in backticks: GitHub turns a bare `@name` into a mention and
+notifies whoever owns that login. `scripts/check_changelog.py` (CI, Lint)
+checks both.
+
 ## Unreleased
 
-### Security
+## v0.46.0 (2026-10-28)
 
-- **A YouTube playlist link could make yt-dlp read files and post them to the
-  channel.** The `list=` value of a `www.youtube.com` link went to yt-dlp as its
-  first argument unchecked, and songbird puts no `--` before it, so
-  `/optplay mode:all` with `list=--batch-file%3D/proc/self/environ` had yt-dlp
-  read the bot's environment and echo every line back as "not a valid URL" --
-  and the error reply posted yt-dlp's stderr, `DISCORD_TOKEN` and
-  `DATABASE_URL` included, for any member to read. A playlist id must now look
-  like one, and a playlist link is rebuilt from it before anything fetches it;
-  `yt-dlp` gets `--` before the URL where the bot runs it itself; and no
-  subprocess output reaches a user-facing error any more -- it is logged, and
-  the reply says the audio couldn't be loaded. **If you run a public instance,
-  rotate the bot token and the database password.**
-- **Links could point the bot at private addresses.** A link to any site
-  without special handling goes to yt-dlp's generic extractor, and
-  `/playytplaylist` fetched whatever it was given with no timeout. Links whose
-  host is, or resolves to, a loopback, private, link-local, CGNAT or other
-  non-public address (`127.0.0.1` where sleevenote listens, the LAN, cloud
-  metadata) are now refused, and `/playytplaylist` fetches only a validated
-  YouTube playlist link, with timeouts. yt-dlp still follows redirects itself,
-  so a public page redirecting inward is not covered.
-- **Nothing but an http(s) link reaches yt-dlp as a link any more.** songbird's
-  `YoutubeDl::new` passes its string to yt-dlp with no `--` in front, which is
-  how the playlist id above became an option. Every link now goes through
-  `crack_types::ytdl_for_url`, which accepts only http(s) URLs, and clippy
-  refuses `YoutubeDl::new` everywhere else. Search text goes through
-  `YoutubeDl::new_search` instead of six hand-built `ytsearch:` strings.
-- **crack-voting no longer starts without a real webhook secret.** It fell back
-  to `test_secret`, and the compose file defaulted to the same value on a port
-  published to every interface, so anyone could post votes for any user.
-  `WEBHOOK_SECRET` unset, blank, `test_secret` or `XXXXXX` now stops it at
-  startup. The secret is compared in constant time, the `authorization` header
-  is no longer printed with the rest of every request's headers, a header that
-  is not ASCII no longer panics the request, and bodies over 16 KiB are
-  refused. **Set `WEBHOOK_SECRET` in your `.env` before upgrading**, to the
-  value on top.gg's webhook page.
+### Upgrading to v0.46.0
+
+- **Economy lines stop going to the mod log.** Pick a public channel as the
+  **Economy log** on the dashboard (Settings, Economy) to get them back, and
+  point the mod log at a moderators-only channel. Nothing is posted to an
+  economy log until you set one.
 
 ### Added
 
-- **The economy, part 1: credits, immunity and a coinflip.** A server can turn
-  on an economy under the dashboard's Settings (off by default, free, and it
-  needs a database). Members earn credits for each minute in voice with at least
-  one other person (not alone, not self-deafened, not in the AFK channel), and
-  for chatting, one message per cooldown; CrackTunes counts messages and never
-  reads them. `/credits` shows balances, the top ten and your history, and
-  handles gifts and opting out; `/shop` sells immunity from the prank shop that
-  comes next; `/economy` lets moderators grant and lift immunity, and lets those
-  with Manage Server adjust a balance. A 50/50 coinflip with no house edge is
-  there when the server turns gambling on. Credits have no cash value. See
-  `docs/economy.md`.
-- **The economy, part 2: the prank shop.** Credits now buy things the bot does
-  to another member for a while, under `/shop`: rename someone, lock their
-  nickname, add a clown to it, drag them into your voice channel, server-mute or
-  deafen them, or jail them in a channel the admin picks. A prank posts a public
-  card that says "someone" unless the buyer signs it, and the mod log always
-  names the buyer. Defences and a way out: a mirror bounces the next prank back
-  at whoever bought it, cleanse ends what is running on you, reveal unmasks an
-  unsigned buyer, and the target's card has a "Rename them back" button.
-  Immunity blocks every prank aimed at its holder (a mirror they hold still
-  fires first), moderators win over a prank and a moderator's server mute or
-  deafen is never taken over, pranks end on their own (and survive a restart),
-  and `/economy cancel` ends them early, even with the economy turned off.
-  `/economy status` shows what CrackTunes needs for each prank and the last ten
-  shop actions with their buyers. Prices,
-  how long things last, the jail channel and the announcement channel are on the
-  dashboard; each prank is sold only while CrackTunes has the permissions it
-  needs. See `docs/economy.md`.
+- **An economy log.** A new per-server setting, **Economy log**, beside the
+  announcement channel on the dashboard. It is public by design: it carries
+  who used what on whom, crowdfunds, pranks ended early and unmaskings, as
+  plain lines that never ping, and it never names an unsigned buyer, crowdfund
+  starter or backer. A crowdfund names each person only if their own pledge was
+  signed; the rest are counted. Moderators' actions appear as "a moderator".
+  It is off until a channel is set, needs View Channel and Send Messages there,
+  and `/economy status` shows it.
+- **`/economy reveal <member> [action]`.** A moderator unmasks an unsigned
+  prank for free. CrackTunes posts
+  `A moderator unmasked the rename on @Jo: @Mika` as a plain message in the
+  channel (not as a reply to the command, which Discord would label with the
+  moderator's name), tells the moderator privately, and logs it to both logs.
+  The effects are those of a bought reveal.
+- **The mod log records what the shop did to a member**, with no buyer:
+  `CrackTunes server-muted @Jo (shop: Mute)`, and the same for unmute, deafen,
+  undeafen, moves and nickname changes. Moderators' economy actions (immunity,
+  credit adjustments, `/economy cancel`, `/economy reveal`) go to both logs,
+  naming the moderator in the mod log and saying "a moderator" in the economy
+  log. An adjustment's reason is shown in both logs, so the public economy log
+  too; a grant's reason is shown only in the mod log.
+- **Mute Members is an optional room permission**, shown by `/rooms status`
+  and the dashboard.
+
+### Changed
+
+- **The mod log no longer carries the economy's story.** Shop purchases,
+  cleanses and crowdfund lines moved to the economy log, and the mod log never
+  names a buyer, a crowdfund's starter or a backer. Every log line is now
+  written as if the whole server reads it.
+- **A room's Mute now server-mutes the member while they are in the room**, so
+  it works mid-sentence; before, it only denied Speak, which Discord applies
+  when someone next joins. Moving elsewhere (the hub included) unmutes at once;
+  after a disconnect the unmute is owed until their next voice join in the
+  server (or the bot's startup check); rejoining the room mutes again. A
+  moderator's server-unmute in the room wins until they rejoin, someone already
+  server-muted by a moderator or the shop is never taken over, and the Unmute
+  button lifts the room's Speak deny and the room's own server mute (never
+  someone else's). Without Mute Members the room falls back to the Speak deny
+  and says so. The room's own mute is not logged twice. Known edge: if the room
+  mutes someone the shop had already muted, they can speak in the room after
+  the shop's mute ends, until they rejoin.
+
+### Fixed
+
+- **An unsigned prank card could name its buyer.** When a card couldn't be
+  posted where it goes, it fell back to a reply to the buyer's command, which
+  Discord labels "<buyer> used /shop ...". An unsigned card is now skipped and
+  the buyer is told privately; a signed card keeps the fallback.
+
+## v0.45.3 (2026-10-27)
+
+### Fixed
+
+- **A track is looked up once, not twice.** Playing a link or a search ran
+  yt-dlp for the track's title and then again to open its stream, because
+  songbird's `YoutubeDl` kept only the metadata. The CycleFive fork now keeps
+  the first result and opens the stream from it, if it is under 30 minutes
+  old, so a track starts one yt-dlp run sooner, and part of YouTube's wait
+  (below) has already passed. A retry after a refusal still asks yt-dlp
+  afresh.
+- **YouTube's wait is a pre-roll ad, and long ones are waited out.** The ~5 s
+  hold behind the 2026-10-27 failures is the ad YouTube served with the
+  stream: yt-dlp's `available_at` is when that ad would have ended (a
+  skippable ad's skip point, or an unskippable ad's whole length), and no ad
+  means no wait. Two unskippable ads can run 30 to 40 s, past the old 30 s
+  cap, so the cap is now 45 s.
+
+## v0.45.2 (2026-10-27)
+
+### Fixed
+
+- **YouTube tracks play again.** YouTube now refuses a freshly resolved stream
+  URL with `403 Forbidden` for its first ~5 seconds, and yt-dlp reports when it
+  opens (`available_at`). songbird fetched at once, so every YouTube track
+  failed to open, and the retry only re-resolved into a new wait. songbird now
+  comes from the CycleFive fork, which waits until `available_at` (at most
+  30 s) before fetching: a track starts about 5 s later, as yt-dlp's own
+  downloads do.
+
+## v0.45.1 (2026-10-26)
+
+### Internal
+
+- **Clippy is the gate for imports in non-test code, and lints the tests for
+  everything else.**
+  - One `[workspace.lints]` table in the root `Cargo.toml`, which every crate
+    inherits, so a local `cargo clippy` is the same check CI runs.
+  - It denies `clippy::all`, `wildcard_imports` and `enum_glob_use`, and
+    rustc's `ambiguous_glob_reexports` and `hidden_glob_reexports`. It also
+    warns on rustc's `unnameable_types` (an error under `-D warnings`), so a
+    `pub` type a caller can't name fails CI instead of going unnoticed.
+  - CI's clippy now covers test code (`--all-targets`) for every lint except
+    the two import lints: those skip test crates and `#[cfg(test)]` code, so
+    they gate non-test code only. Review keeps globs out of tests and out of
+    `pub use`. The hits that turned up are fixed.
+  - Every `pub use x::*` re-export, 127 of them, became an explicit list of
+    what callers use, plus what `unnameable_types` asks for. clippy can't flag
+    a glob re-export, so review keeps new ones out. During the split, a glob
+    had hidden a function's real dependency from grep.
+  - The unregistered `saychan`, `saychanid` and `smoketest` commands, which
+    only a glob kept public, are marked `#[expect(dead_code)]`.
+
+  Nothing the bot does changed.
+
+## v0.45.0 (2026-10-26)
+
+### Internal
+
+- **Step 4c: the /gp game is its own crate, `crack-gp`.**
+  - What moved: the game's state machine, its cards, its prompt deck, its saved
+    form and writer, and its table. The game's methods live on a `GpData`
+    handle, and `Data` delegates to it.
+  - What stays in crack-core: the poise commands, the card delivery and boot
+    resume.
+  - crack-gp depends on crack-music for the lease a game claims.
+  - `cargo test -p crack-gp` builds no crack-core.
+
+  Nothing the bot does changed.
+
+## v0.44.0 (2026-10-26)
+
+### Internal
+
+- **Step 4b-2: the music player is its own crate, `crack-music`.**
+  - What moved: the player (ops, the queue's primitives, the lease, autoplay's
+    buffer, audit, search, the dashboard controls), its sources and its tables.
+  - What stays in crack-core: the glue built on poise or the status message,
+    meaning the `/play` query modes, the logged queue entry points, resume and
+    the `Surface` implementation.
+  - crack-core re-exports the old paths.
+  - `cargo test -p crack-music` builds no crack-core.
+
+  Nothing the bot does changed.
+
+## v0.43.0 (2026-10-26)
+
+### Internal
+
+- **Step 4b-1: the music player's seams.** Still inside crack-core:
+  - The code that will move to `crack-music` stops naming `Data`, poise's
+    `Context` and crack-core's Discord layer.
+  - It takes a `MusicData` handle instead. `Data` delegates the lease and
+    autoplay methods to it.
+  - Settling an op (refreshing the queue and now-playing messages) and the
+    dashboard's echoes go through a small `Surface` trait that crack-core
+    implements.
+  - poise's constructors and the `/play` query modes are crack-core extension
+    traits.
+  - `queue.rs`'s logged entry points live in their own file.
+  - crack-testing drops a poise dependency it never used.
+
+  Nothing the bot does changed.
+
+## v0.42.0 (2026-10-26)
+
+### Internal
+
+- **Step 4a: guild settings are their own crate, `crack-guild`.** Guild
+  settings, permissions, the plan, the per-guild session cache and their
+  queries left crack-core. The settings trait is implemented for a `GuildData`
+  handle (the pool, the settings map and the bot's prefix), and `Data` keeps it
+  by delegating, so no caller changed. Autoplay's session switch, which is
+  music state, stays with the music code. crack-core re-exports the old paths.
+  `cargo test -p crack-guild` builds no crack-core. Nothing the bot does
+  changed. Step 4 is now three parts: guild settings, then the player, then
+  `/gp`.
+
+## v0.41.0 (2026-10-26)
+
+### Internal
+
+- **Step 3 of 4: voice rooms and the mod log are their own crate,
+  `crack-rooms`.** The rooms, the mod log and their queries left crack-core;
+  their functions take a `RoomsData` handle (the pool and the two registries)
+  instead of `Data`. The delivery layer they send through (the transport,
+  button presses, the courier's sends, the throttle and the Discord
+  conversions) moved down to crack-common, with poise's reply builders left in
+  crack-core as `ToPoiseReply`. crack-core re-exports the old paths.
+  `cargo test -p crack-rooms` builds no crack-core. Nothing the bot does
+  changed.
+
+## v0.40.0 (2026-10-26)
+
+### Internal
+
+- **Step 2 of 4: the economy is its own crate, `crack-economy`.** The economy,
+  CrackCoin's glue and their queries left crack-core; its functions take an
+  `EconomyData` handle (the pool and the economy's registry) instead of `Data`.
+  crack-core keeps the Discord glue (shop buttons, walk-on theme playback,
+  target facts) and re-exports the old paths. `cargo test -p crack-economy`
+  builds no crack-core. The template-database test runner is its own crate,
+  `crack-test-db`. Nothing the bot does changed; `/coinflip`'s choices are
+  pinned.
+
+## v0.39.0 (2026-10-26)
+
+### Internal
+
+- **crack-core is splitting into crates (step 1 of 4).** `CrackedError`, the
+  user-facing strings, `CrackedMessage` and its neutral rendering moved to a new
+  crate, `crack-common`, which depends on neither poise nor crack-core; crack-core
+  re-exports them at their old paths. Feature messages (`/gp`, voice rooms, the
+  mod log) render through a `Payload` trait, and `/gp start`'s notice is a
+  `GpCard`. What the bot sends is unchanged. Design:
+  `docs/superpowers/specs/2026-10-25-split-crack-core-design.md`.
+
+## v0.38.0 (2026-10-25)
+
+### Internal
+
+- **Messages are platform-neutral.** `CrackedMessage` and every card it carries
+  hold refs and plain text, and rendering produces `crack_model::Card`/`Row`
+  instead of serenity builders. `messaging::discord` is the one place that turns
+  them into Discord messages, and clippy keeps it that way. What the bot sends
+  is unchanged.
+
+## v0.37.0 (2026-10-25)
+
+### Internal
+
+- **`crack-model`**, a new crate with no platform dependency, holds
+  platform-neutral refs (`UserRef`, `CommunityRef`, `RoomRef`, `RoleRef`,
+  `MessageRef`), and `crack_types::discord` converts them to and from serenity
+  ids. CI checks that `crack-model` stays free of platform crates.
+- **Server settings hold refs** instead of serenity ids or bare numbers.
+  Storage and every serialised form are unchanged. The never-loaded
+  `authorized_users`/`authorized_groups` settings and the unregistered
+  `/authorize` and `/deauthorize` commands are gone; their tables stay until
+  v0.36.2 is out of the rollback window.
+- **The dashboard backend speaks refs.** A dashboard URL with the guild id
+  `18446744073709551615` now answers 404 instead of panicking.
+
+## v0.36.2 (2026-10-23)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.36.2: dependency batch (#629, #625) and ctutils 0.4.5 (#630)
+- Test tooling, part 2: the mutants check (#628)
+
+## v0.36.1 (2026-10-22)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.36.1: TLS-stack and tokio security updates (#627)
+- Test tooling, part 1: nextest, llvm-cov, template test DBs, cargo-mutants tooling (#624)
+- docs: investigation — CrackTunes on Matrix (not now; keep the seam) (#623)
+
+## v0.36.0 (2026-10-22)
+
+### Added
+
+- **v0.36.0, voice earning can require a camera.** For servers where "cam up"
+  is the culture, the dashboard's economy settings have a new switch, "Voice
+  earning requires camera", off by default. With it on, a member earns voice
+  credits for a minute only while their camera is on; a screen share alone
+  doesn't count, and the person keeping them company doesn't need a camera.
+  The other voice rules still apply, and message credits are unchanged.
+  `/economy status` shows "per voice minute with camera on", and `/credits
+  history` tells members the rule under their totals. A stored setting from
+  before this release reads as off. **Rolling back below v0.36.0** is
+  image-only: the switch is kept but ignored, so cams-off members earn again.
+
+## v0.35.0 (2026-10-22)
+
+### Added
+
+- **v0.35.0, CrackCoin: credits into a worthless devnet token.** In the new
+  `-coin` image (the plain image is unchanged), members link a Solana address
+  with `/wallet link` and turn credits into CrackCoin with `/wallet withdraw`,
+  1 credit for 1 coin, on Solana's devnet test network only. CrackCoin refuses
+  to run against mainnet. Admins turn it on per server with "CrackCoin
+  withdrawals" on the economy dashboard page (the economy must be on too). A
+  member has one withdrawal in flight at a time, and every `/wallet` reply is
+  private: an address is shown only to its owner and nothing announces a
+  withdrawal. A withdrawal either mints or is refunded, never both and never
+  neither. Credits are refunded for one of four reasons: it was never sent, it
+  failed on chain, it expired (the chain proves the transaction can never
+  land), or devnet was reset. An unreachable chain only delays the outcome: the
+  credits stay held until the chain proves one. If this were wrong, a member
+  could lose credits or get coins twice, which is why a refund needs proof.
+  Without its settings the image starts with CrackCoin off and says why; music never
+  depends on devnet. **Rolling back below v0.35.0:** the bot image may go back,
+  but the migrate image STAYS at v0.35.0 (the v0.34.0 migrate image stops with
+  `VersionMissing` on a migration it doesn't know). A lean build can't settle
+  a withdrawal, so this must return 0 first:
+  `SELECT count(*) FROM coin_withdrawals WHERE state = 'pending'`. Coins
+  already minted stay minted. See `docs/crack-coin.md`.
+
+## v0.34.0 (2026-10-21)
+
+### Added
+
 - **v0.34.0, the economy, part 3: music and group play.** Credits now buy
   things for the whole room. `/shop theme` plays up to 10 seconds of a song
   (from a start you choose) when a member next joins voice within a week, mixed
@@ -100,37 +344,49 @@
   `SELECT a.id FROM economy_actions a WHERE a.state = 'pending' AND EXISTS (SELECT 1 FROM economy_pledges p WHERE p.action_id = a.id AND p.refunded_at IS NULL)`.
   An open (`funding`) fund, a waiting theme and a standing bounty just freeze on
   v0.33.0, and are settled after rolling forward. See `docs/economy.md`.
-- **v0.35.0, CrackCoin: credits into a worthless devnet token.** In the new
-  `-coin` image (the plain image is unchanged), members link a Solana address
-  with `/wallet link` and turn credits into CrackCoin with `/wallet withdraw`,
-  1 credit for 1 coin, on Solana's devnet test network only. CrackCoin refuses
-  to run against mainnet. Admins turn it on per server with "CrackCoin
-  withdrawals" on the economy dashboard page (the economy must be on too). A
-  member has one withdrawal in flight at a time, and every `/wallet` reply is
-  private: an address is shown only to its owner and nothing announces a
-  withdrawal. A withdrawal either mints or is refunded, never both and never
-  neither. Credits are refunded for one of four reasons: it was never sent, it
-  failed on chain, it expired (the chain proves the transaction can never
-  land), or devnet was reset. An unreachable chain only delays the outcome: the
-  credits stay held until the chain proves one. If this were wrong, a member
-  could lose credits or get coins twice, which is why a refund needs proof.
-  Without its settings the image starts with CrackCoin off and says why; music never
-  depends on devnet. **Rolling back below v0.35.0:** the bot image may go back,
-  but the migrate image STAYS at v0.35.0 (the v0.34.0 migrate image stops with
-  `VersionMissing` on a migration it doesn't know). A lean build can't settle
-  a withdrawal, so this must return 0 first:
-  `SELECT count(*) FROM coin_withdrawals WHERE state = 'pending'`. Coins
-  already minted stay minted. See `docs/crack-coin.md`.
-- **v0.36.0, voice earning can require a camera.** For servers where "cam up"
-  is the culture, the dashboard's economy settings have a new switch, "Voice
-  earning requires camera", off by default. With it on, a member earns voice
-  credits for a minute only while their camera is on; a screen share alone
-  doesn't count, and the person keeping them company doesn't need a camera.
-  The other voice rules still apply, and message credits are unchanged.
-  `/economy status` shows "per voice minute with camera on", and `/credits
-  history` tells members the rule under their totals. A stored setting from
-  before this release reads as off. **Rolling back below v0.36.0** is
-  image-only: the switch is kept but ignored, so cams-off members earn again.
+
+## v0.33.0 (2026-10-21)
+
+### Added
+
+- **The economy, part 2: the prank shop.** Credits now buy things the bot does
+  to another member for a while, under `/shop`: rename someone, lock their
+  nickname, add a clown to it, drag them into your voice channel, server-mute or
+  deafen them, or jail them in a channel the admin picks. A prank posts a public
+  card that says "someone" unless the buyer signs it, and the mod log always
+  names the buyer. Defences and a way out: a mirror bounces the next prank back
+  at whoever bought it, cleanse ends what is running on you, reveal unmasks an
+  unsigned buyer, and the target's card has a "Rename them back" button.
+  Immunity blocks every prank aimed at its holder (a mirror they hold still
+  fires first), moderators win over a prank and a moderator's server mute or
+  deafen is never taken over, pranks end on their own (and survive a restart),
+  and `/economy cancel` ends them early, even with the economy turned off.
+  `/economy status` shows what CrackTunes needs for each prank and the last ten
+  shop actions with their buyers. Prices,
+  how long things last, the jail channel and the announcement channel are on the
+  dashboard; each prank is sold only while CrackTunes has the permissions it
+  needs. See `docs/economy.md`.
+
+## v0.32.0 (2026-10-20)
+
+### Added
+
+- **The economy, part 1: credits, immunity and a coinflip.** A server can turn
+  on an economy under the dashboard's Settings (off by default, free, and it
+  needs a database). Members earn credits for each minute in voice with at least
+  one other person (not alone, not self-deafened, not in the AFK channel), and
+  for chatting, one message per cooldown; CrackTunes counts messages and never
+  reads them. `/credits` shows balances, the top ten and your history, and
+  handles gifts and opting out; `/shop` sells immunity from the prank shop that
+  comes next; `/economy` lets moderators grant and lift immunity, and lets those
+  with Manage Server adjust a balance. A 50/50 coinflip with no house edge is
+  there when the server turns gambling on. Credits have no cash value. See
+  `docs/economy.md`.
+
+## v0.31.0 (2026-10-20)
+
+### Added
+
 - **`/downvote` is registered.** It skips the current track and records a
   dislike against that track's newest play in this server, and one dislike is
   enough to hide the play from `/playlog`. When the track has no logged play to
@@ -145,6 +401,61 @@
   overrides the file, since Docker deployments don't mount `cracktunes.toml`.
   This is the bot-wide part of #397; a per-server override and paging through
   longer playlists are not done.
+
+### Changed
+
+- **A YouTube playlist link now queues up to 300 tracks, not 100.** Set
+  `playlist_limit` in `cracktunes.toml`, or `PLAYLIST_LIMIT` in the environment,
+  to change it, and the YouTube playlist reader follows as many pages as that
+  limit needs.
+
+### Fixed
+
+- **The bot no longer restart-loops when httpbin.org is down.** It sent two
+  requests to httpbin.org while starting up and exited if either failed; it
+  now makes none before connecting (#554).
+- **`/downvote` disliked the wrong play.** It passed a track's id where a
+  play's id belonged, so the dislike landed on an unrelated play or failed. It
+  also joined voice, left the interaction unanswered and errored on a repeat
+  downvote of the same play, which now just counts. See Added (#207).
+- **`/play` ignored `/ephemeral` whenever it had to join voice.** Joining
+  answered the command publicly first, and Discord fixes a reply's visibility
+  when it is created, so the "Joining" notice and the reply were both public.
+  `/play` now answers privately before it joins. `~play` stays public (#535).
+
+## v0.30.2 (2026-10-20)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.30.2: this week's dependency updates (#613)
+
+## v0.30.1 (2026-10-20)
+
+### Changed
+
+- **CrackTunes joins voice self-deafened, and no longer decrypts or decodes
+  what it receives.** Nothing used the incoming audio, so the bot now shows the
+  deafened icon and Discord stops sending it any. A server's event log (when it
+  logs voice-state updates) will show CrackTunes deafening itself when it joins.
+
+### Fixed
+
+- **The old self-deafen handler is gone.** It acted only when a guild's
+  self-deafen setting was off, and the setting defaults to on. Where it did
+  act, it server-deafened the bot, and it panicked if the bot lacked the
+  permission. It is removed, along with the unregistered `/toggle selfdeafen`
+  and the unused voice receiver.
+
+## v0.30.0 (2026-10-19)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.30.0: manual command registration for TuneTitan (#610)
+
+## v0.29.0 (2026-10-18)
+
+### Added
+
 - **A mod log.** A server picks a text channel and CrackTunes posts who server-muted
   or server-deafened (and unmuted or undeafened) whom, with the moderator and their
   reason, straight from Discord's audit log; who disconnected or moved whom in
@@ -170,6 +481,10 @@
   Dashboard settings saves share the controls' rate limit. Who can read the log is
   the channel's own permissions. See `docs/rooms-and-mod-log.md`.
 
+## v0.28.0 (2026-10-18)
+
+### Added
+
 - **Voice rooms.** A member joins a hub voice channel and CrackTunes moves them
   into a new room of their own, in the hub's category, named after them. The room
   gets a panel in its chat: buttons for kick (a reason of 1 to 200 characters is
@@ -190,6 +505,16 @@
   new rooms and leaves existing ones until they empty. See
   `docs/rooms-and-mod-log.md`.
 
+## v0.27.1 (2026-10-13)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.27.1: the dashboard signs in through catacombs 0.2 (#602)
+
+## v0.27.0 (2026-10-13)
+
+### Added
+
 - **The dashboard can search for a track and add it.** The queue page has a "Find a
   track" panel that searches the server's queue, the server's history, YouTube and
   SoundCloud at once, and shows each hit with its source. Any member who can view the
@@ -208,32 +533,83 @@
   flat, tolerant of one bad hit and killed on timeout, instead of songbird's
   `YoutubeDl::search`.
 
-- **`/status`**, for anyone in a server, shows privately: the server's plan
-  (premium, or free with its 24 hours of queue history); the bot's version and uptime;
-  what's playing here (channel, title, length and how many more are queued, or idle,
-  or just that a `/gp` game is on, since its titles are the answers); and the settings
-  in effect (idle timeout, which premium servers never hit, volume, autopause, and this
-  session's autoplay).
-- **Bot owners can see any server's queue history on the dashboard**, for debugging
-  and support, whether or not they're a member or have Manage Server there. The owner
-  set is the one `owners_only` commands use, built by one function for both.
-- **`/premium status`** shows members with Manage Server whether their server has
-  premium, privately: a thank-you for premium servers, and for free ones what free means
-  (24 hours of queue history) with the Patreon plug. `/premium` is now listed to members
-  with Manage Server instead of administrators; `grant` and `revoke` stay owner-only.
-- **`/premium grant` and `/premium revoke`** (bot owners only) turn premium on or off
-  for any server the bot is in, by server id, from wherever the owner runs it. Before
-  this there was no working way to grant premium: `/set premium` is not registered,
-  because the whole `/set` command is switched off, and a database edit made while the
-  bot runs is overwritten at shutdown. The v0.19.0 docs wrongly pointed at
-  `/set premium true`; they now describe `/premium`.
-- **A thank-you message for premium servers** (`CrackedMessage::PremiumThanks`), which
-  `Plan::plug` picks in place of the Patreon plug. Nothing sends either yet.
-- **The dashboard has a queue history page.** Members with Manage Server see a
-  "History" link on a server's queue page. It lists who changed the queue, how
-  and when, filters by member, action, source and time, loads older entries, and
-  shows new ones within 10 seconds. A running `/gp` game's entries stay hidden
-  until it ends.
+## v0.26.0 (2026-10-11)
+
+### Added
+
+- **The music queue survives a restart** (#595). When the bot shuts down (a
+  deploy, a clean reboot), every server connected and playing (not in a `/gp`
+  game) writes its queue down. On the way back up, within 5 minutes, the bot
+  rejoins the voice channel, re-queues every track it can play again (one
+  with no source link is left out) with its requester, picks the current one
+  up a few seconds before where it was (from the top if the seek fails),
+  restores repeat, pause and autoplay, says it is back, and the now-playing
+  message that was on screen loses its buttons. With an empty voice channel,
+  or after a longer outage, the queue is not brought back, though the old
+  now-playing message still loses its buttons. A crash is not covered: the
+  queue is written at shutdown only. `/gp` games keep their own resume.
+
+## v0.25.0 (2026-10-09)
+
+### Added
+
+- **`/buttons`** (admins) turns the now-playing message's buttons off or on for
+  the server. On by default. Off takes them off the current now-playing
+  message at once; a press on an older message (including one from before a
+  restart) is answered privately that they are off.
+  This is the switch for a server that restricted the music commands under
+  Server Settings → Integrations, which buttons do not see.
+- **One button press per person per server every 2 seconds.** A press inside
+  that is ignored, so mashing a button cannot flood the channel with echo lines.
+
+## v0.24.3 (2026-10-09)
+
+### Fixed
+
+- **A `/gp` song whose stream died part-way threw away what the room did with
+  it** (#423). A stream that dropped before 30 seconds was treated like a link
+  that never opened: guesses and 👍 actually cast on it paid nothing, and the
+  reveal said the song could not be played. Now only a stream that dies within
+  two seconds counts as never played. One cut short later than that is revealed
+  and scored as a song, except that the submitter gets no fooled-everyone bonus,
+  since too little of it played for anyone to place it.
+- **A stale `/gp end` backstop could collect the next game.** Two `/gp end`s
+  about ten seconds apart put the first one's clean-up inside the second game's
+  window. It now collects only the game it was started for.
+
+## v0.24.2 (2026-10-09)
+
+### Fixed
+
+- **A `/gp` game that could not be resumed could post its owed round results
+  again on every gateway reconnect** while the database refused writes (#469).
+  A game the resume closes out, lost or finished, now writes its tombstone
+  first and posts its results and scoreboard only once that has landed, the
+  way the lost scoreboard alone already did. If Discord then refuses the post,
+  those results are not retried: once beats once per reconnect.
+
+## v0.24.1 (2026-10-09)
+
+### Changed
+
+- **`/gp` sends everything through the messaging layer.** Its prompts, songs,
+  reveals, results, scoreboards, picker and button answers are rendered by
+  the one renderer and delivered by the courier, like the music commands
+  since v0.22.0, and clippy now refuses a raw send anywhere in `/gp`. Nothing
+  else about the game changes.
+
+### Fixed
+
+- **`/gp` song titles with `*`, `_`, backticks or `@` broke the song, reveal
+  and results embeds' formatting.** They are now escaped like every other
+  title since v0.22.0, and a pathological title is capped at 100 characters
+  (YouTube's own limit, so a real title is never cut). Player names in
+  `/gp status` are escaped too.
+
+## v0.24.0 (2026-10-08)
+
+### Added
+
 - **`/gp start` no longer needs a category, and can take several.** Left out,
   the game is 🎲 Random -- what was 🎲 Mixed, now at the top of the dropdown:
   each round's prompt comes from a different category, every category comes up
@@ -245,6 +621,443 @@
   each round's category is shown above its prompt, and survives a restart with
   the game. From a prefix command, `!gp start 5` is five Random rounds and
   `!gp start pick` opens the menu.
+
+## v0.23.1 (2026-10-07)
+
+### Fixed
+
+- Pasting the dashboard's address in Discord previewed it as Discord's own
+  "CrackTunes • Discord App" sign-in card: a signed-out visit to `/` redirected
+  to the login, and Discord followed the redirect to its OAuth page. `/` now
+  answers signed-out visitors with a landing page that carries its own preview
+  (title, description and image) and a "Sign in with Discord" link. (#589)
+
+## v0.23.0 (2026-10-07)
+
+### Added
+
+- **Buttons on the now-playing message.** Pause or Resume, Skip, Repeat and
+  Shuffle, as symbols only (⏸️ ▶️ ⏭️ 🔁 🔀) so the row stays on one line on a
+  phone, for anyone who may use the music commands there (the music channel
+  and `/gp` rules apply). A press posts an echo line naming who pressed it, as
+  a dashboard control does, and the status message updates below it. Skip names
+  the song it was drawn for, so an old message or two people pressing at once
+  cannot skip the next song. Buttons on an old message still work after a
+  restart. Restrictions set on individual commands under Server Settings →
+  Integrations do not cover the buttons: the bot's own music-channel and `/gp`
+  rules do.
+- **`/echoes`** (admins) turns those echo lines off or on for the server, for
+  buttons and the dashboard alike. On by default.
+- The queue history's source filter (`/auditlog`, the dashboard) has `button`.
+
+### Fixed
+
+- A dashboard control that changed nothing (pausing a paused song from a stale
+  tab) no longer posts an echo line.
+- Outside the music channel, the refusal now names the music channel to use,
+  not the channel you are already in.
+
+## v0.22.0 (2026-10-07)
+
+### Changed
+
+- **The now-playing message shows when the track ends**, counted down live by
+  Discord ("4:33 · ends in 3 minutes"); "Paused at 1:12" while paused; "4:33 ·
+  on repeat" while the track repeats, since it has no end; and "Started … ago"
+  for a live stream. `/pause`, `/resume`, `/seek` and `/repeat`, and the
+  dashboard's pause, resume and repeat, bring it up to date and move it below
+  their reply, as a skip does. Ticking in real time between events is a planned
+  follow-up.
+- **Durations in music messages read `m:ss`, or `h:mm:ss` from an hour up**
+  (`/playytplaylist`'s lines, search results and `/spotify`'s track length
+  included), and an unknown one is left out. `/gp` and `/uptime` keep the old
+  `00:00:00` style until they move to the new layer.
+- **Queue pages show titles in bold** (`[**title**](url)`, was `[title](url)`),
+  like the other music messages.
+- **Replies and notices carry a colour stripe by kind:** errors red, general
+  notices gold (the idle-leave alert, the autoplay notices, the playlist
+  progress line), the rest blue. Cards (now playing, queued, the "Finished"
+  status), dashboard echo lines, the failed-track notice and embeds a command
+  builds itself carry none. Before, most replies had no colour.
+- **The autoplay notices and the idle-leave alert are embeds** like every other
+  notice.
+- **Music messages can't ping `@everyone`, a role or a user by accident.** Every
+  message sent through the new layer states who it may ping, and the default is
+  nobody, so an `@everyone` in a track title stays text. Sends not migrated yet
+  (the welcome message, camera enforcement, `/gp`, admin) are unchanged.
+- **Every music message now goes through one renderer and one delivery path**,
+  and clippy refuses raw Discord sends outside `crack-core::messaging`. The
+  modules not yet migrated (`/gp`, admin, settings, utility, ...) are marked and
+  move in follow-ups.
+
+### Fixed
+
+- **A track with no title read "⏭️ Skipped to **!"**; it now reads
+  "(untitled)". Blank queue lines, playlist lines, the dashboard's echo lines
+  ("⏭ Skipped **** from the dashboard") and search-menu labels do too; an empty
+  search-menu label would have made Discord reject the whole menu.
+- **Titles with `*`, `_`, backticks, brackets, `<` or `@` broke the message's
+  formatting or could ping** (`@everyone` in a title). Titles are now escaped
+  everywhere they appear: skip, queued, now playing, queue pages, `/nowplaying`'s
+  pointer, `/playlog`, `/myplaylog`, `/spotify`, `/playytplaylist`, failure
+  notices and the dashboard's echo lines.
+- **"Track duration: 00:00" and the "Estimated time until play" built on it no
+  longer appear when a length is unknown.** The estimate itself was wrong: it
+  counted the playing track's whole length once per track ahead, could show "∞"
+  for a live stream, and could hang reading track info. It now sums each track's
+  own remaining length, and is left out when any length is unknown.
+- **A title is a link only when its URL is a real http(s) URL.** No more
+  `[**x**]()` links to nowhere, and parentheses in a URL no longer cut the link
+  short.
+- **No more `RelativeUrlWithoutBase` errors in the log, or "Streaming via
+  unknown" footer,** for tracks without a link or thumbnail. A thumbnail is set
+  only from an http(s) URL, on `/queue`, `/remove` and `/spotify` too.
+- **`/queue` no longer fails on a page of long links.** Six tracks with
+  SoundCloud-length links could pass Discord's 1024-character limit for a
+  field, and Discord rejected the whole reply. Every track on the page is
+  still listed: when the links don't fit, the last lines show their title
+  without the link.
+- **A `/search` pick no longer fails when its results menu can't be deleted.**
+  The pick plays, and the leftover menu is logged.
+- **`/search` no longer panics on long titles in Japanese, emoji and the like.**
+  Labels were cut by bytes, not characters.
+- **`/play` in play-all, reverse or shuffle mode with plain keywords answered as
+  if it had worked** ("Now playing ...", "No tracks in queue!"). It now says it
+  can't do that, with the existing play-all failure text, and removes the
+  "🔎 Searching..." placeholder.
+- **`/grab` said "grabbed" even when your DMs were closed.** It now says "Could
+  not send you a DM. Check that your DMs are open." With nothing playing it says
+  so as an error instead of sending a "Nothing playing" DM.
+- **Plain-text replies no longer carry stray ANSI colour codes.** They were
+  invisible only because the container's stdout is not a terminal.
+
+## v0.21.1 (2026-10-06)
+
+### Fixed
+
+- **A track that could not play now says so.** songbird ends a track it cannot
+  open or decode, and the queue moved on in silence: SoundCloud's undecodable
+  streams before v0.20.1 just emptied the queue. The music channel (or the voice
+  channel's chat) now gets "⚠️ Couldn't play **Title**: that format isn't
+  supported". Failures within 30 seconds of each other edit one message, so a
+  playlist of dead links is one notice listing ten tracks and counting the rest.
+  The raw error goes to the log, never to Discord. A `/gp` game reports its own
+  dead songs and is left alone.
+- **A track whose stream YouTube refuses gets a second try.** YouTube now and then
+  answers the URL yt-dlp just resolved with `403 Forbidden` (3 of ~45 track starts on
+  production over a day), and the track was skipped before a note played. Every queued
+  track now re-resolves once when its stream URL is refused, which gets yt-dlp a fresh
+  URL; only a second refusal skips it, with the notice above.
+
+## v0.21.0 (2026-10-05)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.21.0: premium playback controls on the dashboard (#582)
+
+## v0.20.2 (2026-10-05)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.20.2: one ops layer for every playback and queue change (#581)
+
+## v0.20.1 (2026-10-05)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.20.1: SoundCloud links play again (ask yt-dlp for MP3) (#583)
+
+## v0.20.0 (2026-10-04)
+
+### Added
+
+- **`/status`**, for anyone in a server, shows privately: the server's plan
+  (premium, or free with its 24 hours of queue history); the bot's version and uptime;
+  what's playing here (channel, title, length and how many more are queued, or idle,
+  or just that a `/gp` game is on, since its titles are the answers); and the settings
+  in effect (idle timeout, which premium servers never hit, volume, autopause, and this
+  session's autoplay).
+
+## v0.19.4 (2026-10-03)
+
+### Fixed
+
+- **Joining voice reset a server's settings in memory to defaults, until the next
+  restart.** `get_or_create_guild_settings` built its defaults in the argument to an
+  eager `unwrap_or`, so it ran on every call and stored the defaults over the settings
+  loaded from the database, while returning the old copy. Every voice join (and
+  `/volume`) did this: premium switched off, and volume, idle timeout, autopause and
+  prefix fell back to defaults. The stored settings were never touched, because the
+  defaults are marked as not loaded from the database and the shutdown save skips
+  them. `/premium grant` on such a server then reloaded the stored row with the
+  defaults' empty name, which blanked the server's stored name; the next restart
+  writes it back from Discord. Present since v0.3.16.
+
+## v0.19.3 (2026-10-03)
+
+### Added
+
+- **Bot owners can see any server's queue history on the dashboard**, for debugging
+  and support, whether or not they're a member or have Manage Server there. The owner
+  set is the one `owners_only` commands use, built by one function for both.
+
+## v0.19.2 (2026-10-03)
+
+### Added
+
+- **`/premium status`** shows members with Manage Server whether their server has
+  premium, privately: a thank-you for premium servers, and for free ones what free means
+  (24 hours of queue history) with the Patreon plug. `/premium` is now listed to members
+  with Manage Server instead of administrators; `grant` and `revoke` stay owner-only.
+
+## v0.19.1 (2026-10-03)
+
+### Added
+
+- **`/premium grant` and `/premium revoke`** (bot owners only) turn premium on or off
+  for any server the bot is in, by server id, from wherever the owner runs it. Before
+  this there was no working way to grant premium: `/set premium` is not registered,
+  because the whole `/set` command is switched off, and a database edit made while the
+  bot runs is overwritten at shutdown. The v0.19.0 docs wrongly pointed at
+  `/set premium true`; they now describe `/premium`.
+
+## v0.19.0 (2026-10-03)
+
+### Added
+
+- **A thank-you message for premium servers** (`CrackedMessage::PremiumThanks`), which
+  `Plan::plug` picks in place of the Patreon plug. Nothing sends either yet.
+
+### Changed
+
+- **Free servers now see 24 hours of queue history.** The dashboard's history page and
+  `/auditlog` show free servers the last 24 hours, and premium servers everything. When
+  older entries exist, both say older history is a premium feature and link the
+  Patreon. A server whose settings haven't loaded counts as free.
+- **The Patreon plugs are reworded.** They no longer say premium gates nothing. The idle
+  alert, which premium servers never see, now says premium keeps the bot in the voice
+  channel as long as you like.
+
+## v0.18.0 (2026-10-03)
+
+### Added
+
+- **The dashboard has a queue history page.** Members with Manage Server see a
+  "History" link on a server's queue page. It lists who changed the queue, how
+  and when, filters by member, action, source and time, loads older entries, and
+  shows new ones within 10 seconds. A running `/gp` game's entries stay hidden
+  until it ends.
+
+## v0.17.3 (2026-10-02)
+
+### Security
+
+- **Nothing but an http(s) link reaches yt-dlp as a link any more.** songbird's
+  `YoutubeDl::new` passes its string to yt-dlp with no `--` in front, which is
+  how the playlist id above became an option. Every link now goes through
+  `crack_types::ytdl_for_url`, which accepts only http(s) URLs, and clippy
+  refuses `YoutubeDl::new` everywhere else. Search text goes through
+  `YoutubeDl::new_search` instead of six hand-built `ytsearch:` strings.
+
+### Fixed
+
+- **A keyword `/play` now asks yt-dlp whenever rusty_ytdl can't answer.** It
+  fell back only when rusty_ytdl found nothing; an error from it returned
+  straight away, and the next fallback (`ready_query`) searched with rusty_ytdl
+  again, so a rusty_ytdl outage failed every keyword play. Playlists, Spotify
+  lists, `/gp` and autoplay resolve through the same path and get the same
+  fallback. yt-dlp is slower, but it is kept up to date with YouTube.
+
+## v0.17.2 (2026-10-02)
+
+### Security
+
+- **A YouTube playlist link could make yt-dlp read files and post them to the
+  channel.** The `list=` value of a `www.youtube.com` link went to yt-dlp as its
+  first argument unchecked, and songbird puts no `--` before it, so
+  `/optplay mode:all` with `list=--batch-file%3D/proc/self/environ` had yt-dlp
+  read the bot's environment and echo every line back as "not a valid URL" --
+  and the error reply posted yt-dlp's stderr, `DISCORD_TOKEN` and
+  `DATABASE_URL` included, for any member to read. A playlist id must now look
+  like one, and a playlist link is rebuilt from it before anything fetches it;
+  `yt-dlp` gets `--` before the URL where the bot runs it itself; and no
+  subprocess output reaches a user-facing error any more -- it is logged, and
+  the reply says the audio couldn't be loaded. **If you run a public instance,
+  rotate the bot token and the database password.**
+- **Links could point the bot at private addresses.** A link to any site
+  without special handling goes to yt-dlp's generic extractor, and
+  `/playytplaylist` fetched whatever it was given with no timeout. Links whose
+  host is, or resolves to, a loopback, private, link-local, CGNAT or other
+  non-public address (`127.0.0.1` where sleevenote listens, the LAN, cloud
+  metadata) are now refused, and `/playytplaylist` fetches only a validated
+  YouTube playlist link, with timeouts. yt-dlp still follows redirects itself,
+  so a public page redirecting inward is not covered.
+- **crack-voting no longer starts without a real webhook secret.** It fell back
+  to `test_secret`, and the compose file defaulted to the same value on a port
+  published to every interface, so anyone could post votes for any user.
+  `WEBHOOK_SECRET` unset, blank, `test_secret` or `XXXXXX` now stops it at
+  startup. The secret is compared in constant time, the `authorization` header
+  is no longer printed with the rest of every request's headers, a header that
+  is not ASCII no longer panics the request, and bodies over 16 KiB are
+  refused. **Set `WEBHOOK_SECRET` in your `.env` before upgrading**, to the
+  value on top.gg's webhook page.
+
+## v0.17.1 (2026-10-02)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.17.1: /auditlog public:true posts the history in the channel (#572)
+
+## v0.17.0 (2026-10-02)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.17.0: /auditlog, the queue history for server managers (#571)
+
+## v0.16.0 (2026-10-01)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.16.0: the queue audit log (#570)
+
+## v0.15.1 (2026-09-30)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.15.1: GET /health on the web dashboard (#569)
+
+## v0.15.0 (2026-09-30)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.15.0: a web dashboard -- the live queue, and drag to reorder (#568)
+
+## v0.14.1 (2026-09-24)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- fix: the two 503s, a closed ErrorCode, and db-tests that respect DATABASE_URL (#564)
+- build(deps): the 2026-09-23 batch — the cargo group and four singles (#563)
+
+## v0.14.0 (2026-09-22)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- fix: stop telling users Spotify is broken when a link is just not public (#556)
+- build(deps): the 2026-09-21 batch — actions, the cargo group, and sqlx 0.9 (#555)
+
+## v0.13.1 (2026-09-19)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.13.1: a /skip panic, a stuck /play placeholder and silent /gp refusals; tests stop needing the internet (#553)
+- refactor: extract crack-bf and crack-osint to their own repos, delete crack-gpt (#551)
+- docker: compile dependencies in their own cached layer with cargo-chef (#542)
+- ci: move every action to its Node 24 major, and let dependabot keep them there (#539)
+- ci: check every PR, keep the version in one place, build images on Docker PRs (#538)
+- build(deps): bump async-compression from 0.4.43 to 0.4.46 (#527)
+- build(deps): bump crossbeam-utils from 0.8.22 to 0.8.23 (#531)
+- build(deps): bump ipnet from 2.12.1 to 2.12.2 (#530)
+- build(deps): bump libredox from 0.1.20 to 0.1.24 (#529)
+- build(deps): bump small-fixed-array from 0.4.10 to 0.4.12 (#528)
+
+## v0.13.0 (2026-09-16)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.13.0: one status message per guild follows the music; /ephemeral ships disabled (#536)
+
+## v0.12.1 (2026-09-14)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.12.1: autoplay, play-next and the resolver fallback play again; /clean sees every bot message (#532)
+
+## v0.12.0 (2026-09-14)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.12.0: autoplay plays YouTube's Mix, with Deezer as the fallback (#526)
+
+## v0.11.1 (2026-09-13)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.11.1: autoplay finds a seed, and /lyrics survives a long credit (#525)
+
+## v0.11.0 (2026-09-13)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.11.0: autoplay on crack-musicreco, without Spotify (#524)
+
+## v0.10.5 (2026-09-13)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.10.5: camera tracking works; acting on it stays switched off (#522)
+- v0.10.4: a joining /play no longer strands its Searching placeholder (#521)
+- v0.10.3: ban Songbird::get — eight commands said NotConnected without checking (#520)
+- v0.10.2: /diagnose answers inside a thread, judged by the thread's own bit (#519)
+- v0.10.1: stop logging non-errors at ERROR (#516)
+- v0.10.0: make the permission gate a type, not a comment (#514)
+- ci: build the image once per merge, and drop Docker Hub (#518)
+- build(deps): the 2026-09-10 batch, resolved once instead of five times (#513)
+- test(crack-testing): make the live-YouTube tests manual-only, not vacuous (#471)
+
+## v0.9.8 (2026-09-12)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- ci: set up Buildx in docker.yml, which the cache I added requires (#510)
+- v0.9.8: VIEW_CHANNEL blocks a voice join, it does not merely degrade it (#509)
+- ci: stop re-running work that already succeeded on the same tree (#508)
+
+## v0.9.7 (2026-09-12)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- fix(summon): the join path never answered, and reported failure as success (#499)
+- fix: the permission gate's own blind spot, and three more from ct#495's review (#497)
+- v0.9.7: check permissions before joining, and explain what is missing (#495)
+
+## v0.9.6 (2026-09-12)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- fix(autocomplete): truncate at the char boundary it already computed (#493)
+- v0.9.5: log play history on the list paths too, and pin the enqueue surface (#492)
+- v0.9.4: model extraction_silent, and retry it once (#490)
+- ci: retire tarpaulin coverage, and stop httpbin owning CI's signal (#489)
+
+## v0.9.3 (2026-09-11)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.9.3: actually write play history, and stop panicking without a pool (#487)
+
+## v0.9.2 (2026-09-11)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.9.2: guard every settings write-back, and persist deauthorize (#484)
+
+## v0.9.1 (2026-09-11)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- v0.9.1: make it safe to give production a database (#483)
+
+## v0.9.0 (2026-09-10)
+
+No CHANGELOG entry was written for this release. Its merged pull requests:
+
+- feat(playback): a per-guild ownership lease for queue mutation (#479)
+
+## v0.8.0 (2026-09-10)
+
+### Added
+
 - **Every `/gp` round ends with its results.** Once a round's last song has been
   revealed, and before the next prompt goes up, a round-results embed sums the
   round up at the bottom of the channel: each song with who submitted it, who
@@ -284,6 +1097,43 @@
   Every game ever played stays in the `gp_*` tables as history. Without
   `DATABASE_URL` the game runs in memory exactly as before. (#431)
 
+### Changed
+
+- **`/gp voteskip` and `/gp votefull` no longer say who voted.** Both answered
+  in public as a slash-command reply, which Discord renders under "*name* used
+  `/gp voteskip`" -- so the room saw exactly who wanted the song gone, in a game
+  whose whole premise is that people submitted something embarrassing. The
+  confirmation (and any error, such as "you already voted") now goes to the
+  voter alone, ephemerally, the way `/gp submit` answers; the room gets a plain
+  message in the game's channel that names nobody: "someone voted to skip this
+  song -- *n* more and it's gone". A vote that carries, or a submitter pulling
+  their own song, is still announced to the room, but as a channel message
+  rather than a reply, so the last voter is not named on that either. The
+  prefix form of either command answers the voter by DM, since a prefix
+  invocation has no ephemeral reply -- though the `!gp voteskip` message itself
+  is in the channel, so the slash form is the one that keeps a vote to
+  yourself. (#433)
+
+### Fixed
+
+- **A `/gp` round could play its songs in the same order as the round before.**
+  Each round's order was an independent uniform shuffle, which with three
+  players repeats the previous round's order one time in six and keeps someone
+  in the same slot two times in three -- and once a room has noticed, the
+  position in the round says whose song it is before a note has played. The
+  order is now drawn against the previous round: nobody keeps the slot they had
+  last time. Two-song rounds are left alone, since forbidding the repeat there
+  would make the rounds alternate, which is a tell of its own. (#450)
+- Scoring is now one function of a song as it stands -- guesses, likes, the
+  full-song vote, and whether it played at all -- used by the reveal, the round's
+  results and the held-back scoreboard alike, so they cannot disagree. Whether a
+  song failed to play is saved with the game, so a resumed game still pays
+  nothing for it.
+
+## v0.7.0 (2026-09-08)
+
+### Added
+
 - **Spotify links play.** Pasting a Spotify track, album or playlist link into
   `/play` or `/gp submit` now resolves it instead of failing. Resolution goes
   through [sleevenote](https://github.com/cycle-five/sleevenote), which needs no
@@ -300,103 +1150,8 @@
 - `SLEEVENOTE_BASE_URL` is documented, including what its localhost default
   means in Docker Compose, where the bot's own localhost is not the sleevenote
   container.
-- **Buttons on the now-playing message.** Pause or Resume, Skip, Repeat and
-  Shuffle, as symbols only (⏸️ ▶️ ⏭️ 🔁 🔀) so the row stays on one line on a
-  phone, for anyone who may use the music commands there (the music channel
-  and `/gp` rules apply). A press posts an echo line naming who pressed it, as
-  a dashboard control does, and the status message updates below it. Skip names
-  the song it was drawn for, so an old message or two people pressing at once
-  cannot skip the next song. Buttons on an old message still work after a
-  restart. Restrictions set on individual commands under Server Settings →
-  Integrations do not cover the buttons: the bot's own music-channel and `/gp`
-  rules do.
-- **`/echoes`** (admins) turns those echo lines off or on for the server, for
-  buttons and the dashboard alike. On by default.
-- **`/buttons`** (admins) turns the now-playing message's buttons off or on for
-  the server. On by default. Off takes them off the current now-playing
-  message at once; a press on an older message (including one from before a
-  restart) is answered privately that they are off.
-  This is the switch for a server that restricted the music commands under
-  Server Settings → Integrations, which buttons do not see.
-- **One button press per person per server every 2 seconds.** A press inside
-  that is ignored, so mashing a button cannot flood the channel with echo lines.
-- **The music queue survives a restart** (#595). When the bot shuts down (a
-  deploy, a clean reboot), every server connected and playing (not in a `/gp`
-  game) writes its queue down. On the way back up, within 5 minutes, the bot
-  rejoins the voice channel, re-queues every track it can play again (one
-  with no source link is left out) with its requester, picks the current one
-  up a few seconds before where it was (from the top if the seek fails),
-  restores repeat, pause and autoplay, says it is back, and the now-playing
-  message that was on screen loses its buttons. With an empty voice channel,
-  or after a longer outage, the queue is not brought back, though the old
-  now-playing message still loses its buttons. A crash is not covered: the
-  queue is written at shutdown only. `/gp` games keep their own resume.
-- The queue history's source filter (`/auditlog`, the dashboard) has `button`.
 
 ### Changed
-
-- **A YouTube playlist link now queues up to 300 tracks, not 100.** Set
-  `playlist_limit` in `cracktunes.toml`, or `PLAYLIST_LIMIT` in the environment,
-  to change it, and the YouTube playlist reader follows as many pages as that
-  limit needs.
-- **CrackTunes joins voice self-deafened, and no longer decrypts or decodes
-  what it receives.** Nothing used the incoming audio, so the bot now shows the
-  deafened icon and Discord stops sending it any. A server's event log (when it
-  logs voice-state updates) will show CrackTunes deafening itself when it joins.
-- **`/gp` sends everything through the messaging layer.** Its prompts, songs,
-  reveals, results, scoreboards, picker and button answers are rendered by
-  the one renderer and delivered by the courier, like the music commands
-  since v0.22.0, and clippy now refuses a raw send anywhere in `/gp`. Nothing
-  else about the game changes.
-- **The now-playing message shows when the track ends**, counted down live by
-  Discord ("4:33 · ends in 3 minutes"); "Paused at 1:12" while paused; "4:33 ·
-  on repeat" while the track repeats, since it has no end; and "Started … ago"
-  for a live stream. `/pause`, `/resume`, `/seek` and `/repeat`, and the
-  dashboard's pause, resume and repeat, bring it up to date and move it below
-  their reply, as a skip does. Ticking in real time between events is a planned
-  follow-up.
-- **Durations in music messages read `m:ss`, or `h:mm:ss` from an hour up**
-  (`/playytplaylist`'s lines, search results and `/spotify`'s track length
-  included), and an unknown one is left out. `/gp` and `/uptime` keep the old
-  `00:00:00` style until they move to the new layer.
-- **Queue pages show titles in bold** (`[**title**](url)`, was `[title](url)`),
-  like the other music messages.
-- **Replies and notices carry a colour stripe by kind:** errors red, general
-  notices gold (the idle-leave alert, the autoplay notices, the playlist
-  progress line), the rest blue. Cards (now playing, queued, the "Finished"
-  status), dashboard echo lines, the failed-track notice and embeds a command
-  builds itself carry none. Before, most replies had no colour.
-- **The autoplay notices and the idle-leave alert are embeds** like every other
-  notice.
-- **Music messages can't ping @everyone, a role or a user by accident.** Every
-  message sent through the new layer states who it may ping, and the default is
-  nobody, so an `@everyone` in a track title stays text. Sends not migrated yet
-  (the welcome message, camera enforcement, `/gp`, admin) are unchanged.
-- **Every music message now goes through one renderer and one delivery path**,
-  and clippy refuses raw Discord sends outside `crack-core::messaging`. The
-  modules not yet migrated (`/gp`, admin, settings, utility, ...) are marked and
-  move in follow-ups.
-- **Free servers now see 24 hours of queue history.** The dashboard's history page and
-  `/auditlog` show free servers the last 24 hours, and premium servers everything. When
-  older entries exist, both say older history is a premium feature and link the
-  Patreon. A server whose settings haven't loaded counts as free.
-- **The Patreon plugs are reworded.** They no longer say premium gates nothing. The idle
-  alert, which premium servers never see, now says premium keeps the bot in the voice
-  channel as long as you like.
-- **`/gp voteskip` and `/gp votefull` no longer say who voted.** Both answered
-  in public as a slash-command reply, which Discord renders under "*name* used
-  `/gp voteskip`" -- so the room saw exactly who wanted the song gone, in a game
-  whose whole premise is that people submitted something embarrassing. The
-  confirmation (and any error, such as "you already voted") now goes to the
-  voter alone, ephemerally, the way `/gp submit` answers; the room gets a plain
-  message in the game's channel that names nobody: "someone voted to skip this
-  song -- *n* more and it's gone". A vote that carries, or a submitter pulling
-  their own song, is still announced to the room, but as a channel message
-  rather than a reply, so the last voter is not named on that either. The
-  prefix form of either command answers the voter by DM, since a prefix
-  invocation has no ephemeral reply -- though the `!gp voteskip` message itself
-  is in the channel, so the slash form is the one that keeps a vote to
-  yourself. (#433)
 
 - `/gp submit` refuses an album or playlist link rather than silently submitting
   its first track. Which song a player submits is the whole game, so choosing one
@@ -410,266 +1165,12 @@
 
 ### Fixed
 
-- **A track is looked up once, not twice.** Playing a link or a search ran
-  yt-dlp for the track's title and then again to open its stream, because
-  songbird's `YoutubeDl` kept only the metadata. The CycleFive fork now keeps
-  the first result and opens the stream from it, if it is under 30 minutes
-  old, so a track starts one yt-dlp run sooner, and part of YouTube's wait
-  (below) has already passed. A retry after a refusal still asks yt-dlp
-  afresh.
-- **YouTube's wait is a pre-roll ad, and long ones are waited out.** The ~5 s
-  hold behind the 2026-10-27 failures is the ad YouTube served with the
-  stream: yt-dlp's `available_at` is when that ad would have ended (a
-  skippable ad's skip point, or an unskippable ad's whole length), and no ad
-  means no wait. Two unskippable ads can run 30 to 40 s, past the old 30 s
-  cap, so the cap is now 45 s.
-- **YouTube tracks play again.** YouTube now refuses a freshly resolved stream
-  URL with `403 Forbidden` for its first ~5 seconds, and yt-dlp reports when it
-  opens (`available_at`). songbird fetched at once, so every YouTube track
-  failed to open, and the retry only re-resolved into a new wait. songbird now
-  comes from the CycleFive fork, which waits until `available_at` (at most
-  30 s) before fetching: a track starts about 5 s later, as yt-dlp's own
-  downloads do.
-- **The bot no longer restart-loops when httpbin.org is down.** It sent two
-  requests to httpbin.org while starting up and exited if either failed; it
-  now makes none before connecting (#554).
-- **`/downvote` disliked the wrong play.** It passed a track's id where a
-  play's id belonged, so the dislike landed on an unrelated play or failed. It
-  also joined voice, left the interaction unanswered and errored on a repeat
-  downvote of the same play, which now just counts. See Added (#207).
-- **`/play` ignored `/ephemeral` whenever it had to join voice.** Joining
-  answered the command publicly first, and Discord fixes a reply's visibility
-  when it is created, so the "Joining" notice and the reply were both public.
-  `/play` now answers privately before it joins. `~play` stays public (#535).
-- **The old self-deafen handler is gone.** It acted only when a guild's
-  self-deafen setting was off, and the setting defaults to on. Where it did
-  act, it server-deafened the bot, and it panicked if the bot lacked the
-  permission. It is removed, along with the unregistered `/toggle selfdeafen`
-  and the unused voice receiver.
-- **A `/gp` game that could not be resumed could post its owed round results
-  again on every gateway reconnect** while the database refused writes (#469).
-  A game the resume closes out, lost or finished, now writes its tombstone
-  first and posts its results and scoreboard only once that has landed, the
-  way the lost scoreboard alone already did. If Discord then refuses the post,
-  those results are not retried: once beats once per reconnect.
-- **A `/gp` song whose stream died part-way threw away what the room did with
-  it** (#423). A stream that dropped before 30 seconds was treated like a link
-  that never opened: guesses and 👍 actually cast on it paid nothing, and the
-  reveal said the song could not be played. Now only a stream that dies within
-  two seconds counts as never played. One cut short later than that is revealed
-  and scored as a song, except that the submitter gets no fooled-everyone bonus,
-  since too little of it played for anyone to place it.
-- **A stale `/gp end` backstop could collect the next game.** Two `/gp end`s
-  about ten seconds apart put the first one's clean-up inside the second game's
-  window. It now collects only the game it was started for.
-- **`/gp` song titles with `*`, `_`, backticks or `@` broke the song, reveal
-  and results embeds' formatting.** They are now escaped like every other
-  title since v0.22.0, and a pathological title is capped at 100 characters
-  (YouTube's own limit, so a real title is never cut). Player names in
-  `/gp status` are escaped too.
-- **A track with no title read "⏭️ Skipped to **!"**; it now reads
-  "(untitled)". Blank queue lines, playlist lines, the dashboard's echo lines
-  ("⏭ Skipped **** from the dashboard") and search-menu labels do too; an empty
-  search-menu label would have made Discord reject the whole menu.
-- **Titles with `*`, `_`, backticks, brackets, `<` or `@` broke the message's
-  formatting or could ping** (`@everyone` in a title). Titles are now escaped
-  everywhere they appear: skip, queued, now playing, queue pages, `/nowplaying`'s
-  pointer, `/playlog`, `/myplaylog`, `/spotify`, `/playytplaylist`, failure
-  notices and the dashboard's echo lines.
-- **"Track duration: 00:00" and the "Estimated time until play" built on it no
-  longer appear when a length is unknown.** The estimate itself was wrong: it
-  counted the playing track's whole length once per track ahead, could show "∞"
-  for a live stream, and could hang reading track info. It now sums each track's
-  own remaining length, and is left out when any length is unknown.
-- **A title is a link only when its URL is a real http(s) URL.** No more
-  `[**x**]()` links to nowhere, and parentheses in a URL no longer cut the link
-  short.
-- **No more `RelativeUrlWithoutBase` errors in the log, or "Streaming via
-  unknown" footer,** for tracks without a link or thumbnail. A thumbnail is set
-  only from an http(s) URL, on `/queue`, `/remove` and `/spotify` too.
-- **`/queue` no longer fails on a page of long links.** Six tracks with
-  SoundCloud-length links could pass Discord's 1024-character limit for a
-  field, and Discord rejected the whole reply. Every track on the page is
-  still listed: when the links don't fit, the last lines show their title
-  without the link.
-- **A `/search` pick no longer fails when its results menu can't be deleted.**
-  The pick plays, and the leftover menu is logged.
-- **`/search` no longer panics on long titles in Japanese, emoji and the like.**
-  Labels were cut by bytes, not characters.
-- **`/play` in play-all, reverse or shuffle mode with plain keywords answered as
-  if it had worked** ("Now playing ...", "No tracks in queue!"). It now says it
-  can't do that, with the existing play-all failure text, and removes the
-  "🔎 Searching..." placeholder.
-- **`/grab` said "grabbed" even when your DMs were closed.** It now says "Could
-  not send you a DM. Check that your DMs are open." With nothing playing it says
-  so as an error instead of sending a "Nothing playing" DM.
-- **Plain-text replies no longer carry stray ANSI colour codes.** They were
-  invisible only because the container's stdout is not a terminal.
-- **A track that could not play now says so.** songbird ends a track it cannot
-  open or decode, and the queue moved on in silence: SoundCloud's undecodable
-  streams before v0.20.1 just emptied the queue. The music channel (or the voice
-  channel's chat) now gets "⚠️ Couldn't play **Title**: that format isn't
-  supported". Failures within 30 seconds of each other edit one message, so a
-  playlist of dead links is one notice listing ten tracks and counting the rest.
-  The raw error goes to the log, never to Discord. A `/gp` game reports its own
-  dead songs and is left alone.
-- **A track whose stream YouTube refuses gets a second try.** YouTube now and then
-  answers the URL yt-dlp just resolved with `403 Forbidden` (3 of ~45 track starts on
-  production over a day), and the track was skipped before a note played. Every queued
-  track now re-resolves once when its stream URL is refused, which gets yt-dlp a fresh
-  URL; only a second refusal skips it, with the notice above.
-- **Joining voice reset a server's settings in memory to defaults, until the next
-  restart.** `get_or_create_guild_settings` built its defaults in the argument to an
-  eager `unwrap_or`, so it ran on every call and stored the defaults over the settings
-  loaded from the database, while returning the old copy. Every voice join (and
-  `/volume`) did this: premium switched off, and volume, idle timeout, autopause and
-  prefix fell back to defaults. The stored settings were never touched, because the
-  defaults are marked as not loaded from the database and the shutdown save skips
-  them. `/premium grant` on such a server then reloaded the stored row with the
-  defaults' empty name, which blanked the server's stored name; the next restart
-  writes it back from Discord. Present since v0.3.16.
-- **A keyword `/play` now asks yt-dlp whenever rusty_ytdl can't answer.** It
-  fell back only when rusty_ytdl found nothing; an error from it returned
-  straight away, and the next fallback (`ready_query`) searched with rusty_ytdl
-  again, so a rusty_ytdl outage failed every keyword play. Playlists, Spotify
-  lists, `/gp` and autoplay resolve through the same path and get the same
-  fallback. yt-dlp is slower, but it is kept up to date with YouTube.
-
-- **A `/gp` round could play its songs in the same order as the round before.**
-  Each round's order was an independent uniform shuffle, which with three
-  players repeats the previous round's order one time in six and keeps someone
-  in the same slot two times in three -- and once a room has noticed, the
-  position in the round says whose song it is before a note has played. The
-  order is now drawn against the previous round: nobody keeps the slot they had
-  last time. Two-song rounds are left alone, since forbidding the repeat there
-  would make the rounds alternate, which is a tell of its own. (#450)
-- Scoring is now one function of a song as it stands -- guesses, likes, the
-  full-song vote, and whether it played at all -- used by the reveal, the round's
-  results and the held-back scoreboard alike, so they cannot disagree. Whether a
-  song failed to play is saved with the game, so a resumed game still pays
-  nothing for it.
-
 - Locale-prefixed Spotify links -- `/intl-de/track/<id>`, which is what
   Spotify's own web player hands out to much of the world -- were rejected as
   invalid. The old regex read `intl-de/track` as the entity kind.
 - `spotify:album:<id>` and `spotify:playlist:<id>` URIs were rewritten into
   `/track/<id>` URLs and looked up as tracks, which found nothing. The kind is
   now read from the URI.
-- A dashboard control that changed nothing (pausing a paused song from a stale
-  tab) no longer posts an echo line.
-- Outside the music channel, the refusal now names the music channel to use,
-  not the channel you are already in.
-- Pasting the dashboard's address in Discord previewed it as Discord's own
-  "CrackTunes • Discord App" sign-in card: a signed-out visit to `/` redirected
-  to the login, and Discord followed the redirect to its OAuth page. `/` now
-  answers signed-out visitors with a landing page that carries its own preview
-  (title, description and image) and a "Sign in with Discord" link. (#589)
-
-### Internal
-
-- **`crack-model`**, a new crate with no platform dependency, holds
-  platform-neutral refs (`UserRef`, `CommunityRef`, `RoomRef`, `RoleRef`,
-  `MessageRef`), and `crack_types::discord` converts them to and from serenity
-  ids. CI checks that `crack-model` stays free of platform crates.
-- **Server settings hold refs** instead of serenity ids or bare numbers.
-  Storage and every serialised form are unchanged. The never-loaded
-  `authorized_users`/`authorized_groups` settings and the unregistered
-  `/authorize` and `/deauthorize` commands are gone; their tables stay until
-  v0.36.2 is out of the rollback window.
-- **The dashboard backend speaks refs.** A dashboard URL with the guild id
-  `18446744073709551615` now answers 404 instead of panicking.
-- **Messages are platform-neutral.** `CrackedMessage` and every card it carries
-  hold refs and plain text, and rendering produces `crack_model::Card`/`Row`
-  instead of serenity builders. `messaging::discord` is the one place that turns
-  them into Discord messages, and clippy keeps it that way. What the bot sends
-  is unchanged.
-- **crack-core is splitting into crates (step 1 of 4).** `CrackedError`, the
-  user-facing strings, `CrackedMessage` and its neutral rendering moved to a new
-  crate, `crack-common`, which depends on neither poise nor crack-core; crack-core
-  re-exports them at their old paths. Feature messages (`/gp`, voice rooms, the
-  mod log) render through a `Payload` trait, and `/gp start`'s notice is a
-  `GpCard`. What the bot sends is unchanged. Design:
-  `docs/superpowers/specs/2026-10-25-split-crack-core-design.md`.
-- **Step 2 of 4: the economy is its own crate, `crack-economy`.** The economy,
-  CrackCoin's glue and their queries left crack-core; its functions take an
-  `EconomyData` handle (the pool and the economy's registry) instead of `Data`.
-  crack-core keeps the Discord glue (shop buttons, walk-on theme playback,
-  target facts) and re-exports the old paths. `cargo test -p crack-economy`
-  builds no crack-core. The template-database test runner is its own crate,
-  `crack-test-db`. Nothing the bot does changed; `/coinflip`'s choices are
-  pinned.
-- **Step 3 of 4: voice rooms and the mod log are their own crate,
-  `crack-rooms`.** The rooms, the mod log and their queries left crack-core;
-  their functions take a `RoomsData` handle (the pool and the two registries)
-  instead of `Data`. The delivery layer they send through (the transport,
-  button presses, the courier's sends, the throttle and the Discord
-  conversions) moved down to crack-common, with poise's reply builders left in
-  crack-core as `ToPoiseReply`. crack-core re-exports the old paths.
-  `cargo test -p crack-rooms` builds no crack-core. Nothing the bot does
-  changed.
-- **Step 4a: guild settings are their own crate, `crack-guild`.** Guild
-  settings, permissions, the plan, the per-guild session cache and their
-  queries left crack-core. The settings trait is implemented for a `GuildData`
-  handle (the pool, the settings map and the bot's prefix), and `Data` keeps it
-  by delegating, so no caller changed. Autoplay's session switch, which is
-  music state, stays with the music code. crack-core re-exports the old paths.
-  `cargo test -p crack-guild` builds no crack-core. Nothing the bot does
-  changed. Step 4 is now three parts: guild settings, then the player, then
-  `/gp`.
-- **Step 4b-1: the music player's seams.** Still inside crack-core:
-  - The code that will move to `crack-music` stops naming `Data`, poise's
-    `Context` and crack-core's Discord layer.
-  - It takes a `MusicData` handle instead. `Data` delegates the lease and
-    autoplay methods to it.
-  - Settling an op (refreshing the queue and now-playing messages) and the
-    dashboard's echoes go through a small `Surface` trait that crack-core
-    implements.
-  - poise's constructors and the `/play` query modes are crack-core extension
-    traits.
-  - `queue.rs`'s logged entry points live in their own file.
-  - crack-testing drops a poise dependency it never used.
-
-  Nothing the bot does changed.
-- **Step 4b-2: the music player is its own crate, `crack-music`.**
-  - What moved: the player (ops, the queue's primitives, the lease, autoplay's
-    buffer, audit, search, the dashboard controls), its sources and its tables.
-  - What stays in crack-core: the glue built on poise or the status message,
-    meaning the `/play` query modes, the logged queue entry points, resume and
-    the `Surface` implementation.
-  - crack-core re-exports the old paths.
-  - `cargo test -p crack-music` builds no crack-core.
-
-  Nothing the bot does changed.
-- **Step 4c: the /gp game is its own crate, `crack-gp`.**
-  - What moved: the game's state machine, its cards, its prompt deck, its saved
-    form and writer, and its table. The game's methods live on a `GpData`
-    handle, and `Data` delegates to it.
-  - What stays in crack-core: the poise commands, the card delivery and boot
-    resume.
-  - crack-gp depends on crack-music for the lease a game claims.
-  - `cargo test -p crack-gp` builds no crack-core.
-
-  Nothing the bot does changed.
-- **Clippy is the gate for imports in non-test code, and lints the tests for
-  everything else.**
-  - One `[workspace.lints]` table in the root `Cargo.toml`, which every crate
-    inherits, so a local `cargo clippy` is the same check CI runs.
-  - It denies `clippy::all`, `wildcard_imports` and `enum_glob_use`, and
-    rustc's `ambiguous_glob_reexports` and `hidden_glob_reexports`. It also
-    warns on rustc's `unnameable_types` (an error under `-D warnings`), so a
-    `pub` type a caller can't name fails CI instead of going unnoticed.
-  - CI's clippy now covers test code (`--all-targets`) for every lint except
-    the two import lints: those skip test crates and `#[cfg(test)]` code, so
-    they gate non-test code only. Review keeps globs out of tests and out of
-    `pub use`. The hits that turned up are fixed.
-  - Every `pub use x::*` re-export, 127 of them, became an explicit list of
-    what callers use, plus what `unnameable_types` asks for. clippy can't flag
-    a glob re-export, so review keeps new ones out. During the split, a glob
-    had hidden a function's real dependency from grep.
-  - The unregistered `saychan`, `saychanid` and `smoketest` commands, which
-    only a glob kept public, are marked `#[expect(dead_code)]`.
-
-  Nothing the bot does changed.
 
 ## TODO:
 

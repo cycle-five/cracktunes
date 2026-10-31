@@ -1,6 +1,7 @@
 //! A recording stand-in for [`RoomsDiscord`]: tests assert on what would have
 //! been sent.
 use super::discord::{CreatedRoom, DiscordError, NewRoom, RoomsDiscord};
+use super::mute_hold::VoiceNow;
 use super::state::{OverwriteTarget, StoredOverwrite};
 use serenity::all::{ChannelId, GuildId, MessageId, UserId};
 use serenity::async_trait;
@@ -21,6 +22,10 @@ pub enum Call {
     Move(u64, Option<u64>),
     /// channel, message
     Pin(u64, u64),
+    /// user, on
+    SetMute(u64, bool),
+    /// user
+    VoiceNow(u64),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -33,6 +38,8 @@ pub enum CallKind {
     Rename,
     Move,
     Pin,
+    SetMute,
+    VoiceNow,
 }
 
 impl Call {
@@ -46,6 +53,8 @@ impl Call {
             Call::Rename(..) => CallKind::Rename,
             Call::Move(..) => CallKind::Move,
             Call::Pin(..) => CallKind::Pin,
+            Call::SetMute(..) => CallKind::SetMute,
+            Call::VoiceNow(_) => CallKind::VoiceNow,
         }
     }
 }
@@ -56,6 +65,7 @@ struct Inner {
     failures: HashMap<CallKind, VecDeque<DiscordError>>,
     next_channel: u64,
     created_overwrites: Vec<StoredOverwrite>,
+    voice: HashMap<UserId, VoiceNow>,
 }
 
 /// What the gateway delivers while a call is on its way.
@@ -93,6 +103,11 @@ impl FakeRoomsDiscord {
     pub fn with_created_overwrites(self, o: Vec<StoredOverwrite>) -> Self {
         self.inner.lock().unwrap().created_overwrites = o;
         self
+    }
+
+    /// What `voice_now` answers for `u` from here on (unset: not in voice).
+    pub fn set_voice(&self, u: UserId, v: VoiceNow) {
+        self.inner.lock().unwrap().voice.insert(u, v);
     }
 
     fn record(&self, call: Call) -> Result<(), DiscordError> {
@@ -156,6 +171,20 @@ impl RoomsDiscord for FakeRoomsDiscord {
     async fn pin(&self, ch: ChannelId, msg: MessageId) -> Result<(), DiscordError> {
         self.record(Call::Pin(ch.get(), msg.get()))
     }
+    async fn set_mute(&self, _guild: GuildId, user: UserId, on: bool) -> Result<(), DiscordError> {
+        self.record(Call::SetMute(user.get(), on))
+    }
+    async fn voice_now(&self, _guild: GuildId, user: UserId) -> Result<VoiceNow, DiscordError> {
+        self.record(Call::VoiceNow(user.get()))?;
+        Ok(self
+            .inner
+            .lock()
+            .unwrap()
+            .voice
+            .get(&user)
+            .copied()
+            .unwrap_or_default())
+    }
 }
 
 #[cfg(test)]
@@ -206,6 +235,22 @@ mod tests {
         fake.pin(ch, MessageId::new(8)).await.unwrap();
         fake.delete_channel(ch).await.unwrap();
 
+        // The two mute calls: voice_now answers what was scripted, else "not in voice".
+        let (g, u) = (GuildId::new(1), UserId::new(3));
+        assert_eq!(fake.voice_now(g, u).await.unwrap(), VoiceNow::default());
+        let here = VoiceNow {
+            channel: Some(ch),
+            server_muted: true,
+        };
+        fake.set_voice(u, here);
+        assert_eq!(fake.voice_now(g, u).await.unwrap(), here);
+        fake.fail_next(CallKind::SetMute, DiscordError::NotConnected);
+        assert_eq!(
+            fake.set_mute(g, u, false).await,
+            Err(DiscordError::NotConnected)
+        );
+        fake.set_mute(g, u, true).await.unwrap();
+
         assert_eq!(
             fake.calls(),
             vec![
@@ -220,6 +265,10 @@ mod tests {
                 Call::Move(3, Some(5000)),
                 Call::Pin(5000, 8),
                 Call::Delete(5000),
+                Call::VoiceNow(3),
+                Call::VoiceNow(3),
+                Call::SetMute(3, false),
+                Call::SetMute(3, true),
             ]
         );
     }

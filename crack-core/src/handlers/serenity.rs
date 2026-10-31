@@ -68,9 +68,11 @@ impl EventHandler for SerenityHandler {
                 if let (None, Some(guild)) = (old.as_ref().and_then(|o| o.channel_id), new.guild_id)
                 {
                     if new.channel_id.is_some() {
-                        let discord = crate::economy::discord::LiveEconomyDiscord {
-                            http: ctx.http.clone(),
-                        };
+                        let discord = crate::economy::live_discord(
+                            &self.data,
+                            ctx.http.clone(),
+                            ctx.cache.clone(),
+                        );
                         let economy = self.data.economy_data();
                         let join = crate::economy::effects::on_voice_join(
                             &economy,
@@ -99,9 +101,11 @@ impl EventHandler for SerenityHandler {
                 if let Some(guild) = new.guild_id {
                     let from = old.as_ref().and_then(|o| o.channel_id);
                     if from != new.channel_id {
-                        let discord = crate::economy::discord::LiveEconomyDiscord {
-                            http: ctx.http.clone(),
-                        };
+                        let discord = crate::economy::live_discord(
+                            &self.data,
+                            ctx.http.clone(),
+                            ctx.cache.clone(),
+                        );
                         let economy = self.data.economy_data();
                         let moved = crate::economy::lock::on_voice_move(
                             &economy,
@@ -117,7 +121,11 @@ impl EventHandler for SerenityHandler {
                             // at its end, so moving twice doesn't escape.
                             Ok(Some(at)) => crate::economy::lock::spawn_jail_recheck(
                                 economy,
-                                ctx.http.clone(),
+                                crate::economy::live_discord(
+                                    &self.data,
+                                    ctx.http.clone(),
+                                    ctx.cache.clone(),
+                                ),
                                 ctx.cache.clone(),
                                 guild,
                                 new.user_id,
@@ -154,9 +162,8 @@ impl EventHandler for SerenityHandler {
                     .await;
                 // The lock and moderators' overrides act whether or not the
                 // mod log is on.
-                let discord = crate::economy::discord::LiveEconomyDiscord {
-                    http: ctx.http.clone(),
-                };
+                let discord =
+                    crate::economy::live_discord(&self.data, ctx.http.clone(), ctx.cache.clone());
                 let economy = self.data.economy_data();
                 let audit =
                     crate::economy::lock::on_audit_entry(&economy, &discord, *guild_id, entry, bot);
@@ -388,7 +395,7 @@ impl SerenityHandler {
         // And the sweeper that ends timed pranks on time.
         crate::economy::effects::start_sweeper(
             self.data.economy_data(),
-            ctx.http.clone(),
+            crate::economy::live_discord(&self.data, ctx.http.clone(), ctx.cache.clone()),
             ctx.cache.clone(),
         );
         #[cfg(feature = "crack-coin")]
@@ -660,7 +667,7 @@ impl SerenityHandler {
             let gid = guild.id;
             // Off the handler: Discord calls here must not delay the work below.
             tokio::spawn(async move {
-                let discord = crate::economy::discord::LiveEconomyDiscord { http };
+                let discord = crate::economy::live_discord(&data, http, cache.clone());
                 crate::economy::effects::reconcile(
                     &data.economy_data(),
                     &discord,
