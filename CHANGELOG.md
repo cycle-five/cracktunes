@@ -10,6 +10,23 @@ checks both.
 
 ## Unreleased
 
+### Internal
+
+- **CI stops building things it throws away.**
+  - The "nightly" Build and Lint legs had run stable since 2026-08-22, because
+    `rust-toolchain.toml` outranks `rustup default`. Each was a second copy of
+    its stable leg, so both are gone.
+  - The fmt check now really runs nightly rustfmt (`cargo +nightly fmt`), so
+    `rustfmt.toml`'s nightly-only options are enforced again. They had been
+    ignored with a warning since August. Master already passes them.
+  - Build no longer runs `cargo sqlx prepare`, whose output nothing read, or
+    master's `cargo build --release`, whose binary was never uploaded.
+  - Master no longer rebuilds the whole test suite in release mode for a tree
+    its PR already tested. It runs the same debug suite as a PR, which still
+    gates the image and leaves a cache new PRs can start from.
+
+  Nothing the bot does changed.
+
 ## v0.46.2 (2026-10-31)
 
 ### Changed

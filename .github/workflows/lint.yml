@@ -15,9 +15,16 @@ env:
 jobs:
   lint:
     name: Fmt and clippy
+    # 🪤 One leg. rust-toolchain.toml pins `stable` and outranks `rustup
+    # default`, so the `nightly` leg this matrix had until 2026-10-31 ran
+    # stable clippy (a second copy of this one) and stable rustfmt. fmt is the
+    # one step that needs nightly, so it asks for it by name (`cargo +nightly`,
+    # which outranks the toolchain file). The one-entry matrix stays because
+    # branch protection requires the check by its name, "Lint / Fmt and clippy
+    # (stable)".
     strategy:
       matrix:
-        rust-version: ["nightly", "stable"]
+        rust-version: ["stable"]
         cache-key: [""]
     runs-on: ubuntu-latest
 
@@ -39,9 +46,7 @@ jobs:
 
       - name: "Install Rust"
         run: |
-          rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
-          rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
-          rustup default ${{ matrix.rust-version }}
+          rustup toolchain install ${{ matrix.rust-version }} --profile minimal --component clippy --no-self-update
         shell: bash
 
       - uses: Swatinem/rust-cache@v2
@@ -55,9 +60,21 @@ jobs:
       # ignored rustfmt.toml's nightly-only `imports_layout` and
       # `match_arm_blocks` (it warns and carries on), so it was enforcing
       # something weaker than the nightly leg while appearing to agree.
+      #
+      # 🪤 Then the nightly leg was stable too (see the matrix above): from
+      # 2026-08-22 to 2026-10-31 its log printed "can't set `imports_layout =
+      # Mixed`, unstable features are only available in nightly channel" for
+      # every crate, and nothing enforced those two options. `+nightly` makes
+      # the check real. If this step prints that warning again, it is not.
+      #
+      # 🪤 Nightly is installed here, after rust-cache, not in "Install Rust".
+      # rust-cache hashes every installed rustc into its key, and nightly
+      # changes almost daily, so installing it first would turn the clippy
+      # cache cold with each new nightly. fmt compiles nothing and needs no cache.
       - name: Run cargo fmt
-        if: matrix.rust-version == 'nightly'
-        run: cargo fmt --all -- --check
+        run: |
+          rustup toolchain install nightly --profile minimal --component rustfmt --no-self-update
+          cargo +nightly fmt --all -- --check
 
       # The lint levels live in the root Cargo.toml's [workspace.lints], which
       # every member inherits, so a local `cargo clippy` is this same check.
