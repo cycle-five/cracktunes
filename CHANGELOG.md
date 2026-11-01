@@ -10,6 +10,15 @@ checks both.
 
 ## Unreleased
 
+## v0.46.3 (2026-10-31)
+
+### Changed
+
+- **Dependency updates only; no CrackTunes code changed.** 7 crates take
+  patch or minor updates: `aws-lc-rs` 1.19.0 and `aws-lc-sys` 0.47.0 (the
+  TLS crypto library), `rustix` 1.1.6, `ctutils` 0.4.7, `openssl-probe` 0.2.2,
+  `realfft` 3.5.1 and `unicode-width` 0.2.3.
+
 ### Internal
 
 - **CI stops building things it throws away.**
