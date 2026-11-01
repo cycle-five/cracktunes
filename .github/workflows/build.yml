@@ -94,8 +94,19 @@ jobs:
         with:
           tool: cargo-nextest@0.9.149
 
+      # One test step for PRs and master alike. Master used to skip it and
+      # rebuild the whole suite in --release instead (549 s), for a tree its
+      # PR had already tested: branch protection is strict and merges are
+      # squashed, so master's commit has the same tree as the PR's last run.
+      # Master still runs this debug suite, for two reasons:
+      #   - Docker waits on it (`needs: [build, lint]`), so the image is only
+      #     built from a commit whose tests passed;
+      #   - its saved cache is the one a new PR branch starts from (a PR can
+      #     restore caches from its base branch). A --release run saved
+      #     release artifacts, which a PR's debug build can't use.
+      # `--locked` came with it from the master step: a Cargo.lock that doesn't
+      # match the manifests fails here, not in the image build after merge.
       - name: Run Unit Tests
-        if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')
         env:
           VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
@@ -105,20 +116,8 @@ jobs:
         # They are ignored by default so the suite is green without one.
         # nextest does not run doctests, so `cargo test --doc` keeps them running.
         run: |
-          cargo nextest run --profile ci --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests,crack-gp/db-tests
-          cargo test --doc --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests,crack-gp/db-tests
-
-      - name: Run Release Unit Tests
-        if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
-        env:
-          VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
-          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
-          PG_USER: postgres
-          PG_PASSWORD: mysecretpassword
-        # nextest does not run doctests, so `cargo test --doc` keeps them running.
-        run: |
-          cargo nextest run --profile ci --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests,crack-gp/db-tests
-          cargo test --doc --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests,crack-gp/db-tests
+          cargo nextest run --profile ci --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests,crack-gp/db-tests
+          cargo test --doc --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests,crack-gp/db-tests
 
       # A master-only "Build Release Binary" step (`cargo build --release
       # --locked`) used to end this job: about 4.7 min a leg, and its binary

@@ -21,6 +21,9 @@ checks both.
     ignored with a warning since August. Master already passes them.
   - Build no longer runs `cargo sqlx prepare`, whose output nothing read, or
     master's `cargo build --release`, whose binary was never uploaded.
+  - Master no longer rebuilds the whole test suite in release mode for a tree
+    its PR already tested. It runs the same debug suite as a PR, which still
+    gates the image and leaves a cache new PRs can start from.
 
   Nothing the bot does changed.
 
