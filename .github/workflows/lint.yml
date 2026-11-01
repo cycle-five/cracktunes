@@ -47,7 +47,6 @@ jobs:
       - name: "Install Rust"
         run: |
           rustup toolchain install ${{ matrix.rust-version }} --profile minimal --component clippy --no-self-update
-          rustup toolchain install nightly --profile minimal --component rustfmt --no-self-update
         shell: bash
 
       - uses: Swatinem/rust-cache@v2
@@ -67,8 +66,15 @@ jobs:
       # Mixed`, unstable features are only available in nightly channel" for
       # every crate, and nothing enforced those two options. `+nightly` makes
       # the check real. If this step prints that warning again, it is not.
+      #
+      # 🪤 Nightly is installed here, after rust-cache, not in "Install Rust".
+      # rust-cache hashes every installed rustc into its key, and nightly
+      # changes almost daily, so installing it first would turn the clippy
+      # cache cold with each new nightly. fmt compiles nothing and needs no cache.
       - name: Run cargo fmt
-        run: cargo +nightly fmt --all -- --check
+        run: |
+          rustup toolchain install nightly --profile minimal --component rustfmt --no-self-update
+          cargo +nightly fmt --all -- --check
 
       # The lint levels live in the root Cargo.toml's [workspace.lints], which
       # every member inherits, so a local `cargo clippy` is this same check.
