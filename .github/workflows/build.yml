@@ -17,15 +17,19 @@ env:
 jobs:
   build:
     name: Build
+    # 🪤 rust-toolchain.toml pins `stable`, and rustup ranks a toolchain file
+    # above `rustup default`. So the `nightly` leg this matrix had until
+    # 2026-10-31 built and tested stable (its log said so: "the toolchain
+    # 'stable-x86_64-unknown-linux-gnu' is currently in use (overridden by
+    # .../rust-toolchain.toml)"), a second copy of this job since the pin moved
+    # to stable on 2026-08-22. To really run nightly, use `cargo +nightly`, as
+    # lint.yml's fmt does. The one-entry matrix stays because branch protection
+    # requires the check by its name, "Build / Build (stable)".
     strategy:
       matrix:
-        rust-version: ["nightly", "stable"]
+        rust-version: ["stable"]
         cache-key: [""]
     runs-on: ubuntu-latest
-      # redis:
-      #   image: redis:latest
-      #   ports:
-      #     - 6379/tcp
 
     steps:
       - name: Repository Checkout
@@ -40,9 +44,6 @@ jobs:
       - name: "Install Rust"
         run: |
           rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
-          rustup install nightly
-          rustup default ${{ matrix.rust-version }}
-          rustup update
         shell: bash
       
       # 🪤 A commit, not @v8. v8 adds the PGDG signing key with `apt-key`,
@@ -71,6 +72,14 @@ jobs:
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features postgres
 
+      # The only place CI applies migrations/ to a real database. The tests
+      # below compile their queries against it, since DATABASE_URL is set and
+      # SQLX_OFFLINE is not.
+      #
+      # This step also ran `cargo sqlx prepare --workspace -- --tests --all`:
+      # 45-73 s a run, compiling the workspace to rewrite .sqlx/, which nothing
+      # read afterwards and no `--check` compared. .sqlx/ keeps its own format
+      # (see scripts/sqlx_sync.py) and Lint expands queries from the committed copy.
       - name: Migrate database
         env:
           DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
@@ -79,7 +88,6 @@ jobs:
         run: |
           sqlx database create
           sqlx migrate run --source migrations/
-          cargo sqlx prepare --workspace -- --tests --all
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2
@@ -112,15 +120,7 @@ jobs:
           cargo nextest run --profile ci --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests,crack-gp/db-tests
           cargo test --doc --release --locked --workspace --features crack-core/db-tests,cracktunes/db-tests,crack-voting/db-tests,crack-core/crack-coin,crack-test-db/db-tests,crack-economy/db-tests,crack-economy/crack-coin,crack-rooms/db-tests,crack-guild/db-tests,crack-music/db-tests,crack-gp/db-tests
 
-      # - name: Build Binary
-      #   if: github.ref != 'refs/heads/master' && !startsWith(github.ref, 'refs/tags/')
-      #   run: cargo build --locked
-
-      - name: Build Release Binary
-        if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
-        env:
-          VIRUSTOTAL_API_KEY: ${{secrets.VIRUSTOTAL_API_KEY}}
-          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
-          PG_USER: postgres
-          PG_PASSWORD: mysecretpassword
-        run: cargo build --release --locked
+      # A master-only "Build Release Binary" step (`cargo build --release
+      # --locked`) used to end this job: about 4.7 min a leg, and its binary
+      # was never uploaded. The binaries that ship are built elsewhere: the
+      # image by docker.yml (`--profile=dist`), the release by cargo-dist.
