@@ -1,11 +1,18 @@
+use std::sync::LazyLock;
+
 use crate::{
     commands::{cmd_check_music, help},
     errors::CrackedError,
-    http_utils,
     messaging::interface::create_lyrics_embed,
     poise_ext::ContextExt,
     Context, Error,
 };
+
+/// One LRCLIB client for the whole bot. It holds the cool-down from LRCLIB's
+/// `Retry-After`, so after a 429 every guild waits it out instead of each
+/// command hitting the server again. It builds its own reqwest 0.13 client
+/// (HTTPS only, timeouts, same-origin redirects); the bot's shared one is 0.12.
+static LYRICS: LazyLock<lyric_finder::Client> = LazyLock::new(lyric_finder::Client::new);
 
 /// Search for song lyrics.
 #[poise::command(
@@ -35,9 +42,7 @@ pub async fn lyrics_internal(ctx: Context<'_>, query: Option<String>) -> Result<
     let query = query_or_title(ctx, query).await?;
     tracing::warn!("searching for lyrics for {}", query);
 
-    let client = lyric_finder::Client::from_http_client(http_utils::get_client());
-
-    let res = client.get_lyric(&query).await?;
+    let res = LYRICS.get_lyric(&query).await?;
     create_lyrics_embed(ctx, res).await.map_err(Into::into)
 }
 

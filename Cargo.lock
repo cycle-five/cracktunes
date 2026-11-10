@@ -3811,15 +3811,14 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "lyric_finder"
-version = "0.1.8"
-source = "git+https://github.com/cycle-five/spotify-player?branch=master#7cf3e1892dbb4171cbc7f1524bdd12175393317f"
+version = "0.3.0"
+source = "git+https://github.com/cycle-five/lyric-finder?rev=fe652beea85429ef34c7b25854b7f591af56ba5c#fe652beea85429ef34c7b25854b7f591af56ba5c"
 dependencies = [
  "anyhow",
- "html5ever",
  "log",
- "markup5ever_rcdom",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3850,18 +3849,6 @@ dependencies = [
  "string_cache",
  "string_cache_codegen",
  "tendril",
-]
-
-[[package]]
-name = "markup5ever_rcdom"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edaa21ab3701bfee5099ade5f7e1f84553fd19228cf332f13cd6e964bf59be18"
-dependencies = [
- "html5ever",
- "markup5ever",
- "tendril",
- "xml5ever",
 ]
 
 [[package]]
@@ -5215,6 +5202,7 @@ checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "encoding_rs",
  "futures-core",
  "futures-util",
  "h2",
@@ -5226,6 +5214,7 @@ dependencies = [
  "hyper-util",
  "js-sys",
  "log",
+ "mime",
  "mime_guess",
  "percent-encoding",
  "pin-project-lite",
@@ -5235,6 +5224,7 @@ dependencies = [
  "rustls-platform-verifier",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
@@ -8438,17 +8428,6 @@ dependencies = [
  "rand_core 0.6.4",
  "serde",
  "zeroize",
-]
-
-[[package]]
-name = "xml5ever"
-version = "0.18.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9bbb26405d8e919bc1547a5aa9abc95cbfa438f04844f5fdd9dc7596b748bf69"
-dependencies = [
- "log",
- "mac",
- "markup5ever",
 ]
 
 [[package]]

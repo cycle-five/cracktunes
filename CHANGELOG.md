@@ -10,6 +10,22 @@ checks both.
 
 ## Unreleased
 
+### Fixed
+
+- **`/lyrics` finds lyrics again.** It searched Genius, which now answers
+  scripted clients with a 403 human check, so lookups failed. It now uses
+  `lyric_finder` 0.3.0, which searches LRCLIB, an open lyrics database that
+  needs no API key. One lyrics client is shared by the whole bot, so when
+  LRCLIB rate-limits it, every server waits out the `Retry-After` instead of
+  asking again.
+
+### Internal
+
+- **`lyric_finder` comes from its own repository.** It was the copy inside the
+  spotify-player fork; it is now `cycle-five/lyric-finder`, pinned to the
+  0.3.0 release commit until 0.3.0 is on crates.io. `markup5ever_rcdom` and
+  `xml5ever` leave the dependency tree with the Genius HTML scraper.
+
 ## v0.46.3 (2026-10-31)
 
 ### Changed
