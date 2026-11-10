@@ -21,10 +21,10 @@ checks both.
 
 ### Internal
 
-- **`lyric_finder` comes from its own repository.** It was the copy inside the
-  spotify-player fork; it is now `cycle-five/lyric-finder`, pinned to the
-  0.3.0 release commit until 0.3.0 is on crates.io. `markup5ever_rcdom` and
-  `xml5ever` leave the dependency tree with the Genius HTML scraper.
+- **`lyric_finder` comes from crates.io.** It was the copy inside the
+  spotify-player fork, taken from git; it is now the published crate.
+  `markup5ever_rcdom` and `xml5ever` leave the dependency tree with the Genius
+  HTML scraper.
 
 ## v0.46.3 (2026-10-31)
 

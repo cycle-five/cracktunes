@@ -3812,7 +3812,8 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 [[package]]
 name = "lyric_finder"
 version = "0.3.0"
-source = "git+https://github.com/cycle-five/lyric-finder?rev=fe652beea85429ef34c7b25854b7f591af56ba5c#fe652beea85429ef34c7b25854b7f591af56ba5c"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddea8c5c11f94790c9f8a476aed852901f4b9209b1be59d346012a43dc16ec19"
 dependencies = [
  "anyhow",
  "log",
