@@ -441,6 +441,9 @@ pub const GP_ROUND_HINT: &str =
     "Whose song is this? Pick a name below — you can change your pick until it ends.";
 pub const GP_LIKE_HINT: &str = "Tap 👍 if you like it (+10 to whoever submitted it).";
 pub const GP_SELECT_PLACEHOLDER: &str = "Whose song is this?";
+pub const GP_SAVE_LABEL: &str = "Save";
+pub const GP_SAVED: &str = "Saved to your list. Queue the full songs with /gp saved.";
+pub const GP_ALREADY_SAVED: &str = "Already in your list.";
 pub const GP_LIKE_LABEL: &str = "Like";
 pub const GP_LIKED: &str = "👍 Liked";
 pub const GP_UNLIKED: &str = "👍 Like removed";

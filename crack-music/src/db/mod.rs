@@ -5,6 +5,7 @@ pub use musicreco::{CachedRecommender, MUSICATLAS_DAILY_BUDGET};
 pub mod play_history;
 pub mod play_log;
 pub use play_log::PlayLog;
+pub mod gp_saved;
 pub mod playlist;
 pub use playlist::PlaylistTrack;
 pub mod queue_audit;
