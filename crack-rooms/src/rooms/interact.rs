@@ -44,7 +44,7 @@ use crack_common::messages::{
 use crack_common::render::RenderCx;
 use crack_common::transport::{DiscordModalPress, DiscordPress, DiscordTransport, Press};
 // Modal select menus are Discord input, not neutral output (spec: modals stay Discord).
-#[expect(
+#[allow(
     clippy::disallowed_types,
     reason = "modal select menus are Discord input, not neutral output"
 )]
