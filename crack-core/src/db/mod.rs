@@ -1,6 +1,7 @@
 pub use crack_economy::db::economy;
 pub use crack_gp::db::gp;
 pub use crack_guild::db::guild;
+pub use crack_music::db::gp_saved;
 pub use crack_music::db::metadata;
 pub use crack_music::db::musicreco;
 pub use crack_music::db::play_history;

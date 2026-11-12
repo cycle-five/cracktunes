@@ -233,7 +233,7 @@ fn command_registration() {
     names.sort_unstable();
     assert_eq!(
         names,
-        vec!["close", "end", "skip", "start", "status", "submit", "votefull", "voteskip"]
+        vec!["close", "end", "saved", "skip", "start", "status", "submit", "votefull", "voteskip"]
     );
     for sub in &cmd.subcommands {
         assert!(sub.guild_only, "{} must be guild_only", sub.name);

@@ -482,6 +482,7 @@ fn song_name(title: &str) -> String {
 pub enum GpComponent {
     Guess,
     Like,
+    Save,
 }
 
 impl GpComponent {
@@ -489,6 +490,7 @@ impl GpComponent {
         match self {
             Self::Guess => "g",
             Self::Like => "l",
+            Self::Save => "s",
         }
     }
 }
@@ -523,6 +525,7 @@ pub fn parse_custom_id(custom_id: &str) -> Option<(GpComponent, GuildId, usize, 
     let kind = match parts.next()? {
         "g" => GpComponent::Guess,
         "l" => GpComponent::Like,
+        "s" => GpComponent::Save,
         _ => return None,
     };
     let guild = parts.next()?.parse::<u64>().ok().filter(|g| *g != 0)?;
@@ -535,7 +538,7 @@ pub fn parse_custom_id(custom_id: &str) -> Option<(GpComponent, GuildId, usize, 
 }
 
 /// The controls under a playing song: the "who submitted this?" dropdown
-/// (only when there is something to guess) and the 👍 button.
+/// (only when there is something to guess) and the 👍 and 💾 Save buttons.
 pub fn gp_components(
     guild: &CommunityRef,
     round_idx: usize,
@@ -567,18 +570,32 @@ pub fn gp_components(
             max: Some(1),
         }));
     }
-    rows.push(Row::Buttons(vec![Button {
-        id: custom_id_for(
-            GpComponent::Like,
-            guild.raw().as_str(),
-            round_idx,
-            track_idx,
-        ),
-        label: Some(GP_LIKE_LABEL.to_string()),
-        emoji: Some("👍".to_string()),
-        style: ButtonStyle::Secondary,
-        disabled: false,
-    }]));
+    rows.push(Row::Buttons(vec![
+        Button {
+            id: custom_id_for(
+                GpComponent::Like,
+                guild.raw().as_str(),
+                round_idx,
+                track_idx,
+            ),
+            label: Some(GP_LIKE_LABEL.to_string()),
+            emoji: Some("👍".to_string()),
+            style: ButtonStyle::Secondary,
+            disabled: false,
+        },
+        Button {
+            id: custom_id_for(
+                GpComponent::Save,
+                guild.raw().as_str(),
+                round_idx,
+                track_idx,
+            ),
+            label: Some(crack_common::messages::GP_SAVE_LABEL.to_string()),
+            emoji: Some("💾".to_string()),
+            style: ButtonStyle::Secondary,
+            disabled: false,
+        },
+    ]));
     rows
 }
 

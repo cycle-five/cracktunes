@@ -129,6 +129,15 @@ impl Data {
         )
     }
 
+    pub fn gp_save_track(
+        &self,
+        guild_id: GuildId,
+        round_idx: usize,
+        track_idx: usize,
+    ) -> CrackedResult<ResolvedTrack<'static>> {
+        self.gp_data().gp_save_track(guild_id, round_idx, track_idx)
+    }
+
     pub fn gp_toggle_like(
         &self,
         guild_id: GuildId,

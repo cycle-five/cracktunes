@@ -325,3 +325,53 @@ async fn the_end_backstop_collects_its_own_game_and_only_that() {
     tokio::time::sleep(Duration::from_secs(GP_PARK_GRACE_SECS + 1)).await;
     assert!(data.gp_is_active(G), "not the game it was spawned for");
 }
+
+#[tokio::test]
+async fn saves_acknowledge_before_storage_and_answer_privately() {
+    use super::playback::gp_save_component;
+    use crate::messaging::messages::{GP_ALREADY_SAVED, GP_SAVED};
+    for (result, text) in [
+        (Ok(true), GP_SAVED.to_string()),
+        (Ok(false), GP_ALREADY_SAVED.to_string()),
+        (
+            Err(crate::CrackedError::NoDatabasePool),
+            crate::CrackedError::NoDatabasePool.to_string(),
+        ),
+    ] {
+        let press = FakePress::default();
+        gp_save_component(&press, async {
+            assert_eq!(
+                press.ops(),
+                vec![PressOp::Acknowledge],
+                "acknowledge before database work"
+            );
+            result
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            press.ops(),
+            vec![
+                PressOp::Acknowledge,
+                PressOp::Followup {
+                    ephemeral: true,
+                    text
+                }
+            ]
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_save_does_not_write_if_acknowledgement_fails() {
+    let press = FakePress::default();
+    *press.ack_error.lock().unwrap() = Some(TransportError::Other("offline".into()));
+    super::playback::gp_save_component(&press, async {
+        panic!("no storage write after a failed acknowledgement");
+        #[allow(unreachable_code)]
+        Ok(true)
+    })
+    .await
+    .unwrap();
+    assert_eq!(press.ops(), vec![PressOp::Acknowledge]);
+}

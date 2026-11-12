@@ -2716,7 +2716,7 @@ fn gp_cards_render_as_before() {
     // The two picker entries differ from the base in one way, by controller
     // ruling P3: an unpicked option no longer writes `"default":false`. Discord
     // reads a missing `default` as false, so the picker behaves the same. Every
-    // other byte is the base's.
+    // other byte is the base's, apart from the Save button added to the song (#592).
     let expected: [(&str, &str, &str, &str); 8] = [
         (
             "rules",
@@ -2746,7 +2746,7 @@ fn gp_cards_render_as_before() {
             "song",
             r##""##,
             r##"{"title":"🎭 Round 1/1 · Song 1/1","type":"rich","description":"*only*\n\n[**Song**](https://www.youtube.com/watch?v=Song)\n\nWhose song is this? Pick a name below — you can change your pick until it ends.\nTap 👍 if you like it (+10 to whoever submitted it).","color":7506394}"##,
-            r##"[{"type":1,"components":[{"custom_id":"gp:g:1:0:0","placeholder":"Whose song is this?","min_values":1,"max_values":1,"type":3,"options":[{"label":"alice","value":"100"},{"label":"bob","value":"200"}]}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"gp:l:1:0:0","label":"Like","emoji":{"name":"👍"},"disabled":false}]}]"##,
+            r##"[{"type":1,"components":[{"custom_id":"gp:g:1:0:0","placeholder":"Whose song is this?","min_values":1,"max_values":1,"type":3,"options":[{"label":"alice","value":"100"},{"label":"bob","value":"200"}]}]},{"type":1,"components":[{"style":2,"type":2,"custom_id":"gp:l:1:0:0","label":"Like","emoji":{"name":"👍"},"disabled":false},{"style":2,"type":2,"custom_id":"gp:s:1:0:0","label":"Save","emoji":{"name":"💾"},"disabled":false}]}]"##,
         ),
         (
             "reveal",
@@ -2906,4 +2906,39 @@ fn user_players(players: &[(UserId, String)]) -> Vec<(crack_model::UserRef, Stri
         .iter()
         .map(|(id, name)| (id.to_ref(), name.clone()))
         .collect()
+}
+
+#[test]
+fn save_is_a_snapshot_without_votes_or_membership_changes() {
+    let data = data();
+    assert_eq!(
+        data.gp_save_track(G, 0, 0).unwrap_err(),
+        CrackedError::NoGameInProgress
+    );
+    game_with(&data, &["p1"]);
+    submit(&data, A, "alice", "a");
+    assert_eq!(
+        data.gp_save_track(G, 0, 0).unwrap_err(),
+        CrackedError::GameNotPlaying
+    );
+    data.gp_close_window(G, A, &mut rng(), NOW).unwrap();
+    let before = game(&data);
+    assert!(data.gp_save_track(G, 0, 0).is_ok());
+    assert!(data.gp_save_track(G, 0, 0).is_ok());
+    let after = game(&data);
+    assert_eq!(before.players, after.players);
+    assert_eq!(before.sorted_scores(), after.sorted_scores());
+    assert!(after.rounds[0].tracks[0].likes.is_empty());
+    assert!(after.rounds[0].tracks[0].guesses.is_empty());
+    assert_eq!(
+        data.gp_save_track(G, 0, 1).unwrap_err(),
+        CrackedError::StaleRound
+    );
+    assert_eq!(
+        parse_custom_id(&gp_custom_id(GpComponent::Save, G, 3, 4)),
+        Some((GpComponent::Save, G, 3, 4))
+    );
+    let buttons =
+        serde_json::to_value(rows_of(gp_components(&G.to_ref(), 0, 0, &[], false))).unwrap();
+    assert_eq!(buttons[0]["components"][1]["custom_id"], "gp:s:1:0:0");
 }

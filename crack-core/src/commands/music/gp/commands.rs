@@ -113,7 +113,8 @@ fn gp_playback(ctx: Context<'_>, call: Arc<Mutex<Call>>, guild_id: GuildId) -> G
         "gp_voteskip",
         "gp_votefull",
         "gp_status",
-        "gp_end"
+        "gp_end",
+        "gp_saved"
     )
 )]
 pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
@@ -998,4 +999,45 @@ pub(super) fn gp_spawn_park_backstop(data: crate::Data, guild_id: GuildId, start
             tracing::warn!("gp: parked game in {guild_id} was never collected, removing");
         }
     });
+}
+
+/// Queue your privately saved GP songs in full, outside a game.
+#[poise::command(
+    category = "Games",
+    slash_command,
+    prefix_command,
+    guild_only,
+    check = "cmd_check_music",
+    rename = "saved"
+)]
+pub async fn gp_saved(ctx: Context<'_>) -> Result<(), Error> {
+    let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
+    if ctx.data().gp_voice_channel(guild_id).is_some() {
+        return Err(CrackedError::Other("Wait until the game ends to play saved songs.").into());
+    }
+    let pool = ctx
+        .data()
+        .database_pool
+        .clone()
+        .ok_or(CrackedError::NoDatabasePool)?;
+    let tracks = crate::db::gp_saved::load(&pool, ctx.author().id.get() as i64).await?;
+    if tracks.is_empty() {
+        courier::reply_as(
+            ctx,
+            GpCard::Line("Your saved list is empty. Use 💾 Save during a GP song.".into()).into(),
+            true,
+        )
+        .await?;
+        return Ok(());
+    }
+    get_call_or_join_author(ctx).await?;
+    let reply = courier::reply_as(
+        ctx,
+        GpCard::Line("Queuing your saved GP songs.".into()).into(),
+        true,
+    )
+    .await?;
+    let message = reply.into_message().await?;
+    crate::commands::music::doplay::queue_aux_metadata(ctx, &tracks, message).await?;
+    Ok(())
 }

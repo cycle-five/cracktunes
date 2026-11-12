@@ -674,7 +674,42 @@ pub async fn handle_gp_component(
         return Ok(());
     }
 
+    if kind == GpComponent::Save {
+        let press = DiscordPress {
+            http: &ctx.http,
+            interaction: mci,
+        };
+        return gp_save_component(&press, async {
+            gp_component_vc_check(data, ctx, mci, guild_id)?;
+            if !matches!(mci.data.kind, ComponentInteractionDataKind::Button) {
+                return Err(CrackedError::StaleRound);
+            }
+            // Snapshot synchronously so no game-map guard reaches a database await.
+            let track = data.gp_save_track(guild_id, round_idx, track_idx)?;
+            let mut aux = track.get_metadata().unwrap_or_default();
+            if aux.source_url.as_ref().is_none_or(|url| url.is_empty()) {
+                aux.source_url = Some(track.get_url());
+            }
+            aux.start_time = None;
+            let pool = data
+                .database_pool
+                .as_ref()
+                .ok_or(CrackedError::NoDatabasePool)?;
+            crate::db::gp_saved::save(
+                pool,
+                mci.user.id.get() as i64,
+                mci.user.name.to_string(),
+                guild_id.get() as i64,
+                mci.channel_id.get() as i64,
+                &aux,
+            )
+            .await
+        })
+        .await;
+    }
+
     let content = match gp_component_vc_check(data, ctx, mci, guild_id).and_then(|()| match kind {
+        GpComponent::Save => unreachable!("handled above"),
         GpComponent::Guess => {
             gp_guess_outcome(data, mci, guild_id, round_idx, track_idx).map(|o| match o {
                 GpGuessOutcome::Recorded => GP_GUESS_RECORDED.to_string(),
@@ -774,4 +809,22 @@ fn gp_like_outcome(
         mci.user.id,
         interaction_display_name(mci),
     )
+}
+
+/// A save can wait for Postgres; acknowledge before polling its work, then
+/// deliver the result through the courier without redrawing the song message.
+pub(super) async fn gp_save_component(
+    press: &dyn Press,
+    save: impl std::future::Future<Output = CrackedResult<bool>>,
+) -> Result<(), Error> {
+    if !courier::acknowledge(press).await {
+        return Ok(());
+    }
+    let text = match save.await {
+        Ok(true) => crate::messaging::messages::GP_SAVED.to_string(),
+        Ok(false) => crate::messaging::messages::GP_ALREADY_SAVED.to_string(),
+        Err(err) => err.to_string(),
+    };
+    courier::answer_privately(press, &GpCard::Line(text).into(), &RenderCx::now()).await;
+    Ok(())
 }

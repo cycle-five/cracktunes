@@ -1289,6 +1289,30 @@ impl GpData {
         })
     }
 
+    /// Clone the current song without mutating votes, scores or membership.
+    pub fn gp_save_track(
+        &self,
+        guild_id: GuildId,
+        round_idx: usize,
+        track_idx: usize,
+    ) -> CrackedResult<ResolvedTrack<'static>> {
+        let game = self
+            .gp_games
+            .get(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        if game.phase != GpPhase::Playing {
+            return Err(CrackedError::GameNotPlaying);
+        }
+        if round_idx != game.current_round || track_idx != game.current_track {
+            return Err(CrackedError::StaleRound);
+        }
+        game.rounds
+            .get(round_idx)
+            .and_then(|r| r.tracks.get(track_idx))
+            .map(|t| t.track.clone())
+            .ok_or(CrackedError::StaleRound)
+    }
+
     pub fn gp_toggle_like(
         &self,
         guild_id: GuildId,
