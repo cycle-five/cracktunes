@@ -1,3 +1,8 @@
+// Poise keeps command attributes on its inner function, not the generated factory.
+#![allow(
+    unreachable_code,
+    reason = "Poise's generated rest-string error branches trigger this lint on Rust 1.100"
+)]
 //----------------------------------------------------
 //! Contains the help command and related functions.
 //! This file contains much code originally written by gnomeddev

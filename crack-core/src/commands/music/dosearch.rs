@@ -1,3 +1,9 @@
+// Poise keeps command attributes on its inner function, not the generated factory.
+#![allow(
+    unreachable_code,
+    reason = "Poise's generated rest-string error branches trigger this lint on Rust 1.100"
+)]
+
 use crate::{
     commands::{cmd_check_music, sub_help as help},
     errors::CrackedError,
