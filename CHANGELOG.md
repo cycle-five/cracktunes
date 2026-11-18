@@ -10,6 +10,8 @@ checks both.
 
 ## Unreleased
 
+## v0.46.4 (2026-11-17)
+
 ### Fixed
 
 - **`/lyrics` finds lyrics again.** It searched Genius, which now answers
