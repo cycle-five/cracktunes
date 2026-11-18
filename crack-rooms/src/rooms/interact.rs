@@ -43,11 +43,10 @@ use crack_common::messages::{
 };
 use crack_common::render::RenderCx;
 use crack_common::transport::{DiscordModalPress, DiscordPress, DiscordTransport, Press};
-// Modal select menus are Discord input, not neutral output (spec: modals stay Discord).
-#[expect(
-    clippy::disallowed_types,
-    reason = "modal select menus are Discord input, not neutral output"
-)]
+// Modal select menus are Discord input, not neutral output (spec: modals stay
+// Discord). Since Rust 1.100 clippy's `disallowed_types` no longer fires on a
+// `use`, only where a type is used, so the import carries no `#[expect]`; each
+// function below that builds a select menu carries its own.
 use serenity::all::{
     Cache, ChannelId, ComponentInteraction, CreateInputText, CreateLabel, CreateModal,
     CreateModalComponent, CreateSelectMenu, CreateSelectMenuKind, CreateSelectMenuOption, GuildId,
