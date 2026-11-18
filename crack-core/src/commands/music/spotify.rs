@@ -1,3 +1,13 @@
+// Rust 1.100 reports an `Err(Infallible)` arm as unreachable code. poise's
+// prefix parser for a `#[rest]` `String` has one (`String`'s converter cannot
+// fail), and the lint lands on `#[poise::command]`, whose generated function
+// no attribute on the command can reach, so it is expected for the file.
+// Remove this when poise stops generating that arm; clippy will say so.
+#![expect(
+    unreachable_code,
+    reason = "poise::command generates an Err(Infallible) arm for a #[rest] String"
+)]
+
 use crate::commands::help;
 use crate::messaging::format::{duration_text, escape, http_url};
 use crate::messaging::{courier, message::CrackedMessage};

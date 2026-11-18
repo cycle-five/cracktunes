@@ -10,6 +10,8 @@ checks both.
 
 ## Unreleased
 
+## v0.46.4 (2026-11-17)
+
 ### Fixed
 
 - **`/lyrics` finds lyrics again.** It searched Genius, which now answers
@@ -25,6 +27,15 @@ checks both.
   spotify-player fork, taken from git; it is now the published crate.
   `markup5ever_rcdom` and `xml5ever` leave the dependency tree with the Genius
   HTML scraper.
+- **Lint passes on Rust 1.100.** The new stable changed two lints, and CI
+  follows stable, so every pull request failed Lint. Clippy's
+  `disallowed_types` no longer fires on a `use`, which left one `#[expect]` in
+  the voice rooms code with nothing to expect; it is removed. And
+  `unreachable_code` now reports an `Err` arm that can never run, which
+  `poise::command` generates for a prefix command's free-text argument; the six
+  files with such commands expect it. Nothing the bot does changes. Building
+  on Rust 1.99 or older now fails clippy in those places: run
+  `rustup update stable`.
 
 ## v0.46.3 (2026-10-31)
 
