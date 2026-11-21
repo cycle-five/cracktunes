@@ -69,6 +69,33 @@ pub fn build_track(
     resolved: &ResolvedTrack<'static>,
     http_client: &reqwest::Client,
 ) -> Result<QueuedTrack, CrackedError> {
+    build_resolved_track(
+        resolved,
+        http_client,
+        resolved.metadata.clone(),
+        Some(resolved.user_id),
+    )
+}
+
+/// Build a game clip that exposes only its label to queue and audit readers.
+pub fn build_anonymous_track(
+    resolved: &ResolvedTrack<'static>,
+    http_client: &reqwest::Client,
+    label: String,
+) -> Result<QueuedTrack, CrackedError> {
+    let metadata = AuxMetadata {
+        title: Some(label),
+        ..AuxMetadata::default()
+    };
+    build_resolved_track(resolved, http_client, Some(metadata), None)
+}
+
+fn build_resolved_track(
+    resolved: &ResolvedTrack<'static>,
+    http_client: &reqwest::Client,
+    metadata: Option<AuxMetadata>,
+    requester: Option<UserId>,
+) -> Result<QueuedTrack, CrackedError> {
     // yt-dlp, not rusty_ytdl. rusty_ytdl resolves fine but the googlevideo URL
     // it hands back is rejected: `c=ANDROID` fetches 403, songbird gets an empty
     // stream, and symphonia reports it as "no suitable format reader found",
@@ -79,11 +106,7 @@ pub fn build_track(
     // Needs `yt-dlp` on PATH -- see the Dockerfile, and note it must be the musl
     // build on this Alpine base.
     let ytdl = crack_types::ytdl_for_url(http_client.clone(), &resolved.get_url())?;
-    Ok(new_track(
-        ytdl.into(),
-        resolved.metadata.clone(),
-        Some(resolved.user_id),
-    ))
+    Ok(new_track(ytdl.into(), metadata, requester))
 }
 
 /// When to start loading the *next* track, given what we already know about this

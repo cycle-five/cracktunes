@@ -3,8 +3,9 @@
 //! saved form and its writer are in [`gp_persist`](super::gp_persist).
 
 use super::gp::{
-    gp_after_close, gp_play_track, gp_post, gp_spawn_window_timer_secs, now, GpCard, GpGame,
-    GpPhase, GpPlayback, GP_RESUME_WINDOW_SECS,
+    gp_after_close, gp_play_track, gp_post, gp_resume_wrong_prompt,
+    gp_resume_wrong_prompt_submission, gp_spawn_window_timer_secs, now, GpCard, GpGame, GpPhase,
+    GpPlayback, GP_RESUME_WINDOW_SECS,
 };
 use super::gp_persist::{
     close_out, game_id, post_owed_results, take_down_components, vc_members, GpCloseOut,
@@ -93,6 +94,9 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     // last time the bot wrote or stamped the game stands in.
     let alive_until = match game.phase {
         GpPhase::Submitting => game.rounds[game.current_round].closes_at.unwrap_or(0),
+        GpPhase::Discussing | GpPhase::Voting => game
+            .wrong_prompt_window()
+            .map_or(0, |window| window.closes_at),
         _ => now() - loaded.last_seen_secs_ago,
     };
     let down_for = now() - alive_until;
@@ -117,6 +121,8 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
     let (phase, voice_channel, current_round) =
         (game.phase, game.voice_channel, game.current_round);
     let closes_at = game.rounds[current_round].closes_at;
+    let missing_prompt =
+        game.wrong_prompt.is_some() && game.rounds[current_round].prompt_message.is_none();
     if !data.gp_restore(guild_id, game) {
         // `/gp start` beat us to it; that game's first snapshot closes this row.
         return;
@@ -173,6 +179,7 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
         transport: transport.clone(),
         call,
         guild_id,
+        cache: Some(ctx.cache.clone()),
     };
     tracing::info!("gp: resuming the game in {guild_id} in {phase:?}, round {current_round}");
 
@@ -212,7 +219,13 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
                     ),
                 )
                 .await;
-                gp_spawn_window_timer_secs(pb, generation, text_channel, remaining as u64);
+                if missing_prompt {
+                    if let Err(e) = gp_resume_wrong_prompt_submission(pb, remaining as u64).await {
+                        tracing::warn!("gp: reposting the resumed prompt in {guild_id}: {e}");
+                    }
+                } else {
+                    gp_spawn_window_timer_secs(pb, generation, text_channel, remaining as u64);
+                }
             }
         },
         GpPhase::Playing => {
@@ -227,6 +240,21 @@ pub async fn gp_resume_guild(data: &Data, ctx: &SerenityContext, guild: &Guild) 
             }
             if let Err(e) = gp_play_track(&pb, start).await {
                 tracing::warn!("gp: restarting the song in {guild_id}: {e}");
+            }
+        },
+        GpPhase::Discussing | GpPhase::Voting => {
+            let window = data.gp_games.get(&guild_id).and_then(|game| {
+                (game.phase == phase
+                    && game.current_round == current_round
+                    && game.started_at == started_at)
+                    .then(|| game.wrong_prompt_window())
+                    .flatten()
+            });
+            let Some(window) = window else {
+                return;
+            };
+            if let Err(e) = gp_resume_wrong_prompt(pb, window, phase).await {
+                tracing::warn!("gp: resuming the Wrong Prompt round in {guild_id}: {e}");
             }
         },
         GpPhase::Finished => unreachable!("finished games are not restored"),

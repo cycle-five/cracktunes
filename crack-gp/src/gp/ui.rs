@@ -1,9 +1,9 @@
 use super::state::{
-    GpClip, GpReveal, GpRoundResult, GpStatus, GpTrackResult, GpTrackStart, GpWindowClosed,
-    GpWindowOpened, GpWindowWarning, GP_CUSTOM_ID_PREFIX, GP_MAX_PLAYERS, GP_PICK_CANCEL_ID,
-    GP_PICK_MENU_ID, GP_PICK_START_ID,
+    GpClip, GpPhase, GpReveal, GpRoundResult, GpStatus, GpTrackResult, GpTrackStart,
+    GpWindowClosed, GpWindowOpened, GpWindowWarning, GP_CUSTOM_ID_PREFIX, GP_MAX_PLAYERS,
+    GP_PICK_CANCEL_ID, GP_PICK_MENU_ID, GP_PICK_START_ID,
 };
-use crate::gp_prompts::GpCategory;
+use crate::gp_prompts::{GpCategory, WrongPromptTheme};
 use ::serenity::all::{GenericChannelId, GuildId, UserId};
 use crack_common::format::duration_to_string;
 use crack_common::messages::{
@@ -50,12 +50,18 @@ pub enum GpCard {
         picked: Vec<GpCategory>,
         open: bool,
     },
+    WrongPromptPicker {
+        text: String,
+        picked: Vec<WrongPromptTheme>,
+        open: bool,
+    },
     Prompt(GpPromptView),
     PromptClosed(GpClosedView),
     /// The song message and its guess/👍 controls.
     Song(GpSongView),
     Reveal(GpRevealView),
     RoundResults(GpRoundView),
+    WrongPrompt(WrongPromptCard),
     /// `lead` rides as content above the embed (a lost game's `GP_LOST`).
     Scoreboard {
         scores: Vec<(UserRef, u32)>,
@@ -277,6 +283,14 @@ pub enum GpStatusView {
         likes: usize,
         scores: Vec<(UserRef, u32)>,
     },
+    WrongPrompt {
+        round: usize,
+        total: usize,
+        phase: GpPhase,
+        closes_at: Option<i64>,
+        count: usize,
+        scores: Vec<(UserRef, u32)>,
+    },
 }
 
 impl From<&GpStatus> for GpStatusView {
@@ -318,6 +332,21 @@ impl From<&GpStatus> for GpStatusView {
                 likes: *likes,
                 scores: user_refs(scores),
             },
+            GpStatus::WrongPrompt {
+                round,
+                total,
+                phase,
+                closes_at,
+                count,
+                scores,
+            } => Self::WrongPrompt {
+                round: *round,
+                total: *total,
+                phase: *phase,
+                closes_at: *closes_at,
+                count: *count,
+                scores: user_refs(scores),
+            },
         }
     }
 }
@@ -325,6 +354,354 @@ impl From<&GpStatus> for GpStatusView {
 impl From<GpCard> for CrackedMessage {
     fn from(card: GpCard) -> Self {
         CrackedMessage::Gp(Box::new(card))
+    }
+}
+
+/// The Wrong Prompt round cards. Public cards carry neither assignments nor
+/// ballot counts until the result, and private cards are sent as interactions.
+#[derive(Debug, Clone)]
+pub enum WrongPromptCard {
+    Opening {
+        round_idx: usize,
+        total_rounds: usize,
+        closes_at: i64,
+        prompt_id: Option<String>,
+    },
+    PrivatePrompt {
+        prompt: String,
+    },
+    Clip {
+        round_idx: usize,
+        total_rounds: usize,
+        track_idx: usize,
+        total_tracks: usize,
+        state: WrongPromptClipState,
+    },
+    Discussion {
+        round_idx: usize,
+        total_rounds: usize,
+        vote_at: i64,
+    },
+    Voting {
+        round_idx: usize,
+        total_rounds: usize,
+        closes_at: i64,
+        ballot_id: Option<String>,
+    },
+    Ballot {
+        select_id: String,
+        track_indices: Vec<usize>,
+    },
+    Results(WrongPromptRevealView),
+    Final {
+        scores: Vec<(UserId, u32)>,
+    },
+    Voided {
+        round_idx: usize,
+        total_rounds: usize,
+        reason: &'static str,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WrongPromptClipState {
+    Playing,
+    Played,
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+pub struct WrongPromptRevealView {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub majority: String,
+    pub alternate: String,
+    pub odd_player: UserId,
+    pub caught: bool,
+    pub songs: Vec<WrongPromptSongView>,
+    pub points: Vec<(UserId, u32)>,
+    pub scores: Vec<(UserId, u32)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WrongPromptSongView {
+    pub track_idx: usize,
+    pub title: String,
+    pub submitter: UserId,
+    pub votes: Option<usize>,
+}
+
+/// Build the reveal from a scored round. An ordinary GP round has no paired prompts.
+pub fn wrong_prompt_results(result: &GpRoundResult) -> Option<WrongPromptRevealView> {
+    let outcome = result.wrong_prompt.as_ref()?;
+    Some(WrongPromptRevealView {
+        round_idx: result.round_idx,
+        total_rounds: result.total_rounds,
+        majority: outcome.majority.clone(),
+        alternate: outcome.alternate.clone(),
+        odd_player: outcome.odd_player,
+        caught: outcome.caught,
+        songs: result
+            .songs
+            .iter()
+            .enumerate()
+            .map(|(track_idx, song)| WrongPromptSongView {
+                track_idx,
+                title: song.title.clone(),
+                submitter: song.submitter,
+                votes: if song.failed {
+                    None
+                } else {
+                    outcome.votes.get(track_idx).copied()
+                },
+            })
+            .collect(),
+        points: result.points.clone(),
+        scores: result.scores.clone(),
+    })
+}
+
+fn wrong_prompt_title(round_idx: usize, total_rounds: usize) -> String {
+    format!("Wrong Prompt · Round {}/{total_rounds}", round_idx + 1)
+}
+
+fn wrong_prompt_card(title: String, description: String, colour: u32) -> Rendered {
+    Rendered::card(Card {
+        title: Some(title),
+        description: Some(description),
+        colour: Some(colour),
+        ..Card::default()
+    })
+}
+
+fn wrong_prompt_button(id: &str, label: &str) -> Vec<Row> {
+    vec![Row::Buttons(vec![Button {
+        id: id.to_owned(),
+        label: Some(label.to_owned()),
+        emoji: None,
+        style: ButtonStyle::Primary,
+        disabled: false,
+    }])]
+}
+
+impl WrongPromptCard {
+    fn render(&self) -> Rendered {
+        match self {
+            Self::Opening {
+                round_idx,
+                total_rounds,
+                closes_at,
+                prompt_id,
+            } => {
+                let title = wrong_prompt_title(*round_idx, *total_rounds);
+                match prompt_id {
+                    Some(id) => wrong_prompt_card(
+                        title,
+                        format!(
+                            "Open your prompt and keep it private. Pick a song with **/gp submit**.\n\nSubmissions close <t:{closes_at}:R>."
+                        ),
+                        colour::FOOYOO,
+                    )
+                    .with_rows(wrong_prompt_button(id, "See my prompt")),
+                    None => wrong_prompt_card(
+                        title,
+                        "Submissions are closed.".into(),
+                        colour::DARKER_GREY,
+                    ),
+                }
+            },
+            Self::PrivatePrompt { prompt } => wrong_prompt_card(
+                "Your prompt".into(),
+                format!("**{}**\n\nPick a song with **/gp submit**.", escape(prompt)),
+                colour::FOOYOO,
+            ),
+            Self::Clip {
+                round_idx,
+                total_rounds,
+                track_idx,
+                total_tracks,
+                state,
+            } => {
+                let title = format!(
+                    "{} · Clip {}/{total_tracks}",
+                    wrong_prompt_title(*round_idx, *total_rounds),
+                    track_idx + 1,
+                );
+                let (description, colour) = match state {
+                    WrongPromptClipState::Playing => ("Listen for the odd pick.", colour::BLURPLE),
+                    WrongPromptClipState::Played => ("Clip ended.", colour::DARKER_GREY),
+                    WrongPromptClipState::Failed => {
+                        ("This clip is unavailable for voting.", colour::DARKER_GREY)
+                    },
+                };
+                wrong_prompt_card(title, description.into(), colour)
+            },
+            Self::Discussion {
+                round_idx,
+                total_rounds,
+                vote_at,
+            } => wrong_prompt_card(
+                wrong_prompt_title(*round_idx, *total_rounds),
+                format!(
+                    "Which clip came from the other prompt? Compare what you heard and keep your prompt wording private.\n\nVoting opens <t:{vote_at}:R>."
+                ),
+                colour::BLURPLE,
+            ),
+            Self::Voting {
+                round_idx,
+                total_rounds,
+                closes_at,
+                ballot_id,
+            } => {
+                let title = wrong_prompt_title(*round_idx, *total_rounds);
+                match ballot_id {
+                    Some(id) => wrong_prompt_card(
+                        title,
+                        format!(
+                            "Which clip came from the other prompt? Open your private ballot to vote.\n\nVoting closes <t:{closes_at}:R>."
+                        ),
+                        colour::BLURPLE,
+                    )
+                    .with_rows(wrong_prompt_button(id, "Vote")),
+                    None => wrong_prompt_card(title, "Voting is closed.".into(), colour::DARKER_GREY),
+                }
+            },
+            Self::Ballot {
+                select_id,
+                track_indices,
+            } => wrong_prompt_card(
+                "Your ballot".into(),
+                "Choose the clip you think came from the other prompt.".into(),
+                colour::BLURPLE,
+            )
+            .with_rows(vec![Row::Select(Select {
+                id: select_id.clone(),
+                placeholder: Some("Pick a clip".into()),
+                options: track_indices
+                    .iter()
+                    .map(|idx| SelectOption {
+                        label: format!("Clip {}", idx + 1),
+                        value: idx.to_string(),
+                        default: false,
+                    })
+                    .collect(),
+                min: Some(1),
+                max: Some(1),
+            })]),
+            Self::Results(result) => Rendered::card(wrong_prompt_reveal_embed(result)),
+            Self::Final { scores } => Rendered::card(wrong_prompt_final_embed(scores)),
+            Self::Voided {
+                round_idx,
+                total_rounds,
+                reason,
+            } => wrong_prompt_card(
+                wrong_prompt_title(*round_idx, *total_rounds),
+                format!("This round didn’t count. {reason}"),
+                colour::DARKER_GREY,
+            ),
+        }
+    }
+}
+
+fn wrong_prompt_reveal_embed(result: &WrongPromptRevealView) -> Card {
+    let outcome = if result.caught {
+        "The room caught the odd pick."
+    } else {
+        "The odd pick slipped through."
+    };
+    let songs = result
+        .songs
+        .iter()
+        .map(|song| {
+            let submitter = mention(&song.submitter.to_ref());
+            let title = clip(&song_name(&song.title), 84);
+            let votes = match song.votes {
+                Some(1) => "1 vote".into(),
+                Some(votes) => format!("{votes} votes"),
+                None => "Unavailable for voting".into(),
+            };
+            let odd = if song.submitter == result.odd_player {
+                " · **Odd pick**"
+            } else {
+                ""
+            };
+            format!(
+                "**Clip {}** · {title} · {submitter} · {votes}{odd}",
+                song.track_idx + 1
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    Card {
+        title: Some(format!(
+            "{} · Results",
+            wrong_prompt_title(result.round_idx, result.total_rounds)
+        )),
+        description: Some(clip(
+            &format!(
+                "**{outcome}**\n\n**Majority prompt** · {}\n**Odd prompt** · {}\n\n{songs}",
+                escape(&result.majority),
+                escape(&result.alternate),
+            ),
+            DESCRIPTION_MAX,
+        )),
+        fields: vec![
+            field(
+                GP_RESULTS_THIS_ROUND,
+                clip(&points_lines(&user_refs(&result.points)), FIELD_MAX),
+                false,
+            ),
+            field(
+                GP_SCOREBOARD,
+                clip(&scores_lines(&user_refs(&result.scores)), FIELD_MAX),
+                false,
+            ),
+        ],
+        colour: Some(colour::DARK_GOLD),
+        ..Card::default()
+    }
+}
+
+fn wrong_prompt_final_embed(scores: &[(UserId, u32)]) -> Card {
+    let description = match scores.first() {
+        Some((_, high_score)) if *high_score > 0 => {
+            let winners: Vec<_> = scores
+                .iter()
+                .take_while(|(_, points)| points == high_score)
+                .map(|(who, _)| mention(&who.to_ref()))
+                .collect();
+            let unit = if *high_score == 1 { "point" } else { "points" };
+            match winners.as_slice() {
+                [winner] => format!("{winner} wins with **{high_score} {unit}**."),
+                _ if winners.join(", ").chars().count() > DESCRIPTION_MAX - 100 => {
+                    format!(
+                        "{} players share the win with **{high_score} {unit}** each.",
+                        winners.len()
+                    )
+                },
+                _ => format!(
+                    "{} share the win with **{high_score} {unit}** each.",
+                    winners.join(", ")
+                ),
+            }
+        },
+        _ => "No rounds were scored.".into(),
+    };
+    let totals = scores
+        .iter()
+        .map(|(who, points)| format!("{} · {points}", mention(&who.to_ref())))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Card {
+        title: Some("Wrong Prompt · Final scores".into()),
+        description: Some(description),
+        fields: if totals.is_empty() {
+            Vec::new()
+        } else {
+            vec![field(GP_SCOREBOARD, clip(&totals, FIELD_MAX), false)]
+        },
+        colour: Some(colour::GOLD),
+        ..Card::default()
     }
 }
 
@@ -380,11 +757,13 @@ impl std::fmt::Display for GpCard {
             Self::Rules => "rules",
             Self::Status(_) => "status",
             Self::Picker { .. } => "picker",
+            Self::WrongPromptPicker { .. } => "Wrong Prompt theme picker",
             Self::Prompt(_) => "prompt",
             Self::PromptClosed(_) => "prompt closed",
             Self::Song { .. } => "song",
             Self::Reveal(_) => "reveal",
             Self::RoundResults(_) => "round results",
+            Self::WrongPrompt(_) => "Wrong Prompt",
             Self::Scoreboard { .. } => "scoreboard",
         };
         write!(f, "gp: {kind}")
@@ -404,6 +783,18 @@ pub fn render_card(card: &GpCard, _cx: &RenderCx) -> Rendered {
                 out
             }
         },
+        GpCard::WrongPromptPicker { text, picked, open } => {
+            let out = wrong_prompt_card(
+                "Pick Wrong Prompt themes".into(),
+                text.clone(),
+                colour::FOOYOO,
+            );
+            if *open {
+                out.with_rows(wrong_prompt_pick_components(picked))
+            } else {
+                out
+            }
+        },
         GpCard::Prompt(w) => Rendered::card(gp_prompt_embed(w)),
         GpCard::PromptClosed(c) => Rendered::card(gp_prompt_closed_embed(c)),
         GpCard::Song(song) => Rendered::card(gp_track_embed(song)).with_rows(gp_components(
@@ -415,6 +806,7 @@ pub fn render_card(card: &GpCard, _cx: &RenderCx) -> Rendered {
         )),
         GpCard::Reveal(res) => Rendered::card(gp_reveal_embed(res)),
         GpCard::RoundResults(r) => Rendered::card(gp_round_results_embed(r)),
+        GpCard::WrongPrompt(card) => card.render(),
         GpCard::Scoreboard {
             scores,
             title,
@@ -595,12 +987,29 @@ pub fn gp_pick_components(picked: &[GpCategory]) -> Vec<Row> {
             })
         })
         .collect();
+    gp_pick_rows(GP_PICK_PLACEHOLDER, options)
+}
+
+fn wrong_prompt_pick_components(picked: &[WrongPromptTheme]) -> Vec<Row> {
+    let options = WrongPromptTheme::ALL
+        .iter()
+        .map(|theme| SelectOption {
+            label: theme.label().to_owned(),
+            value: theme.key().to_owned(),
+            default: picked.contains(theme),
+        })
+        .collect();
+    gp_pick_rows("Themes to draw prompt pairs from", options)
+}
+
+fn gp_pick_rows(placeholder: &str, options: Vec<SelectOption>) -> Vec<Row> {
+    let start_disabled = !options.iter().any(|option| option.default);
     let menu = Select {
         id: GP_PICK_MENU_ID.to_string(),
-        placeholder: Some(GP_PICK_PLACEHOLDER.to_string()),
-        options,
+        placeholder: Some(placeholder.to_string()),
         min: Some(1),
-        max: Some(GpCategory::CATEGORIES.len() as u8),
+        max: Some(options.len() as u8),
+        options,
     };
     let button = |id: &str, label: &str, style, disabled| Button {
         id: id.to_string(),
@@ -616,7 +1025,7 @@ pub fn gp_pick_components(picked: &[GpCategory]) -> Vec<Row> {
                 GP_PICK_START_ID,
                 GP_PICK_START,
                 ButtonStyle::Success,
-                picked.is_empty(),
+                start_disabled,
             ),
             button(
                 GP_PICK_CANCEL_ID,
@@ -1032,6 +1441,37 @@ pub fn gp_status_embed(status: &GpStatusView) -> Card {
             colour: Some(colour::BLURPLE),
             ..Card::default()
         },
+        GpStatusView::WrongPrompt {
+            round,
+            total,
+            phase,
+            closes_at,
+            count,
+            scores,
+        } => {
+            let (label, detail) = match phase {
+                GpPhase::Submitting => ("Submissions open", format!("{count} songs submitted.")),
+                GpPhase::Playing => ("Playing clips", format!("{count} clips in this round.")),
+                GpPhase::Discussing => ("Discussion", format!("{count} eligible clips.")),
+                GpPhase::Voting => ("Voting open", format!("{count} eligible clips.")),
+                GpPhase::Finished => ("Finished", String::new()),
+            };
+            let description = match closes_at {
+                Some(closes_at) => format!("**{label}** · <t:{closes_at}:R>\n{detail}"),
+                None => format!("**{label}**\n{detail}"),
+            };
+            Card {
+                title: Some(wrong_prompt_title(round.saturating_sub(1), *total)),
+                description: Some(description),
+                fields: vec![field(
+                    GP_STATUS_SCORES,
+                    clip(&scores_lines(scores), FIELD_MAX),
+                    false,
+                )],
+                colour: Some(colour::FOOYOO),
+                ..Card::default()
+            }
+        },
     }
 }
 
@@ -1042,6 +1482,53 @@ mod tests {
         GP_QUEUE_CLEARED, GP_STARTED, GP_STARTED_NO_RESULTS, GP_STARTED_REVEAL_SONG,
     };
     use std::time::Duration;
+
+    #[test]
+    fn wrong_prompt_picker_shows_all_themes_and_remembers_picks() {
+        let rows = wrong_prompt_pick_components(&[]);
+        let [Row::Select(menu), Row::Buttons(buttons)] = rows.as_slice() else {
+            panic!("expected a theme menu and its Start/Cancel buttons");
+        };
+        assert_eq!(menu.id, GP_PICK_MENU_ID);
+        assert_eq!(menu.max, Some(12));
+        assert_eq!(menu.options.len(), 12);
+        assert!(buttons
+            .iter()
+            .any(|button| button.id == GP_PICK_START_ID && button.disabled));
+
+        let picked = &WrongPromptTheme::ALL[1..3];
+        let rows = wrong_prompt_pick_components(picked);
+        let [Row::Select(menu), Row::Buttons(buttons)] = rows.as_slice() else {
+            panic!("expected a theme menu and its Start/Cancel buttons");
+        };
+        let defaults: Vec<_> = menu
+            .options
+            .iter()
+            .filter(|option| option.default)
+            .map(|option| option.value.as_str())
+            .collect();
+        assert_eq!(
+            defaults,
+            picked.iter().map(|theme| theme.key()).collect::<Vec<_>>()
+        );
+        assert!(buttons
+            .iter()
+            .any(|button| button.id == GP_PICK_START_ID && !button.disabled));
+    }
+
+    #[test]
+    fn wrong_prompt_final_names_joint_winners() {
+        let scores = [
+            (UserId::new(1), 3),
+            (UserId::new(2), 3),
+            (UserId::new(3), 1),
+        ];
+        let card = wrong_prompt_final_embed(&scores);
+        assert_eq!(
+            card.description.as_deref(),
+            Some("<@1>, <@2> share the win with **3 points** each."),
+        );
+    }
 
     #[test]
     fn gp_started_renders_as_before() {

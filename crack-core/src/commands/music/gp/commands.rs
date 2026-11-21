@@ -1,9 +1,12 @@
-use super::playback::{gp_after_close, gp_open_round, GpPlayback};
+use super::playback::{gp_after_close, gp_open_round, gp_voice_players, GpPlayback};
 use crate::music::from_ctx::ActorFromCtx;
 use crate::{
     commands::cmd_check_music,
     commands::get_call_or_join_author,
-    commands::music::gp_prompts::{draw_prompts, GpCategories, GpCategory},
+    commands::music::gp_prompts::{
+        draw_prompts, draw_wrong_prompts, GpCategories, GpCategory, WrongPromptTheme,
+        WrongPromptThemes,
+    },
     errors::CrackedError,
     http_utils::SendMessageParams,
     messaging::message::CrackedMessage,
@@ -22,18 +25,22 @@ use crate::{
     sources::sleevenote,
     Context, CrackedResult, Error,
 };
-use ::serenity::all::{ChannelId, ComponentInteractionDataKind, GuildId, UserId};
+use ::serenity::all::{
+    AutocompleteChoice, ChannelId, ComponentInteractionDataKind, CreateAutocompleteResponse,
+    GuildId, ResolvedValue, UserId,
+};
 use crack_gp::gp::{
     gp_picked, gp_rendered, now, user_refs, GpCard, GpClip, GpPhase, GpReveal, GpVoteFullOutcome,
     GpVoteSkipOutcome, GP_DEFAULT_CLIPS, GP_DEFAULT_CLIP_LENGTH_SECS, GP_DEFAULT_CLIP_START_SECS,
     GP_DEFAULT_ROUNDS, GP_DEFAULT_TIMER_SECS, GP_MAX_CLIP_LENGTH_SECS, GP_MAX_CLIP_START_SECS,
-    GP_MAX_ROUNDS, GP_MAX_TIMER_SECS, GP_MIN_CLIP_LENGTH_SECS, GP_MIN_TIMER_SECS,
+    GP_MAX_PLAYERS, GP_MAX_ROUNDS, GP_MAX_TIMER_SECS, GP_MIN_CLIP_LENGTH_SECS, GP_MIN_TIMER_SECS,
     GP_PARK_GRACE_SECS, GP_PICK_CANCEL_ID, GP_PICK_START_ID, GP_PICK_TIMEOUT_SECS,
+    GP_WRONG_PROMPT_MIN_PLAYERS,
 };
 use crack_types::QueryType;
-use poise::serenity_prelude::CollectComponentInteractions;
+use poise::{serenity_prelude::CollectComponentInteractions, ChoiceParameter};
 use songbird::Call;
-use std::{str::FromStr, sync::Arc, time::Duration};
+use std::{borrow::Cow, str::FromStr, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 // ------------------------------------------------------------------
@@ -47,24 +54,10 @@ async fn author_display_name(ctx: Context<'_>) -> String {
     }
 }
 
-/// Non-bot members of `vc`, from the cache. Empty if the guild isn't cached
-/// (then the window simply waits for the timer or the host). The bot is always
-/// in this channel and is excluded by id, not just by the member lookup, which
-/// answers "human" for anyone the cache is missing.
 fn gp_vc_members(ctx: Context<'_>, vc: ChannelId) -> Vec<UserId> {
-    // Read before the guild: no cache lock is held across the other lookup.
-    let me = ctx.serenity_context().cache.current_user().id;
-    let Some(guild) = ctx.guild() else {
-        return Vec::new();
-    };
-    guild
-        .voice_states
-        .iter()
-        .filter(|vs| vs.channel_id == Some(vc))
-        .filter(|vs| vs.user_id != me)
-        .filter(|vs| guild.members.get(&vs.user_id).is_none_or(|m| !m.user.bot()))
-        .map(|vs| vs.user_id)
-        .collect()
+    ctx.guild_id().map_or_else(Vec::new, |guild_id| {
+        gp_voice_players(&ctx.serenity_context().cache, guild_id, vc)
+    })
 }
 
 /// The game is for the people in the room: acting on a running game means being in
@@ -93,6 +86,7 @@ fn gp_playback(ctx: Context<'_>, call: Arc<Mutex<Call>>, guild_id: GuildId) -> G
     GpPlayback {
         data: ctx.data().clone(),
         transport: Arc::new(DiscordTransport::of(ctx.serenity_context())),
+        cache: Some(ctx.serenity_context().cache.clone()),
         call,
         guild_id,
     }
@@ -121,24 +115,81 @@ pub async fn gp(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-/// Ask the host which categories to play: a menu to tick them, and Start. The
-/// clicks are answered here, not by [`handle_gp_component`] -- there is no game
-/// yet for it to find. `None` when the host cancels or walks away, which the
-/// picker has already said.
-async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Error> {
-    let host = ctx.author().id;
-    let mut picked: Vec<GpCategory> = Vec::new();
-    let reply = courier::reply_as(
-        ctx,
-        GpCard::Picker {
-            text: GP_PICK_TEXT.into(),
-            picked: picked.clone(),
-            open: true,
+enum GpPromptPool {
+    Classic(GpCategories),
+    WrongPrompt(WrongPromptThemes),
+}
+
+impl GpPromptPool {
+    fn display(&self) -> String {
+        match self {
+            Self::Classic(categories) => categories.display(),
+            Self::WrongPrompt(themes) => format!("Wrong Prompt · {}", themes.display()),
         }
-        .into(),
-        true,
-    )
-    .await?;
+    }
+}
+
+enum GpPicker {
+    Classic(Vec<GpCategory>),
+    WrongPrompt(Vec<WrongPromptTheme>),
+}
+
+impl GpPicker {
+    fn instructions(&self) -> &'static str {
+        match self {
+            Self::Classic(_) => GP_PICK_TEXT,
+            Self::WrongPrompt(_) => "Tick the Wrong Prompt themes to play, then press **Start**.",
+        }
+    }
+
+    fn card(&self, text: &str, open: bool) -> GpCard {
+        match self {
+            Self::Classic(picked) => GpCard::Picker {
+                text: text.into(),
+                picked: picked.clone(),
+                open,
+            },
+            Self::WrongPrompt(picked) => GpCard::WrongPromptPicker {
+                text: text.into(),
+                picked: picked.clone(),
+                open,
+            },
+        }
+    }
+
+    fn update<'a>(&mut self, values: impl IntoIterator<Item = &'a str>) {
+        match self {
+            Self::Classic(picked) => *picked = gp_picked(values),
+            Self::WrongPrompt(picked) => {
+                *picked = values
+                    .into_iter()
+                    .filter_map(WrongPromptTheme::from_key)
+                    .collect();
+            },
+        }
+    }
+
+    fn selection(&self) -> Option<GpPromptPool> {
+        match self {
+            Self::Classic(picked) => {
+                GpCategories::new(picked.iter().copied()).map(GpPromptPool::Classic)
+            },
+            Self::WrongPrompt(picked) => {
+                WrongPromptThemes::new(picked.iter().copied()).map(GpPromptPool::WrongPrompt)
+            },
+        }
+    }
+}
+
+/// Collect the host's multi-select before the game exists. A cancellation or
+/// timeout retires the picker without starting anything.
+async fn gp_pick_prompts(
+    ctx: Context<'_>,
+    mut picker: GpPicker,
+) -> Result<Option<GpPromptPool>, Error> {
+    let host = ctx.author().id;
+    let instructions = picker.instructions();
+    let reply = courier::reply_as(ctx, picker.card(instructions, true).into(), true).await?;
     let message_id = reply.message().await?.id;
     loop {
         // A collector per click, so the timeout is how long the host has sat
@@ -149,17 +200,8 @@ async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Er
             .next()
             .await
         else {
-            courier::retire_reply(
-                ctx,
-                &reply,
-                GpCard::Picker {
-                    text: GP_PICK_TIMED_OUT.into(),
-                    picked: vec![],
-                    open: false,
-                }
-                .into(),
-            )
-            .await?;
+            courier::retire_reply(ctx, &reply, picker.card(GP_PICK_TIMED_OUT, false).into())
+                .await?;
             return Ok(None);
         };
         let press = DiscordPress {
@@ -180,46 +222,29 @@ async fn gp_pick_categories(ctx: Context<'_>) -> Result<Option<GpCategories>, Er
         }
         let id = mci.data.custom_id.as_str();
         if id == GP_PICK_CANCEL_ID {
-            gp_pick_update(&press, GP_PICK_CANCELLED, &[], false).await?;
+            gp_pick_update(&press, picker.card(GP_PICK_CANCELLED, false)).await?;
             return Ok(None);
         }
         if id == GP_PICK_START_ID {
-            if let Some(categories) = GpCategories::new(picked.iter().copied()) {
-                let chosen = format!("{GP_PICK_CHOSEN} {}", categories.display());
-                gp_pick_update(&press, &chosen, &[], false).await?;
-                return Ok(Some(categories));
+            if let Some(selection) = picker.selection() {
+                let chosen = format!("{GP_PICK_CHOSEN} {}", selection.display());
+                gp_pick_update(&press, picker.card(&chosen, false)).await?;
+                return Ok(Some(selection));
             }
         } else if let ComponentInteractionDataKind::StringSelect { values } = &mci.data.kind {
-            picked = gp_picked(values.iter().map(String::as_str));
+            picker.update(values.iter().map(String::as_str));
         }
-        gp_pick_update(&press, GP_PICK_TEXT, &picked, true).await?;
+        gp_pick_update(&press, picker.card(instructions, true)).await?;
     }
 }
 
 /// Answer a picker click by redrawing the picker.
-async fn gp_pick_update(
-    press: &dyn Press,
-    text: &str,
-    picked: &[GpCategory],
-    open: bool,
-) -> Result<(), Error> {
-    courier::update(
-        press,
-        &GpCard::Picker {
-            text: text.to_string(),
-            picked: picked.to_vec(),
-            open,
-        }
-        .into(),
-        &RenderCx::now(),
-    )
-    .await?;
+async fn gp_pick_update(press: &dyn Press, card: GpCard) -> Result<(), Error> {
+    courier::update(press, &card.into(), &RenderCx::now()).await?;
     Ok(())
 }
 
-/// `/gp start`'s category dropdown. The first `#[name]` is what Discord shows;
-/// the others are what prefix commands can type (`!gp start nostalgia 5`). The
-/// domain's [`GpCategory`] knows nothing of poise; this is the command's copy.
+/// Classic GP category names and the aliases prefix commands accept.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, poise::ChoiceParameter)]
 pub enum GpCategoryChoice {
     /// First, so it tops the dropdown; also what `/gp start` plays when no
@@ -331,6 +356,160 @@ impl From<GpRevealChoice> for GpReveal {
     }
 }
 
+/// Choose the rules used by the game. The first name is the Discord label.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, poise::ChoiceParameter)]
+pub enum GpModeChoice {
+    #[name = "Classic GP"]
+    #[name = "classic"]
+    Classic,
+    #[name = "Wrong Prompt"]
+    #[name = "wrong_prompt"]
+    WrongPrompt,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpCategorySelection {
+    Random,
+    PickSeveral,
+    Classic(GpCategory),
+    WrongPrompt(WrongPromptTheme),
+}
+
+impl GpCategorySelection {
+    pub(super) fn from_name(value: &str) -> Option<Self> {
+        let value = value.trim();
+        if let Some(choice) = GpCategoryChoice::from_name(value) {
+            return Some(match GpCategory::from(choice) {
+                GpCategory::Random => Self::Random,
+                GpCategory::PickSeveral => Self::PickSeveral,
+                category => Self::Classic(category),
+            });
+        }
+        WrongPromptTheme::ALL
+            .into_iter()
+            .find(|theme| {
+                theme.key().eq_ignore_ascii_case(value) || theme.label().eq_ignore_ascii_case(value)
+            })
+            .map(Self::WrongPrompt)
+    }
+
+    fn pool(self, mode: GpModeChoice) -> CrackedResult<Option<GpPromptPool>> {
+        match (mode, self) {
+            (_, Self::PickSeveral) => Ok(None),
+            (GpModeChoice::Classic, Self::Random) => {
+                Ok(Some(GpPromptPool::Classic(GpCategories::all())))
+            },
+            (GpModeChoice::WrongPrompt, Self::Random) => {
+                Ok(Some(GpPromptPool::WrongPrompt(WrongPromptThemes::all())))
+            },
+            (GpModeChoice::Classic, Self::Classic(category)) => {
+                Ok(GpCategories::new([category]).map(GpPromptPool::Classic))
+            },
+            (GpModeChoice::WrongPrompt, Self::WrongPrompt(theme)) => {
+                Ok(WrongPromptThemes::new([theme]).map(GpPromptPool::WrongPrompt))
+            },
+            (GpModeChoice::Classic, Self::WrongPrompt(_)) => Err(CrackedError::Other(
+                "Choose Wrong Prompt under mode to use that theme.",
+            )),
+            (GpModeChoice::WrongPrompt, Self::Classic(_)) => Err(CrackedError::Other(
+                "Choose a Wrong Prompt theme, Random, or Pick several under category.",
+            )),
+        }
+    }
+}
+
+// Discord's category options come from autocomplete. Keep a typed prefix
+// argument so a leading round count such as `!gp start 5` can still skip it.
+#[poise::async_trait]
+impl poise::SlashArgument for GpCategorySelection {
+    async fn extract(
+        ctx: &::serenity::all::Context,
+        interaction: &::serenity::all::CommandInteraction,
+        value: &ResolvedValue<'_>,
+    ) -> Result<Self, poise::SlashArgError> {
+        let value = <String as poise::SlashArgument>::extract(ctx, interaction, value).await?;
+        Self::from_name(&value).ok_or_else(|| {
+            poise::SlashArgError::new_parse(
+                CrackedError::Other("Choose a category from the suggestions.").into(),
+                value,
+            )
+        })
+    }
+
+    fn create(
+        option: ::serenity::all::CreateCommandOption<'_>,
+    ) -> ::serenity::all::CreateCommandOption<'_> {
+        <String as poise::SlashArgument>::create(option)
+    }
+}
+
+#[poise::async_trait]
+impl<'a> poise::PopArgument<'a> for GpCategorySelection {
+    async fn pop_from(
+        args: &'a str,
+        attachment_index: usize,
+        ctx: &::serenity::all::Context,
+        msg: &::serenity::all::Message,
+    ) -> Result<(&'a str, usize, Self), (Error, Option<String>)> {
+        let (args, index, value) =
+            <String as poise::PopArgument<'a>>::pop_from(args, attachment_index, ctx, msg).await?;
+        let category = Self::from_name(&value).ok_or_else(|| {
+            (
+                CrackedError::Other("Choose a valid GP category.").into(),
+                Some(value),
+            )
+        })?;
+        Ok((args, index, category))
+    }
+}
+
+pub(super) fn gp_category_suggestions(
+    mode: GpModeChoice,
+    partial: &str,
+) -> Vec<(&'static str, &'static str)> {
+    let mut suggestions = vec![
+        (GpCategory::Random.display(), "random"),
+        (GpCategory::PickSeveral.display(), "pick"),
+    ];
+    match mode {
+        GpModeChoice::Classic => suggestions.extend(
+            GpCategory::CATEGORIES
+                .into_iter()
+                .filter_map(|category| Some((category.display(), category.key()?))),
+        ),
+        GpModeChoice::WrongPrompt => suggestions.extend(
+            WrongPromptTheme::ALL
+                .into_iter()
+                .map(|theme| (theme.label(), theme.key())),
+        ),
+    }
+    let query = partial.trim().to_lowercase();
+    suggestions
+        .retain(|(label, key)| label.to_lowercase().contains(&query) || key.contains(&query));
+    suggestions
+}
+
+async fn gp_category_autocomplete<'a>(
+    ctx: poise::ApplicationContext<'_, crate::Data, Error>,
+    partial: &'a str,
+) -> CreateAutocompleteResponse<'a> {
+    let mode = ctx
+        .args
+        .iter()
+        .find_map(|option| match (option.name, &option.value) {
+            ("mode", ResolvedValue::Integer(index)) => {
+                GpModeChoice::from_index(usize::try_from(*index).ok()?)
+            },
+            _ => None,
+        })
+        .unwrap_or(GpModeChoice::Classic);
+    let choices = gp_category_suggestions(mode, partial)
+        .into_iter()
+        .map(|(label, value)| AutocompleteChoice::new(label, value))
+        .collect();
+    CreateAutocompleteResponse::new().set_choices(Cow::Owned(choices))
+}
+
 /// Start a game in your voice channel: pick a category, rounds, and the submission timer.
 // Live-Discord glue: it needs a poise Context (a voice channel, a picker the
 // host answers). Its parts are tested; the choice conversions by
@@ -347,13 +526,14 @@ impl From<GpRevealChoice> for GpReveal {
 )]
 pub async fn gp_start(
     ctx: Context<'_>,
-    #[description = "Prompt category: 🎲 Random (default), just one, or ☑️ Pick several."]
-    category: Option<GpCategoryChoice>,
-    #[description = "Number of rounds (default 5)."]
+    #[description = "Choose a category or theme for your mode. Defaults to Random."]
+    #[autocomplete = "gp_category_autocomplete"]
+    category: Option<GpCategorySelection>,
+    #[description = "Number of rounds (Classic GP: 5, Wrong Prompt: 3)."]
     #[min = 1]
     #[max = 20]
     rounds: Option<u32>,
-    #[description = "Seconds to submit each round (default 180)."]
+    #[description = "Seconds to submit each round (Classic GP: 180, Wrong Prompt: 90)."]
     #[min = 30]
     #[max = 600]
     timer: Option<u32>,
@@ -372,21 +552,56 @@ pub async fn gp_start(
     reveal: Option<GpRevealChoice>,
     #[description = "Sum each round up in a results embed when it ends (default yes; always on with reveal:round)."]
     results: Option<bool>,
+    #[description = "Play Classic GP (default) or Wrong Prompt."] mode: Option<GpModeChoice>,
 ) -> Result<(), Error> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
     if data.gp_is_active(guild_id) {
         return Err(CrackedError::GameAlreadyRunning.into());
     }
-    ctx.author_vc().ok_or(CrackedError::NotConnected)?;
-    let categories =
-        match GpCategories::from_choice(category.map_or(GpCategory::Random, GpCategory::from)) {
-            Some(categories) => categories,
-            None => match gp_pick_categories(ctx).await? {
-                Some(categories) => categories,
-                None => return Ok(()),
+    let vc = ctx.author_vc().ok_or(CrackedError::NotConnected)?;
+    let mode = mode.unwrap_or(GpModeChoice::Classic);
+    let wrong_prompt = mode == GpModeChoice::WrongPrompt;
+    let prompt_pool = match category.unwrap_or(GpCategorySelection::Random).pool(mode) {
+        Ok(pool) => pool,
+        Err(err) => {
+            courier::reply_as(ctx, GpCard::Line(err.to_string()).into(), true).await?;
+            return Ok(());
+        },
+    };
+    if wrong_prompt {
+        let player_count = gp_vc_members(ctx, vc).len();
+        let refusal = match (reveal, results) {
+            (Some(GpRevealChoice::Song), _) => {
+                Some("Wrong Prompt reveals the picks together after voting. Choose the end-of-round reveal.")
             },
+            (_, Some(false)) => Some("Wrong Prompt needs round results to reveal both prompts and the votes."),
+            _ if player_count < GP_WRONG_PROMPT_MIN_PLAYERS => {
+                Some("Wrong Prompt needs at least four people in your voice channel.")
+            },
+            _ if player_count > GP_MAX_PLAYERS => {
+                Some("Wrong Prompt supports up to 25 players in your voice channel.")
+            },
+            _ => None,
         };
+        if let Some(message) = refusal {
+            courier::reply_as(ctx, GpCard::Line(message.into()).into(), true).await?;
+            return Ok(());
+        }
+    }
+    let prompt_pool = match prompt_pool {
+        Some(pool) => pool,
+        None => {
+            let picker = match mode {
+                GpModeChoice::Classic => GpPicker::Classic(Vec::new()),
+                GpModeChoice::WrongPrompt => GpPicker::WrongPrompt(Vec::new()),
+            };
+            match gp_pick_prompts(ctx, picker).await? {
+                Some(pool) => pool,
+                None => return Ok(()),
+            }
+        },
+    };
     // Looked up again: picking can take long enough to have left the channel.
     let vc = ctx.author_vc().ok_or(CrackedError::NotConnected)?;
     let host = ctx.author().id;
@@ -403,10 +618,15 @@ pub async fn gp_start(
         }
     }
 
-    let rounds = rounds.unwrap_or(GP_DEFAULT_ROUNDS).clamp(1, GP_MAX_ROUNDS) as usize;
+    let (default_rounds, default_timer_secs) = if wrong_prompt {
+        (3, 90)
+    } else {
+        (GP_DEFAULT_ROUNDS, GP_DEFAULT_TIMER_SECS)
+    };
+    let rounds = rounds.unwrap_or(default_rounds).clamp(1, GP_MAX_ROUNDS) as usize;
     let timer_secs = timer
         .map(u64::from)
-        .unwrap_or(GP_DEFAULT_TIMER_SECS)
+        .unwrap_or(default_timer_secs)
         .clamp(GP_MIN_TIMER_SECS, GP_MAX_TIMER_SECS);
     // The two dials only mean anything with clips on; off, they are ignored
     // rather than quietly turning clips back on for a host who asked for whole
@@ -427,24 +647,47 @@ pub async fn gp_start(
     });
     let reveal = reveal.map(GpReveal::from).unwrap_or_default();
     let round_results = results.unwrap_or(true) || reveal == GpReveal::Round;
-    let prompts = draw_prompts(&categories, rounds, &mut rand::rng());
+    let category = prompt_pool.display();
 
     // Create the game first so the global TrackEndHandler ignores the End
     // event that stopping an existing queue fires.
-    let opened = data.gp_start(
-        guild_id,
-        host,
-        host_name,
-        vc,
-        ctx.channel_id(),
-        categories.clone(),
-        prompts,
-        timer_secs,
-        clip,
-        reveal,
-        round_results,
-        now(),
-    )?;
+    let opened = match prompt_pool {
+        GpPromptPool::Classic(categories) => {
+            let prompts = draw_prompts(&categories, rounds, &mut rand::rng());
+            data.gp_start(
+                guild_id,
+                host,
+                host_name,
+                vc,
+                ctx.channel_id(),
+                categories,
+                prompts,
+                timer_secs,
+                clip,
+                reveal,
+                round_results,
+                now(),
+            )?
+        },
+        GpPromptPool::WrongPrompt(themes) => {
+            let mut pairs = draw_wrong_prompts(&themes, &mut rand::rng());
+            let rounds = rounds.min(pairs.len());
+            // Game state takes each successive pair from the back of the deck.
+            pairs.reverse();
+            data.gp_data().gp_start_wrong_prompt(
+                guild_id,
+                host,
+                host_name,
+                vc,
+                ctx.channel_id(),
+                pairs,
+                rounds,
+                timer_secs,
+                clip,
+                now(),
+            )?
+        },
+    };
     // `data.gp_start` above claimed the lease, so the game owns playback by the
     // time we reach here and this must lock as `Game`; `Free` would be refused
     // and the previous queue would keep playing underneath the new game.
@@ -476,20 +719,27 @@ pub async fn gp_start(
     // inline on songbird's event task, which must not wait out a send.
     drop(guard);
 
-    ctx.send_reply(
-        GpCard::Started {
-            category: categories.display(),
-            rounds: opened.total_rounds,
-            timer_secs,
-            clip,
-            reveal,
-            round_results,
-            cleared_queue,
+    let acknowledgement = ctx
+        .send_reply(
+            GpCard::Started {
+                category,
+                rounds: opened.total_rounds,
+                timer_secs,
+                clip,
+                reveal,
+                round_results,
+                cleared_queue,
+            }
+            .into(),
+            true,
+        )
+        .await;
+    if let Err(e) = acknowledgement {
+        if !wrong_prompt {
+            return Err(e.into());
         }
-        .into(),
-        true,
-    )
-    .await?;
+        tracing::warn!("gp: acknowledging Wrong Prompt start in {guild_id}: {e}");
+    }
 
     let pb = gp_playback(ctx, call, guild_id);
     gp_open_round(&pb, opened).await
@@ -557,7 +807,9 @@ pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResul
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
     let game_vc = gp_require_in_game_vc(ctx, guild_id)?;
-    data.gp_window_open(guild_id)?;
+    let submission_generation = data
+        .gp_data()
+        .gp_submission_generation(guild_id, ctx.author().id)?;
     let query = query.trim();
     if query.is_empty() {
         return Err(CrackedError::NoQuery);
@@ -582,8 +834,18 @@ pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResul
         .map_err(CrackedError::TrackFail)?;
     let name = author_display_name(ctx).await;
     let title = track.get_title();
+    if submission_generation.is_some() && ctx.author_vc() != Some(game_vc) {
+        return Err(CrackedError::NotInGameVoiceChannel);
+    }
     let vc_members = gp_vc_members(ctx, game_vc);
-    let outcome = data.gp_submit(guild_id, ctx.author().id, name, track, &vc_members)?;
+    let outcome = data.gp_submit_if(
+        guild_id,
+        ctx.author().id,
+        name,
+        track,
+        &vc_members,
+        submission_generation,
+    )?;
 
     // Take the call first: closing commits the shuffle and moves the game to
     // `Playing`, so discovering there is nothing to play on afterwards would
@@ -968,6 +1230,20 @@ pub async fn gp_end(ctx: Context<'_>) -> Result<(), Error> {
     } else {
         // Nothing was playing, so no `End` is coming to collect it.
         data.gp_remove(guild_id);
+    }
+    if game.wrong_prompt.is_some() {
+        let controls = if game.phase == GpPhase::Submitting {
+            game.rounds
+                .get(game.current_round)
+                .and_then(|round| round.prompt_message)
+        } else {
+            game.wrong_prompt_window().and_then(|window| window.message)
+        };
+        if let Some((channel, message)) = controls {
+            let transport = DiscordTransport::of(ctx.serenity_context());
+            crack_gp::gp_persist::take_down_components(&transport, guild_id, channel, message)
+                .await;
+        }
     }
     let by = author_display_name(ctx).await;
     ctx.send_reply(CrackedMessage::GpEnded { by }, true).await?;

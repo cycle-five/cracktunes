@@ -62,6 +62,19 @@ impl Data {
             .gp_submit(guild_id, user, name, track, vc_members)
     }
 
+    pub fn gp_submit_if(
+        &self,
+        guild_id: GuildId,
+        user: UserId,
+        name: String,
+        track: ResolvedTrack<'static>,
+        vc_members: &[UserId],
+        generation: Option<u64>,
+    ) -> CrackedResult<GpSubmitOutcome> {
+        self.gp_data()
+            .gp_submit_if(guild_id, user, name, track, vc_members, generation)
+    }
+
     pub fn gp_close_window(
         &self,
         guild_id: GuildId,

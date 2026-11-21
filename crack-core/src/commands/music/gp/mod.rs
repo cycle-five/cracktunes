@@ -11,6 +11,7 @@
 mod commands;
 mod data_impl;
 mod playback;
+mod wrong_prompt;
 
 pub use commands::{gp, GpCategoryChoice, GpRevealChoice};
 pub use crack_gp::gp::{
@@ -22,6 +23,7 @@ pub use playback::{
     gp_advance_track, gp_after_close, gp_open_round, gp_play_track, gp_spawn_window_timer_secs,
     handle_gp_component, GpPlayback,
 };
+pub use wrong_prompt::{gp_resume_wrong_prompt, gp_resume_wrong_prompt_submission};
 
 #[cfg(test)]
 mod test_delivery;
