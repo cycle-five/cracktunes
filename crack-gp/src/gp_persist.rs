@@ -9,7 +9,8 @@
 //! likes and votes on the song that is playing are not written until it ends:
 //! after a resume that song plays again from the top and the room casts them
 //! again, so the worst a crash costs is one song's worth of guesses that people
-//! can re-cast, never a scoreboard.
+//! can re-cast, never a scoreboard. Wrong Prompt snapshots each private round
+//! ballot before advancing, so a resumed vote keeps the ballots already cast.
 //!
 //! Nothing on the interaction or songbird path waits on the database. The
 //! `gp_*` mutations on [`GpData`] clone the game and send it down a channel; one
@@ -52,8 +53,8 @@ use crate::db::{
     GpTrackRow,
 };
 use crate::gp::{
-    gp_post, gp_rendered, user_refs, GpCard, GpClip, GpData, GpGame, GpPhase, GpPlayed, GpReveal,
-    GpRound, GpTrack,
+    gp_post, gp_rendered, user_refs, wrong_prompt_results, GpCard, GpClip, GpData, GpGame, GpPhase,
+    GpPlayed, GpReveal, GpRound, GpTrack, WrongPromptCard, GP_WRONG_PROMPT_MIN_PLAYERS,
 };
 use crate::gp_prompts::{GpCategories, GpCategory};
 use ::serenity::all::{ChannelId, GenericChannelId, Guild, GuildId, MessageId, UserId};
@@ -72,6 +73,8 @@ use tokio::sync::{mpsc, oneshot};
 
 const PHASE_SUBMITTING: &str = "submitting";
 const PHASE_PLAYING: &str = "playing";
+const PHASE_DISCUSSING: &str = "discussing";
+const PHASE_VOTING: &str = "voting";
 const PHASE_FINISHED: &str = "finished";
 
 /// What the writer task is asked to do. Ordered: the channel is FIFO and there is
@@ -219,6 +222,8 @@ impl GpGame {
         let phase = match self.phase {
             GpPhase::Submitting => PHASE_SUBMITTING,
             GpPhase::Playing => PHASE_PLAYING,
+            GpPhase::Discussing => PHASE_DISCUSSING,
+            GpPhase::Voting => PHASE_VOTING,
             GpPhase::Finished => PHASE_FINISHED,
         };
         let mut players: Vec<GpPlayerRow> = self
@@ -318,6 +323,9 @@ impl GpGame {
                 reveal: self.reveal.slug().to_string(),
                 round_results: self.round_results,
                 generation: self.generation as i64,
+                wrong_prompt: self.wrong_prompt.as_ref().map(|mode| {
+                    serde_json::to_value(mode).expect("Wrong Prompt state is JSON serializable")
+                }),
             },
             players,
             rounds,
@@ -335,9 +343,22 @@ impl GpGame {
         let phase = match g.phase.as_str() {
             PHASE_SUBMITTING => GpPhase::Submitting,
             PHASE_PLAYING => GpPhase::Playing,
+            PHASE_DISCUSSING => GpPhase::Discussing,
+            PHASE_VOTING => GpPhase::Voting,
             PHASE_FINISHED => GpPhase::Finished,
             other => return Err(GpLoadError(format!("unknown phase {other:?}"))),
         };
+        let wrong_prompt = g
+            .wrong_prompt
+            .as_ref()
+            .map(|payload| serde_json::from_value(payload.clone()))
+            .transpose()
+            .map_err(|err| GpLoadError(format!("invalid Wrong Prompt state: {err}")))?;
+        if matches!(phase, GpPhase::Discussing | GpPhase::Voting) && wrong_prompt.is_none() {
+            return Err(GpLoadError(format!(
+                "missing Wrong Prompt state for {phase:?}"
+            )));
+        }
         let reveal = GpReveal::from_slug(&g.reveal)
             .ok_or_else(|| GpLoadError(format!("unknown reveal {:?}", g.reveal)))?;
         let clip = match (g.clip_start_secs, g.clip_length_secs) {
@@ -466,7 +487,7 @@ impl GpGame {
             }
         }
 
-        Ok(GpGame {
+        let game = GpGame {
             guild_id: GuildId::new(g.guild_id as u64),
             started_at: g.started_at,
             host: user(g.host_id),
@@ -483,10 +504,64 @@ impl GpGame {
             round_results: g.round_results,
             generation: g.generation.max(0) as u64,
             parked_for_end: false,
+            wrong_prompt,
             players,
             scores,
-        })
+        };
+        validate_wrong_prompt(&game)?;
+        Ok(game)
     }
+}
+
+fn validate_wrong_prompt(game: &GpGame) -> Result<(), GpLoadError> {
+    let Some(mode) = game.wrong_prompt.as_ref() else {
+        return Ok(());
+    };
+    if mode.rounds.len() != game.rounds.len() {
+        return Err(GpLoadError(
+            "Wrong Prompt round count does not match the game".into(),
+        ));
+    }
+    let in_ballot = matches!(game.phase, GpPhase::Discussing | GpPhase::Voting);
+    if in_ballot && game.wrong_prompt_window().is_none() {
+        return Err(GpLoadError(
+            "missing active Wrong Prompt ballot window".into(),
+        ));
+    }
+    for (idx, (round, private)) in game.rounds.iter().zip(&mode.rounds).enumerate() {
+        let Some(private) = private else {
+            continue;
+        };
+        if private.ballots.is_empty() && !(in_ballot && idx == game.current_round) {
+            continue;
+        }
+        let heard = round
+            .tracks
+            .iter()
+            .filter(|track| track.played == GpPlayed::Heard);
+        let audible: HashSet<UserId> = heard.map(|track| track.submitter).collect();
+        if audible.len() < GP_WRONG_PROMPT_MIN_PLAYERS
+            || !private
+                .odd_player
+                .is_some_and(|odd| audible.contains(&odd) && private.roster.contains(&odd))
+        {
+            return Err(GpLoadError(format!(
+                "Wrong Prompt round {idx} has an invalid roster"
+            )));
+        }
+        for (&voter, &clip) in &private.ballots {
+            let valid_target = round
+                .tracks
+                .get(clip)
+                .is_some_and(|track| track.played == GpPlayed::Heard && track.submitter != voter);
+            if !audible.contains(&voter) || !valid_target {
+                return Err(GpLoadError(format!(
+                    "Wrong Prompt round {idx} has an invalid ballot"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn game_user(id: UserId) -> i64 {
@@ -575,10 +650,15 @@ pub async fn close_out<Fut>(
         GpCloseOut::Finished => (GP_GAME_OVER, None),
         GpCloseOut::Lost => (GP_SCOREBOARD, Some(GP_LOST)),
     };
-    let card = GpCard::Scoreboard {
-        scores: user_refs(&game.sorted_scores()),
-        title,
-        lead,
+    let scores = game.sorted_scores();
+    let card = if game.wrong_prompt.is_some() && ending == GpCloseOut::Finished {
+        GpCard::WrongPrompt(WrongPromptCard::Final { scores })
+    } else {
+        GpCard::Scoreboard {
+            scores: user_refs(&scores),
+            title,
+            lead,
+        }
     };
     gp_post(transport, game.text_channel, card).await;
 }
@@ -590,7 +670,16 @@ pub async fn close_out<Fut>(
 pub async fn post_owed_results(transport: &dyn Transport, game: &GpGame) -> Vec<usize> {
     let mut posted = Vec::new();
     for idx in game.unposted_results() {
-        let out = gp_rendered(GpCard::RoundResults((&game.round_result(idx)).into()));
+        let result = game.round_result(idx);
+        let card = if game.wrong_prompt.is_some() {
+            let Some(view) = wrong_prompt_results(&result) else {
+                continue;
+            };
+            GpCard::WrongPrompt(WrongPromptCard::Results(view))
+        } else {
+            GpCard::RoundResults((&result).into())
+        };
+        let out = gp_rendered(card);
         match courier::post_message(transport, game.text_channel, &out).await {
             Ok(_) => posted.push(idx),
             Err(e) => tracing::warn!(
@@ -1190,6 +1279,58 @@ mod test {
         assert_eq!(back.rounds[0].submissions.len(), 1);
         assert!(back.rounds[0].tracks.is_empty());
         assert_eq!(back.rounds[1].closes_at, None);
+    }
+
+    #[test]
+    fn a_wrong_prompt_vote_resumes_with_its_deadline_and_ballots() {
+        let (data, _rx) = recording();
+        let d = UserId::new(400);
+        start(&data, &[""]);
+        for (name, player) in [("a", A), ("b", B), ("c", C), ("d", d)] {
+            data.gp_submit(G, player, name.into(), track(name), &[])
+                .unwrap();
+        }
+        let generation = data.gp_games.get(&G).unwrap().generation;
+        let mut rng = StdRng::seed_from_u64(42);
+        let _ = data
+            .gp_close_window_if(G, generation, &mut rng, NOW + 10)
+            .unwrap();
+        let mut saved = data.gp_games.get(&G).unwrap().to_saved();
+        let odd_clip = saved
+            .tracks
+            .iter()
+            .find(|t| t.submitter_id == game_user(A))
+            .unwrap();
+        let odd_clip = odd_clip.position.unwrap();
+        let ballot_message = (TC, MessageId::new(30));
+
+        saved.game.phase = PHASE_VOTING.into();
+        saved.game.reveal = GpReveal::Round.slug().into();
+        saved.game.wrong_prompt = Some(serde_json::json!({
+            "deck": [],
+            "rounds": [{
+                "pair": {"majority": "Your villain entrance", "alternate": "Your wrestling entrance"},
+                "roster": [A, B, C, d],
+                "odd_player": A,
+                "closes_at": NOW + 50,
+                "ballots": HashMap::from([(B, odd_clip)]),
+                "ballot_message": ballot_message,
+            }],
+        }));
+
+        let resumed = GpGame::from_saved(&saved).unwrap();
+        let window = resumed.wrong_prompt_window().unwrap();
+        assert_eq!(resumed.phase, GpPhase::Voting);
+        assert_eq!(window.closes_at, NOW + 50);
+        assert_eq!(window.message, Some(ballot_message));
+        assert_eq!(resumed.to_saved(), saved);
+
+        saved.game.wrong_prompt.as_mut().unwrap()["rounds"][0]["ballots"] =
+            serde_json::json!(HashMap::from([(A, odd_clip)]));
+        assert!(
+            GpGame::from_saved(&saved).is_err(),
+            "a self-vote cannot be restored"
+        );
     }
 
     #[test]

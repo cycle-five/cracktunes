@@ -6,8 +6,159 @@
 //! runs from `/app`, so a runtime read would silently miss there).
 
 use once_cell::sync::Lazy;
-use rand::{seq::SliceRandom, Rng};
-use serde::Deserialize;
+use rand::{seq::SliceRandom, Rng, RngExt};
+use serde::{Deserialize, Serialize};
+
+/// One shuffled and oriented pair from the Wrong Prompt deck.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WrongPromptPair {
+    pub majority: String,
+    pub alternate: String,
+}
+
+/// The themes in the compiled Wrong Prompt deck, in picker order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WrongPromptTheme {
+    Entrances,
+    NightsOut,
+    CrushesAndFallout,
+    NostalgiaAndFreshStarts,
+    MovieScenes,
+    TinyDramas,
+    DiscordAndGroupChats,
+    GamesAndCompetition,
+    FriendsAndFamily,
+    SmallWins,
+    OnstageAndOnTheAux,
+    StrangeScenes,
+}
+
+impl WrongPromptTheme {
+    pub const ALL: [Self; 12] = [
+        Self::Entrances,
+        Self::NightsOut,
+        Self::CrushesAndFallout,
+        Self::NostalgiaAndFreshStarts,
+        Self::MovieScenes,
+        Self::TinyDramas,
+        Self::DiscordAndGroupChats,
+        Self::GamesAndCompetition,
+        Self::FriendsAndFamily,
+        Self::SmallWins,
+        Self::OnstageAndOnTheAux,
+        Self::StrangeScenes,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Entrances => "Entrances",
+            Self::NightsOut => "Nights out",
+            Self::CrushesAndFallout => "Crushes and fallout",
+            Self::NostalgiaAndFreshStarts => "Nostalgia and fresh starts",
+            Self::MovieScenes => "Movie scenes",
+            Self::TinyDramas => "Tiny dramas",
+            Self::DiscordAndGroupChats => "Discord and group chats",
+            Self::GamesAndCompetition => "Games and competition",
+            Self::FriendsAndFamily => "Friends and family",
+            Self::SmallWins => "Small wins",
+            Self::OnstageAndOnTheAux => "Onstage and on the aux",
+            Self::StrangeScenes => "Strange scenes",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Entrances => "entrances",
+            Self::NightsOut => "nights_out",
+            Self::CrushesAndFallout => "crushes_and_fallout",
+            Self::NostalgiaAndFreshStarts => "nostalgia_and_fresh_starts",
+            Self::MovieScenes => "movie_scenes",
+            Self::TinyDramas => "tiny_dramas",
+            Self::DiscordAndGroupChats => "discord_and_group_chats",
+            Self::GamesAndCompetition => "games_and_competition",
+            Self::FriendsAndFamily => "friends_and_family",
+            Self::SmallWins => "small_wins",
+            Self::OnstageAndOnTheAux => "onstage_and_on_the_aux",
+            Self::StrangeScenes => "strange_scenes",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|theme| theme.key() == key)
+    }
+}
+
+/// A nonempty selection of themes in picker order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WrongPromptThemes(Vec<WrongPromptTheme>);
+
+impl WrongPromptThemes {
+    pub fn all() -> Self {
+        Self(WrongPromptTheme::ALL.to_vec())
+    }
+
+    pub fn new(picked: impl IntoIterator<Item = WrongPromptTheme>) -> Option<Self> {
+        let picked: Vec<_> = picked.into_iter().collect();
+        let themes: Vec<_> = WrongPromptTheme::ALL
+            .into_iter()
+            .filter(|theme| picked.contains(theme))
+            .collect();
+        (!themes.is_empty()).then_some(Self(themes))
+    }
+
+    pub fn as_slice(&self) -> &[WrongPromptTheme] {
+        &self.0
+    }
+
+    pub fn display(&self) -> String {
+        if self.0.len() == WrongPromptTheme::ALL.len() {
+            return GpCategory::Random.display().to_string();
+        }
+        self.0
+            .iter()
+            .map(|theme| theme.label())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+#[derive(Deserialize)]
+struct WrongPromptPool {
+    theme: WrongPromptTheme,
+    pairs: Vec<[String; 2]>,
+}
+
+static WRONG_PROMPTS: Lazy<Vec<WrongPromptPool>> = Lazy::new(|| {
+    serde_json::from_str(include_str!("wrong_prompts.json"))
+        .expect("the compiled Wrong Prompt deck is valid")
+});
+
+/// Draw every pair from the selected themes, including reserves for retries.
+/// Themes take turns in shuffled passes, and either side of each pair can
+/// become the majority prompt. The first pair drawn is at the front.
+pub fn draw_wrong_prompts(themes: &WrongPromptThemes, rng: &mut impl Rng) -> Vec<WrongPromptPair> {
+    let pools: Vec<_> = WRONG_PROMPTS
+        .iter()
+        .filter(|pool| themes.as_slice().contains(&pool.theme))
+        .map(|pool| (pool.theme, pool.pairs.iter().collect::<Vec<_>>()))
+        .collect();
+    let count = pools.iter().map(|(_, pairs)| pairs.len()).sum();
+    draw_from_pools(pools, count, rng)
+        .into_iter()
+        .map(|(_, [first, second])| {
+            let (majority, alternate) = if rng.random() {
+                (first, second)
+            } else {
+                (second, first)
+            };
+            WrongPromptPair {
+                majority: majority.clone(),
+                alternate: alternate.clone(),
+            }
+        })
+        .collect()
+}
 
 /// What the host picks in `/gp start`'s category dropdown. The first two are
 /// not categories: Random is all of them, and Pick several is answered with a
@@ -247,16 +398,29 @@ pub struct GpPrompt {
 /// the prompts at once gives One-Worders nearly three times Car's share. Every
 /// category comes up once before any comes up again, and none twice in a row.
 pub fn draw_prompts(categories: &GpCategories, n: usize, rng: &mut impl Rng) -> Vec<GpPrompt> {
-    let mut pools: Vec<(GpCategory, Vec<&'static str>)> = categories
+    let pools = categories
         .as_slice()
         .iter()
-        .map(|c| {
-            let mut pool = c.pool();
-            pool.shuffle(rng);
-            (*c, pool)
-        })
+        .map(|category| (*category, category.pool()))
         .collect();
-    let mut drawn: Vec<GpPrompt> = Vec::with_capacity(n);
+    draw_from_pools(pools, n, rng)
+        .into_iter()
+        .map(|(category, text)| GpPrompt {
+            category,
+            text: text.to_string(),
+        })
+        .collect()
+}
+
+fn draw_from_pools<Tag: Copy + PartialEq, Prompt>(
+    mut pools: Vec<(Tag, Vec<Prompt>)>,
+    n: usize,
+    rng: &mut impl Rng,
+) -> Vec<(Tag, Prompt)> {
+    for (_, pool) in &mut pools {
+        pool.shuffle(rng);
+    }
+    let mut drawn = Vec::with_capacity(n);
     while drawn.len() < n {
         pools.retain(|(_, pool)| !pool.is_empty());
         if pools.is_empty() {
@@ -265,21 +429,18 @@ pub fn draw_prompts(categories: &GpCategories, n: usize, rng: &mut impl Rng) -> 
         // One pass is every category left, in a fresh order; the category that
         // ended the last pass must not start this one.
         pools.shuffle(rng);
-        if let Some(last) = drawn.last() {
-            if pools.len() > 1 && pools[0].0 == last.category {
+        if let Some((last, _)) = drawn.last() {
+            if pools.len() > 1 && pools[0].0 == *last {
                 let end = pools.len() - 1;
                 pools.swap(0, end);
             }
         }
-        for (c, pool) in pools.iter_mut() {
+        for (tag, pool) in &mut pools {
             if drawn.len() == n {
                 break;
             }
-            if let Some(text) = pool.pop() {
-                drawn.push(GpPrompt {
-                    category: *c,
-                    text: text.to_string(),
-                });
+            if let Some(prompt) = pool.pop() {
+                drawn.push((*tag, prompt));
             }
         }
     }
@@ -291,6 +452,85 @@ mod test {
     use super::*;
     use rand::{rngs::StdRng, SeedableRng};
     use std::collections::{HashMap, HashSet};
+
+    #[test]
+    fn wrong_prompt_themes_match_the_deck() {
+        use WrongPromptTheme::{Entrances, StrangeScenes};
+
+        let selected = WrongPromptThemes::new([StrangeScenes, Entrances, Entrances]).unwrap();
+        assert_eq!(selected.as_slice(), &[Entrances, StrangeScenes]);
+        assert_eq!(selected.display(), "Entrances, Strange scenes");
+        assert_eq!(WrongPromptThemes::new([]), None);
+        assert_eq!(
+            WrongPromptThemes::all().display(),
+            GpCategory::Random.label()
+        );
+        assert_eq!(WrongPromptTheme::from_key("random"), None);
+        assert_eq!(WRONG_PROMPTS.len(), WrongPromptTheme::ALL.len());
+        let mut prompts = HashSet::new();
+        for (pool, theme) in WRONG_PROMPTS.iter().zip(WrongPromptTheme::ALL) {
+            assert_eq!(pool.theme, theme);
+            assert_eq!(WrongPromptTheme::from_key(theme.key()), Some(theme));
+            assert_eq!(pool.pairs.len(), 6, "{}", theme.label());
+            for prompt in pool.pairs.iter().flatten() {
+                assert!(!prompt.trim().is_empty());
+                assert!(prompts.insert(prompt));
+            }
+        }
+        assert_eq!(prompts.len(), 144);
+    }
+
+    #[test]
+    fn wrong_prompt_deals_all_selected_pairs_in_balanced_passes() {
+        let mut orientations = HashSet::new();
+        let selected = [
+            WrongPromptThemes::new([WrongPromptTheme::Entrances]).unwrap(),
+            WrongPromptThemes::new([
+                WrongPromptTheme::Entrances,
+                WrongPromptTheme::NightsOut,
+                WrongPromptTheme::FriendsAndFamily,
+            ])
+            .unwrap(),
+            WrongPromptThemes::all(),
+        ];
+        for seed in 0..20 {
+            for themes in &selected {
+                let mut rng = StdRng::seed_from_u64(seed);
+                let drawn = draw_wrong_prompts(themes, &mut rng);
+                let width = themes.as_slice().len();
+                assert_eq!(drawn.len(), width * 6);
+                let mut distinct = HashSet::new();
+                let mut draw_themes = Vec::new();
+                for draw in &drawn {
+                    let (theme, original) = WRONG_PROMPTS
+                        .iter()
+                        .find_map(|p| {
+                            p.pairs
+                                .iter()
+                                .find(|[a, b]| {
+                                    (a == &draw.majority && b == &draw.alternate)
+                                        || (a == &draw.alternate && b == &draw.majority)
+                                })
+                                .map(|pair| (p.theme, pair))
+                        })
+                        .unwrap();
+                    if original == &WRONG_PROMPTS[0].pairs[0] {
+                        orientations.insert(original[0] == draw.majority);
+                    }
+                    assert!(themes.as_slice().contains(&theme));
+                    assert!(distinct.insert(original));
+                    draw_themes.push(theme);
+                }
+                assert!(draw_themes
+                    .chunks(width)
+                    .all(|pass| { pass.iter().copied().collect::<HashSet<_>>().len() == width }));
+                if width > 1 {
+                    assert!(draw_themes.windows(2).all(|pair| pair[0] != pair[1]));
+                }
+            }
+        }
+        assert_eq!(orientations, [true, false].into_iter().collect());
+    }
 
     fn set(cs: &[GpCategory]) -> GpCategories {
         GpCategories::new(cs.iter().copied()).unwrap()

@@ -1,12 +1,13 @@
 use crate::{
     db::GpOutcome,
-    gp_prompts::{GpCategories, GpCategory, GpPrompt},
+    gp_prompts::{GpCategories, GpCategory, GpPrompt, WrongPromptPair},
 };
 use ::serenity::all::{ChannelId, GenericChannelId, GuildId, MessageId, UserId};
 use crack_common::{errors::CrackedError, CrackedResult};
 use crack_music::music::PlaybackOwner;
 use crack_testing::ResolvedTrack;
 use rand::{seq::SliceRandom, Rng};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -17,6 +18,10 @@ use std::{
 /// submit in one round.
 pub const GP_MAX_PLAYERS: usize = 25;
 pub const GP_REVEAL_PAUSE_SECS: u64 = 5;
+pub const GP_WRONG_PROMPT_MIN_PLAYERS: usize = 4;
+pub const GP_WRONG_PROMPT_DISCUSSION_SECS: i64 = 20;
+pub const GP_WRONG_PROMPT_BALLOT_SECS: i64 = 20;
+const GP_WRONG_PROMPT_PUBLIC: &str = "Open your private prompt and pick a song.";
 pub const GP_POINTS_CORRECT: u32 = 100;
 /// Points to the submitter when nobody guessed them.
 pub const GP_POINTS_FOOLED_ALL: u32 = 100;
@@ -247,6 +252,8 @@ impl GpClip {
 pub enum GpPhase {
     Submitting,
     Playing,
+    Discussing,
+    Voting,
     /// Last song revealed; the game is torn down once the scoreboard is posted.
     Finished,
 }
@@ -431,6 +438,15 @@ impl GpRound {
         }
     }
 
+    fn wrong_prompt() -> Self {
+        let mut round = Self::new(GpPrompt {
+            text: GP_WRONG_PROMPT_PUBLIC.into(),
+            category: GpCategory::Random,
+        });
+        round.category = None;
+        round
+    }
+
     /// Everything the first `n` songs of this round paid out, added up per
     /// player. Only songs that have ended are scored, and `n` is how many have:
     /// a song still playing would be scored on guesses that can still change.
@@ -464,6 +480,109 @@ impl GpRound {
     }
 }
 
+/// Private Wrong Prompt state. Round entries share indices with the game's
+/// rounds. A retry replaces the current entry with an unused pair.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GpWrongPrompt {
+    pub(crate) deck: Vec<WrongPromptPair>,
+    pub(crate) rounds: Vec<Option<GpWrongPromptRound>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct GpWrongPromptRound {
+    pub(crate) pair: WrongPromptPair,
+    pub(crate) roster: Vec<UserId>,
+    pub(crate) odd_player: Option<UserId>,
+    pub(crate) closes_at: Option<i64>,
+    pub(crate) ballots: HashMap<UserId, usize>,
+    #[serde(default)]
+    pub(crate) ballot_message: Option<(GenericChannelId, MessageId)>,
+}
+
+impl GpWrongPromptRound {
+    fn new(pair: WrongPromptPair) -> Self {
+        Self {
+            pair,
+            roster: Vec::new(),
+            odd_player: None,
+            closes_at: None,
+            ballots: HashMap::new(),
+            ballot_message: None,
+        }
+    }
+
+    fn result(&self, tracks: &[GpTrack]) -> Option<GpWrongPromptResult> {
+        if self.ballots.is_empty() {
+            return None;
+        }
+        let odd_player = self.odd_player?;
+        let odd_clip = tracks
+            .iter()
+            .position(|t| t.submitter == odd_player && t.played == GpPlayed::Heard)?;
+        let mut votes = vec![0; tracks.len()];
+        for &clip in self.ballots.values() {
+            *votes.get_mut(clip)? += 1;
+        }
+        let caught = votes
+            .iter()
+            .enumerate()
+            .all(|(clip, &count)| clip == odd_clip || count < votes[odd_clip]);
+        Some(GpWrongPromptResult {
+            majority: self.pair.majority.clone(),
+            alternate: self.pair.alternate.clone(),
+            odd_player,
+            odd_clip,
+            votes,
+            caught,
+        })
+    }
+
+    fn points(&self, result: &GpWrongPromptResult) -> Vec<(UserId, u32)> {
+        let mut points: Vec<_> = self
+            .ballots
+            .iter()
+            .filter(|&(&player, &clip)| player != result.odd_player && clip == result.odd_clip)
+            .map(|(&player, _)| (player, 1))
+            .collect();
+        if !result.caught {
+            points.push((result.odd_player, 2));
+        }
+        points
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GpWrongPromptResult {
+    pub majority: String,
+    pub alternate: String,
+    pub odd_player: UserId,
+    /// Zero-based, matching the indices in the round's song list.
+    pub odd_clip: usize,
+    pub votes: Vec<usize>,
+    pub caught: bool,
+}
+
+/// Public timing data for discussion or voting, without secret assignments.
+#[derive(Clone, Debug)]
+pub struct GpWrongPromptWindow {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub generation: u64,
+    pub closes_at: i64,
+    pub text_channel: GenericChannelId,
+    pub message: Option<(GenericChannelId, MessageId)>,
+}
+
+#[derive(Clone, Debug)]
+pub struct GpWrongPromptFinished {
+    pub round_idx: usize,
+    pub total_rounds: usize,
+    pub generation: u64,
+    pub result: Option<GpRoundResult>,
+    pub next: GpNext,
+    pub message: Option<(GenericChannelId, MessageId)>,
+}
+
 #[derive(Clone, Debug)]
 pub struct GpGame {
     /// The guild the game is in -- also the map key, carried here so a game
@@ -477,6 +596,7 @@ pub struct GpGame {
     pub text_channel: GenericChannelId,
     pub phase: GpPhase,
     pub categories: GpCategories,
+    pub wrong_prompt: Option<GpWrongPrompt>,
     /// Pre-drawn, one per prompt.
     pub rounds: Vec<GpRound>,
     pub current_round: usize,
@@ -529,6 +649,7 @@ impl GpGame {
             text_channel,
             phase: GpPhase::Submitting,
             categories,
+            wrong_prompt: None,
             rounds: prompts.into_iter().map(GpRound::new).collect(),
             current_round: 0,
             current_track: 0,
@@ -591,7 +712,10 @@ impl GpGame {
     /// guessed. So the round's payout so far is taken back off, and the board
     /// reads as it did when the round began.
     pub(crate) fn visible_scores(&self) -> Vec<(UserId, u32)> {
-        if self.reveal != GpReveal::Round || self.phase != GpPhase::Playing {
+        if self.wrong_prompt.is_some()
+            || self.reveal != GpReveal::Round
+            || self.phase != GpPhase::Playing
+        {
             return self.sorted_scores();
         }
         let held = self.rounds[self.current_round].points_through(self.current_track);
@@ -650,12 +774,20 @@ impl GpGame {
     /// scoreboard after it.
     pub(crate) fn round_result(&self, round_idx: usize) -> GpRoundResult {
         let round = &self.rounds[round_idx];
-        let guessable = round.guessable();
+        let wrong_prompt = self
+            .wrong_prompt_round(round_idx)
+            .and_then(|wrong| wrong.result(&round.tracks));
+        let classic = self.wrong_prompt.is_none();
+        let guessable = classic && round.guessable();
         let songs = round
             .tracks
             .iter()
             .map(|t| {
-                let score = t.score(guessable);
+                let score = if classic {
+                    t.score(guessable)
+                } else {
+                    GpTrackScore::default()
+                };
                 GpSongResult {
                     submitter: t.submitter,
                     title: t.track.get_title(),
@@ -663,15 +795,22 @@ impl GpGame {
                     fooled_everyone: score.fooled_everyone,
                     likes: t.likes.len(),
                     played_full: t.play_full,
-                    failed: t.played == GpPlayed::Never,
+                    failed: t.played == GpPlayed::Never
+                        || (!classic && t.played != GpPlayed::Heard),
                 }
             })
             .collect();
-        let points: Vec<(UserId, u32)> = round
-            .points_through(round.tracks.len())
-            .into_iter()
-            .filter(|(_, pts)| *pts > 0)
-            .collect();
+        let points = if let Some(wrong) = self.wrong_prompt_round(round_idx) {
+            wrong_prompt
+                .as_ref()
+                .map(|res| wrong.points(res))
+                .unwrap_or_default()
+        } else {
+            round
+                .points_through(round.tracks.len())
+                .into_iter()
+                .collect()
+        };
         GpRoundResult {
             round_idx,
             total_rounds: self.rounds.len(),
@@ -680,7 +819,31 @@ impl GpGame {
             songs,
             points: self.sort_points(points),
             scores: self.sorted_scores(),
+            wrong_prompt,
         }
+    }
+
+    fn wrong_prompt_round(&self, idx: usize) -> Option<&GpWrongPromptRound> {
+        self.wrong_prompt.as_ref()?.rounds.get(idx)?.as_ref()
+    }
+
+    fn wrong_prompt_round_mut(&mut self, idx: usize) -> Option<&mut GpWrongPromptRound> {
+        self.wrong_prompt.as_mut()?.rounds.get_mut(idx)?.as_mut()
+    }
+
+    pub fn wrong_prompt_window(&self) -> Option<GpWrongPromptWindow> {
+        if !matches!(self.phase, GpPhase::Discussing | GpPhase::Voting) {
+            return None;
+        }
+        let round = self.wrong_prompt_round(self.current_round)?;
+        Some(GpWrongPromptWindow {
+            round_idx: self.current_round,
+            total_rounds: self.rounds.len(),
+            generation: self.generation,
+            closes_at: round.closes_at?,
+            text_channel: self.text_channel,
+            message: round.ballot_message,
+        })
     }
 
     /// The category to show with round `idx`'s prompt: only in a game of
@@ -702,6 +865,9 @@ impl GpGame {
         let idx = self.current_round;
         let total_rounds = self.rounds.len();
         let category = self.shown_category(idx);
+        if let Some(wrong) = &mut self.wrong_prompt {
+            wrong.rounds[idx] = wrong.deck.pop().map(GpWrongPromptRound::new);
+        }
         let round = &mut self.rounds[idx];
         round.closes_at = Some(closes_at);
         GpWindowOpened {
@@ -713,6 +879,7 @@ impl GpGame {
             timer_secs: self.timer_secs,
             generation: self.generation,
             text_channel: self.text_channel,
+            wrong_prompt: self.wrong_prompt.is_some(),
         }
     }
 
@@ -746,12 +913,22 @@ impl GpGame {
         let count = round.tracks.len();
         let prompt = round.prompt.clone();
         let prompt_message = round.prompt_message;
-        let next = if count == 0 {
+        let next = if let Some(wrong) = self.wrong_prompt_round(idx) {
+            if count < GP_WRONG_PROMPT_MIN_PLAYERS {
+                self.retry_wrong_prompt(now, "Fewer than four players submitted a song.")
+            } else if !self.rounds[idx]
+                .tracks
+                .iter()
+                .any(|t| Some(t.submitter) == wrong.odd_player)
+            {
+                self.retry_wrong_prompt(now, "The alternate prompt had no submission.")
+            } else {
+                self.start_playing()
+            }
+        } else if count == 0 {
             self.advance_round(now)
         } else {
-            self.phase = GpPhase::Playing;
-            self.current_track = 0;
-            GpNext::Track(Box::new(self.track_start()))
+            self.start_playing()
         };
         GpWindowClosed {
             round_idx: idx,
@@ -762,18 +939,80 @@ impl GpGame {
             count,
             text_channel: self.text_channel,
             next,
+            wrong_prompt: self.wrong_prompt.is_some(),
         }
+    }
+
+    fn start_playing(&mut self) -> GpNext {
+        self.phase = GpPhase::Playing;
+        self.current_track = 0;
+        GpNext::Track(Box::new(self.track_start()))
     }
 
     fn advance_round(&mut self, now: i64) -> GpNext {
         self.current_round += 1;
-        if self.current_round < self.rounds.len() {
+        if self.current_round >= self.rounds.len() {
+            return self.finish();
+        }
+        if self
+            .wrong_prompt
+            .as_ref()
+            .is_some_and(|wrong| wrong.deck.is_empty())
+        {
+            return GpNext::Retry {
+                round_idx: self.current_round,
+                total_rounds: self.rounds.len(),
+                reason: "All prompt pairs have been used.",
+                next: Box::new(self.finish()),
+            };
+        }
+        GpNext::Window(self.open_window(now))
+    }
+
+    fn finish(&mut self) -> GpNext {
+        self.phase = GpPhase::Finished;
+        self.generation += 1;
+        GpNext::Finished(self.sorted_scores())
+    }
+
+    fn retry_wrong_prompt(&mut self, now: i64, reason: &'static str) -> GpNext {
+        let next = if self
+            .wrong_prompt
+            .as_ref()
+            .is_some_and(|wrong| !wrong.deck.is_empty())
+        {
+            self.rounds[self.current_round] = GpRound::wrong_prompt();
             GpNext::Window(self.open_window(now))
         } else {
-            self.phase = GpPhase::Finished;
-            self.generation += 1;
-            GpNext::Finished(self.sorted_scores())
+            self.finish()
+        };
+        GpNext::Retry {
+            round_idx: self.current_round,
+            total_rounds: self.rounds.len(),
+            reason,
+            next: Box::new(next),
         }
+    }
+
+    fn discuss_wrong_prompt(&mut self, now: i64) -> GpNext {
+        let idx = self.current_round;
+        let mut heard = self.rounds[idx]
+            .tracks
+            .iter()
+            .filter(|t| t.played == GpPlayed::Heard);
+        if heard.clone().count() < GP_WRONG_PROMPT_MIN_PLAYERS {
+            return self.retry_wrong_prompt(now, "Fewer than four tracks could be heard.");
+        }
+        let wrong = self.wrong_prompt_round(idx).expect("wrong prompt round");
+        if !heard.any(|t| Some(t.submitter) == wrong.odd_player) {
+            return self
+                .retry_wrong_prompt(now, "The alternate prompt's track could not be heard.");
+        }
+        self.phase = GpPhase::Discussing;
+        self.wrong_prompt_round_mut(idx)
+            .expect("wrong prompt round")
+            .closes_at = Some(now + GP_WRONG_PROMPT_DISCUSSION_SECS);
+        GpNext::Discuss(self.wrong_prompt_window().expect("discussion is open"))
     }
 
     pub(crate) fn track_start(&self) -> GpTrackStart {
@@ -786,8 +1025,13 @@ impl GpGame {
             total_tracks: round.tracks.len(),
             prompt: round.prompt.clone(),
             track: t.track.clone(),
-            players: self.submitter_names(round),
-            guessable: round.guessable(),
+            players: if self.wrong_prompt.is_some() {
+                Vec::new()
+            } else {
+                self.submitter_names(round)
+            },
+            guessable: self.wrong_prompt.is_none() && round.guessable(),
+            wrong_prompt: self.wrong_prompt.is_some(),
             clip: self
                 .clip
                 .map(|c| c.for_duration(t.track.get_metadata().and_then(|m| m.duration))),
@@ -809,6 +1053,7 @@ pub struct GpWindowOpened {
     pub timer_secs: u64,
     pub generation: u64,
     pub text_channel: GenericChannelId,
+    pub wrong_prompt: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -822,6 +1067,7 @@ pub struct GpTrackStart {
     /// Dropdown options: the round's submitters, sorted by name.
     pub players: Vec<(UserId, String)>,
     pub guessable: bool,
+    pub wrong_prompt: bool,
     /// The clip to play, already fitted to this song's duration. `None` plays it
     /// whole.
     pub clip: Option<GpClip>,
@@ -836,6 +1082,13 @@ pub enum GpNext {
     /// Boxed: a `ResolvedTrack` is a couple of KB and the other variants are tiny.
     Track(Box<GpTrackStart>),
     Window(GpWindowOpened),
+    Discuss(GpWrongPromptWindow),
+    Retry {
+        round_idx: usize,
+        total_rounds: usize,
+        reason: &'static str,
+        next: Box<GpNext>,
+    },
     /// Final scores, sorted.
     Finished(Vec<(UserId, u32)>),
 }
@@ -851,6 +1104,7 @@ pub struct GpWindowClosed {
     pub count: usize,
     pub text_channel: GenericChannelId,
     pub next: GpNext,
+    pub wrong_prompt: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -942,6 +1196,7 @@ pub struct GpTrackResult {
     /// This was the round's last song and the game posts results: the round's
     /// results, to post after the reveal and before whatever comes next.
     pub round: Option<GpRoundResult>,
+    pub wrong_prompt: bool,
 }
 
 /// One song on the round-results embed.
@@ -969,10 +1224,19 @@ pub struct GpRoundResult {
     pub points: Vec<(UserId, u32)>,
     /// The running totals after it, best first.
     pub scores: Vec<(UserId, u32)>,
+    pub wrong_prompt: Option<GpWrongPromptResult>,
 }
 
 #[derive(Clone, Debug)]
 pub enum GpStatus {
+    WrongPrompt {
+        round: usize,
+        total: usize,
+        phase: GpPhase,
+        closes_at: Option<i64>,
+        count: usize,
+        scores: Vec<(UserId, u32)>,
+    },
     Submitting {
         host: UserId,
         round: usize,
@@ -1053,15 +1317,7 @@ impl GpData {
         round_results: bool,
         now: i64,
     ) -> CrackedResult<GpWindowOpened> {
-        // `contains_key` then `insert` would let two `/gp start` race through and
-        // leave the loser's window timer running against the winner's game.
-        let dashmap::mapref::entry::Entry::Vacant(slot) = self.gp_games.entry(guild_id) else {
-            return Err(CrackedError::GameAlreadyRunning);
-        };
-        if prompts.is_empty() {
-            return Err(CrackedError::Other("That category has no prompts."));
-        }
-        let mut game = GpGame::new(
+        let game = GpGame::new(
             guild_id,
             host,
             voice_channel,
@@ -1074,14 +1330,143 @@ impl GpData {
             round_results,
             now,
         );
-        game.players.insert(host, host_name);
+        self.gp_start_game(game, host_name, now)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn gp_start_wrong_prompt(
+        &self,
+        guild_id: GuildId,
+        host: UserId,
+        host_name: String,
+        voice_channel: ChannelId,
+        text_channel: GenericChannelId,
+        pairs: Vec<WrongPromptPair>,
+        rounds: usize,
+        timer_secs: u64,
+        clip: Option<GpClip>,
+        now: i64,
+    ) -> CrackedResult<GpWindowOpened> {
+        if rounds == 0 || pairs.len() < rounds {
+            return Err(CrackedError::Other(
+                "There are not enough Wrong Prompt pairs.",
+            ));
+        }
+        let mut game = GpGame::new(
+            guild_id,
+            host,
+            voice_channel,
+            text_channel,
+            GpCategories::from_choice(GpCategory::Random).expect("Random categories"),
+            Vec::new(),
+            timer_secs,
+            clip,
+            GpReveal::Round,
+            true,
+            now,
+        );
+        game.rounds = (0..rounds).map(|_| GpRound::wrong_prompt()).collect();
+        game.wrong_prompt = Some(GpWrongPrompt {
+            deck: pairs,
+            rounds: vec![None; rounds],
+        });
+        // Discord components can outlive the game. A random starting value
+        // keeps old controls from matching the same round in a later game.
+        game.generation = rand::random::<u64>() >> 8;
+        self.gp_start_game(game, host_name, now)
+    }
+
+    fn gp_start_game(
+        &self,
+        mut game: GpGame,
+        host_name: String,
+        now: i64,
+    ) -> CrackedResult<GpWindowOpened> {
+        // Reserve the map slot and claim playback together to prevent racing
+        // starts from posting timers for different games in the same guild.
+        let dashmap::mapref::entry::Entry::Vacant(slot) = self.gp_games.entry(game.guild_id) else {
+            return Err(CrackedError::GameAlreadyRunning);
+        };
+        if game.rounds.is_empty() {
+            return Err(CrackedError::Other("That category has no prompts."));
+        }
+        game.players.insert(game.host, host_name);
         let opened = game.open_window(now);
-        // 🔑 Claimed here, inside the branch that inserts, so the lease and the
-        // map move together. See music/lease.rs on why this must not be called
-        // from anywhere else.
-        self.claim_playback(guild_id, PlaybackOwner::Game)?;
+        self.claim_playback(game.guild_id, PlaybackOwner::Game)?;
         slot.insert(game);
         Ok(opened)
+    }
+
+    /// Freeze the non-bot voice roster before announcing the new window.
+    /// A restored window keeps any assignment already made.
+    pub fn gp_prepare_wrong_prompt(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        mut members: Vec<UserId>,
+        rng: &mut impl Rng,
+        now: i64,
+    ) -> CrackedResult<i64> {
+        let mut game = self
+            .gp_games
+            .get_mut(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        if game.phase != GpPhase::Submitting || game.generation != generation {
+            return Err(CrackedError::StaleRound);
+        }
+        let idx = game.current_round;
+        let existing_deadline = game.rounds[idx]
+            .closes_at
+            .ok_or(CrackedError::WindowClosed)?;
+        let closes_at = now + game.timer_secs as i64;
+        let wrong = game
+            .wrong_prompt_round_mut(idx)
+            .ok_or(CrackedError::StaleRound)?;
+        if wrong.odd_player.is_some() {
+            return Ok(existing_deadline);
+        }
+        members.sort_unstable();
+        members.dedup();
+        if members.len() < GP_WRONG_PROMPT_MIN_PLAYERS {
+            return Err(CrackedError::Other(
+                "Wrong Prompt needs at least four players in voice.",
+            ));
+        }
+        members.shuffle(rng);
+        members.truncate(GP_MAX_PLAYERS);
+        wrong.odd_player = members.first().copied();
+        wrong.roster = members;
+        game.rounds[idx].closes_at = Some(closes_at);
+        self.gp_snapshot(&game);
+        Ok(closes_at)
+    }
+
+    pub fn gp_wrong_prompt_card(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        user: UserId,
+    ) -> CrackedResult<String> {
+        let game = self
+            .gp_games
+            .get(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        if game.generation != generation || game.phase != GpPhase::Submitting {
+            return Err(CrackedError::StaleRound);
+        }
+        let wrong = game
+            .wrong_prompt_round(game.current_round)
+            .ok_or(CrackedError::StaleRound)?;
+        if !wrong.roster.contains(&user) {
+            return Err(CrackedError::Other(
+                "This round has been dealt. You can join next round.",
+            ));
+        }
+        Ok(if wrong.odd_player == Some(user) {
+            wrong.pair.alternate.clone()
+        } else {
+            wrong.pair.majority.clone()
+        })
     }
 
     /// Cheap check before resolving a query: is a window open here?
@@ -1096,6 +1481,31 @@ impl GpData {
         Ok(())
     }
 
+    /// Bind a Wrong Prompt submission to the same dealt window even if
+    /// resolving the song spans a timer or a retry.
+    pub fn gp_submission_generation(
+        &self,
+        guild_id: GuildId,
+        user: UserId,
+    ) -> CrackedResult<Option<u64>> {
+        let game = self
+            .gp_games
+            .get(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        if game.phase != GpPhase::Submitting {
+            return Err(CrackedError::WindowClosed);
+        }
+        let Some(wrong) = game.wrong_prompt_round(game.current_round) else {
+            return Ok(None);
+        };
+        if !wrong.roster.contains(&user) {
+            return Err(CrackedError::Other(
+                "This round has been dealt. You can join next round.",
+            ));
+        }
+        Ok(Some(game.generation))
+    }
+
     /// `vc_members` are the non-bot members of the game's voice channel, used
     /// to tell the caller whether everyone is in.
     pub fn gp_submit(
@@ -1106,6 +1516,18 @@ impl GpData {
         track: ResolvedTrack<'static>,
         vc_members: &[UserId],
     ) -> CrackedResult<GpSubmitOutcome> {
+        self.gp_submit_if(guild_id, user, name, track, vc_members, None)
+    }
+
+    pub fn gp_submit_if(
+        &self,
+        guild_id: GuildId,
+        user: UserId,
+        name: String,
+        track: ResolvedTrack<'static>,
+        vc_members: &[UserId],
+        expected_generation: Option<u64>,
+    ) -> CrackedResult<GpSubmitOutcome> {
         let mut entry = self
             .gp_games
             .get_mut(&guild_id)
@@ -1114,7 +1536,20 @@ impl GpData {
         if game.phase != GpPhase::Submitting {
             return Err(CrackedError::WindowClosed);
         }
+        if expected_generation.is_some_and(|generation| generation != game.generation) {
+            return Err(CrackedError::StaleRound);
+        }
         let idx = game.current_round;
+        let roster = match game.wrong_prompt_round(idx) {
+            Some(wrong)
+                if expected_generation == Some(game.generation) && wrong.roster.contains(&user) =>
+            {
+                Some(wrong.roster.clone())
+            },
+            Some(_) => return Err(CrackedError::StaleRound),
+            None => None,
+        };
+        let members = roster.as_deref().unwrap_or(vc_members);
         let round = &mut game.rounds[idx];
         let is_new = !round.submissions.contains_key(&user);
         if is_new && round.submissions.len() >= GP_MAX_PLAYERS {
@@ -1124,7 +1559,7 @@ impl GpData {
         let replaced = round.submissions.insert(user, track).is_some();
         let submitted = round.submissions.len();
         let everyone_in =
-            !vc_members.is_empty() && vc_members.iter().all(|u| round.submissions.contains_key(u));
+            !members.is_empty() && members.iter().all(|u| round.submissions.contains_key(u));
         // A submission is one of the two moments the game is written down.
         self.gp_snapshot(game);
         Ok(GpSubmitOutcome {
@@ -1220,6 +1655,27 @@ impl GpData {
         Ok(())
     }
 
+    pub fn gp_set_wrong_prompt_prompt_message(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        message: (GenericChannelId, MessageId),
+    ) -> bool {
+        let Some(mut game) = self.gp_games.get_mut(&guild_id) else {
+            return false;
+        };
+        if game.wrong_prompt.is_none()
+            || game.phase != GpPhase::Submitting
+            || game.generation != generation
+        {
+            return false;
+        }
+        let idx = game.current_round;
+        game.rounds[idx].prompt_message = Some(message);
+        self.gp_snapshot(&game);
+        true
+    }
+
     /// Remember where a song's message went so the reveal can edit it.
     ///
     /// Also a checkpoint, and the only one taken while a song plays. The id is
@@ -1274,6 +1730,9 @@ impl GpData {
         if !game.has_submitted(guesser) {
             return Err(CrackedError::NotAGamePlayer);
         }
+        if game.wrong_prompt.is_some() {
+            return Err(CrackedError::NotGuessable);
+        }
         let round = &mut game.rounds[round_idx];
         if !round.guessable() {
             return Err(CrackedError::NotGuessable);
@@ -1302,6 +1761,9 @@ impl GpData {
             .get_mut(&guild_id)
             .ok_or(CrackedError::NoGameInProgress)?;
         let game: &mut GpGame = &mut entry;
+        if game.wrong_prompt.is_some() {
+            return Err(CrackedError::Other("Likes are available in Classic GP."));
+        }
         if game.phase != GpPhase::Playing {
             return Err(CrackedError::GameNotPlaying);
         }
@@ -1339,6 +1801,11 @@ impl GpData {
             .get_mut(&guild_id)
             .ok_or(CrackedError::NoGameInProgress)?;
         let game: &mut GpGame = &mut entry;
+        if game.wrong_prompt.is_some() {
+            return Err(CrackedError::Other(
+                "Player skip votes are available in Classic GP.",
+            ));
+        }
         if game.phase != GpPhase::Playing {
             return Err(CrackedError::GameNotPlaying);
         }
@@ -1398,6 +1865,11 @@ impl GpData {
             .get_mut(&guild_id)
             .ok_or(CrackedError::NoGameInProgress)?;
         let game: &mut GpGame = &mut entry;
+        if game.wrong_prompt.is_some() {
+            return Err(CrackedError::Other(
+                "Full-song votes are available in Classic GP.",
+            ));
+        }
         if game.phase != GpPhase::Playing {
             return Err(CrackedError::GameNotPlaying);
         }
@@ -1510,7 +1982,7 @@ impl GpData {
         track_idx: usize,
         now: i64,
     ) -> Option<GpTrackResult> {
-        self.gp_finish_track(guild_id, round_idx, track_idx, now, GpPlayed::Heard)
+        self.gp_finish_track(guild_id, None, round_idx, track_idx, now, GpPlayed::Heard)
     }
 
     /// Like [`Self::gp_reveal_and_advance`], but for a song whose stream died
@@ -1523,7 +1995,14 @@ impl GpData {
         track_idx: usize,
         now: i64,
     ) -> Option<GpTrackResult> {
-        self.gp_finish_track(guild_id, round_idx, track_idx, now, GpPlayed::CutShort)
+        self.gp_finish_track(
+            guild_id,
+            None,
+            round_idx,
+            track_idx,
+            now,
+            GpPlayed::CutShort,
+        )
     }
 
     /// Like [`Self::gp_reveal_and_advance`], but for a song that never played:
@@ -1538,12 +2017,34 @@ impl GpData {
         track_idx: usize,
         now: i64,
     ) -> Option<GpTrackResult> {
-        self.gp_finish_track(guild_id, round_idx, track_idx, now, GpPlayed::Never)
+        self.gp_finish_track(guild_id, None, round_idx, track_idx, now, GpPlayed::Never)
+    }
+
+    /// Match the attempt as well as the round and clip, since a Wrong Prompt
+    /// retry reuses the round and clip numbers.
+    pub fn gp_finish_track_if(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        round_idx: usize,
+        track_idx: usize,
+        now: i64,
+        played: GpPlayed,
+    ) -> Option<GpTrackResult> {
+        self.gp_finish_track(
+            guild_id,
+            Some(generation),
+            round_idx,
+            track_idx,
+            now,
+            played,
+        )
     }
 
     fn gp_finish_track(
         &self,
         guild_id: GuildId,
+        generation: Option<u64>,
         round_idx: usize,
         track_idx: usize,
         now: i64,
@@ -1551,12 +2052,14 @@ impl GpData {
     ) -> Option<GpTrackResult> {
         let mut game = self.gp_games.get_mut(&guild_id)?;
         if game.phase != GpPhase::Playing
+            || generation.is_some_and(|generation| generation != game.generation)
             || round_idx != game.current_round
             || track_idx != game.current_track
         {
             return None;
         }
-        let guessable = game.rounds[round_idx].guessable();
+        let wrong_prompt = game.wrong_prompt.is_some();
+        let guessable = !wrong_prompt && game.rounds[round_idx].guessable();
         let t = &mut game.rounds[round_idx].tracks[track_idx];
         t.played = played;
         let (submitter, likes, message) = (t.submitter, t.likes.len(), t.message);
@@ -1566,7 +2069,11 @@ impl GpData {
             correct,
             fooled_everyone,
             points,
-        } = t.score(guessable);
+        } = if wrong_prompt {
+            GpTrackScore::default()
+        } else {
+            t.score(guessable)
+        };
         for (who, pts) in points {
             *game.scores.entry(who).or_insert(0) += pts;
         }
@@ -1574,12 +2081,15 @@ impl GpData {
         game.current_track += 1;
         let total_tracks = game.rounds[round_idx].tracks.len();
         let last_of_round = game.current_track >= total_tracks;
-        let next = if last_of_round {
-            game.advance_round(now)
-        } else {
+        let next = if !last_of_round {
             GpNext::Track(Box::new(game.track_start()))
+        } else if wrong_prompt {
+            game.discuss_wrong_prompt(now)
+        } else {
+            game.advance_round(now)
         };
-        let round = (last_of_round && game.posts_results()).then(|| game.round_result(round_idx));
+        let round = (last_of_round && !wrong_prompt && game.posts_results())
+            .then(|| game.round_result(round_idx));
         // A song ending is the other moment the game is written down: the scores
         // it just paid out, and the position the game moves to.
         self.gp_snapshot(&game);
@@ -1601,9 +2111,178 @@ impl GpData {
             message,
             text_channel: game.text_channel,
             next,
-            failed: played == GpPlayed::Never,
+            failed: played == GpPlayed::Never || (wrong_prompt && played != GpPlayed::Heard),
             held: game.reveal == GpReveal::Round,
             round,
+            wrong_prompt,
+        })
+    }
+
+    pub fn gp_wrong_prompt_window(&self, guild_id: GuildId) -> Option<GpWrongPromptWindow> {
+        self.gp_games.get(&guild_id)?.wrong_prompt_window()
+    }
+
+    pub fn gp_open_wrong_prompt_ballot(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        now: i64,
+    ) -> Option<GpWrongPromptWindow> {
+        let mut game = self.gp_games.get_mut(&guild_id)?;
+        if game.phase != GpPhase::Discussing || game.generation != generation {
+            return None;
+        }
+        let idx = game.current_round;
+        game.wrong_prompt_round_mut(idx)?.closes_at = Some(now + GP_WRONG_PROMPT_BALLOT_SECS);
+        game.phase = GpPhase::Voting;
+        game.generation += 1;
+        self.gp_snapshot(&game);
+        game.wrong_prompt_window()
+    }
+
+    pub fn gp_set_wrong_prompt_ballot_message(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        message: (GenericChannelId, MessageId),
+    ) -> bool {
+        let Some(mut game) = self.gp_games.get_mut(&guild_id) else {
+            return false;
+        };
+        if game.phase != GpPhase::Voting || game.generation != generation {
+            return false;
+        }
+        let idx = game.current_round;
+        let Some(wrong) = game.wrong_prompt_round_mut(idx) else {
+            return false;
+        };
+        wrong.ballot_message = Some(message);
+        self.gp_snapshot(&game);
+        true
+    }
+
+    pub fn gp_wrong_prompt_choices(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        user: UserId,
+        now: i64,
+    ) -> CrackedResult<Vec<usize>> {
+        let game = self
+            .gp_games
+            .get(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        Ok(Self::wrong_prompt_voter(&game, generation, user, now)?
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.submitter != user && t.played == GpPlayed::Heard)
+            .map(|(clip, _)| clip)
+            .collect())
+    }
+
+    fn wrong_prompt_voter(
+        game: &GpGame,
+        generation: u64,
+        user: UserId,
+        now: i64,
+    ) -> CrackedResult<&[GpTrack]> {
+        if game.phase != GpPhase::Voting || game.generation != generation {
+            return Err(CrackedError::Other("Voting for that round is closed."));
+        }
+        let idx = game.current_round;
+        let wrong = game
+            .wrong_prompt_round(idx)
+            .ok_or(CrackedError::StaleRound)?;
+        if wrong.closes_at.is_none_or(|deadline| now >= deadline) {
+            return Err(CrackedError::Other("Voting for that round is closed."));
+        }
+        if wrong.ballots.contains_key(&user) {
+            return Err(CrackedError::Other("You already voted in this round."));
+        }
+        let tracks = &game.rounds[idx].tracks;
+        if !tracks
+            .iter()
+            .any(|t| t.submitter == user && t.played == GpPlayed::Heard)
+        {
+            return Err(CrackedError::Other(
+                "You can vote only if your clip played this round.",
+            ));
+        }
+        Ok(tracks)
+    }
+
+    /// Record one private ballot. Returns true as soon as every eligible
+    /// player has voted, so the caller can close using the same generation.
+    pub fn gp_wrong_prompt_vote(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        user: UserId,
+        clip_idx: usize,
+        now: i64,
+    ) -> CrackedResult<bool> {
+        let mut game = self
+            .gp_games
+            .get_mut(&guild_id)
+            .ok_or(CrackedError::NoGameInProgress)?;
+        let tracks = Self::wrong_prompt_voter(&game, generation, user, now)?;
+        if !tracks
+            .get(clip_idx)
+            .is_some_and(|t| t.submitter != user && t.played == GpPlayed::Heard)
+        {
+            return Err(CrackedError::Other(
+                "Choose another player's clip that played this round.",
+            ));
+        }
+        let eligible = tracks
+            .iter()
+            .filter(|t| t.played == GpPlayed::Heard)
+            .count();
+        let idx = game.current_round;
+        let wrong = game
+            .wrong_prompt_round_mut(idx)
+            .ok_or(CrackedError::StaleRound)?;
+        wrong.ballots.insert(user, clip_idx);
+        let everyone_voted = wrong.ballots.len() == eligible;
+        self.gp_snapshot(&game);
+        Ok(everyone_voted)
+    }
+
+    pub fn gp_finish_wrong_prompt_ballot(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+        now: i64,
+    ) -> Option<GpWrongPromptFinished> {
+        let mut game = self.gp_games.get_mut(&guild_id)?;
+        if game.phase != GpPhase::Voting || game.generation != generation {
+            return None;
+        }
+        let round_idx = game.current_round;
+        let wrong = game.wrong_prompt_round(round_idx)?;
+        let message = wrong.ballot_message;
+        let (result, next) = if let Some(result) = wrong.result(&game.rounds[round_idx].tracks) {
+            let points = wrong.points(&result);
+            for (player, amount) in points {
+                *game.scores.entry(player).or_insert(0) += amount;
+            }
+            game.wrong_prompt_round_mut(round_idx)?.closes_at = None;
+            let result = game.round_result(round_idx);
+            (Some(result), game.advance_round(now))
+        } else {
+            (
+                None,
+                game.retry_wrong_prompt(now, "Nobody voted in this round."),
+            )
+        };
+        self.gp_snapshot(&game);
+        Some(GpWrongPromptFinished {
+            round_idx,
+            total_rounds: game.rounds.len(),
+            generation: game.generation,
+            result,
+            next,
+            message,
         })
     }
 
@@ -1658,15 +2337,8 @@ impl GpData {
     /// Remove the guild's game if it is parked and `which` agrees, in one step,
     /// so nothing can replace the game between the check and the remove.
     fn gp_remove_parked_where(&self, guild_id: GuildId, which: impl Fn(&GpGame) -> bool) -> bool {
-        let Some((_, game)) = self
-            .gp_games
-            .remove_if(&guild_id, |_, g| g.parked_for_end && which(g))
-        else {
-            return false;
-        };
-        self.release_playback(guild_id);
-        self.gp_mark_finished(&game, GpOutcome::Ended);
-        true
+        self.gp_remove_where(guild_id, |game| game.parked_for_end && which(game))
+            .is_some()
     }
 
     /// Remove the game unconditionally (game over, bot kicked from voice).
@@ -1676,8 +2348,44 @@ impl GpData {
     /// abandoned. Without this a game ended on purpose would still look live
     /// after a redeploy and come back.
     pub fn gp_remove(&self, guild_id: GuildId) -> Option<GpGame> {
-        let (_, game) = self.gp_games.remove(&guild_id)?;
-        self.release_playback(guild_id);
+        self.gp_remove_where(guild_id, |_| true)
+    }
+
+    pub fn gp_remove_finished(&self, guild_id: GuildId, generation: u64) -> Option<GpGame> {
+        self.gp_remove_where(guild_id, |game| {
+            game.phase == GpPhase::Finished && !game.parked_for_end && game.generation == generation
+        })
+    }
+
+    pub fn gp_stop_wrong_prompt_without_players(
+        &self,
+        guild_id: GuildId,
+        generation: u64,
+    ) -> Option<Vec<(UserId, u32)>> {
+        let game = self.gp_remove_where(guild_id, |game| {
+            game.phase == GpPhase::Submitting
+                && game.generation == generation
+                && game
+                    .wrong_prompt_round(game.current_round)
+                    .is_some_and(|round| round.odd_player.is_none())
+        })?;
+        Some(game.sorted_scores())
+    }
+
+    fn gp_remove_where(
+        &self,
+        guild_id: GuildId,
+        should_remove: impl FnOnce(&GpGame) -> bool,
+    ) -> Option<GpGame> {
+        let (_, game) = self.gp_games.remove_if(&guild_id, |_, game| {
+            if !should_remove(game) {
+                return false;
+            }
+            // Keep the map slot locked until the lease is released. A new
+            // start can then safely claim the same guild's playback.
+            self.release_playback(guild_id);
+            true
+        })?;
         let outcome = if game.parked_for_end {
             GpOutcome::Ended
         } else if game.phase == GpPhase::Finished {
@@ -1740,9 +2448,25 @@ impl GpData {
     /// what a resume reads to know the round is not still owed them, and
     /// the snapshot that ended the round went out before the post.
     pub fn gp_mark_results_posted(&self, guild_id: GuildId, round_idx: usize) {
+        self.gp_mark_results_posted_for(guild_id, round_idx, None);
+    }
+
+    pub fn gp_mark_results_posted_if(&self, guild_id: GuildId, round_idx: usize, generation: u64) {
+        self.gp_mark_results_posted_for(guild_id, round_idx, Some(generation));
+    }
+
+    fn gp_mark_results_posted_for(
+        &self,
+        guild_id: GuildId,
+        round_idx: usize,
+        generation: Option<u64>,
+    ) {
         let Some(mut game) = self.gp_games.get_mut(&guild_id) else {
             return;
         };
+        if generation.is_some_and(|generation| game.generation != generation) {
+            return;
+        }
         let Some(round) = game.rounds.get_mut(round_idx) else {
             return;
         };
@@ -1774,6 +2498,27 @@ impl GpData {
         let total = game.rounds.len();
         let round_idx = game.current_round.min(total.saturating_sub(1));
         let round = &game.rounds[round_idx];
+        if game.wrong_prompt.is_some() {
+            let count = match game.phase {
+                GpPhase::Submitting => round.submissions.len(),
+                GpPhase::Discussing | GpPhase::Voting => round
+                    .tracks
+                    .iter()
+                    .filter(|t| t.played == GpPlayed::Heard)
+                    .count(),
+                GpPhase::Playing | GpPhase::Finished => round.tracks.len(),
+            };
+            return Ok(GpStatus::WrongPrompt {
+                round: round_idx + 1,
+                total,
+                phase: game.phase,
+                closes_at: round
+                    .closes_at
+                    .or_else(|| game.wrong_prompt_window().map(|w| w.closes_at)),
+                count,
+                scores: game.sorted_scores(),
+            });
+        }
         let names = |ids: Vec<UserId>| {
             let mut v: Vec<String> = ids.into_iter().map(|id| game.name_of(id)).collect();
             v.sort_by_key(|n| n.to_lowercase());
@@ -1789,7 +2534,7 @@ impl GpData {
                 submitted: names(round.submissions.keys().copied().collect()),
                 scores: game.visible_scores(),
             },
-            GpPhase::Playing | GpPhase::Finished => {
+            GpPhase::Discussing | GpPhase::Voting | GpPhase::Playing | GpPhase::Finished => {
                 let t = round.tracks.get(game.current_track);
                 GpStatus::Playing {
                     round: round_idx + 1,

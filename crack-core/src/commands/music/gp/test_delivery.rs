@@ -21,6 +21,7 @@ fn playback(data: &Data, fake: &Arc<FakeTransport>) -> GpPlayback {
     GpPlayback {
         data: Arc::new(data.clone()),
         transport: fake.clone(),
+        cache: None,
         call: Arc::new(Mutex::new(standalone_call(G, A))),
         guild_id: G,
     }

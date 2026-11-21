@@ -15,7 +15,8 @@
 //! converts in both directions. Keeping the persisted shape its own set of
 //! plain types is what lets a later write-behind send the same rows.
 
-use sqlx::{PgPool, Postgres, Transaction};
+use serde_json::Value;
+use sqlx::{types::Json, PgPool, Postgres, Transaction};
 
 /// How a game left the live set.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,7 +53,7 @@ pub struct GpGameRow {
     pub voice_channel_id: i64,
     pub text_channel_id: i64,
     pub category: String,
-    /// `submitting` | `playing` | `finished`
+    /// `submitting` | `playing` | `discussing` | `voting` | `finished`
     pub phase: String,
     pub current_round: i32,
     pub current_track: i32,
@@ -64,6 +65,8 @@ pub struct GpGameRow {
     /// Post a results embed when a round ends.
     pub round_results: bool,
     pub generation: i64,
+    /// A Wrong Prompt game's private state. Classic games have no payload.
+    pub wrong_prompt: Option<Value>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -178,15 +181,16 @@ impl GpSaved {
                    guild_id, started_at, host_id, voice_channel_id, text_channel_id,
                    category, phase, current_round, current_track, timer_secs,
                    clip_start_secs, clip_length_secs, reveal, round_results, generation,
-                   last_seen_at
+                   wrong_prompt, last_seen_at
                )
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now())
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now())
                ON CONFLICT (guild_id, started_at) DO UPDATE SET
                    phase = EXCLUDED.phase,
                    current_round = EXCLUDED.current_round,
                    current_track = EXCLUDED.current_track,
                    generation = EXCLUDED.generation,
                    text_channel_id = EXCLUDED.text_channel_id,
+                   wrong_prompt = EXCLUDED.wrong_prompt,
                    last_seen_at = now()
                RETURNING id"#,
             g.guild_id,
@@ -204,6 +208,7 @@ impl GpSaved {
             g.reveal,
             g.round_results,
             g.generation,
+            g.wrong_prompt.as_ref().map(Json) as Option<Json<&Value>>,
         )
         .fetch_one(&mut *tx)
         .await?;
@@ -293,6 +298,26 @@ impl GpSaved {
 
     async fn save_tracks(&self, tx: &mut Transaction<'_, Postgres>, id: i64) -> sqlx::Result<()> {
         let t = self.changed_tracks();
+        if self.game.wrong_prompt.is_some() {
+            // A voided Wrong Prompt attempt reuses its round number. Remove
+            // rows from that attempt that are absent from the new snapshot.
+            let current = self.game.current_round;
+            let submitters: Vec<i64> = t
+                .iter()
+                .filter(|track| track.round_idx == current)
+                .map(|track| track.submitter_id)
+                .collect();
+            sqlx::query!(
+                r#"DELETE FROM gp_track
+                   WHERE game_id = $1 AND round_idx = $2
+                     AND NOT (submitter_id = ANY($3::bigint[]))"#,
+                id,
+                current,
+                &submitters,
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
         if t.is_empty() {
             return Ok(());
         }
@@ -454,7 +479,8 @@ impl GpSaved {
             r#"SELECT id, guild_id, started_at, host_id, voice_channel_id, text_channel_id,
                       category, phase, current_round, current_track, timer_secs,
                       clip_start_secs, clip_length_secs, reveal, round_results, generation,
-                      EXTRACT(EPOCH FROM now() - last_seen_at)::bigint AS "last_seen_secs_ago!"
+                      EXTRACT(EPOCH FROM now() - last_seen_at)::bigint AS "last_seen_secs_ago!",
+                      wrong_prompt AS "wrong_prompt: Json<Value>"
                FROM gp_game
                WHERE guild_id = $1 AND finished_at IS NULL
                ORDER BY started_at DESC
@@ -600,6 +626,7 @@ impl GpSaved {
                     reveal: g.reveal,
                     round_results: g.round_results,
                     generation: g.generation,
+                    wrong_prompt: g.wrong_prompt.map(|Json(value)| value),
                 },
                 players,
                 rounds,
@@ -723,6 +750,7 @@ mod tests {
                 reveal: "round".into(),
                 round_results: false,
                 generation: 1,
+                wrong_prompt: None,
             },
             players: vec![GpPlayerRow {
                 user_id: 100,
@@ -794,6 +822,21 @@ mod tests {
         let loaded = GpSaved::load_live(&pool, 1).await?.expect("live").saved;
         assert!(loaded.tracks[0].likes.is_empty());
         assert_eq!(loaded.tracks[0].guesses, vec![(100, 200)]);
+
+        s.game.phase = "voting".into();
+        s.game.wrong_prompt = Some(serde_json::json!({ "ballots": [[100, 2]] }));
+        assert_eq!(s.save(&pool).await?, id);
+        let loaded = GpSaved::load_live(&pool, 1).await?.expect("live").saved;
+        assert_eq!(loaded, s);
+
+        // The void vote resets the same round. A submitter in both attempts
+        // has only the new submission; the other old track disappears.
+        s.game.phase = "submitting".into();
+        s.game.wrong_prompt = Some(serde_json::json!({ "ballots": [] }));
+        s.tracks = vec![track(0, 100, None)];
+        s.save(&pool).await?;
+        let loaded = GpSaved::load_live(&pool, 1).await?.expect("live").saved;
+        assert_eq!(loaded, s);
         Ok(())
     }
 

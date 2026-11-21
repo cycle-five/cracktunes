@@ -1,0 +1,134 @@
+[
+  {
+    "theme": "entrances",
+    "pairs": [
+      ["Your villain entrance", "Your wrestling entrance"],
+      ["Walk onto the pitch to a cheering home crowd", "Walk onto the pitch to a booing away crowd"],
+      ["Arrive at a reunion ready to show how much you’ve changed", "Arrive at a reunion ready to show how little any of it got to you"],
+      ["Take the karaoke mic because you’ve been waiting for this song", "Take the karaoke mic because the party needs rescuing"],
+      ["Walk into an interview you’re pretty sure you’ll ace", "Walk into an interview you bluffed your way into"],
+      ["Pull up to a party in the nicest car you’ve ever driven", "Pull up in a total wreck and make it look intentional"]
+    ]
+  },
+  {
+    "theme": "nights_out",
+    "pairs": [
+      ["Be the first person dancing before anyone else gets up", "Be the last person dancing after the lights come on"],
+      ["Slip out of a party without anyone noticing", "Step outside a party for a minute to collect yourself"],
+      ["Get ready for the first night out in months", "Get ready to go out again after swearing last night was enough"],
+      ["Get your friends to stay for one more song", "Get your friends to come with you to the next place"],
+      ["Walk home with your friends as the sun comes up", "Walk home alone while the night is still going"],
+      ["Put on a song for someone who’s had a terrible week", "Put on a song for someone who just got great news"]
+    ]
+  },
+  {
+    "theme": "crushes_and_fallout",
+    "pairs": [
+      ["Walk home after finally saying what you meant", "Walk home after deciding to keep it to yourself"],
+      ["Act casual while walking past your crush", "Act casual after waving at someone who wasn’t waving at you"],
+      ["Practise the comeback you never used", "Rehearse an apology you’re unsure you owe"],
+      ["Celebrate ending a wildly petty feud", "Celebrate winning a wildly petty feud"],
+      ["Get ready for a first date you’ve been thinking about all week", "Get ready to see someone you’re pretending you’re over"],
+      ["Play a song you’d put on a mixtape for someone", "Play a song you wish someone would put on a mixtape for you"]
+    ]
+  },
+  {
+    "theme": "nostalgia_and_fresh_starts",
+    "pairs": [
+      ["Pack up a flat you’re ready to leave", "Pack up a flat you wish you could stay in"],
+      ["Drive back into your hometown after years away", "Drive out of your hometown knowing you probably won’t move back"],
+      ["Find a photo from a summer you’d relive", "Find a photo from a summer you’re glad you survived"],
+      ["Spend the first night in a place that finally feels like yours", "Spend the last night in a place that always felt like yours"],
+      ["Take the long way home to pass somewhere you miss", "Take the long way home because you’re in no hurry to get there"],
+      ["Hear the first song your teenage self would still love", "Hear the first song your teenage self would have been embarrassed to love"]
+    ]
+  },
+  {
+    "theme": "movie_scenes",
+    "pairs": [
+      ["Drive into a city on the night your luck finally turns", "Drive out of a city before your luck runs out"],
+      ["Sneak through a museum after closing", "Sneak through your own house after making a ridiculous amount of noise"],
+      ["Enter a ballroom pretending you belong there", "Enter a ballroom hoping one particular person spots you"],
+      ["Give your team a pep talk before an impossible comeback", "Give your team a pep talk after a spectacular loss"],
+      ["Cue the credits after the couple finally gets together", "Cue the credits after the couple parts on good terms"],
+      ["Make a dramatic escape from a wedding reception", "Make a dramatic return to the reception because you forgot your coat"]
+    ]
+  },
+  {
+    "theme": "tiny_dramas",
+    "pairs": [
+      ["Sprint for a train leaving in 30 seconds", "Sprint back because you left your phone in the café"],
+      ["Open the fridge at 2 a.m. like you’re cracking a safe", "Sneak the last slice of cake like you’re stealing a diamond"],
+      ["Walk through the rain like you’re in a music video", "Wait for a delayed bus in the rain and pretend it’s fine"],
+      ["Make dinner for someone you want to impress", "Make dinner alone and pretend you’re on a cooking show"],
+      ["Hit send on an email you’ve rewritten twelve times", "Realise you hit Reply All"],
+      ["Fit a sofa through a doorway while your friends are watching", "Carry every grocery bag upstairs in a single trip"]
+    ]
+  },
+  {
+    "theme": "discord_and_group_chats",
+    "pairs": [
+      ["Unmute to share genuinely big news", "Unmute to interrupt with extremely petty news"],
+      ["Send the meme that sums up the whole night", "Send the meme you hope will salvage the whole night"],
+      ["Get through a video call by hiding your laughter", "Get through a video call by pretending you’ve been paying attention"],
+      ["Wait through a long silence before delivering the punchline", "Wait through a long silence after delivering the punchline"],
+      ["Go live and realise nobody’s watching yet", "Go live and realise all your friends are already watching"],
+      ["Bring the screenshots that prove your friend was bluffing", "Bring the screenshots that prove you confidently remembered it wrong"]
+    ]
+  },
+  {
+    "theme": "games_and_competition",
+    "pairs": [
+      ["Play the final seconds with a one-point lead", "Play the final seconds needing one point to tie"],
+      ["Take the deciding penalty in a shootout", "Stand in goal for the deciding penalty in a shootout"],
+      ["Take a victory lap after carrying your team", "Take a victory lap after doing the bare minimum for your team"],
+      ["Face a boss you’ve practised against all week", "Face a boss you wandered into by accident"],
+      ["Choose a character because the outfit looks incredible", "Choose a character because everyone hates playing against them"],
+      ["Start the final lap trying to keep first place", "Start the final lap trying to catch first place"]
+    ]
+  },
+  {
+    "theme": "friends_and_family",
+    "pairs": [
+      ["Find out your friends are planning a surprise party for you and play along", "Plan a surprise party and pretend you forgot your friend’s birthday"],
+      ["Read the heartfelt toast you wrote for a friend", "Improvise a heartfelt toast when someone hands you the mic"],
+      ["Open a gift that’s exactly what you wanted", "Open a gift you have to pretend is exactly what you wanted"],
+      ["Put the kettle on because someone needs cheering up", "Put the kettle on because someone has gossip too good to text"],
+      ["Duck down a supermarket aisle to avoid someone", "Sneak down a supermarket aisle to surprise your best friend"],
+      ["Tell a family story you’ve heard a hundred times", "Hear the version of that family story nobody used to tell in front of you"]
+    ]
+  },
+  {
+    "theme": "small_wins",
+    "pairs": [
+      ["Find a tenner in a coat you haven’t worn since last winter", "See a refund hit your account that you’d given up on"],
+      ["Tick the last thing off a list you’ve had for weeks", "Cross out the last thing because you’ve finally decided to let it go"],
+      ["Clean the flat because you’re in an inexplicably productive mood", "Clean the flat because guests are ten minutes away"],
+      ["Clock out before a long weekend", "Clock out after the shift you thought would never end"],
+      ["Finish a DIY job exactly as planned", "Finish a DIY job held together by one heroic bit of tape"],
+      ["Slot the last puzzle piece into place", "Find the missing puzzle piece under your elbow after turning the room upside down"]
+    ]
+  },
+  {
+    "theme": "onstage_and_on_the_aux",
+    "pairs": [
+      ["Keep a crowd hyped while your guitarist replaces a broken string", "Keep a crowd hyped while your band decides what to play for the encore"],
+      ["Deliver your first line onstage after weeks of rehearsals", "Deliver your first line onstage after getting called in at the last minute"],
+      ["Play the song that was on at every school disco", "Play the song that was on every family road trip"],
+      ["Find an old playlist made by someone you still talk to", "Find an old playlist made by someone you haven’t spoken to in years"],
+      ["Play the original to convince a friend it still holds up", "Play the cover that made you reconsider the original"],
+      ["Play your favourite song for someone hearing it for the first time", "Hear someone play your favourite song without knowing it’s yours"]
+    ]
+  },
+  {
+    "theme": "strange_scenes",
+    "pairs": [
+      ["Pick up the first signal from an unknown planet", "Realise the mysterious signal is coming from inside your spaceship"],
+      ["Discover a secret passage in your house", "Discover somebody else has been using a secret passage in your house"],
+      ["Put together a team of experts for an impossible job", "Train a team of beginners to pass as experts for an impossible job"],
+      ["Watch the whole city light up with fireworks right on cue", "Watch the entire city lose power at once"],
+      ["Practise a speech for when you finally meet an alien", "Practise a speech for convincing your friends you finally met an alien"],
+      ["Open a time capsule somebody meant for you to find", "Open a time capsule meant for someone a hundred years from now"]
+    ]
+  }
+]

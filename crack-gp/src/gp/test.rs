@@ -1744,6 +1744,7 @@ fn round_results_embed_json() {
         failed: false,
     };
     let r = GpRoundResult {
+        wrong_prompt: None,
         round_idx: 1,
         total_rounds: 5,
         prompt: "Cry song.".into(),
@@ -1972,6 +1973,7 @@ fn category_picker_json() {
 #[test]
 fn prompt_embeds_json() {
     let opened = GpWindowOpened {
+        wrong_prompt: false,
         round_idx: 1,
         total_rounds: 3,
         prompt: "What song do you cry to?".into(),
@@ -1993,6 +1995,7 @@ fn prompt_embeds_json() {
         .starts_with(&format!("<t:{NOW}:R>")));
 
     let closed = GpWindowClosed {
+        wrong_prompt: false,
         round_idx: 1,
         total_rounds: 3,
         prompt: "p".into(),
@@ -2058,6 +2061,7 @@ fn prompt_embeds_json() {
 #[test]
 fn track_embed_hides_submitter() {
     let start = GpTrackStart {
+        wrong_prompt: false,
         round_idx: 0,
         total_rounds: 2,
         track_idx: 1,
@@ -2098,6 +2102,7 @@ fn track_embed_hides_submitter() {
 #[test]
 fn reveal_embed_json() {
     let res = GpTrackResult {
+        wrong_prompt: false,
         round_idx: 0,
         total_rounds: 2,
         track_idx: 0,
@@ -2399,6 +2404,7 @@ fn field_value(r: &Rendered, name: &str) -> String {
 
 fn round_result(title: &str) -> GpRoundResult {
     GpRoundResult {
+        wrong_prompt: None,
         round_idx: 0,
         total_rounds: 3,
         prompt: "p".into(),
@@ -2450,6 +2456,7 @@ fn every_card_renders_through_the_one_renderer() {
 
     let prompt = go(GpCard::Prompt(
         (&GpWindowOpened {
+            wrong_prompt: false,
             round_idx: 0,
             total_rounds: 3,
             prompt: "p".into(),
@@ -2468,6 +2475,7 @@ fn every_card_renders_through_the_one_renderer() {
 
     let closed = go(GpCard::PromptClosed(
         (&GpWindowClosed {
+            wrong_prompt: false,
             round_idx: 0,
             total_rounds: 3,
             prompt: "p".into(),
@@ -2777,6 +2785,7 @@ fn gp_cards_render_as_before() {
 #[test]
 fn gp_cards_keep_their_titles_and_colours() {
     let res = GpTrackResult {
+        wrong_prompt: false,
         round_idx: 0,
         total_rounds: 2,
         track_idx: 0,
@@ -2836,6 +2845,7 @@ fn gp_cards_keep_their_titles_and_colours() {
     check(&held_failed, 0xE7_4C_3C, GP_REVEAL_HELD, &[GP_TRACK_FAILED]);
 
     let opened = GpWindowOpened {
+        wrong_prompt: false,
         round_idx: 1,
         total_rounds: 3,
         prompt: "p".into(),
@@ -2850,6 +2860,7 @@ fn gp_cards_keep_their_titles_and_colours() {
         Some(0x11_CA_80)
     );
     let closed = GpWindowClosed {
+        wrong_prompt: false,
         round_idx: 1,
         total_rounds: 3,
         prompt: "p".into(),
@@ -2906,4 +2917,228 @@ fn user_players(players: &[(UserId, String)]) -> Vec<(crack_model::UserRef, Stri
         .iter()
         .map(|(id, name)| (id.to_ref(), name.clone()))
         .collect()
+}
+
+fn wrong_prompt_game(data: &GpData) -> GpWindowOpened {
+    use crate::gp_prompts::WrongPromptPair;
+
+    let deck = ["one", "two", "three"]
+        .into_iter()
+        .map(|name| WrongPromptPair {
+            majority: format!("{name} majority"),
+            alternate: format!("{name} alternate"),
+        })
+        .collect();
+    data.gp_start_wrong_prompt(G, A, "alice".into(), VC, TC, deck, 1, 90, None, NOW)
+        .unwrap()
+}
+
+fn submit_wrong_prompt(data: &GpData, opened: &GpWindowOpened) -> GpTrackStart {
+    let members = [A, B, C, D];
+    for (idx, player) in members.into_iter().enumerate() {
+        let generation = data.gp_submission_generation(G, player).unwrap();
+        assert_eq!(generation, Some(opened.generation));
+        let submission = data
+            .gp_submit_if(
+                G,
+                player,
+                player.to_string(),
+                track(&player.to_string()),
+                &members,
+                generation,
+            )
+            .unwrap();
+        assert_eq!(submission.everyone_in, idx == members.len() - 1);
+    }
+    let closed = data.gp_close_window(G, A, &mut rng(), NOW + 1).unwrap();
+    let GpNext::Track(track) = closed.next else {
+        panic!("four submitted songs should play");
+    };
+    *track
+}
+
+fn play_wrong_prompt_attempt(data: &GpData, mut start: GpTrackStart, first: GpPlayed) -> GpNext {
+    for clip in 0..4 {
+        let result = data
+            .gp_finish_track_if(
+                G,
+                start.generation,
+                start.round_idx,
+                start.track_idx,
+                NOW + 10 + clip,
+                if clip == 0 { first } else { GpPlayed::Heard },
+            )
+            .unwrap();
+        assert!(
+            result.round.is_none(),
+            "ballot result must stay hidden before voting"
+        );
+        assert!(result.scores.iter().all(|(_, score)| *score == 0));
+        if let GpNext::Track(next) = result.next {
+            start = *next;
+        } else {
+            return result.next;
+        }
+    }
+    panic!("the round should leave playback");
+}
+
+#[test]
+fn wrong_prompt_private_cards_and_round_scoring() {
+    for caught in [false, true] {
+        let data = data();
+        let opened = wrong_prompt_game(&data);
+        let members = [A, B, C, D];
+        assert!(opened.wrong_prompt);
+        data.gp_prepare_wrong_prompt(G, opened.generation, members.to_vec(), &mut rng(), NOW)
+            .unwrap();
+        let spectator = UserId::new(500);
+        assert!(data
+            .gp_wrong_prompt_card(G, opened.generation, spectator)
+            .is_err());
+        assert!(data.gp_submission_generation(G, spectator).is_err());
+        let odd = members
+            .into_iter()
+            .filter(|player| {
+                data.gp_wrong_prompt_card(G, opened.generation, *player)
+                    .unwrap()
+                    .ends_with("alternate")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(odd.len(), 1);
+        let odd = odd[0];
+        let start = submit_wrong_prompt(&data, &opened);
+        assert!(start.wrong_prompt && start.players.is_empty());
+        let GpNext::Discuss(discussion) = play_wrong_prompt_attempt(&data, start, GpPlayed::Heard)
+        else {
+            panic!("all four clips played");
+        };
+        assert_eq!(
+            discussion.closes_at,
+            NOW + 13 + GP_WRONG_PROMPT_DISCUSSION_SECS
+        );
+        let ballot = data
+            .gp_open_wrong_prompt_ballot(G, discussion.generation, discussion.closes_at)
+            .unwrap();
+        assert_eq!(
+            ballot.closes_at,
+            discussion.closes_at + GP_WRONG_PROMPT_BALLOT_SECS
+        );
+
+        let tracks = game(&data).rounds[0]
+            .tracks
+            .iter()
+            .map(|t| t.submitter)
+            .collect::<Vec<_>>();
+        let odd_clip = tracks.iter().position(|t| *t == odd).unwrap();
+        let regular = tracks
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| **t != odd)
+            .collect::<Vec<_>>();
+        let vote_time = ballot.closes_at - 1;
+        assert!(data
+            .gp_wrong_prompt_vote(G, ballot.generation, odd, odd_clip, vote_time)
+            .is_err());
+        assert!(!data
+            .gp_wrong_prompt_choices(G, ballot.generation, odd, vote_time)
+            .unwrap()
+            .contains(&odd_clip));
+        assert!(data
+            .gp_wrong_prompt_choices(G, ballot.generation, spectator, vote_time)
+            .is_err());
+        assert!(data
+            .gp_wrong_prompt_choices(G, ballot.generation, odd, ballot.closes_at)
+            .is_err());
+        assert!(!data
+            .gp_wrong_prompt_vote(G, ballot.generation, *regular[0].1, odd_clip, vote_time)
+            .unwrap());
+        assert!(data
+            .gp_wrong_prompt_vote(G, ballot.generation, *regular[0].1, odd_clip, vote_time)
+            .is_err());
+        assert!(!data
+            .gp_wrong_prompt_vote(G, ballot.generation, *regular[1].1, odd_clip, vote_time)
+            .unwrap());
+        let target = if caught { odd_clip } else { regular[0].0 };
+        assert!(!data
+            .gp_wrong_prompt_vote(G, ballot.generation, *regular[2].1, target, vote_time)
+            .unwrap());
+        assert!(data
+            .gp_wrong_prompt_vote(G, ballot.generation, odd, regular[0].0, vote_time)
+            .unwrap());
+
+        let finished = data
+            .gp_finish_wrong_prompt_ballot(G, ballot.generation, vote_time)
+            .unwrap();
+        assert!(matches!(finished.next, GpNext::Finished(_)));
+        let result = finished.result.unwrap();
+        let detail = result.wrong_prompt.unwrap();
+        assert_eq!(detail.odd_player, odd);
+        assert_eq!(detail.odd_clip, odd_clip);
+        assert_eq!(detail.caught, caught);
+        assert_eq!(detail.votes[odd_clip], if caught { 3 } else { 2 });
+        assert_eq!(result.points.len(), 3);
+        assert_eq!(
+            result.scores.iter().find(|(p, _)| *p == odd).unwrap().1,
+            if caught { 0 } else { 2 }
+        );
+        assert!(data
+            .gp_finish_wrong_prompt_ballot(G, ballot.generation, vote_time)
+            .is_none());
+    }
+}
+
+#[test]
+fn wrong_prompt_unheard_and_empty_ballots_retry_with_fresh_pairs() {
+    let data = data();
+    let first = wrong_prompt_game(&data);
+    let members = vec![A, B, C, D];
+    data.gp_prepare_wrong_prompt(G, first.generation, members.clone(), &mut rng(), NOW)
+        .unwrap();
+    let card = data.gp_wrong_prompt_card(G, first.generation, A).unwrap();
+    let first_track = submit_wrong_prompt(&data, &first);
+    let expired_track = first_track.generation;
+    let GpNext::Retry { next, .. } =
+        play_wrong_prompt_attempt(&data, first_track, GpPlayed::CutShort)
+    else {
+        panic!("fewer than four songs heard should retry");
+    };
+    let GpNext::Window(second) = *next else {
+        panic!("expected a new submission window");
+    };
+    assert_eq!(second.round_idx, first.round_idx);
+    data.gp_prepare_wrong_prompt(G, second.generation, members.clone(), &mut rng(), NOW)
+        .unwrap();
+    let second_card = data.gp_wrong_prompt_card(G, second.generation, A).unwrap();
+    assert_ne!(card, second_card);
+    assert!(data.gp_wrong_prompt_card(G, first.generation, A).is_err());
+
+    let second_track = submit_wrong_prompt(&data, &second);
+    assert!(data
+        .gp_finish_track_if(G, expired_track, 0, 0, NOW, GpPlayed::Heard)
+        .is_none());
+    let GpNext::Discuss(discussion) =
+        play_wrong_prompt_attempt(&data, second_track, GpPlayed::Heard)
+    else {
+        panic!("the second attempt's four clips played");
+    };
+    let ballot = data
+        .gp_open_wrong_prompt_ballot(G, discussion.generation, discussion.closes_at)
+        .unwrap();
+    let finished = data
+        .gp_finish_wrong_prompt_ballot(G, ballot.generation, ballot.closes_at)
+        .unwrap();
+    assert!(finished.result.is_none());
+    let GpNext::Retry { next, .. } = finished.next else {
+        panic!("an empty ballot should retry");
+    };
+    let GpNext::Window(third) = *next else {
+        panic!("expected a fresh attempt after the empty ballot");
+    };
+    assert_eq!(third.round_idx, first.round_idx);
+    data.gp_prepare_wrong_prompt(G, third.generation, members, &mut rng(), NOW)
+        .unwrap();
+    let third_card = data.gp_wrong_prompt_card(G, third.generation, A).unwrap();
+    assert_ne!(card, third_card);
+    assert_ne!(second_card, third_card);
 }

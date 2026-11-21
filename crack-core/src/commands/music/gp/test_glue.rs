@@ -2,10 +2,13 @@
 //! song, the command blocklist against the registry, a refused command -- and
 //! the `Data`-shaped helpers the delivery tests share. The game's own rules are
 //! tested in `test.rs`, which has no `Data`.
-use super::commands::{gp, gp_start, refuse_gp, GpCategoryChoice, GpRevealChoice};
+use super::commands::{
+    gp, gp_category_suggestions, gp_start, refuse_gp, GpCategoryChoice, GpCategorySelection,
+    GpModeChoice, GpRevealChoice,
+};
 use super::playback::{gp_played, gp_played_at_end};
 use super::*;
-use crate::commands::music::gp_prompts::GpCategory;
+use crate::commands::music::gp_prompts::{GpCategory, WrongPromptTheme};
 use crate::messaging::message::CrackedMessage;
 use crate::{errors::CrackedError, Data, DataInner};
 use ::serenity::all::{GuildId, UserId};
@@ -278,21 +281,55 @@ fn command_registration() {
                     "clip_start",
                     "clip_length",
                     "reveal",
-                    "results"
+                    "results",
+                    "mode"
                 ]
             );
             assert!(!sub.parameters[0].required, "no category is Random");
             let reveal = sub.parameters.iter().find(|p| p.name == "reveal").unwrap();
             assert_eq!(reveal.choices.len(), 2, "after each song, or at the end");
-            assert_eq!(
-                sub.parameters[0].choices.len(),
-                crate::commands::music::gp_prompts::GP_PROMPTS.len() + 2,
-                "every category + Random + Pick several"
-            );
+            let mode = sub.parameters.iter().find(|p| p.name == "mode").unwrap();
+            assert_eq!(mode.choices.len(), 2);
+            assert_eq!(mode.choices[0].name, "Classic GP");
+            assert_eq!(mode.choices[1].name, "Wrong Prompt");
+            assert!(sub.parameters[0].choices.is_empty());
+            assert!(sub.parameters[0].autocomplete_callback.is_some());
             // Nothing is required; everything has a default.
             assert!(sub.parameters.iter().all(|p| !p.required));
         }
     }
+}
+
+#[test]
+fn the_category_selector_suggests_categories_for_the_mode() {
+    let classic = gp_category_suggestions(GpModeChoice::Classic, "");
+    let wrong_prompt = gp_category_suggestions(GpModeChoice::WrongPrompt, "");
+    assert_eq!(
+        &classic[..2],
+        &[
+            (GpCategory::Random.display(), "random"),
+            (GpCategory::PickSeveral.display(), "pick"),
+        ]
+    );
+    assert_eq!(&classic[..2], &wrong_prompt[..2]);
+    assert_eq!(classic.len(), GpCategory::CATEGORIES.len() + 2);
+    assert_eq!(wrong_prompt.len(), WrongPromptTheme::ALL.len() + 2);
+    assert!(classic.iter().any(|(_, key)| *key == "nostalgia"));
+    assert!(!wrong_prompt.iter().any(|(_, key)| *key == "nostalgia"));
+    assert_eq!(
+        gp_category_suggestions(GpModeChoice::WrongPrompt, "  GaMeS "),
+        vec![("Games and competition", "games_and_competition")]
+    );
+    for (label, value) in classic.into_iter().chain(wrong_prompt) {
+        let selection = GpCategorySelection::from_name(value);
+        assert!(selection.is_some(), "{value} must be a command value");
+        assert_eq!(GpCategorySelection::from_name(label), selection);
+    }
+    assert_eq!(
+        GpCategorySelection::from_name("mixed"),
+        Some(GpCategorySelection::Random)
+    );
+    assert_eq!(GpCategorySelection::from_name("5"), None);
 }
 
 /// Everything the subscriber formats lands in one shared buffer the test

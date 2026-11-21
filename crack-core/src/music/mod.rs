@@ -16,7 +16,7 @@ pub mod queue {
         queue_track_back, queue_track_front,
     };
     pub use crack_music::music::queue::{
-        _queue_track_ready_back, build_track, enqueue, enqueue_input_back,
+        _queue_track_ready_back, build_anonymous_track, build_track, enqueue, enqueue_input_back,
         enqueue_resolved_tracks_back, enqueue_track_back, force_skip_top_track, get_mode, get_msg,
         new_track, pause_queue, play_beside_queue, preload_from_metadata, preload_time,
         queue_resolved_track_back, queue_track_ready_front, record_add, remove_at, stop_queue,
