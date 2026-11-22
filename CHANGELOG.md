@@ -10,6 +10,17 @@ checks both.
 
 ## Unreleased
 
+## v0.46.5 (2026-11-21)
+
+### Fixed
+
+- **`/gp submit` answers when the search is slow.** When the first search
+  found nothing, the bot asked yt-dlp, which takes four or five seconds.
+  Discord drops a command left unanswered for three, so the player saw "The
+  application did not respond" and never learned whether the song was found.
+  `/gp submit` now tells Discord the answer is coming once a search has run
+  for a second and a half. A song found quickly is still confirmed at once.
+
 ## v0.46.4 (2026-11-17)
 
 ### Fixed

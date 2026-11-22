@@ -553,6 +553,38 @@ async fn gp_spotify_query(url: &str) -> CrackedResult<QueryType> {
     Ok(QueryType::Keywords(query))
 }
 
+/// How long `/gp submit` looks for the song before it tells Discord the answer
+/// is on its way. Discord drops an interaction left unanswered for three
+/// seconds, and that clock started before this command did, so the margin is
+/// generous.
+pub(in crate::commands::music::gp) const GP_SUBMIT_DEFER_AFTER: Duration =
+    Duration::from_millis(1500);
+
+/// Run `work`, and call `defer` once if it is still going after `after`.
+///
+/// A fast answer is sent as it always was, with no "thinking" state in front
+/// of it. A slow one is deferred in time: without that the reply, right or
+/// wrong, arrives after Discord has given up and the player sees "The
+/// application did not respond".
+pub(in crate::commands::music::gp) async fn defer_if_slow<T, D, DFut>(
+    work: impl std::future::Future<Output = T>,
+    after: Duration,
+    defer: D,
+) -> T
+where
+    D: FnOnce() -> DFut,
+    DFut: std::future::Future<Output = ()>,
+{
+    tokio::pin!(work);
+    tokio::select! {
+        biased;
+        out = &mut work => return out,
+        () = tokio::time::sleep(after) => {},
+    }
+    defer().await;
+    work.await
+}
+
 pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResult<CrackedMessage> {
     let guild_id = ctx.guild_id().ok_or(CrackedError::NoGuildId)?;
     let data = ctx.data();
@@ -568,18 +600,27 @@ pub async fn gp_submit_internal(ctx: Context<'_>, query: String) -> CrackedResul
             // seconds or more on a cold cache, well past Discord's
             // three-second interaction deadline -- so defer before doing any
             // of it, or the command fails before the answer exists. Only this
-            // path defers: a search or a YouTube link answers fast enough that
-            // a "thinking" state would be a downgrade.
+            // path defers up front: a search or a YouTube link usually answers
+            // fast enough that a "thinking" state would be a downgrade.
             ctx.defer_ephemeral().await?;
             gp_spotify_query(&url).await?
         },
         other => other,
     };
-    let track = data
-        .ct_client
-        .resolve_track(query_type)
-        .await
-        .map_err(CrackedError::TrackFail)?;
+    // Usually fast, but not always: when the first search finds nothing the
+    // yt-dlp fallback takes four or five seconds, found or not. poise's defer
+    // does nothing if the Spotify path above already deferred.
+    let track = defer_if_slow(
+        data.ct_client.resolve_track(query_type),
+        GP_SUBMIT_DEFER_AFTER,
+        || async {
+            if let Err(e) = ctx.defer_ephemeral().await {
+                tracing::warn!("gp: deferring a slow submit in {guild_id}: {e}");
+            }
+        },
+    )
+    .await
+    .map_err(CrackedError::TrackFail)?;
     let name = author_display_name(ctx).await;
     let title = track.get_title();
     let vc_members = gp_vc_members(ctx, game_vc);

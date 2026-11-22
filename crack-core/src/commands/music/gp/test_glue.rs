@@ -2,7 +2,9 @@
 //! song, the command blocklist against the registry, a refused command -- and
 //! the `Data`-shaped helpers the delivery tests share. The game's own rules are
 //! tested in `test.rs`, which has no `Data`.
-use super::commands::{gp, gp_start, refuse_gp, GpCategoryChoice, GpRevealChoice};
+use super::commands::{
+    defer_if_slow, gp, gp_start, refuse_gp, GpCategoryChoice, GpRevealChoice, GP_SUBMIT_DEFER_AFTER,
+};
 use super::playback::{gp_played, gp_played_at_end};
 use super::*;
 use crate::commands::music::gp_prompts::GpCategory;
@@ -453,4 +455,45 @@ fn the_gp_category_choice_parses_as_before() {
     assert_eq!(parse("pick"), Some(GpCategory::PickSeveral));
     assert_eq!(parse("NOSTALGIA"), Some(GpCategory::Nostalgia));
     assert_eq!(parse("nope"), None);
+}
+
+/// A song found quickly is answered with no "thinking" state in front of it.
+#[tokio::test(start_paused = true)]
+async fn a_fast_submit_is_not_deferred() {
+    let deferred_at = std::sync::Mutex::new(None);
+    let start = tokio::time::Instant::now();
+    let out = defer_if_slow(
+        async {
+            tokio::time::sleep(GP_SUBMIT_DEFER_AFTER - Duration::from_millis(1)).await;
+            "found"
+        },
+        GP_SUBMIT_DEFER_AFTER,
+        || async { *deferred_at.lock().unwrap() = Some(start.elapsed()) },
+    )
+    .await;
+    assert_eq!(out, "found");
+    assert_eq!(*deferred_at.lock().unwrap(), None);
+}
+
+/// The yt-dlp fallback takes four or five seconds. Discord drops an
+/// interaction unanswered after three, so the defer has to go out well inside
+/// that, once, and the search carries on to its answer rather than restarting.
+#[tokio::test(start_paused = true)]
+async fn a_slow_submit_is_deferred_inside_discords_deadline() {
+    let defers = std::sync::Mutex::new(Vec::new());
+    let start = tokio::time::Instant::now();
+    let out = defer_if_slow(
+        async {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            "found late"
+        },
+        GP_SUBMIT_DEFER_AFTER,
+        || async { defers.lock().unwrap().push(start.elapsed()) },
+    )
+    .await;
+    assert_eq!(out, "found late");
+    assert_eq!(*defers.lock().unwrap(), vec![GP_SUBMIT_DEFER_AFTER]);
+    assert!(GP_SUBMIT_DEFER_AFTER < Duration::from_secs(3));
+    // One search, not two: the whole thing took the search's five seconds.
+    assert_eq!(start.elapsed(), Duration::from_secs(5));
 }
