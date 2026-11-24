@@ -749,6 +749,15 @@ pub fn play_all_plan(qt: &QueryType) -> Result<PlayAll<'_>, CrackedError> {
     }
 }
 
+/// Wrap `input` in the proxy fallback when the top search result has a concrete URL.
+/// No-op when no proxy provider is configured or no `source_url` is available.
+fn wrap_with_top_source_url(input: SongbirdInput, metas: &[NewAuxMetadata]) -> SongbirdInput {
+    match metas.first().and_then(|m| m.0.source_url.clone()) {
+        Some(url) => with_proxy_fallback(input, url),
+        None => input,
+    }
+}
+
 #[cfg(test)]
 mod play_all_tests {
     use super::*;
@@ -785,14 +794,5 @@ mod play_all_tests {
             })
             .collect();
         assert_eq!(words, ["one", "two"]);
-    }
-}
-
-/// Wrap `input` in the proxy fallback when the top search result has a concrete URL.
-/// No-op when no proxy provider is configured or no `source_url` is available.
-fn wrap_with_top_source_url(input: SongbirdInput, metas: &[NewAuxMetadata]) -> SongbirdInput {
-    match metas.first().and_then(|m| m.0.source_url.clone()) {
-        Some(url) => with_proxy_fallback(input, url),
-        None => input,
     }
 }
