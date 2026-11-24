@@ -241,15 +241,12 @@ mod tests {
         ]));
     }
 
-    /// Inert by default: the env surface is the only activation switch.
-    /// (`with_proxy_fallback` returning its input unchanged without a
-    /// provider is asserted in `sources::proxy_fallback`.)
+    /// The env surface is the only activation switch: a full set of
+    /// HOST/USER/PASSWORD activates, anything less is inert. Hermetic (an
+    /// in-memory map, never the process environment). The no-provider no-op
+    /// of `with_proxy_fallback` is asserted in `sources::proxy_fallback`.
     #[test]
     fn env_surface_is_inert_unless_fully_set() {
-        // Default test environment carries no PROXY_FALLBACK_* vars.
-        assert!(from_env().is_none());
-        assert!(provider().is_none());
-
         let full = [
             ("PROXY_FALLBACK_HOST", "gw.example.invalid"),
             ("PROXY_FALLBACK_USER", "fake-user"),
