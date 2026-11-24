@@ -91,6 +91,27 @@ pub fn ytdl_for_url(
     Ok(ytdl)
 }
 
+/// [`ytdl_for_url`] for the residential-proxy fallback: yt-dlp resolves through
+/// `proxy_url` (`--proxy`), and `client` should be built on the same proxy so
+/// the stream fetch exits the same IP. `proxy_url` carries credentials: never
+/// log it.
+pub fn ytdl_for_url_proxied(
+    client: Client,
+    url: &str,
+    proxy_url: &str,
+) -> Result<songbird::input::YoutubeDl<'static>, NotAYtdlUrl> {
+    let parsed = Url::parse(url).map_err(|_| NotAYtdlUrl)?;
+    let mut args = vec!["--proxy".to_string(), proxy_url.to_string()];
+    args.extend(ytdl_args_for(&parsed));
+    let url = ytdl_url(url)?;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the one sanctioned call: `url` passed ytdl_url, so it starts with http(s)"
+    )]
+    let ytdl = songbird::input::YoutubeDl::new(client, url).user_args(args);
+    Ok(ytdl)
+}
+
 /// Which site a yt-dlp search asks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Site {
@@ -445,6 +466,26 @@ mod test {
             !format!("{yt:?}").contains(SOUNDCLOUD_FORMAT_SORT),
             "{yt:?}"
         );
+    }
+
+    #[test]
+    fn proxied_ytdl_passes_proxy_arg_and_url() {
+        let yt = ytdl_for_url_proxied(
+            Client::new(),
+            "https://www.youtube.com/watch?v=XSbZidsgMfw",
+            "http://u:p@gw:823",
+        )
+        .unwrap();
+        let dbg = format!("{yt:?}");
+        assert!(
+            dbg.contains("\"--proxy\", \"http://u:p@gw:823\""),
+            "{dbg}"
+        );
+    }
+
+    #[test]
+    fn proxied_ytdl_rejects_option_like_url() {
+        assert!(ytdl_for_url_proxied(Client::new(), "--evil", "http://u:p@gw:823").is_err());
     }
 
     #[test]
