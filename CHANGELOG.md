@@ -10,6 +10,22 @@ checks both.
 
 ## Unreleased
 
+## v0.47.0 (2026-11-24)
+
+### Added
+
+- **Residential-proxy fallback for age/login-gated YouTube.** A video that
+  YouTube refuses to a datacenter IP ("Sign in to confirm you're not a bot")
+  is retried through a paid residential proxy, carrying both the metadata
+  resolve and the audio stream through one sticky residential exit IP so the
+  IP-bound stream URL still fetches. Normal tracks are unaffected and never
+  touch the proxy. The feature is inert unless `PROXY_FALLBACK_HOST`,
+  `PROXY_FALLBACK_USER` and `PROXY_FALLBACK_PASSWORD` are set (see
+  `docs/residential-proxy-fallback.md`); when a proxy exit IP is itself
+  flagged by YouTube, it retries fresh exits (up to five) until one clears.
+  Spend is bounded by the provider's prepaid balance — there is no in-bot
+  metering.
+
 ## v0.46.5 (2026-11-21)
 
 ### Fixed
