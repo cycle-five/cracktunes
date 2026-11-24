@@ -64,7 +64,10 @@ impl ProxySession {
 
     fn base_url(&self) -> String {
         // proxy_url is "http://user:pw@host:port"; strip the userinfo.
-        let rest = self.proxy_url.strip_prefix("http://").unwrap_or(&self.proxy_url);
+        let rest = self
+            .proxy_url
+            .strip_prefix("http://")
+            .unwrap_or(&self.proxy_url);
         let host = rest.rsplit_once('@').map_or(rest, |(_, h)| h);
         format!("http://{host}")
     }
@@ -92,10 +95,10 @@ impl ProxyProvider for DataImpulseResidential {
     fn session(&self) -> ProxySession {
         let sessid = format!("{:016x}", rand::random::<u64>());
         let user = format!("{};sessid-{sessid}", self.base_user);
-        let url_user = user.replace(';', "%3B");
         let proxy_url = format!(
-            "http://{url_user}:{}@{}:{}",
-            self.password.expose(),
+            "http://{}:{}@{}:{}",
+            encode_userinfo(&user),
+            encode_userinfo(self.password.expose()),
             self.host,
             self.port
         );
@@ -107,10 +110,24 @@ impl ProxyProvider for DataImpulseResidential {
     }
 }
 
+/// Percent-encode everything except RFC 3986 unreserved bytes.
+fn encode_userinfo(s: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~') {
+            out.push(char::from(b));
+        } else {
+            let _ = write!(out, "%{b:02X}");
+        }
+    }
+    out
+}
+
 fn from_env_from(get: impl Fn(&str) -> Option<String>) -> Option<Box<dyn ProxyProvider>> {
-    let host = get("PROXY_FALLBACK_HOST")?;
-    let base_user = get("PROXY_FALLBACK_USER")?;
-    let password = ProxyPassword::new(get("PROXY_FALLBACK_PASSWORD")?);
+    let host = get("PROXY_FALLBACK_HOST").filter(|s| !s.is_empty())?;
+    let base_user = get("PROXY_FALLBACK_USER").filter(|s| !s.is_empty())?;
+    let password = ProxyPassword::new(get("PROXY_FALLBACK_PASSWORD").filter(|s| !s.is_empty())?);
     let port = get("PROXY_FALLBACK_PORT")
         .and_then(|p| p.parse().ok())
         .unwrap_or(823);
@@ -187,14 +204,58 @@ mod tests {
         assert!(!format!("{:?}", prov.session()).contains("hunter2"));
     }
 
+    fn env_of(pairs: &[(&'static str, &str)]) -> HashMap<&'static str, String> {
+        pairs.iter().map(|(k, v)| (*k, (*v).to_string())).collect()
+    }
+
+    fn none_for(pairs: &[(&'static str, &str)]) -> bool {
+        let m = env_of(pairs);
+        from_env_from(|k| m.get(k).cloned()).is_none()
+    }
+
     #[test]
     fn from_env_none_without_full_creds() {
-        let m: HashMap<&str, String> = [
-            ("PROXY_FALLBACK_HOST", "h".to_string()),
-            ("PROXY_FALLBACK_USER", "u".to_string()),
-        ]
-        .into();
-        assert!(from_env_from(|k| m.get(k).cloned()).is_none());
+        assert!(none_for(&[
+            ("PROXY_FALLBACK_USER", "u"),
+            ("PROXY_FALLBACK_PASSWORD", "p")
+        ]));
+        assert!(none_for(&[
+            ("PROXY_FALLBACK_HOST", "h"),
+            ("PROXY_FALLBACK_PASSWORD", "p")
+        ]));
+        assert!(none_for(&[
+            ("PROXY_FALLBACK_HOST", "h"),
+            ("PROXY_FALLBACK_USER", "u")
+        ]));
+        assert!(none_for(&[]));
+    }
+
+    #[test]
+    fn from_env_none_when_a_var_is_empty() {
+        assert!(none_for(&[
+            ("PROXY_FALLBACK_HOST", ""),
+            ("PROXY_FALLBACK_USER", "u"),
+            ("PROXY_FALLBACK_PASSWORD", "p"),
+        ]));
+    }
+
+    #[test]
+    fn proxy_url_round_trips_special_chars() {
+        let raw = "p@ss:w/rd%#?[] 41%41";
+        let s = di_provider_with(ProxyPassword::new(raw)).session();
+        let u = url::Url::parse(&s.proxy_url).expect("parses");
+        let dec = |x: &str| {
+            url::form_urlencoded::parse(format!("k={}", x.replace('+', "%2B")).as_bytes())
+                .next()
+                .unwrap()
+                .1
+                .into_owned()
+        };
+        assert_eq!(dec(u.password().unwrap()), raw);
+        let user = dec(u.username());
+        assert_eq!(user, s.user);
+        assert!(user.contains(";sessid-"));
+        assert_eq!(u.host_str(), Some("gw.example.test"));
     }
 
     #[test]
