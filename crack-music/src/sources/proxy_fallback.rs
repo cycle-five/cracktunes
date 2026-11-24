@@ -21,6 +21,37 @@ pub(crate) type ProxiedFactory =
 
 type Stream = Result<AudioStream<Box<dyn MediaSource>>, AudioStreamError>;
 
+/// How many fresh proxy sessions a gated source may try. Only some exit IPs
+/// clear YouTube's bot check, so one session is not enough.
+const MAX_PROXY_ATTEMPTS: usize = 5;
+
+/// After a direct failure `$err`: if it is a gate error, try up to
+/// [`MAX_PROXY_ATTEMPTS`] fresh proxied sources, running `$op` (an expression
+/// using `$p`) on each. The first success is stored in `$self.proxied`, locking
+/// its one session for every later call; gate failures discard the source and
+/// try again; any other failure is returned at once.
+macro_rules! fail_over {
+    ($self:ident, $err:ident, $p:ident => $op:expr) => {{
+        if !is_gate_error(&$err.to_string()) {
+            return Err($err);
+        }
+        tracing::info!("source gated, retrying through the residential proxy");
+        let mut last = $err;
+        for _ in 0..MAX_PROXY_ATTEMPTS {
+            let mut $p = ($self.make_proxied)()?;
+            match $op {
+                Ok(v) => {
+                    $self.proxied = Some($p);
+                    return Ok(v);
+                },
+                Err(e) if is_gate_error(&e.to_string()) => last = e,
+                Err(e) => return Err(e),
+            }
+        }
+        Err(last)
+    }};
+}
+
 /// A source that falls over to the residential proxy on a gate error.
 pub struct ProxyFallback {
     inner: Box<dyn Compose>,
@@ -41,17 +72,6 @@ impl ProxyFallback {
             proxied: None,
         }
     }
-
-    /// Build the proxied source if `err` is a gate error; otherwise hand
-    /// `err` back. On success the source is stored in `self.proxied`.
-    fn fail_over(&mut self, err: AudioStreamError) -> Result<(), AudioStreamError> {
-        if !is_gate_error(&err.to_string()) {
-            return Err(err);
-        }
-        tracing::info!("source gated, retrying through the residential proxy");
-        self.proxied = Some((self.make_proxied)()?);
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -61,10 +81,7 @@ impl Compose for ProxyFallback {
             return p.create();
         }
         match self.inner.create() {
-            Err(e) => {
-                self.fail_over(e)?;
-                self.proxied.as_mut().expect("just set").create()
-            },
+            Err(e) => fail_over!(self, e, p => p.create()),
             ok => ok,
         }
     }
@@ -74,14 +91,7 @@ impl Compose for ProxyFallback {
             return p.create_async().await;
         }
         match self.inner.create_async().await {
-            Err(e) => {
-                self.fail_over(e)?;
-                self.proxied
-                    .as_mut()
-                    .expect("just set")
-                    .create_async()
-                    .await
-            },
+            Err(e) => fail_over!(self, e, p => p.create_async().await),
             ok => ok,
         }
     }
@@ -98,14 +108,7 @@ impl Compose for ProxyFallback {
             return p.aux_metadata().await;
         }
         match self.inner.aux_metadata().await {
-            Err(e) => {
-                self.fail_over(e)?;
-                self.proxied
-                    .as_mut()
-                    .expect("just set")
-                    .aux_metadata()
-                    .await
-            },
+            Err(e) => fail_over!(self, e, p => p.aux_metadata().await),
             ok => ok,
         }
     }
@@ -207,16 +210,23 @@ mod tests {
         )
     }
 
-    fn counting_factory() -> (ProxiedFactory, Arc<AtomicUsize>) {
+    /// A factory whose n-th build fails with `errs[n]`, then opens; with
+    /// `always` set, every build fails with the last of `errs`.
+    fn seq_factory(errs: Vec<&'static str>, always: bool) -> (ProxiedFactory, Arc<AtomicUsize>) {
         let builds = Arc::new(AtomicUsize::new(0));
         let b = builds.clone();
         (
             Box::new(move || {
-                b.fetch_add(1, Ordering::SeqCst);
-                Ok(scripted(None).0)
+                let n = b.fetch_add(1, Ordering::SeqCst);
+                let err = if always { errs.last() } else { errs.get(n) };
+                Ok(scripted(err.copied()).0)
             }),
             builds,
         )
+    }
+
+    fn counting_factory() -> (ProxiedFactory, Arc<AtomicUsize>) {
+        seq_factory(vec![], false)
     }
 
     #[tokio::test]
@@ -253,5 +263,41 @@ mod tests {
         // Unwrapped: the gate error reaches us from the raw source, once.
         assert!(src.create_async().await.is_err());
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn gate_retries_until_a_clean_session() {
+        let (inner, _) = scripted(Some(GATE));
+        let (factory, builds) = seq_factory(vec![GATE, GATE], false);
+        let mut src = ProxyFallback::from_parts(inner, factory);
+        assert!(src.aux_metadata().await.is_ok());
+        assert_eq!(builds.load(Ordering::SeqCst), 3);
+        assert!(src.create_async().await.is_ok());
+        assert!(src.create().is_ok());
+        assert_eq!(builds.load(Ordering::SeqCst), 3);
+    }
+
+    #[tokio::test]
+    async fn gives_up_after_max_attempts() {
+        let (inner, _) = scripted(Some(GATE));
+        let (factory, builds) = seq_factory(vec![GATE], true);
+        let mut src = ProxyFallback::from_parts(inner, factory);
+        let Err(err) = src.create_async().await else {
+            panic!("should fail");
+        };
+        assert!(is_gate_error(&err.to_string()));
+        assert_eq!(builds.load(Ordering::SeqCst), MAX_PROXY_ATTEMPTS);
+    }
+
+    #[tokio::test]
+    async fn non_gate_error_from_proxy_attempt_propagates() {
+        let (inner, _) = scripted(Some(GATE));
+        let (factory, builds) = seq_factory(vec![GATE, "HTTP Error 404: Not Found"], false);
+        let mut src = ProxyFallback::from_parts(inner, factory);
+        let Err(err) = src.create_async().await else {
+            panic!("should fail");
+        };
+        assert!(err.to_string().contains("404"));
+        assert_eq!(builds.load(Ordering::SeqCst), 2);
     }
 }
