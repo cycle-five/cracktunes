@@ -3,6 +3,8 @@
 //! Secrets (password, authenticated URL, user with sessid) must never be
 //! logged or printed un-redacted.
 
+pub mod gate;
+
 use once_cell::sync::Lazy;
 
 /// Kind of proxy a provider offers.
