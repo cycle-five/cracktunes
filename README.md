@@ -118,6 +118,9 @@ only, picks up no new code):
 `./scripts/cracktunes.sh help` lists everything. See [scripts/README.md](scripts/README.md)
 for what the other scripts in that directory are, and which of them are broken.
 
+Age/login-gated YouTube can optionally fall back to a residential proxy; see
+[docs/residential-proxy-fallback.md](docs/residential-proxy-fallback.md).
+
 ## Development
 
 Make sure you've installed Rust. You can install Rust and its package manager, `cargo` by following the instructions on https://rustup.rs/.

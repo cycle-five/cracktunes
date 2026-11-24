@@ -241,6 +241,38 @@ mod tests {
         ]));
     }
 
+    /// Inert by default: the env surface is the only activation switch.
+    /// (`with_proxy_fallback` returning its input unchanged without a
+    /// provider is asserted in `sources::proxy_fallback`.)
+    #[test]
+    fn env_surface_is_inert_unless_fully_set() {
+        // Default test environment carries no PROXY_FALLBACK_* vars.
+        assert!(from_env().is_none());
+        assert!(provider().is_none());
+
+        let full = [
+            ("PROXY_FALLBACK_HOST", "gw.example.invalid"),
+            ("PROXY_FALLBACK_USER", "fake-user"),
+            ("PROXY_FALLBACK_PASSWORD", "fake-pass"),
+        ];
+        let m = env_of(&full);
+        assert!(from_env_from(|k| m.get(k).cloned()).is_some());
+
+        // Dropping any one, or blanking it, deactivates.
+        for skip in 0..full.len() {
+            let missing: Vec<_> = full
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i != skip)
+                .map(|(_, kv)| *kv)
+                .collect();
+            assert!(none_for(&missing), "missing {} must be inert", full[skip].0);
+            let mut blank = full;
+            blank[skip].1 = "";
+            assert!(none_for(&blank), "empty {} must be inert", full[skip].0);
+        }
+    }
+
     #[test]
     fn proxy_url_round_trips_special_chars() {
         let raw = "p@ss:w/rd%#?[] 41%41";
