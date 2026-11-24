@@ -1,3 +1,4 @@
+pub mod proxy_fallback;
 pub mod retry;
 pub mod rusty_ytdl;
 pub mod sleevenote;

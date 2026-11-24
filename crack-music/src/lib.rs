@@ -6,6 +6,7 @@
 pub mod db;
 pub mod http_utils;
 pub mod music;
+pub mod proxy;
 pub mod sources;
 
 #[cfg(test)]
