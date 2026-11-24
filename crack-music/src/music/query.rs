@@ -1,4 +1,5 @@
 use crate::music::track_data::MUSIC_SEARCH_SUFFIX;
+use crate::sources::proxy_fallback::with_proxy_fallback;
 use crate::sources::youtube::search_query_to_source_and_metadata;
 use crate::{http_utils, sources::sleevenote};
 use colored::Colorize;
@@ -437,7 +438,7 @@ impl NewQueryType {
             QueryType::VideoLink(url) => {
                 tracing::warn!("In VideoLink");
                 let ytdl = ytdl_for_url(client_old, url)?;
-                Ok(ytdl.into())
+                Ok(with_proxy_fallback(ytdl.into(), url.clone()))
             },
             // 🔒 `new_search`, never `new`: songbird passes `new`'s string to
             // yt-dlp as a bare positional argument, so keywords starting with
@@ -476,13 +477,19 @@ impl NewQueryType {
                     let my_metadata = NewAuxMetadata(metadata);
                     res.push(my_metadata);
                 }
-                Ok((ytdl.into(), res))
+                let input: SongbirdInput = ytdl.into();
+                let input = wrap_with_top_source_url(input, &res);
+                Ok((input, res))
             },
             QueryType::VideoLink(url) => {
                 tracing::warn!("In VideoLink");
-                let mut ytdl = ytdl_for_url(client_old, url)?;
-                let metadata = ytdl.aux_metadata().await?;
-                let input = ytdl.into();
+                // The gate bites at metadata resolve, so fetch metadata through the wrapper.
+                let mut input =
+                    with_proxy_fallback(ytdl_for_url(client_old, url)?.into(), url.clone());
+                let metadata = match &mut input {
+                    SongbirdInput::Lazy(c) => c.aux_metadata().await?,
+                    _ => unreachable!("ytdl_for_url produces Input::Lazy"),
+                };
                 // let client = crate::http_utils::get_client();
                 // let search =
                 //     crate::sources::youtube::get_rusty_search(client.clone(), query.clone())
@@ -505,6 +512,7 @@ impl NewQueryType {
                 // failure failed both paths.
                 let (input, metadata) =
                     search_query_to_source_and_metadata(client.clone(), query.clone()).await?;
+                let input = wrap_with_top_source_url(input, &metadata);
                 Ok((input, metadata))
                 // let mut ytdl = YoutubeDl::new_search(client, query.clone());
                 // let metadata = ytdl.aux_metadata().await?;
@@ -777,5 +785,14 @@ mod play_all_tests {
             })
             .collect();
         assert_eq!(words, ["one", "two"]);
+    }
+}
+
+/// Wrap `input` in the proxy fallback when the top search result has a concrete URL.
+/// No-op when no proxy provider is configured or no `source_url` is available.
+fn wrap_with_top_source_url(input: SongbirdInput, metas: &[NewAuxMetadata]) -> SongbirdInput {
+    match metas.first().and_then(|m| m.0.source_url.clone()) {
+        Some(url) => with_proxy_fallback(input, url),
+        None => input,
     }
 }
