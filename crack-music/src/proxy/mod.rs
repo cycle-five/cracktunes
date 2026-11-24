@@ -81,12 +81,18 @@ pub trait ProxyProvider: Send + Sync {
 }
 
 /// DataImpulse residential gateway.
-#[derive(Debug)]
 pub struct DataImpulseResidential {
     host: String,
     port: u16,
     base_user: String,
     password: ProxyPassword,
+}
+
+impl std::fmt::Debug for DataImpulseResidential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DataImpulseResidential")
+            .finish_non_exhaustive()
+    }
 }
 
 impl ProxyProvider for DataImpulseResidential {
@@ -202,7 +208,10 @@ mod tests {
         assert_eq!(format!("{p:?}"), "***");
         assert_eq!(format!("{p}"), "***");
         let prov = di_provider_with(p);
-        assert!(!format!("{prov:?}").contains("hunter2"));
+        let dbg = format!("{prov:?}");
+        for secret in ["hunter2", "baseuser", "gw.example.test"] {
+            assert!(!dbg.contains(secret), "Debug leaked {secret}");
+        }
         assert!(!format!("{:?}", prov.session()).contains("hunter2"));
     }
 
