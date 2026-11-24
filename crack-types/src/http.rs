@@ -477,10 +477,7 @@ mod test {
         )
         .unwrap();
         let dbg = format!("{yt:?}");
-        assert!(
-            dbg.contains("\"--proxy\", \"http://u:p@gw:823\""),
-            "{dbg}"
-        );
+        assert!(dbg.contains("\"--proxy\", \"http://u:p@gw:823\""), "{dbg}");
     }
 
     #[test]

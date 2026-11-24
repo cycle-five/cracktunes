@@ -76,16 +76,21 @@ impl Compose for ProxyFallback {
         match self.inner.create_async().await {
             Err(e) => {
                 self.fail_over(e)?;
-                self.proxied.as_mut().expect("just set").create_async().await
+                self.proxied
+                    .as_mut()
+                    .expect("just set")
+                    .create_async()
+                    .await
             },
             ok => ok,
         }
     }
 
     fn should_create_async(&self) -> bool {
-        self.proxied
-            .as_ref()
-            .map_or_else(|| self.inner.should_create_async(), |p| p.should_create_async())
+        self.proxied.as_ref().map_or_else(
+            || self.inner.should_create_async(),
+            |p| p.should_create_async(),
+        )
     }
 
     async fn aux_metadata(&mut self) -> Result<AuxMetadata, AudioStreamError> {
@@ -95,7 +100,11 @@ impl Compose for ProxyFallback {
         match self.inner.aux_metadata().await {
             Err(e) => {
                 self.fail_over(e)?;
-                self.proxied.as_mut().expect("just set").aux_metadata().await
+                self.proxied
+                    .as_mut()
+                    .expect("just set")
+                    .aux_metadata()
+                    .await
             },
             ok => ok,
         }
@@ -109,7 +118,10 @@ fn production_factory(video_url: String) -> ProxiedFactory {
         let p = provider().expect("provider present");
         let s = p.session();
         let proxy = s.reqwest_proxy().map_err(fail)?;
-        let client = reqwest::Client::builder().proxy(proxy).build().map_err(fail)?;
+        let client = reqwest::Client::builder()
+            .proxy(proxy)
+            .build()
+            .map_err(fail)?;
         let yt = crack_types::http::ytdl_for_url_proxied(client, &video_url, s.ytdl_proxy_url())
             .map_err(fail)?;
         Ok(Box::new(yt) as Box<dyn Compose>)
@@ -123,7 +135,12 @@ pub fn with_proxy_fallback(input: Input, video_url: String) -> Input {
     if provider().is_none() {
         return input;
     }
-    let wrap = |inner| Box::new(ProxyFallback::from_parts(inner, production_factory(video_url)));
+    let wrap = |inner| {
+        Box::new(ProxyFallback::from_parts(
+            inner,
+            production_factory(video_url),
+        ))
+    };
     match input {
         Input::Lazy(inner) => Input::Lazy(wrap(inner)),
         Input::Live(live, Some(inner)) => Input::Live(live, Some(wrap(inner))),
