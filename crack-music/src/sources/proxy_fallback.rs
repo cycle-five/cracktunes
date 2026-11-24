@@ -15,7 +15,9 @@ use symphonia::core::io::MediaSource;
 
 use crate::proxy::{gate::is_gate_error, provider};
 
-/// Builds the proxied source. Called at most once per [`ProxyFallback`].
+/// Builds the proxied source. Called once per proxy attempt, up to
+/// [`MAX_PROXY_ATTEMPTS`] times; each call must yield a fresh session (one
+/// sessid for both legs of that attempt).
 pub(crate) type ProxiedFactory =
     Box<dyn FnMut() -> Result<Box<dyn Compose>, AudioStreamError> + Send>;
 

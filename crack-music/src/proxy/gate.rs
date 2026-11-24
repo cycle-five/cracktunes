@@ -42,6 +42,15 @@ mod tests {
     }
 
     #[test]
+    fn matches_real_captured_gate_strings() {
+        assert!(is_gate_error(
+            "ERROR: [youtube] XSbZidsgMfw: Sign in to confirm you\u{2019}re not a bot. This helps protect our community. Use --cookies-from-browser or --cookies for the authentication."
+        ));
+        assert!(is_gate_error("Sign in to confirm you're not a bot"));
+        assert!(is_gate_error("This video is age-restricted"));
+    }
+
+    #[test]
     fn ignores_benign_failures() {
         for s in [
             "Video unavailable",
