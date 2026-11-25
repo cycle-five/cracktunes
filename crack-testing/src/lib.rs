@@ -222,26 +222,19 @@ impl<'a> CrackTrackClient<'a> {
         &self,
         queries: Vec<QueryType>,
     ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
-        let total = queries.len();
-        let resolved: Vec<Option<ResolvedTrack<'a>>> = futures::stream::iter(queries)
-            .map(|query| async move {
-                match self.resolve_track(query.clone()).await {
-                    Ok(track) => Some(track),
-                    Err(e) => {
-                        tracing::warn!("Skipping unresolvable track {query:?}: {e}");
-                        None
-                    },
-                }
-            })
-            .buffered(RESOLVE_CONCURRENCY)
-            .collect()
-            .await;
+        self.resolve_track_many_observed(queries, |_, _, _| ())
+            .await
+    }
 
-        let queue: Vec<ResolvedTrack<'a>> = resolved.into_iter().flatten().collect();
-        if queue.len() < total {
-            tracing::warn!("Resolved {}/{total} tracks", queue.len());
-        }
-        Ok(queue)
+    /// [`Self::resolve_track_many`], telling `observe` about every lookup: the
+    /// query, its own result and how long it took. `observe` runs once per
+    /// query, in completion order, before a failure is skipped.
+    pub async fn resolve_track_many_observed(
+        &self,
+        queries: Vec<QueryType>,
+        observe: impl Fn(&QueryType, &Result<ResolvedTrack<'a>, Error>, std::time::Duration),
+    ) -> Result<Vec<ResolvedTrack<'a>>, Error> {
+        Ok(resolve_all(queries, |q| self.resolve_track(q), observe).await)
     }
 
     /// Resolve a track from a query. This does not start or ready the track for playback.
@@ -701,6 +694,44 @@ pub async fn run() -> Result<(), Error> {
     Ok(())
 }
 
+/// The one concurrent resolve loop behind [`CrackTrackClient::resolve_track_many`]
+/// and its observed variant. `resolve` is the single-query lookup.
+async fn resolve_all<'a, F, Fut>(
+    queries: Vec<QueryType>,
+    resolve: F,
+    observe: impl Fn(&QueryType, &Result<ResolvedTrack<'a>, Error>, std::time::Duration),
+) -> Vec<ResolvedTrack<'a>>
+where
+    F: Fn(QueryType) -> Fut,
+    Fut: Future<Output = Result<ResolvedTrack<'a>, Error>>,
+{
+    let total = queries.len();
+    let observe = &observe;
+    let resolve = &resolve;
+    let resolved: Vec<Option<ResolvedTrack<'a>>> = futures::stream::iter(queries)
+        .map(|query| async move {
+            let begin = std::time::Instant::now();
+            let result = resolve(query.clone()).await;
+            observe(&query, &result, begin.elapsed());
+            match result {
+                Ok(track) => Some(track),
+                Err(e) => {
+                    tracing::warn!("Skipping unresolvable track {query:?}: {e}");
+                    None
+                },
+            }
+        })
+        .buffered(RESOLVE_CONCURRENCY)
+        .collect()
+        .await;
+
+    let queue: Vec<ResolvedTrack<'a>> = resolved.into_iter().flatten().collect();
+    if queue.len() < total {
+        tracing::warn!("Resolved {}/{total} tracks", queue.len());
+    }
+    queue
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -738,5 +769,54 @@ mod tests {
                 other => panic!("unexpected query type: {other:?}"),
             }
         }
+    }
+
+    #[tokio::test]
+    async fn the_resolve_loop_observes_each_query_and_keeps_order() {
+        use std::sync::Mutex;
+        let queries: Vec<QueryType> = ["a", "bad", "c", "worse", "e"]
+            .iter()
+            .map(|k| QueryType::Keywords((*k).to_string()))
+            .collect();
+        let seen: Mutex<Vec<(String, bool)>> = Mutex::new(Vec::new());
+        let kept = resolve_all(
+            queries,
+            |q| async move {
+                match q {
+                    QueryType::Keywords(k) if k.contains("bad") || k.contains("worse") => {
+                        Err(Error::from(format!("no results for {k}")))
+                    },
+                    other => Ok(ResolvedTrack::new(other)),
+                }
+            },
+            |q, result, _elapsed| {
+                let QueryType::Keywords(k) = q else {
+                    panic!("unexpected query {q:?}")
+                };
+                seen.lock().unwrap().push((k.clone(), result.is_ok()));
+            },
+        )
+        .await;
+
+        let mut seen = seen.into_inner().unwrap();
+        seen.sort();
+        assert_eq!(
+            seen,
+            vec![
+                ("a".to_string(), true),
+                ("bad".to_string(), false),
+                ("c".to_string(), true),
+                ("e".to_string(), true),
+                ("worse".to_string(), false),
+            ]
+        );
+        let order: Vec<String> = kept
+            .iter()
+            .map(|t| match &t.query {
+                QueryType::Keywords(k) => k.clone(),
+                other => panic!("unexpected {other:?}"),
+            })
+            .collect();
+        assert_eq!(order, vec!["a", "c", "e"]);
     }
 }

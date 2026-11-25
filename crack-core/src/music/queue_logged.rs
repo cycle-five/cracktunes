@@ -19,11 +19,10 @@ use crate::{
     poise_ext::ContextExt,
     Context as CrackContext, Error,
 };
-use crack_testing::{CrackTrackClient, ResolvedTrack, RESOLVE_CONCURRENCY};
-use futures::StreamExt;
-use serenity::all::GuildId;
 use crack_metrics::{FailureReason, ResolveOutcome, Source};
+use crack_testing::{CrackTrackClient, ResolvedTrack};
 use crack_types::{Mode, NewAuxMetadata, QueryType};
+use serenity::all::GuildId;
 use serenity::all::Message;
 use songbird::{input::Input as SongbirdInput, tracks::TrackHandle, Call};
 use std::sync::Arc;
@@ -83,37 +82,28 @@ fn note_started(sources: impl IntoIterator<Item = Source>, guild_id: GuildId) {
     }
 }
 
-/// [`CrackTrackClient::resolve_track_many`] with a metric per lookup: the same
-/// concurrency, order and skip-on-failure, but each query's own result is in
-/// hand, so each counts (a 30-track list records 30 resolves). Each kept track
-/// comes back with its source.
+/// [`CrackTrackClient::resolve_track_many_observed`] with a metric per lookup:
+/// each query's own result counts (a 30-track list records 30 resolves). Each
+/// kept track's source comes back too, in no particular order: callers only
+/// count them.
 async fn resolve_many_noted(
     client: &CrackTrackClient<'static>,
     queries: Vec<QueryType>,
-) -> Vec<(Source, ResolvedTrack<'static>)> {
-    let total = queries.len();
-    let resolved: Vec<Option<(Source, ResolvedTrack<'static>)>> = futures::stream::iter(queries)
-        .map(|query| async move {
-            let source = source_of(&query);
-            let begin = std::time::Instant::now();
-            let result = client.resolve_track(query.clone()).await;
-            note_resolve(source, &result, begin.elapsed());
-            match result {
-                Ok(track) => Some((source, track)),
-                Err(e) => {
-                    tracing::warn!("Skipping unresolvable track {query:?}: {e}");
-                    None
-                },
+) -> Result<(Vec<Source>, Vec<ResolvedTrack<'static>>), Error> {
+    let kept_sources = std::sync::Mutex::new(Vec::new());
+    let tracks = client
+        .resolve_track_many_observed(queries, |query, result, elapsed| {
+            let source = source_of(query);
+            note_resolve(source, result, elapsed);
+            if result.is_ok() {
+                if let Ok(mut sources) = kept_sources.lock() {
+                    sources.push(source);
+                }
             }
         })
-        .buffered(RESOLVE_CONCURRENCY)
-        .collect()
-        .await;
-    let kept: Vec<_> = resolved.into_iter().flatten().collect();
-    if kept.len() < total {
-        tracing::warn!("Resolved {}/{total} tracks", kept.len());
-    }
-    kept
+        .await?;
+    let sources = kept_sources.into_inner().unwrap_or_default();
+    Ok((sources, tracks))
 }
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
@@ -385,7 +375,10 @@ pub async fn queue_resolved_list_back(
         .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
         .await?;
     let first = enqueue_resolved_tracks_back(&guard, &call, tracks, client.clone()).await?;
-    note_started(std::iter::repeat_n(Source::Youtube, first.count()), guild_id);
+    note_started(
+        std::iter::repeat_n(Source::Youtube, first.count()),
+        guild_id,
+    );
     let snapshot = call.lock().await.queue().current_queue();
     drop(guard);
     update_queue_messages(
@@ -415,7 +408,10 @@ pub async fn queue_resolved_list_back(
             .await?;
         let inserted =
             enqueue_resolved_tracks_back(&guard, &call, chunk.to_vec(), client.clone()).await?;
-        note_started(std::iter::repeat_n(Source::Youtube, inserted.count()), guild_id);
+        note_started(
+            std::iter::repeat_n(Source::Youtube, inserted.count()),
+            guild_id,
+        );
         queued += inserted.count();
         let snapshot = call.lock().await.queue().current_queue();
         drop(guard);
@@ -505,12 +501,11 @@ pub async fn queue_vec_query_type(
     // This used to be a serial `for` loop calling `ready_query`, which spawned
     // a `yt-dlp` subprocess per track and waited for it. `resolve_track_many`
     // overlaps the lookups and skips individual failures.
-    let (sources, resolved): (Vec<Source>, Vec<_>) =
-        resolve_many_noted(&ctx.data().ct_client, queries)
-            .await
-            .into_iter()
-            .map(|(source, t)| (source, t.with_user_id(user_id)))
-            .unzip();
+    let (sources, resolved) = resolve_many_noted(&ctx.data().ct_client, queries).await?;
+    let resolved = resolved
+        .into_iter()
+        .map(|t| t.with_user_id(user_id))
+        .collect::<Vec<_>>();
 
     // Logged before the guard is taken: the send is a non-blocking channel
     // push, and keeping it off the guarded section costs playback nothing.
@@ -561,11 +556,7 @@ pub async fn queue_query_list_offset(
 
     // Resolved concurrently; this was a serial round trip per track. Runs
     // before the guard is taken -- see the doc comment above.
-    let (sources, tracks): (Vec<Source>, Vec<_>) =
-        resolve_many_noted(&ctx.data().ct_client, queries)
-            .await
-            .into_iter()
-            .unzip();
+    let (sources, tracks) = resolve_many_noted(&ctx.data().ct_client, queries).await?;
 
     // 🪤 Sent HERE, once, rather than inside the two branches below. This
     // function splits into a low-queue path (`enqueue_resolved_and_snapshot`)
@@ -929,7 +920,9 @@ mod metrics_tests {
     fn source_of_each_query_kind() {
         assert_eq!(source_of(&QueryType::Keywords("x".into())), Source::Youtube);
         assert_eq!(
-            source_of(&QueryType::VideoLink("https://www.youtube.com/watch?v=abc".into())),
+            source_of(&QueryType::VideoLink(
+                "https://www.youtube.com/watch?v=abc".into()
+            )),
             Source::Youtube
         );
         assert_eq!(
@@ -938,14 +931,25 @@ mod metrics_tests {
         );
         // What a Spotify link becomes: searched and played on YouTube.
         assert_eq!(
-            source_of(&QueryType::KeywordList(vec!["a - b".into(), "c - d".into()])),
+            source_of(&QueryType::KeywordList(vec![
+                "a - b".into(),
+                "c - d".into()
+            ])),
             Source::Youtube
         );
-        assert_eq!(source_of(&QueryType::SpotifyTracks(vec![])), Source::Spotify);
-        assert_eq!(source_of(&QueryType::File(attachment())), Source::File);
-        assert_eq!(source_of(&QueryType::YoutubeSearch("q".into())), Source::Youtube);
         assert_eq!(
-            source_of(&QueryType::PlaylistLink("https://www.youtube.com/playlist?list=PL1".into())),
+            source_of(&QueryType::SpotifyTracks(vec![])),
+            Source::Spotify
+        );
+        assert_eq!(source_of(&QueryType::File(attachment())), Source::File);
+        assert_eq!(
+            source_of(&QueryType::YoutubeSearch("q".into())),
+            Source::Youtube
+        );
+        assert_eq!(
+            source_of(&QueryType::PlaylistLink(
+                "https://www.youtube.com/playlist?list=PL1".into()
+            )),
             Source::Youtube
         );
         assert_eq!(source_of(&QueryType::None), Source::Other);
@@ -957,7 +961,11 @@ mod metrics_tests {
     fn a_failed_resolve_records_resolve_error_and_reason() {
         let failed: Result<(), String> = Err("no results found for 'ytsearch1:x'".into());
         let ((), c) = capture(|| {
-            note_resolve(Source::Youtube, &failed, std::time::Duration::from_millis(40));
+            note_resolve(
+                Source::Youtube,
+                &failed,
+                std::time::Duration::from_millis(40),
+            );
         });
         assert_eq!(
             c.counter(
