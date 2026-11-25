@@ -7,7 +7,7 @@ use crate::labels::{
 };
 use crate::names;
 use metrics::{counter, gauge, histogram};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 pub fn command_started(command: &str, kind: CommandKind, guild_id: Option<u64>) {
     counter!(names::COMMANDS, "command" => command.to_owned(), "kind" => kind.as_str())
@@ -36,6 +36,14 @@ pub fn gateway_event(event: GatewayEvent) {
 
 pub fn set_gateway_connected(connected: bool) {
     gauge!(names::GATEWAY_CONNECTED).set(if connected { 1.0 } else { 0.0 });
+}
+
+/// A gateway event arrived at `at`. A time before the epoch records 0.
+pub fn gateway_event_received(at: SystemTime) {
+    let seconds = at
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    gauge!(names::GATEWAY_LAST_EVENT).set(seconds as f64);
 }
 
 pub fn set_gateway_latency(latency: Duration) {
@@ -197,6 +205,19 @@ mod tests {
     }
 
     #[test]
+    fn gateway_event_received_records_unix_seconds() {
+        let ((), c) = capture(|| {
+            gateway_event_received(UNIX_EPOCH + Duration::from_millis(1_700_000_000_999));
+        });
+        assert_eq!(
+            c.gauge(names::GATEWAY_LAST_EVENT, &[]),
+            Some(1_700_000_000.0)
+        );
+        let ((), c) = capture(|| gateway_event_received(UNIX_EPOCH - Duration::from_secs(5)));
+        assert_eq!(c.gauge(names::GATEWAY_LAST_EVENT, &[]), Some(0.0));
+    }
+
+    #[test]
     fn no_event_function_emits_a_label_outside_the_allowed_set() {
         let ((), c) = capture(|| {
             command_started("play", CommandKind::Slash, Some(1));
@@ -205,6 +226,7 @@ mod tests {
             autocomplete_finished(Duration::from_secs(1));
             gateway_event(GatewayEvent::Ready);
             set_gateway_connected(true);
+            gateway_event_received(SystemTime::now());
             set_gateway_latency(Duration::from_millis(40));
             set_guilds(1);
             set_guild_info(1, "g");

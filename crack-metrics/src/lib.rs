@@ -14,10 +14,10 @@ pub mod testing;
 
 pub use events::{
     autocomplete_finished, command_failed, command_finished, command_started, gateway_event,
-    guild_playback_seconds, guild_voice_connected_seconds, proxy_fallback, search_fallback,
-    set_gateway_connected, set_gateway_latency, set_guild_info, set_guilds, set_queued_tracks,
-    set_tracks_playing, set_voice_connections, sleevenote_request, suggestion_label, track_ended,
-    track_failed, track_resolved, track_started,
+    gateway_event_received, guild_playback_seconds, guild_voice_connected_seconds, proxy_fallback,
+    search_fallback, set_gateway_connected, set_gateway_latency, set_guild_info, set_guilds,
+    set_queued_tracks, set_tracks_playing, set_voice_connections, sleevenote_request,
+    suggestion_label, track_ended, track_failed, track_resolved, track_started,
 };
 pub use labels::{
     CommandKind, EndOutcome, FailureReason, GatewayEvent, ProxyOutcome, RequestOutcome,

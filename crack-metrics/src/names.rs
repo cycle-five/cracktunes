@@ -3,6 +3,7 @@
 // Process and gateway state.
 pub const BUILD_INFO: &str = "cracktunes_build_info";
 pub const GATEWAY_CONNECTED: &str = "cracktunes_gateway_connected";
+pub const GATEWAY_LAST_EVENT: &str = "cracktunes_gateway_last_event_timestamp_seconds";
 pub const GATEWAY_LATENCY: &str = "cracktunes_gateway_latency_seconds";
 pub const GATEWAY_EVENTS: &str = "cracktunes_gateway_events_total";
 pub const GUILDS: &str = "cracktunes_guilds";
@@ -47,6 +48,7 @@ pub const SLEEVENOTE_BUCKETS: [f64; 7] = [0.5, 1.0, 2.0, 5.0, 10.0, 15.0, 30.0];
 pub const ALL: &[&str] = &[
     BUILD_INFO,
     GATEWAY_CONNECTED,
+    GATEWAY_LAST_EVENT,
     GATEWAY_LATENCY,
     GATEWAY_EVENTS,
     GUILDS,
