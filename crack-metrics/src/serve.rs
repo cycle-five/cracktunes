@@ -270,7 +270,10 @@ mod tests {
                 .any(|l| l.starts_with("cracktunes_guild_info{") && l.contains("guild_id=\"1\"")),
             "no guild_info line in:\n{body}"
         );
-        for line in body.lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
+        for line in body
+            .lines()
+            .filter(|l| !l.starts_with('#') && !l.is_empty())
+        {
             assert!(is_exposition_line(line), "malformed line {line:?}");
         }
         let (status, _) = get(addr, "/other").await;

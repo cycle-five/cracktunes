@@ -8,7 +8,7 @@ use crate::{
     db::GuildEntity,
     errors::CrackedError,
     guild::settings::{GuildSettings, Provenance, DEFAULT_ACTIVITY},
-    handlers::voice_chat_stats::cam_status_loop,
+    handlers::{metrics_sampler, voice_chat_stats::cam_status_loop},
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig,
     Data,
@@ -42,7 +42,19 @@ impl EventHandler for SerenityHandler {
             FullEvent::Ready { data_about_bot } => {
                 self.on_ready(ctx.clone(), data_about_bot.clone()).await;
             },
+            FullEvent::Resume { .. } => metrics_sampler::on_resumed(),
+            FullEvent::ShardStageUpdate { event } => {
+                metrics_sampler::on_stage_update(event.old, event.new);
+            },
+            FullEvent::GuildUpdate { new_data, .. } => {
+                crack_metrics::set_guild_info(new_data.id.get(), &new_data.name);
+            },
+            FullEvent::GuildDelete { .. } => {
+                crack_metrics::set_guilds(ctx.cache.guild_count());
+            },
             FullEvent::GuildCreate { guild, .. } => {
+                crack_metrics::set_guild_info(guild.id.get(), &guild.name);
+                crack_metrics::set_guilds(ctx.cache.guild_count());
                 self.on_guild_create(ctx.clone(), guild.clone()).await;
             },
             FullEvent::Message { new_message, .. } => {
@@ -262,6 +274,7 @@ impl EventHandler for SerenityHandler {
 
 impl SerenityHandler {
     async fn on_ready(&self, ctx: SerenityContext, ready: Ready) {
+        metrics_sampler::on_ready();
         tracing::info!(
             "{} {}",
             ready.user.name,
@@ -408,6 +421,7 @@ impl SerenityHandler {
         // `Ready` re-fires on reconnect, so this keeps the existing `is_loop_running`
         // guard to stay once-per-process.
         if !self.is_loop_running.load(Ordering::Relaxed) {
+            metrics_sampler::spawn(ctx.clone(), self.data.songbird.clone());
             let interval = self.data.bot_settings.get_video_status_poll_interval();
             if interval > 0 {
                 let guild_ids: Vec<GuildId> = ready.guilds.iter().map(|g| g.id).collect();

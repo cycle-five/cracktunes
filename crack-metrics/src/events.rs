@@ -126,10 +126,7 @@ mod tests {
             command_started("ping", CommandKind::Prefix, None);
         });
         assert_eq!(
-            c.counter(
-                names::COMMANDS,
-                &[("command", "play"), ("kind", "slash")]
-            ),
+            c.counter(names::COMMANDS, &[("command", "play"), ("kind", "slash")]),
             Some(1)
         );
         assert_eq!(
@@ -137,10 +134,7 @@ mod tests {
             Some(1)
         );
         assert_eq!(
-            c.counter(
-                names::COMMANDS,
-                &[("command", "ping"), ("kind", "prefix")]
-            ),
+            c.counter(names::COMMANDS, &[("command", "ping"), ("kind", "prefix")]),
             Some(1)
         );
         let guild_series = c
