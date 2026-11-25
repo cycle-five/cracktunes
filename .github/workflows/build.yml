@@ -52,7 +52,7 @@ jobs:
       # tagged a release since v8 (their issue #77). Go back to a tag once
       # one ships. v8..this commit changes nothing we use; it only adds
       # inputs, drops postgres 14 and URI-encodes the credentials.
-      - uses: ikalnytskyi/action-setup-postgres@0f1fdf59c857aabfa61ab1a2619e9af34de678d3 # master, 2026-08-02
+      - uses: ikalnytskyi/action-setup-postgres@325155bfd7807b2a21ac9c2c7bb9b9a6eacc44df # master, 2026-08-02
         with:
           username: postgres
           password: mysecretpassword
