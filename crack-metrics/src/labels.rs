@@ -8,6 +8,9 @@ macro_rules! label_enum {
         pub enum $name { $($variant),+ }
 
         impl $name {
+            /// Every variant, for pre-registering series.
+            pub const ALL: &'static [Self] = &[$(Self::$variant),+];
+
             pub const fn as_str(self) -> &'static str {
                 match self { $(Self::$variant => $text),+ }
             }
