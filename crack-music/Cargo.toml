@@ -21,6 +21,7 @@ test-support = []
 
 [dependencies]
 async-trait = "0.1"
+crack-metrics = { path = "../crack-metrics" }
 chrono = { version = "0.4", features = ["serde"] }
 colored = "3.1"
 dashmap = "6"
@@ -61,6 +62,7 @@ default-features = false
 features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dev-dependencies]
+crack-metrics = { path = "../crack-metrics", features = ["testing"] }
 ctor = "1.0"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 crack-test-macros = { path = "../crack-test-macros" }

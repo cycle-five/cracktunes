@@ -1,5 +1,6 @@
 //! Searching YouTube: rusty_ytdl first, yt-dlp whenever it has no answer.
 
+use crack_metrics::{FailureReason, SearchFallbackOutcome, SearchFallbackReason};
 use std::fmt::Display;
 use std::future::Future;
 
@@ -20,6 +21,7 @@ pub async fn or_ask_ytdlp<T, E, X, F, Fut>(
 ) -> Result<T, X>
 where
     E: Display,
+    X: Display,
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<T, X>>,
 {
@@ -27,13 +29,26 @@ where
         Ok(Some(hit)) => Ok(hit),
         Ok(None) => {
             tracing::warn!("rusty_ytdl found nothing for {query:?}; asking yt-dlp");
-            ytdlp().await
+            counted(SearchFallbackReason::Empty, ytdlp().await)
         },
         Err(e) => {
             tracing::warn!("rusty_ytdl could not search for {query:?}; asking yt-dlp: {e}");
-            ytdlp().await
+            counted(SearchFallbackReason::Error, ytdlp().await)
         },
     }
+}
+
+/// Count one fallback to yt-dlp and what it came to, then pass `answer` on.
+fn counted<T, X: Display>(reason: SearchFallbackReason, answer: Result<T, X>) -> Result<T, X> {
+    let outcome = match &answer {
+        Ok(_) => SearchFallbackOutcome::Found,
+        Err(e) if FailureReason::classify(&e.to_string()) == FailureReason::NoResults => {
+            SearchFallbackOutcome::Empty
+        },
+        Err(_) => SearchFallbackOutcome::Error,
+    };
+    crack_metrics::search_fallback(reason, outcome);
+    answer
 }
 
 #[cfg(test)]
@@ -45,7 +60,7 @@ mod test {
     /// counts its calls.
     async fn run(
         rusty: Result<Option<&'static str>, &'static str>,
-    ) -> (Result<&'static str, ()>, u32) {
+    ) -> (Result<&'static str, &'static str>, u32) {
         let calls = Cell::new(0);
         let got = or_ask_ytdlp("q", rusty, || async {
             calls.set(calls.get() + 1);
@@ -78,5 +93,66 @@ mod test {
             })
             .await;
         assert_eq!(got, Err("ytdlp down"));
+    }
+
+    fn recorded(
+        rusty: Result<Option<&'static str>, &'static str>,
+        ytdlp: Result<&'static str, &'static str>,
+    ) -> (
+        Result<&'static str, &'static str>,
+        crack_metrics::testing::Captured,
+    ) {
+        crack_metrics::testing::capture(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(or_ask_ytdlp("q", rusty, || async { ytdlp }))
+        })
+    }
+
+    #[test]
+    fn an_empty_rusty_search_that_ytdlp_answers_records_empty_found() {
+        let (got, c) = recorded(Ok(None), Ok("ytdlp"));
+        assert_eq!(got, Ok("ytdlp"));
+        assert_eq!(
+            c.counter(
+                crack_metrics::names::SEARCH_FALLBACK,
+                &[("reason", "empty"), ("outcome", "found")]
+            ),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn a_rusty_error_that_ytdlp_cannot_answer_records_error_error() {
+        let (got, c) = recorded(Err("youtubei 400"), Err("yt-dlp exploded"));
+        assert!(got.is_err());
+        assert_eq!(
+            c.counter(
+                crack_metrics::names::SEARCH_FALLBACK,
+                &[("reason", "error"), ("outcome", "error")]
+            ),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn a_ytdlp_that_finds_nothing_records_empty() {
+        let (_, c) = recorded(Ok(None), Err("no results found for 'ytsearch1:x'"));
+        assert_eq!(
+            c.counter(
+                crack_metrics::names::SEARCH_FALLBACK,
+                &[("reason", "empty"), ("outcome", "empty")]
+            ),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn a_rusty_hit_records_nothing() {
+        let (got, c) = recorded(Ok(Some("rusty")), Ok("ytdlp"));
+        assert_eq!(got, Ok("rusty"));
+        assert!(c.series().is_empty(), "{:?}", c.series());
     }
 }

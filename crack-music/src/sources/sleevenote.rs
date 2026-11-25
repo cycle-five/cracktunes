@@ -363,6 +363,7 @@ pub async fn resolve_spotify(url: &str) -> Result<SpotifyResolution, CrackedErro
     })?;
 
     let id = parsed.media_id();
+    let started = std::time::Instant::now();
     let resolution = match parsed.media_type() {
         MediaType::Track => client.track(id).await.map(|track| {
             let name = track.name.clone();
@@ -414,6 +415,14 @@ pub async fn resolve_spotify(url: &str) -> Result<SpotifyResolution, CrackedErro
         }),
     };
 
+    crack_metrics::sleevenote_request(
+        if resolution.is_ok() {
+            crack_metrics::RequestOutcome::Ok
+        } else {
+            crack_metrics::RequestOutcome::Error
+        },
+        started.elapsed(),
+    );
     let resolution = resolution.map_err(|err| CrackedError::Other(user_message(&err)))?;
 
     // Resolving to nothing is a success on the wire and a failure to the user:

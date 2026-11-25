@@ -1304,6 +1304,7 @@ dependencies = [
  "colored",
  "crack-common",
  "crack-guild",
+ "crack-metrics",
  "crack-model",
  "crack-musicreco",
  "crack-sleevenote",
@@ -1424,6 +1425,7 @@ version = "0.47.1"
 dependencies = [
  "anyhow",
  "clap",
+ "crack-metrics",
  "crack-types",
  "dashmap 6.2.1",
  "futures",
@@ -1444,6 +1446,7 @@ dependencies = [
 name = "crack-types"
 version = "0.47.1"
 dependencies = [
+ "crack-metrics",
  "crack-model",
  "humantime",
  "poise",

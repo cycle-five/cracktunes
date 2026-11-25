@@ -16,6 +16,7 @@
 //! 2. [`strip_duration_suffix`] drops a trailing `(MM:SS)` from anything else,
 //!    for labels suggested before a restart or already evicted.
 
+use crack_metrics::SuggestionLabelOutcome;
 use serenity::all::{AutocompleteChoice, AutocompleteValue};
 use std::borrow::Cow;
 use std::collections::{HashMap, VecDeque};
@@ -132,10 +133,15 @@ pub fn query_from_label(query: &str) -> Cow<'_, str> {
 }
 
 fn query_from_label_in<'a>(memory: &SuggestionMemory, query: &'a str) -> Cow<'a, str> {
-    match memory.url_for(query) {
-        Some(url) => Cow::Owned(url),
-        None => Cow::Borrowed(strip_duration_suffix(query)),
+    if let Some(url) = memory.url_for(query) {
+        crack_metrics::suggestion_label(SuggestionLabelOutcome::Remembered);
+        return Cow::Owned(url);
     }
+    let stripped = strip_duration_suffix(query);
+    if stripped != query {
+        crack_metrics::suggestion_label(SuggestionLabelOutcome::Stripped);
+    }
+    Cow::Borrowed(stripped)
 }
 
 #[cfg(test)]
@@ -266,5 +272,57 @@ mod tests {
         memory.remember("a", "url-a");
         memory.remember("b", "url-b");
         assert_eq!(memory.url_for("a").as_deref(), Some("url-a"));
+    }
+
+    fn series_of(query: &str, remember: bool) -> Vec<(String, Vec<(String, String)>)> {
+        let memory = SuggestionMemory::with_capacity(8);
+        if remember {
+            memory.remember(query, URL);
+        }
+        crack_metrics::testing::capture(|| {
+            let _ = query_from_label_in(&memory, query);
+        })
+        .1
+        .series()
+    }
+
+    #[test]
+    fn a_remembered_label_records_remembered() {
+        let c = crack_metrics::testing::capture(|| {
+            let memory = SuggestionMemory::with_capacity(8);
+            memory.remember(LABEL, URL);
+            let _ = query_from_label_in(&memory, LABEL);
+        })
+        .1;
+        assert_eq!(
+            c.counter(
+                crack_metrics::names::SUGGESTION_LABEL,
+                &[("outcome", "remembered")]
+            ),
+            Some(1)
+        );
+        assert_eq!(c.series().len(), 1);
+    }
+
+    #[test]
+    fn a_stripped_label_records_stripped() {
+        let c = crack_metrics::testing::capture(|| {
+            let memory = SuggestionMemory::with_capacity(8);
+            let _ = query_from_label_in(&memory, LABEL);
+        })
+        .1;
+        assert_eq!(
+            c.counter(
+                crack_metrics::names::SUGGESTION_LABEL,
+                &[("outcome", "stripped")]
+            ),
+            Some(1)
+        );
+        assert_eq!(c.series().len(), 1);
+    }
+
+    #[test]
+    fn a_plain_query_records_nothing() {
+        assert!(series_of("tyler cassidy chris watts", false).is_empty());
     }
 }
