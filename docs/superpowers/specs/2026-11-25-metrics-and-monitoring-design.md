@@ -359,3 +359,34 @@ VM's application metrics are now collected.
 
 Steps 3 and 4 change the firewall and production; each waits for the owner's
 go-ahead when it is reached.
+
+## Amendments made during implementation (2026-11-25)
+
+Part 1 shipped as v0.48.0 with these changes from the text above. The metric
+reference that is true to the code is `docs/metrics.md`; Part 2 must be
+planned from that file, not from the tables in this one.
+
+- **The "connected to Discord" alert is defined differently.** The pinned
+  serenity only reports a shard becoming connected, never leaving that state,
+  so a gauge driven by stage changes could not return to 0. The bot now
+  exposes `cracktunes_gateway_last_event_timestamp_seconds` (stamped on every
+  gateway event). `CracktunesGatewayDisconnected` must be
+  `time() - cracktunes_gateway_last_event_timestamp_seconds > 300`.
+  `cracktunes_gateway_connected` remains for the dashboard: 1 if an event
+  arrived in the last 120 s, re-evaluated every 15 s.
+- **`event="reconnect"`** means a `Ready` after the first one of the process.
+- **`source` for a Spotify link is `youtube`.** The link is turned into
+  searches before it is queued and nothing downstream remembers where it came
+  from. Spotify volume and failures are in
+  `cracktunes_sleevenote_requests_total`.
+- **No `cracktunes_sleevenote_retries_total`.** Retries happen inside the
+  published `crack-sleevenote` client. There is a
+  `cracktunes_sleevenote_request_duration_seconds` histogram instead.
+- **Counters with enum-only labels start at 0** rather than appearing on first
+  use, so `increase()` sees the first event after a restart.
+- **`_seconds_total` counters are whole seconds** advanced by the 15-second
+  sampler, with the remainder carried between ticks.
+- **The listener refuses to start on the dashboard's port** (`WEB_BIND`).
+- **`/stop` counts every cleared track as `skipped`**, and
+  `tracks_ended` can exceed `tracks_started` (ends are counted for `/gp`
+  rounds, autoplay, queue resume and playlist loads too).
