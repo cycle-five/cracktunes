@@ -16,7 +16,8 @@ checks both.
 
 - **Prometheus metrics.** The bot can now serve its own counters, gauges and
   histograms at `GET /metrics`: commands and their timings, track resolves,
-  failures, starts and ends, per-server playback time, gateway state, the
+  failures, starts and ends, per-server playback time, gateway state (whether
+  a gateway event arrived lately, and when the last one did), the
   residential-proxy, search and sleevenote fallbacks, and process stats. It is
   off unless `METRICS_BIND` is set (for example `0.0.0.0:9091`); with it unset
   nothing listens. The endpoint has no login, so keep it on a private network

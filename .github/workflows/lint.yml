@@ -230,6 +230,27 @@ jobs:
             exit 1
           fi
 
+      # crack-metrics is the leaf every crate reports into: it may use no
+      # crack-* crate (the first line of the tree is the crate itself).
+      - name: crack-metrics depends on no other workspace crate
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-metrics -e normal --prefix none | tail -n +2)
+          if echo "$tree" | grep -E '^crack-'; then
+            echo "crack-metrics must not depend on any other workspace crate" >&2
+            exit 1
+          fi
+
+      # Dev-dependencies count too: `cargo test -p crack-metrics` must not build another crack-* crate.
+      - name: crack-metrics has no workspace-crate dev-dependency
+        if: success() || failure()
+        run: |
+          tree=$(cargo tree -p crack-metrics -e normal,dev --prefix none | tail -n +2 | grep -v '^crack-metrics ' || true)
+          if echo "$tree" | grep -E '^crack-'; then
+            echo "crack-metrics must not depend on any other workspace crate, even in tests" >&2
+            exit 1
+          fi
+
       # 🔑 The only job that compiles the optional-module seam. crack-bf and
       # crack-osint now live in their own repositories, so their crates are
       # gated by their own CI -- but `commands/osint.rs`, `commands/bf.rs` and
