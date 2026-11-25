@@ -30,10 +30,11 @@ use tokio::sync::Mutex;
 
 /// Which source a query belongs to, for the playback metrics.
 ///
-/// Every variant is named, so a new one forces a decision here. A Spotify link
-/// is turned into keyword searches before it gets this far, so it counts as
-/// `Youtube`, which is where it is searched and played; only a variant that
-/// itself says Spotify maps to `Spotify`.
+/// Every variant is named, so a new one forces a decision here. A pasted Spotify
+/// link is turned into keyword searches before it gets this far, so it counts as
+/// `Youtube`, which is where it is searched and played. `Spotify` is returned only
+/// for a `SpotifyTracks` / `SpotifyLink` query that reaches a queue call directly,
+/// or for a `VideoLink` / `NewYoutubeDl` URL whose host is Spotify's.
 fn source_of(query: &QueryType) -> Source {
     match query {
         QueryType::Keywords(_)
@@ -72,6 +73,24 @@ fn note_resolve<T, E: std::fmt::Display>(
             crack_metrics::track_resolved(source, ResolveOutcome::Error, elapsed);
             crack_metrics::track_failed(source, FailureReason::classify(&e.to_string()));
         },
+    }
+}
+
+/// Record ONE resolve for a track that may have taken two attempts: `first` is the
+/// `ct_client` attempt and `fallback` the `ready_query` attempt, run only when the
+/// first failed. The recorded outcome, failure reason and time are the final
+/// attempt's, over `total` wall time, so a failure the fallback recovered from is
+/// never shown to a user and is not counted.
+fn note_resolve_attempts<A, E1: std::fmt::Display, B, E2: std::fmt::Display>(
+    source: Source,
+    first: &Result<A, E1>,
+    fallback: Option<&Result<B, E2>>,
+    total: std::time::Duration,
+) {
+    match (first, fallback) {
+        (Ok(_), _) => crack_metrics::track_resolved(source, ResolveOutcome::Ok, total),
+        (Err(_), Some(last)) => note_resolve(source, last, total),
+        (Err(e), None) => note_resolve(source, &Err::<(), _>(e), total),
     }
 }
 
@@ -195,19 +214,23 @@ pub async fn queue_track_back(
     let source = source_of(query_type);
     let begin = std::time::Instant::now();
     let attempt = ctx.data().ct_client.resolve_track(query_type.clone()).await;
-    note_resolve(source, &attempt, begin.elapsed());
-    let resolved = match attempt {
-        Ok(resolved) => resolved.with_user_id(user_id),
+    let fallback = match &attempt {
+        Ok(_) => None,
+        // 🪤 Say why before falling back. This once matched `e1.into()` as
+        // an `Option` -- always `Some`, since `e1` is a boxed error -- and
+        // dropped it, so a resolver failing on every play left no trace.
         Err(e1) => {
-            // 🪤 Say why before falling back. This once matched `e1.into()` as
-            // an `Option` -- always `Some`, since `e1` is a boxed error -- and
-            // dropped it, so a resolver failing on every play left no trace.
             tracing::warn!(
                 "ct_client could not resolve {query_type:?}, falling back to ready_query: {e1}"
             );
-            let fallback_begin = std::time::Instant::now();
-            let readied = ready_query(ctx, query_type.clone()).await;
-            note_resolve(source, &readied, fallback_begin.elapsed());
+            Some(ready_query(ctx, query_type.clone()).await)
+        },
+    };
+    // One resolve per user track: the final outcome over both attempts' wall time.
+    note_resolve_attempts(source, &attempt, fallback.as_ref(), begin.elapsed());
+    let resolved = match (attempt, fallback) {
+        (Ok(resolved), _) => resolved.with_user_id(user_id),
+        (Err(_), Some(readied)) => {
             let ready_track = readied?;
             // 🪤 This branch RETURNS, so the send below never runs for it. A
             // play that fell back to `ready_query` is still a play and must be
@@ -222,6 +245,8 @@ pub async fn queue_track_back(
             note_started([source], guild_id);
             return Ok(queued);
         },
+        // The fallback runs exactly when the first attempt failed.
+        (Err(_), None) => return Err(CrackedError::Other("no fallback after a failed resolve")),
     };
     let after_ready = std::time::Instant::now();
     // 🪤 `ready_track` is NOT in scope here -- it exists only in the fallback
@@ -985,6 +1010,87 @@ mod metrics_tests {
             c.histogram(names::TRACK_RESOLVE_DURATION, &[("source", "youtube")]),
             vec![0.04]
         );
+    }
+
+    fn attempts(
+        first: Result<u8, &str>,
+        fallback: Option<Result<u8, &str>>,
+    ) -> crack_metrics::testing::Captured {
+        let ((), c) = capture(|| {
+            note_resolve_attempts(
+                Source::Youtube,
+                &first,
+                fallback.as_ref(),
+                std::time::Duration::from_millis(300),
+            );
+        });
+        c
+    }
+
+    #[test]
+    fn a_recovered_fallback_records_one_ok_resolve_and_no_failure() {
+        let c = attempts(Err("operation timed out"), Some(Ok(1)));
+        let ok = [("source", "youtube"), ("outcome", "ok")];
+        assert_eq!(c.counter(names::TRACK_RESOLVES, &ok), Some(1));
+        assert_eq!(
+            c.counter(
+                names::TRACK_RESOLVES,
+                &[("source", "youtube"), ("outcome", "error")]
+            ),
+            None
+        );
+        assert!(c.series().iter().all(|(n, _)| n != names::TRACK_FAILURES));
+        assert_eq!(
+            c.histogram(names::TRACK_RESOLVE_DURATION, &[("source", "youtube")]),
+            vec![0.3]
+        );
+    }
+
+    #[test]
+    fn a_failed_fallback_records_one_error_with_the_fallbacks_reason() {
+        let c = attempts(
+            Err("operation timed out"),
+            Some(Err("no results found for 'x'")),
+        );
+        assert_eq!(
+            c.counter(
+                names::TRACK_RESOLVES,
+                &[("source", "youtube"), ("outcome", "error")]
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            c.counter(
+                names::TRACK_FAILURES,
+                &[("source", "youtube"), ("reason", "no_results")]
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            c.counter(
+                names::TRACK_FAILURES,
+                &[("source", "youtube"), ("reason", "timeout")]
+            ),
+            None
+        );
+        assert_eq!(
+            c.histogram(names::TRACK_RESOLVE_DURATION, &[("source", "youtube")])
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_first_attempt_that_works_records_one_ok_resolve() {
+        let c = attempts(Ok(1), None);
+        assert_eq!(
+            c.counter(
+                names::TRACK_RESOLVES,
+                &[("source", "youtube"), ("outcome", "ok")]
+            ),
+            Some(1)
+        );
+        assert!(c.series().iter().all(|(n, _)| n != names::TRACK_FAILURES));
     }
 
     #[test]
