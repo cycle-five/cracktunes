@@ -10,6 +10,18 @@ checks both.
 
 ## Unreleased
 
+## v0.47.1 (2026-11-25)
+
+### Fixed
+
+- **A song picked from `/play`'s suggestions no longer fails with "no
+  results".** Discord sometimes sends the bot a suggestion's label, such as
+  "Tyler Cassidy - Chris Watts (02:53)", in place of the link behind it, and
+  a YouTube search for a title with its length on the end finds nothing. The
+  bot now remembers which link each recent suggestion stood for and plays
+  that exact video when the label comes back. A label it no longer remembers
+  is searched for without the trailing length.
+
 ## v0.47.0 (2026-11-24)
 
 ### Added

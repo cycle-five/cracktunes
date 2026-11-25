@@ -2,6 +2,8 @@ pub mod queue;
 pub use queue::CrackTrackQueue;
 pub mod resolve;
 pub use resolve::ResolvedTrack;
+pub mod suggested;
+pub use suggested::query_from_label;
 pub mod yt_playlist;
 pub use yt_playlist::{fetch_playlist, PlaylistEntry};
 
@@ -414,6 +416,9 @@ impl<'a> CrackTrackClient<'a> {
             .into_iter()
             .map(|track| track.clone().autocomplete_option())
             .collect::<Vec<AutocompleteChoice<'a>>>();
+        // Discord sometimes submits a choice's label instead of its value, so
+        // remember which link each label stood for: see `suggested`.
+        suggested::remember_choices(&autocomplete_choices);
         Ok(autocomplete_choices)
     }
 

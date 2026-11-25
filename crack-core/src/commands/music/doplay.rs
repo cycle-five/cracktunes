@@ -110,7 +110,7 @@ pub async fn search(
     play_internal(ctx, Some("search".to_string()), None, Some(query)).await
 }
 
-use crack_testing::suggestion2;
+use crack_testing::{query_from_label, suggestion2};
 
 /// Autocomplete to suggest a search query.
 pub async fn autocomplete<'a>(
@@ -148,6 +148,11 @@ pub async fn play(
     #[autocomplete = "autocomplete"]
     query: String,
 ) -> Result<(), Error> {
+    // 🔑 Before anything else reads it: Discord can submit a suggestion's
+    // label ("Title (02:53)") in place of the link behind it, and a search for
+    // that label finds nothing. `query_from_label` gives back the link we
+    // suggested it for, or failing that the label without its duration.
+    let query = query_from_label(&query);
     // Split off the first part of the query for
     let query = query.split("~").next().unwrap_or_default().to_string();
     play_internal(ctx, None, None, Some(query)).await
