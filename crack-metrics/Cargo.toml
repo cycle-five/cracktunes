@@ -15,18 +15,21 @@ workspace = ".."
 [features]
 # The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
 mutation-testing = []
+# `crack_metrics::testing`: capture what a closure records. For other crates' dev-dependencies.
+testing = ["dep:metrics-util"]
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.18", default-features = false }
 metrics-process = "2.4"
+metrics-util = { version = "0.20", optional = true }
 thiserror = "2.0.20"
 tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
-metrics-util = "0.20"
+crack-metrics = { path = ".", features = ["testing"] }
 
 [lints]
 workspace = true

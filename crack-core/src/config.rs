@@ -557,88 +557,49 @@ mod tests {
     mod metrics_glue {
         use super::super::{note_command_failed, note_command_finished, note_command_started};
         use crack_metrics::names;
-        use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+        use crack_metrics::testing::capture;
         use std::time::{Duration, SystemTime};
-
-        type Row = (String, Vec<(String, String)>, DebugValue);
-
-        fn record(f: impl FnOnce()) -> Vec<Row> {
-            let recorder = DebuggingRecorder::new();
-            let snapshotter = recorder.snapshotter();
-            metrics::with_local_recorder(&recorder, f);
-            snapshotter
-                .snapshot()
-                .into_vec()
-                .into_iter()
-                .map(|(key, _, _, value)| {
-                    let labels = key
-                        .key()
-                        .labels()
-                        .map(|l| (l.key().to_owned(), l.value().to_owned()))
-                        .collect();
-                    (key.key().name().to_owned(), labels, value)
-                })
-                .collect()
-        }
-
-        fn counter(rows: &[Row], name: &str) -> Vec<(Vec<(String, String)>, u64)> {
-            rows.iter()
-                .filter_map(|(n, l, v)| match v {
-                    DebugValue::Counter(c) if n == name => Some((l.clone(), *c)),
-                    _ => None,
-                })
-                .collect()
-        }
-
-        fn pairs(want: &[(&str, &str)]) -> Vec<(String, String)> {
-            want.iter()
-                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-                .collect()
-        }
-
-        fn samples(rows: &[Row], name: &str) -> Vec<f64> {
-            rows.iter()
-                .filter(|(n, _, _)| n == name)
-                .flat_map(|(_, _, v)| match v {
-                    DebugValue::Histogram(h) => h.iter().map(|f| f.into_inner()).collect(),
-                    _ => vec![],
-                })
-                .collect()
-        }
 
         #[test]
         fn a_prefix_command_is_counted_as_prefix() {
-            let rows = record(|| note_command_started("play", true, Some(7)));
+            let ((), c) = capture(|| note_command_started("play", true, Some(7)));
             assert_eq!(
-                counter(&rows, names::COMMANDS),
-                vec![(pairs(&[("command", "play"), ("kind", "prefix")]), 1)]
+                c.counter(names::COMMANDS, &[("command", "play"), ("kind", "prefix")]),
+                Some(1)
             );
             assert_eq!(
-                counter(&rows, names::GUILD_COMMANDS),
-                vec![(pairs(&[("guild_id", "7")]), 1)]
+                c.counter(names::GUILD_COMMANDS, &[("guild_id", "7")]),
+                Some(1)
             );
+            assert_eq!(c.series().len(), 2);
         }
 
         #[test]
         fn duration_is_now_minus_created_at() {
             let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
-            let rows = record(|| note_command_finished("play", t, t + Duration::from_secs(2)));
-            assert_eq!(samples(&rows, names::COMMAND_DURATION), vec![2.0]);
+            let ((), c) = capture(|| note_command_finished("play", t, t + Duration::from_secs(2)));
+            assert_eq!(
+                c.histogram(names::COMMAND_DURATION, &[("command", "play")]),
+                vec![2.0]
+            );
         }
 
         #[test]
         fn a_clock_that_went_backwards_records_zero() {
             let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
-            let rows = record(|| note_command_finished("play", t, t - Duration::from_secs(2)));
-            assert_eq!(samples(&rows, names::COMMAND_DURATION), vec![0.0]);
+            let ((), c) = capture(|| note_command_finished("play", t, t - Duration::from_secs(2)));
+            assert_eq!(
+                c.histogram(names::COMMAND_DURATION, &[("command", "play")]),
+                vec![0.0]
+            );
         }
 
         #[test]
         fn a_failed_command_is_counted() {
-            let rows = record(|| note_command_failed("play"));
+            let ((), c) = capture(|| note_command_failed("play"));
             assert_eq!(
-                counter(&rows, names::COMMAND_ERRORS),
-                vec![(pairs(&[("command", "play")]), 1)]
+                c.counter(names::COMMAND_ERRORS, &[("command", "play")]),
+                Some(1)
             );
         }
     }

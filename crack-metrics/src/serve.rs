@@ -37,23 +37,32 @@ pub fn spawn_if_configured(version: &'static str) {
             return;
         },
     };
-    tokio::spawn(async move {
-        match serve(bind.trim(), version).await {
-            Ok(addr) => tracing::info!("metrics on {addr}"),
-            Err(e) => tracing::error!("metrics off: {BIND_ENV}={bind}: {e}"),
-        }
-    });
+    // Parse, bind and install the recorder before returning, so an event fired
+    // right after this call is recorded; only the accept loop runs in the background.
+    match start(bind.trim(), version) {
+        Ok(addr) => tracing::info!("metrics on {addr}"),
+        Err(e) => tracing::error!("metrics off: {BIND_ENV}={bind}: {e}"),
+    }
 }
 
 /// The testable core: the address actually bound, or the reason metrics are off.
 /// The address is parsed and bound before the global recorder is installed, so a
 /// bad or taken address leaves the process untouched.
 pub async fn serve(bind: &str, version: &'static str) -> Result<SocketAddr, ServeError> {
+    start(bind, version)
+}
+
+/// Synchronous half of start-up; spawns only the accept loop. Needs a tokio runtime.
+fn start(bind: &str, version: &'static str) -> Result<SocketAddr, ServeError> {
     let addr: SocketAddr = bind
         .parse()
         .map_err(|_| ServeError::BadAddress(bind.to_owned()))?;
-    let listener = TcpListener::bind(addr).await.map_err(ServeError::Bind)?;
-    let local = listener.local_addr().map_err(ServeError::Bind)?;
+    let std_listener = std::net::TcpListener::bind(addr).map_err(ServeError::Bind)?;
+    std_listener
+        .set_nonblocking(true)
+        .map_err(ServeError::Bind)?;
+    let local = std_listener.local_addr().map_err(ServeError::Bind)?;
+    let listener = TcpListener::from_std(std_listener).map_err(ServeError::Bind)?;
 
     let handle = install_recorder()?;
     describe_all();
@@ -216,9 +225,35 @@ mod tests {
         (head.lines().next().unwrap().to_owned(), body.to_owned())
     }
 
+    /// `^[a-zA-Z_:][a-zA-Z0-9_:]*(\{.*\})? [0-9eE+.\-]+$`, without a regex dependency.
+    fn is_exposition_line(line: &str) -> bool {
+        let Some((series, value)) = line.rsplit_once(' ') else {
+            return false;
+        };
+        let name = match series.split_once('{') {
+            Some((name, rest)) => {
+                if !rest.ends_with('}') {
+                    return false;
+                }
+                name
+            },
+            None => series,
+        };
+        let mut chars = name.chars();
+        chars
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == ':')
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == ':')
+            && !value.is_empty()
+            && value
+                .chars()
+                .all(|c| c.is_ascii_digit() || "eE+.-".contains(c))
+    }
+
     #[tokio::test]
     async fn serves_build_info_and_zeroed_gauges() {
         let addr = serve("127.0.0.1:0", "9.9.9").await.expect("serve");
+        crate::set_guild_info(1, "a\"b\\c\nd 🎵");
         let (status, body) = get(addr, "/metrics").await;
         assert!(status.contains("200"), "{status}");
         for want in [
@@ -229,6 +264,14 @@ mod tests {
             "cracktunes_queued_tracks 0",
         ] {
             assert!(body.contains(want), "missing {want:?} in:\n{body}");
+        }
+        assert!(
+            body.lines()
+                .any(|l| l.starts_with("cracktunes_guild_info{") && l.contains("guild_id=\"1\"")),
+            "no guild_info line in:\n{body}"
+        );
+        for line in body.lines().filter(|l| !l.starts_with('#') && !l.is_empty()) {
+            assert!(is_exposition_line(line), "malformed line {line:?}");
         }
         let (status, _) = get(addr, "/other").await;
         assert!(status.contains("404"), "{status}");

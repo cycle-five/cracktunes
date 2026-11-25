@@ -9,6 +9,8 @@ pub mod events;
 pub mod labels;
 pub mod names;
 mod serve;
+#[cfg(feature = "testing")]
+pub mod testing;
 
 pub use events::{
     autocomplete_finished, command_failed, command_finished, command_started, gateway_event,

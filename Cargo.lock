@@ -1174,8 +1174,6 @@ dependencies = [
  "indexmap",
  "itertools 0.15.0",
  "lyric_finder",
- "metrics",
- "metrics-util",
  "mutants",
  "once_cell",
  "poise",
@@ -1278,6 +1276,7 @@ name = "crack-metrics"
 version = "0.47.1"
 dependencies = [
  "axum",
+ "crack-metrics",
  "metrics",
  "metrics-exporter-prometheus",
  "metrics-process",

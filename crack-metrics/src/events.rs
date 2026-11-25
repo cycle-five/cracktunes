@@ -116,148 +116,95 @@ pub fn suggestion_label(outcome: SuggestionLabelOutcome) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use metrics_util::debugging::{DebugValue, DebuggingRecorder, Snapshotter};
-    use metrics_util::CompositeKey;
+    use crate::testing::capture;
     use std::collections::BTreeSet;
-
-    type Row = (
-        CompositeKey,
-        Option<metrics::Unit>,
-        Option<metrics::SharedString>,
-        DebugValue,
-    );
-
-    fn record(f: impl FnOnce()) -> Vec<Row> {
-        let recorder = DebuggingRecorder::new();
-        let snapshotter: Snapshotter = recorder.snapshotter();
-        metrics::with_local_recorder(&recorder, f);
-        snapshotter.snapshot().into_vec()
-    }
-
-    fn labels(row: &Row) -> Vec<(String, String)> {
-        row.0
-            .key()
-            .labels()
-            .map(|l| (l.key().to_owned(), l.value().to_owned()))
-            .collect()
-    }
-
-    /// The counter named `name` whose labels are exactly `want`.
-    fn counter_value(rows: &[Row], name: &str, want: &[(&str, &str)]) -> Option<u64> {
-        let want: Vec<(String, String)> = want
-            .iter()
-            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-            .collect();
-        rows.iter().find_map(|r| match &r.3 {
-            DebugValue::Counter(v) if r.0.key().name() == name && labels(r) == want => Some(*v),
-            _ => None,
-        })
-    }
-
-    fn series_named(rows: &[Row], name: &str) -> usize {
-        rows.iter().filter(|r| r.0.key().name() == name).count()
-    }
 
     #[test]
     fn command_started_counts_by_name_and_by_guild() {
-        let rows = record(|| {
+        let ((), c) = capture(|| {
             command_started("play", CommandKind::Slash, Some(42));
             command_started("ping", CommandKind::Prefix, None);
         });
         assert_eq!(
-            counter_value(
-                &rows,
+            c.counter(
                 names::COMMANDS,
                 &[("command", "play"), ("kind", "slash")]
             ),
             Some(1)
         );
         assert_eq!(
-            counter_value(&rows, names::GUILD_COMMANDS, &[("guild_id", "42")]),
+            c.counter(names::GUILD_COMMANDS, &[("guild_id", "42")]),
             Some(1)
         );
         assert_eq!(
-            counter_value(
-                &rows,
+            c.counter(
                 names::COMMANDS,
                 &[("command", "ping"), ("kind", "prefix")]
             ),
             Some(1)
         );
-        assert_eq!(
-            series_named(&rows, names::GUILD_COMMANDS),
-            1,
-            "no guild series for the guildless command"
-        );
+        let guild_series = c
+            .series()
+            .iter()
+            .filter(|(n, _)| n == names::GUILD_COMMANDS)
+            .count();
+        assert_eq!(guild_series, 1, "no guild series for the guildless command");
     }
 
     #[test]
     fn proxy_fallback_counts_once_and_adds_attempts() {
-        let rows = record(|| proxy_fallback(ProxyOutcome::Recovered, 2));
+        let ((), c) = capture(|| proxy_fallback(ProxyOutcome::Recovered, 2));
         assert_eq!(
-            counter_value(&rows, names::PROXY_FALLBACK, &[("outcome", "recovered")]),
+            c.counter(names::PROXY_FALLBACK, &[("outcome", "recovered")]),
             Some(1)
         );
-        assert_eq!(
-            counter_value(&rows, names::PROXY_FALLBACK_ATTEMPTS, &[]),
-            Some(2)
-        );
+        assert_eq!(c.counter(names::PROXY_FALLBACK_ATTEMPTS, &[]), Some(2));
     }
 
     #[test]
     fn track_started_counts_by_source_and_by_guild() {
-        let rows = record(|| track_started(Source::Spotify, 42));
+        let ((), c) = capture(|| track_started(Source::Spotify, 42));
         assert_eq!(
-            counter_value(&rows, names::TRACKS_STARTED, &[("source", "spotify")]),
+            c.counter(names::TRACKS_STARTED, &[("source", "spotify")]),
             Some(1)
         );
         assert_eq!(
-            counter_value(&rows, names::GUILD_TRACKS_STARTED, &[("guild_id", "42")]),
+            c.counter(names::GUILD_TRACKS_STARTED, &[("guild_id", "42")]),
             Some(1)
         );
     }
 
     #[test]
     fn gauges_and_histograms_record_their_values() {
-        let rows = record(|| {
+        let ((), c) = capture(|| {
             set_gateway_connected(true);
             set_guilds(155);
             command_finished("play", Duration::from_millis(1500));
             guild_playback_seconds(42, 30);
             track_resolved(Source::Youtube, ResolveOutcome::Ok, Duration::from_secs(2));
         });
-        let gauge = |name: &str| {
-            rows.iter().find_map(|r| match &r.3 {
-                DebugValue::Gauge(v) if r.0.key().name() == name => Some(v.into_inner()),
-                _ => None,
-            })
-        };
-        assert_eq!(gauge(names::GATEWAY_CONNECTED), Some(1.0));
-        assert_eq!(gauge(names::GUILDS), Some(155.0));
+        assert_eq!(c.gauge(names::GATEWAY_CONNECTED, &[]), Some(1.0));
+        assert_eq!(c.gauge(names::GUILDS, &[]), Some(155.0));
         assert_eq!(
-            counter_value(&rows, names::GUILD_PLAYBACK_SECONDS, &[("guild_id", "42")]),
+            c.counter(names::GUILD_PLAYBACK_SECONDS, &[("guild_id", "42")]),
             Some(30)
         );
         assert_eq!(
-            counter_value(
-                &rows,
+            c.counter(
                 names::TRACK_RESOLVES,
                 &[("source", "youtube"), ("outcome", "ok")]
             ),
             Some(1)
         );
-        let hist = rows.iter().find_map(|r| match &r.3 {
-            DebugValue::Histogram(v) if r.0.key().name() == names::COMMAND_DURATION => {
-                Some(v.iter().map(|x| x.into_inner()).collect::<Vec<_>>())
-            },
-            _ => None,
-        });
-        assert_eq!(hist, Some(vec![1.5]));
+        assert_eq!(
+            c.histogram(names::COMMAND_DURATION, &[("command", "play")]),
+            vec![1.5]
+        );
     }
 
     #[test]
     fn no_event_function_emits_a_label_outside_the_allowed_set() {
-        let rows = record(|| {
+        let ((), c) = capture(|| {
             command_started("play", CommandKind::Slash, Some(1));
             command_finished("play", Duration::from_secs(1));
             command_failed("play");
@@ -287,16 +234,22 @@ mod tests {
         ]
         .into_iter()
         .collect();
+        let series = c.series();
         assert!(
-            rows.len() >= 20,
+            series.len() >= 20,
             "every event function should have recorded something"
         );
-        for row in &rows {
-            for (k, _) in labels(row) {
+        for (name, labels) in &series {
+            for (k, _) in labels {
                 assert!(
                     allowed.contains(k.as_str()),
-                    "{}: label key {k:?} not allowed",
-                    row.0.key().name()
+                    "{name}: label key {k:?} not allowed"
+                );
+            }
+            if labels.iter().any(|(k, _)| k == "guild_id") {
+                assert!(
+                    name.starts_with("cracktunes_guild_"),
+                    "{name} carries a guild_id label"
                 );
             }
         }
