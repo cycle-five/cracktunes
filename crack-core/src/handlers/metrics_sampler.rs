@@ -69,10 +69,18 @@ pub fn on_stage_update(old: ConnectionStage, new: ConnectionStage) {
     }
 }
 
+/// A paused, stopped, ended or errored track is not playing.
+pub fn is_playing(mode: &PlayMode) -> bool {
+    matches!(mode, PlayMode::Play)
+}
+
 /// Reads every voice call songbird manages.
 pub async fn observe(songbird: &Songbird) -> Vec<CallSample> {
     let mut samples = Vec::new();
-    for (guild_id, call) in songbird.iter() {
+    // Collect first: `iter()` is a dashmap iterator that holds a shard read lock while
+    // it lives, and joins/leaves need the write lock. Never keep it across an await.
+    let calls: Vec<_> = songbird.iter().collect();
+    for (guild_id, call) in calls {
         // Hold the call lock only long enough to copy what we need.
         let (connected, queue) = {
             let call = call.lock().await;
@@ -81,7 +89,7 @@ pub async fn observe(songbird: &Songbird) -> Vec<CallSample> {
         let playing = match queue.current() {
             Some(handle) => {
                 match tokio::time::timeout(TRACK_STATE_TIMEOUT, handle.get_info()).await {
-                    Ok(Ok(state)) => matches!(state.playing, PlayMode::Play),
+                    Ok(Ok(state)) => is_playing(&state.playing),
                     _ => false,
                 }
             },
@@ -170,6 +178,18 @@ mod tests {
         let ((), c) = capture(|| record(&samples, Duration::from_millis(400)));
         assert_eq!(c.series().len(), 3, "only the three gauges");
         assert_eq!(c.gauge(names::QUEUED_TRACKS, &[]), Some(1.0));
+    }
+
+    #[test]
+    fn only_play_counts_as_playing() {
+        assert!(is_playing(&PlayMode::Play));
+        assert!(!is_playing(&PlayMode::Pause));
+        assert!(!is_playing(&PlayMode::Stop));
+        assert!(!is_playing(&PlayMode::End));
+        let err = symphonia::core::errors::Error::Unsupported("test");
+        assert!(!is_playing(&PlayMode::Errored(
+            songbird::tracks::PlayError::Seek(std::sync::Arc::new(err))
+        )));
     }
 
     #[test]
