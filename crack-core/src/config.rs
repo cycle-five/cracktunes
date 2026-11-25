@@ -1,7 +1,5 @@
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::DEFAULT_PREFIX;
-use crack_types::discord::guild_id;
-use crack_types::to_fixed;
 use crate::{
     db,
     errors::CrackedError,
@@ -14,12 +12,47 @@ use crate::{
 };
 use ::serenity::secrets::Token;
 use colored::Colorize;
+use crack_types::discord::guild_id;
+use crack_types::to_fixed;
 use poise::serenity_prelude::{Client, GatewayIntents, GuildId};
 use songbird::driver::DecodeMode;
 use songbird::Songbird;
 use std::borrow::Cow;
-use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    process::exit,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 use tokio::sync::RwLock;
+
+/// The metrics for a command starting. Plain values, so it is testable without
+/// a poise context.
+pub(crate) fn note_command_started(name: &str, is_prefix: bool, guild_id: Option<u64>) {
+    let kind = if is_prefix {
+        crack_metrics::CommandKind::Prefix
+    } else {
+        crack_metrics::CommandKind::Slash
+    };
+    crack_metrics::command_started(name, kind, guild_id);
+}
+
+/// The metrics for a command finishing. A clock that went backwards records zero.
+pub(crate) fn note_command_finished(name: &str, created_at: SystemTime, now: SystemTime) {
+    let elapsed = now.duration_since(created_at).unwrap_or(Duration::ZERO);
+    crack_metrics::command_finished(name, elapsed);
+}
+
+/// The metrics for a command that errored or panicked.
+pub(crate) fn note_command_failed(name: &str) {
+    crack_metrics::command_failed(name);
+}
+
+/// A serenity timestamp as a `SystemTime`; anything before the epoch is the epoch.
+fn timestamp_to_system_time(ts: &poise::serenity_prelude::Timestamp) -> SystemTime {
+    let millis = u64::try_from(ts.unix_timestamp_millis()).unwrap_or(0);
+    SystemTime::UNIX_EPOCH + Duration::from_millis(millis)
+}
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -28,21 +61,25 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // and forward the rest to the default handler
     match error {
         //poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
-        poise::FrameworkError::CommandPanic { payload, ctx, .. } => match payload {
-            None => {
-                tracing::warn!("{}", "Command panicked with no payload".yellow());
-            },
-            Some(payload) => {
-                tracing::warn!(
-                    "{} {} {} {}",
-                    "Command ".yellow(),
-                    ctx.command().qualified_name.yellow().italic(),
-                    " panicked: ".yellow(),
-                    payload.yellow().bold(),
-                );
-            },
+        poise::FrameworkError::CommandPanic { payload, ctx, .. } => {
+            note_command_failed(&ctx.command().qualified_name);
+            match payload {
+                None => {
+                    tracing::warn!("{}", "Command panicked with no payload".yellow());
+                },
+                Some(payload) => {
+                    tracing::warn!(
+                        "{} {} {} {}",
+                        "Command ".yellow(),
+                        ctx.command().qualified_name.yellow().italic(),
+                        " panicked: ".yellow(),
+                        payload.yellow().bold(),
+                    );
+                },
+            }
         },
         poise::FrameworkError::Command { error, ctx, .. } => {
+            note_command_failed(&ctx.command().qualified_name);
             let myerr = CrackedError::Poise(error);
             check_reply(
                 courier::reply(ctx, CrackedMessage::from(myerr))
@@ -204,12 +241,22 @@ pub async fn poise_framework(
         pre_command: |ctx| {
             Box::pin(async move {
                 tracing::info!(">>> {}...", ctx.command().qualified_name);
+                note_command_started(
+                    &ctx.command().qualified_name,
+                    matches!(ctx, crate::Context::Prefix(_)),
+                    ctx.guild_id().map(|g| g.get()),
+                );
             })
         },
         // This code is run after a command if it was successful (returned Ok)
         post_command: |ctx| {
             Box::pin(async move {
                 tracing::info!("<<< {}!", ctx.command().qualified_name);
+                note_command_finished(
+                    &ctx.command().qualified_name,
+                    timestamp_to_system_time(&ctx.created_at()),
+                    SystemTime::now(),
+                );
             })
         },
         // Every command invocation must pass this check to continue execution
@@ -506,6 +553,95 @@ pub(crate) fn songbird_config() -> songbird::Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod metrics_glue {
+        use super::super::{note_command_failed, note_command_finished, note_command_started};
+        use crack_metrics::names;
+        use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+        use std::time::{Duration, SystemTime};
+
+        type Row = (String, Vec<(String, String)>, DebugValue);
+
+        fn record(f: impl FnOnce()) -> Vec<Row> {
+            let recorder = DebuggingRecorder::new();
+            let snapshotter = recorder.snapshotter();
+            metrics::with_local_recorder(&recorder, f);
+            snapshotter
+                .snapshot()
+                .into_vec()
+                .into_iter()
+                .map(|(key, _, _, value)| {
+                    let labels = key
+                        .key()
+                        .labels()
+                        .map(|l| (l.key().to_owned(), l.value().to_owned()))
+                        .collect();
+                    (key.key().name().to_owned(), labels, value)
+                })
+                .collect()
+        }
+
+        fn counter(rows: &[Row], name: &str) -> Vec<(Vec<(String, String)>, u64)> {
+            rows.iter()
+                .filter_map(|(n, l, v)| match v {
+                    DebugValue::Counter(c) if n == name => Some((l.clone(), *c)),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        fn pairs(want: &[(&str, &str)]) -> Vec<(String, String)> {
+            want.iter()
+                .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                .collect()
+        }
+
+        fn samples(rows: &[Row], name: &str) -> Vec<f64> {
+            rows.iter()
+                .filter(|(n, _, _)| n == name)
+                .flat_map(|(_, _, v)| match v {
+                    DebugValue::Histogram(h) => h.iter().map(|f| f.into_inner()).collect(),
+                    _ => vec![],
+                })
+                .collect()
+        }
+
+        #[test]
+        fn a_prefix_command_is_counted_as_prefix() {
+            let rows = record(|| note_command_started("play", true, Some(7)));
+            assert_eq!(
+                counter(&rows, names::COMMANDS),
+                vec![(pairs(&[("command", "play"), ("kind", "prefix")]), 1)]
+            );
+            assert_eq!(
+                counter(&rows, names::GUILD_COMMANDS),
+                vec![(pairs(&[("guild_id", "7")]), 1)]
+            );
+        }
+
+        #[test]
+        fn duration_is_now_minus_created_at() {
+            let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+            let rows = record(|| note_command_finished("play", t, t + Duration::from_secs(2)));
+            assert_eq!(samples(&rows, names::COMMAND_DURATION), vec![2.0]);
+        }
+
+        #[test]
+        fn a_clock_that_went_backwards_records_zero() {
+            let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+            let rows = record(|| note_command_finished("play", t, t - Duration::from_secs(2)));
+            assert_eq!(samples(&rows, names::COMMAND_DURATION), vec![0.0]);
+        }
+
+        #[test]
+        fn a_failed_command_is_counted() {
+            let rows = record(|| note_command_failed("play"));
+            assert_eq!(
+                counter(&rows, names::COMMAND_ERRORS),
+                vec![(pairs(&[("command", "play")]), 1)]
+            );
+        }
+    }
 
     #[test]
     fn configured_settings_are_keyed_by_their_guild() {

@@ -127,7 +127,9 @@ pub async fn autocomplete<'a>(
     //         vec![]
     //     },
     // };
+    let started = std::time::Instant::now();
     let choices = suggestion2(searching).await.unwrap_or_default();
+    crack_metrics::autocomplete_finished(started.elapsed());
     let res = CreateAutocompleteResponse::new();
     res.set_choices(Cow::Owned(choices.clone()))
 }

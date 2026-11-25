@@ -85,6 +85,7 @@ crack-rooms = { path = "../crack-rooms" }
 crack-guild = { path = "../crack-guild" }
 crack-music = { path = "../crack-music" }
 crack-gp = { path = "../crack-gp" }
+crack-metrics = { path = "../crack-metrics" }
 crack-model = { path = "../crack-model" }
 crack-types = { path = "../crack-types", optional = true, features = ["poise"] }
 # Not optional and not feature-gated: it pulls in nothing the crate does not
@@ -118,6 +119,8 @@ default-features = false
 features = ["client-reqwest", "reqwest-rustls-tls"]
 
 [dev-dependencies]
+metrics = "0.24"
+metrics-util = "0.20"
 # `#[cfg_attr(test, mutants::skip)]` waivers: see docs/testing.md.
 mutants = "0.0.4"
 # `#[db_test]`: db tests on template databases (crack-test-db/src/test_db.rs).
