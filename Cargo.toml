@@ -17,6 +17,7 @@ members = [
   "crack-music",
   "crack-guild",
   "crack-gp",
+  "crack-metrics",
 ]
 resolver = "2"
 

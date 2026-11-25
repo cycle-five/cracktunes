@@ -16,7 +16,6 @@ pub mod handlers;
 pub mod macros;
 pub mod economy;
 pub mod messaging;
-pub mod metrics;
 #[cfg(feature = "crack-music")]
 pub mod music;
 pub mod owners;

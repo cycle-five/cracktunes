@@ -1,0 +1,32 @@
+[package]
+authors = ["Cycle Five <cycle.five@proton.me>"]
+name = "crack-metrics"
+version.workspace = true
+edition = "2021"
+publish = true
+license = "MIT"
+description = "Prometheus metrics for Crack Tunes: metric names, typed labels, event functions and the /metrics listener."
+keywords = ["music", "discord", "bot", "crack", "tunes"]
+categories = ["multimedia::audio"]
+homepage = "https://cracktun.es/"
+repository = "https://github.com/cycle-five/cracktunes"
+workspace = ".."
+
+[features]
+# The features a cargo-mutants run needs, valid on any one crate: see .cargo/mutants.toml.
+mutation-testing = []
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.18", default-features = false }
+metrics-process = "2.4"
+thiserror = "2.0.20"
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+metrics-util = "0.20"
+
+[lints]
+workspace = true

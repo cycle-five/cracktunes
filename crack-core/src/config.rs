@@ -2,9 +2,6 @@ use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::DEFAULT_PREFIX;
 use crack_types::discord::guild_id;
 use crack_types::to_fixed;
-// #[cfg(feature = "crack-metrics")]
-// use crate::metrics::COMMAND_ERRORS;
-use crate::poise_ext::PoiseContextExt;
 use crate::{
     db,
     errors::CrackedError,
@@ -12,7 +9,7 @@ use crate::{
     handlers::SerenityHandler,
     http_utils::CacheHttpExt,
     messaging::{courier, message::CrackedMessage},
-    utils::{check_reply, count_command},
+    utils::check_reply,
     BotConfig, Data, DataInner, Error, EventLogAsync,
 };
 use ::serenity::secrets::Token;
@@ -52,10 +49,6 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
                     .await
                     .map_err(Into::into),
             );
-            // #[cfg(feature = "crack-metrics")]
-            // COMMAND_ERRORS
-            //     .with_label_values(&[&ctx.command().qualified_name])
-            //     .inc();
         },
         // #467. Without this arm a failed *check* falls through to poise's
         // builtin, which only logs -- so every `GP_BLOCKED_COMMANDS` refusal
@@ -211,7 +204,6 @@ pub async fn poise_framework(
         pre_command: |ctx| {
             Box::pin(async move {
                 tracing::info!(">>> {}...", ctx.command().qualified_name);
-                count_command(ctx.command().qualified_name.as_ref(), ctx.is_prefix());
             })
         },
         // This code is run after a command if it was successful (returned Ok)
