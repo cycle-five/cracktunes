@@ -121,6 +121,8 @@ for what the other scripts in that directory are, and which of them are broken.
 Age/login-gated YouTube can optionally fall back to a residential proxy; see
 [docs/residential-proxy-fallback.md](docs/residential-proxy-fallback.md).
 
+The bot can serve Prometheus metrics; see [docs/metrics.md](docs/metrics.md).
+
 ## Development
 
 Make sure you've installed Rust. You can install Rust and its package manager, `cargo` by following the instructions on https://rustup.rs/.

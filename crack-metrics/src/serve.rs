@@ -193,10 +193,6 @@ fn describe_all() {
         names::SLEEVENOTE_REQUESTS,
         "Requests to sleevenote, by outcome."
     );
-    describe_counter!(
-        names::SLEEVENOTE_RETRIES,
-        "Retries of sleevenote requests, by reason."
-    );
     describe_histogram!(
         names::SLEEVENOTE_REQUEST_DURATION,
         Unit::Seconds,
