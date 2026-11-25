@@ -19,12 +19,102 @@ use crate::{
     poise_ext::ContextExt,
     Context as CrackContext, Error,
 };
-use crack_testing::ResolvedTrack;
+use crack_testing::{CrackTrackClient, ResolvedTrack, RESOLVE_CONCURRENCY};
+use futures::StreamExt;
+use serenity::all::GuildId;
+use crack_metrics::{FailureReason, ResolveOutcome, Source};
 use crack_types::{Mode, NewAuxMetadata, QueryType};
 use serenity::all::Message;
 use songbird::{input::Input as SongbirdInput, tracks::TrackHandle, Call};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+/// Which source a query belongs to, for the playback metrics.
+///
+/// Every variant is named, so a new one forces a decision here. A Spotify link
+/// is turned into keyword searches before it gets this far, so it counts as
+/// `Youtube`, which is where it is searched and played; only a variant that
+/// itself says Spotify maps to `Spotify`.
+fn source_of(query: &QueryType) -> Source {
+    match query {
+        QueryType::Keywords(_)
+        | QueryType::KeywordList(_)
+        | QueryType::YoutubeSearch(_)
+        | QueryType::PlaylistLink(_) => Source::Youtube,
+        QueryType::VideoLink(url) => source_of_url(url),
+        QueryType::NewYoutubeDl((_, metadata)) => metadata
+            .source_url
+            .as_deref()
+            .map_or(Source::Other, source_of_url),
+        QueryType::SpotifyTracks(_) | QueryType::SpotifyLink(_) => Source::Spotify,
+        QueryType::File(_) => Source::File,
+        QueryType::None => Source::Other,
+    }
+}
+
+/// The source of a URL, by its host.
+fn source_of_url(url: &str) -> Source {
+    match url::Url::parse(url) {
+        Ok(parsed) => Source::from_host(parsed.host_str()),
+        Err(_) => Source::Other,
+    }
+}
+
+/// Record one resolve attempt: its outcome and wall time, and on `Err` the
+/// bucketed reason.
+fn note_resolve<T, E: std::fmt::Display>(
+    source: Source,
+    result: &Result<T, E>,
+    elapsed: std::time::Duration,
+) {
+    match result {
+        Ok(_) => crack_metrics::track_resolved(source, ResolveOutcome::Ok, elapsed),
+        Err(e) => {
+            crack_metrics::track_resolved(source, ResolveOutcome::Error, elapsed);
+            crack_metrics::track_failed(source, FailureReason::classify(&e.to_string()));
+        },
+    }
+}
+
+/// Count tracks accepted for playback in `guild_id`.
+fn note_started(sources: impl IntoIterator<Item = Source>, guild_id: GuildId) {
+    for source in sources {
+        crack_metrics::track_started(source, guild_id.get());
+    }
+}
+
+/// [`CrackTrackClient::resolve_track_many`] with a metric per lookup: the same
+/// concurrency, order and skip-on-failure, but each query's own result is in
+/// hand, so each counts (a 30-track list records 30 resolves). Each kept track
+/// comes back with its source.
+async fn resolve_many_noted(
+    client: &CrackTrackClient<'static>,
+    queries: Vec<QueryType>,
+) -> Vec<(Source, ResolvedTrack<'static>)> {
+    let total = queries.len();
+    let resolved: Vec<Option<(Source, ResolvedTrack<'static>)>> = futures::stream::iter(queries)
+        .map(|query| async move {
+            let source = source_of(&query);
+            let begin = std::time::Instant::now();
+            let result = client.resolve_track(query.clone()).await;
+            note_resolve(source, &result, begin.elapsed());
+            match result {
+                Ok(track) => Some((source, track)),
+                Err(e) => {
+                    tracing::warn!("Skipping unresolvable track {query:?}: {e}");
+                    None
+                },
+            }
+        })
+        .buffered(RESOLVE_CONCURRENCY)
+        .collect()
+        .await;
+    let kept: Vec<_> = resolved.into_iter().flatten().collect();
+    if kept.len() < total {
+        tracing::warn!("Resolved {}/{total} tracks", kept.len());
+    }
+    kept
+}
 
 /// Takes a query and returns a track that is ready to be played, along with relevant metadata.
 pub async fn ready_query(
@@ -72,7 +162,11 @@ pub async fn queue_track_front(
     // A user queued something, so autoplay's buffered picks -- chosen from
     // what played before -- no longer apply (Ruling 49).
     ctx.data().autoplay_buffer.clear(guild_id);
-    let ready_track = ready_query(ctx, query_type.clone()).await?;
+    let source = source_of(query_type);
+    let begin = std::time::Instant::now();
+    let readied = ready_query(ctx, query_type.clone()).await;
+    note_resolve(source, &readied, begin.elapsed());
+    let ready_track = readied?;
     // Logged BEFORE the guard is taken and before `ready_track` is moved into
     // the enqueue below. The send is a non-blocking channel push, so it costs
     // the play path nothing.
@@ -82,6 +176,7 @@ pub async fn queue_track_front(
         .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
         .await?;
     let q = queue_track_ready_front(&guard, call, ready_track).await?;
+    note_started([source], guild_id);
     Ok(q)
 }
 
@@ -107,8 +202,11 @@ pub async fn queue_track_back(
     // what played before -- no longer apply (Ruling 49).
     ctx.data().autoplay_buffer.clear(guild_id);
 
+    let source = source_of(query_type);
     let begin = std::time::Instant::now();
-    let resolved = match ctx.data().ct_client.resolve_track(query_type.clone()).await {
+    let attempt = ctx.data().ct_client.resolve_track(query_type.clone()).await;
+    note_resolve(source, &attempt, begin.elapsed());
+    let resolved = match attempt {
         Ok(resolved) => resolved.with_user_id(user_id),
         Err(e1) => {
             // 🪤 Say why before falling back. This once matched `e1.into()` as
@@ -117,7 +215,10 @@ pub async fn queue_track_back(
             tracing::warn!(
                 "ct_client could not resolve {query_type:?}, falling back to ready_query: {e1}"
             );
-            let ready_track = ready_query(ctx, query_type.clone()).await?;
+            let fallback_begin = std::time::Instant::now();
+            let readied = ready_query(ctx, query_type.clone()).await;
+            note_resolve(source, &readied, fallback_begin.elapsed());
+            let ready_track = readied?;
             // 🪤 This branch RETURNS, so the send below never runs for it. A
             // play that fell back to `ready_query` is still a play and must be
             // logged here, or the fallback path stays silently unlogged exactly
@@ -127,7 +228,9 @@ pub async fn queue_track_back(
                 .data()
                 .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
                 .await?;
-            return _queue_track_ready_back(&guard, call, ready_track).await;
+            let queued = _queue_track_ready_back(&guard, call, ready_track).await?;
+            note_started([source], guild_id);
+            return Ok(queued);
         },
     };
     let after_ready = std::time::Instant::now();
@@ -144,6 +247,9 @@ pub async fn queue_track_back(
     let queue =
         queue_resolved_track_back(&guard, call, resolved, http_utils::get_client_old().clone())
             .await;
+    if queue.is_ok() {
+        note_started([source], guild_id);
+    }
     let after_queue = std::time::Instant::now();
     tracing::warn!(
         r#"
@@ -278,7 +384,8 @@ pub async fn queue_resolved_list_back(
         .data()
         .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
         .await?;
-    enqueue_resolved_tracks_back(&guard, &call, tracks, client.clone()).await?;
+    let first = enqueue_resolved_tracks_back(&guard, &call, tracks, client.clone()).await?;
+    note_started(std::iter::repeat_n(Source::Youtube, first.count()), guild_id);
     let snapshot = call.lock().await.queue().current_queue();
     drop(guard);
     update_queue_messages(
@@ -308,6 +415,7 @@ pub async fn queue_resolved_list_back(
             .await?;
         let inserted =
             enqueue_resolved_tracks_back(&guard, &call, chunk.to_vec(), client.clone()).await?;
+        note_started(std::iter::repeat_n(Source::Youtube, inserted.count()), guild_id);
         queued += inserted.count();
         let snapshot = call.lock().await.queue().current_queue();
         drop(guard);
@@ -397,14 +505,12 @@ pub async fn queue_vec_query_type(
     // This used to be a serial `for` loop calling `ready_query`, which spawned
     // a `yt-dlp` subprocess per track and waited for it. `resolve_track_many`
     // overlaps the lookups and skips individual failures.
-    let resolved = ctx
-        .data()
-        .ct_client
-        .resolve_track_many(queries)
-        .await?
-        .into_iter()
-        .map(|t| t.with_user_id(user_id))
-        .collect::<Vec<_>>();
+    let (sources, resolved): (Vec<Source>, Vec<_>) =
+        resolve_many_noted(&ctx.data().ct_client, queries)
+            .await
+            .into_iter()
+            .map(|(source, t)| (source, t.with_user_id(user_id)))
+            .unzip();
 
     // Logged before the guard is taken: the send is a non-blocking channel
     // push, and keeping it off the guarded section costs playback nothing.
@@ -415,6 +521,7 @@ pub async fn queue_vec_query_type(
         .lock_queue(guild_id, PlaybackOwner::Free, Actor::from_ctx(&ctx))
         .await?;
     let snapshot = enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await?;
+    note_started(sources, guild_id);
     drop(guard);
     update_queue_messages(
         &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
@@ -454,7 +561,11 @@ pub async fn queue_query_list_offset(
 
     // Resolved concurrently; this was a serial round trip per track. Runs
     // before the guard is taken -- see the doc comment above.
-    let tracks = ctx.data().ct_client.resolve_track_many(queries).await?;
+    let (sources, tracks): (Vec<Source>, Vec<_>) =
+        resolve_many_noted(&ctx.data().ct_client, queries)
+            .await
+            .into_iter()
+            .unzip();
 
     // 🪤 Sent HERE, once, rather than inside the two branches below. This
     // function splits into a low-queue path (`enqueue_resolved_and_snapshot`)
@@ -477,6 +588,7 @@ pub async fn queue_query_list_offset(
             .map(|t| t.with_user_id(user_id))
             .collect::<Vec<_>>();
         let snapshot = enqueue_resolved_and_snapshot(&guard, ctx, &call, resolved).await?;
+        note_started(sources, guild_id);
         drop(guard);
         update_queue_messages(
             &crate::messaging::transport::DiscordTransport::of(ctx.serenity_context()),
@@ -517,6 +629,7 @@ pub async fn queue_query_list_offset(
             });
         }
         record_add(&guard, &handler, &queued, AddAt::Index(offset));
+        note_started(sources.iter().copied().take(queued.len()), guild_id);
         handler.queue().current_queue()
     };
     drop(guard);
@@ -796,5 +909,89 @@ mod play_history_wiring_tests {
                  re-marked Exempt with a reason"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod metrics_tests {
+    use super::*;
+    use crack_metrics::{names, testing::capture};
+    use crack_types::Attachment;
+
+    fn attachment() -> Attachment {
+        serde_json::from_str(
+            r#"{"id":"1","filename":"a.mp3","size":1,"url":"https://cdn.discordapp.com/a.mp3","proxy_url":"https://media.discordapp.net/a.mp3"}"#,
+        )
+        .expect("a minimal attachment")
+    }
+
+    #[test]
+    fn source_of_each_query_kind() {
+        assert_eq!(source_of(&QueryType::Keywords("x".into())), Source::Youtube);
+        assert_eq!(
+            source_of(&QueryType::VideoLink("https://www.youtube.com/watch?v=abc".into())),
+            Source::Youtube
+        );
+        assert_eq!(
+            source_of(&QueryType::VideoLink("https://soundcloud.com/a/b".into())),
+            Source::Soundcloud
+        );
+        // What a Spotify link becomes: searched and played on YouTube.
+        assert_eq!(
+            source_of(&QueryType::KeywordList(vec!["a - b".into(), "c - d".into()])),
+            Source::Youtube
+        );
+        assert_eq!(source_of(&QueryType::SpotifyTracks(vec![])), Source::Spotify);
+        assert_eq!(source_of(&QueryType::File(attachment())), Source::File);
+        assert_eq!(source_of(&QueryType::YoutubeSearch("q".into())), Source::Youtube);
+        assert_eq!(
+            source_of(&QueryType::PlaylistLink("https://www.youtube.com/playlist?list=PL1".into())),
+            Source::Youtube
+        );
+        assert_eq!(source_of(&QueryType::None), Source::Other);
+        assert_eq!(source_of_url("https://example.org/a.mp3"), Source::Other);
+        assert_eq!(source_of_url("not a url"), Source::Other);
+    }
+
+    #[test]
+    fn a_failed_resolve_records_resolve_error_and_reason() {
+        let failed: Result<(), String> = Err("no results found for 'ytsearch1:x'".into());
+        let ((), c) = capture(|| {
+            note_resolve(Source::Youtube, &failed, std::time::Duration::from_millis(40));
+        });
+        assert_eq!(
+            c.counter(
+                names::TRACK_RESOLVES,
+                &[("source", "youtube"), ("outcome", "error")]
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            c.counter(
+                names::TRACK_FAILURES,
+                &[("source", "youtube"), ("reason", "no_results")]
+            ),
+            Some(1)
+        );
+        assert_eq!(
+            c.histogram(names::TRACK_RESOLVE_DURATION, &[("source", "youtube")]),
+            vec![0.04]
+        );
+    }
+
+    #[test]
+    fn a_good_resolve_records_ok_and_no_failure_series() {
+        let good: Result<u8, String> = Ok(1);
+        let ((), c) = capture(|| {
+            note_resolve(Source::Youtube, &good, std::time::Duration::from_millis(5));
+        });
+        assert_eq!(
+            c.counter(
+                names::TRACK_RESOLVES,
+                &[("source", "youtube"), ("outcome", "ok")]
+            ),
+            Some(1)
+        );
+        assert!(c.series().iter().all(|(n, _)| n != names::TRACK_FAILURES));
     }
 }
