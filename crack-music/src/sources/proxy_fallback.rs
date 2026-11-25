@@ -10,6 +10,7 @@
 //! googlevideo URL refused. Never log the wrapped sources: `YoutubeDl`'s
 //! `Debug` prints the authenticated proxy URL, so this type has no `Debug`.
 use async_trait::async_trait;
+use crack_metrics::ProxyOutcome;
 use songbird::input::{AudioStream, AudioStreamError, AuxMetadata, Compose, Input};
 use symphonia::core::io::MediaSource;
 
@@ -31,7 +32,8 @@ const MAX_PROXY_ATTEMPTS: usize = 5;
 /// [`MAX_PROXY_ATTEMPTS`] fresh proxied sources, running `$op` (an expression
 /// using `$p`) on each. The first success is stored in `$self.proxied`, locking
 /// its one session for every later call; gate failures discard the source and
-/// try again; any other failure is returned at once.
+/// try again; any other failure is returned at once. The first time it
+/// finishes for a source it reports the outcome (see [`ProxyFallback::report`]).
 macro_rules! fail_over {
     ($self:ident, $err:ident, $p:ident => $op:expr) => {{
         if !is_gate_error(&$err.to_string()) {
@@ -39,17 +41,30 @@ macro_rules! fail_over {
         }
         tracing::info!("source gated, retrying through the residential proxy");
         let mut last = $err;
+        let mut attempts: u64 = 0;
         for _ in 0..MAX_PROXY_ATTEMPTS {
-            let mut $p = ($self.make_proxied)()?;
+            let mut $p = match ($self.make_proxied)() {
+                Ok(p) => p,
+                Err(e) => {
+                    $self.report(ProxyOutcome::Error, attempts);
+                    return Err(e);
+                },
+            };
+            attempts += 1;
             match $op {
                 Ok(v) => {
                     $self.proxied = Some($p);
+                    $self.report(ProxyOutcome::Recovered, attempts);
                     return Ok(v);
                 },
                 Err(e) if is_gate_error(&e.to_string()) => last = e,
-                Err(e) => return Err(e),
+                Err(e) => {
+                    $self.report(ProxyOutcome::Error, attempts);
+                    return Err(e);
+                },
             }
         }
+        $self.report(ProxyOutcome::Exhausted, attempts);
         Err(last)
     }};
 }
@@ -59,6 +74,8 @@ pub struct ProxyFallback {
     inner: Box<dyn Compose>,
     make_proxied: ProxiedFactory,
     proxied: Option<Box<dyn Compose>>,
+    /// Whether this source's fail-over has been counted: one per gated track.
+    reported: bool,
 }
 
 fn fail(e: impl std::error::Error + Send + Sync + 'static) -> AudioStreamError {
@@ -72,7 +89,22 @@ impl ProxyFallback {
             inner,
             make_proxied,
             proxied: None,
+            reported: false,
         }
+    }
+
+    /// Count this source's fail-over once, however many entry points
+    /// (`create`, `create_async`, `aux_metadata`) it goes through. The log line
+    /// carries only the outcome and the attempt count: never the sources.
+    fn report(&mut self, outcome: ProxyOutcome, attempts: u64) {
+        if std::mem::replace(&mut self.reported, true) {
+            return;
+        }
+        crack_metrics::proxy_fallback(outcome, attempts);
+        tracing::info!(
+            "proxy fallback {} after {attempts} attempt(s)",
+            outcome.as_str()
+        );
     }
 }
 
@@ -301,5 +333,108 @@ mod tests {
         };
         assert!(err.to_string().contains("404"));
         assert_eq!(builds.load(Ordering::SeqCst), 2);
+    }
+
+    /// What one scenario recorded, with the future driven on this thread.
+    fn recorded<F: std::future::Future<Output = ()>>(fut: F) -> crack_metrics::testing::Captured {
+        crack_metrics::testing::capture(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(fut)
+        })
+        .1
+    }
+
+    fn outcome(c: &crack_metrics::testing::Captured, which: &str) -> Option<u64> {
+        c.counter(crack_metrics::names::PROXY_FALLBACK, &[("outcome", which)])
+    }
+
+    #[test]
+    fn recovering_on_the_second_session_records_one_recovered_and_two_attempts() {
+        let c = recorded(async {
+            let (inner, _) = scripted(Some(GATE));
+            let (factory, _) = seq_factory(vec![GATE], false);
+            let mut src = ProxyFallback::from_parts(inner, factory);
+            assert!(src.create_async().await.is_ok());
+            assert!(src.create_async().await.is_ok());
+        });
+        assert_eq!(outcome(&c, "recovered"), Some(1));
+        assert_eq!(
+            c.counter(crack_metrics::names::PROXY_FALLBACK_ATTEMPTS, &[]),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn never_recovering_records_one_exhausted_and_five_attempts() {
+        let c = recorded(async {
+            let (inner, _) = scripted(Some(GATE));
+            let (factory, _) = seq_factory(vec![GATE], true);
+            let mut src = ProxyFallback::from_parts(inner, factory);
+            assert!(src.create_async().await.is_err());
+        });
+        assert_eq!(outcome(&c, "exhausted"), Some(1));
+        assert_eq!(
+            c.counter(crack_metrics::names::PROXY_FALLBACK_ATTEMPTS, &[]),
+            Some(MAX_PROXY_ATTEMPTS as u64)
+        );
+    }
+
+    #[test]
+    fn an_ungated_failure_records_nothing() {
+        let c = recorded(async {
+            let (inner, _) = scripted(Some("HTTP Error 404: Not Found"));
+            let (factory, _) = counting_factory();
+            let mut src = ProxyFallback::from_parts(inner, factory);
+            assert!(src.create_async().await.is_err());
+            assert!(src.aux_metadata().await.is_err());
+        });
+        assert!(c.series().is_empty(), "{:?}", c.series());
+    }
+
+    #[test]
+    fn a_second_entry_for_the_same_source_records_nothing_more() {
+        let c = recorded(async {
+            let (inner, _) = scripted(Some(GATE));
+            let (factory, _) = seq_factory(vec![GATE], true);
+            let mut src = ProxyFallback::from_parts(inner, factory);
+            assert!(src.aux_metadata().await.is_err());
+            assert!(src.create_async().await.is_err());
+            assert!(src.create().is_err());
+        });
+        assert_eq!(outcome(&c, "exhausted"), Some(1));
+        assert_eq!(
+            c.counter(crack_metrics::names::PROXY_FALLBACK_ATTEMPTS, &[]),
+            Some(MAX_PROXY_ATTEMPTS as u64)
+        );
+        assert_eq!(c.series().len(), 2, "{:?}", c.series());
+    }
+
+    #[test]
+    fn a_proxied_non_gate_error_records_error() {
+        let c = recorded(async {
+            let (inner, _) = scripted(Some(GATE));
+            let (factory, _) = seq_factory(vec![GATE, "HTTP Error 404: Not Found"], false);
+            let mut src = ProxyFallback::from_parts(inner, factory);
+            assert!(src.create_async().await.is_err());
+        });
+        assert_eq!(outcome(&c, "error"), Some(1));
+        assert_eq!(
+            c.counter(crack_metrics::names::PROXY_FALLBACK_ATTEMPTS, &[]),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn a_factory_failure_records_error() {
+        let c = recorded(async {
+            let (inner, _) = scripted(Some(GATE));
+            let factory: ProxiedFactory = Box::new(|| Err(AudioStreamError::Fail("boom".into())));
+            let mut src = ProxyFallback::from_parts(inner, factory);
+            assert!(src.create_async().await.is_err());
+        });
+        assert_eq!(outcome(&c, "error"), Some(1));
     }
 }

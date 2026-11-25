@@ -8,7 +8,7 @@ use crate::{
     db::GuildEntity,
     errors::CrackedError,
     guild::settings::{GuildSettings, Provenance, DEFAULT_ACTIVITY},
-    handlers::voice_chat_stats::cam_status_loop,
+    handlers::{metrics_sampler, voice_chat_stats::cam_status_loop},
     sources::spotify::{Spotify, SPOTIFY},
     BotConfig,
     Data,
@@ -27,6 +27,9 @@ use serenity::{
 };
 use std::sync::{atomic::Ordering, Arc};
 
+/// Set once the metrics sampler has been started in this process.
+static SAMPLER_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub struct SerenityHandler {
     pub data: Data,
     pub is_loop_running: std::sync::atomic::AtomicBool,
@@ -38,11 +41,22 @@ impl EventHandler for SerenityHandler {
     /// `dispatch`. The handlers below keep their old shapes; this just routes
     /// `FullEvent` variants to them.
     async fn dispatch(&self, ctx: &SerenityContext, event: &FullEvent) {
+        // Every gateway event, before anything else: the gateway-health signal.
+        metrics_sampler::note_gateway_event(std::time::SystemTime::now());
         match event {
             FullEvent::Ready { data_about_bot } => {
                 self.on_ready(ctx.clone(), data_about_bot.clone()).await;
             },
+            FullEvent::Resume { .. } => metrics_sampler::on_resumed(),
+            FullEvent::GuildUpdate { new_data, .. } => {
+                crack_metrics::set_guild_info(new_data.id.get(), &new_data.name);
+            },
+            FullEvent::GuildDelete { .. } => {
+                crack_metrics::set_guilds(ctx.cache.guild_count());
+            },
             FullEvent::GuildCreate { guild, .. } => {
+                crack_metrics::set_guild_info(guild.id.get(), &guild.name);
+                crack_metrics::set_guilds(ctx.cache.guild_count());
                 self.on_guild_create(ctx.clone(), guild.clone()).await;
             },
             FullEvent::Message { new_message, .. } => {
@@ -262,6 +276,9 @@ impl EventHandler for SerenityHandler {
 
 impl SerenityHandler {
     async fn on_ready(&self, ctx: SerenityContext, ready: Ready) {
+        metrics_sampler::on_ready();
+        // Every Ready: serenity builds a new shard runner (and latency cell) per restart.
+        metrics_sampler::note_latency_source(&ctx);
         tracing::info!(
             "{} {}",
             ready.user.name,
@@ -407,6 +424,14 @@ impl SerenityHandler {
         // `CacheReady` is not guaranteed to arrive at all -- see `on_guild_create`.
         // `Ready` re-fires on reconnect, so this keeps the existing `is_loop_running`
         // guard to stay once-per-process.
+        // The sampler has its own once-guard: compare_exchange is atomic, and the
+        // loop guard below is also set only after `cam_status_loop` returns.
+        if SAMPLER_STARTED
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+        {
+            metrics_sampler::spawn(ctx.clone(), self.data.songbird.clone());
+        }
         if !self.is_loop_running.load(Ordering::Relaxed) {
             let interval = self.data.bot_settings.get_video_status_poll_interval();
             if interval > 0 {

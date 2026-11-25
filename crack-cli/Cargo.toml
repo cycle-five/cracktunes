@@ -25,9 +25,6 @@ eula = false
 default = ["crack-tracing", "web"]
 
 crack-tracing = ["tracing-subscriber"]
-# Forwards to crack-core, which owns the prometheus registry. This was an empty
-# list, so turning it on here did nothing at all.
-crack-metrics = ["crack-core/crack-metrics"]
 # The CrackCoin devnet token seam; off by default.
 crack-coin = ["crack-core/crack-coin"]
 # Structured JSON logs. Implies crack-tracing: `init_telemetry` is gated on it, so
@@ -49,6 +46,7 @@ mutation-testing = ["db-tests", "crack-coin"]
 
 [dependencies]
 crack-core = { path = "../crack-core/" }
+crack-metrics = { path = "../crack-metrics" }
 crack-types = { path = "../crack-types/" }
 crack-web = { path = "../crack-web/", optional = true }
 

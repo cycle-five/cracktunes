@@ -24,6 +24,7 @@ use ::serenity::{
     http::Http,
     model::id::GuildId,
 };
+use crack_metrics::EndOutcome;
 use crack_types::NewAuxMetadata;
 use crack_types::QueryType;
 use songbird::{tracks::TrackHandle, Call, Event, EventContext, EventHandler};
@@ -84,6 +85,20 @@ fn get_track_states_union(track_states: TrackStates) -> TrackStatesUnion {
     }
 
     union
+}
+
+/// How a queue track ended, for the playback metrics.
+///
+/// A skip or stop ends the track with [`PlayMode::Stop`] (songbird's
+/// `TrackQueue::skip` calls `stop_current`); a natural end is `End`.
+fn end_outcome(mode: &PlayMode) -> EndOutcome {
+    match mode {
+        PlayMode::Errored(_) => EndOutcome::Errored,
+        PlayMode::Stop => EndOutcome::Skipped,
+        // `End`, and anything still running or paused (songbird's enum is
+        // non-exhaustive): the track simply ran its course.
+        _ => EndOutcome::Finished,
+    }
 }
 
 /// The tracks a track end is about, less any walk-on theme. A theme is
@@ -148,6 +163,9 @@ impl EventHandler for TrackEndHandler {
             },
             _ => Vec::new(),
         };
+        for (state, _) in &tracks {
+            crack_metrics::track_ended(end_outcome(&state.playing));
+        }
         // 🪤 These five were ERROR (#512) -- leftover printf debugging, not
         // failures. The rest of this function already uses `trace!` for its
         // progress and `warn!` for real problems, which is what made them
@@ -591,6 +609,18 @@ fn autoplay_off_notice(has_recommender: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn end_outcome_from_play_mode() {
+        let errored = PlayMode::Errored(songbird::tracks::PlayError::Create(Arc::new(
+            songbird::input::AudioStreamError::Unsupported,
+        )));
+        assert_eq!(end_outcome(&errored), EndOutcome::Errored);
+        assert_eq!(end_outcome(&PlayMode::End), EndOutcome::Finished);
+        // `TrackQueue::skip` and `/stop` stop the track; that is the only
+        // way a track reaches `Stop`.
+        assert_eq!(end_outcome(&PlayMode::Stop), EndOutcome::Skipped);
+    }
 
     /// The wording is the user's, exactly, so it is pinned against literals
     /// rather than the constants -- a test comparing a constant to itself

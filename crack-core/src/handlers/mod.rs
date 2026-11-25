@@ -2,6 +2,7 @@ pub mod event_log;
 pub mod event_log_impl;
 pub mod guarded;
 pub mod idle;
+pub mod metrics_sampler;
 pub mod serenity;
 pub mod track_end;
 pub mod voice_chat_stats;

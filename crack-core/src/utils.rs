@@ -5,8 +5,6 @@ use crate::messaging::format::{duration_text, TrackLabel, INLINE_TITLE_MAX};
 use crate::messaging::messages::{SEARCH_RESULTS_NOT_POSTED, TRACK_UNTITLED};
 use crate::messaging::render::{RenderCx, Rendered};
 use crate::messaging::transport::{DiscordTransport, Transport};
-#[cfg(feature = "crack-metrics")]
-use crate::metrics::COMMAND_EXECUTIONS;
 use crate::poise_ext::PoiseContextExt;
 use crate::{
     db::Playlist,
@@ -636,29 +634,6 @@ pub fn check_reply(result: Result<ReplyHandle, SerenityError>) {
     if let Err(why) = result {
         tracing::error!("Error sending message: {:?}", why);
     }
-}
-
-#[cfg(feature = "crack-metrics")]
-pub fn count_command(command: &str, is_prefix: bool) {
-    tracing::warn!("counting command: {}, {}", command, is_prefix);
-    match COMMAND_EXECUTIONS
-        .get_metric_with_label_values(&[command, if is_prefix { "prefix" } else { "slash" }])
-    {
-        Ok(metric) => {
-            metric.inc();
-        },
-        Err(e) => {
-            tracing::error!("Failed to get metric: {}", e);
-        },
-    };
-}
-#[cfg(not(feature = "crack-metrics"))]
-pub fn count_command(command: &str, is_prefix: bool) {
-    tracing::warn!(
-        "crack-metrics feature not enabled!\ncommand: {}, {}",
-        command,
-        is_prefix
-    );
 }
 
 /// Get the guild id from an interaction.

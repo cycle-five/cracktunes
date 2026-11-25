@@ -1,10 +1,5 @@
 use crate::guild::operations::GuildSettingsOperations;
 use crate::guild::settings::DEFAULT_PREFIX;
-use crack_types::discord::guild_id;
-use crack_types::to_fixed;
-// #[cfg(feature = "crack-metrics")]
-// use crate::metrics::COMMAND_ERRORS;
-use crate::poise_ext::PoiseContextExt;
 use crate::{
     db,
     errors::CrackedError,
@@ -12,17 +7,52 @@ use crate::{
     handlers::SerenityHandler,
     http_utils::CacheHttpExt,
     messaging::{courier, message::CrackedMessage},
-    utils::{check_reply, count_command},
+    utils::check_reply,
     BotConfig, Data, DataInner, Error, EventLogAsync,
 };
 use ::serenity::secrets::Token;
 use colored::Colorize;
+use crack_types::discord::guild_id;
+use crack_types::to_fixed;
 use poise::serenity_prelude::{Client, GatewayIntents, GuildId};
 use songbird::driver::DecodeMode;
 use songbird::Songbird;
 use std::borrow::Cow;
-use std::{collections::HashMap, process::exit, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    process::exit,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 use tokio::sync::RwLock;
+
+/// The metrics for a command starting. Plain values, so it is testable without
+/// a poise context.
+pub(crate) fn note_command_started(name: &str, is_prefix: bool, guild_id: Option<u64>) {
+    let kind = if is_prefix {
+        crack_metrics::CommandKind::Prefix
+    } else {
+        crack_metrics::CommandKind::Slash
+    };
+    crack_metrics::command_started(name, kind, guild_id);
+}
+
+/// The metrics for a command finishing. A clock that went backwards records zero.
+pub(crate) fn note_command_finished(name: &str, created_at: SystemTime, now: SystemTime) {
+    let elapsed = now.duration_since(created_at).unwrap_or(Duration::ZERO);
+    crack_metrics::command_finished(name, elapsed);
+}
+
+/// The metrics for a command that errored or panicked.
+pub(crate) fn note_command_failed(name: &str) {
+    crack_metrics::command_failed(name);
+}
+
+/// A serenity timestamp as a `SystemTime`; anything before the epoch is the epoch.
+fn timestamp_to_system_time(ts: &poise::serenity_prelude::Timestamp) -> SystemTime {
+    let millis = u64::try_from(ts.unix_timestamp_millis()).unwrap_or(0);
+    SystemTime::UNIX_EPOCH + Duration::from_millis(millis)
+}
 
 /// on_error is called when an error occurs in the framework.
 async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
@@ -31,31 +61,31 @@ async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
     // and forward the rest to the default handler
     match error {
         //poise::FrameworkError::Setup { error, .. } => panic!("Failed to start bot: {:?}", error),
-        poise::FrameworkError::CommandPanic { payload, ctx, .. } => match payload {
-            None => {
-                tracing::warn!("{}", "Command panicked with no payload".yellow());
-            },
-            Some(payload) => {
-                tracing::warn!(
-                    "{} {} {} {}",
-                    "Command ".yellow(),
-                    ctx.command().qualified_name.yellow().italic(),
-                    " panicked: ".yellow(),
-                    payload.yellow().bold(),
-                );
-            },
+        poise::FrameworkError::CommandPanic { payload, ctx, .. } => {
+            note_command_failed(&ctx.command().qualified_name);
+            match payload {
+                None => {
+                    tracing::warn!("{}", "Command panicked with no payload".yellow());
+                },
+                Some(payload) => {
+                    tracing::warn!(
+                        "{} {} {} {}",
+                        "Command ".yellow(),
+                        ctx.command().qualified_name.yellow().italic(),
+                        " panicked: ".yellow(),
+                        payload.yellow().bold(),
+                    );
+                },
+            }
         },
         poise::FrameworkError::Command { error, ctx, .. } => {
+            note_command_failed(&ctx.command().qualified_name);
             let myerr = CrackedError::Poise(error);
             check_reply(
                 courier::reply(ctx, CrackedMessage::from(myerr))
                     .await
                     .map_err(Into::into),
             );
-            // #[cfg(feature = "crack-metrics")]
-            // COMMAND_ERRORS
-            //     .with_label_values(&[&ctx.command().qualified_name])
-            //     .inc();
         },
         // #467. Without this arm a failed *check* falls through to poise's
         // builtin, which only logs -- so every `GP_BLOCKED_COMMANDS` refusal
@@ -211,13 +241,22 @@ pub async fn poise_framework(
         pre_command: |ctx| {
             Box::pin(async move {
                 tracing::info!(">>> {}...", ctx.command().qualified_name);
-                count_command(ctx.command().qualified_name.as_ref(), ctx.is_prefix());
+                note_command_started(
+                    &ctx.command().qualified_name,
+                    matches!(ctx, crate::Context::Prefix(_)),
+                    ctx.guild_id().map(|g| g.get()),
+                );
             })
         },
         // This code is run after a command if it was successful (returned Ok)
         post_command: |ctx| {
             Box::pin(async move {
                 tracing::info!("<<< {}!", ctx.command().qualified_name);
+                note_command_finished(
+                    &ctx.command().qualified_name,
+                    timestamp_to_system_time(&ctx.created_at()),
+                    SystemTime::now(),
+                );
             })
         },
         // Every command invocation must pass this check to continue execution
@@ -514,6 +553,56 @@ pub(crate) fn songbird_config() -> songbird::Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod metrics_glue {
+        use super::super::{note_command_failed, note_command_finished, note_command_started};
+        use crack_metrics::names;
+        use crack_metrics::testing::capture;
+        use std::time::{Duration, SystemTime};
+
+        #[test]
+        fn a_prefix_command_is_counted_as_prefix() {
+            let ((), c) = capture(|| note_command_started("play", true, Some(7)));
+            assert_eq!(
+                c.counter(names::COMMANDS, &[("command", "play"), ("kind", "prefix")]),
+                Some(1)
+            );
+            assert_eq!(
+                c.counter(names::GUILD_COMMANDS, &[("guild_id", "7")]),
+                Some(1)
+            );
+            assert_eq!(c.series().len(), 2);
+        }
+
+        #[test]
+        fn duration_is_now_minus_created_at() {
+            let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+            let ((), c) = capture(|| note_command_finished("play", t, t + Duration::from_secs(2)));
+            assert_eq!(
+                c.histogram(names::COMMAND_DURATION, &[("command", "play")]),
+                vec![2.0]
+            );
+        }
+
+        #[test]
+        fn a_clock_that_went_backwards_records_zero() {
+            let t = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+            let ((), c) = capture(|| note_command_finished("play", t, t - Duration::from_secs(2)));
+            assert_eq!(
+                c.histogram(names::COMMAND_DURATION, &[("command", "play")]),
+                vec![0.0]
+            );
+        }
+
+        #[test]
+        fn a_failed_command_is_counted() {
+            let ((), c) = capture(|| note_command_failed("play"));
+            assert_eq!(
+                c.counter(names::COMMAND_ERRORS, &[("command", "play")]),
+                Some(1)
+            );
+        }
+    }
 
     #[test]
     fn configured_settings_are_keyed_by_their_guild() {
